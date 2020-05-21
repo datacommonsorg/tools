@@ -1,0 +1,6 @@
+runtime: python37
+instance_class: B8
+basic_scaling:
+        idle_timeout: 10m
+        max_instances: 11
+
