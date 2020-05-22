@@ -20,3 +20,4 @@ __pycache__/
 
 # Ignored by developer
 node_modules
+.DS_Store

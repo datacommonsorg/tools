@@ -1,8 +1,20 @@
-# Import libraries
-from send_request import send_request
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from helper_functions import clean_and_transpose
 import pandas as pd
+from send_request import send_request
 
 import datetime
 
@@ -23,17 +35,34 @@ class COVID19:
         self.state_cumulative_deaths_per_capita = pd.DataFrame({})
         self.county_cumulative_deaths_per_capita = pd.DataFrame({})
 
-        self.set_up()
+        print("Starting!")
+        self.request_state_dcids()
+        self.request_state_names()
+        self.request_state_population()
+        self.request_county_dcids()
+        self.request_county_population()
+        self.add_nyt_exceptions()
 
-    def set_up(self):
-        print("Starting")
+        # Data index is now the county's dcid
+        self.data = self.data.set_index('county_dcid')
+
+        # Request information from the NYT COVID database.
+        self.state_cumulative_cases = self.get_covid_data(dcids=list(self.data['state_dcid']), stats_var='NYTCovid19CumulativeCases')
+        self.state_cumulative_deaths = self.get_covid_data(dcids=list(self.data['state_dcid']), stats_var='NYTCovid19CumulativeDeaths')
+        self.county_cumulative_cases = self.get_covid_data(dcids=list(self.data.index), stats_var='NYTCovid19CumulativeCases')
+        self.county_cumulative_deaths = self.get_covid_data(dcids=list(self.data.index), stats_var='NYTCovid19CumulativeDeaths')
+
+        # Generate a map from geoId -> region name
+        self.generate_map_of_geoid_to_name()
+
+    def request_state_dcids(self):
+        """Retrieves all the states dcids in the USA"""
         # Create DataFrame that contains USA
         self.data = pd.DataFrame({'country': ['country/USA']})
 
         print("Getting State dcids")
         # Get all states dcids
-        response = send_request("https://api.datacommons.org/node/places-in",
-                                {"dcids": ["country/USA"], "placeType": "State"})
+        response = send_request("https://api.datacommons.org/node/places-in", {"dcids": ["country/USA"], "placeType": "State"})
         state_dcids = [x['place'] for x in response]
 
         self.data['state_dcid'] = pd.Series([state_dcids])
@@ -42,21 +71,27 @@ class COVID19:
         # Get rid of Puerto Rico, not County Population data
         self.data = self.data[self.data.state_dcid != 'geoId/72']
 
+    def request_state_names(self):
+        """Retrieves the states from the list of state_dcid"""
         print("Getting State names")
         # Get all state names
         response = send_request("https://api.datacommons.org/node/property-values",
-                                {"dcids": state_dcids, "property": "name"})
+                                {"dcids": list(self.data['state_dcid']), "property": "name"})
         state_names = {dcid: response[dcid]['out'][0]['value'] for dcid in response}
         self.data['state_name'] = self.data['state_dcid'].map(state_names)
         self.data = self.data.explode('state_name')
 
-        print("Getting State populations")
+    def request_state_population(self):
+        """Retrieves the state population for the given set of state dcids."""
+        print("Getting States population")
         # Get all state populations
         response = send_request("https://api.datacommons.org/bulk/stats",
                                 {"place": list(self.data['state_dcid']), "stats_var": "TotalPopulation"})
         state_population = {dcid: response[dcid]['data']['2018'] for dcid in response}
         self.data['state_population'] = self.data['state_dcid'].map(state_population)
 
+    def request_county_dcids(self):
+        """Retrieves the states from the list of county_dcid"""
         print("Getting County dcids")
         # Get all county dcids
         response = send_request("https://api.datacommons.org/node/places-in",
@@ -74,12 +109,15 @@ class COVID19:
         self.data['county_dcid'] = self.data['state_dcid'].map(county_dcids)
         self.data = self.data.explode('county_dcid')
 
+    def request_county_population(self):
+        """Retrieves the county population for the given set of county dcids."""
         print("Getting County populations")
         # Get all county populations
 
-        response = send_request(req_url="https://api.datacommons.org/bulk/place-obs", req_json={"placeType": "County",
-                                                                                                "populationType": "Person",
-                                                                                                "observationDate": "2018"},
+        response = send_request(req_url="https://api.datacommons.org/bulk/place-obs",
+                                req_json={"placeType": "County",
+                                          "populationType": "Person",
+                                          "observationDate": "2018"},
                                 compress=True)
         response = response['places']
         county_names = {}
@@ -95,79 +133,47 @@ class COVID19:
         self.data['county_name'] = self.data['county_dcid'].map(county_names)
         self.data['county_population'] = self.data['county_dcid'].map(county_population)
 
-        self.data = self.data.append({'country': 'country/USA', 'county_dcid': 'geoId/3651000',
+    def add_nyt_exceptions(self):
+        """The NYT COVID19 has two exceptions.
+        NYC counties are combined into one.
+        Kansas City counties are too.
+        This function is in charge of adding those counties/cities to self.data"""
+        self.data = self.data.append({'country': 'country/USA',
+                                      'county_dcid': 'geoId/3651000',
                                       'state_dcid': 'geoId/36',
-                                      'state_name': 'New York', 'county_name': 'NYC', 'county_population': 8399000},
+                                      'state_name': 'New York',
+                                      'county_name': 'NYC',
+                                      'county_population': 8399000},
                                      ignore_index=True)
 
-        self.data = self.data.append({'country': 'country/USA', 'county_dcid': 'geoId/2938000',
+        self.data = self.data.append({'country': 'country/USA',
+                                      'county_dcid': 'geoId/2938000',
                                       'state_dcid': 'geoId/29',
-                                      'state_name': 'Missouri', 'county_name': 'Kansas', 'county_population': 491918},
+                                      'state_name': 'Missouri',
+                                      'county_name': 'Kansas',
+                                      'county_population': 491918},
                                      ignore_index=True)
 
-        self.data = self.data.set_index('county_dcid')
 
-        print("Getting State cumulative cases")
-        # Get cumulative state cases
-        state_cumulative_cases = {}
+    def get_covid_data(self, dcids: list, stats_var: str) -> pd.DataFrame:
+        """Retrieves COVID19 data given a lsit of dcids and statistical variable"""
+        data_holder = {}
         response = send_request("https://api.datacommons.org/bulk/stats",
-                                {"place": list(self.data['state_dcid']),
-                                 "stats_var": "NYTCovid19CumulativeCases"})
-
-        for dcid in response:
-            data = response[dcid]['data']
-            state_cumulative_cases[dcid] = data
-
-        self.state_cumulative_cases = pd.DataFrame.from_dict(state_cumulative_cases, orient='index')
-        self.state_cumulative_cases = clean_and_transpose(self.state_cumulative_cases)
-
-        print("Getting State cumulative deaths")
-        # Get cumulative state cases
-        state_cumulative_deaths = {}
-        response = send_request("https://api.datacommons.org/bulk/stats",
-                                {"place": list(self.data['state_dcid']), "stats_var": "NYTCovid19CumulativeDeaths"})
-
-        for dcid in response:
-            data = response[dcid]['data']
-            state_cumulative_deaths[dcid] = data
-
-        self.state_cumulative_deaths = pd.DataFrame.from_dict(state_cumulative_deaths, orient='index')
-        self.state_cumulative_deaths = clean_and_transpose(self.state_cumulative_deaths)
-
-        print("Getting county cumulative cases")
-        # Get cumulative county cases
-        county_cumulative_cases = {}
-        response = send_request("https://api.datacommons.org/bulk/stats",
-                                {"place": list(self.data.index), "stats_var": "NYTCovid19CumulativeCases"})
-        for dcid in response:
-            try:
-                data = response[dcid]['data']
-                county_cumulative_cases[dcid] = data
-            except KeyError:
-                continue
-
-        self.county_cumulative_cases = pd.DataFrame.from_dict(county_cumulative_cases, orient='index')
-        self.county_cumulative_cases = clean_and_transpose(self.county_cumulative_cases)
-
-        print("Getting county cumulative deaths")
-        # Get cumulative county deaths
-        county_cumulative_deaths = {}
-        response = send_request("https://api.datacommons.org/bulk/stats",
-                                {"place": list(self.data.index), "stats_var": "NYTCovid19CumulativeDeaths"})
+                                {"place": dcids, "stats_var": stats_var})
 
         for dcid in response:
             try:
                 data = response[dcid]['data']
-                county_cumulative_deaths[dcid] = data
+                data_holder[dcid] = data
             except KeyError:
                 continue
+        df = pd.DataFrame.from_dict(data_holder, orient='index')
+        return clean_and_transpose(df)
 
-        self.county_cumulative_deaths = pd.DataFrame.from_dict(county_cumulative_deaths, orient='index')
-        self.county_cumulative_deaths = clean_and_transpose(self.county_cumulative_deaths)
-
-        self.get_geoId_to_name()
-
-    def ISO_date(self, date, time_delta=0):
+    def ISO_date(self, date:str, time_delta:int=0):
+        """Converts to ISO date given a string and a time_delta.
+        A time delta is the day you want to retrieve.
+        Example: If today is day 10 and time_delta=3, return 7"""
         if date == 'latest':
             date = str(self.state_cumulative_cases.index[-1])
         elif date == '7days':
@@ -178,7 +184,7 @@ class COVID19:
             date = str(self.state_cumulative_cases.index[-31])
         return (datetime.date.fromisoformat(date) - datetime.timedelta(days=time_delta)).isoformat()
 
-    def get_cumulative_cases_for_given_date(self, date="latest", region="state", show=30):
+    def get_cumulative_cases_for_given_date(self, date="latest", region="state"):
         date = self.ISO_date(date)
         if region == 'state':
             df = self.state_cumulative_cases.loc[date]
@@ -187,9 +193,9 @@ class COVID19:
         df = df.to_frame()
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_cumulative_deaths_for_given_date(self, date="latest", region="state", show=30):
+    def get_cumulative_deaths_for_given_date(self, date="latest", region="state"):
         date = self.ISO_date(date)
         if region == 'state':
             df = self.state_cumulative_deaths.loc[date]
@@ -198,9 +204,9 @@ class COVID19:
         df = df.to_frame()
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_cumulative_cases_per_capita_for_given_date(self, date="latest", region="state", show=30):
+    def get_cumulative_cases_per_capita_for_given_date(self, date="latest", region="state"):
         date = self.ISO_date(date)
         if region == 'state':
             cumulative = self.state_cumulative_cases.loc[date]
@@ -216,9 +222,9 @@ class COVID19:
                         df.columns.values[2]: 'absolute'},
                        axis='columns')
         df = df[df['population'] >= 10000]
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_cumulative_deaths_per_capita_for_given_date(self, date="latest", region="state", show=30):
+    def get_cumulative_deaths_per_capita_for_given_date(self, date="latest", region="state"):
         date = self.ISO_date(date)
         if region == 'state':
             cumulative = self.state_cumulative_deaths.loc[date]
@@ -234,9 +240,9 @@ class COVID19:
                         df.columns.values[2]: 'absolute'},
                        axis='columns')
         df = df[df['population'] >= 10000]
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_cases_increase_pct_for_given_dates(self, most_recent_date="latest", time_delta=7, region="state", show=30):
+    def get_cases_increase_pct_for_given_dates(self, most_recent_date="latest", time_delta=7, region="state"):
         most_recent_date = self.ISO_date(most_recent_date)
         oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
         if region == 'state':
@@ -255,9 +261,9 @@ class COVID19:
                         df.columns.values[1]: "absolute"},
                        axis='columns')
         df = df[df["absolute"] >= 200]
-        return df.round(2).sort_values(ascending=False, by="value").dropna()[:show]
+        return df.round(2).sort_values(ascending=False, by="value").dropna()
 
-    def get_deaths_increase_pct_for_given_dates(self, most_recent_date="latest", time_delta=7, region="state", show=30):
+    def get_deaths_increase_pct_for_given_dates(self, most_recent_date="latest", time_delta=7, region="state"):
         most_recent_date = self.ISO_date(most_recent_date)
         oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
         if region == 'state':
@@ -277,9 +283,9 @@ class COVID19:
                         df.columns.values[1]: "absolute"}, axis='columns')
 
         df = df[df["absolute"] >= 10]
-        return df.round(2).sort_values(ascending=False, by="value").dropna()[:show]
+        return df.round(2).sort_values(ascending=False, by="value").dropna()
 
-    def get_cases_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state", show=30):
+    def get_cases_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state"):
         most_recent_date = self.ISO_date(most_recent_date)
         oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
 
@@ -299,9 +305,9 @@ class COVID19:
                         df.columns.values[2]: "population"},
                        axis='columns')
         df = df[df['population'] >= 10000]
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_deaths_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state", show=30):
+    def get_deaths_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state"):
         most_recent_date = self.ISO_date(most_recent_date)
         oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
 
@@ -321,9 +327,9 @@ class COVID19:
                         df.columns.values[2]: "population"},
                        axis='columns')
         df = df[df['population'] >= 10000]
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_cases_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state", show=30):
+    def get_cases_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state"):
         most_recent_date = self.ISO_date(most_recent_date)
         oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
         if region == 'state':
@@ -336,9 +342,9 @@ class COVID19:
         df = df.to_frame()
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_deaths_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state", show=30):
+    def get_deaths_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state"):
         most_recent_date = self.ISO_date(most_recent_date)
         oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
         if region == 'state':
@@ -350,9 +356,9 @@ class COVID19:
         df = df.to_frame()
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
-        return df.sort_values(ascending=False, by="value").dropna()[:show]
+        return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_geoId_to_name(self):
+    def generate_map_of_geoid_to_name(self):
         geoId_map = {}
         for geoId in self.data.index:
             state_dcid = self.data.loc[geoId]['state_dcid']
@@ -363,5 +369,5 @@ class COVID19:
             geoId_map[state_dcid] = self.data.loc[county_dcid]['state_name']
         return geoId_map
 
-    def get_latest_date(self, days_ago=0):
+    def get_latest_date_in_dataset(self, days_ago=0):
         return self.county_cumulative_cases.iloc[~days_ago].name

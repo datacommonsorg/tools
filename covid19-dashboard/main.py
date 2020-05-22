@@ -1,3 +1,17 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from flask import Flask, send_from_directory, make_response
 import os
 from flask_caching import Cache
@@ -33,19 +47,19 @@ def get_all_data():
     }
 
     seven_days = {
-        "date": covid.ISO_date(covid.get_latest_date(days_ago=7)),
+        "date": covid.ISO_date(covid.get_latest_date_in_dataset(days_ago=7)),
         "county": get_data_for(covid, "county", "7days"),
         "state": get_data_for(covid, "state", "7days")
     }
 
     fourteen_days = {
-        "date": covid.ISO_date(covid.get_latest_date(days_ago=14)),
+        "date": covid.ISO_date(covid.get_latest_date_in_dataset(days_ago=14)),
         "county": get_data_for(covid, "county", "14days"),
         "state": get_data_for(covid, "state", "14days")
     }
 
     thirty_days = {
-        "date": covid.ISO_date(covid.get_latest_date(days_ago=30)),
+        "date": covid.ISO_date(covid.get_latest_date_in_dataset(days_ago=30)),
         "county": get_data_for(covid, "county", "30days"),
         "state": get_data_for(covid, "state", "30days")
     }
@@ -54,12 +68,12 @@ def get_all_data():
                           "sevenDays": seven_days,
                           "fourteenDays": fourteen_days,
                           "thirtyDays": thirty_days,
-                          "dcidMap": covid.get_geoId_to_name(),
+                          "dcidMap": covid.generate_map_of_geoid_to_name(),
                           "dates": {
-                              "latest": covid.get_latest_date(days_ago=0),
-                              "sevenDays": covid.get_latest_date(days_ago=7),
-                              "fourteenDays": covid.get_latest_date(days_ago=14),
-                              "thirtyDays": covid.get_latest_date(days_ago=30),
+                              "latest": covid.get_latest_date_in_dataset(days_ago=0),
+                              "sevenDays": covid.get_latest_date_in_dataset(days_ago=7),
+                              "fourteenDays": covid.get_latest_date_in_dataset(days_ago=14),
+                              "thirtyDays": covid.get_latest_date_in_dataset(days_ago=30),
                           }}, 200)
 
 
@@ -143,5 +157,5 @@ def get_data_for(covid, region, date):
     }
 
 
-#if __name__ == "__main__":
-   # app.run(host="0.0.0.0", port=80)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=80)
