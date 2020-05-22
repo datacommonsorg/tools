@@ -46,6 +46,12 @@ body {
     width: 420px;
 }
 
+.tooltip-info {
+    margin: 2px;
+    font-weight: normal;
+    color: grey
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -142,7 +148,6 @@ body {
     overflow-x: hidden;
 }
 
-/* The navigation menu links */
 .sidenav a {
     padding-top: 10px;
     padding-bottom: 10px;
@@ -153,7 +158,6 @@ body {
     font-weight: bold;
 }
 
-/* When you mouse over the navigation links, change their color */
 .sidenav a:hover {
     color: #990001;
     cursor: pointer;
@@ -230,11 +234,11 @@ body {
         margin: 40px auto 30px;
         min-width: 400px;
         padding: 20px 0;
-        position: static; /* Fixed Sidebar (stay in place on scroll) */
-        z-index: 1; /* Stay on top */
+        position: static;
+        z-index: 1;
         top: 8%;
         left: 2%;
-        overflow-x: hidden; /* Disable horizontal scroll */
+        overflow-x: hidden;
     }
 
     .option-panel .dropdown{

@@ -1,15 +1,9 @@
 import Panel from "./Panel";
 import React from "react";
 
-type Props = {ref_: any, dcidMap: {},
-    sectionTitle: string,
-    casesTitle: string,
-    deathsTitle: string,
-    subtitle: string,
-    data: {},
-    region: string,
-    show: number,
-    animation: string
+type Props = {
+    sectionTitle?: string,
+    config: any
 }
 
 /**
@@ -20,21 +14,29 @@ type Props = {ref_: any, dcidMap: {},
  */
 export default function Row(props: Props) {
     return (
-        <div className={"row"} ref={props.ref_}>
-            {props.sectionTitle &&
-            <h1 className={"section-title"}>{props.sectionTitle}</h1>}
-            {props.sectionTitle && <hr style={{width: '100%'}}/>}
+        <div className={"row"}
+             ref={props.config.ref_}>
+            {// If there is a section title, then show the text.
+                props.config.sectionTitle && <h1 className={"section-title"}>{props.config.sectionTitle}</h1>}
+            {// If there is a section title, then show a separator line as well.
+                props.config.sectionTitle && <hr style={{width: '100%'}}/>}
             <div className={"left"}>
-                <Panel dcidMap={props.dcidMap} title={props.casesTitle} subtitle={props.subtitle}
-                       animation={props.animation}
-                       data={props.data['cases']} label={"cases"} region={props.region}
-                       show={props.show}/>
+                <Panel dcidMap={props.config.dcidMap}
+                       title={props.config.title.replace("{TYPE}", "Cases")}
+                       subtitle={props.config.subtitle.replace("{TYPE}", "Cases")}
+                       data={props.config.data['cases']}
+                       label={"cases"}
+                       region={props.config.region}
+                       showTopN={props.config.showTopN}/>
             </div>
             <div className={"right"}>
-                <Panel dcidMap={props.dcidMap} title={props.deathsTitle} subtitle={props.subtitle}
-                       animation={props.animation}
-                       data={props.data['deaths']} label={"deaths"} region={props.region}
-                       show={props.show}/>
+                <Panel dcidMap={props.config.dcidMap}
+                       title={props.config.title.replace("{TYPE}", "Deaths")}
+                       subtitle={props.config.subtitle.replace("{TYPE}", "Deaths")}
+                       data={props.config.data['deaths']}
+                       label={"deaths"}
+                       region={props.config.region}
+                       showTopN={props.config.showTopN}/>
             </div>
         </div>
     )

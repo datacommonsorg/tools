@@ -1,12 +1,12 @@
 import React, {ChangeEvent} from "react";
-
-export default class OptionPanel extends React.Component<{onRegionChange, onDateChange, onShowChange, dates}>{
+import Regions from './Regions.json'
+export default class OptionPanel extends React.Component<{ onRegionChange, onDateChange, onShowTopNSelectChange, availableDates }, any> {
     /**
      * Function triggered when the date is changed.
      * @param e
      */
     handleDateSelect = (e: ChangeEvent) => {
-        let newSelection = (e.target as HTMLInputElement).value
+        let newSelection: string = (e.target as HTMLInputElement).value
         this.props.onDateChange(newSelection)
     }
 
@@ -15,7 +15,7 @@ export default class OptionPanel extends React.Component<{onRegionChange, onDate
      * @param e
      */
     handleRegionSelect = (e: ChangeEvent) => {
-        let newSelection = (e.target as HTMLInputElement).value
+        let newSelection: string = (e.target as HTMLInputElement).value
         this.props.onRegionChange(newSelection)
     }
 
@@ -24,31 +24,32 @@ export default class OptionPanel extends React.Component<{onRegionChange, onDate
      * Remember, show is the number of top counties/states to show.
      * @param e
      */
-    handleShowSelect = (e: ChangeEvent) => {
-        let newSelection = (e.target as HTMLInputElement).value
-        this.props.onShowChange(newSelection)
+    handleShowTopNSelect = (e: ChangeEvent) => {
+        let newSelection: string = (e.target as HTMLInputElement).value
+        this.props.onShowTopNSelectChange(newSelection)
     }
 
     render() {
+        const dates: JSX.Element[] = Object.keys(this.props.availableDates).map(date =>
+            <option value={date}>{this.props.availableDates[date]}</option>)
+
+        const regions: JSX.Element[] = Object.keys(Regions).map(region =>
+            <option value={region}>{Regions[region]}</option>)
+
+        const showTopN: JSX.Element[] = [5, 10, 20, 30, 40, 50].map(n => <option value={n}>Top {n}</option>)
+
         return (
             <div className={"option-panel panel shadow"}>
                 <select className="dropdown shadow" onChange={this.handleDateSelect}>
-                    <option value="latest">{this.props.dates.latest}</option>
-                    <option value="sevenDays">{this.props.dates.sevenDays}</option>
-                    <option value="fourteenDays">{this.props.dates.fourteenDays}</option>
-                    <option value="thirtyDays">{this.props.dates.thirtyDays}</option>
-                    </select>
+                    {dates}
+                </select>
                 <select className="dropdown shadow" onChange={this.handleRegionSelect}>
-                    <option value="state">States</option>
-                    <option value="county">Counties</option>
+                    {regions}
                 </select>
-                <select className="dropdown shadow" onChange={this.handleShowSelect} defaultValue={10}>
-                    <option value="5">Top 5</option>
-                    <option value="10">Top 10</option>
-                    <option value="20">Top 20</option>
-                    <option value="30">Top 30</option>
+                <select className="dropdown shadow" onChange={this.handleShowTopNSelect} defaultValue={10}>
+                    {showTopN}
                 </select>
-                </div>
+            </div>
         )
     }
 }

@@ -2,23 +2,32 @@ import React from 'react';
 import OptionPanel from './OptionPanel'
 import SideNav from "./SideNav";
 import Row from "./Row";
-import numberWithCommas from "./NumerWithCommas";
+import numberWithCommas from "./NumberWithCommas";
+import moment from 'moment'
+import PanelText from './PanelInfo.json'
 
-type dataHolder = {label: string, value: number, absolute: number}
-type casesAndDeathsHolder = {cases: dataHolder[], deaths: dataHolder[]}
-let casesAndDeaths = {cases: [], deaths: []}
+type dataHolder = {
+    label: string,
+    value: number,
+    absolute: number
+}
+
+type casesAndDeathsHolder = {
+    cases: dataHolder[],
+    deaths: dataHolder[]
+}
+
 type stateType = {
     allData: {},
     region: string,
-    date: string,
-    show: number,
-    dates: {
+    selectedDate: string,
+    availableDates: {
         latest: string,
         sevenDays: string,
         fourteenDays: string,
         thirtyDays: string,
-
     }
+    show: number,
     daily: casesAndDeathsHolder,
     dailyPerCapita: casesAndDeathsHolder,
     dailyIncrease: casesAndDeathsHolder,
@@ -34,9 +43,13 @@ type stateType = {
     animationClassName: string
 }
 
+let casesAndDeaths = {cases: [], deaths: []}
 class App extends React.Component <{}, stateType> {
     constructor(props: {}) {
         super(props);
+        // On-load fadein animation.
+        this.fadeInAnimation()
+        // Request latest data from server.
         this.sendRequest().then(r => console.log("Data has been loaded!"))
     }
 
@@ -57,11 +70,10 @@ class App extends React.Component <{}, stateType> {
         cumulativePerCapita: React.createRef<HTMLDivElement>()
     }
 
-    animationChange = () => {
-        /**
-         * Sets the animation on load.
-         * TODO: figure out why getting rid of this method breaks the text on top of the bars.
-         */
+    /**
+     * Sets the fadeInAnimation.
+     */
+    fadeInAnimation = () => {
         this.setState({animationClassName: "fadeInAnimation"})
         window.setTimeout(() => {
             this.setState({animationClassName: ""})
@@ -73,8 +85,6 @@ class App extends React.Component <{}, stateType> {
      * @param event
      */
     handleScrollOnRef = (event) => {
-        /**
-         */
         let myRefs = this.myRefs[event.target.id]
         if (myRefs.current) {
             myRefs.current.scrollIntoView({
@@ -87,14 +97,13 @@ class App extends React.Component <{}, stateType> {
     state = {
         allData: {}, // copy of all the unparsed data
         region: "state", // current region selected
-        date: "latest", // current date selected
         show: 10, // number of top counties/states to show
-        dates: { // get the latest dates from server, these will be overwritten to the actual date once the server responds.
+        selectedDate: "latest", // current date selected
+        availableDates: { // get the latest dates from server, these will be overwritten to the actual date once the server responds.
             latest: "Latest",
             sevenDays: "1 Week Ago",
             fourteenDays: "2 Weeks Ago",
             thirtyDays: "1 Month Ago",
-
         },
         daily: casesAndDeaths,
         dailyPerCapita: casesAndDeaths,
@@ -107,8 +116,8 @@ class App extends React.Component <{}, stateType> {
         monthlyIncrease: casesAndDeaths,
         absoluteCumulative: casesAndDeaths,
         cumulativePerCapita: casesAndDeaths,
-        dcidMap: {}, // converts geoId to the region's name
-        animationClassName: "" // will be passed down as a prop to anything requiring an animation
+        dcidMap: {}, // converts geoId to the region's name.
+        animationClassName: "fadeInAnimation" // will be passed down as a prop to anything requiring an animation.
     }
 
     /**
@@ -117,7 +126,7 @@ class App extends React.Component <{}, stateType> {
      * @param newRegion
      */
     onRegionChange = (newRegion: "state" | "county") => {
-        this.animationChange()
+        this.fadeInAnimation()
         this.state.region = newRegion
         this.parseData(this.state.allData)
     }
@@ -127,9 +136,9 @@ class App extends React.Component <{}, stateType> {
      * This parameter is passed down as a prop to OptionPanel.
      * @param newDate
      */
-    onDateChange = (newDate: "latest" | "evenDays" | "fourteenDays" | "thirtyDays") => {
-        this.animationChange()
-        this.state.date = newDate
+    onDateChange = (newDate: "latest" | "sevenDays" | "fourteenDays" | "thirtyDays") => {
+        this.fadeInAnimation()
+        this.state.selectedDate = newDate
         this.parseData(this.state.allData)
     }
 
@@ -139,7 +148,7 @@ class App extends React.Component <{}, stateType> {
      * @param newShow
      */
     onShowChange = (newShow: number) => {
-        this.animationChange()
+        this.fadeInAnimation()
         this.state.show = newShow
         this.parseData(this.state.allData)
     }
@@ -151,10 +160,10 @@ class App extends React.Component <{}, stateType> {
     sendRequest = async () => {
         const host = window.location.protocol + '//' + window.location.hostname
         const url: string = `${host}/get-all-data`
-        let response = await fetch(
+        await fetch(
             url, {mode: 'cors'}
         ).then(response => response.json().then(res => {
-            this.setState({dates: res['dates']})
+            this.setState({availableDates: res['dates']})
             this.setState({dcidMap: res['dcidMap']})
             this.setState({allData: res})
             this.parseData(res)
@@ -168,13 +177,13 @@ class App extends React.Component <{}, stateType> {
     parseData(data: {}) {
         // Iterate through all the types of data for the selected date and region.
         // If "state" and "latest" is selected, all the latest data for all "states" would be parsed.
-        let typesOfData = data[this.state.date][this.state.region];
+        let typesOfData = data[this.state.selectedDate][this.state.region];
         for (let type in typesOfData) {
             let unparsedData = typesOfData[type]
             let tempData: casesAndDeathsHolder = {
                 // There are two types of data, cases and deaths.
                 // They all have the same charts, but different data to show.
-                // For example, Cases Per Capita and Deaths per Capita
+                // For example, Cases Per Capita and Deaths Per Capita
                 cases: this.jsonToArray(unparsedData['cases']),
                 deaths: this.jsonToArray(unparsedData['deaths'])
             }
@@ -184,7 +193,7 @@ class App extends React.Component <{}, stateType> {
 
     /**
      * Store each data to its corresponding day.
-     * That is, store the daily data returned from the server to the daily data in the State.
+     * Example, store the daily data returned from the server to the daily data in the State.
      * @param key
      * @param data
      */
@@ -246,30 +255,10 @@ class App extends React.Component <{}, stateType> {
      * For example, 2020-01-01 is converted to January 1st, 2020.
      * @param date
      */
-    prettifyDate = (date) => {
+    prettifyDate = (date: string) => {
         if (date.toLowerCase() === "latest") return "Daily"
-        const months = {
-            1: "January",
-            2: "February",
-            3: "March",
-            4: "April",
-            5: "May",
-            6: "June",
-            7: "July",
-            8: "August",
-            9: "September",
-            10: "October",
-            11: "November",
-            12: "December"
-        }
-        const tempDate = new Date(date)
-        let day = tempDate.getDate() + 1
-        let month = tempDate.getMonth() + 1
-        let year = tempDate.getFullYear()
-
-        return `${months[month]} ${day}th, ${year}`
+        else return moment(date).format('MMMM Do, YYYY');
     }
-
 
     /**
      * Given a hashmap of data, convert it to a list dataHolder objects.
@@ -280,13 +269,11 @@ class App extends React.Component <{}, stateType> {
     jsonToArray(data): dataHolder[]{
         let dataAsList: any = []
         let dcids: string[] = Object.keys(data['value'])
-
         dcids.forEach(dcid => {
             let regionName: string = this.state.dcidMap[dcid]
             let value: number = Math.round(data?.value[dcid] * 100000) / 100000
             let absolute: number = data?.absolute?.[dcid]
             let population: number = data?.population?.[dcid]
-
             dataAsList.push({
                 regionName: regionName,
                 value: value,
@@ -299,27 +286,69 @@ class App extends React.Component <{}, stateType> {
         return dataAsList.sort((a, b) => b.value - a.value).slice(0, this.state.show)
     }
 
+    /**
+     * If the key is 'daily', 'weekly' or 'monthly', or 'absoluteCumulative' return the new sectionTitle.
+     * @param dataId
+     */
+    createNewSection(dataId){
+        let newSectionTitle;
+        switch(dataId){
+            case 'daily':
+                newSectionTitle = this.prettifyDate(this.state.availableDates[this.state.selectedDate])
+                break;
+            case 'weekly':
+                newSectionTitle = "Since Last Week"
+                break;
+            case 'monthly':
+                newSectionTitle = "Since Last Month"
+                break;
+            case 'absoluteCumulative':
+                newSectionTitle = "All-Time Cumulative"
+                break;
+        }
+        return newSectionTitle
+    }
+
+    /**
+     * Gets the panel configuration to pass as a prop to Panel.jsx.
+     * @param dataId
+     */
+    getPanelConfig(dataId: string){
+        let newSectionTitle = this.createNewSection(dataId)
+        return {
+            animationClassName: this.state.animationClassName,
+            ref_: this.myRefs[dataId],
+            data: this.state[dataId],
+            dcidMap: this.state.dcidMap,
+            region: this.state.region,
+            show: this.state.show,
+            title: PanelText[dataId].title,
+            subtitle: PanelText[dataId].subtitle,
+            sectionTitle: newSectionTitle
+        }
+    }
+    
     render() {
+        let rows: JSX.Element[] = Object.keys(PanelText).map(key => <Row config={this.getPanelConfig(key)}/>)
+
         return (
-            <div className={"container"}>
-                <SideNav handleScrollOnRef={this.handleScrollOnRef} date={this.state.date}/>
+            <div className={"container " + this.state.animationClassName}>
+                <SideNav handleScrollOnRef={this.handleScrollOnRef}
+                         selectedDate={this.state.selectedDate}/>
                 <div className={"main-content"}>
-                    <h1 style={{textAlign: "center"}} className={"main-title"}>Data Commons<span style={{color: "#990001"}}> COVID-19</span></h1>
-                    <OptionPanel onRegionChange={this.onRegionChange} onDateChange={this.onDateChange} onShowChange={this.onShowChange} dates={this.state.dates}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={this.prettifyDate(this.state.dates[this.state.date])} ref_={this.myRefs['daily']} dcidMap={this.state.dcidMap} casesTitle={"Daily Cases"} deathsTitle={"Daily Deaths"} subtitle={""} data={this.state.daily} region={this.state.region} show={this.state.show}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['dailyPerCapita']} dcidMap={this.state.dcidMap} casesTitle={"Daily Cases Per Capita"} deathsTitle={"Daily Deaths Per Capita"} subtitle={"Cases Per 10,000 People"} data={this.state.dailyPerCapita} region={this.state.region} show={this.state.show}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['dailyIncrease']} dcidMap={this.state.dcidMap} casesTitle={"Daily Cases Increase"} deathsTitle={"Daily Deaths Increase"} subtitle={"In Percent"} data={this.state.dailyIncrease} region={this.state.region} show={this.state.show}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={"Since Previous Week"} ref_={this.myRefs['weekly']} dcidMap={this.state.dcidMap} casesTitle={"Total Week Cases"} deathsTitle={"Total Week Deaths"} subtitle={""} data={this.state.weekly} region={this.state.region} show={this.state.show}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['weeklyPerCapita']} dcidMap={this.state.dcidMap} casesTitle={"Total Week Cases Per Capita"} deathsTitle={"Total Week Deaths Per Capita"} subtitle={"Cases Per 10,000 People"} data={this.state.weeklyPerCapita} region={this.state.region} show={this.state.show}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['weeklyIncrease']} dcidMap={this.state.dcidMap} casesTitle={"Increase of Cases From Last Week"} deathsTitle={"Increase of Deaths From Last Week"} subtitle={"In Percent"} data={this.state.weeklyIncrease} region={this.state.region} show={this.state.show}/>
-                    {// Two months ago there was no COVID19 data per county, so if the user has selected 30 days ago. Don't show monthly data.
-                        this.state.date === "thirtyDays" || <Row animation={this.state.animationClassName} sectionTitle={"Since Previous Month"} ref_={this.myRefs['monthly']} dcidMap={this.state.dcidMap} casesTitle={"Total Monthly Cases"} deathsTitle={"Total Monthly Deaths"} subtitle={""} data={this.state.monthly} region={this.state.region} show={this.state.show}/>}
-                        {this.state.date === "thirtyDays" || <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['monthlyPerCapita']} dcidMap={this.state.dcidMap} casesTitle={"Total Monthly Cases Per Capita"} deathsTitle={"Total Monthly Deaths Per Capita"} subtitle={"Cases Per 10,000 People"} data={this.state.monthlyPerCapita} region={this.state.region} show={this.state.show}/>}
-                        {this.state.date === "thirtyDays" || <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['monthlyIncrease']} dcidMap={this.state.dcidMap} casesTitle={"Increase of Cases From Last Month"} deathsTitle={"Increase of Deaths From Last Month"} subtitle={"In Percent"} data={this.state.monthlyIncrease} region={this.state.region} show={this.state.show}/>}
-                    <Row animation={this.state.animationClassName} sectionTitle={"All-Time Cumulative"} ref_={this.myRefs['absoluteCumulative']} dcidMap={this.state.dcidMap} casesTitle={"Cumulative Cases"} deathsTitle={"All-Time Cumulative Deaths"} subtitle={""} data={this.state.absoluteCumulative} region={this.state.region} show={this.state.show}/>
-                    <Row animation={this.state.animationClassName} sectionTitle={""} ref_={this.myRefs['cumulativePerCapita']} dcidMap={this.state.dcidMap} casesTitle={"Cumulative Cases Per Capita"} deathsTitle={"All-Time Cumulative Deaths Per Capita"} subtitle={"Cases Per 10,000 People"} data={this.state.cumulativePerCapita} region={this.state.region} show={this.state.show}/>
+                    <h1 className={"main-title"}>
+                        Data Commons
+                        <span style={{color: "#990001"}}> COVID-19</span>
+                    </h1>
+                    <OptionPanel onRegionChange={this.onRegionChange}
+                                 onDateChange={this.onDateChange}
+                                 onShowTopNSelectChange={this.onShowChange}
+                                 availableDates={this.state.availableDates}/>
+                        {rows}
                 </div>
-                <h5 className={"footer"}>Data from The New York Times, based on reports from state and local health agencies.</h5>
+                <h5 className={"footer"}>
+                    Data from The New York Times, based on reports from state and local health agencies.
+                </h5>
             </div>
         )
     }
