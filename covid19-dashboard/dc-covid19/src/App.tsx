@@ -27,7 +27,7 @@ type stateType = {
         fourteenDays: string,
         thirtyDays: string,
     }
-    show: number,
+    showTopN: number,
     daily: casesAndDeathsHolder,
     dailyPerCapita: casesAndDeathsHolder,
     dailyIncrease: casesAndDeathsHolder,
@@ -97,7 +97,7 @@ class App extends React.Component <{}, stateType> {
     state = {
         allData: {}, // copy of all the unparsed data
         region: "state", // current region selected
-        show: 10, // number of top counties/states to show
+        showTopN: 10, // number of top counties/states to show
         selectedDate: "latest", // current date selected
         availableDates: { // get the latest dates from server, these will be overwritten to the actual date once the server responds.
             latest: "Latest",
@@ -149,7 +149,7 @@ class App extends React.Component <{}, stateType> {
      */
     onShowChange = (newShow: number) => {
         this.fadeInAnimation()
-        this.state.show = newShow
+        this.state.showTopN = newShow
         this.parseData(this.state.allData)
     }
 
@@ -283,7 +283,7 @@ class App extends React.Component <{}, stateType> {
                 labelListLabel: this.getLabelListLabel(value, absolute, population)
             })
         })
-        return dataAsList.sort((a, b) => b.value - a.value).slice(0, this.state.show)
+        return dataAsList.sort((a, b) => b.value - a.value).slice(0, this.state.showTopN)
     }
 
     /**
@@ -321,7 +321,7 @@ class App extends React.Component <{}, stateType> {
             data: this.state[dataId],
             dcidMap: this.state.dcidMap,
             region: this.state.region,
-            show: this.state.show,
+            show: this.state.showTopN,
             title: PanelText[dataId].title,
             subtitle: PanelText[dataId].subtitle,
             sectionTitle: newSectionTitle

@@ -15,24 +15,28 @@ export default function Chart(props: Props) {
     const customTooltip = ({active, payload, label}) => {
         // Make sure that the current bar is actively being hovered on.
         let texts: string[]= []
-        console.log(payload)
+        let disclaimer: string = ''
         if (active) {
+            const data = payload[0].payload
+            if (data.dcid === 'geoId/3651000' || data.dcid === 'geoId/2938000')
+                disclaimer = `All counties in ${data.regionName} are combined and reported as one.`
+
             // Per-capita chart.
             if (payload[0].payload.absolute && payload[0].payload.population) {
                 texts = [`${payload[0].payload.value} ${props.label} per 10,000 people`,
-                        `New ${props.label}: ${numberWithCommas(payload[0].payload.absolute)}`,
-                        `Total population: ${numberWithCommas(payload[0].payload.population)} people`]
+                        `New ${props.label}: ${numberWithCommas(data.absolute)}`,
+                        `Total population: ${numberWithCommas(data.population)} people`]
 
             // Percent increase chart.
             } else if (payload[0].payload.absolute && !payload[0].payload.population) {
-                texts = [`Percent increase: ${numberWithCommas(payload[0].payload.value)}%`,
-                        `Absolute increase: ${numberWithCommas(payload[0].payload.absolute)} ${props.label}`]
+                texts = [`Percent increase: ${numberWithCommas(data.value)}%`,
+                        `Absolute increase: ${numberWithCommas(data.absolute)} ${props.label}`]
 
             // Every other type of chart.
             } else {
-                texts = [`${numberWithCommas(payload[0].payload.value)} ${props.label}`]
+                texts = [`${numberWithCommas(data.value)} ${props.label}`]
             }
-            return (<ToolTipContent chartInfo={texts}/>);
+            return (<ToolTipContent chartInfo={texts} disclaimer={disclaimer}/>);
         }
         return null;
     };

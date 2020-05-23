@@ -49,7 +49,7 @@ body {
 .tooltip-info {
     margin: 2px;
     font-weight: normal;
-    color: grey
+    color: grey;
 }
 
 @keyframes fadeIn {

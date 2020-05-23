@@ -21,7 +21,7 @@ import datetime
 
 class COVID19:
     def __init__(self):
-        self.data = pd.DataFrame({})
+        self.data = pd.DataFrame({'country': ['country/USA']})
 
         self.state_cumulative_cases = pd.DataFrame({})
         self.county_cumulative_cases = pd.DataFrame({})
@@ -41,10 +41,12 @@ class COVID19:
         self.request_state_population()
         self.request_county_dcids()
         self.request_county_population()
-        self.add_nyt_exceptions()
 
         # Data index is now the county's dcid
         self.data = self.data.set_index('county_dcid')
+
+        self.add_nyt_exceptions()
+
 
         # Request information from the NYT COVID database.
         self.state_cumulative_cases = self.get_covid_data(dcids=list(self.data['state_dcid']), stats_var='NYTCovid19CumulativeCases')
@@ -57,11 +59,7 @@ class COVID19:
 
     def request_state_dcids(self):
         """Retrieves all the states dcids in the USA"""
-        # Create DataFrame that contains USA
-        self.data = pd.DataFrame({'country': ['country/USA']})
-
         print("Getting State dcids")
-        # Get all states dcids
         response = send_request("https://api.datacommons.org/node/places-in", {"dcids": ["country/USA"], "placeType": "State"})
         state_dcids = [x['place'] for x in response]
 
@@ -74,9 +72,7 @@ class COVID19:
     def request_state_names(self):
         """Retrieves the states from the list of state_dcid"""
         print("Getting State names")
-        # Get all state names
-        response = send_request("https://api.datacommons.org/node/property-values",
-                                {"dcids": list(self.data['state_dcid']), "property": "name"})
+        response = send_request("https://api.datacommons.org/node/property-values", {"dcids": list(self.data['state_dcid']), "property": "name"})
         state_names = {dcid: response[dcid]['out'][0]['value'] for dcid in response}
         self.data['state_name'] = self.data['state_dcid'].map(state_names)
         self.data = self.data.explode('state_name')
@@ -84,7 +80,6 @@ class COVID19:
     def request_state_population(self):
         """Retrieves the state population for the given set of state dcids."""
         print("Getting States population")
-        # Get all state populations
         response = send_request("https://api.datacommons.org/bulk/stats",
                                 {"place": list(self.data['state_dcid']), "stats_var": "TotalPopulation"})
         state_population = {dcid: response[dcid]['data']['2018'] for dcid in response}
@@ -93,7 +88,6 @@ class COVID19:
     def request_county_dcids(self):
         """Retrieves the states from the list of county_dcid"""
         print("Getting County dcids")
-        # Get all county dcids
         response = send_request("https://api.datacommons.org/node/places-in",
                                 {"dcids": list(self.data['state_dcid']), "placeType": "County"})
         county_dcids = {}
@@ -112,8 +106,6 @@ class COVID19:
     def request_county_population(self):
         """Retrieves the county population for the given set of county dcids."""
         print("Getting County populations")
-        # Get all county populations
-
         response = send_request(req_url="https://api.datacommons.org/bulk/place-obs",
                                 req_json={"placeType": "County",
                                           "populationType": "Person",
@@ -133,26 +125,28 @@ class COVID19:
         self.data['county_name'] = self.data['county_dcid'].map(county_names)
         self.data['county_population'] = self.data['county_dcid'].map(county_population)
 
+    # def request_city_population(self):
+    #     """Retrieves the county population for the given set of county dcids."""
+    #     print("Getting County populations")
+    #     response = send_request(req_url="https://api.datacommons.org/bulk/place-obs",
+    #                             req_json={"placeType": "City",
+    #                                       "populationType": "Person",
+    #                                       "observationDate": "2018"},
+    #                             compress=True)
+    #     cities = {'geoId/3651000': response['places']['geoId/3651000']}
+    #     cities['geoId/2938000'] = response['places']['geoId/2938000']
+    # 
+    #     self.data['county_population'] = self.data['county_dcid'].map(cities)
+
     def add_nyt_exceptions(self):
         """The NYT COVID19 has two exceptions.
         NYC counties are combined into one.
         Kansas City counties are too.
         This function is in charge of adding those counties/cities to self.data"""
-        self.data = self.data.append({'country': 'country/USA',
-                                      'county_dcid': 'geoId/3651000',
-                                      'state_dcid': 'geoId/36',
-                                      'state_name': 'New York',
-                                      'county_name': 'NYC',
-                                      'county_population': 8399000},
-                                     ignore_index=True)
-
-        self.data = self.data.append({'country': 'country/USA',
-                                      'county_dcid': 'geoId/2938000',
-                                      'state_dcid': 'geoId/29',
-                                      'state_name': 'Missouri',
-                                      'county_name': 'Kansas',
-                                      'county_population': 491918},
-                                     ignore_index=True)
+        self.data.loc['geoId/3651000', 'county_population'] = 8399000
+        self.data.loc['geoId/2938000', 'county_population'] = 491918
+        # self.request_city_population()
+        print(self.data.loc['geoId/3651000'])
 
 
     def get_covid_data(self, dcids: list, stats_var: str) -> pd.DataFrame:
