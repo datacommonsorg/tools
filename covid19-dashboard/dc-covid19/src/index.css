@@ -98,10 +98,10 @@ body {
     padding: 20px 20px;
     background-color: #990001;
     min-width: auto;
-    width: 180px;
+    width: 170px;
     position: fixed;
     z-index: 1;
-    top: 6%;
+    top: 4%;
     left: 2%;
     overflow-x: hidden;
 }
@@ -138,7 +138,7 @@ body {
 .sidenav {
     position: fixed;
     z-index: 1;
-    top: 17%;
+    top: 15%;
     left: 2%;
     overflow-x: hidden;
     width: 160px;
@@ -160,7 +160,7 @@ body {
     cursor: pointer;
 }
 
-@media only screen and (max-width: 1300px) {
+@media only screen and (max-width: 1360px) {
     .left {
         float: none;
     }

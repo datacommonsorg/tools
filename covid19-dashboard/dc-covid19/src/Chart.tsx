@@ -74,8 +74,8 @@ export default function Chart(props: Props) {
     };
 
     return (
-        <BarChart width={400}
-                  height={props.data.length < 3 ? 70 * props.data.length : 35 * props.data.length}
+        <BarChart width={410}
+                  height={props.data.length < 3 ? 70 * props.data.length : 50 * props.data.length}
                   data={props.data}
                   barSize={18}
                   layout="vertical">

@@ -7,8 +7,9 @@ export default function Panel(props: Props) {
     // If cases, the color of the graph is red.
     // If deaths, the color is grey.
     const color: string = props.label === 'cases' ? '#990001' : 'grey'
-    const noCasesDeaths = "No Reported " +  props.label[0].toUpperCase() + props.label.substring(1, props.label.length)
-
+    //const noCasesDeaths = "No Reported " +  props.label[0].toUpperCase() + props.label.substring(1, props.label.length)
+	// TODO: get rid of previous noCasesDeaths and rename variable.
+    const noCasesDeaths = "No Data To Display"
 
     // If the data has been loaded, show the carts
     if (props.data.length > 0) {
