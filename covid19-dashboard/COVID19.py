@@ -433,7 +433,7 @@ class COVID19:
             state_dcid = self.data.loc[geoId]['state_dcid']
             county_dcid = geoId
             county_name = self.data.loc[county_dcid]['county_name']
-            county_name = county_name.replace(" County", "").replace(" Parish", "").replace(" City", "")
+            county_name = county_name.replace(" County", "").replace(" Parish", "").replace(" City", "").replace(" Borough", "")
             geoId_map[county_dcid] = county_name + ', ' + self.data.loc[county_dcid]['state_name']
             geoId_map[state_dcid] = self.data.loc[county_dcid]['state_name']
         return geoId_map

@@ -75,9 +75,9 @@ export default function Chart(props: Props) {
 
     return (
         <BarChart width={400}
-                  height={60 * props.data.length}
+                  height={props.data.length < 3 ? 70 * props.data.length : 35 * props.data.length}
                   data={props.data}
-                  barSize={25}
+                  barSize={18}
                   layout="vertical">
                         <XAxis type="number"
                                tick={{fill: '#868E96', fontSize: 10}}
@@ -85,7 +85,7 @@ export default function Chart(props: Props) {
                         <YAxis type="category"
                                dataKey="regionName"
                                tick={{ill: '#868E96', fontSize: 10}}
-                               width={100}
+                               width={120}
                                interval={0}/>
                         <Tooltip content={customTooltip}/>
                         <Bar dataKey={"value"}

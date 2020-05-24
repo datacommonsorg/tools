@@ -27,15 +27,13 @@ body {
 }
 
 .panel {
-    padding: 30px;
     margin: 5% 0;
     background-color: white;
     border-radius: 10px;
 }
 
 .chart {
-    width: 400px;
-    padding-left: 0;
+    width: 450px;
     padding-top: 20px;
     padding-bottom: 10px;
     text-align: center;
@@ -45,6 +43,7 @@ body {
     margin: 2px;
     font-weight: normal;
     color: grey;
+    text-align: left;
 }
 
 @keyframes fadeIn {
@@ -69,16 +68,9 @@ body {
     margin: 5px 5px 5px 40px;
 }
 
-.panel .text-center {
-    margin-top: 10%;
-    text-align: center;
-    font-weight: normal;
-}
-
 .empty-panel {
     color: grey;
     text-align: center;
-    padding: 80px 0 80px 20px;
     font-weight: normal;
 }
 
@@ -138,6 +130,7 @@ body {
 }
 
 .footer{
+    margin-top: 5%;
     margin-left: 10%;
     text-align: center;
 }
@@ -149,6 +142,7 @@ body {
     left: 2%;
     overflow-x: hidden;
     width: 160px;
+    padding: 30px;
 }
 
 .sidenav a {

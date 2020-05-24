@@ -12,7 +12,7 @@
     "subtitle": "In Percent"
   },
   "weekly": {
-    "title": "Most Weekly Cases",
+    "title": "Most Weekly {TYPE}",
     "subtitle": ""
   },
   "weeklyPerCapita": {

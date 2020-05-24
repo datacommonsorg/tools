@@ -27,7 +27,7 @@ export default function Panel(props: Props) {
     // If the data hasn't finished loading, then showing an empty panel.
     } else {
         return (
-            <div style={{paddingRight: 0}} className={"panel chart shadow"}>
+            <div style={{paddingRight: 0}} className={"panel chart shadow empty-panel"}>
                 <h2 className={"empty-panel"}>{props.loading ? "Loading..." : noCasesDeaths}</h2>
             </div>
         )
