@@ -167,7 +167,7 @@ body {
     transition: max-height 3s ease-in;
 }
 
-@media only screen and (max-width: 1350px) {
+@media only screen and (max-width: 1450px) {
     .left {
         float: none;
     }

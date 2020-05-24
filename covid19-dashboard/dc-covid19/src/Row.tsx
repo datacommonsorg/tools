@@ -3,7 +3,8 @@ import React from "react";
 
 type Props = {
     sectionTitle?: string,
-    config: any
+    config: any,
+    loading: boolean
 }
 
 /**
@@ -27,7 +28,8 @@ export default function Row(props: Props) {
                        data={props.config.data['cases']}
                        label={"cases"}
                        region={props.config.region}
-                       showTopN={props.config.showTopN}/>
+                       showTopN={props.config.showTopN}
+                       loading={props.loading}/>
             </div>
             <div className={"right"}>
                 <Panel dcidMap={props.config.dcidMap}
@@ -36,7 +38,8 @@ export default function Row(props: Props) {
                        data={props.config.data['deaths']}
                        label={"deaths"}
                        region={props.config.region}
-                       showTopN={props.config.showTopN}/>
+                       showTopN={props.config.showTopN}
+                       loading={props.loading}/>
             </div>
         </div>
     )

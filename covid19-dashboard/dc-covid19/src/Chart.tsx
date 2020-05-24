@@ -61,7 +61,7 @@ export default function Chart(props: Props) {
         const {x, y, width, height, value} = metadata;
         return (
             <g>
-                <text fontSize={9}
+                <text fontSize={10}
                       x={x + width / 2}
                       y={y + height / 2}
                       fill="#fff"
@@ -75,15 +75,15 @@ export default function Chart(props: Props) {
 
     return (
         <BarChart width={400}
-                  height={45 * props.data.length}
+                  height={35 * props.data.length}
                   data={props.data}
                   barSize={20}
                   layout="vertical">
                         <XAxis type="number"
-                               tick={{fill: '#868E96', fontSize: 14, fontWeight: 'bold'}}/>
+                               tick={{fill: '#868E96', fontSize: 12, fontWeight: 'bold'}}/>
                         <YAxis type="category"
                                dataKey="regionName"
-                               tick={{ill: '#868E96', fontSize: 14}}
+                               tick={{ill: '#868E96', fontSize: 12}}
                                width={95}/>
                         <Tooltip content={customTooltip}/>
                         <Bar dataKey={"value"}
