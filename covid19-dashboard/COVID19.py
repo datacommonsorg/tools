@@ -57,9 +57,6 @@ class COVID19:
         self.county_cumulative_deaths = self.get_covid_data(dcids=list(self.data.index),
                                                             stats_var='NYTCovid19CumulativeDeaths')
 
-        print("LOOK HERE")
-        print(self.get_counties_in_state('geoId/01'))
-
         # Generate a map from geoId -> region name
         self.generate_map_of_dcid_to_name()
 
@@ -297,8 +294,7 @@ class COVID19:
         df = df.rename({df.columns.values[0]: "value",
                         df.columns.values[1]: "absolute"},
                        axis='columns')
-        if region == 'state' or region == 'county':
-            df = df[df["absolute"] >= 200]
+        df = df[df["absolute"] >= 10]
         df = df[(df['value'] > 0)]
         return df.round(2).sort_values(ascending=False, by="value").dropna()
 
@@ -326,8 +322,7 @@ class COVID19:
         df = df.rename({df.columns.values[0]: "value",
                         df.columns.values[1]: "absolute"}, axis='columns')
 
-        if region == 'state' or region == 'county':
-            df = df[df["absolute"] >= 10]
+        df = df[df["absolute"] >= 10]
         df = df[(df['value'] > 0)]
         return df.round(2).sort_values(ascending=False, by="value").dropna()
 
