@@ -18,6 +18,7 @@ export default function Chart(props: Props) {
         let disclaimer: string = ''
         if (active) {
             const data = payload[0].payload
+            console.log(data)
             if (data.dcid === 'geoId/3651000' || data.dcid === 'geoId/2938000')
                 disclaimer = `All counties in ${data.regionName} are combined and reported as one.`
 
@@ -74,28 +75,25 @@ export default function Chart(props: Props) {
 
     return (
         <BarChart width={400}
-            height={35 * props.data.length}
-            data={props.data}
-            barSize={20}
-            layout="vertical">
-                <XAxis type="number"
-                       tick={{fill: '#868E96', fontSize: 12, fontWeight: 'bold'}}/>
-                <YAxis type="category"
-                       dataKey="regionName"
-                       tick={{ill: '#868E96', fontSize: 10}}
-                       width={75}
-                       interval={0}
-                       domain={[dataMin => (0 - Math.abs(dataMin)), dataMax => (dataMax * 2)]}/>
-                <Tooltip content={customTooltip}/>
-                <Bar dataKey={"value"}
-                     fill={props.color}
-                     onClick={barOnClick}
-                     radius={[3, 3, 3, 3]}
-                     isAnimationActive={true}>
-                        <LabelList className={"labelList"}
-                                   dataKey={"labelListLabel"}
-                                   content={renderCustomizedLabel}/>
-                </Bar>
+                  height={45 * props.data.length}
+                  data={props.data}
+                  barSize={20}
+                  layout="vertical">
+                        <XAxis type="number"
+                               tick={{fill: '#868E96', fontSize: 14, fontWeight: 'bold'}}/>
+                        <YAxis type="category"
+                               dataKey="regionName"
+                               tick={{ill: '#868E96', fontSize: 14}}
+                               width={95}/>
+                        <Tooltip content={customTooltip}/>
+                        <Bar dataKey={"value"}
+                             fill={props.color}
+                             onClick={barOnClick}
+                             radius={[3, 3, 3, 3]}
+                             isAnimationActive={true}>
+                                <LabelList dataKey={"labelListLabel"}
+                                           content={renderCustomizedLabel}/>
+                        </Bar>
         </BarChart>
     );
 }

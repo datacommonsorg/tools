@@ -4,7 +4,7 @@ import SideNav from "./SideNav";
 import Row from "./Row";
 import numberWithCommas from "./NumberWithCommas";
 import moment from 'moment'
-import PanelText from './PanelInfo.json'
+import PanelInfo from './PanelInfo.json'
 
 type dataHolder = {
     label: string,
@@ -27,6 +27,7 @@ type stateType = {
         fourteenDays: string,
         thirtyDays: string,
     }
+    availableRegions: {state: string, county: string},
     showTopN: number,
     daily: casesAndDeathsHolder,
     dailyPerCapita: casesAndDeathsHolder,
@@ -51,6 +52,36 @@ class App extends React.Component <{}, stateType> {
         this.fadeInAnimation()
         // Request latest data from server.
         this.sendRequest().then(r => console.log("Data has been loaded!"))
+    }
+
+    state = {
+        allData: {}, // copy of all the unparsed data
+        region: "state", // current region selected
+        showTopN: 10, // number of top counties/states to show
+        selectedDate: "latest", // current date selected
+        availableRegions: {
+            state: "All States",
+            county: "All Counties"
+        },
+        availableDates: { // get the latest dates from server, these will be overwritten to the actual date once the server responds.
+            latest: "Latest",
+            sevenDays: "1 Week Ago",
+            fourteenDays: "2 Weeks Ago",
+            thirtyDays: "1 Month Ago",
+        },
+        daily: casesAndDeaths,
+        dailyPerCapita: casesAndDeaths,
+        dailyIncrease: casesAndDeaths,
+        weekly: casesAndDeaths,
+        weeklyPerCapita: casesAndDeaths,
+        weeklyIncrease: casesAndDeaths,
+        monthly: casesAndDeaths,
+        monthlyPerCapita: casesAndDeaths,
+        monthlyIncrease: casesAndDeaths,
+        absoluteCumulative: casesAndDeaths,
+        cumulativePerCapita: casesAndDeaths,
+        dcidMap: {}, // converts geoId to the region's name.
+        animationClassName: "fadeInAnimation" // will be passed down as a prop to anything requiring an animation.
     }
 
     myRefs: {} = {
@@ -94,39 +125,12 @@ class App extends React.Component <{}, stateType> {
         }
     }
 
-    state = {
-        allData: {}, // copy of all the unparsed data
-        region: "state", // current region selected
-        showTopN: 10, // number of top counties/states to show
-        selectedDate: "latest", // current date selected
-        availableDates: { // get the latest dates from server, these will be overwritten to the actual date once the server responds.
-            latest: "Latest",
-            sevenDays: "1 Week Ago",
-            fourteenDays: "2 Weeks Ago",
-            thirtyDays: "1 Month Ago",
-        },
-        daily: casesAndDeaths,
-        dailyPerCapita: casesAndDeaths,
-        dailyIncrease: casesAndDeaths,
-        weekly: casesAndDeaths,
-        weeklyPerCapita: casesAndDeaths,
-        weeklyIncrease: casesAndDeaths,
-        monthly: casesAndDeaths,
-        monthlyPerCapita: casesAndDeaths,
-        monthlyIncrease: casesAndDeaths,
-        absoluteCumulative: casesAndDeaths,
-        cumulativePerCapita: casesAndDeaths,
-        dcidMap: {}, // converts geoId to the region's name.
-        animationClassName: "fadeInAnimation" // will be passed down as a prop to anything requiring an animation.
-    }
-
     /**
      * Handles the region state change.
      * This parameter is passed down as a prop to OptionPanel.
      * @param newRegion
      */
     onRegionChange = (newRegion: "state" | "county") => {
-        this.fadeInAnimation()
         this.state.region = newRegion
         this.parseData(this.state.allData)
     }
@@ -137,7 +141,6 @@ class App extends React.Component <{}, stateType> {
      * @param newDate
      */
     onDateChange = (newDate: "latest" | "sevenDays" | "fourteenDays" | "thirtyDays") => {
-        this.fadeInAnimation()
         this.state.selectedDate = newDate
         this.parseData(this.state.allData)
     }
@@ -148,7 +151,6 @@ class App extends React.Component <{}, stateType> {
      * @param newShow
      */
     onShowChange = (newShow: number) => {
-        this.fadeInAnimation()
         this.state.showTopN = newShow
         this.parseData(this.state.allData)
     }
@@ -163,7 +165,8 @@ class App extends React.Component <{}, stateType> {
         await fetch(
             url, {mode: 'cors'}
         ).then(response => response.json().then(res => {
-            this.setState({availableDates: res['dates']})
+            this.setState({availableDates: res['availableDates']})
+            if (res['availableRegions']) this.setState({availableRegions: {'state': 'All States', 'county': 'All Counties', ...res['availableRegions']}})
             this.setState({dcidMap: res['dcidMap']})
             this.setState({allData: res})
             this.parseData(res)
@@ -322,15 +325,15 @@ class App extends React.Component <{}, stateType> {
             dcidMap: this.state.dcidMap,
             region: this.state.region,
             show: this.state.showTopN,
-            title: PanelText[dataId].title,
-            subtitle: PanelText[dataId].subtitle,
+            title: PanelInfo[dataId].title,
+            subtitle: PanelInfo[dataId].subtitle,
             sectionTitle: newSectionTitle
         }
     }
     
     render() {
-        let rows: JSX.Element[] = Object.keys(PanelText).map(key => <Row config={this.getPanelConfig(key)}/>)
-
+        console.log(this.state.availableRegions)
+        let rows: JSX.Element[] = Object.keys(PanelInfo).map(key => <Row config={this.getPanelConfig(key)}/>)
         return (
             <div className={"container " + this.state.animationClassName}>
                 <SideNav handleScrollOnRef={this.handleScrollOnRef}
@@ -343,7 +346,8 @@ class App extends React.Component <{}, stateType> {
                     <OptionPanel onRegionChange={this.onRegionChange}
                                  onDateChange={this.onDateChange}
                                  onShowTopNSelectChange={this.onShowChange}
-                                 availableDates={this.state.availableDates}/>
+                                 availableDates={this.state.availableDates}
+                                 availableRegions={this.state.availableRegions}/>
                         {rows}
                 </div>
                 <h5 className={"footer"}>

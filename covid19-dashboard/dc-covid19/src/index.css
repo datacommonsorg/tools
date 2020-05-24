@@ -7,6 +7,10 @@ body {
     text-align: center;
 }
 
+#root {
+    zoom: 95%;
+}
+
 h1, h2, h3, h4, h5, h6 {
     color: black
 }
@@ -19,14 +23,9 @@ body {
     margin: 0;
 }
 
-.recharts-legend-item-text {
-    color: black;
-}
-
 .container {
     margin-left: 10%;
     margin-right: 5%;
-    padding-bottom: 3%;
 }
 
 .main-content {
@@ -43,10 +42,10 @@ body {
 
 .chart {
     z-index: 1;
-    width: 420px;
+    width: 450px;
 }
 
-.tooltip-info {
+.tooltip-content {
     margin: 2px;
     font-weight: normal;
     color: grey;
@@ -99,7 +98,6 @@ body {
     animation: fadeIn 2s;
 }
 
-
 .option-panel{
     margin: 0;
     padding: 20px 20px;
@@ -123,6 +121,7 @@ body {
     text-align: left;
     font-size: 20px;
     margin: 2px;
+    width: 150px;
 }
 
 .main-title{
@@ -146,13 +145,14 @@ body {
     top: 14%;
     left: 2%;
     overflow-x: hidden;
+    width: 160px;
 }
 
 .sidenav a {
     padding-top: 10px;
     padding-bottom: 10px;
     text-decoration: none;
-    font-size: 15px;
+    font-size: 14px;
     color: black;
     display: block;
     font-weight: bold;
@@ -167,7 +167,7 @@ body {
     transition: max-height 3s ease-in;
 }
 
-@media only screen and (max-width: 1450px) {
+@media only screen and (max-width: 1350px) {
     .left {
         float: none;
     }

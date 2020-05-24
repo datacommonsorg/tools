@@ -47,20 +47,27 @@ class COVID19:
 
         self.add_nyt_exceptions()
 
-
         # Request information from the NYT COVID database.
-        self.state_cumulative_cases = self.get_covid_data(dcids=list(self.data['state_dcid']), stats_var='NYTCovid19CumulativeCases')
-        self.state_cumulative_deaths = self.get_covid_data(dcids=list(self.data['state_dcid']), stats_var='NYTCovid19CumulativeDeaths')
-        self.county_cumulative_cases = self.get_covid_data(dcids=list(self.data.index), stats_var='NYTCovid19CumulativeCases')
-        self.county_cumulative_deaths = self.get_covid_data(dcids=list(self.data.index), stats_var='NYTCovid19CumulativeDeaths')
+        self.state_cumulative_cases = self.get_covid_data(dcids=list(self.data['state_dcid']),
+                                                          stats_var='NYTCovid19CumulativeCases')
+        self.state_cumulative_deaths = self.get_covid_data(dcids=list(self.data['state_dcid']),
+                                                           stats_var='NYTCovid19CumulativeDeaths')
+        self.county_cumulative_cases = self.get_covid_data(dcids=list(self.data.index),
+                                                           stats_var='NYTCovid19CumulativeCases')
+        self.county_cumulative_deaths = self.get_covid_data(dcids=list(self.data.index),
+                                                            stats_var='NYTCovid19CumulativeDeaths')
+
+        print("LOOK HERE")
+        print(self.get_counties_in_state('geoId/01'))
 
         # Generate a map from geoId -> region name
-        self.generate_map_of_geoid_to_name()
+        self.generate_map_of_dcid_to_name()
 
     def request_state_dcids(self):
         """Retrieves all the states dcids in the USA"""
         print("Getting State dcids")
-        response = send_request("https://api.datacommons.org/node/places-in", {"dcids": ["country/USA"], "placeType": "State"})
+        response = send_request("https://api.datacommons.org/node/places-in",
+                                {"dcids": ["country/USA"], "placeType": "State"})
         state_dcids = [x['place'] for x in response]
 
         self.data['state_dcid'] = pd.Series([state_dcids])
@@ -72,7 +79,8 @@ class COVID19:
     def request_state_names(self):
         """Retrieves the states from the list of state_dcid"""
         print("Getting State names")
-        response = send_request("https://api.datacommons.org/node/property-values", {"dcids": list(self.data['state_dcid']), "property": "name"})
+        response = send_request("https://api.datacommons.org/node/property-values",
+                                {"dcids": list(self.data['state_dcid']), "property": "name"})
         state_names = {dcid: response[dcid]['out'][0]['value'] for dcid in response}
         self.data['state_name'] = self.data['state_dcid'].map(state_names)
         self.data = self.data.explode('state_name')
@@ -146,8 +154,6 @@ class COVID19:
         self.data.loc['geoId/3651000', 'county_population'] = 8399000
         self.data.loc['geoId/2938000', 'county_population'] = 491918
         # self.request_city_population()
-        print(self.data.loc['geoId/3651000'])
-
 
     def get_covid_data(self, dcids: list, stats_var: str) -> pd.DataFrame:
         """Retrieves COVID19 data given a lsit of dcids and statistical variable"""
@@ -164,7 +170,7 @@ class COVID19:
         df = pd.DataFrame.from_dict(data_holder, orient='index')
         return clean_and_transpose(df)
 
-    def ISO_date(self, date:str, time_delta:int=0):
+    def ISO_date(self, date: str, time_delta: int = 0):
         """Converts to ISO date given a string and a time_delta.
         A time delta is the day you want to retrieve.
         Example: If today is day 10 and time_delta=3, return 7"""
@@ -178,26 +184,43 @@ class COVID19:
             date = str(self.state_cumulative_cases.index[-31])
         return (datetime.date.fromisoformat(date) - datetime.timedelta(days=time_delta)).isoformat()
 
+    def get_counties_in_state(self, state_dcid):
+        return list(self.data[self.data['state_dcid'] == state_dcid].index)
+
     def get_cumulative_cases_for_given_date(self, date="latest", region="state"):
         date = self.ISO_date(date)
         if region == 'state':
             df = self.state_cumulative_cases.loc[date]
+            df.index.name = 'state_dcid'
         else:
             df = self.county_cumulative_cases.loc[date]
+            df.index.name = 'county_dcid'
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            df = df[df.index.isin(counties_in_state)]
+
         df = df.to_frame()
-        df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_cumulative_deaths_for_given_date(self, date="latest", region="state"):
         date = self.ISO_date(date)
         if region == 'state':
             df = self.state_cumulative_deaths.loc[date]
+            df.index.name = 'state_dcid'
         else:
             df = self.county_cumulative_deaths.loc[date]
+            df.index.name = 'county_dcid'
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            df = df[df.index.isin(counties_in_state)]
+
         df = df.to_frame()
-        df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_cumulative_cases_per_capita_for_given_date(self, date="latest", region="state"):
@@ -208,6 +231,12 @@ class COVID19:
         else:
             cumulative = self.county_cumulative_cases.loc[date]
             population = self.data['county_population']
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            cumulative = cumulative[cumulative.index.isin(counties_in_state)]
+            population = population[population.index.isin(counties_in_state)]
+
         df = (cumulative * 10000).div(population)
         df = pd.concat([df, population, cumulative], axis=1)
         df.index.name = region + '_dcid'
@@ -215,7 +244,9 @@ class COVID19:
                         df.columns.values[1]: "population",
                         df.columns.values[2]: 'absolute'},
                        axis='columns')
-        df = df[df['population'] >= 10000]
+        if region == 'state' or region == 'county':
+            df = df[df['population'] >= 10000]
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_cumulative_deaths_per_capita_for_given_date(self, date="latest", region="state"):
@@ -226,14 +257,21 @@ class COVID19:
         else:
             cumulative = self.county_cumulative_deaths.loc[date]
             population = self.data['county_population']
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            cumulative = cumulative[cumulative.index.isin(counties_in_state)]
+            population = population[population.index.isin(counties_in_state)]
+
         df = (cumulative * 10000).div(population)
         df = pd.concat([df, population, cumulative], axis=1)
-        df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value",
                         df.columns.values[1]: "population",
                         df.columns.values[2]: 'absolute'},
                        axis='columns')
-        df = df[df['population'] >= 10000]
+        if region == 'state' or region == 'county':
+            df = df[df['population'] >= 10000]
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_cases_increase_pct_for_given_dates(self, most_recent_date="latest", time_delta=7, region="state"):
@@ -242,19 +280,26 @@ class COVID19:
         if region == 'state':
             df = (((self.state_cumulative_cases.loc[most_recent_date] /
                     self.state_cumulative_cases.loc[oldest_date]) - 1) * 100)
-            difference = self.state_cumulative_cases.loc[most_recent_date] - self.state_cumulative_cases.loc[
-                oldest_date]
+            difference = self.state_cumulative_cases.loc[most_recent_date] - \
+                         self.state_cumulative_cases.loc[oldest_date]
         else:
             df = (((self.county_cumulative_cases.loc[most_recent_date] /
                     self.county_cumulative_cases.loc[oldest_date]) - 1) * 100)
-            difference = self.county_cumulative_cases.loc[most_recent_date] - self.county_cumulative_cases.loc[
-                oldest_date]
+            difference = self.county_cumulative_cases.loc[most_recent_date] - \
+                         self.county_cumulative_cases.loc[oldest_date]
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            df = df[df.index.isin(counties_in_state)]
+            difference = difference[difference.index.isin(counties_in_state)]
+
         df = pd.concat([df, difference], axis=1)
-        df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value",
                         df.columns.values[1]: "absolute"},
                        axis='columns')
-        df = df[df["absolute"] >= 200]
+        if region == 'state' or region == 'county':
+            df = df[df["absolute"] >= 200]
+        df = df[(df['value'] > 0)]
         return df.round(2).sort_values(ascending=False, by="value").dropna()
 
     def get_deaths_increase_pct_for_given_dates(self, most_recent_date="latest", time_delta=7, region="state"):
@@ -271,12 +316,19 @@ class COVID19:
             difference = self.county_cumulative_deaths.loc[most_recent_date] - self.county_cumulative_deaths.loc[
                 oldest_date]
 
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            df = df[df.index.isin(counties_in_state)]
+            difference = difference[difference.index.isin(counties_in_state)]
+
         df = pd.concat([df, difference], axis=1)
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value",
                         df.columns.values[1]: "absolute"}, axis='columns')
 
-        df = df[df["absolute"] >= 10]
+        if region == 'state' or region == 'county':
+            df = df[df["absolute"] >= 10]
+        df = df[(df['value'] > 0)]
         return df.round(2).sort_values(ascending=False, by="value").dropna()
 
     def get_cases_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state"):
@@ -291,6 +343,12 @@ class COVID19:
             difference = self.county_cumulative_cases.loc[most_recent_date] - \
                          self.county_cumulative_cases.loc[oldest_date]
             population = self.data['county_population']
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            difference = difference[difference.index.isin(counties_in_state)]
+            population = population[population.index.isin(counties_in_state)]
+
         df = (difference * 10000).div(population)
         df = pd.concat([df, difference, population], axis=1)
         df.index.name = region + '_dcid'
@@ -298,7 +356,9 @@ class COVID19:
                         df.columns.values[1]: "absolute",
                         df.columns.values[2]: "population"},
                        axis='columns')
-        df = df[df['population'] >= 10000]
+        if region == 'state' or region == 'county':
+            df = df[df['population'] >= 10000]
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_deaths_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state"):
@@ -313,6 +373,12 @@ class COVID19:
             difference = self.county_cumulative_deaths.loc[most_recent_date] - \
                          self.county_cumulative_deaths.loc[oldest_date]
             population = self.data['county_population']
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            difference = difference[difference.index.isin(counties_in_state)]
+            population = population[population.index.isin(counties_in_state)]
+
         df = (difference * 10000).div(population)
         df = pd.concat([df, difference, population], axis=1)
         df.index.name = region + '_dcid'
@@ -320,7 +386,10 @@ class COVID19:
                         df.columns.values[1]: "absolute",
                         df.columns.values[2]: "population"},
                        axis='columns')
-        df = df[df['population'] >= 10000]
+
+        if region == 'state' or region == 'county':
+            df = df[df['population'] >= 10000]
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_cases_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state"):
@@ -333,9 +402,14 @@ class COVID19:
             df = self.county_cumulative_cases.loc[most_recent_date] - \
                  self.county_cumulative_cases.loc[oldest_date]
 
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            df = df[df.index.isin(counties_in_state)]
+
         df = df.to_frame()
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_deaths_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state"):
@@ -347,12 +421,18 @@ class COVID19:
         else:
             df = self.county_cumulative_deaths.loc[most_recent_date] - \
                  self.county_cumulative_deaths.loc[oldest_date]
+
+        if region != 'state' and region != 'county':
+            counties_in_state = self.get_counties_in_state(region)
+            df = df[df.index.isin(counties_in_state)]
+
         df = df.to_frame()
         df.index.name = region + '_dcid'
         df = df.rename({df.columns.values[0]: "value"}, axis="columns")
+        df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
-    def generate_map_of_geoid_to_name(self):
+    def generate_map_of_dcid_to_name(self):
         geoId_map = {}
         for geoId in self.data.index:
             state_dcid = self.data.loc[geoId]['state_dcid']
@@ -365,3 +445,6 @@ class COVID19:
 
     def get_latest_date_in_dataset(self, days_ago=0):
         return self.county_cumulative_cases.iloc[~days_ago].name
+
+    def get_all_state_dcids(self):
+        return set(self.data['state_dcid'])

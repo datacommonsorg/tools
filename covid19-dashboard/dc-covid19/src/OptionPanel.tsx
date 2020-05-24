@@ -1,6 +1,6 @@
 import React, {ChangeEvent} from "react";
-import Regions from './Regions.json'
-export default class OptionPanel extends React.Component<{ onRegionChange, onDateChange, onShowTopNSelectChange, availableDates }, any> {
+type Props = {onRegionChange, onDateChange, onShowTopNSelectChange, availableDates, availableRegions?}
+export default class OptionPanel extends React.Component<Props, any> {
     /**
      * Function triggered when the date is changed.
      * @param e
@@ -16,7 +16,7 @@ export default class OptionPanel extends React.Component<{ onRegionChange, onDat
      */
     handleRegionSelect = (e: ChangeEvent) => {
         let newSelection: string = (e.target as HTMLInputElement).value
-        this.props.onRegionChange(newSelection)
+        if (newSelection !== 'empty') this.props.onRegionChange(newSelection)
     }
 
     /**
@@ -30,24 +30,40 @@ export default class OptionPanel extends React.Component<{ onRegionChange, onDat
     }
 
     render() {
-        const dates: JSX.Element[] = Object.keys(this.props.availableDates).map(date =>
-            <option value={date}>{this.props.availableDates[date]}</option>)
+        const showTopNOptions: JSX.Element[] = [5, 10, 20, 30].map(n =>
+            <option value={n}>Top {n}</option>)
 
-        const regions: JSX.Element[] = Object.keys(Regions).map(region =>
-            <option value={region}>{Regions[region]}</option>)
+        const regionOptions: JSX.Element[] = Object.keys(this.props.availableRegions).map(region => {
+            if (region === 'county') {
+                return (
+                <React.Fragment>
+                    <option value={region}>{this.props.availableRegions[region]}</option>
+                    <option value={'empty'}/>
+                </React.Fragment>)
+            } else {
+                return <option value={region}>{this.props.availableRegions[region]}</option>
+            }
 
-        const showTopN: JSX.Element[] = [5, 10, 20, 30, 40, 50].map(n => <option value={n}>Top {n}</option>)
+
+        })
+
+        const sortedDates: string[]= Object.keys(this.props.availableDates)
+            .sort((a, b) =>
+                (this.props.availableDates[a] > this.props.availableDates[b]) ? -1 :
+                    ((this.props.availableDates[a] < this.props.availableDates[b]) ? 1 : 0))
+
+        const dateOptions: JSX.Element[]  = sortedDates.map(date => <option value={date}>{this.props.availableDates[date]}</option>)
 
         return (
             <div className={"option-panel panel shadow"}>
-                <select className="dropdown shadow" onChange={this.handleDateSelect}>
-                    {dates}
-                </select>
-                <select className="dropdown shadow" onChange={this.handleRegionSelect}>
-                    {regions}
-                </select>
                 <select className="dropdown shadow" onChange={this.handleShowTopNSelect} defaultValue={10}>
-                    {showTopN}
+                    {showTopNOptions}
+                </select>
+                <select className="dropdown shadow" onChange={this.handleRegionSelect} defaultValue={"state"}>
+                    {regionOptions}
+                </select>
+                <select className="dropdown shadow" onChange={this.handleDateSelect} defaultValue={"latest"}>
+                    {dateOptions}
                 </select>
             </div>
         )

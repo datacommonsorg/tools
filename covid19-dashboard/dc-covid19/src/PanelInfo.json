@@ -1,46 +1,46 @@
 {
   "daily": {
-    "title": "Daily {TYPE}",
+    "title": "Most Daily {TYPE}",
     "subtitle": ""
   },
   "dailyPerCapita": {
-    "title": "Daily {TYPE} Per Capita",
+    "title": "Most Daily {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People"
   },
   "dailyIncrease": {
-    "title": "Daily {TYPE} Increase",
+    "title": "Most Daily {TYPE} Increase",
     "subtitle": "In Percent"
   },
   "weekly": {
-    "title": "Weekly Cases",
+    "title": "Most Weekly Cases",
     "subtitle": ""
   },
   "weeklyPerCapita": {
-    "title": "Weekly {TYPE} Per Capita",
+    "title": "Most Weekly {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People"
   },
   "weeklyIncrease": {
-    "title": "Weekly {TYPE} Increase",
+    "title": "Most Weekly {TYPE} Increase",
     "subtitle": "In Percent"
   },
   "monthly": {
-    "title": "Monthly {TYPE}",
+    "title": "Most Monthly {TYPE}",
     "subtitle": ""
   },
   "monthlyPerCapita": {
-    "title": "Monthly {TYPE} Per Capita",
+    "title": "Most Monthly {TYPE} Per Capita",
     "subtitle": "Per 10,000 People"
   },
   "monthlyIncrease": {
-    "title": "Monthly {TYPE} Increase",
+    "title": "Most Monthly {TYPE} Increase",
     "subtitle": "In Percent"
   },
   "absoluteCumulative": {
-    "title": "Cumulative {TYPE}",
+    "title": "Most Cumulative {TYPE}",
     "subtitle": ""
   },
   "cumulativePerCapita": {
-    "title": "Cumulative {TYPE} Per Capita",
+    "title": "Most Cumulative {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People"
   }
 }
