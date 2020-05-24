@@ -335,7 +335,7 @@ class App extends React.Component <{}, stateType> {
         console.log(this.state.availableRegions)
         let rows: JSX.Element[] = Object.keys(PanelInfo).map(key => <Row config={this.getPanelConfig(key)}
                                                                          loading={Object.
-                                                                         keys(this.state.allData).length == 0}/>)
+                                                                         keys(this.state.allData).length === 0}/>)
         return (
             <div className={"container " + this.state.animationClassName}>
                 <SideNav handleScrollOnRef={this.handleScrollOnRef}

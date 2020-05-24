@@ -3,13 +3,6 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
 }
-.App {
-    text-align: center;
-}
-
-#root {
-    zoom: 95%;
-}
 
 h1, h2, h3, h4, h5, h6 {
     color: black
@@ -41,8 +34,11 @@ body {
 }
 
 .chart {
-    z-index: 1;
-    width: 450px;
+    width: 400px;
+    padding-left: 0;
+    padding-top: 20px;
+    padding-bottom: 10px;
+    text-align: center;
 }
 
 .tooltip-content {
@@ -58,12 +54,12 @@ body {
 
 .shadow {
     box-shadow:
-          0 3px 2px 1px rgba(0, 0, 0, 0.034),
-          0 7px 5px 1px rgba(0, 0, 0, 0.048),
-          0 13px 10px 1px rgba(0, 0, 0, 0.06),
-          0 22px 18px 1px rgba(0, 0, 0, 0.072),
-          0 42px 33px 1px rgba(0, 0, 0, 0.086),
-          0 0 50px 1px rgba(0, 0, 0, 0.12)
+        0 3px 2px 1px rgba(0, 0, 0, 0.034),
+        0 7px 5px 1px rgba(0, 0, 0, 0.048),
+        0 13px 10px 1px rgba(0, 0, 0, 0.06),
+        0 22px 18px 1px rgba(0, 0, 0, 0.072),
+        0 42px 33px 1px rgba(0, 0, 0, 0.086),
+        0 0 50px 1px rgba(0, 0, 0, 0.12)
 }
 
 .title {
@@ -76,6 +72,13 @@ body {
 .panel .text-center {
     margin-top: 10%;
     text-align: center;
+    font-weight: normal;
+}
+
+.empty-panel {
+    color: grey;
+    text-align: center;
+    padding: 80px 0 80px 20px;
     font-weight: normal;
 }
 
@@ -106,7 +109,7 @@ body {
     width: 180px;
     position: fixed;
     z-index: 1;
-    top: 5%;
+    top: 6%;
     left: 2%;
     overflow-x: hidden;
 }
@@ -121,7 +124,7 @@ body {
     text-align: left;
     font-size: 20px;
     margin: 2px;
-    width: 150px;
+    width: 170px;
 }
 
 .main-title{
@@ -142,7 +145,7 @@ body {
 .sidenav {
     position: fixed;
     z-index: 1;
-    top: 14%;
+    top: 17%;
     left: 2%;
     overflow-x: hidden;
     width: 160px;
@@ -163,11 +166,7 @@ body {
     cursor: pointer;
 }
 
-.easeIn {
-    transition: max-height 3s ease-in;
-}
-
-@media only screen and (max-width: 1450px) {
+@media only screen and (max-width: 1300px) {
     .left {
         float: none;
     }
@@ -204,9 +203,7 @@ body {
     }
 }
 
-
-
-@media only screen and (max-width: 900px) {
+@media only screen and (max-width: 800px) {
     .sidenav {
         visibility: hidden;
     }

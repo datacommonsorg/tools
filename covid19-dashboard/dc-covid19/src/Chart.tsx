@@ -75,22 +75,23 @@ export default function Chart(props: Props) {
 
     return (
         <BarChart width={400}
-                  height={35 * props.data.length}
+                  height={60 * props.data.length}
                   data={props.data}
-                  barSize={20}
+                  barSize={25}
                   layout="vertical">
                         <XAxis type="number"
-                               tick={{fill: '#868E96', fontSize: 12, fontWeight: 'bold'}}/>
+                               tick={{fill: '#868E96', fontSize: 10}}
+                               interval={0}/>
                         <YAxis type="category"
                                dataKey="regionName"
-                               tick={{ill: '#868E96', fontSize: 12}}
-                               width={95}/>
+                               tick={{ill: '#868E96', fontSize: 10}}
+                               width={100}
+                               interval={0}/>
                         <Tooltip content={customTooltip}/>
                         <Bar dataKey={"value"}
                              fill={props.color}
                              onClick={barOnClick}
-                             radius={[3, 3, 3, 3]}
-                             isAnimationActive={true}>
+                             radius={[4, 4, 4, 4]}>
                                 <LabelList dataKey={"labelListLabel"}
                                            content={renderCustomizedLabel}/>
                         </Bar>

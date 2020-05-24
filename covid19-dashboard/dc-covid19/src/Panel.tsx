@@ -6,7 +6,8 @@ type Props = {title: string, subtitle: string, data: dataHolder[], label: string
 export default function Panel(props: Props) {
     // If cases, the color of the graph is red.
     // If deaths, the color is grey.
-    let color: string = props.label === 'cases' ? '#990001' : 'grey'
+    const color: string = props.label === 'cases' ? '#990001' : 'grey'
+    const noCasesDeaths = "No Reported " +  props.label[0].toUpperCase() + props.label.substring(1, props.label.length)
 
 
     // If the data has been loaded, show the carts
@@ -23,29 +24,12 @@ export default function Panel(props: Props) {
                        showTopN={props.showTopN}/>
             </div>
         )
-    // If the data hasn't finished loading, then showing a "Loading..." panel.
-    } else if (props.loading) {
-        return (
-            <div className={"panel chart shadow"}>
-                <h2 style={{
-                    color: 'grey',
-                    marginTop: 50,
-                    fontWeight: 'normal',
-                    textAlign: 'center'
-                }}>Loading...</h2>
-            </div>
-        )
+    // If the data hasn't finished loading, then showing an empty panel.
     } else {
         return (
-            <div className={"panel chart shadow"}>
-                <h2 style={{
-                    color: 'grey',
-                    marginTop: 50,
-                    fontWeight: 'normal',
-                    textAlign: 'center'
-                }}>No Reported {props.label}</h2>
+            <div style={{paddingRight: 0}} className={"panel chart shadow"}>
+                <h2 className={"empty-panel"}>{props.loading ? "Loading..." : noCasesDeaths}</h2>
             </div>
         )
     }
-
 }
