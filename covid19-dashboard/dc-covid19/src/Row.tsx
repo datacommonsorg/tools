@@ -16,7 +16,6 @@
 import Panel from "./Panel";
 import React from "react";
 import PanelInfo from './PanelInfo.json'
-import numberWithCommas from "./NumberWithCommas";
 import moment from "moment";
 
 type Props = {
@@ -32,15 +31,6 @@ type Props = {
     animationClassName: string
 }
 
-type dataHolder = {
-    value: number,
-    absolute: number,
-    regionName: string,
-    population: number,
-    dcid: string,
-    labelListLabel: string
-}
-
 /**
  * Each row has two panels, where each panel contains a chart.
  * Each panel is either cases or deaths.
@@ -51,44 +41,9 @@ export default class Row extends React.Component<Props> {
     /**
      * Given a hashmap of data, convert it to a list dataHolder objects.
      * Also sorts the list so that the chart shows the regions from highest to lowest.
-     * This is necessary as Chart.jsx only know how to interpret a dataHolder list.
+     * This is necessary as BarGraph.jsx only know how to interpret a dataHolder list.
      * @param data
      */
-    jsonToArray = (data: dataHolder) => {
-        let dataAsList: dataHolder[] = []
-        if (!Object.keys(data).length) return dataAsList
-
-        Object.keys(data['value']).forEach(dcid => {
-            let regionName: string = this.props.dcidMap[dcid]
-            let value: number = Math.round(data?.value[dcid] * 100000) / 100000
-            let absolute: number = data?.absolute?.[dcid]
-            let population: number = data?.population?.[dcid]
-            dataAsList.push({
-                regionName: regionName,
-                value: value,
-                absolute: absolute,
-                population: population,
-                dcid: dcid,
-                labelListLabel: this.getLabelListLabel(value, absolute, population)
-            })
-        })
-        return dataAsList.sort((a, b) => b.value - a.value)
-            .slice(0, this.props.selectedShowTopN)
-    }
-
-    /**
-     * The chart takes a labelList. Which is a list of strings that will be shown on top of each bar.
-     * This will pre-generate those strings.
-     * For example, if the chart is a percent chart, we want to generate +800 (12%).
-     * @param value
-     * @param absolute
-     * @param population
-     */
-    getLabelListLabel = (value, absolute, population) => {
-        if (absolute && population) return numberWithCommas(absolute) + ' / ' + numberWithCommas(population)
-        else if (absolute && value) return "+" + numberWithCommas(absolute) + " (" + (value) + "%)"
-        else return numberWithCommas(value)
-    }
 
     /**
      * Converts an ISO date to English date.
@@ -101,10 +56,8 @@ export default class Row extends React.Component<Props> {
     }
 
     render() {
-        let data = this.props.data[this.props.selectedDate]?.[this.props.region]?.[this.props.typeOfData] || {cases: [], deaths: []}
-        let prettifiedDate = this.prettifyDate(this.props.ISOSelectedDate)
-        let sectionTitle = PanelInfo[this.props.typeOfData].sectionTitle.replace("{DATE}", prettifiedDate)
-
+        const prettifiedDate = this.prettifyDate(this.props.ISOSelectedDate)
+        const sectionTitle = PanelInfo[this.props.typeOfData].sectionTitle.replace("{DATE}", prettifiedDate)
         return (
             <div className={"row"}
                  ref={this.props.ref_}>
@@ -114,23 +67,23 @@ export default class Row extends React.Component<Props> {
                     sectionTitle && <hr style={{width: '100%'}}/>}
                 <div className={"left"}>
                     <Panel dcidMap={this.props.dcidMap}
-                           title={PanelInfo[this.props.typeOfData]?.title.replace("{TYPE}", "Cases")}
-                           subtitle={PanelInfo[this.props.typeOfData]?.subtitle.replace("{TYPE}", "Cases")}
-                           data={this.jsonToArray(data['cases'])}
+                           data={this.props.data}
+                           selectedDate={this.props.selectedDate}
                            label={"cases"}
                            region={this.props.region}
                            selectedShowTopN={this.props.selectedShowTopN}
-                           loading={this.props.loading}/>
+                           loading={this.props.loading}
+                           typeOfData={this.props.typeOfData}/>
                 </div>
                 <div className={"right"}>
                     <Panel dcidMap={this.props.dcidMap}
-                           title={PanelInfo[this.props.typeOfData]?.title.replace("{TYPE}", "Deaths")}
-                           subtitle={PanelInfo[this.props.typeOfData]?.subtitle.replace("{TYPE}", "Deaths")}
-                           data={this.jsonToArray(data['deaths'])}
+                           data={this.props.data}
+                           selectedDate={this.props.selectedDate}
                            label={"deaths"}
                            region={this.props.region}
                            selectedShowTopN={this.props.selectedShowTopN}
-                           loading={this.props.loading}/>
+                           loading={this.props.loading}
+                           typeOfData={this.props.typeOfData}/>
                 </div>
             </div>
         )

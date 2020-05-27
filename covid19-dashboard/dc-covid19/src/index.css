@@ -87,6 +87,7 @@ body {
     color: grey;
     text-align: center;
     font-weight: normal;
+    padding-right: 0;
 }
 
 .left {

@@ -14,9 +14,8 @@
  limitations under the License.
  */
 import React from 'react';
-import numberWithCommas from "./NumberWithCommas";
 import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
-import ToolTipContent from "./ToolTipContent";
+import ToolTip from "./ToolTip";
 
 type dataHolder = {
     regionName: string,
@@ -34,7 +33,7 @@ type Props = {
     dcidMap: {},
     selectedShowTopN: number
 }
-export default function Chart(props: Props) {
+export default function BarGraph(props: Props) {
     /**
      * In charge of displaying the tooltip on-hover on the chart.
      * @param active
@@ -42,30 +41,16 @@ export default function Chart(props: Props) {
      * @param label
      */
     const customTooltip = ({active, payload, label}) => {
+        let typeOfData: string = "normal"
         // Make sure that the current bar is actively being hovered on.
-        let texts: string[]= []
-        let disclaimer: string = ''
         if (active) {
             const data = payload[0].payload
-            if (data.dcid === 'geoId/3651000' || data.dcid === 'geoId/2938000')
-                disclaimer = `All counties in ${data.regionName} are combined and reported as one.`
-
-            // Per-capita chart.
-            if (payload[0].payload.absolute && payload[0].payload.population) {
-                texts = [`${payload[0].payload.value} ${props.label} per 10,000 people`,
-                        `New ${props.label}: ${numberWithCommas(data.absolute)}`,
-                        `Total population: ${numberWithCommas(data.population)} people`]
-
-            // Percent increase chart.
-            } else if (payload[0].payload.absolute && !payload[0].payload.population) {
-                texts = [`Percent increase: ${numberWithCommas(data.value)}%`,
-                        `Absolute increase: ${numberWithCommas(data.absolute)} ${props.label}`]
-
-            // Every other type of chart.
-            } else {
-                texts = [`${numberWithCommas(data.value)} ${props.label}`]
+            if (data.absolute && data.population) {
+                typeOfData = "perCapita"
+            } else if (data.absolute && !data.population) {
+                typeOfData = "percent"
             }
-            return (<ToolTipContent chartInfo={texts} disclaimer={disclaimer}/>);
+            return <ToolTip data={data} typeOfChart={typeOfData} label={props.label}/>
         }
         return null;
     };
