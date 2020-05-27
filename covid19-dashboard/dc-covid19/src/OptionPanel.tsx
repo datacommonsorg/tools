@@ -1,38 +1,27 @@
 import React, {ChangeEvent} from "react";
-type Props = {onRegionChange, onDateChange, onShowTopNSelectChange, availableDates, availableRegions?}
-export default class OptionPanel extends React.Component<Props, any> {
-    /**
-     * Function triggered when the date is changed.
-     * @param e
-     */
-    handleDateSelect = (e: ChangeEvent) => {
-        let newSelection: string = (e.target as HTMLInputElement).value
-        this.props.onDateChange(newSelection)
-    }
+type Props = {
+    handleSelectUpdate: (key: string, value: string | number) => void,
+    availableDates: {},
+    availableRegions: {},
+    availableShowTopN: number[],
+    defaultShowTopN: number,
+    defaultRegion: string,
+    defaultDate: string
+}
 
-    /**
-     * Function triggered when the region is changed.
-     * @param e
-     */
-    handleRegionSelect = (e: ChangeEvent) => {
-        let newSelection: string = (e.target as HTMLInputElement).value
-        if (newSelection !== 'empty') this.props.onRegionChange(newSelection)
-    }
+export default class OptionPanel extends React.Component<Props> {
+    handleSelect = (e: ChangeEvent) => {
+        const newSelection: string = (e.target as HTMLInputElement).value
+        const id: string = (e.target as HTMLInputElement).id
+        if (newSelection !== 'empty') this.props.handleSelectUpdate('selected'+ id, newSelection)
 
-    /**
-     * Function triggered when the show is changed.
-     * Remember, show is the number of top counties/states to show.
-     * @param e
-     */
-    handleShowTopNSelect = (e: ChangeEvent) => {
-        let newSelection: string = (e.target as HTMLInputElement).value
-        this.props.onShowTopNSelectChange(newSelection)
     }
 
     render() {
-        const showTopNOptions: JSX.Element[] = [5, 10, 20, 30].map(n =>
-            <option value={n}>Top {n}</option>)
+        const showTopNOptions: JSX.Element[] = this.props.availableShowTopN.map(
+            n => <option value={n}>Top {n}</option>)
 
+        // If county, then add a space after it
         const regionOptions: JSX.Element[] = Object.keys(this.props.availableRegions).map(region => {
             if (region === 'county') {
                 return (
@@ -43,26 +32,27 @@ export default class OptionPanel extends React.Component<Props, any> {
             } else {
                 return <option value={region}>{this.props.availableRegions[region]}</option>
             }
-
-
         })
 
+        // Sort all available dates
         const sortedDates: string[]= Object.keys(this.props.availableDates)
             .sort((a, b) =>
                 (this.props.availableDates[a] > this.props.availableDates[b]) ? -1 :
                     ((this.props.availableDates[a] < this.props.availableDates[b]) ? 1 : 0))
 
-        const dateOptions: JSX.Element[]  = sortedDates.map(date => <option value={date}>{this.props.availableDates[date]}</option>)
+        // Get all the date options
+        const dateOptions: JSX.Element[]  = sortedDates
+            .map(date => <option value={date}>{this.props.availableDates[date]}</option>)
 
         return (
             <div className={"option-panel panel shadow"}>
-                <select className="dropdown shadow" onChange={this.handleShowTopNSelect} defaultValue={10}>
+                <select className="dropdown shadow" onChange={this.handleSelect} id={"ShowTopN"} defaultValue={this.props.defaultShowTopN}>
                     {showTopNOptions}
                 </select>
-                <select className="dropdown shadow" onChange={this.handleRegionSelect} defaultValue={"state"}>
+                <select className="dropdown shadow" onChange={this.handleSelect} id={"Region"} defaultValue={this.props.defaultRegion}>
                     {regionOptions}
                 </select>
-                <select className="dropdown shadow" onChange={this.handleDateSelect} defaultValue={"latest"}>
+                <select className="dropdown shadow" onChange={this.handleSelect} id={"Date"} defaultValue={this.props.defaultDate}>
                     {dateOptions}
                 </select>
             </div>

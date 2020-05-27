@@ -4,7 +4,7 @@ import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTipContent from "./ToolTipContent";
 
 type dataHolder = {regionName: string, value: number, absolute: number, population: number, dcid: string, labelListLabel: string}
-type Props = {data: dataHolder[], label: string, region: string, color: string, dcidMap: {}, showTopN: number}
+type Props = {data: dataHolder[], label: string, region: string, color: string, dcidMap: {}, selectedShowTopN: number}
 export default function Chart(props: Props) {
     /**
      * In charge of displaying the tooltip on-hover on the chart.
@@ -18,7 +18,6 @@ export default function Chart(props: Props) {
         let disclaimer: string = ''
         if (active) {
             const data = payload[0].payload
-            console.log(data)
             if (data.dcid === 'geoId/3651000' || data.dcid === 'geoId/2938000')
                 disclaimer = `All counties in ${data.regionName} are combined and reported as one.`
 
@@ -51,7 +50,6 @@ export default function Chart(props: Props) {
         let URL: string = `https://browser.datacommons.org/gni#&place=${e.dcid}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
         window.open(URL, '_blank');
     }
-
 
     /**
      * Function in charge of displaying the labeListLabel string stored in each dataHolder point.
@@ -91,7 +89,7 @@ export default function Chart(props: Props) {
                         <Bar dataKey={"value"}
                              fill={props.color}
                              onClick={barOnClick}
-                             radius={[4, 4, 4, 4]}>
+                             radius={[4, 4, 4, 4]} isAnimationActive={false}>
                                 <LabelList dataKey={"labelListLabel"}
                                            content={renderCustomizedLabel}/>
                         </Bar>

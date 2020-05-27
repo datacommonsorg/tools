@@ -1,15 +1,11 @@
 import React from "react";
-import SideNavText from "./SideNavText"
+import PanelInfo from './PanelInfo.json'
 
-export default function SideNav(props: {handleScrollOnRef, selectedDate: string}) {
+export default function SideNav(props: {handleScrollOnRef}) {
     // Create the sideNav links and break them up by section using a <br/>.
-    let sideNavLinks = SideNavText().map( i => {
-        let subsection = [...i].map(typeOfData => {
-            let key = Object.keys(typeOfData)[0]
-            let text = typeOfData[key]
-            return <a id={key} key={key} onClick={props.handleScrollOnRef}>{text}</a>
-        })
-        return [...subsection, <br/>]
+    let sideNavLinks = Object.keys(PanelInfo).map( key => {
+        const text = PanelInfo[key].sideNavText;
+        return <a id={key} key={key} onClick={props.handleScrollOnRef}>{text}</a>
     })
 
     return (

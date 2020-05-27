@@ -1,45 +1,67 @@
 {
   "daily": {
+    "sideNavText": "Daily",
+    "sectionTitle": "{DATE}",
     "title": "Most Daily {TYPE}",
     "subtitle": ""
   },
   "dailyPerCapita": {
+    "sideNavText": "Daily Per Capita",
+    "sectionTitle": "",
     "title": "Most Daily {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People"
   },
   "dailyIncrease": {
+    "sideNavText": "Daily Increase",
+    "sectionTitle": "",
     "title": "Most Daily {TYPE} Increase",
     "subtitle": "In Percent"
   },
   "weekly": {
+    "sideNavText": "Weekly",
+    "sectionTitle": "Since Last Week",
     "title": "Most Weekly {TYPE}",
     "subtitle": ""
   },
   "weeklyPerCapita": {
+    "sideNavText": "Weekly Per Capita",
+    "sectionTitle": "",
     "title": "Most Weekly {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People"
   },
   "weeklyIncrease": {
+    "sideNavText": "Weekly Increase",
+    "sectionTitle": "",
     "title": "Most Weekly {TYPE} Increase",
     "subtitle": "In Percent"
   },
   "monthly": {
+    "sideNavText": "Monthly",
+    "sectionTitle": "Since 1 Month Ago",
     "title": "Most Monthly {TYPE}",
     "subtitle": ""
   },
   "monthlyPerCapita": {
+    "sideNavText": "Monthly Per Capita",
+    "sectionTitle": "",
     "title": "Most Monthly {TYPE} Per Capita",
     "subtitle": "Per 10,000 People"
   },
   "monthlyIncrease": {
+    "sideNavText": "Monthly Increase",
+    "sectionTitle": "",
     "title": "Most Monthly {TYPE} Increase",
     "subtitle": "In Percent"
   },
   "absoluteCumulative": {
+    "sideNavText": "Cumulative",
+    "sectionTitle": "All-Time Cumulative",
     "title": "Most Cumulative {TYPE}",
     "subtitle": ""
   },
   "cumulativePerCapita": {
+    "sideNavText": "Cumulative Per Capita",
+    "sectionTitle": "",
     "title": "Most Cumulative {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People"
   }
