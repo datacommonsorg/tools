@@ -25,7 +25,7 @@ export default function Panel(props: Props) {
         return <BarGraphPanel dcidMap={props.dcidMap}
                               data={props.data}
                               selectedDate={props.selectedDate}
-                              label={"cases"}
+                              label={props.label}
                               region={props.region}
                               selectedShowTopN={props.selectedShowTopN}
                               typeOfData={props.typeOfData}/>
@@ -33,7 +33,7 @@ export default function Panel(props: Props) {
         return <LineGraphPanel dcidMap={props.dcidMap}
                                data={props.data}
                                selectedDate={props.selectedDate}
-                               label={"cases"}
+                               label={props.label}
                                region={props.region}
                                selectedShowTopN={props.selectedShowTopN}
                                typeOfData={props.typeOfData}/>

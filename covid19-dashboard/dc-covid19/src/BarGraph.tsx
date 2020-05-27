@@ -83,6 +83,7 @@ export default function BarGraph(props: Props) {
             </g>
         );
     };
+    console.log(props.label, 'yoyoyoyo')
     const color: string = props.label === 'cases' ? '#990001' : 'grey'
     return (
         <BarChart width={410}
