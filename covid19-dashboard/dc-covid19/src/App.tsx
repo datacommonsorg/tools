@@ -76,7 +76,7 @@ class App extends React.Component <{}, stateType> {
     }
 
     /**
-     * In charge of scrolling to a specific reference in the document.
+     * In charge of scrolling to a specific reference in the page.
      * @param event
      */
     handleScrollOnRef = (event) => {
@@ -131,7 +131,6 @@ class App extends React.Component <{}, stateType> {
                                 ISOSelectedDate={this.state.availableDates[this.state.selectedDate]}
                                 region={this.state.selectedRegion}
                                 ref_={this.refs_[dataId]}
-                                loading={Object.keys(this.state.allData).length === 0}
                                 dcidMap={this.state.dcidMap}
                                 selectedShowTopN={this.state.selectedShowTopN}
                                 animationClassName={this.state.animationClassName}/>)

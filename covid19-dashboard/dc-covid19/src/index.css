@@ -48,10 +48,7 @@ body {
 }
 
 .chart {
-    width: 450px;
-    padding-top: 20px;
-    padding-bottom: 10px;
-    text-align: center;
+    padding: 20px 30px 20px 0;
 }
 
 .tooltip-content {

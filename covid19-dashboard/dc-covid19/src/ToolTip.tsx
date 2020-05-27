@@ -4,7 +4,7 @@ import React from "react";
 
 type Props = {
     data: dataHolder,
-    typeOfChart: string,
+    type: string,
     label: string
 }
 
@@ -17,17 +17,22 @@ type dataHolder = {
     labelListLabel: string
 }
 
+/**
+ * Component for when the user hovers on a bar graph
+ * @param props
+ * @constructor
+ */
 export default function ToolTip(props: Props) {
     let disclaimer: string = ''
-    let texts: string[] = []
+    let texts: string[];
     if (props.data.dcid === 'geoId/3651000' || props.data.dcid === 'geoId/2938000')
         disclaimer = `All counties in ${props.data.regionName} are combined and reported as one.`
 
-    if (props.typeOfChart === 'perCapita'){
+    if (props.type === 'perCapita'){
         texts = [`${props.data.value} ${props.label} per 10,000 people`,
             `New ${props.label}: ${numberWithCommas(props.data.absolute)}`,
             `Total population: ${numberWithCommas(props.data.population)} people`]
-    } else if (props.typeOfChart === 'percent'){
+    } else if (props.type === 'percent'){
         texts = [`Percent increase: ${numberWithCommas(props.data.value)}%`,
             `Absolute increase: ${numberWithCommas(props.data.absolute)} ${props.label}`]
     } else {

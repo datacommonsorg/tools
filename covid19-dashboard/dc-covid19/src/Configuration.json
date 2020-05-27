@@ -1,7 +1,7 @@
 {
   "REGIONS": {"state":  "All States", "county":  "All Counties"},
   "DEFAULT_REGION": "state",
-  "SHOWTOPN": [10, 20, 30, 40, 50],
+  "SHOWTOPN": [5, 10, 20, 30, 40, 50],
   "DEFAULT_SHOWTOPN": 10,
   "DATES": {
     "latest": "Latest",

@@ -29,7 +29,6 @@ type Props = {
     data: dataHolder[],
     label: string,
     region: string,
-    color: string,
     dcidMap: {},
     selectedShowTopN: number
 }
@@ -41,16 +40,16 @@ export default function BarGraph(props: Props) {
      * @param label
      */
     const customTooltip = ({active, payload, label}) => {
-        let typeOfData: string = "normal"
+        let tooltipType: string = "normal"
         // Make sure that the current bar is actively being hovered on.
         if (active) {
             const data = payload[0].payload
             if (data.absolute && data.population) {
-                typeOfData = "perCapita"
+                tooltipType = "perCapita"
             } else if (data.absolute && !data.population) {
-                typeOfData = "percent"
+                tooltipType = "percent"
             }
-            return <ToolTip data={data} typeOfChart={typeOfData} label={props.label}/>
+            return <ToolTip data={data} type={tooltipType} label={props.label}/>
         }
         return null;
     };
@@ -84,7 +83,7 @@ export default function BarGraph(props: Props) {
             </g>
         );
     };
-
+    const color: string = props.label === 'cases' ? '#990001' : 'grey'
     return (
         <BarChart width={410}
                   height={props.data.length < 3 ? 70 * props.data.length : 50 * props.data.length}
@@ -97,13 +96,13 @@ export default function BarGraph(props: Props) {
                         <YAxis type="category"
                                dataKey="regionName"
                                tick={{ill: '#868E96', fontSize: 10}}
-                               width={120}
+                               width={90}
                                interval={0}/>
                         <Tooltip content={customTooltip}/>
                         <Bar dataKey={"value"}
-                             fill={props.color}
+                             fill={color}
                              onClick={barOnClick}
-                             radius={[4, 4, 4, 4]} isAnimationActive={false}>
+                             radius={[4, 4, 4, 4]}>
                                 <LabelList dataKey={"labelListLabel"}
                                            content={renderCustomizedLabel}/>
                         </Bar>

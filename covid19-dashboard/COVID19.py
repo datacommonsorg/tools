@@ -352,8 +352,8 @@ class COVID19:
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_deaths_difference_per_capita(self, most_recent_date="latest", time_delta=7, region="state"):
-        most_recent_date = self.ISO_date(most_recent_date)
-        oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
+        most_recent_date: str = self.ISO_date(most_recent_date)
+        oldest_date: str = self.ISO_date(most_recent_date, time_delta=time_delta)
 
         if region == 'state':
             difference = self.state_cumulative_deaths.loc[most_recent_date] - \
@@ -383,8 +383,8 @@ class COVID19:
         return df.sort_values(ascending=False, by="value").dropna()
 
     def get_cases_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state"):
-        most_recent_date = self.ISO_date(most_recent_date)
-        oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
+        most_recent_date: str = self.ISO_date(most_recent_date)
+        oldest_date: str = self.ISO_date(most_recent_date, time_delta=time_delta)
         if region == 'state':
             df = self.state_cumulative_cases.loc[most_recent_date] - \
                  self.state_cumulative_cases.loc[oldest_date]
@@ -402,9 +402,9 @@ class COVID19:
         df = df[(df['value'] > 0)]
         return df.sort_values(ascending=False, by="value").dropna()
 
-    def get_deaths_for_given_range_alone(self, most_recent_date="latest", time_delta=1, region="state"):
-        most_recent_date = self.ISO_date(most_recent_date)
-        oldest_date = self.ISO_date(most_recent_date, time_delta=time_delta)
+    def get_deaths_for_given_range_alone(self, most_recent_date:str="latest", time_delta:int=1, region:str="state"):
+        most_recent_date: str = self.ISO_date(most_recent_date)
+        oldest_date: str = self.ISO_date(most_recent_date, time_delta=time_delta)
         if region == 'state':
             df = self.state_cumulative_deaths.loc[most_recent_date] - \
                  self.state_cumulative_deaths.loc[oldest_date]
@@ -423,6 +423,7 @@ class COVID19:
         return df.sort_values(ascending=False, by="value").dropna()
 
     def generate_map_of_dcid_to_name(self):
+        """Returns a dictionary where geoId -> region name"""
         geoId_map = {}
         for geoId in self.data.index:
             state_dcid = self.data.loc[geoId]['state_dcid']
@@ -436,7 +437,11 @@ class COVID19:
             geoId_map[state_dcid] = self.data.loc[county_dcid]['state_name']
         return geoId_map
 
-    def get_latest_date_in_dataset(self, days_ago=0):
+    def get_timeseries_of_cumulative_cases(self, days=30):
+        return self.state_cumulative_cases.iloc[-days:].T
+
+    def get_latest_date_in_dataset(self, days_ago:int=0):
+        """Returns the latest date in the dataset."""
         return self.county_cumulative_cases.iloc[~days_ago].name
 
     def get_all_state_dcids(self):

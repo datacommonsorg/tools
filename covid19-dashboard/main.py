@@ -36,6 +36,12 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 
+@app.route("/get-timeseries-data")
+def get_timeseries_data():
+    covid = COVID19()
+    return covid.get_timeseries_of_cumulative_cases().to_dict()
+
+
 @app.route("/get-all-data")
 @cache.cached(timeout=5000)
 def get_all_data():
@@ -161,7 +167,13 @@ def get_data_for(covid, region, date):
         'deaths': (covid.get_cumulative_deaths_per_capita_for_given_date(region=region, date=date)).to_dict()
     }
 
+    cumulativeTimeSeries = {
+        'cases': covid.get_timeseries_of_cumulative_cases().to_dict(),
+        'deaths': covid.get_timeseries_of_cumulative_cases().to_dict()
+    }
+
     return {
+        "cumulativeTimeSeries": cumulativeTimeSeries,
         "daily": daily,
         "dailyPerCapita": dailyPerCapita,
         "dailyIncrease": dailyIncrease,
