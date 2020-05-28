@@ -30,7 +30,8 @@ type Props = {
     label: string,
     region: string,
     dcidMap: {},
-    selectedShowTopN: number
+    selectedShowTopN: number,
+    color: string
 }
 export default function BarGraph(props: Props) {
     /**
@@ -83,8 +84,6 @@ export default function BarGraph(props: Props) {
             </g>
         );
     };
-    console.log(props.label, 'yoyoyoyo')
-    const color: string = props.label === 'cases' ? '#990001' : 'grey'
     return (
         <BarChart width={410}
                   height={props.data.length < 3 ? 70 * props.data.length : 50 * props.data.length}
@@ -101,7 +100,7 @@ export default function BarGraph(props: Props) {
                                interval={0}/>
                         <Tooltip content={customTooltip}/>
                         <Bar dataKey={"value"}
-                             fill={color}
+                             fill={props.color}
                              onClick={barOnClick}
                              radius={[4, 4, 4, 4]}>
                                 <LabelList dataKey={"labelListLabel"}

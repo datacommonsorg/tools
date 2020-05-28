@@ -437,8 +437,17 @@ class COVID19:
             geoId_map[state_dcid] = self.data.loc[county_dcid]['state_name']
         return geoId_map
 
-    def get_timeseries_of_cumulative_cases(self, days=30):
-        return self.state_cumulative_cases.iloc[-days:].T
+    def get_timeseries_of_cumulative_cases(self, days=30, region="state"):
+        if region == "state":
+            return self.state_cumulative_cases.iloc[-days:].T.iloc[:10].dropna()
+        else:
+            return self.county_cumulative_cases.iloc[-days:].T.iloc[:10].dropna()
+
+    def get_timeseries_of_cumulative_deaths(self, days=30, region="state"):
+        if region == "state":
+            return self.state_cumulative_deaths.iloc[-days:].T.iloc[:10].dropna()
+        else:
+            return self.county_cumulative_deaths.iloc[-days:].T.iloc[:10].dropna()
 
     def get_latest_date_in_dataset(self, days_ago:int=0):
         """Returns the latest date in the dataset."""

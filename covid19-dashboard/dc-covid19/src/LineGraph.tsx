@@ -14,31 +14,32 @@
  limitations under the License.
  */
 import React from 'react';
-import {Bar, BarChart, LabelList, Line, LineChart, Tooltip, XAxis, YAxis} from 'recharts'
+import {Line, LineChart, Tooltip, XAxis, YAxis} from 'recharts'
 
 type Props = {
     data: any,
     label: string,
     region: string,
     dcidMap: {},
-    selectedShowTopN: number
+    selectedShowTopN: number,
+    color: string
 }
 export default function LineGraph(props: Props) {
-    const color: string = props.label === 'cases' ? '#990001' : 'grey'
     let data = props.data[0] || {}
     let lines: JSX.Element[] = []
-    for (let x in data){
-        if (x === 'label') continue
-        lines.push(<Line type="monotone" dataKey={x} stroke={color} />)
+    for (let geoId in data){
+        if (geoId === 'label') continue
+        lines.push(<Line type="monotone" dataKey={geoId} stroke={props.color}/>)
     }
     return (
         <LineChart width={500}
-                  height={500}
-                  data={props.data}>
+                   height={500}
+                   data={props.data}>
             <XAxis dataKey={"label"} />
             <YAxis tick={{ill: '#868E96', fontSize: 10}}
                    width={90}
                    interval={0}/>
+            <Tooltip/>
             {lines}
         </LineChart>
     );

@@ -167,9 +167,10 @@ def get_data_for(covid, region, date):
         'deaths': (covid.get_cumulative_deaths_per_capita_for_given_date(region=region, date=date)).to_dict()
     }
 
+    print("Getting cumulativeTimeSeries Data")
     cumulativeTimeSeries = {
-        'cases': covid.get_timeseries_of_cumulative_cases().to_dict(),
-        'deaths': covid.get_timeseries_of_cumulative_cases().to_dict()
+        'cases': covid.get_timeseries_of_cumulative_cases(region=region).to_dict(),
+        'deaths': covid.get_timeseries_of_cumulative_deaths(region=region).to_dict()
     }
 
     return {

@@ -81,6 +81,7 @@ body {
 }
 
 .empty-panel {
+    width: 450px;
     color: grey;
     text-align: center;
     font-weight: normal;

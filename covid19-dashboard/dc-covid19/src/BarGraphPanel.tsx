@@ -17,7 +17,6 @@ import React from "react";
 import BarGraph from './BarGraph'
 import numberWithCommas from "./NumberWithCommas";
 import PanelInfo from "./PanelInfo.json";
-import EmptyPanel from './EmptyPanel'
 
 type dataHolder = {
     regionName: string,
@@ -92,7 +91,8 @@ export default function BarGraphPanel(props: Props) {
                       label={props.label}
                       data={data}
                       region={props.region}
-                      selectedShowTopN={props.selectedShowTopN}/>
+                      selectedShowTopN={props.selectedShowTopN}
+                      color={props.label === 'cases' ? '#990001' : 'grey'}/>
         </div>
     )
     }

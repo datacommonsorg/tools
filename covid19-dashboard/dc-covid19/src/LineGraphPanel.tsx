@@ -15,7 +15,6 @@
  */
 import React from "react";
 import LineGraph from './LineGraph'
-import numberWithCommas from "./NumberWithCommas";
 import PanelInfo from "./PanelInfo.json";
 
 type dataHolder = {
@@ -66,7 +65,8 @@ export default function LineGraphPanel(props: Props) {
                        label={props.label}
                        data={data}
                        region={props.region}
-                       selectedShowTopN={props.selectedShowTopN}/>
+                       selectedShowTopN={props.selectedShowTopN}
+                       color={props.label === 'cases' ? '#990001' : 'grey'}/>
         </div>
     )
 }
