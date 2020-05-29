@@ -29,7 +29,6 @@ app.config.from_pyfile('config.py')
 cache = Cache(app)
 
 API_KEY = app.config['API_KEY']
-print(API_KEY)
 
 
 @app.route('/', defaults={'path': ''})
@@ -39,12 +38,6 @@ def serve(path):
         return send_from_directory(app.static_folder, path)
     else:
         return send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route("/get-timeseries-data")
-def get_timeseries_data():
-    covid = COVID19(api_key=API_KEY)
-    return covid.get_timeseries_of_cumulative_cases().to_dict()
 
 
 @app.route("/get-all-data")
@@ -101,6 +94,13 @@ def get_all_data():
 
 
 def get_data_for(covid, region, date):
+
+    print("Getting cumulativeTimeSeries Data")
+    cumulativeTimeSeries = {
+        'cases': covid.get_timeseries_of_cumulative_cases(region=region).to_dict(),
+        'deaths': covid.get_timeseries_of_cumulative_deaths(region=region).to_dict()
+    }
+    
     print("Getting perDay Data")
     daily = {
         'cases': covid.get_cases_for_given_range_alone(region=region, most_recent_date=date, time_delta=1).to_dict(),
@@ -170,12 +170,6 @@ def get_data_for(covid, region, date):
     cumulativePerCapita = {
         'cases': (covid.get_cumulative_cases_per_capita_for_given_date(region=region, date=date)).to_dict(),
         'deaths': (covid.get_cumulative_deaths_per_capita_for_given_date(region=region, date=date)).to_dict()
-    }
-
-    print("Getting cumulativeTimeSeries Data")
-    cumulativeTimeSeries = {
-        'cases': covid.get_timeseries_of_cumulative_cases(region=region).to_dict(),
-        'deaths': covid.get_timeseries_of_cumulative_deaths(region=region).to_dict()
     }
 
     return {

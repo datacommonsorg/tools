@@ -146,8 +146,6 @@ class COVID19:
         data_holder = {}
         response = send_request("https://api.datacommons.org/bulk/stats",
                                 {"place": dcids, "stats_var": stats_var}, api_key=self.api_key)
-        print("HELLO WORLD")
-        print(response)
 
         for dcid in response:
             try:
