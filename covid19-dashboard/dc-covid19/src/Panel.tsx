@@ -25,6 +25,7 @@ type Props = {
     region: string,
     dcidMap: {},
     selectedDate: string,
+    ISOSelectedDate: string,
     selectedShowTopN: number,
     typeOfData: string
 }
@@ -49,6 +50,7 @@ export default function Panel(props: Props) {
         return <LineGraphPanel dcidMap={props.dcidMap}
                                data={props.data}
                                selectedDate={props.selectedDate}
+                               ISOSelectedDate={props.ISOSelectedDate}
                                label={props.label}
                                region={props.region}
                                selectedShowTopN={props.selectedShowTopN}

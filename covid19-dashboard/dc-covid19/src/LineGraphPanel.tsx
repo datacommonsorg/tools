@@ -32,6 +32,7 @@ type Props = {
     region: string,
     dcidMap: {},
     selectedDate: string,
+    ISOSelectedDate: string
     selectedShowTopN: number,
     typeOfData: string
 }
@@ -42,11 +43,30 @@ export default function LineGraphPanel(props: Props) {
      * @param data
      */
     const jsonToArray = (data: dataHolder) => {
-        let dataAsList: dataHolder[] = []
+        let dataAsList: any = []
         if (!Object.keys(data).length) return dataAsList
 
+        console.log(props.ISOSelectedDate)
+        console.log(data)
+        console.log(data[props.ISOSelectedDate])
+        let sortedGeoIds: { [key: string]: number} [] = []
+
+        for (let geoId in data[props.ISOSelectedDate]){
+            let value = data[props.ISOSelectedDate][geoId]
+            sortedGeoIds.push({[geoId]: value})
+        }
+
+        sortedGeoIds = sortedGeoIds.sort((a, b) => Object.values(b)[0] - Object.values(a)[0])
+        console.log(sortedGeoIds)
+        // sortedGeoIds = sortedGeoIds.map(x => x[Object.values(x)[0]])
+
         Object.keys(data).forEach(date => {
-            dataAsList.push({...data[date], label: date})
+            let tempData = {}
+            for (let geoId in data[date]){
+                let regionName = props.dcidMap[geoId]
+                tempData[regionName] = data[date][geoId]
+            }
+            dataAsList.push({...tempData, label: date})
         })
         return dataAsList
 

@@ -140,7 +140,7 @@ def get_data_for(covid, region, date):
         'cases': covid.get_cases_for_given_range_alone(region=region, most_recent_date=date, time_delta=30).to_dict(),
         'deaths': covid.get_deaths_for_given_range_alone(region=region, most_recent_date=date, time_delta=30).to_dict()
     }
-
+    print("Getting monthlyPerCapita Data")
     monthlyPerCapita = {
         'cases': (covid.get_cases_difference_per_capita(region=region, most_recent_date=date, time_delta=30)).to_dict(),
         'deaths': (

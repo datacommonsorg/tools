@@ -61,6 +61,7 @@ export default function Row(props: Props) {
                 <Panel dcidMap={props.dcidMap}
                        data={props.data}
                        selectedDate={props.selectedDate}
+                       ISOSelectedDate={props.ISOSelectedDate}
                        label={"cases"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}
@@ -71,6 +72,7 @@ export default function Row(props: Props) {
                 <Panel dcidMap={props.dcidMap}
                        data={props.data}
                        selectedDate={props.selectedDate}
+                       ISOSelectedDate={props.ISOSelectedDate}
                        label={"deaths"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}

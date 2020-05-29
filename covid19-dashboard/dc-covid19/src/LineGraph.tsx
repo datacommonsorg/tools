@@ -24,6 +24,7 @@ type Props = {
     selectedShowTopN: number,
     color: string
 }
+
 export default function LineGraph(props: Props) {
     let data = props.data[0] || {}
     let lines: JSX.Element[] = []
@@ -31,6 +32,8 @@ export default function LineGraph(props: Props) {
         if (geoId === 'label') continue
         lines.push(<Line type="monotone" dataKey={geoId} stroke={props.color}/>)
     }
+
+
     return (
         <LineChart width={500}
                    height={500}
@@ -39,7 +42,7 @@ export default function LineGraph(props: Props) {
             <YAxis tick={{ill: '#868E96', fontSize: 10}}
                    width={90}
                    interval={0}/>
-            <Tooltip/>
+            <Tooltip itemSorter={(item) => {console.log(item); return -item.value;}} />
             {lines}
         </LineChart>
     );

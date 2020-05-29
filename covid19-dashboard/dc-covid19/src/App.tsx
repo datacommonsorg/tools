@@ -19,6 +19,7 @@ import SideNav from "./SideNav";
 import Row from "./Row";
 import PanelInfo from './PanelInfo.json'
 import Configuration from './Configuration.json'
+import MapChart from "./MapChart";
 
 type stateType = {
     allData: {}, // copy of all the unparsed data

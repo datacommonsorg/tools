@@ -144,12 +144,18 @@ class COVID19:
         data_holder = {}
         response = send_request("https://api.datacommons.org/bulk/stats",
                                 {"place": dcids, "stats_var": stats_var})
+        print("HELLO WORLD")
+        print(response)
 
         for dcid in response:
             try:
                 data = response[dcid]['data']
                 data_holder[dcid] = data
             except KeyError:
+                print("KEY ERROR")
+                continue
+            except TypeError:
+                print("TYPE ERROR")
                 continue
         df = pd.DataFrame.from_dict(data_holder, orient='index')
         return clean_and_transpose(df)
@@ -437,19 +443,25 @@ class COVID19:
             geoId_map[state_dcid] = self.data.loc[county_dcid]['state_name']
         return geoId_map
 
-    def get_timeseries_of_cumulative_cases(self, days=30, region="state"):
+    def get_timeseries_of_cumulative_cases(self, days:int=60, region:str="state"):
         if region == "state":
-            return self.state_cumulative_cases.iloc[-days:].T.iloc[:10].dropna()
+            df = self.state_cumulative_cases
         else:
-            return self.county_cumulative_cases.iloc[-days:].T.iloc[:10].dropna()
+            df = self.county_cumulative_cases
+        df = df.iloc[-days:].T
+        df = df.sort_values(ascending=False, by=df.columns[-1]).iloc[:10].dropna()
+        return df
 
-    def get_timeseries_of_cumulative_deaths(self, days=30, region="state"):
+    def get_timeseries_of_cumulative_deaths(self, days:int=60, region:str="state"):
         if region == "state":
-            return self.state_cumulative_deaths.iloc[-days:].T.iloc[:10].dropna()
+            df = self.state_cumulative_deaths
         else:
-            return self.county_cumulative_deaths.iloc[-days:].T.iloc[:10].dropna()
+            df = self.county_cumulative_deaths
+        df = df.iloc[-days:].T
+        df = df.sort_values(ascending=False, by=df.columns[-1]).iloc[:10].dropna()
+        return df
 
-    def get_latest_date_in_dataset(self, days_ago:int=0):
+    def get_latest_date_in_dataset(self, days_ago: int=0):
         """Returns the latest date in the dataset."""
         return self.county_cumulative_cases.iloc[~days_ago].name
 
