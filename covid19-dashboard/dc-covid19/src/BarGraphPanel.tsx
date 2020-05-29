@@ -17,7 +17,6 @@ import React from "react";
 import BarGraph from './BarGraph'
 import numberWithCommas from "./NumberWithCommas";
 import PanelInfo from "./PanelInfo.json";
-import MapChart from "./MapChart";
 
 type dataHolder = {
     regionName: string,
