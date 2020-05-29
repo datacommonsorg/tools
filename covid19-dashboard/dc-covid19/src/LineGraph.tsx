@@ -42,7 +42,7 @@ export default function LineGraph(props: Props) {
             <YAxis tick={{ill: '#868E96', fontSize: 10}}
                    width={90}
                    interval={0}/>
-            <Tooltip itemSorter={(item) => {console.log(item); return -item.value;}} />
+            <Tooltip itemSorter={(item) => {return -item.value;}} />
             {lines}
         </LineChart>
     );

@@ -86,8 +86,8 @@ export default function BarGraphPanel(props: Props) {
     const data: dataHolder[] = jsonToArray(preprocesedData)
     return (
         <div className={"panel chart shadow"}>
-            <h4 className={"title"}>{PanelInfo[props.typeOfData]?.title.replace("{TYPE}", "Deaths")}</h4>
-            <h6 className={"title"}>{PanelInfo[props.typeOfData]?.subtitle.replace("{TYPE}", "Deaths")}</h6>
+            <h4 className={"title"}>{PanelInfo[props.typeOfData]?.title.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h4>
+            <h6 className={"title"}>{PanelInfo[props.typeOfData]?.subtitle.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
             <BarGraph dcidMap={props.dcidMap}
                       label={props.label}
                       data={data}
