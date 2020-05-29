@@ -20,7 +20,8 @@ import datetime
 
 
 class COVID19:
-    def __init__(self):
+    def __init__(self, api_key):
+        self.api_key = api_key
         self.data = pd.DataFrame({'country': ['country/USA']})
 
         self.state_cumulative_cases = pd.DataFrame({})
@@ -64,7 +65,7 @@ class COVID19:
         """Retrieves all the states dcids in the USA"""
         print("Getting State dcids")
         response = send_request("https://api.datacommons.org/node/places-in",
-                                {"dcids": ["country/USA"], "placeType": "State"})
+                                {"dcids": ["country/USA"], "placeType": "State"}, api_key=self.api_key)
         state_dcids = [x['place'] for x in response]
 
         self.data['state_dcid'] = pd.Series([state_dcids])
@@ -77,7 +78,7 @@ class COVID19:
         """Retrieves the states from the list of state_dcid"""
         print("Getting State names")
         response = send_request("https://api.datacommons.org/node/property-values",
-                                {"dcids": list(self.data['state_dcid']), "property": "name"})
+                                {"dcids": list(self.data['state_dcid']), "property": "name"}, api_key=self.api_key)
         state_names = {dcid: response[dcid]['out'][0]['value'] for dcid in response}
         self.data['state_name'] = self.data['state_dcid'].map(state_names)
         self.data = self.data.explode('state_name')
@@ -86,7 +87,8 @@ class COVID19:
         """Retrieves the state population for the given set of state dcids."""
         print("Getting States population")
         response = send_request("https://api.datacommons.org/bulk/stats",
-                                {"place": list(self.data['state_dcid']), "stats_var": "TotalPopulation"})
+                                {"place": list(self.data['state_dcid']), "stats_var": "TotalPopulation"},
+                                api_key=self.api_key)
         state_population = {dcid: response[dcid]['data']['2018'] for dcid in response}
         self.data['state_population'] = self.data['state_dcid'].map(state_population)
 
@@ -94,7 +96,7 @@ class COVID19:
         """Retrieves the states from the list of county_dcid"""
         print("Getting County dcids")
         response = send_request("https://api.datacommons.org/node/places-in",
-                                {"dcids": list(self.data['state_dcid']), "placeType": "County"})
+                                {"dcids": list(self.data['state_dcid']), "placeType": "County"}, api_key=self.api_key)
         county_dcids = {}
 
         for elem in response:
@@ -115,7 +117,7 @@ class COVID19:
                                 req_json={"placeType": "County",
                                           "populationType": "Person",
                                           "observationDate": "2018"},
-                                compress=True)
+                                compress=True, api_key=self.api_key)
         response = response['places']
         county_names = {}
         county_population = {}
@@ -143,7 +145,7 @@ class COVID19:
         """Retrieves COVID19 data given a lsit of dcids and statistical variable"""
         data_holder = {}
         response = send_request("https://api.datacommons.org/bulk/stats",
-                                {"place": dcids, "stats_var": stats_var})
+                                {"place": dcids, "stats_var": stats_var}, api_key=self.api_key)
         print("HELLO WORLD")
         print(response)
 

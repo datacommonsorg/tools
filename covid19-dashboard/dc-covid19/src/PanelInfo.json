@@ -1,11 +1,4 @@
 {
-  "cumulativeTimeSeries": {
-    "typeOfGraph": "line",
-    "sideNavText": "Cumulative Time Series",
-    "sectionTitle": "{DATE}",
-    "title": "Cumulative Time Series",
-    "subtitle": ""
-  },
   "daily": {
     "typeOfGraph": "bar",
     "sideNavText": "Daily",

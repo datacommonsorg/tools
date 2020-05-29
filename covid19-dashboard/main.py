@@ -24,7 +24,12 @@ app = Flask(__name__, static_folder='./dc-covid19/build')
 CORS(app)
 
 app.config.from_mapping(config)
+# Load the configuration from the instance folder
+app.config.from_pyfile('config.py')
 cache = Cache(app)
+
+API_KEY = app.config['API_KEY']
+print(API_KEY)
 
 
 @app.route('/', defaults={'path': ''})
@@ -38,14 +43,14 @@ def serve(path):
 
 @app.route("/get-timeseries-data")
 def get_timeseries_data():
-    covid = COVID19()
+    covid = COVID19(api_key=API_KEY)
     return covid.get_timeseries_of_cumulative_cases().to_dict()
 
 
 @app.route("/get-all-data")
 @cache.cached(timeout=5000)
 def get_all_data():
-    covid = COVID19()
+    covid = COVID19(api_key=API_KEY)
     dcidMap = covid.generate_map_of_dcid_to_name()
 
     latest = {

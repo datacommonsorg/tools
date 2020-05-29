@@ -1,7 +1,5 @@
 runtime: python37
 instance_class: B8
-env_variables:
-   _ENV_VAR_API_KEY: "AIzaSyCNCHj4uelGpDzcnU-o2cZD44Hs9J78n8I"
 basic_scaling:
    idle_timeout: 10m
    max_instances: 11
