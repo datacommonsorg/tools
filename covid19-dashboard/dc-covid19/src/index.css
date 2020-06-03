@@ -1,0 +1,266 @@
+/**
+  Copyright 2020 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+ */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: black
+}
+
+body {
+    background-color: white;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin: 0;
+}
+
+.container {
+    margin-left: 10%;
+    margin-right: 5%;
+}
+
+.main-content {
+    margin-left: 15%;
+    margin-right: 5%;
+}
+
+.panel {
+    margin: 5% 0;
+    background-color: white;
+    border-radius: 10px;
+}
+
+.chart {
+    padding: 20px 30px 20px 0;
+}
+
+.tooltip-content {
+    margin: 2px;
+    font-weight: normal;
+    color: grey;
+    text-align: left;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.shadow {
+    box-shadow:
+        0 3px 2px 1px rgba(0, 0, 0, 0.034),
+        0 7px 5px 1px rgba(0, 0, 0, 0.048),
+        0 13px 10px 1px rgba(0, 0, 0, 0.06),
+        0 22px 18px 1px rgba(0, 0, 0, 0.072),
+        0 42px 33px 1px rgba(0, 0, 0, 0.086),
+        0 0 50px 1px rgba(0, 0, 0, 0.12)
+}
+
+.title {
+    color: black;
+    font-weight: bold;
+    text-align: center;
+    margin: 5px 5px 5px 40px;
+}
+
+.empty-panel {
+    width: 450px;
+    color: grey;
+    text-align: center;
+    font-weight: normal;
+    padding-right: 0;
+}
+
+.left {
+    float: left;
+}
+
+.right {
+    float: right;
+}
+
+.row:after {
+    display: table;
+    clear: both;
+    content: ""
+}
+
+
+.fadeInAnimation {
+    animation: fadeIn 2s;
+}
+
+.option-panel{
+    margin: 0;
+    padding: 20px 20px;
+    background-color: #990001;
+    min-width: auto;
+    width: 180px;
+    position: fixed;
+    z-index: 1;
+    top: 4%;
+    left: 2%;
+    overflow-x: hidden;
+}
+
+.option-panel .dropdown{
+    height: auto;
+    font-weight: bold;
+    border-radius: 10px;
+    align-content: normal;
+    align-items: normal;
+    padding: 5px;
+    text-align: left;
+    font-size: 20px;
+    margin: 2px;
+    width: 175px;
+}
+
+.main-title{
+    text-align: center;
+    color: grey;
+}
+
+.section-title {
+    margin-top: 50px;
+    margin-bottom: 20px;
+}
+
+.footer{
+    margin-top: 5%;
+    margin-left: 10%;
+    text-align: center;
+}
+
+.sidenav {
+    position: fixed;
+    z-index: 1;
+    top: 15%;
+    left: 2%;
+    overflow-x: hidden;
+    width: 160px;
+    padding: 30px;
+}
+
+.sidenav a {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    text-decoration: none;
+    font-size: 14px;
+    color: black;
+    display: block;
+    font-weight: bold;
+}
+
+.sidenav a:hover {
+    color: #990001;
+    cursor: pointer;
+}
+
+@media only screen and (max-width: 1360px) {
+    .left {
+        float: none;
+    }
+
+    .right {
+        float: none
+    }
+
+    .chart {
+        margin: 5% auto 0;
+    }
+
+    .container {
+        margin: 0;
+    }
+
+    .main-title {
+        margin-left: 20%
+    }
+
+
+    .row {
+        margin-left: 20%;
+    }
+
+    .main-content {
+        margin: 0;
+        display: block;
+    }
+
+    .section-title {
+        text-align: center;
+        margin-left: 0;
+    }
+}
+
+@media only screen and (max-width: 800px) {
+    .sidenav {
+        visibility: hidden;
+    }
+
+
+    .main-content {
+        margin: 0;
+        display: block;
+    }
+
+    .row {
+        margin-left: 0;
+    }
+
+    #root {
+        zoom: 60%;
+    }
+
+
+    .option-panel{
+        width: 40%;
+        align-content: center;
+        text-align: center;
+        background-color: #990001;
+        margin: 40px auto 30px;
+        min-width: 400px;
+        padding: 20px 0;
+        position: static;
+        z-index: 1;
+        top: 8%;
+        left: 2%;
+        overflow-x: hidden;
+    }
+
+    .option-panel .dropdown{
+        height: 60px;
+        font-weight: bold;
+        border-radius: 10px;
+        align-content: center;
+        align-items: center;
+        text-align: center;
+        font-size: 20px;
+        margin: 20px;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+
+    .main-title {
+        margin-left: 0;
+    }
+}
