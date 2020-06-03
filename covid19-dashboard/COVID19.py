@@ -138,8 +138,14 @@ class COVID19:
         Kansas City counties are too.
         This function is in charge of adding those counties/cities to self.data"""
         self.data.loc['geoId/3651000', 'county_population'] = 8399000
+        self.data.loc['geoId/3651000', 'state_dcid'] = "geoId/36"
+        self.data.loc['geoId/3651000', 'state_name'] = "New York"
+        self.data.loc['geoId/3651000', 'county_name'] = 'NYC'
+
         self.data.loc['geoId/2938000', 'county_population'] = 491918
-        # self.request_city_population()
+        self.data.loc['geoId/2938000', 'state_dcid'] = "geoId/29"
+        self.data.loc['geoId/2938000', 'state_name'] = "Missouri"
+        self.data.loc['geoId/2938000', 'county_name'] = 'Kansas City'
 
     def get_covid_data(self, dcids: list, stats_var: str) -> pd.DataFrame:
         """Retrieves COVID19 data given a lsit of dcids and statistical variable"""
