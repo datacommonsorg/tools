@@ -44,8 +44,8 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 
-@cache.cached(timeout=50000)
-@app.route("/get-places")
+@cache.cached(timeout=864000)
+@app.route("/api/places")
 def get_places():
     """Returns a dictionary of dcid->(name, type)
     where name is the name of the region and type is the type of region."""
@@ -56,29 +56,29 @@ def get_places():
                                   compress=False,
                                   api_key=API_KEY)
 
-    counties: dict = {county['dcid']: (county['name'], 'county') for county in response['NYT_COVID19_County']['out']}
-    states: dict = {state['dcid']: (state['name'], 'state') for state in response['NYT_COVID19_State']['out']}
+    counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
+    states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
     return {**counties, **states}
 
 
-@cache.cached(timeout=50000)
-@app.route("/get-total-cases")
+@cache.cached(timeout=3600)
+@app.route("/api/total-cases")
 def get_total_cases():
     """Returns the total Cumulative Cases of each region per day. day->dcid->cases"""
     dcids: list = list(get_places().keys())
-    return get_covid_data(dcids, 'NYTCovid19CumulativeCases')
+    return get_stats_by_date(dcids, 'NYTCovid19CumulativeCases')
 
 
-@cache.cached(timeout=50000)
-@app.route("/get-total-deaths")
+@cache.cached(timeout=3600)
+@app.route("/api/total-deaths")
 def get_total_deaths():
     """Returns the total Cumulative Deaths of each region. day->dcid->deaths"""
     dcids: list = list(get_places().keys())
-    return get_covid_data(dcids, 'NYTCovid19CumulativeDeaths')
+    return get_stats_by_date(dcids, 'NYTCovid19CumulativeDeaths')
 
 
-@cache.cached(timeout=50000)
-@app.route("/get-population")
+@cache.cached(timeout=864000)
+@app.route("/api/population")
 def get_population():
     """Returns the total population of each region. dcid->population"""
     dcids: list = list(get_places().keys())
@@ -86,19 +86,24 @@ def get_population():
                                   {"place": dcids,
                                    "stats_var": "TotalPopulation"},
                                   api_key=API_KEY)
-    output: defaultdict = defaultdict()
+    output: defaultdict = defaultdict(int)
     for dcid in response:
         if not response[dcid]:
+            # Some dcids return None if there is no data, so we have to make sure there is data first.
+            continue
+        if "data" not in response[dcid]:
+            continue
+        if "2018" not in response[dcid]['data']:
             continue
         output[dcid] = response[dcid]['data']['2018']
     return output
 
 
-def get_covid_data(place: list, stats_var: str) -> dict:
+def get_stats_by_date(place: list, stats_var: str) -> dict:
     """
     In charge of querying and returning the covid data in the appropriate format.
     :param place: list of dcids to get data for
-    :param stats_var: NYTCovid19CumulativeCases or NYTCovid19CumulativeDeaths
+    :param stats_var: the Data Commons stats_var to query data for
     :return: dictionary where every day contains several regions, and those regions contain an int of cases/deaths
     """
     response: dict = send_request("https://api.datacommons.org/bulk/stats",
@@ -112,8 +117,8 @@ def get_covid_data(place: list, stats_var: str) -> dict:
         if "data" not in response[dcid]:
             continue
         data = response[dcid]["data"]
-        for day in data:
-            output[day][dcid] = data[day]
+        for date in data:
+            output[date][dcid] = data[date]
     return output
 
 
