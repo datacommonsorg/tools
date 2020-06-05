@@ -44,18 +44,18 @@ def serve(path):
 
 
 @cache.cached(timeout=50000)
-@app.route("/get-region-names")
-def get_region_names():
+@app.route("/get-all-region-names")
+def get_all_region_names():
+    # Re-load all the data when the cache expires.
     COVID19.load()
-    return {
-        'counties': COVID19.dcid_to_county_name(),
-        'states': COVID19.dcid_to_state_name()
-    }
+    # Don't combine the data, we want to know whether it's a county or a state.
+    return {**COVID19.dcid_to_county_name(), **COVID19.dcid_to_state_name()}
 
 
 @cache.cached(timeout=50000)
 @app.route("/get-county-data")
 def get_county_data():
+    # Re-load all the data when the cache expires.
     COVID19.load()
     return {
         "cases": COVID19.county_cases,
@@ -66,11 +66,21 @@ def get_county_data():
 @cache.cached(timeout=50000)
 @app.route("/get-state-data")
 def get_state_data():
+    # Re-load all the data when the cache expires.
     COVID19.load()
     return {
         "cases": COVID19.state_cases,
         "deaths": COVID19.state_deaths
     }
+
+
+@cache.cached(timeout=50000)
+@app.route("/get-all-population")
+def get_all_population():
+    # Re-load all the data when the cache expires.
+    COVID19.load()
+    # Combine the county and state population
+    return {**COVID19.get_county_population(), **COVID19.get_state_population()}
 
 
 if __name__ == "__main__":

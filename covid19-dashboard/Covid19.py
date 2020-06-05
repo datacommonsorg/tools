@@ -18,6 +18,7 @@ from collections import defaultdict
 
 class Covid19:
     def __init__(self, api_key) -> None:
+        self._geo_exceptions = ['geoId/3651000', 'geoId/2938000']
         self.api_key = api_key
         self.counties = {}
         self.states = {}
@@ -40,6 +41,7 @@ class Covid19:
                                    post=True,
                                    compress=False,
                                    api_key=self.api_key)['NYT_COVID19_State']['out']
+
         self.county_cases = self.get_covid_data(list(self.dcid_to_county_name().keys()), 'NYTCovid19CumulativeCases')
         self.county_deaths = self.get_covid_data(list(self.dcid_to_county_name().keys()), 'NYTCovid19CumulativeDeaths')
         self.state_cases = self.get_covid_data(list(self.dcid_to_state_name().keys()), 'NYTCovid19CumulativeCases')
@@ -50,6 +52,7 @@ class Covid19:
         Gets a dictionary of state names.
         :return: dictionary where dcid->name of the state.
         """
+        print(len(self.counties))
         return {county['dcid']: county['name'] for county in self.counties}
 
     def dcid_to_state_name(self) -> dict:
@@ -72,11 +75,45 @@ class Covid19:
                                 api_key=self.api_key)
         output = defaultdict(dict)
 
-        # Store the data in output as dates->geoId->value
-        for geoId in response:
-            if "data" not in response[geoId]:
+        # Store the data in output as dates->dcid->value
+        for dcid in response:
+            if "data" not in response[dcid]:
                 continue
-            data = response[geoId]["data"]
+            data = response[dcid]["data"]
             for day in data:
-                output[day][geoId] = data[day]
+                output[day][dcid] = data[day]
+        return output
+
+    def get_state_population(self) -> dict:
+        """
+        Get the total population of all the states.
+        :return: all the state populations. geoId->population
+        """
+        return self.get_population(list(self.dcid_to_state_name().keys()))
+
+    def get_county_population(self) -> dict:
+        """
+        Get the total population of all the counties.
+        :return: all the county populations. geoId->population
+        """
+        dcids = list(self.dcid_to_county_name().keys())
+        dcids.extend(self._geo_exceptions)
+        print(dcids)
+        return self.get_population(dcids)
+
+    def get_population(self, dcids) -> dict:
+        """
+        In charge of getting the total population of 2018, and returning a dictionary of geoId->population
+        :param dcids: the list of dcids to query the poopulation from
+        :return: a dictionary
+        """
+        response = send_request("https://api.datacommons.org/bulk/stats",
+                                {"place": dcids,
+                                 "stats_var": "TotalPopulation"},
+                                api_key=self.api_key)
+        output = defaultdict()
+        for dcid in response:
+            if not response[dcid]:
+                continue
+            output[dcid] = response[dcid]['data']['2018']
         return output
