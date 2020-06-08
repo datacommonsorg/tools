@@ -4,76 +4,45 @@
     "sideNavText": "Daily",
     "sectionTitle": "{DATE}",
     "title": "Most Daily {TYPE}",
-    "subtitle": ""
+    "subtitle": "",
+    "deltaDate": 1,
+    "type": "absolute"
   },
   "dailyPerCapita": {
     "typeOfGraph": "bar",
     "sideNavText": "Daily Per Capita",
     "sectionTitle": "",
     "title": "Most Daily {TYPE} Per Capita",
-    "subtitle": "{TYPE} Per 10,000 People"
+    "subtitle": "{TYPE} Per 10,000 People",
+    "dateDelta": 1,
+    "type": "perCapita"
+
   },
   "dailyIncrease": {
     "typeOfGraph": "bar",
     "sideNavText": "Daily Increase",
     "sectionTitle": "",
     "title": "Most Daily {TYPE} Increase",
-    "subtitle": "In Percent"
+    "subtitle": "In Percent",
+    "deltaDate": 1,
+    "type": "increase"
   },
   "weekly": {
     "typeOfGraph": "bar",
     "sideNavText": "Weekly",
     "sectionTitle": "Since Last Week",
     "title": "Most Weekly {TYPE}",
-    "subtitle": ""
+    "subtitle": "",
+    "deltaDate": 8,
+    "type": "absolute"
   },
   "weeklyPerCapita": {
     "typeOfGraph": "bar",
     "sideNavText": "Weekly Per Capita",
     "sectionTitle": "",
     "title": "Most Weekly {TYPE} Per Capita",
-    "subtitle": "{TYPE} Per 10,000 People"
-  },
-  "weeklyIncrease": {
-    "typeOfGraph": "bar",
-    "sideNavText": "Weekly Increase",
-    "sectionTitle": "",
-    "title": "Most Weekly {TYPE} Increase",
-    "subtitle": "In Percent"
-  },
-  "monthly": {
-    "typeOfGraph": "bar",
-    "sideNavText": "Monthly",
-    "sectionTitle": "Since 1 Month Ago",
-    "title": "Most Monthly {TYPE}",
-    "subtitle": ""
-  },
-  "monthlyPerCapita": {
-    "typeOfGraph": "bar",
-    "sideNavText": "Monthly Per Capita",
-    "sectionTitle": "",
-    "title": "Most Monthly {TYPE} Per Capita",
-    "subtitle": "Per 10,000 People"
-  },
-  "monthlyIncrease": {
-    "typeOfGraph": "bar",
-    "sideNavText": "Monthly Increase",
-    "sectionTitle": "",
-    "title": "Most Monthly {TYPE} Increase",
-    "subtitle": "In Percent"
-  },
-  "absoluteCumulative": {
-    "typeOfGraph": "bar",
-    "sideNavText": "Cumulative",
-    "sectionTitle": "All-Time Cumulative",
-    "title": "Most Cumulative {TYPE}",
-    "subtitle": ""
-  },
-  "cumulativePerCapita": {
-    "typeOfGraph": "bar",
-    "sideNavText": "Cumulative Per Capita",
-    "sectionTitle": "",
-    "title": "Most Cumulative {TYPE} Per Capita",
-    "subtitle": "{TYPE} Per 10,000 People"
+    "subtitle": "{TYPE} Per 10,000 People",
+    "deltaDate": 8,
+    "type": "perCapita"
   }
 }

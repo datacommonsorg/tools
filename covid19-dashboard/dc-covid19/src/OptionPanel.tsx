@@ -16,7 +16,7 @@
 import React, {ChangeEvent} from "react";
 type Props = {
     handleSelectUpdate: (key: string, value: string | number) => void,
-    availableDates: {},
+    availableDates: string[],
     availableRegions: {},
     availableShowTopN: number[],
     defaultShowTopN: number,
@@ -28,6 +28,7 @@ export default class OptionPanel extends React.Component<Props> {
     handleSelect = (e: ChangeEvent) => {
         const newSelection: string = (e.target as HTMLInputElement).value
         const id: string = (e.target as HTMLInputElement).id
+        console.log(newSelection)
         if (newSelection !== 'empty') this.props.handleSelectUpdate('selected'+ id, newSelection)
 
     }
@@ -49,15 +50,10 @@ export default class OptionPanel extends React.Component<Props> {
             }
         })
 
-        // Sort all available dates
-        const sortedDates: string[]= Object.keys(this.props.availableDates)
-            .sort((a, b) =>
-                (this.props.availableDates[a] > this.props.availableDates[b]) ? -1 :
-                    ((this.props.availableDates[a] < this.props.availableDates[b]) ? 1 : 0))
 
         // Get all the date options
-        const dateOptions: JSX.Element[]  = sortedDates
-            .map(date => <option value={date}>{this.props.availableDates[date]}</option>)
+        const dateOptions: JSX.Element[]  = this.props.availableDates
+            .map(date => <option value={date}>{date}</option>)
 
         return (
             <div className={"option-panel panel shadow"}>

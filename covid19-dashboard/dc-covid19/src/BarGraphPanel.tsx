@@ -31,8 +31,7 @@ type Props = {
     data: {},
     label: string,
     region: string,
-    dcidMap: {},
-    selectedDate: string,
+    ISOSelectedDate: string,
     selectedShowTopN: number,
     typeOfData: string
 }
@@ -47,7 +46,7 @@ export default function BarGraphPanel(props: Props) {
         if (!Object.keys(data).length) return dataAsList
 
         Object.keys(data['value']).forEach(dcid => {
-            let regionName: string = props.dcidMap[dcid]
+            let regionName: string = ""
             let value: number = Math.round(data?.value[dcid] * 100000) / 100000
             let absolute: number = data?.absolute?.[dcid]
             let population: number = data?.population?.[dcid]
@@ -80,15 +79,14 @@ export default function BarGraphPanel(props: Props) {
     }
 
     // Data as it is received.
-    const preprocesedData: dataHolder = props.data?.[props.selectedDate]?.[props.region]?.[props.typeOfData]?.[props.label] || {}
+    const preprocesedData: dataHolder = props.data?.[props.ISOSelectedDate]?.[props.region]?.[props.typeOfData]?.[props.label] || {}
     // Data as an array to be interpreted by chart.
     const data: dataHolder[] = jsonToArray(preprocesedData)
     return (
         <div className={"panel chart shadow"}>
             <h4 className={"title"}>{PanelInfo[props.typeOfData]?.title.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h4>
             <h6 className={"title"}>{PanelInfo[props.typeOfData]?.subtitle.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
-            <BarGraph dcidMap={props.dcidMap}
-                      label={props.label}
+            <BarGraph label={props.label}
                       data={data}
                       region={props.region}
                       selectedShowTopN={props.selectedShowTopN}

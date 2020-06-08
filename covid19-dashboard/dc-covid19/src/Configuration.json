@@ -3,13 +3,8 @@
   "DEFAULT_REGION": "state",
   "SHOWTOPN": [5, 10, 20, 30, 40, 50],
   "DEFAULT_SHOWTOPN": 10,
-  "DATES": {
-    "latest": "Latest",
-    "sevenDays": "1 Week Ago",
-    "fourteenDays": "2 Weeks Ago",
-    "thirtyDays": "1 Month Ago"
-  },
-  "DEFAULT_DATE": "latest",
+  "DATES": [0, 7, 14, 30],
+  "DEFAULT_DATE": "2020-01-01",
   "TITLE": "Data Commons",
   "SUBTITLE": "COVID-19",
   "FOOTER": "Data from The New York Times, based on reports from state and local health agencies.\n"

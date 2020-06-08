@@ -13,67 +13,78 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  */
+
 import React from 'react';
 import OptionPanel from './OptionPanel'
 import SideNav from "./SideNav";
 import Row from "./Row";
 import PanelInfo from './PanelInfo.json'
 import Configuration from './Configuration.json'
-import MapChart from "./MapChart";
+import getISODatesBasedOnDeltaDates from "./GetAllAvailableDates";
 
 type stateType = {
-    allData: {}, // copy of all the unparsed data
+    data: any, // [cases, deaths, population, names]
     selectedRegion: string, // current region selected
     selectedShowTopN: number, // default number of top counties/states to show
     selectedDate: string, // current date selected, latest is always default
     availableRegions: {}, // region -> geoId
-    availableDates: {}, // id -> ISOdate
+    availableDates: string[], // available dates to pick from, example: today, 1 week ago, 1 month ago
     availableShowTopN: number[], // available numbers to view, example: Top 10, Top 20, Top 30
-    rows: JSX.Element[],
-    dcidMap: {}, // converts geoId to the region's name
-    animationClassName: string // will be passed down as a prop to anything requiring an animation
+    rows: JSX.Element[]
 }
 
 class App extends React.Component <{}, stateType> {
-    constructor(props: {}) {
-        super(props);
-        // Create the references for quick sidenav onClick
-        this.refs_ = this.generateRefs()
-        // On-load fadein animation.
-        this.fadeInAnimation()
-        // Request latest data from server.
-        this.sendRequest().then(r => console.log("Data has been loaded!"))
-    }
 
     state = {
-        allData: {},
+        data: [{}, {}, {}, {}],
         selectedRegion: Configuration.DEFAULT_REGION,
         selectedShowTopN: Configuration.DEFAULT_SHOWTOPN,
         selectedDate: Configuration.DEFAULT_DATE,
         availableRegions: Configuration.REGIONS,
-        availableDates: Configuration.DATES,
+        availableDates: [],
         availableShowTopN: Configuration.SHOWTOPN,
-        rows: [],
-        dcidMap: {},
-        animationClassName: "fadeInAnimation"
+        rows: []
     }
 
     refs_: any = {}
 
-    generateRefs = () => {
-        const refs_ = {}
-        Object.keys(PanelInfo).forEach(key => refs_[key] = React.createRef<HTMLDivElement>())
-        return refs_
+    componentDidMount() {
+        this.refs_ = this.generateRowReferences()
+        const requests = this.sendRequest()
+
+        Promise.all(requests).then(responses => {
+            responses.forEach((response, index) => {
+                response.json().then( json => {
+                    // Keep the data stored in the same position, that is: [cases, deaths, population, names]
+                    // Make a deep copy of the data stored in this.state.data, and then store the json at the index
+                    const currentData = this.state.data.map(val => val)
+                    currentData[index] = json
+                    this.setState({data: currentData})
+
+                    // index 0 contains the 'total-cases' object, which has the dates as keys
+                    if (index === 0) {
+                        // Get an array of all the dates in the data.
+                        const allDates = Object.keys(json)
+                        const latestDate = allDates[allDates.length - 1]
+                        // Get the deltaDates from the Configuration file.
+                        const availableDates = getISODatesBasedOnDeltaDates(latestDate, Configuration.DATES)
+                        this.setState({availableDates: availableDates})
+                        // The default date is always the latest date available in the dataset, which happens
+                        // to be the last date in the array
+                        this.setState({selectedDate: availableDates[availableDates.length - 1]})
+                    }
+                })
+            })
+        })
     }
 
     /**
-     * Sets the fadeInAnimation.
+     * Creates a reference for each row which allows easy access from the SideNav.
      */
-    fadeInAnimation = () => {
-        this.setState({animationClassName: "fadeInAnimation"})
-        window.setTimeout(() => {
-            this.setState({animationClassName: ""})
-        }, 1000)
+    generateRowReferences = () => {
+        const refs_ = {}
+        Object.keys(PanelInfo).forEach(key => refs_[key] = React.createRef<HTMLDivElement>())
+        return refs_
     }
 
     /**
@@ -110,34 +121,34 @@ class App extends React.Component <{}, stateType> {
     }
 
     /**
-     * Sends AJAX request to get all the data from the server.
-     * Stores the dates, dcidMap (converts geoId to name) and all the data.
+     * Request the data from the server, and store the Promises in that order.
+     * The order is important [cases, deaths, population, places].
      */
-    sendRequest = async () => {
+    sendRequest = () => {
         const host = window.location.protocol + '//' + window.location.hostname
-        const url: string = `${host}/get-all-data`
-        await fetch(url, {mode: 'cors'}).then(response => response.json().then(res => {
-            this.setState({availableDates: res['availableDates']})
-            this.setState({availableRegions: {...this.state.availableRegions,...res['availableRegions']}})
-            this.setState({dcidMap: res['dcidMap']})
-            this.setState({allData: res})
-        }))
+        const url: string = `${host}/api/`
+        let urls = [
+            url + 'total-cases',
+            url + 'total-deaths',
+            url + 'population',
+            url + 'places'
+        ];
+
+        // Map every url to the promise of the fetch
+        return urls.map(url => fetch(url, {mode: 'cors'}));
     }
     
     render() {
         const rows = Object.keys(PanelInfo)
-            .map(dataId => <Row data={this.state.allData}
-                                typeOfData={dataId}
-                                selectedDate={this.state.selectedDate}
-                                ISOSelectedDate={this.state.availableDates[this.state.selectedDate]}
+            .map(panelId => <Row data={this.state.data}
+                                panelId={panelId}
+                                ISOSelectedDate={this.state.selectedDate}
                                 region={this.state.selectedRegion}
-                                ref_={this.refs_[dataId]}
-                                dcidMap={this.state.dcidMap}
-                                selectedShowTopN={this.state.selectedShowTopN}
-                                animationClassName={this.state.animationClassName}/>)
+                                ref_={this.refs_[panelId]}
+                                selectedShowTopN={this.state.selectedShowTopN}/>)
 
         return (
-            <div className={"container " + this.state.animationClassName}>
+            <div className={"container"}>
                 <SideNav handleScrollOnRef={this.handleScrollOnRef}/>
                 <div className={"main-content"}>
                     <h1 className={"main-title"}>

@@ -29,7 +29,6 @@ type Props = {
     data: dataHolder[],
     label: string,
     region: string,
-    dcidMap: {},
     selectedShowTopN: number,
     color: string
 }
