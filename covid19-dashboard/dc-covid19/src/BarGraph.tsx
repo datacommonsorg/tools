@@ -13,6 +13,7 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  */
+
 import React from 'react';
 import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTip from "./ToolTip";
@@ -29,7 +30,6 @@ type Props = {
     data: dataHolder[],
     label: string,
     region: string,
-    dcidMap: {},
     selectedShowTopN: number,
     color: string
 }
@@ -61,7 +61,7 @@ export default function BarGraph(props: Props) {
      * @param e
      */
     let barOnClick = (e) => {
-        let URL: string = `https://browser.datacommons.org/gni#&place=${e.dcid}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
+        const URL: string = `https://browser.datacommons.org/gni#&place=${e.dcid}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
         window.open(URL, '_blank');
     }
 

@@ -14,48 +14,50 @@
  limitations under the License.
  */
 import React from "react";
-import BarGraphPanel from "./BarGraphPanel";
 import EmptyPanel from "./EmptyPanel";
-import LineGraphPanel from "./LineGraphPanel";
+import {difference} from "./Calculations";
+import PanelInfo from "./PanelInfo.json";
+import BarGraph from "./BarGraph";
 
 type Props = {
     typeOfGraph: 'bar' | 'line',
-    data: {},
+    data: any[],
     label: string,
     region: string,
-    dcidMap: {},
-    selectedDate: string,
-    ISOSelectedDate: string,
+    datePicked: string,
     selectedShowTopN: number,
-    typeOfData: string
+    panelId: string
 }
 
-export default function Panel(props: Props) {
-    /**
-     * Decides what type of Panel to show.
-     * There are three types of panels, BarGraphPanel, EmptyPanel and LineGraphPanel (coming soon).
-     */
+export default class Panel extends React.Component<Props> {
+    render() {
+        const deltaDays = PanelInfo[this.props.panelId].deltaDate
+        let data = this.props.label === 'cases' ? this.props.data[0] : this.props.data[1]
+        data = difference(data, this.props.datePicked, deltaDays)
+        console.log("CHECK HERE")
+        console.log(data)
 
-    if (!Object.keys(props.data).length) {
-        return (<EmptyPanel reason={Object.keys(props.data).length === 0 ? 'loading' : 'nan'}/>)
-    } else if (props.typeOfGraph === 'bar') {
-        return <BarGraphPanel dcidMap={props.dcidMap}
-                              data={props.data}
-                              selectedDate={props.selectedDate}
-                              label={props.label}
-                              region={props.region}
-                              selectedShowTopN={props.selectedShowTopN}
-                              typeOfData={props.typeOfData}/>
-    } else if (props.typeOfGraph === 'line'){
-        return <LineGraphPanel dcidMap={props.dcidMap}
-                               data={props.data}
-                               selectedDate={props.selectedDate}
-                               ISOSelectedDate={props.ISOSelectedDate}
-                               label={props.label}
-                               region={props.region}
-                               selectedShowTopN={props.selectedShowTopN}
-                               typeOfData={props.typeOfData}/>
-    } else {
-        return <div/>
+        /**
+         * Decides what type of Panel to show.
+         * There are three types of panels, BarGraphPanel, EmptyPanel and LineGraphPanel.
+         */
+        if (!Object.keys(data).length) {
+            return (<EmptyPanel reason={Object.keys(this.props.data).length === 0 ? 'loading' : 'nan'}/>)
+        } else {
+            return (
+                <div className={"panel chart shadow"}>
+                    <h4 className={"title"}>{PanelInfo[this.props.panelId]?.title.replace("{TYPE}",
+                        this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h4>
+                    <h6 className={"title"}>{PanelInfo[this.props.panelId]?.subtitle.replace("{TYPE}",
+                        this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h6>
+                    <BarGraph label={this.props.label}
+                              // TODO: Remove the [] after you finish fixing
+                              data={[]}
+                              region={this.props.region}
+                              selectedShowTopN={this.props.selectedShowTopN}
+                              color={this.props.label === 'cases' ? '#990001' : 'grey'}/>
+                </div>
+            )
+        }
     }
 }

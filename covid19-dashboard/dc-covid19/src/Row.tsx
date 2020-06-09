@@ -13,21 +13,19 @@
   See the License for the specific language governing permissions and
   limitations under the License.
  */
+
 import React from "react";
 import PanelInfo from './PanelInfo.json'
-import moment from "moment";
 import Panel from './Panel'
+import {prettifyDate} from './Utils'
 
 type Props = {
-    data: {},
+    data: any[],
     ref_: any,
-    typeOfData: string,
-    selectedDate: string,
+    panelId: string,
     region: string,
     ISOSelectedDate: string,
-    selectedShowTopN: number,
-    dcidMap: {},
-    animationClassName: string
+    selectedShowTopN: number
 }
 
 /**
@@ -37,19 +35,9 @@ type Props = {
  * @constructor
  */
 export default function Row(props: Props) {
-    /**
-     * Converts an ISO date to English date.
-     * For example, 2020-01-01 is converted to January 1st, 2020.
-     * @param date
-     */
-    let prettifyDate = (date: string) => {
-        if (date.toLowerCase() === "latest") return "Daily"
-        else return moment(date).format('MMMM Do, YYYY');
-    }
-
     const prettifiedDate = prettifyDate(props.ISOSelectedDate)
-    const sectionTitle = PanelInfo[props.typeOfData].sectionTitle.replace("{DATE}", prettifiedDate)
-    const typeOfGraph = PanelInfo[props.typeOfData].typeOfGraph
+    const sectionTitle = PanelInfo[props.panelId].sectionTitle.replace("{DATE}", prettifiedDate)
+    const typeOfGraph = PanelInfo[props.panelId].typeOfGraph
     return (
         <div className={"row"}
              ref={props.ref_}>
@@ -58,25 +46,21 @@ export default function Row(props: Props) {
             {// If there is a section title, then show a separator line as well.
                 sectionTitle && <hr style={{width: '100%'}}/>}
             <div className={"left"}>
-                <Panel dcidMap={props.dcidMap}
-                       data={props.data}
-                       selectedDate={props.selectedDate}
-                       ISOSelectedDate={props.ISOSelectedDate}
+                <Panel data={props.data}
+                       datePicked={props.ISOSelectedDate}
                        label={"cases"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}
-                       typeOfData={props.typeOfData}
+                       panelId={props.panelId}
                        typeOfGraph={typeOfGraph}/>
             </div>
             <div className={"right"}>
-                <Panel dcidMap={props.dcidMap}
-                       data={props.data}
-                       selectedDate={props.selectedDate}
-                       ISOSelectedDate={props.ISOSelectedDate}
+                <Panel data={props.data}
+                       datePicked={props.ISOSelectedDate}
                        label={"deaths"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}
-                       typeOfData={props.typeOfData}
+                       panelId={props.panelId}
                        typeOfGraph={typeOfGraph}/>
             </div>
         </div>

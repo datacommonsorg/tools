@@ -13,7 +13,8 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  */
-import numberWithCommas from "./NumberWithCommas";
+
+import {numberWithCommas} from "./Utils";
 import ToolTipContent from "./ToolTipContent";
 import React from "react";
 

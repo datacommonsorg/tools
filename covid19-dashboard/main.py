@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import defaultdict
-
 from flask import Flask, send_from_directory, make_response, jsonify
 import os
 from flask_caching import Cache
@@ -44,8 +43,8 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 
-@cache.cached(timeout=864000)
 @app.route("/api/places")
+@cache.cached(timeout=864000)
 def get_places():
     """Returns a dictionary of dcid->(name, type)
     where name is the name of the region and type is the type of region."""
@@ -55,30 +54,30 @@ def get_places():
                                   post=True,
                                   compress=False,
                                   api_key=API_KEY)
-
     counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
     states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
-    return {**counties, **states}
+    combined =  {**counties, **states}
+    return combined
 
 
-@cache.cached(timeout=3600)
 @app.route("/api/total-cases")
+@cache.cached(timeout=3600)
 def get_total_cases():
     """Returns the total Cumulative Cases of each region per day. day->dcid->cases"""
     dcids: list = list(get_places().keys())
     return get_stats_by_date(dcids, 'NYTCovid19CumulativeCases')
 
 
-@cache.cached(timeout=3600)
 @app.route("/api/total-deaths")
+@cache.cached(timeout=3600)
 def get_total_deaths():
     """Returns the total Cumulative Deaths of each region. day->dcid->deaths"""
     dcids: list = list(get_places().keys())
     return get_stats_by_date(dcids, 'NYTCovid19CumulativeDeaths')
 
 
-@cache.cached(timeout=864000)
 @app.route("/api/population")
+@cache.cached(timeout=864000)
 def get_population():
     """Returns the total population of each region. dcid->population"""
     dcids: list = list(get_places().keys())
@@ -88,8 +87,8 @@ def get_population():
                                   api_key=API_KEY)
     output: defaultdict = defaultdict(int)
     for dcid in response:
+        # Some dcids return None if there is no data, so we have to make sure there is data first.
         if not response[dcid]:
-            # Some dcids return None if there is no data, so we have to make sure there is data first.
             continue
         if "data" not in response[dcid]:
             continue
