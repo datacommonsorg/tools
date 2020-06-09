@@ -13,10 +13,11 @@
   See the License for the specific language governing permissions and
   limitations under the License.
  */
+
 import React from "react";
 import PanelInfo from './PanelInfo.json'
-import moment from "moment";
 import Panel from './Panel'
+import {prettifyDate} from './Utils'
 
 type Props = {
     data: any[],
@@ -34,16 +35,6 @@ type Props = {
  * @constructor
  */
 export default function Row(props: Props) {
-    /**
-     * Converts an ISO date to English date.
-     * For example, 2020-01-01 is converted to January 1st, 2020.
-     * @param date
-     */
-    const prettifyDate = (date: string) => {
-        if (!date) return "Some Day"
-        if (date.toLowerCase() === "latest") return "Daily"
-        else return moment(date).format('MMMM Do, YYYY');
-    }
     const prettifiedDate = prettifyDate(props.ISOSelectedDate)
     const sectionTitle = PanelInfo[props.panelId].sectionTitle.replace("{DATE}", prettifiedDate)
     const typeOfGraph = PanelInfo[props.panelId].typeOfGraph
@@ -56,7 +47,7 @@ export default function Row(props: Props) {
                 sectionTitle && <hr style={{width: '100%'}}/>}
             <div className={"left"}>
                 <Panel data={props.data}
-                       ISOSelectedDate={props.ISOSelectedDate}
+                       datePicked={props.ISOSelectedDate}
                        label={"cases"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}
@@ -65,7 +56,7 @@ export default function Row(props: Props) {
             </div>
             <div className={"right"}>
                 <Panel data={props.data}
-                       ISOSelectedDate={props.ISOSelectedDate}
+                       datePicked={props.ISOSelectedDate}
                        label={"deaths"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}

@@ -14,9 +14,8 @@
     "sectionTitle": "",
     "title": "Most Daily {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People",
-    "dateDelta": 1,
+    "deltaDate": 1,
     "type": "perCapita"
-
   },
   "dailyIncrease": {
     "typeOfGraph": "bar",
@@ -33,7 +32,7 @@
     "sectionTitle": "Since Last Week",
     "title": "Most Weekly {TYPE}",
     "subtitle": "",
-    "deltaDate": 8,
+    "deltaDate": 7,
     "type": "absolute"
   },
   "weeklyPerCapita": {
@@ -42,7 +41,16 @@
     "sectionTitle": "",
     "title": "Most Weekly {TYPE} Per Capita",
     "subtitle": "{TYPE} Per 10,000 People",
-    "deltaDate": 8,
+    "deltaDate": 7,
     "type": "perCapita"
+  },
+  "weeklyIncrease": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Weekly Increase",
+    "sectionTitle": "",
+    "title": "Most Weekly {TYPE} Increase",
+    "subtitle": "In Percent",
+    "deltaDate": 7,
+    "type": "increase"
   }
 }

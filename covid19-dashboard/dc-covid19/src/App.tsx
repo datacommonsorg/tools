@@ -20,17 +20,16 @@ import SideNav from "./SideNav";
 import Row from "./Row";
 import PanelInfo from './PanelInfo.json'
 import Configuration from './Configuration.json'
-import getISODatesBasedOnDeltaDates from "./GetAllAvailableDates";
+import {getRealISODatesFromArrayOfDeltaDays} from "./Utils";
 
 type stateType = {
     data: any, // [cases, deaths, population, names]
     selectedRegion: string, // current region selected
     selectedShowTopN: number, // default number of top counties/states to show
-    selectedDate: string, // current date selected, latest is always default
+    datePicked: string, // current date selected, latest is always default
     availableRegions: {}, // region -> geoId
-    availableDates: string[], // available dates to pick from, example: today, 1 week ago, 1 month ago
+    datesToPick: string[], // available dates to pick from, example: today, 1 week ago, 1 month ago
     availableShowTopN: number[], // available numbers to view, example: Top 10, Top 20, Top 30
-    rows: JSX.Element[]
 }
 
 class App extends React.Component <{}, stateType> {
@@ -39,18 +38,17 @@ class App extends React.Component <{}, stateType> {
         data: [{}, {}, {}, {}],
         selectedRegion: Configuration.DEFAULT_REGION,
         selectedShowTopN: Configuration.DEFAULT_SHOWTOPN,
-        selectedDate: Configuration.DEFAULT_DATE,
+        datePicked: Configuration.DEFAULT_DATE,
         availableRegions: Configuration.REGIONS,
-        availableDates: [],
+        datesToPick: [],
         availableShowTopN: Configuration.SHOWTOPN,
-        rows: []
     }
 
     refs_: any = {}
 
     componentDidMount() {
         this.refs_ = this.generateRowReferences()
-        const requests = this.sendRequest()
+        const requests = this.fetchData()
 
         Promise.all(requests).then(responses => {
             responses.forEach((response, index) => {
@@ -67,11 +65,12 @@ class App extends React.Component <{}, stateType> {
                         const allDates = Object.keys(json)
                         const latestDate = allDates[allDates.length - 1]
                         // Get the deltaDates from the Configuration file.
-                        const availableDates = getISODatesBasedOnDeltaDates(latestDate, Configuration.DATES)
-                        this.setState({availableDates: availableDates})
-                        // The default date is always the latest date available in the dataset, which happens
-                        // to be the last date in the array
-                        this.setState({selectedDate: availableDates[availableDates.length - 1]})
+                        const datesToPick = getRealISODatesFromArrayOfDeltaDays(latestDate, Configuration.DATES)
+                        this.setState({datesToPick: datesToPick})
+                        console.log(datesToPick)
+                        // The default date is always the latest date available in the dataset,
+                        // which happens to be the last date in the array
+                        this.setState({datePicked: datesToPick[datesToPick.length - 1]})
                     }
                 })
             })
@@ -112,7 +111,7 @@ class App extends React.Component <{}, stateType> {
                 this.setState({selectedRegion: value})
                 break;
             case 'selectedDate':
-                this.setState({selectedDate: value})
+                this.setState({datePicked: value})
                 break;
             case 'selectedShowTopN':
                 this.setState({selectedShowTopN: value})
@@ -124,10 +123,9 @@ class App extends React.Component <{}, stateType> {
      * Request the data from the server, and store the Promises in that order.
      * The order is important [cases, deaths, population, places].
      */
-    sendRequest = () => {
-        const host = window.location.protocol + '//' + window.location.hostname
-        const url: string = `${host}/api/`
-        let urls = [
+    fetchData = () => {
+        const url: string = `/api/`
+        const apis = [
             url + 'total-cases',
             url + 'total-deaths',
             url + 'population',
@@ -135,17 +133,16 @@ class App extends React.Component <{}, stateType> {
         ];
 
         // Map every url to the promise of the fetch
-        return urls.map(url => fetch(url, {mode: 'cors'}));
+        return apis.map(api => fetch(api));
     }
     
     render() {
-        const rows = Object.keys(PanelInfo)
-            .map(panelId => <Row data={this.state.data}
-                                panelId={panelId}
-                                ISOSelectedDate={this.state.selectedDate}
-                                region={this.state.selectedRegion}
-                                ref_={this.refs_[panelId]}
-                                selectedShowTopN={this.state.selectedShowTopN}/>)
+        const rows = Object.keys(PanelInfo).map(panelId => <Row data={this.state.data}
+                                                                panelId={panelId}
+                                                                ISOSelectedDate={this.state.datePicked}
+                                                                region={this.state.selectedRegion}
+                                                                ref_={this.refs_[panelId]}
+                                                                selectedShowTopN={this.state.selectedShowTopN}/>)
 
         return (
             <div className={"container"}>
@@ -157,10 +154,10 @@ class App extends React.Component <{}, stateType> {
                     </h1>
                     <OptionPanel handleSelectUpdate={this.handleSelectUpdate}
                                  availableShowTopN={this.state.availableShowTopN}
-                                 availableDates={this.state.availableDates}
-                                 availableRegions={this.state.availableRegions}
                                  defaultShowTopN={this.state.selectedShowTopN}
-                                 defaultDate={this.state.selectedDate}
+                                 datesToPick={this.state.datesToPick}
+                                 defaultDate={this.state.datePicked}
+                                 availableRegions={this.state.availableRegions}
                                  defaultRegion={this.state.selectedRegion}/>
                         {rows}
                 </div>

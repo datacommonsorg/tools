@@ -15,7 +15,7 @@
  */
 import React from "react";
 import EmptyPanel from "./EmptyPanel";
-import parseData from "./ParseData";
+import {difference} from "./Calculations";
 import PanelInfo from "./PanelInfo.json";
 import BarGraph from "./BarGraph";
 
@@ -24,30 +24,34 @@ type Props = {
     data: any[],
     label: string,
     region: string,
-    ISOSelectedDate: string,
+    datePicked: string,
     selectedShowTopN: number,
     panelId: string
 }
 
 export default class Panel extends React.Component<Props> {
-
     render() {
-        const inputData = this.props.label === 'cases' ? this.props.data[0] : this.props.data[1]
-        const data = parseData(inputData, this.props.ISOSelectedDate, PanelInfo[this.props.panelId].deltaDate)
+        const deltaDays = PanelInfo[this.props.panelId].deltaDate
+        let data = this.props.label === 'cases' ? this.props.data[0] : this.props.data[1]
+        data = difference(data, this.props.datePicked, deltaDays)
+        console.log("CHECK HERE")
+        console.log(data)
 
         /**
          * Decides what type of Panel to show.
-         * There are three types of panels, BarGraphPanel, EmptyPanel and LineGraphPanel (coming soon).
+         * There are three types of panels, BarGraphPanel, EmptyPanel and LineGraphPanel.
          */
         if (!Object.keys(data).length) {
             return (<EmptyPanel reason={Object.keys(this.props.data).length === 0 ? 'loading' : 'nan'}/>)
         } else {
             return (
                 <div className={"panel chart shadow"}>
-                    <h4 className={"title"}>{PanelInfo[this.props.panelId]?.title.replace("{TYPE}", this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h4>
-                    <h6 className={"title"}>{PanelInfo[this.props.panelId]?.subtitle.replace("{TYPE}", this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h6>
+                    <h4 className={"title"}>{PanelInfo[this.props.panelId]?.title.replace("{TYPE}",
+                        this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h4>
+                    <h6 className={"title"}>{PanelInfo[this.props.panelId]?.subtitle.replace("{TYPE}",
+                        this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h6>
                     <BarGraph label={this.props.label}
-                              // Remove the [] after you finish fixing
+                              // TODO: Remove the [] after you finish fixing
                               data={[]}
                               region={this.props.region}
                               selectedShowTopN={this.props.selectedShowTopN}

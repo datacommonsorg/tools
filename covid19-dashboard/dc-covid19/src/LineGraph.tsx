@@ -20,7 +20,6 @@ type Props = {
     data: any,
     label: string,
     region: string,
-    dcidMap: {},
     selectedShowTopN: number,
     color: string
 }
