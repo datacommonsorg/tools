@@ -17,23 +17,37 @@
 import React from 'react';
 import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTip from "./ToolTip";
+type dataPerGeoIdPerDate = {string: {string: number}} | {}
 
 type dataHolder = {
-    regionName: string,
+    regionName?: string,
     value: number,
-    absolute: number,
-    population: number,
-    dcid: string,
-    labelListLabel: string
+    absolute?: number,
+    population?: number,
+    dcid?: string,
+    labelListLabel?: string
 }
+
 type Props = {
-    data: dataHolder[],
+    data: dataPerGeoIdPerDate,
     label: string,
     region: string,
     selectedShowTopN: number,
     color: string
 }
+
 export default function BarGraph(props: Props) {
+    const datesInData = Object.keys(props.data)
+    let dataAsArray: dataHolder[] = []
+
+    // If there is data, then convert it to an array, otherwise dataAsArray will be empty [].
+    if (datesInData.length) {
+        // Get the most recent date of the data, that's the only one we care about (for now).
+        const dataForMostRecentDate: {string: number} = props.data[datesInData[datesInData.length - 1]]
+        dataAsArray = Object.keys(dataForMostRecentDate).map(geoId =>
+        {return {value: dataForMostRecentDate[geoId], dcid: geoId}}).splice(0, props.selectedShowTopN)
+    }
+
     /**
      * In charge of displaying the tooltip on-hover on the chart.
      * @param active
@@ -84,10 +98,12 @@ export default function BarGraph(props: Props) {
             </g>
         );
     };
+
+    const graphHeight = dataAsArray.length < 3 ? 70 * dataAsArray.length : 50 * dataAsArray.length
     return (
         <BarChart width={410}
-                  height={props.data.length < 3 ? 70 * props.data.length : 50 * props.data.length}
-                  data={props.data}
+                  height={graphHeight}
+                  data={dataAsArray}
                   barSize={18}
                   layout="vertical">
                         <XAxis type="number"
@@ -95,7 +111,7 @@ export default function BarGraph(props: Props) {
                                interval={0}/>
                         <YAxis type="category"
                                dataKey="regionName"
-                               tick={{ill: '#868E96', fontSize: 10}}
+                               tick={{ill: '#868e96', fontSize: 10}}
                                width={90}
                                interval={0}/>
                         <Tooltip content={customTooltip}/>
@@ -103,8 +119,8 @@ export default function BarGraph(props: Props) {
                              fill={props.color}
                              onClick={barOnClick}
                              radius={[4, 4, 4, 4]}>
-                                <LabelList dataKey={"labelListLabel"}
-                                           content={renderCustomizedLabel}/>
+                            <LabelList dataKey={"labelListLabel"}
+                                       content={renderCustomizedLabel}/>
                         </Bar>
         </BarChart>
     );

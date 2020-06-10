@@ -13,14 +13,15 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  */
+
 import React from "react";
+import {absolute, difference, perCapita, increase} from "./DataCalculator";
+import ContentFile from "./ContentFile.json";
 import EmptyPanel from "./EmptyPanel";
-import {difference} from "./Calculations";
-import PanelInfo from "./PanelInfo.json";
 import BarGraph from "./BarGraph";
+import {getRangeOfDates} from "./Utils";
 
 type Props = {
-    typeOfGraph: 'bar' | 'line',
     data: any[],
     label: string,
     region: string,
@@ -28,36 +29,50 @@ type Props = {
     selectedShowTopN: number,
     panelId: string
 }
+type DataPerGeoIdPerDate = {string: {string: number}} | {}
 
-export default class Panel extends React.Component<Props> {
-    render() {
-        const deltaDays = PanelInfo[this.props.panelId].deltaDate
-        let data = this.props.label === 'cases' ? this.props.data[0] : this.props.data[1]
-        data = difference(data, this.props.datePicked, deltaDays)
-        console.log("CHECK HERE")
-        console.log(data)
+export default function Panel(props: Props) {
+    let data: DataPerGeoIdPerDate = {}
+    const content = ContentFile[props.panelId]
+    const deltaDays: number = content.deltaDays
 
-        /**
-         * Decides what type of Panel to show.
-         * There are three types of panels, BarGraphPanel, EmptyPanel and LineGraphPanel.
-         */
-        if (!Object.keys(data).length) {
-            return (<EmptyPanel reason={Object.keys(this.props.data).length === 0 ? 'loading' : 'nan'}/>)
-        } else {
-            return (
-                <div className={"panel chart shadow"}>
-                    <h4 className={"title"}>{PanelInfo[this.props.panelId]?.title.replace("{TYPE}",
-                        this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h4>
-                    <h6 className={"title"}>{PanelInfo[this.props.panelId]?.subtitle.replace("{TYPE}",
-                        this.props.label[0].toUpperCase() + this.props.label.slice(1, this.props.label.length))}</h6>
-                    <BarGraph label={this.props.label}
-                              // TODO: Remove the [] after you finish fixing
-                              data={[]}
-                              region={this.props.region}
-                              selectedShowTopN={this.props.selectedShowTopN}
-                              color={this.props.label === 'cases' ? '#990001' : 'grey'}/>
-                </div>
-            )
-        }
+    // Is it cases or deaths?
+    const inputData: DataPerGeoIdPerDate = props.label === 'cases' ? props.data[0] : props.data[1]
+    const geoIdToPopulation: {string: number} = props.data[2]
+    const rangeOfDates: [string, string] = getRangeOfDates(props.datePicked, deltaDays)
+
+    // What type of data do we want to calculate? Check the type on the content file
+    switch (content.type){
+        case 'absolute':
+            data = absolute(inputData, rangeOfDates)
+            break;
+        case 'difference':
+            data = difference(inputData, rangeOfDates, deltaDays)
+            break;
+        case 'perCapita':
+            data = perCapita(inputData, rangeOfDates, deltaDays, geoIdToPopulation)
+            break;
+        case 'increase':
+            data = increase(inputData, rangeOfDates, deltaDays)
+            break;
+    }
+
+    // If there is data available
+    if (Object.keys(inputData).length) {
+        return (
+            <div className={"panel chart shadow"}>
+                <h4 className={"title"}>{content?.title.replace("{TYPE}",
+                    props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h4>
+                <h6 className={"title"}>{content?.subtitle.replace("{TYPE}",
+                    props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
+                <BarGraph label={props.label}
+                          data={data}
+                          region={props.region}
+                          selectedShowTopN={props.selectedShowTopN}
+                          color={props.label === 'cases' ? '#990001' : 'grey'}/>
+            </div>
+        )
+    } else {
+        return (<EmptyPanel reason={Object.keys(inputData).length === 0 ? 'loading' : 'nan'}/>)
     }
 }

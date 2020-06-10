@@ -56,7 +56,7 @@ def get_places():
                                   api_key=API_KEY)
     counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
     states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
-    combined =  {**counties, **states}
+    combined = {**counties, **states}
     return combined
 
 

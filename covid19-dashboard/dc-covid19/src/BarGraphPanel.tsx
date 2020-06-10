@@ -16,7 +16,7 @@
 import React from "react";
 import BarGraph from './BarGraph'
 import {numberWithCommas} from "./Utils";
-import PanelInfo from "./PanelInfo.json";
+import PanelInfo from "./ContentFile.json";
 
 type dataHolder = {
     regionName: string,

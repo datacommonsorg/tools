@@ -15,7 +15,7 @@
  */
 
 import React from "react";
-import PanelInfo from './PanelInfo.json'
+import PanelInfo from './ContentFile.json'
 
 export default function SideNav(props: {handleScrollOnRef}) {
     const sideNavLinks = Object.keys(PanelInfo).map( key => {

@@ -3,7 +3,7 @@
   "DEFAULT_REGION": "State",
   "SHOWTOPN": [5, 10, 20, 30, 40, 50],
   "DEFAULT_SHOWTOPN": 10,
-  "DATES": [0, 7, 14, 30],
+  "DATES": [0, 7, 14, 31],
   "DEFAULT_DATE": "2020-01-01",
   "TITLE": "Data Commons",
   "SUBTITLE": "COVID-19",
