@@ -57,9 +57,7 @@ def get_places():
                                   api_key=API_KEY)
     counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
     states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
-    combined = {**counties, **states}
-    print(len(combined.keys()))
-    return combined
+    return {**counties, **states}
 
 
 @app.route("/api/total-cases")
