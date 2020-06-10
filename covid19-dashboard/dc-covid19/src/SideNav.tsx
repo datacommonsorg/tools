@@ -20,7 +20,6 @@ import PanelInfo from './ContentFile.json'
 export default function SideNav(props: {handleScrollOnRef}) {
     const sideNavLinks = Object.keys(PanelInfo).map( key => {
         const text = PanelInfo[key].sideNavText;
-        // eslint-disable-next-line jsx-a11y/anchor-is-valid
         return <a id={key} key={key} onClick={props.handleScrollOnRef}>{text}</a>
     })
 

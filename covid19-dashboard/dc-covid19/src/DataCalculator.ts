@@ -57,6 +57,7 @@ const _performIterationCalculation = (data: dataPerGeoIdPerDate, range: [string,
                 outputData[iterativeDate][geoId] = result
             }
         }
+        // Add one to the iterativeDate. Example: from "2020-01-01" to "2020-01-02"
         iterativeDate = addOrSubtractNDaysToDate(iterativeDate, 1)
     }
     return outputData

@@ -15,7 +15,7 @@
  */
 
 import React from "react";
-import PanelInfo from './ContentFile.json'
+import ContentFile from './ContentFile.json'
 import Panel from './Panel'
 import {prettifyDate} from './Utils'
 
@@ -37,7 +37,7 @@ type Props = {
 export default function Row(props: Props) {
     const prettifiedDate = prettifyDate(props.datePicked)
     // Replace the {DATE} string with the actual date in the sectionTitle
-    const sectionTitle = PanelInfo[props.panelId].sectionTitle.replace("{DATE}", prettifiedDate)
+    const sectionTitle = ContentFile[props.panelId].sectionTitle.replace("{DATE}", prettifiedDate)
     return (
         <div className={"row"}
              ref={props.ref_}>

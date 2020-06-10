@@ -16,7 +16,7 @@
 import React from "react";
 import BarGraph from './BarGraph'
 import {numberWithCommas} from "./Utils";
-import PanelInfo from "./ContentFile.json";
+import ContentFile from "./ContentFile.json";
 
 type dataHolder = {
     regionName: string,
@@ -84,8 +84,8 @@ export default function BarGraphPanel(props: Props) {
     const data: dataHolder[] = jsonToArray(preprocesedData)
     return (
         <div className={"panel chart shadow"}>
-            <h4 className={"title"}>{PanelInfo[props.typeOfData]?.title.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h4>
-            <h6 className={"title"}>{PanelInfo[props.typeOfData]?.subtitle.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
+            <h4 className={"title"}>{ContentFile[props.typeOfData]?.title.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h4>
+            <h6 className={"title"}>{ContentFile[props.typeOfData]?.subtitle.replace("{TYPE}", props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
             <BarGraph label={props.label}
                       data={data}
                       region={props.region}

@@ -16,7 +16,7 @@
 
 import React from 'react';
 import OptionPanel from './OptionPanel'
-import PanelInfo from './ContentFile.json'
+import ContentFile from './ContentFile.json'
 import Configuration from './Configuration.json'
 import {getRealISODatesFromArrayOfDeltaDays} from "./Utils";
 import SideNav from "./SideNav";
@@ -79,7 +79,7 @@ class App extends React.Component <{}, State> {
      */
     generateRowReferences = () => {
         let refs_ = {}
-        Object.keys(PanelInfo).forEach(key => refs_[key] = React.createRef<HTMLDivElement>())
+        Object.keys(ContentFile).forEach(key => refs_[key] = React.createRef<HTMLDivElement>())
         return refs_
     }
 
@@ -133,12 +133,12 @@ class App extends React.Component <{}, State> {
     }
     
     render() {
-        const rows = Object.keys(PanelInfo).map(panelId => <Row data={this.state.data}
-                                                                panelId={panelId}
-                                                                datePicked={this.state.datePicked}
-                                                                region={this.state.selectedRegion}
-                                                                ref_={this.refs_[panelId]}
-                                                                selectedShowTopN={this.state.selectedShowTopN}/>)
+        const rows = Object.keys(ContentFile).map(panelId => <Row data={this.state.data}
+                                                                  panelId={panelId}
+                                                                  datePicked={this.state.datePicked}
+                                                                  region={this.state.selectedRegion}
+                                                                  ref_={this.refs_[panelId]}
+                                                                  selectedShowTopN={this.state.selectedShowTopN}/>)
 
         return (
             <div className={"container"}>
