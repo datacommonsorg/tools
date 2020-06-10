@@ -1,0 +1,56 @@
+{
+  "daily": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Daily",
+    "sectionTitle": "{DATE}",
+    "title": "Most Daily {TYPE}",
+    "subtitle": "",
+    "deltaDate": 1,
+    "type": "absolute"
+  },
+  "dailyPerCapita": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Daily Per Capita",
+    "sectionTitle": "",
+    "title": "Most Daily {TYPE} Per Capita",
+    "subtitle": "{TYPE} Per 10,000 People",
+    "deltaDate": 1,
+    "type": "perCapita"
+  },
+  "dailyIncrease": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Daily Increase",
+    "sectionTitle": "",
+    "title": "Most Daily {TYPE} Increase",
+    "subtitle": "In Percent",
+    "deltaDate": 1,
+    "type": "increase"
+  },
+  "weekly": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Weekly",
+    "sectionTitle": "Since Last Week",
+    "title": "Most Weekly {TYPE}",
+    "subtitle": "",
+    "deltaDate": 7,
+    "type": "absolute"
+  },
+  "weeklyPerCapita": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Weekly Per Capita",
+    "sectionTitle": "",
+    "title": "Most Weekly {TYPE} Per Capita",
+    "subtitle": "{TYPE} Per 10,000 People",
+    "deltaDate": 7,
+    "type": "perCapita"
+  },
+  "weeklyIncrease": {
+    "typeOfGraph": "bar",
+    "sideNavText": "Weekly Increase",
+    "sectionTitle": "",
+    "title": "Most Weekly {TYPE} Increase",
+    "subtitle": "In Percent",
+    "deltaDate": 7,
+    "type": "increase"
+  }
+}
