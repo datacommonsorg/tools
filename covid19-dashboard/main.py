@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from collections import defaultdict
 from flask import Flask, send_from_directory, make_response, jsonify
 import os
@@ -57,6 +58,7 @@ def get_places():
     counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
     states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
     combined = {**counties, **states}
+    print(len(combined.keys()))
     return combined
 
 
