@@ -16,6 +16,7 @@
 
 import moment from "moment";
 
+
 /**
  * Given a date and an array of deltaDays compute the real ISODates.
  * For example, date = 2020-01-10 and deltaDays = [0, 1, 7] will return an array with the ISODates
@@ -35,6 +36,7 @@ const getRealISODatesFromArrayOfDeltaDays = (date: string, deltaDays: number[]):
  * @param num
  */
 const numberWithCommas = (num: number): string => {
+    if (!num) return "0"
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
 }
 
@@ -78,4 +80,33 @@ const getRangeOfDates = (ISOdate: string, deltaInDays: number): [string, string]
     return [addOrSubtractNDaysToDate(ISOdate, -deltaInDays), ISOdate]
 }
 
-export {getRealISODatesFromArrayOfDeltaDays, numberWithCommas, prettifyDate, addOrSubtractNDaysToDate, getRangeOfDates}
+const filterGeoIdByRegionType = (geoIdToType: {geoId: string[]} | {}, regionType: string): string[] => {
+    let output: string[] = []
+    for (let geoId in geoIdToType) {
+        const observedGeoIdRegion = geoIdToType[geoId][1]
+        if (observedGeoIdRegion === regionType) output.push(geoId)
+    }
+    return output
+}
+
+/**
+ * Returns new copy of the inputted JSON with only the keys that are present in the array.
+ * This is similar to the reduce() function, but for JSON.
+ * @param JSON: any object
+ * @param keys: an array of keys
+ */
+const filterJSONByArrayOfKeys = (JSON: {}, keys: any[], ): {} => {
+    let output: {} = {}
+    keys.forEach(key => {if (key in JSON) output[key] = JSON[key]})
+    return output
+}
+
+export {
+    getRealISODatesFromArrayOfDeltaDays,
+    numberWithCommas,
+    prettifyDate,
+    addOrSubtractNDaysToDate,
+    getRangeOfDates,
+    filterGeoIdByRegionType,
+    filterJSONByArrayOfKeys
+}

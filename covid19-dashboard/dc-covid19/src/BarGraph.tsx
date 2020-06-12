@@ -19,26 +19,16 @@ import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTip from "./ToolTip";
 type dataPerGeoIdPerDate = {string: {string: number}} | {}
 
-type dataHolder = {
-    regionName?: string,
-    value: number,
-    absolute?: number,
-    population?: number,
-    dcid?: string,
-    labelListLabel?: string
-}
-
 type Props = {
     data: dataPerGeoIdPerDate,
     label: string,
-    region: string,
     selectedShowTopN: number,
     color: string
 }
 
 export default function BarGraph(props: Props) {
     const datesInData = Object.keys(props.data)
-    let dataAsArray: dataHolder[] = []
+    let dataAsArray: {value: number, dcid: string}[] = []
 
     // If there is data, then convert it to an array, otherwise dataAsArray will be empty [].
     if (datesInData.length) {
@@ -52,9 +42,8 @@ export default function BarGraph(props: Props) {
      * In charge of displaying the tooltip on-hover on the chart.
      * @param active
      * @param payload
-     * @param label
      */
-    const customTooltip = ({active, payload, label}) => {
+    const customTooltip = ({active, payload}) => {
         let tooltipType: string = "normal"
         // Make sure that the current bar is actively being hovered on.
         if (active) {
@@ -72,10 +61,10 @@ export default function BarGraph(props: Props) {
     /**
      * Function triggered when each bar in the cart is clicked.
      * Opens a new tab and takes the user to GNI.
-     * @param e
+     * @param {dcid}: the dcid that represents the bar
      */
-    let barOnClick = (e) => {
-        const URL: string = `https://browser.datacommons.org/gni#&place=${e.dcid}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
+    let barOnClick = ({dcid}) => {
+        const URL: string = `https://browser.datacommons.org/gni#&place=${dcid}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
         window.open(URL, '_blank');
     }
 
@@ -99,12 +88,18 @@ export default function BarGraph(props: Props) {
         );
     };
 
-    const graphHeight = dataAsArray.length < 3 ? 70 * dataAsArray.length : 50 * dataAsArray.length
+    // If there are only 2 or less data points in the chart, each bar will have 70px of space.
+    // If there are more than two points, each bar will have 50px of space.
+    // NOTE: this is done because whe the bar graph has less than 2 points, the chart doesn't look good.
+    // This is a workaround to fix the height of the chart.
+    const graphHeight = dataAsArray.length <= 2 ? 70 * dataAsArray.length : 50 * dataAsArray.length // pixels
+    const graphWidth = 410 // pixels
+    const individualBarWidth = 18 // pixels
     return (
-        <BarChart width={410}
+        <BarChart width={graphWidth}
                   height={graphHeight}
                   data={dataAsArray}
-                  barSize={18}
+                  barSize={individualBarWidth}
                   layout="vertical">
                         <XAxis type="number"
                                tick={{fill: '#868E96', fontSize: 10}}

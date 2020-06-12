@@ -20,7 +20,7 @@ import Panel from './Panel'
 import {prettifyDate} from './Utils'
 
 type Props = {
-    data: any[],
+    allData: any[],
     ref_: any,
     panelId: string,
     region: string,
@@ -46,7 +46,7 @@ export default function Row(props: Props) {
             {// If there is a section title, then show a separator line as well.
                 sectionTitle && <hr style={{width: '100%'}}/>}
             <div className={"left"}>
-                <Panel data={props.data}
+                <Panel allData={props.allData}
                        datePicked={props.datePicked}
                        label={"cases"}
                        region={props.region}
@@ -54,7 +54,7 @@ export default function Row(props: Props) {
                        panelId={props.panelId}/>
             </div>
             <div className={"right"}>
-                <Panel data={props.data}
+                <Panel allData={props.allData}
                        datePicked={props.datePicked}
                        label={"deaths"}
                        region={props.region}

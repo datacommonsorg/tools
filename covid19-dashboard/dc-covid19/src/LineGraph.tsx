@@ -20,7 +20,6 @@ import {Line, LineChart, Tooltip, XAxis, YAxis} from 'recharts'
 type Props = {
     data: any,
     label: string,
-    region: string,
     selectedShowTopN: number,
     color: string
 }

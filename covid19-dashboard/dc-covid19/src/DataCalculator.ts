@@ -16,8 +16,7 @@
 
 import {addOrSubtractNDaysToDate, getRealISODatesFromArrayOfDeltaDays} from './Utils'
 
-type dataPerGeoIdPerDate = {string: {string: number}} | {}
-type calculationFunction = (val1: number, val2: number, assistanceObject: string) => number
+type DataPerGeoIdPerDate = {string: {string: number}} | {}
 
 /**
  * Performs a calculation() iteratively on two dates.
@@ -25,12 +24,13 @@ type calculationFunction = (val1: number, val2: number, assistanceObject: string
  * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
  * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
  * @param calculation: The function in charge of doing some calculation on the data for dates X and Y.
+ * @param geoIdToPopulation: geoId->Population. After calculating the difference, we want to divide by total population
  * @private
  */
-const _performIterationCalculation = (data: dataPerGeoIdPerDate, range: [string, string],
-                                deltaDays: number, calculation: calculationFunction): dataPerGeoIdPerDate => {
+const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
+                   deltaDays: number, calculation: string, geoIdToPopulation: {geoId: number}): DataPerGeoIdPerDate => {
     if (!data) return {}
-    let outputData: dataPerGeoIdPerDate = {}
+    let outputData: DataPerGeoIdPerDate = {}
 
     let iterativeDate = range[0]
     const lastDayInRange = range[1]
@@ -49,9 +49,24 @@ const _performIterationCalculation = (data: dataPerGeoIdPerDate, range: [string,
             // If one of the values is invalid, or falsy, continue.
             if (!iterativeDateValue || !deltaDaysFromIterativeDateValue) continue
             // Do some calculation on the data using the calculation function.
-            const result = calculation(iterativeDateValue, deltaDaysFromIterativeDateValue, geoId)
+            let result: number | null = null;
+            switch (calculation){
+                case 'absolute':
+                    result = iterativeDateValue
+                    break;
+                case 'difference':
+                    result = iterativeDateValue - deltaDaysFromIterativeDateValue
+                    break;
+                case 'perCapita':
+                    result = (iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId]
+                    break;
+                case 'increase':
+                    result = (iterativeDateValue / deltaDaysFromIterativeDateValue) - 1
+                    break;
+            }
+
             // If the result is valid, store it
-            if (result) {
+            if (result !== null) {
                 // If this is the first time storing this date in the output, make some room for it.
                 if (!(iterativeDate in outputData)) outputData[iterativeDate] = {}
                 outputData[iterativeDate][geoId] = result
@@ -63,57 +78,4 @@ const _performIterationCalculation = (data: dataPerGeoIdPerDate, range: [string,
     return outputData
 }
 
-/**
- * Calculates the difference between date X and date Y for a given range.
- * X = someDay - deltaDays, Y = someday
- * @param data: input data in the form of dates->geoIds->value.
- * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
- * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
- */
-const difference = (data: dataPerGeoIdPerDate, range: [string, string], deltaDays: number): dataPerGeoIdPerDate => {
-    if (!data) return {}
-    const differenceFunction: calculationFunction= (val1: number, val2: number): number => val1 - val2
-    return _performIterationCalculation(data, range, deltaDays, differenceFunction)
-}
-
-/**
- * Calculates the difference divided per the population between date X and date Y for a given range.
- * X = someDay - deltaDays, Y = someday
- * @param data: input data in the form of dates->geoIds->value.
- * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
- * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
- * @param geoIdToPopulation: geoId->Population. After calculating the difference, we want to divide by total population
- */
-const perCapita = (data: dataPerGeoIdPerDate ,range: [string, string], deltaDays: number, geoIdToPopulation: {string: number}): dataPerGeoIdPerDate => {
-    if (!geoIdToPopulation || !data) return {}
-    const perCapitaFunction: calculationFunction = (val1: number, val2: number, geoId: string): number => (val1 - val2) / geoIdToPopulation[geoId]
-    return _performIterationCalculation(data, range, deltaDays, perCapitaFunction)
-}
-
-/**
- * Calculates the percent increase between date X and date Y for a given range.
- * X = someDay - deltaDays, Y = someday
- * @param data: input data in the form of dates->geoIds->value.
- * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
- * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
- */
-const increase = (data: dataPerGeoIdPerDate, range: [string, string], deltaDays: number): dataPerGeoIdPerDate => {
-    if (data) return {}
-    const perCapitaFunction: calculationFunction = (val1: number, val2: number): number => (val1 / val2) - 1
-    return _performIterationCalculation(data, range, deltaDays, perCapitaFunction)
-}
-
-/**
- * Returns the values for a given range. No other calculation is performed.
- * This method should be used to clean out unnecessary dates from the dataset.
- * @param data: input data in the form of dates->geoIds->value.
- * @param range: the range of dates to return the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
- */
-const absolute = (data: dataPerGeoIdPerDate, range: [string, string]): dataPerGeoIdPerDate => {
-    if (!data) return {}
-    const absoluteFunction: calculationFunction = (val1: number, val2: number): number => val2
-    return _performIterationCalculation(data, range, 0, absoluteFunction)
-}
-
-export {absolute, difference, perCapita, increase}
-
+export {calculate}

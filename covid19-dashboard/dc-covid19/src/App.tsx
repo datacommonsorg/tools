@@ -15,15 +15,16 @@
  */
 
 import React from 'react';
-import OptionPanel from './OptionPanel'
 import ContentFile from './ContentFile.json'
 import Configuration from './Configuration.json'
+import {filterGeoIdByRegionType, filterJSONByArrayOfKeys} from './Utils'
 import {getRealISODatesFromArrayOfDeltaDays} from "./Utils";
 import SideNav from "./SideNav";
 import Row from "./Row";
+import OptionPanel from './OptionPanel'
 
 type State = {
-    data: {}[], // [cases, deaths, population, names]
+    allData: {}[], // [cases, deaths, population, names]
     selectedRegion: string, // current region selected
     selectedShowTopN: number, // default number of top counties/states to show
     datePicked: string, // current date selected, latest is always default
@@ -32,9 +33,8 @@ type State = {
 }
 
 class App extends React.Component <{}, State> {
-
     state = {
-        data: [{}, {}, {}, {}],
+        allData: [{}, {}, {}, {}],
         selectedRegion: Configuration.DEFAULT_REGION,
         selectedShowTopN: Configuration.DEFAULT_SHOWTOPN,
         datePicked: Configuration.DEFAULT_DATE,
@@ -53,9 +53,9 @@ class App extends React.Component <{}, State> {
                 response.json().then( json => {
                     // Keep the data stored in the same position, that is: [cases, deaths, population, names]
                     // Make a deep copy of the data stored in this.state.data, and then store the json at the index
-                    const currentData = this.state.data.map(val => val)
+                    const currentData = this.state.allData.map(val => val)
                     currentData[index] = json
-                    this.setState({data: currentData})
+                    this.setState({allData: currentData})
 
                     // index 0 contains the 'total-cases' object, which has the dates as keys
                     if (index === 0) {
@@ -102,7 +102,7 @@ class App extends React.Component <{}, State> {
      * @param key
      * @param value
      */
-    handleSelectUpdate = (key: string, value) =>{
+    handleSelectUpdate = (key: string, value: any) =>{
         switch(key){
             case 'selectedRegion':
                 this.setState({selectedRegion: value})
@@ -121,7 +121,7 @@ class App extends React.Component <{}, State> {
      * The order is important [cases, deaths, population, places].
      */
     fetchData = () => {
-        const url: string = `/api/`
+        const url: string = `http://localhost/api/`
         const apis = [
             url + 'total-cases',
             url + 'total-deaths',
@@ -131,9 +131,27 @@ class App extends React.Component <{}, State> {
         // Map every url to the promise of the fetch
         return apis.map(api => fetch(api));
     }
+
+    getDataOnlyForSelectedRegionType = (data: {}[], selectedRegion: string): {}[]=> {
+        let output: {}[] = []
+        const geoIdsContainedInSelectedRegion = filterGeoIdByRegionType(data[3], selectedRegion)
+        for (let dataSet of this.state.allData.slice(0, 2)){
+            let filteredDataSet = {}
+            for (let date in dataSet){
+                filteredDataSet[date] = filterJSONByArrayOfKeys(dataSet[date], geoIdsContainedInSelectedRegion)
+            }
+            output.push(filteredDataSet)
+        }
+
+        output.push(filterJSONByArrayOfKeys(data[2], geoIdsContainedInSelectedRegion))
+        output.push(filterJSONByArrayOfKeys(data[3], geoIdsContainedInSelectedRegion))
+
+        return output
+    }
     
-    render() {
-        const rows = Object.keys(ContentFile).map(panelId => <Row data={this.state.data}
+    render = () => {
+        const data = this.getDataOnlyForSelectedRegionType(this.state.allData, this.state.selectedRegion)
+        const rows = Object.keys(ContentFile).map(panelId => <Row allData={data}
                                                                   panelId={panelId}
                                                                   datePicked={this.state.datePicked}
                                                                   region={this.state.selectedRegion}
