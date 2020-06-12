@@ -24,6 +24,14 @@ type Props = {
     label: string,
     selectedShowTopN: number,
     color: string
+    metadata?: {date: {geoId: Metadata}} | {}
+}
+
+type Metadata = {
+    name: string,
+    onHoverInfo: string[]
+    textOnTopOfBar: string,
+    population: number,
 }
 
 export default function BarGraph(props: Props) {

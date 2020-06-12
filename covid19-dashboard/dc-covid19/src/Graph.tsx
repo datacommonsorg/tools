@@ -22,8 +22,9 @@ type DateToGeoIdToValue = {string: {string: number}} | {}
 
 type Metadata = {
     name: string,
-    value: number,
-    absolute: number,
+    onHoverInfo: string[]
+    textOnTopOfBar: string,
+    population: number,
 }
 
 type Props = {
@@ -41,12 +42,14 @@ export default function Graph(props: Props) {
             <BarGraph label={props.label}
                       data={props.data}
                       selectedShowTopN={props.selectedShowTopN}
-                      color={props.color}/>)
+                      color={props.color}
+                      metadata={props.metadata}/>)
     } else {
         return (
             <LineGraph label={props.label}
                       data={props.data}
                       selectedShowTopN={props.selectedShowTopN}
-                      color={props.color}/>)
+                      color={props.color}
+                      metadata={props.metadata}/>)
     }
 }

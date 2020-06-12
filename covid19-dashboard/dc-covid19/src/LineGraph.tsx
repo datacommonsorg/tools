@@ -21,7 +21,15 @@ type Props = {
     data: any,
     label: string,
     selectedShowTopN: number,
-    color: string
+    color: string,
+    metadata?: {date: {geoId: Metadata}} | {}
+}
+
+type Metadata = {
+    name: string,
+    onHoverInfo: string[]
+    textOnTopOfBar: string,
+    population: number,
 }
 
 export default function LineGraph(props: Props) {

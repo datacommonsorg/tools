@@ -30,6 +30,14 @@ type Props = {
     selectedShowTopN: number,
     panelId: string
 }
+
+type Metadata = {
+    name: string,
+    onHoverInfo: string[]
+    textOnTopOfBar: string,
+    population: number,
+}
+
 type DateToGeoIdToValue = {date: {geoId: number}} | {}
 
 export default function Panel(props: Props) {
@@ -53,7 +61,7 @@ export default function Panel(props: Props) {
 
 
     // Generate the metadata for the graph (on-hover, bar text, region names)
-    const metadata = generateGraphMetadata(calculatedData, geoIdToPopulation,
+    const metadata: {date: {geoId: Metadata}} | {} = generateGraphMetadata(calculatedData, geoIdToPopulation,
         geoIdToName, absoluteIncrease, props.label, content.dataType)
 
 
