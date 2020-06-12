@@ -24,13 +24,12 @@ type Metadata = {
     name: string,
     value: number,
     absolute: number,
-    population: number,
 }
 
 type Props = {
     label: string
     data: DateToGeoIdToValue,
-    metadata?: Metadata,
+    metadata?: {date: {geoId: Metadata}} | {},
     type: 'bar' | 'line',
     selectedShowTopN: number,
     color: string

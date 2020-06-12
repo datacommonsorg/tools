@@ -47,11 +47,14 @@ export default function Panel(props: Props) {
 
     let absoluteIncrease: DateToGeoIdToValue = {}
     if (content.dataType=== 'increase') {
-        absoluteIncrease = calculate(inputData, rangeOfDates, deltaDays, content.dataType, geoIdToPopulation);
+        // If the graph is a percent-increase graph, we also want to show the absolute increase.
+        absoluteIncrease = calculate(inputData, rangeOfDates, deltaDays, 'difference', geoIdToPopulation);
     }
 
-    generateGraphMetadata(calculatedData, geoIdToPopulation, geoIdToName, absoluteIncrease, props.label, content.dataType)
 
+    // Generate the metadata for the graph (on-hover, bar text, region names)
+    const metadata = generateGraphMetadata(calculatedData, geoIdToPopulation,
+        geoIdToName, absoluteIncrease, props.label, content.dataType)
 
 
     // If there is data available
@@ -66,7 +69,8 @@ export default function Panel(props: Props) {
                        data={calculatedData}
                        selectedShowTopN={props.selectedShowTopN}
                        type={content['graphType']}
-                       color={props.label === 'cases' ? '#990001' : 'grey'}/>
+                       color={props.label === 'cases' ? '#990001' : 'grey'}
+                       metadata={metadata}/>
             </div>
         )
     } else {
