@@ -35,9 +35,9 @@ type State = {
 class App extends React.Component <{}, State> {
     state = {
         allData: [{}, {}, {}, {}],
-        selectedRegion: Configuration.DEFAULT_REGION,
-        selectedShowTopN: Configuration.DEFAULT_SHOWTOPN,
-        datePicked: Configuration.DEFAULT_DATE,
+        selectedRegion: "State",
+        selectedShowTopN: 10,
+        datePicked: "2020-01-01",
         availableRegions: Configuration.REGIONS,
         datesToPick: []
     }
@@ -45,7 +45,7 @@ class App extends React.Component <{}, State> {
     refs_: any = {}
 
     componentDidMount() {
-        this.refs_ = this.generateRowReferences()
+        this.refs_ = this.generateReferences()
         const requests = this.fetchData()
 
         Promise.all(requests).then(responses => {
@@ -67,7 +67,14 @@ class App extends React.Component <{}, State> {
                         this.setState({datesToPick: datesToPick})
                         // The default date is always the latest date available in the dataset,
                         // which happens to be the last date in the array
-                        this.setState({datePicked: datesToPick[datesToPick.length - 1]})
+                        const mostRecentDate = datesToPick[datesToPick.length - 1]
+                        this.setState({datePicked: mostRecentDate})
+
+                        // TODO: Come up with a better solution
+                        let regions = {}
+                        const states = Object.keys(json[mostRecentDate]).filter(geoId => geoId.length === 8)
+                        states.forEach(geoId => regions[geoId] = geoId)
+                        this.setState({availableRegions: {...this.state.availableRegions, ...regions}})
                     }
                 })
             })
@@ -77,9 +84,9 @@ class App extends React.Component <{}, State> {
     /**
      * Creates a reference for each row which allows easy access from the SideNav.
      */
-    generateRowReferences = () => {
+    generateReferences = () => {
         let refs_ = {}
-        Object.keys(ContentFile).forEach(key => refs_[key] = React.createRef<HTMLDivElement>())
+        for (let key in ContentFile) refs_[key] = React.createRef<HTMLDivElement>()
         return refs_
     }
 
@@ -104,13 +111,13 @@ class App extends React.Component <{}, State> {
      */
     handleSelectUpdate = (key: string, value: any) =>{
         switch(key){
-            case 'selectedRegion':
+            case 'region':
                 this.setState({selectedRegion: value})
                 break;
-            case 'selectedDate':
+            case 'date':
                 this.setState({datePicked: value})
                 break;
-            case 'selectedShowTopN':
+            case 'showTopN':
                 this.setState({selectedShowTopN: value})
                 break;
         }
@@ -121,7 +128,7 @@ class App extends React.Component <{}, State> {
      * The order is important [cases, deaths, population, places].
      */
     fetchData = () => {
-        const url: string = `/api/`
+        const url: string = `http://localhost/api/`
         const apis = [
             url + 'total-cases',
             url + 'total-deaths',
@@ -132,19 +139,26 @@ class App extends React.Component <{}, State> {
         return apis.map(api => fetch(api));
     }
 
-    getDataOnlyForSelectedRegionType = (data: {}[], selectedRegion: string): {}[]=> {
+    /**
+     * Returns only the data corresponding to a specific region. County, State or within a State.
+     * @param allData: all the data in the form of [cases, deaths, population, names]
+     * @param selectedRegion: can be State, County or a State's geoId: geoId/XX
+     */
+    getDataOnlyForSelectedRegionType = (allData: {}[], selectedRegion: string): {}[]=> {
         let output: {}[] = []
-        const geoIdsContainedInSelectedRegion = filterGeoIdByRegionType(data[3], selectedRegion)
+        const geoIdsContainedInSelectedRegion = filterGeoIdByRegionType(allData[3], selectedRegion)
+
         for (let dataSet of this.state.allData.slice(0, 2)){
             let filteredDataSet = {}
             for (let date in dataSet){
-                filteredDataSet[date] = filterJSONByArrayOfKeys(dataSet[date], geoIdsContainedInSelectedRegion)
+                const geoIdsForIterativeDate = dataSet[date]
+                filteredDataSet[date] = filterJSONByArrayOfKeys(geoIdsForIterativeDate, geoIdsContainedInSelectedRegion)
             }
             output.push(filteredDataSet)
         }
 
-        output.push(filterJSONByArrayOfKeys(data[2], geoIdsContainedInSelectedRegion))
-        output.push(filterJSONByArrayOfKeys(data[3], geoIdsContainedInSelectedRegion))
+        output.push(filterJSONByArrayOfKeys(allData[2], geoIdsContainedInSelectedRegion))
+        output.push(filterJSONByArrayOfKeys(allData[3], geoIdsContainedInSelectedRegion))
 
         return output
     }
@@ -167,11 +181,12 @@ class App extends React.Component <{}, State> {
                         <span style={{color: "#990001"}}>{Configuration.SUBTITLE}</span>
                     </h1>
                     <OptionPanel handleSelectUpdate={this.handleSelectUpdate}
+                                 geoIdToName={this.state.allData[3]}
                                  defaultShowTopN={this.state.selectedShowTopN}
                                  datesToPick={this.state.datesToPick}
-                                 defaultDate={this.state.datePicked}
+                                 datePicked={this.state.datePicked}
                                  availableRegions={this.state.availableRegions}
-                                 defaultRegion={this.state.selectedRegion}/>
+                                 selectedRegion={this.state.selectedRegion}/>
                         {rows}
                 </div>
                 <h5 className={"footer"}>{Configuration.FOOTER}</h5>

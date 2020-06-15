@@ -20,7 +20,7 @@ import Panel from './Panel'
 import {prettifyDate} from './Utils'
 
 type Props = {
-    allData: any[],
+    allData: {}[],
     ref_: any,
     panelId: string,
     region: string,

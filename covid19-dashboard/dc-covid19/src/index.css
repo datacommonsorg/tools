@@ -45,6 +45,7 @@ body {
     margin: 5% 0;
     background-color: white;
     border-radius: 10px;
+    max-width: 450px;
 }
 
 .chart {

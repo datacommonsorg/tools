@@ -14,8 +14,8 @@
  limitations under the License.
  */
 
-import BarGraph from "./BarGraph";
 import React from "react";
+import BarGraph from "./BarGraph";
 import LineGraph from "./LineGraph";
 
 type DateToGeoIdToValue = {string: {string: number}} | {}
@@ -24,7 +24,8 @@ type Metadata = {
     name: string,
     onHoverInfo: string[]
     textOnTopOfBar: string,
-    population: number,
+    value?: number,
+    geoId?: string
 }
 
 type Props = {
@@ -37,19 +38,40 @@ type Props = {
 }
 
 export default function Graph(props: Props) {
-    if (props.type === 'bar') {
+    let data: {} = {}
+
+    for (let date in props.data){
+        let dataForIterativeDate = {}
+        for (let geoId in props.data[date]){
+            const value: number = props.data[date][geoId] || 0
+            const metadata: Metadata = props.metadata?.[date]?.[geoId] || {}
+
+            dataForIterativeDate[geoId] = {
+                geoId: geoId,
+                value: value,
+                name: metadata?.name || geoId,
+                onHoverInfo: metadata?.onHoverInfo || [],
+                textOnTopOfBar: metadata?.textOnTopOfBar || String(value)
+            }
+        }
+        data[date] = dataForIterativeDate
+    }
+
+    if (props.type === 'line') {
         return (
-            <BarGraph label={props.label}
-                      data={props.data}
-                      selectedShowTopN={props.selectedShowTopN}
-                      color={props.color}
-                      metadata={props.metadata}/>)
+            <LineGraph
+                label={props.label}
+                data={data}
+                selectedShowTopN={props.selectedShowTopN}
+                color={props.color}
+                metadata={props.metadata}/>)
     } else {
         return (
-            <LineGraph label={props.label}
-                      data={props.data}
-                      selectedShowTopN={props.selectedShowTopN}
-                      color={props.color}
-                      metadata={props.metadata}/>)
+            <BarGraph
+                label={props.label}
+                data={data}
+                selectedShowTopN={props.selectedShowTopN}
+                color={props.color}
+                metadata={props.metadata}/>)
     }
 }

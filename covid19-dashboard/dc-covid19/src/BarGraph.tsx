@@ -15,8 +15,9 @@
  */
 
 import React from 'react';
-import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
+import {Bar, BarChart, LabelList, Text, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTip from "./ToolTip";
+import EmptyPanel from "./EmptyPanel";
 type dataPerGeoIdPerDate = {string: {string: number}} | {}
 
 type Props = {
@@ -31,20 +32,25 @@ type Metadata = {
     name: string,
     onHoverInfo: string[]
     textOnTopOfBar: string,
-    population: number,
+    value: number,
+    geoId: string
 }
 
 export default function BarGraph(props: Props) {
     const datesInData = Object.keys(props.data)
-    let dataAsArray: {value: number, dcid: string}[] = []
+    let dataAsArray: Metadata[] = []
 
     // If there is data, then convert it to an array, otherwise dataAsArray will be empty [].
     if (datesInData.length) {
         // Get the most recent date of the data, that's the only one we care about (for now).
-        const dataForMostRecentDate: {string: number} = props.data[datesInData[datesInData.length - 1]]
-        dataAsArray = Object.keys(dataForMostRecentDate).map(geoId =>
-        {return {value: dataForMostRecentDate[geoId], dcid: geoId}}).splice(0, props.selectedShowTopN)
+        const dataForMostRecentDate: {string: number} = props.data[datesInData[0]]
+        dataAsArray = Object.keys(dataForMostRecentDate).map(geoId => dataForMostRecentDate[geoId])
     }
+
+    // Clean the data by sorting it and removing any zero values.
+    dataAsArray.sort((a, b) => b.value - a.value)
+    dataAsArray = dataAsArray.slice(0, props.selectedShowTopN)
+    dataAsArray = dataAsArray.filter(point => point.value > 0)
 
     /**
      * In charge of displaying the tooltip on-hover on the chart.
@@ -52,16 +58,10 @@ export default function BarGraph(props: Props) {
      * @param payload
      */
     const customTooltip = ({active, payload}) => {
-        let tooltipType: string = "normal"
         // Make sure that the current bar is actively being hovered on.
         if (active) {
-            const data = payload[0].payload
-            if (data.absolute && data.population) {
-                tooltipType = "perCapita"
-            } else if (data.absolute && !data.population) {
-                tooltipType = "percent"
-            }
-            return <ToolTip data={data} type={tooltipType} label={props.label}/>
+            const onHoverInfo: string[] = payload[0].payload.onHoverInfo
+            return (<ToolTip text={onHoverInfo}/>);
         }
         return null;
     };
@@ -69,7 +69,7 @@ export default function BarGraph(props: Props) {
     /**
      * Function triggered when each bar in the cart is clicked.
      * Opens a new tab and takes the user to GNI.
-     * @param {dcid}: the dcid that represents the bar
+     * @param dcid: the dcid that represents the bar
      */
     let barOnClick = ({dcid}) => {
         const URL: string = `https://browser.datacommons.org/gni#&place=${dcid}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
@@ -78,10 +78,10 @@ export default function BarGraph(props: Props) {
 
     /**
      * Function in charge of displaying the labeListLabel string stored in each dataHolder point.
-     * @param metadata: contains data about the bar in the chart as well as the value to print out
+     * @param customizedLabelData: contains data about the bar in the chart as well as the value to print out
      */
-    let renderCustomizedLabel = (metadata) => {
-        const {x, y, width, height, value} = metadata;
+    let renderCustomizedLabel = (customizedLabelData) => {
+        const {x, y, width, height, value} = customizedLabelData;
         return (
             <g>
                 <text fontSize={10}
@@ -113,18 +113,17 @@ export default function BarGraph(props: Props) {
                                tick={{fill: '#868E96', fontSize: 10}}
                                interval={0}/>
                         <YAxis type="category"
-                               dataKey="regionName"
-                               tick={{ill: '#868e96', fontSize: 10}}
+                               dataKey="name"
+                               tick={{ill: '#868E96', fontSize: 10}}
                                width={90}
                                interval={0}/>
                         <Tooltip content={customTooltip}/>
                         <Bar dataKey={"value"}
                              fill={props.color}
                              onClick={barOnClick}
-                             radius={[4, 4, 4, 4]}>
-                            <LabelList dataKey={"labelListLabel"}
+                             radius={[4, 4, 4, 4]} isAnimationActive={false}>
+                            <LabelList dataKey={"textOnTopOfBar"}
                                        content={renderCustomizedLabel}/>
                         </Bar>
-        </BarChart>
-    );
+        </BarChart>)
 }

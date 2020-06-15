@@ -23,12 +23,12 @@ type DataPerGeoIdPerDate = {string: {string: number}} | {}
  * @param data: input data in the form of dates->geoIds->value.
  * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
  * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
- * @param calculation: The function in charge of doing some calculation on the data for dates X and Y.
+ * @param calculationType: The function in charge of doing some calculation on the data for dates X and Y.
  * @param geoIdToPopulation: geoId->Population. After calculating the difference, we want to divide by total population
  * @private
  */
 const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
-                   deltaDays: number, calculation: string, geoIdToPopulation: {geoId: number}): DataPerGeoIdPerDate => {
+                   deltaDays: number, calculationType: string, geoIdToPopulation: {geoId: number}): DataPerGeoIdPerDate => {
     if (!data) return {}
     let outputData: DataPerGeoIdPerDate = {}
 
@@ -50,7 +50,8 @@ const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
             if (!iterativeDateValue || !deltaDaysFromIterativeDateValue) continue
             // Do some calculation on the data using the calculation function.
             let result: number | null = null;
-            switch (calculation){
+
+            switch (calculationType){
                 case 'absolute':
                     result = iterativeDateValue
                     break;
@@ -58,11 +59,14 @@ const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
                     result = iterativeDateValue - deltaDaysFromIterativeDateValue
                     break;
                 case 'perCapita':
-                    result = (iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId]
+                    result = ((iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId]) * 10000
                     break;
                 case 'increase':
                     result = (iterativeDateValue / deltaDaysFromIterativeDateValue) - 1
                     break;
+                // TODO: Come up with a better solution
+                case 'absolutePerCapita':
+                    result = ((iterativeDateValue) / geoIdToPopulation[geoId]) * 10000
             }
 
             // If the result is valid, store it

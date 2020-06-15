@@ -80,8 +80,20 @@ const getRangeOfDates = (ISOdate: string, deltaInDays: number): [string, string]
     return [addOrSubtractNDaysToDate(ISOdate, -deltaInDays), ISOdate]
 }
 
+/**
+ * Given a map of geoId->[name, type], it returns a list of the geoId's that belong to the regionType
+ * @param geoIdToType: can be 'State' or 'County'
+ * @param regionType
+ */
 const filterGeoIdByRegionType = (geoIdToType: {geoId: string[]} | {}, regionType: string): string[] => {
     let output: string[] = []
+
+    if (regionType !== 'State' && regionType !== 'County') {
+        return Object.keys(geoIdToType).filter(geoId => {
+            return geoId !== regionType && geoId.slice(0, 8) === regionType
+        })
+    }
+
     for (let geoId in geoIdToType) {
         const observedGeoIdRegion = geoIdToType[geoId][1]
         if (observedGeoIdRegion === regionType) output.push(geoId)

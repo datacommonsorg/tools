@@ -22,8 +22,9 @@ type Props = {
     datesToPick: string[],
     availableRegions: {},
     defaultShowTopN: number,
-    defaultRegion: string,
-    defaultDate: string,
+    selectedRegion: string,
+    datePicked: string,
+    geoIdToName: {geoId: string} | {}
 }
 
 export default function OptionPanel(props: Props) {
@@ -31,34 +32,37 @@ export default function OptionPanel(props: Props) {
     const handleSelect = (e: ChangeEvent) => {
         const newSelection: string = (e.target as HTMLInputElement).value
         const id: string = (e.target as HTMLInputElement).id
-        props.handleSelectUpdate('selected'+ id, newSelection)
+        props.handleSelectUpdate(id, newSelection)
     }
 
     const showTopNOptions: JSX.Element[] = Configuration.SHOWTOPN.map(n => <option value={n}>Top {n}</option>)
-    const regionOptions: JSX.Element[] = Object.keys(props.availableRegions).map(region =>
-        <option value={region}>{props.availableRegions[region]}</option>)
+    const regionOptions: JSX.Element[] = Object.keys(props.availableRegions).map(region =>{
+        let regionName = props.geoIdToName[region]?.[0]
+        if (!region.includes('geoId/')) regionName = props.availableRegions[region]
+        return <option value={region}>{regionName}</option>
+    })
 
-    // Reverse the datesToPick because we want to go show from most recent to oldest
-    const dateOptions: JSX.Element[] = props.datesToPick.reverse().map(date => <option value={date}>{date}</option>)
+    const dateOptions: JSX.Element[] = [...props.datesToPick].reverse().map(date =>
+        <option value={date}>{date}</option>)
 
     return (
         <div className={"option-panel panel shadow"}>
             <select className="dropdown shadow"
                     onChange={handleSelect}
-                    id={"ShowTopN"}
+                    id={"showTopN"}
                     defaultValue={props.defaultShowTopN}>
                 {showTopNOptions}
             </select>
             <select className="dropdown shadow"
                     onChange={handleSelect}
-                    id={"Region"}
-                    defaultValue={props.defaultRegion}>
+                    id={"region"}
+                    defaultValue={props.selectedRegion}>
                 {regionOptions}
             </select>
             <select className="dropdown shadow"
                     onChange={handleSelect}
-                    id={"Date"}
-                    defaultValue={props.defaultDate}>
+                    id={"date"}
+                    defaultValue={props.datePicked}>
                 {dateOptions}
             </select>
         </div>

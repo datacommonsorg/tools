@@ -18,6 +18,7 @@ import os
 from flask_caching import Cache
 from flask_cors import CORS
 from send_request import send_request
+import numpy as np
 
 config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR='/tmp', CACHE_DEFAULT_TIMEOUT=5000)
 
@@ -44,20 +45,21 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 
-@app.route("/api/places")
-@cache.cached(timeout=864000)
-def get_places():
-    """Returns a dictionary of dcid->(name, type)
-    where name is the name of the region and type is the type of region."""
-    response: dict = send_request(req_url='https://api.datacommons.org/node/property-values',
-                                  req_json={"dcids": ['NYT_COVID19_County', 'NYT_COVID19_State'],
-                                            "property": "member"},
-                                  post=True,
-                                  compress=False,
-                                  api_key=API_KEY)
-    counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
-    states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
-    return {**counties, **states}
+# @app.route("/api/places")
+# @cache.cached(timeout=864000)
+# def get_places():
+#     """Returns a dictionary of dcid->(name, type)
+#     where name is the name of the region and type is the type of region."""
+#     response: dict = send_request(req_url='https://api.datacommons.org/node/property-values',
+#                                   req_json={"dcids": ['NYT_COVID19_County', 'NYT_COVID19_State'],
+#                                             "property": "member"},
+#                                   post=True,
+#                                   compress=False,
+#                                   api_key=API_KEY)
+#
+#     counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
+#     states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
+#     return {**counties, **states}
 
 
 @app.route("/api/total-cases")
@@ -80,11 +82,23 @@ def get_total_deaths():
 @cache.cached(timeout=864000)
 def get_population():
     """Returns the total population of each region. dcid->population"""
+
+    def request_population(dcids_list: list):
+        n_lists = len(dcids_list) % 1000
+        chunked_dcids = np.array_split(dcids, n_lists)
+        response = {}
+        for x in chunked_dcids:
+            temp_response = send_request("https://api.datacommons.org/bulk/stats",
+                                         {"place": list(x),
+                                          "stats_var": "TotalPopulation"},
+                                         api_key=API_KEY)
+            response = {**response, **temp_response}
+        return response
+
     dcids: list = list(get_places().keys())
-    response: dict = send_request("https://api.datacommons.org/bulk/stats",
-                                  {"place": dcids,
-                                   "stats_var": "TotalPopulation"},
-                                  api_key=API_KEY)
+
+    response = request_population(dcids)
+
     output: defaultdict = defaultdict(int)
     for dcid in response:
         # Some dcids return None if there is no data, so we have to make sure there is data first.
@@ -96,6 +110,36 @@ def get_population():
             continue
         output[dcid] = response[dcid]['data']['2018']
     return output
+
+
+@app.route("/api/places")
+@cache.cached(timeout=864000)
+def get_places():
+    """Returns a dictionary of dcid->(name, type) where name is
+    the name of the region and type is the type of region."""
+
+    # Get state data
+    response = send_request("https://api.datacommons.org/node/places-in",
+                            {"dcids": ["country/USA"], "placeType": "State"}, api_key=API_KEY)
+
+    state_dcids = [x['place'] for x in response]
+    response = send_request("https://api.datacommons.org/node/property-values",
+                            {"dcids": state_dcids, "property": "name"}, api_key=API_KEY)
+
+    states: dict = {dcid: (response[dcid]['out'][0]['value'], 'State') for dcid in response}
+
+    # Get county data
+    response = send_request("https://api.datacommons.org/node/places-in",
+                            {"dcids": state_dcids, "placeType": "County"}, api_key=API_KEY)
+
+    county_dcids = [x['place'] for x in response]
+    response = send_request("https://api.datacommons.org/node/property-values",
+                            {"dcids": county_dcids, "property": "name"}, api_key=API_KEY)
+    counties: dict = {dcid: (response[dcid]['out'][0]['value'], 'County') for dcid in response}
+
+    counties['geoId/3651000'] = ("New York City", "County")
+    counties['geoId/2938000'] = ("Kansas City", "County")
+    return {**states, **counties}
 
 
 def get_stats_by_date(place: list, stats_var: str) -> dict:
@@ -113,6 +157,8 @@ def get_stats_by_date(place: list, stats_var: str) -> dict:
 
     # Store the data in output as dates->dcid->value
     for dcid in response:
+        if not response[dcid]:
+            continue
         if "data" not in response[dcid]:
             continue
         data = response[dcid]["data"]

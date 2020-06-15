@@ -21,6 +21,7 @@ import EmptyPanel from "./EmptyPanel";
 import {getRangeOfDates} from "./Utils";
 import Graph from "./Graph";
 import generateGraphMetadata from "./MetaDataGenerator";
+import {Simulate} from "react-dom/test-utils";
 
 type Props = {
     allData: any[],
@@ -42,7 +43,7 @@ type DateToGeoIdToValue = {date: {geoId: number}} | {}
 
 export default function Panel(props: Props) {
     const content = ContentFile[props.panelId]
-    const deltaDays: number = content.deltaDays
+    const deltaDays: number = content.deltaDays || 0
 
     // Is it cases or deaths?
     const inputData: DateToGeoIdToValue = props.label === 'cases' ? props.allData[0] : props.allData[1]
@@ -51,14 +52,16 @@ export default function Panel(props: Props) {
     const rangeOfDates: [string, string] = getRangeOfDates(props.datePicked, deltaDays)
 
     // Calculate per-capita.
-    const calculatedData: DateToGeoIdToValue = calculate(inputData, rangeOfDates, deltaDays, content.dataType, geoIdToPopulation)
+    const calculatedData: DateToGeoIdToValue = calculate(inputData, rangeOfDates,
+        deltaDays, content.dataType, geoIdToPopulation)
 
     let absoluteIncrease: DateToGeoIdToValue = {}
-    if (content.dataType=== 'increase') {
+    if (content.dataType === 'perCapita' || content.dataType === 'increase') {
         // If the graph is a percent-increase graph, we also want to show the absolute increase.
         absoluteIncrease = calculate(inputData, rangeOfDates, deltaDays, 'difference', geoIdToPopulation);
+    } else if (content.dataType === 'absolutePerCapita') {
+        absoluteIncrease = {...inputData}
     }
-
 
     // Generate the metadata for the graph (on-hover, bar text, region names)
     const metadata: {date: {geoId: Metadata}} | {} = generateGraphMetadata(calculatedData, geoIdToPopulation,
@@ -74,7 +77,7 @@ export default function Panel(props: Props) {
                 <h6 className={"title"}>{content?.subtitle.replace("{TYPE}",
                     props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
                 <Graph label={props.label}
-                       data={calculatedData}
+                       data={{[props.datePicked]: calculatedData[props.datePicked]}}
                        selectedShowTopN={props.selectedShowTopN}
                        type={content['graphType']}
                        color={props.label === 'cases' ? '#990001' : 'grey'}
@@ -82,6 +85,6 @@ export default function Panel(props: Props) {
             </div>
         )
     } else {
-        return (<EmptyPanel reason={Object.keys(inputData).length === 0 ? 'loading' : 'nan'}/>)
+        return (<EmptyPanel reason={'loading'}/>)
     }
 }
