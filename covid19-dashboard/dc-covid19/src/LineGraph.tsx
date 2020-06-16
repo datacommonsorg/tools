@@ -33,11 +33,10 @@ type Metadata = {
 }
 
 export default function LineGraph(props: Props) {
-    let data = props.data[0] || {}
     let lines: JSX.Element[] = []
-    for (let geoId in data){
-        if (geoId === 'label') continue
-        lines.push(<Line type="monotone" dataKey={geoId} stroke={props.color}/>)
+    for (let allGeoIds in props.data) {
+        if (allGeoIds === 'label') continue
+        lines.push(<Line type="monotone" dataKey={allGeoIds} stroke={props.color}/>)
     }
 
 

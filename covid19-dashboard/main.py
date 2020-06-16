@@ -82,33 +82,34 @@ def get_total_deaths():
 @cache.cached(timeout=864000)
 def get_population():
     """Returns the total population of each region. dcid->population"""
-
-    def request_population(dcids_list: list):
-        n_lists = len(dcids_list) % 1000
-        chunked_dcids = np.array_split(dcids, n_lists)
-        response = {}
-        for x in chunked_dcids:
-            temp_response = send_request("https://api.datacommons.org/bulk/stats",
-                                         {"place": list(x),
-                                          "stats_var": "TotalPopulation"},
-                                         api_key=API_KEY)
-            response = {**response, **temp_response}
-        return response
-
-    dcids: list = list(get_places().keys())
-
-    response = request_population(dcids)
+    state_response = send_request("https://api.datacommons.org/bulk/place-obs",
+                                  dict(placeType='State', populationType="Person", observationDate="2018"),
+                                  api_key=API_KEY, compress=True)
+    county_response = send_request("https://api.datacommons.org/bulk/place-obs",
+                                   dict(placeType='County', populationType="Person", observationDate="2018"),
+                                   api_key=API_KEY, compress=True)
+    response = state_response['places'] + county_response['places']
 
     output: defaultdict = defaultdict(int)
-    for dcid in response:
+
+    for place in response:
         # Some dcids return None if there is no data, so we have to make sure there is data first.
-        if not response[dcid]:
+        if 'place' not in place and not place['place']:
             continue
-        if "data" not in response[dcid]:
+        if "observations" not in place and not place["observations"]:
             continue
-        if "2018" not in response[dcid]['data']:
-            continue
-        output[dcid] = response[dcid]['data']['2018']
+        dcid = place['place']
+        for observation in place["observations"]:
+            if observation["measurementMethod"] == "CensusACS5yrSurvey":
+                if 'measuredValue' not in observation:
+                    print("ERROR", dcid)
+                    continue
+                population = observation['measuredValue']
+                output[dcid] = population
+
+    output['geoId/3651000'] = 8399000
+    output['geoId/2938000'] = 491918
+
     return output
 
 
@@ -125,20 +126,32 @@ def get_places():
     state_dcids = [x['place'] for x in response]
     response = send_request("https://api.datacommons.org/node/property-values",
                             {"dcids": state_dcids, "property": "name"}, api_key=API_KEY)
-
-    states: dict = {dcid: (response[dcid]['out'][0]['value'], 'State') for dcid in response}
+    states: dict = {}
+    for geoId in response:
+        if 'out' in response[geoId] and response[geoId]['out'] and 'value' in response[geoId]['out'][0]:
+            states[geoId] = (response[geoId]['out'][0]['value'], 'country/USA')
 
     # Get county data
     response = send_request("https://api.datacommons.org/node/places-in",
                             {"dcids": state_dcids, "placeType": "County"}, api_key=API_KEY)
 
-    county_dcids = [x['place'] for x in response]
-    response = send_request("https://api.datacommons.org/node/property-values",
-                            {"dcids": county_dcids, "property": "name"}, api_key=API_KEY)
-    counties: dict = {dcid: (response[dcid]['out'][0]['value'], 'County') for dcid in response}
+    county_to_state = {}
+    for value in response:
+        if 'place' in value and 'dcid' in value:
+            county_geoId = value['place']
+            belongs_to_state_geoId = value['dcid']
+            county_to_state[county_geoId] = belongs_to_state_geoId
 
-    counties['geoId/3651000'] = ("New York City", "County")
-    counties['geoId/2938000'] = ("Kansas City", "County")
+    response = send_request("https://api.datacommons.org/node/property-values",
+                            {"dcids": list(county_to_state.keys()), "property": "name"}, api_key=API_KEY)
+
+    counties: dict = {}
+    for geoId in response:
+        if 'out' in response[geoId] and response[geoId]['out'] and 'value' in response[geoId]['out'][0]:
+            counties[geoId] = (response[geoId]['out'][0]['value'], county_to_state[geoId])
+
+    counties['geoId/3651000'] = ("New York City", "geoId/36")
+    counties['geoId/2938000'] = ("Kansas City", "geoId/29")
     return {**states, **counties}
 
 

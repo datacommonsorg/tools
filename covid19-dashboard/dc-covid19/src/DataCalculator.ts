@@ -59,14 +59,15 @@ const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
                     result = iterativeDateValue - deltaDaysFromIterativeDateValue
                     break;
                 case 'perCapita':
+                    console.log(geoIdToPopulation)
                     result = ((iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId]) * 10000
                     break;
                 case 'increase':
                     result = (iterativeDateValue / deltaDaysFromIterativeDateValue) - 1
                     break;
-                // TODO: Come up with a better solution
                 case 'absolutePerCapita':
-                    result = ((iterativeDateValue) / geoIdToPopulation[geoId]) * 10000
+                    result = (iterativeDateValue / geoIdToPopulation[geoId]) * 10000
+                    break;
             }
 
             // If the result is valid, store it

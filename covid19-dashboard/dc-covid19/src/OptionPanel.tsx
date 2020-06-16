@@ -38,7 +38,10 @@ export default function OptionPanel(props: Props) {
     const showTopNOptions: JSX.Element[] = Configuration.SHOWTOPN.map(n => <option value={n}>Top {n}</option>)
     const regionOptions: JSX.Element[] = Object.keys(props.availableRegions).map(region =>{
         let regionName = props.geoIdToName[region]?.[0]
+
+        // If the region is 'All Counties' and 'All States'
         if (!region.includes('geoId/')) regionName = props.availableRegions[region]
+
         return <option value={region}>{regionName}</option>
     })
 

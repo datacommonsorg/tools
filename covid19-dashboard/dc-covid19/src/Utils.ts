@@ -61,11 +61,10 @@ const prettifyDate = (ISOdate: string): string => {
  */
 const addOrSubtractNDaysToDate = (ISOdate: string, days: number): string => {
     let date;
-    if (days < 0){
-        date = moment(ISOdate).subtract(Math.abs(days), "days")
-    } else {
-        date = moment(ISOdate).add(Math.abs(days), "days")
-    }
+    // Subtracting to date
+    if (days < 0) date = moment(ISOdate).subtract(Math.abs(days), "days")
+    // Adding to date
+    else date = moment(ISOdate).add(Math.abs(days), "days")
     return date.format("YYYY-MM-DD")
 }
 
@@ -81,24 +80,14 @@ const getRangeOfDates = (ISOdate: string, deltaInDays: number): [string, string]
 }
 
 /**
- * Given a map of geoId->[name, type], it returns a list of the geoId's that belong to the regionType
- * @param geoIdToType: can be 'State' or 'County'
- * @param regionType
+ * Given a map of geoId->[name, belongToRegion], it returns a list of the geoId's that belong to the belongToRegion
+ * @param geoIdToType: geoId->[name, belongToRegion]
+ * @param belongToRegion: can be any geoId
  */
-const filterGeoIdByRegionType = (geoIdToType: {geoId: string[]} | {}, regionType: string): string[] => {
-    let output: string[] = []
-
-    if (regionType !== 'State' && regionType !== 'County') {
-        return Object.keys(geoIdToType).filter(geoId => {
-            return geoId !== regionType && geoId.slice(0, 8) === regionType
-        })
-    }
-
-    for (let geoId in geoIdToType) {
-        const observedGeoIdRegion = geoIdToType[geoId][1]
-        if (observedGeoIdRegion === regionType) output.push(geoId)
-    }
-    return output
+const filterGeoIdThatBelongTo = (geoIdToType: {geoId: string[]} | {}, belongToRegion: string): string[] => {
+    if (belongToRegion === 'County') return Object.keys(geoIdToType).filter(geoId => geoIdToType[geoId][1] !== 'country/USA')
+    else if (belongToRegion === 'State') return Object.keys(geoIdToType).filter(geoId => geoIdToType[geoId][1] === 'country/USA')
+    else return Object.keys(geoIdToType).filter(geoId => geoIdToType[geoId][1] === belongToRegion)
 }
 
 /**
@@ -119,6 +108,6 @@ export {
     prettifyDate,
     addOrSubtractNDaysToDate,
     getRangeOfDates,
-    filterGeoIdByRegionType,
+    filterGeoIdThatBelongTo,
     filterJSONByArrayOfKeys
 }

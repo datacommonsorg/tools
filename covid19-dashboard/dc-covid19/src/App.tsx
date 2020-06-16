@@ -17,7 +17,7 @@
 import React from 'react';
 import ContentFile from './ContentFile.json'
 import Configuration from './Configuration.json'
-import {filterGeoIdByRegionType, filterJSONByArrayOfKeys} from './Utils'
+import {filterGeoIdThatBelongTo, filterJSONByArrayOfKeys} from './Utils'
 import {getRealISODatesFromArrayOfDeltaDays} from "./Utils";
 import SideNav from "./SideNav";
 import Row from "./Row";
@@ -39,7 +39,7 @@ class App extends React.Component <{}, State> {
         selectedShowTopN: 10,
         datePicked: "2020-01-01",
         availableRegions: Configuration.REGIONS,
-        datesToPick: []
+        datesToPick: ["2020-01-01"]
     }
 
     refs_: any = {}
@@ -57,7 +57,7 @@ class App extends React.Component <{}, State> {
                     currentData[index] = json
                     this.setState({allData: currentData})
 
-                    // index 0 contains the 'total-cases' object, which has the dates as keys
+                    // Index 0 contains the 'total-cases' object, which has the dates as keys.
                     if (index === 0) {
                         // Get an array of all the dates in the data.
                         const allDates = Object.keys(json)
@@ -69,11 +69,13 @@ class App extends React.Component <{}, State> {
                         // which happens to be the last date in the array
                         const mostRecentDate = datesToPick[datesToPick.length - 1]
                         this.setState({datePicked: mostRecentDate})
-
-                        // TODO: Come up with a better solution
-                        let regions = {}
-                        const states = Object.keys(json[mostRecentDate]).filter(geoId => geoId.length === 8)
-                        states.forEach(geoId => regions[geoId] = geoId)
+                    // Index 3 contains the 'geoId -> belongsToRegion' object, we can get all the available States
+                    // All Counties,
+                    } else if (index === 3){
+                        let regions: {} = {};
+                        Object.keys(json).forEach(geoId => {
+                            if (json[geoId][1] === 'country/USA') regions[geoId] = json[geoId][0]
+                        })
                         this.setState({availableRegions: {...this.state.availableRegions, ...regions}})
                     }
                 })
@@ -110,7 +112,7 @@ class App extends React.Component <{}, State> {
      * @param value
      */
     handleSelectUpdate = (key: string, value: any) =>{
-        switch(key){
+        switch(key) {
             case 'region':
                 this.setState({selectedRegion: value})
                 break;
@@ -142,12 +144,13 @@ class App extends React.Component <{}, State> {
     /**
      * Returns only the data corresponding to a specific region. County, State or within a State.
      * @param allData: all the data in the form of [cases, deaths, population, names]
-     * @param selectedRegion: can be State, County or a State's geoId: geoId/XX
+     * @param region: can be State, County or a State's geoId: geoId/XX
      */
-    getDataOnlyForSelectedRegionType = (allData: {}[], selectedRegion: string): {}[]=> {
+    getStatsDataOnlyForRegion = (allData: {}[], region: string): {}[]=> {
         let output: {}[] = []
-        const geoIdsContainedInSelectedRegion = filterGeoIdByRegionType(allData[3], selectedRegion)
+        const geoIdsContainedInSelectedRegion = filterGeoIdThatBelongTo(allData[3], region)
 
+        // Iterate through all-cases and all-deaths which are found in index 0 and 1
         for (let dataSet of this.state.allData.slice(0, 2)){
             let filteredDataSet = {}
             for (let date in dataSet){
@@ -157,15 +160,14 @@ class App extends React.Component <{}, State> {
             output.push(filteredDataSet)
         }
 
-        output.push(filterJSONByArrayOfKeys(allData[2], geoIdsContainedInSelectedRegion))
-        output.push(filterJSONByArrayOfKeys(allData[3], geoIdsContainedInSelectedRegion))
-
+        output.push(this.state.allData[2])
+        output.push(this.state.allData[3])
         return output
     }
     
     render = () => {
-        const data = this.getDataOnlyForSelectedRegionType(this.state.allData, this.state.selectedRegion)
-        const rows = Object.keys(ContentFile).map(panelId => <Row allData={data}
+        const allDataForSelectedRegion = this.getStatsDataOnlyForRegion(this.state.allData, this.state.selectedRegion)
+        const rows = Object.keys(ContentFile).map(panelId => <Row allData={allDataForSelectedRegion}
                                                                   panelId={panelId}
                                                                   datePicked={this.state.datePicked}
                                                                   region={this.state.selectedRegion}

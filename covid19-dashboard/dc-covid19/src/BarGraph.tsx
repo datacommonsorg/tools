@@ -15,9 +15,8 @@
  */
 
 import React from 'react';
-import {Bar, BarChart, LabelList, Text, Tooltip, XAxis, YAxis} from 'recharts'
+import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTip from "./ToolTip";
-import EmptyPanel from "./EmptyPanel";
 type dataPerGeoIdPerDate = {string: {string: number}} | {}
 
 type Props = {
@@ -37,7 +36,7 @@ type Metadata = {
 }
 
 export default function BarGraph(props: Props) {
-    const datesInData = Object.keys(props.data)
+    const datesInData: string[] = Object.keys(props.data)
     let dataAsArray: Metadata[] = []
 
     // If there is data, then convert it to an array, otherwise dataAsArray will be empty [].
@@ -47,9 +46,11 @@ export default function BarGraph(props: Props) {
         dataAsArray = Object.keys(dataForMostRecentDate).map(geoId => dataForMostRecentDate[geoId])
     }
 
-    // Clean the data by sorting it and removing any zero values.
+    // Sort the data in ascending order by value.
     dataAsArray.sort((a, b) => b.value - a.value)
+    // Only store the first N elements.
     dataAsArray = dataAsArray.slice(0, props.selectedShowTopN)
+    // Get rid of any values less than or equal to 0.
     dataAsArray = dataAsArray.filter(point => point.value > 0)
 
     /**
@@ -103,6 +104,7 @@ export default function BarGraph(props: Props) {
     const graphHeight = dataAsArray.length <= 2 ? 70 * dataAsArray.length : 50 * dataAsArray.length // pixels
     const graphWidth = 410 // pixels
     const individualBarWidth = 18 // pixels
+    const tick = {fill: '#868E96', fontSize: 10} // tick style for x-axis and y-axis
     return (
         <BarChart width={graphWidth}
                   height={graphHeight}
@@ -110,11 +112,11 @@ export default function BarGraph(props: Props) {
                   barSize={individualBarWidth}
                   layout="vertical">
                         <XAxis type="number"
-                               tick={{fill: '#868E96', fontSize: 10}}
+                               tick={tick}
                                interval={0}/>
                         <YAxis type="category"
                                dataKey="name"
-                               tick={{ill: '#868E96', fontSize: 10}}
+                               tick={tick}
                                width={90}
                                interval={0}/>
                         <Tooltip content={customTooltip}/>

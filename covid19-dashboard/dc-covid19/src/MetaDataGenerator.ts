@@ -1,4 +1,5 @@
 import {numberWithCommas} from "./Utils";
+
 type Metadata = {
     name: string,
     onHoverInfo: string[]
@@ -26,7 +27,7 @@ const getOnHoverInfoText = (geoId: string, regionName: string, date: string, val
     if (geoId === 'geoId/3651000' || geoId === 'geoId/2938000')
         disclaimer = `All counties in ${regionName} are combined and reported as one.`
 
-    if (contentType === 'perCapita') {
+    if (contentType === 'perCapita' || contentType === 'absolutePerCapita') {
         onHoverInfo = [
             `${value.toFixed(3)} ${label} per 10,000 people`,
             `New ${label}: ${numberWithCommas(absoluteIncreaseValue)}`,
@@ -38,6 +39,7 @@ const getOnHoverInfoText = (geoId: string, regionName: string, date: string, val
     } else {
         onHoverInfo = [`${numberWithCommas(value)} ${label}`]
     }
+
     if (disclaimer) return [disclaimer, ...onHoverInfo]
     else return onHoverInfo
 }
@@ -88,23 +90,29 @@ export default function generateGraphMetadata(values: DateToGeoIdToValue, geoIdT
     // For every date and geoId in the dataset
     for (let date in values){
         for (let geoId in values[date]) {
-            const population: number = geoIdToPopulation[geoId] || 0
-            const regionName: string = geoIdToName[geoId]?.[0] || ""
-            const value: number = values[date][geoId] || 0
-            const absoluteIncreaseValue: number = absoluteIncrease[date]?.[geoId] || 0
+            const iterativePopulation: number = geoIdToPopulation[geoId] || 0
+            // Get the name of the state, and get rid of county or Parish
+            let iterativeRegionName: string = geoIdToName[geoId]?.[0].replace(" County", "").replace(" Parish", "")
+            // iterativeBelongingRegion holds the region that it belongs to, for example geoId/12345 belongs to geoId/12
+            const iterativeBelongingRegion: string = geoIdToName[geoId]?.[1]
+            const iterativeValue: number = values[date][geoId] || 0
+            const iterativeAbsoluteIncreaseValue: number = absoluteIncrease[date]?.[geoId] || 0
+
+            // If the region not a State, append the State to the name: NYC, New York
+            if (iterativeBelongingRegion.includes("geoId")) iterativeRegionName += ", " + geoIdToName[iterativeBelongingRegion]?.[0]
 
             // Generate the text that is displayed when the user hovers on a graph.
-            const onHoverInfo = getOnHoverInfoText(geoId, regionName, date, value, population,
-                absoluteIncreaseValue, label, contentType)
+            const onHoverInfo = getOnHoverInfoText(geoId, iterativeRegionName, date, iterativeValue,
+                iterativePopulation, iterativeAbsoluteIncreaseValue, label, contentType)
 
-            const textOnTopOfBar = getTextOnTopOfBar(geoId, regionName, date, value, population,
-                absoluteIncreaseValue, label, contentType)
+            const textOnTopOfBar = getTextOnTopOfBar(geoId, iterativeRegionName, date, iterativeValue,
+                iterativePopulation, iterativeAbsoluteIncreaseValue, label, contentType)
 
             // If the date is not in the output, create it.
             if (!(date in output)) output[date] = {}
 
             output[date][geoId] = {
-                name: regionName,
+                name: iterativeRegionName,
                 onHoverInfo: onHoverInfo,
                 textOnTopOfBar: textOnTopOfBar
             }
