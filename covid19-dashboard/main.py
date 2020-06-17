@@ -13,12 +13,11 @@
 # limitations under the License.
 
 from collections import defaultdict
-from flask import Flask, send_from_directory, make_response, jsonify
+from flask import Flask, send_from_directory
 import os
 from flask_caching import Cache
 from flask_cors import CORS
 from send_request import send_request
-import numpy as np
 
 config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR='/tmp', CACHE_DEFAULT_TIMEOUT=5000)
 
@@ -82,13 +81,13 @@ def get_total_deaths():
 @cache.cached(timeout=864000)
 def get_population():
     """Returns the total population of each region. dcid->population"""
-    state_response = send_request("https://api.datacommons.org/bulk/place-obs",
-                                  dict(placeType='State', populationType="Person", observationDate="2018"),
-                                  api_key=API_KEY, compress=True)
-    county_response = send_request("https://api.datacommons.org/bulk/place-obs",
-                                   dict(placeType='County', populationType="Person", observationDate="2018"),
-                                   api_key=API_KEY, compress=True)
-    response = state_response['places'] + county_response['places']
+    state_response: dict = send_request("https://api.datacommons.org/bulk/place-obs",
+                                        dict(placeType='State', populationType="Person", observationDate="2018"),
+                                        api_key=API_KEY, compress=True)
+    county_response: dict = send_request("https://api.datacommons.org/bulk/place-obs",
+                                         dict(placeType='County', populationType="Person", observationDate="2018"),
+                                         api_key=API_KEY, compress=True)
+    response: list = state_response['places'] + county_response['places']
 
     output: defaultdict = defaultdict(int)
 
@@ -98,16 +97,20 @@ def get_population():
             continue
         if "observations" not in place and not place["observations"]:
             continue
-        dcid = place['place']
+        dcid: str = place['place']
+
+        # Iterate through all oversvations until we find the Census Data Observation.
         for observation in place["observations"]:
             if observation["measurementMethod"] == "CensusACS5yrSurvey":
                 if 'measuredValue' not in observation:
-                    print("ERROR", dcid)
                     continue
-                population = observation['measuredValue']
+                population: int = observation['measuredValue']
                 output[dcid] = population
 
+    # Add the NYT exceptions
+    # New York City
     output['geoId/3651000'] = 8399000
+    # Kansas City
     output['geoId/2938000'] = 491918
 
     return output
@@ -120,35 +123,40 @@ def get_places():
     the name of the region and type is the type of region."""
 
     # Get state data
-    response = send_request("https://api.datacommons.org/node/places-in",
-                            {"dcids": ["country/USA"], "placeType": "State"}, api_key=API_KEY)
+    response: dict = send_request("https://api.datacommons.org/node/places-in",
+                                  {"dcids": ["country/USA"], "placeType": "State"}, api_key=API_KEY)
 
-    state_dcids = [x['place'] for x in response]
-    response = send_request("https://api.datacommons.org/node/property-values",
-                            {"dcids": state_dcids, "property": "name"}, api_key=API_KEY)
+    state_dcids: dict = [x['place'] for x in response]
+    response: dict = send_request("https://api.datacommons.org/node/property-values",
+                                  {"dcids": state_dcids, "property": "name"}, api_key=API_KEY)
     states: dict = {}
     for geoId in response:
         if 'out' in response[geoId] and response[geoId]['out'] and 'value' in response[geoId]['out'][0]:
             states[geoId] = (response[geoId]['out'][0]['value'], 'country/USA')
 
     # Get county data
-    response = send_request("https://api.datacommons.org/node/places-in",
-                            {"dcids": state_dcids, "placeType": "County"}, api_key=API_KEY)
+    response: dict = send_request("https://api.datacommons.org/node/places-in",
+                                  {"dcids": state_dcids, "placeType": "County"}, api_key=API_KEY)
 
-    county_to_state = {}
+    # Keep track of what county each state belongs to
+    county_to_state: dict = {}
     for value in response:
         if 'place' in value and 'dcid' in value:
-            county_geoId = value['place']
-            belongs_to_state_geoId = value['dcid']
-            county_to_state[county_geoId] = belongs_to_state_geoId
+            county_geoId: str = value['place']
+            belongs_to_state_geoId: str = value['dcid']
+            county_to_state[county_geoId]: str = belongs_to_state_geoId
 
-    response = send_request("https://api.datacommons.org/node/property-values",
-                            {"dcids": list(county_to_state.keys()), "property": "name"}, api_key=API_KEY)
+    # Get the name of all counties
+    response: dict = send_request("https://api.datacommons.org/node/property-values",
+                                  {"dcids": list(county_to_state.keys()), "property": "name"}, api_key=API_KEY)
 
+    # Store all the counties
     counties: dict = {}
     for geoId in response:
         if 'out' in response[geoId] and response[geoId]['out'] and 'value' in response[geoId]['out'][0]:
-            counties[geoId] = (response[geoId]['out'][0]['value'], county_to_state[geoId])
+            name: str = response[geoId]['out'][0]['value']
+            belongs_to = county_to_state[geoId]
+            counties[geoId] = (name, belongs_to)
 
     counties['geoId/3651000'] = ("New York City", "geoId/36")
     counties['geoId/2938000'] = ("Kansas City", "geoId/29")
@@ -163,9 +171,7 @@ def get_stats_by_date(place: list, stats_var: str) -> dict:
     :return: dictionary where every day contains several regions, and those regions contain an int of cases/deaths
     """
     response: dict = send_request("https://api.datacommons.org/bulk/stats",
-                                  {"place": place,
-                                   "stats_var": stats_var},
-                                  api_key=API_KEY)
+                                  {"place": place, "stats_var": stats_var}, api_key=API_KEY)
     output: defaultdict = defaultdict(dict)
 
     # Store the data in output as dates->dcid->value
@@ -174,7 +180,7 @@ def get_stats_by_date(place: list, stats_var: str) -> dict:
             continue
         if "data" not in response[dcid]:
             continue
-        data = response[dcid]["data"]
+        data: dict = response[dcid]["data"]
         for date in data:
             output[date][dcid] = data[date]
     return output

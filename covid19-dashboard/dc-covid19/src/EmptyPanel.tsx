@@ -25,7 +25,7 @@ export default function(props: Props){
 
     return (
         <div className={"panel chart shadow empty-panel"}>
-            <h2 className={"empty-panel"}>{text}</h2>
+            <h2 className={"loading"}>{text}</h2>
         </div>
     )
 }

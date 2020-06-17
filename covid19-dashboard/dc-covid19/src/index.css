@@ -45,11 +45,9 @@ body {
     margin: 5% 0;
     background-color: white;
     border-radius: 10px;
-    max-width: 450px;
-}
-
-.chart {
-    padding: 20px 30px 20px 0;
+    width: 450px;
+    height: 525px;
+    padding: 20px 30px 0 0;
 }
 
 .tooltip-content {
@@ -86,12 +84,14 @@ body {
     margin: 5px 5px 5px 40px;
 }
 
-.empty-panel {
+.empty-panel .loading {
     width: 450px;
+    height: 400px;
     color: grey;
     text-align: center;
     font-weight: normal;
     padding-right: 0;
+    padding-top: 150px;
 }
 
 .left {
@@ -124,6 +124,7 @@ body {
     top: 4%;
     left: 2%;
     overflow-x: hidden;
+    height: unset;
 }
 
 .option-panel .dropdown{
@@ -163,6 +164,7 @@ body {
     overflow-x: hidden;
     width: 160px;
     padding: 30px;
+    height: unset;
 }
 
 .sidenav a {
@@ -189,10 +191,6 @@ body {
         float: none
     }
 
-    .chart {
-        margin: 5% auto 0;
-    }
-
     .container {
         margin: 0;
     }
@@ -200,7 +198,6 @@ body {
     .main-title {
         margin-left: 20%
     }
-
 
     .row {
         margin-left: 20%;
@@ -221,7 +218,6 @@ body {
     .sidenav {
         visibility: hidden;
     }
-
 
     .main-content {
         margin: 0;

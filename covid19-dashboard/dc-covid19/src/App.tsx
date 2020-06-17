@@ -69,8 +69,8 @@ class App extends React.Component <{}, State> {
                         // which happens to be the last date in the array
                         const mostRecentDate = datesToPick[datesToPick.length - 1]
                         this.setState({datePicked: mostRecentDate})
-                    // Index 3 contains the 'geoId -> belongsToRegion' object, we can get all the available States
-                    // All Counties,
+                    // Index 3 contains the 'geoId -> belongsToRegion' object
+                    // We can get all the available States
                     } else if (index === 3){
                         let regions: {} = {};
                         Object.keys(json).forEach(geoId => {
@@ -130,13 +130,12 @@ class App extends React.Component <{}, State> {
      * The order is important [cases, deaths, population, places].
      */
     fetchData = () => {
-        const url: string = `/api/`
+        const url: string = `http://localhost/api/`
         const apis = [
             url + 'total-cases',
             url + 'total-deaths',
             url + 'population',
-            url + 'places'
-        ];
+            url + 'places'];
         // Map every url to the promise of the fetch
         return apis.map(api => fetch(api));
     }

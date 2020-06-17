@@ -17,22 +17,20 @@
 import React from 'react';
 import {Bar, BarChart, LabelList, Tooltip, XAxis, YAxis} from 'recharts'
 import ToolTip from "./ToolTip";
-type dataPerGeoIdPerDate = {string: {string: number}} | {}
 
 type Props = {
-    data: dataPerGeoIdPerDate,
+    data: {date: {geoId: Metadata}} | {},
     label: string,
     selectedShowTopN: number,
     color: string
-    metadata?: {date: {geoId: Metadata}} | {}
 }
 
 type Metadata = {
-    name: string,
-    onHoverInfo: string[]
-    textOnTopOfBar: string,
+    name?: string,
+    onHoverInfo?: string[]
+    textOnTopOfBar?: string,
     value: number,
-    geoId: string
+    geoId?: string
 }
 
 export default function BarGraph(props: Props) {
@@ -43,6 +41,7 @@ export default function BarGraph(props: Props) {
     if (datesInData.length) {
         // Get the most recent date of the data, that's the only one we care about (for now).
         const dataForMostRecentDate: {string: number} = props.data[datesInData[0]]
+        console.log(dataForMostRecentDate)
         dataAsArray = Object.keys(dataForMostRecentDate).map(geoId => dataForMostRecentDate[geoId])
     }
 
@@ -62,7 +61,7 @@ export default function BarGraph(props: Props) {
         // Make sure that the current bar is actively being hovered on.
         if (active) {
             const onHoverInfo: string[] = payload[0].payload.onHoverInfo
-            return (<ToolTip text={onHoverInfo}/>);
+            return (<ToolTip text={onHoverInfo}/>)
         }
         return null;
     };
@@ -79,13 +78,13 @@ export default function BarGraph(props: Props) {
 
     /**
      * Function in charge of displaying the labeListLabel string stored in each dataHolder point.
-     * @param customizedLabelData: contains data about the bar in the chart as well as the value to print out
+     * @param customizedLabelData: contains data about the bar in the chart as well as the value to print out.
      */
     let renderCustomizedLabel = (customizedLabelData) => {
         const {x, y, width, height, value} = customizedLabelData;
         return (
             <g>
-                <text fontSize={10}
+                <text fontSize={11}
                       x={x + width / 2}
                       y={y + height / 2}
                       fill="#fff"
@@ -104,28 +103,30 @@ export default function BarGraph(props: Props) {
     const graphHeight = dataAsArray.length <= 2 ? 70 * dataAsArray.length : 50 * dataAsArray.length // pixels
     const graphWidth = 410 // pixels
     const individualBarWidth = 18 // pixels
-    const tick = {fill: '#868E96', fontSize: 10} // tick style for x-axis and y-axis
+    const tick = {fill: '#868E96', fontSize: 11} // tick style for x-axis and y-axis
     return (
         <BarChart width={graphWidth}
                   height={graphHeight}
                   data={dataAsArray}
                   barSize={individualBarWidth}
                   layout="vertical">
-                        <XAxis type="number"
-                               tick={tick}
-                               interval={0}/>
-                        <YAxis type="category"
-                               dataKey="name"
-                               tick={tick}
-                               width={90}
-                               interval={0}/>
-                        <Tooltip content={customTooltip}/>
-                        <Bar dataKey={"value"}
-                             fill={props.color}
-                             onClick={barOnClick}
-                             radius={[4, 4, 4, 4]} isAnimationActive={false}>
-                            <LabelList dataKey={"textOnTopOfBar"}
-                                       content={renderCustomizedLabel}/>
-                        </Bar>
-        </BarChart>)
+                    <XAxis type="number"
+                           tick={false}
+                           interval={0}
+                           domain={[dataMin => (dataMin / 5), dataMax => (dataMax)]}/>
+                    <YAxis type="category"
+                           dataKey="name"
+                           tick={tick}
+                           width={100}
+                           interval={0}/>
+            <Tooltip content={customTooltip}/>
+            <Bar dataKey={"value"}
+                 fill={props.color}
+                 onClick={barOnClick}
+                 radius={[4, 4, 4, 4]} isAnimationActive={true}>
+                <LabelList dataKey={"textOnTopOfBar"}
+                           content={renderCustomizedLabel}/>
+            </Bar>
+        </BarChart>
+    )
 }

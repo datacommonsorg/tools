@@ -19,23 +19,30 @@ import {addOrSubtractNDaysToDate, getRealISODatesFromArrayOfDeltaDays} from './U
 type DataPerGeoIdPerDate = {string: {string: number}} | {}
 
 /**
- * Performs a calculation() iteratively on two dates.
+ * Performs a calculationType iteratively on two dates.
  * @param data: input data in the form of dates->geoIds->value.
  * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
  * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
- * @param calculationType: The function in charge of doing some calculation on the data for dates X and Y.
+ * @param calculationType: What type of calculation are we performing?
  * @param geoIdToPopulation: geoId->Population. After calculating the difference, we want to divide by total population
- * @private
  */
-const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
-                   deltaDays: number, calculationType: string, geoIdToPopulation: {geoId: number}): DataPerGeoIdPerDate => {
+export default function dataCalculator(data: DataPerGeoIdPerDate,
+                                       range: [string, string],
+                                       deltaDays: number,
+                                       calculationType: string,
+                                       geoIdToPopulation: {geoId: number}
+                                       ): DataPerGeoIdPerDate {
+    // If there isn't any data, just return an empty {}
     if (!data) return {}
+
+    // If there is data,
     let outputData: DataPerGeoIdPerDate = {}
 
     let iterativeDate = range[0]
     const lastDayInRange = range[1]
 
     // For all dates from range[0] to range[1].
+    // Because we we want to stop at range[1], we have to add one day to range[1]
     while (iterativeDate !== addOrSubtractNDaysToDate(lastDayInRange, 1)){
         // Get the ISODate of iterativeDate - deltaDays, the function returns an array, so get the only element.
         const deltaDaysFromIterativeDate: string = getRealISODatesFromArrayOfDeltaDays(iterativeDate, [deltaDays])[0]
@@ -59,7 +66,6 @@ const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
                     result = iterativeDateValue - deltaDaysFromIterativeDateValue
                     break;
                 case 'perCapita':
-                    console.log(geoIdToPopulation)
                     result = ((iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId]) * 10000
                     break;
                 case 'increase':
@@ -71,7 +77,7 @@ const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
             }
 
             // If the result is valid, store it
-            if (result !== null) {
+            if (result) {
                 // If this is the first time storing this date in the output, make some room for it.
                 if (!(iterativeDate in outputData)) outputData[iterativeDate] = {}
                 outputData[iterativeDate][geoId] = result
@@ -82,5 +88,3 @@ const calculate = (data: DataPerGeoIdPerDate, range: [string, string],
     }
     return outputData
 }
-
-export {calculate}

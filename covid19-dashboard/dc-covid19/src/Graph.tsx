@@ -18,8 +18,6 @@ import React from "react";
 import BarGraph from "./BarGraph";
 import LineGraph from "./LineGraph";
 
-type DateToGeoIdToValue = {string: {string: number}} | {}
-
 type Metadata = {
     name: string,
     onHoverInfo: string[]
@@ -30,48 +28,26 @@ type Metadata = {
 
 type Props = {
     label: string
-    data: DateToGeoIdToValue,
-    metadata?: {date: {geoId: Metadata}} | {},
+    data: {string: {string: Metadata}} | {},
     type: 'bar' | 'line',
     selectedShowTopN: number,
     color: string
 }
 
 export default function Graph(props: Props) {
-    let data: {} = {}
-
-    for (let date in props.data){
-        let dataForIterativeDate = {}
-        for (let geoId in props.data[date]){
-            const value: number = props.data[date][geoId] || 0
-            const metadata: Metadata = props.metadata?.[date]?.[geoId] || {}
-
-            dataForIterativeDate[geoId] = {
-                geoId: geoId,
-                value: value,
-                name: metadata?.name || geoId,
-                onHoverInfo: metadata?.onHoverInfo || [],
-                textOnTopOfBar: metadata?.textOnTopOfBar || String(value)
-            }
-        }
-        data[date] = dataForIterativeDate
-    }
-
     if (props.type === 'line') {
         return (
             <LineGraph
                 label={props.label}
-                data={data}
+                data={props.data}
                 selectedShowTopN={props.selectedShowTopN}
-                color={props.color}
-                metadata={props.metadata}/>)
+                color={props.color}/>)
     } else {
         return (
             <BarGraph
                 label={props.label}
-                data={data}
+                data={props.data}
                 selectedShowTopN={props.selectedShowTopN}
-                color={props.color}
-                metadata={props.metadata}/>)
+                color={props.color}/>)
     }
 }
