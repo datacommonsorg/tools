@@ -1,6 +1,7 @@
 import {numberWithCommas} from "./Utils";
 
 type Metadata = {
+    geoId: string,
     name: string,
     onHoverInfo: string[]
     textOnTopOfBar: string,
@@ -110,6 +111,7 @@ export default function generateGraphMetadata(dateToGeoIdToValue: DateToGeoIdToV
             if (!(date in output)) output[date] = {}
 
             output[date][geoId] = {
+                geoId: geoId,
                 name: iterativeRegionName,
                 onHoverInfo: onHoverInfo,
                 textOnTopOfBar: textOnTopOfBar,

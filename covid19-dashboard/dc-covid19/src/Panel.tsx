@@ -32,6 +32,7 @@ type Props = {
 }
 
 type Metadata = {
+    geoId: string,
     name: string,
     onHoverInfo: string[]
     textOnTopOfBar: string,

@@ -72,6 +72,7 @@ export default function BarGraph(props: Props) {
      * @param dcid: the dcid that represents the bar
      */
     let barOnClick = ({geoId}) => {
+        if (!geoId) return
         const URL: string = `https://browser.datacommons.org/gni#&place=${geoId}&ptpv=MedicalConditionIncident,cumulativeCount,medicalStatus,ConfirmedOrProbableCase,incidentType,COVID_19__MedicalConditionIncident,cumulativeCount,medicalStatus,PatientDeceased,incidentType,COVID_19&pc=1`
         window.open(URL, '_blank');
     }
