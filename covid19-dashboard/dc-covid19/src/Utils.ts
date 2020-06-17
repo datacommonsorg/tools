@@ -16,6 +16,7 @@
 
 import moment from "moment";
 
+
 /**
  * Given a date and an array of deltaDays compute the real ISODates.
  * For example, date = 2020-01-10 and deltaDays = [0, 1, 7] will return an array with the ISODates
@@ -35,6 +36,7 @@ const getRealISODatesFromArrayOfDeltaDays = (date: string, deltaDays: number[]):
  * @param num
  */
 const numberWithCommas = (num: number): string => {
+    if (!num) return "0"
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
 }
 
@@ -59,11 +61,10 @@ const prettifyDate = (ISOdate: string): string => {
  */
 const addOrSubtractNDaysToDate = (ISOdate: string, days: number): string => {
     let date;
-    if (days < 0){
-        date = moment(ISOdate).subtract(Math.abs(days), "days")
-    } else {
-        date = moment(ISOdate).add(Math.abs(days), "days")
-    }
+    // Subtracting to date
+    if (days < 0) date = moment(ISOdate).subtract(Math.abs(days), "days")
+    // Adding to date
+    else date = moment(ISOdate).add(Math.abs(days), "days")
     return date.format("YYYY-MM-DD")
 }
 
@@ -78,4 +79,35 @@ const getRangeOfDates = (ISOdate: string, deltaInDays: number): [string, string]
     return [addOrSubtractNDaysToDate(ISOdate, -deltaInDays), ISOdate]
 }
 
-export {getRealISODatesFromArrayOfDeltaDays, numberWithCommas, prettifyDate, addOrSubtractNDaysToDate, getRangeOfDates}
+/**
+ * Given a map of geoId->[name, belongToRegion], it returns a list of the geoId's that belong to the belongToRegion
+ * @param geoIdToType: geoId->[name, belongToRegion]
+ * @param belongToRegion: can be any geoId
+ */
+const filterGeoIdThatBelongTo = (geoIdToType: {geoId: string[]} | {}, belongToRegion: string): string[] => {
+    if (belongToRegion === 'County') return Object.keys(geoIdToType).filter(geoId => geoIdToType[geoId][1] !== 'country/USA')
+    else if (belongToRegion === 'State') return Object.keys(geoIdToType).filter(geoId => geoIdToType[geoId][1] === 'country/USA')
+    else return Object.keys(geoIdToType).filter(geoId => geoIdToType[geoId][1] === belongToRegion)
+}
+
+/**
+ * Returns new copy of the inputted JSON with only the keys that are present in the array.
+ * This is similar to the reduce() function, but for JSON.
+ * @param JSON: any object
+ * @param keys: an array of keys
+ */
+const filterJSONByArrayOfKeys = (JSON: {}, keys: any[], ): {} => {
+    let output: {} = {}
+    keys.forEach(key => {if (key in JSON) output[key] = JSON[key]})
+    return output
+}
+
+export {
+    getRealISODatesFromArrayOfDeltaDays,
+    numberWithCommas,
+    prettifyDate,
+    addOrSubtractNDaysToDate,
+    getRangeOfDates,
+    filterGeoIdThatBelongTo,
+    filterJSONByArrayOfKeys
+}

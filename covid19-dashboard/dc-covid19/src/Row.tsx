@@ -15,16 +15,16 @@
  */
 
 import React from "react";
-import PanelInfo from './PanelInfo.json'
+import ContentFile from './ContentFile.json'
 import Panel from './Panel'
 import {prettifyDate} from './Utils'
 
 type Props = {
-    data: any[],
+    allData: {}[],
     ref_: any,
     panelId: string,
     region: string,
-    ISOSelectedDate: string,
+    datePicked: string,
     selectedShowTopN: number
 }
 
@@ -35,9 +35,9 @@ type Props = {
  * @constructor
  */
 export default function Row(props: Props) {
-    const prettifiedDate = prettifyDate(props.ISOSelectedDate)
-    const sectionTitle = PanelInfo[props.panelId].sectionTitle.replace("{DATE}", prettifiedDate)
-    const typeOfGraph = PanelInfo[props.panelId].typeOfGraph
+    const prettifiedDate = prettifyDate(props.datePicked)
+    // Replace the {DATE} string with the actual date in the sectionTitle
+    const sectionTitle = ContentFile[props.panelId].sectionTitle.replace("{DATE}", prettifiedDate)
     return (
         <div className={"row"}
              ref={props.ref_}>
@@ -46,22 +46,20 @@ export default function Row(props: Props) {
             {// If there is a section title, then show a separator line as well.
                 sectionTitle && <hr style={{width: '100%'}}/>}
             <div className={"left"}>
-                <Panel data={props.data}
-                       datePicked={props.ISOSelectedDate}
+                <Panel allData={props.allData}
+                       datePicked={props.datePicked}
                        label={"cases"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}
-                       panelId={props.panelId}
-                       typeOfGraph={typeOfGraph}/>
+                       panelId={props.panelId}/>
             </div>
             <div className={"right"}>
-                <Panel data={props.data}
-                       datePicked={props.ISOSelectedDate}
+                <Panel allData={props.allData}
+                       datePicked={props.datePicked}
                        label={"deaths"}
                        region={props.region}
                        selectedShowTopN={props.selectedShowTopN}
-                       panelId={props.panelId}
-                       typeOfGraph={typeOfGraph}/>
+                       panelId={props.panelId}/>
             </div>
         </div>
     )

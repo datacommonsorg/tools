@@ -15,58 +15,59 @@
  */
 
 import React, {ChangeEvent} from "react";
+import Configuration from './Configuration.json'
 
 type Props = {
     handleSelectUpdate: (key: string, value: string | number) => void,
     datesToPick: string[],
     availableRegions: {},
-    availableShowTopN: number[],
     defaultShowTopN: number,
-    defaultRegion: string,
-    defaultDate: string
+    selectedRegion: string,
+    datePicked: string,
+    geoIdToName: {geoId: string} | {}
 }
 
-export default class OptionPanel extends React.Component<Props> {
+export default function OptionPanel(props: Props) {
 
-    handleSelect = (e: ChangeEvent) => {
+    const handleSelect = (e: ChangeEvent) => {
         const newSelection: string = (e.target as HTMLInputElement).value
         const id: string = (e.target as HTMLInputElement).id
-        this.props.handleSelectUpdate('selected'+ id, newSelection)
+        props.handleSelectUpdate(id, newSelection)
     }
 
-    render() {
-        const showTopNOptions: JSX.Element[] = this.props.availableShowTopN.map(n =>
-            <option value={n}>Top {n}</option>)
+    const showTopNOptions: JSX.Element[] = Configuration.SHOWTOPN.map(n => <option value={n}>Top {n}</option>)
+    const regionOptions: JSX.Element[] = Object.keys(props.availableRegions).map(region =>{
+        let regionName = props.geoIdToName[region]?.[0]
 
-        const regionOptions: JSX.Element[] = Object.keys(this.props.availableRegions).map(region =>
-            <option value={region}>{this.props.availableRegions[region]}</option>)
+        // If the region is 'All Counties' and 'All States'
+        if (!region.includes('geoId/')) regionName = props.availableRegions[region]
 
+        return <option value={region}>{regionName}</option>
+    })
 
-        // Reverse the datesToPick because we want to go show from most recent to oldest
-        const dateOptions: JSX.Element[] = this.props.datesToPick.reverse().map(date =>
-            <option value={date}>{date}</option>)
+    const dateOptions: JSX.Element[] = [...props.datesToPick].reverse().map(date =>
+        <option value={date}>{date}</option>)
 
-        return (
-            <div className={"option-panel panel shadow"}>
-                <select className="dropdown shadow"
-                        onChange={this.handleSelect}
-                        id={"ShowTopN"}
-                        defaultValue={this.props.defaultShowTopN}>
-                    {showTopNOptions}
-                </select>
-                <select className="dropdown shadow"
-                        onChange={this.handleSelect}
-                        id={"Region"}
-                        defaultValue={this.props.defaultRegion}>
-                    {regionOptions}
-                </select>
-                <select className="dropdown shadow"
-                        onChange={this.handleSelect}
-                        id={"Date"}
-                        defaultValue={this.props.defaultDate}>
-                    {dateOptions}
-                </select>
-            </div>
-        )
-    }
+    return (
+        <div className={"option-panel panel shadow"}>
+            <select className="dropdown shadow"
+                    onChange={handleSelect}
+                    id={"showTopN"}
+                    defaultValue={props.defaultShowTopN}>
+                {showTopNOptions}
+            </select>
+            <select className="dropdown shadow"
+                    onChange={handleSelect}
+                    id={"region"}
+                    defaultValue={props.selectedRegion}>
+                {regionOptions}
+            </select>
+            <select className="dropdown shadow"
+                    onChange={handleSelect}
+                    id={"date"}
+                    defaultValue={props.datePicked}>
+                {dateOptions}
+            </select>
+        </div>
+    )
 }

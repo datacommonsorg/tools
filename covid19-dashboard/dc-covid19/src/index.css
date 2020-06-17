@@ -15,9 +15,8 @@
  */
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -46,10 +45,9 @@ body {
     margin: 5% 0;
     background-color: white;
     border-radius: 10px;
-}
-
-.chart {
-    padding: 20px 30px 20px 0;
+    width: 450px;
+    min-height: 200px;
+    padding: 20px 30px 0 0;
 }
 
 .tooltip-content {
@@ -60,8 +58,13 @@ body {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .shadow {
@@ -81,12 +84,14 @@ body {
     margin: 5px 5px 5px 40px;
 }
 
-.empty-panel {
+.empty-panel .loading {
     width: 450px;
     color: grey;
     text-align: center;
     font-weight: normal;
     padding-right: 0;
+    padding-top: 50px;
+    padding-bottom: 100px;
 }
 
 .left {
@@ -119,6 +124,7 @@ body {
     top: 4%;
     left: 2%;
     overflow-x: hidden;
+    min-height: unset;
 }
 
 .option-panel .dropdown{
@@ -158,6 +164,7 @@ body {
     overflow-x: hidden;
     width: 160px;
     padding: 30px;
+    height: unset;
 }
 
 .sidenav a {
@@ -184,10 +191,6 @@ body {
         float: none
     }
 
-    .chart {
-        margin: 5% auto 0;
-    }
-
     .container {
         margin: 0;
     }
@@ -195,7 +198,6 @@ body {
     .main-title {
         margin-left: 20%
     }
-
 
     .row {
         margin-left: 20%;
@@ -217,7 +219,6 @@ body {
         visibility: hidden;
     }
 
-
     .main-content {
         margin: 0;
         display: block;
@@ -230,7 +231,6 @@ body {
     #root {
         zoom: 60%;
     }
-
 
     .option-panel{
         width: 40%;
@@ -259,7 +259,6 @@ body {
         padding-left: 10px;
         padding-right: 10px;
     }
-
 
     .main-title {
         margin-left: 0;

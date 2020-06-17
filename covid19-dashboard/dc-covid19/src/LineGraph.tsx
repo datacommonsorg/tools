@@ -13,23 +13,30 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  */
+
 import React from 'react';
 import {Line, LineChart, Tooltip, XAxis, YAxis} from 'recharts'
 
 type Props = {
     data: any,
     label: string,
-    region: string,
     selectedShowTopN: number,
-    color: string
+    color: string,
+    metadata?: {date: {geoId: Metadata}} | {}
+}
+
+type Metadata = {
+    name: string,
+    onHoverInfo: string[]
+    textOnTopOfBar: string,
+    population: number,
 }
 
 export default function LineGraph(props: Props) {
-    let data = props.data[0] || {}
     let lines: JSX.Element[] = []
-    for (let geoId in data){
-        if (geoId === 'label') continue
-        lines.push(<Line type="monotone" dataKey={geoId} stroke={props.color}/>)
+    for (let allGeoIds in props.data) {
+        if (allGeoIds === 'label') continue
+        lines.push(<Line type="monotone" dataKey={allGeoIds} stroke={props.color}/>)
     }
 
 
