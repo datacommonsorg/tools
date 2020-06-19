@@ -89,7 +89,8 @@ export default function dataCalculator(data: DataPerGeoIdPerDate,
                         result = ((iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId])
                     break;
                 case 'increase':
-                    result = (iterativeDateValue / deltaDaysFromIterativeDateValue) - 1
+                    if (deltaDaysFromIterativeDateValue !== 0)
+                        result = (iterativeDateValue / deltaDaysFromIterativeDateValue) - 1
                     break;
                 case 'absolutePerCapita':
                     // Make sure the population is above 0, otherwise continue
