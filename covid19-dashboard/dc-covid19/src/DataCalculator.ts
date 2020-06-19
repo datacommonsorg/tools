@@ -48,8 +48,9 @@ export default function dataCalculator(data: DataPerGeoIdPerDate,
         return {}
     }
     // If the ranges aren't in order, return {
-    if (moment(range[0]) >= moment(range[1])) {
+    if (moment(range[0]) > moment(range[1])) {
         console.log("Invalid range.")
+        console.log(range)
         return {}
     }
 
