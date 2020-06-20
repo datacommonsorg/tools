@@ -11,7 +11,7 @@
  limitations under the License.
  */
 
-import {addOrSubtractNDaysToDate, getRealISODatesFromArrayOfDeltaDays} from './Utils'
+import {getRealISODatesFromArrayOfDeltaDays} from './Utils'
 import moment from "moment";
 
 type DataPerGeoIdPerDate = {string: {string: number}} | {}
@@ -20,15 +20,15 @@ type DataPerGeoIdPerDate = {string: {string: number}} | {}
  * Performs a calculationType iteratively on two dates.
  * @param data: input data in the form of dates->geoIds->value.
  * @param range: the range of dates to calculate the data for in ISO Format. Example: ["2020-01-01", "2020-01-10"]
- * @param deltaDays: Do we wanna compare the data every 2 days? every 7? Any number works.
  * @param calculationType: What type of calculation are we performing?
+ * @param deltaDays?: Do we wanna compare the data every 2 days? every 7? Any number works.
  * @param geoIdToPopulation?: geoId->Population. After calculating the difference, we want to divide by total population
  */
 export default function dataCalculator(data: DataPerGeoIdPerDate,
                                        range: [string, string],
-                                       deltaDays: number,
                                        calculationType: string,
-                                       geoIdToPopulation?: {[geoId: string]: number }
+                                       deltaDays?: number,
+                                       geoIdToPopulation?: { [p: string]: number }
 ): DataPerGeoIdPerDate {
     // If there isn't any data, return an empty {}
     if (!Object.keys(data).length) {
@@ -36,74 +36,91 @@ export default function dataCalculator(data: DataPerGeoIdPerDate,
         return {}
     }
 
-    const date0IsValid = moment(range[0]).isValid();
-    const date1IsValid = moment(range[1]).isValid();
+    let date0 = moment(range[0]);
+    const date1 = moment(range[1]);
 
     // If the dates are invalid, return an empty {}
-    if (!date0IsValid || !date1IsValid) {
+    if (!date0.isValid() || !date1.isValid()) {
         console.log("Invalid ISO dates.")
         return {}
     }
-    // If the ranges aren't in order, return {
-    if (moment(range[0]) >= moment(range[1])) {
+
+    // If the ranges aren't in order, return empty {}
+    if (date0 > date1) {
         console.log("Invalid range.")
         return {}
     }
 
-    // If there is data, begin calculation
-    let outputData: DataPerGeoIdPerDate = {}
-    let iterativeDate = range[0]
-    const lastDayInRange = range[1]
+    // If there is data, begin the calculation
+    let outputData: DataPerGeoIdPerDate = {} // store results here
 
     // For all dates from range[0] to range[1].
-    // Because we we want to stop at range[1], we have to add one day to range[1]
-    while (iterativeDate !== addOrSubtractNDaysToDate(lastDayInRange, 1)){
+    while (date0 <= date1){
+        // Convert to ISO format, since our data is stored in ISO format.
+        const date = date0.format("YYYY-MM-DD")
         // Get the ISODate of iterativeDate - deltaDays, the function returns an array, so get the only element.
-        const deltaDaysFromIterativeDate: string = getRealISODatesFromArrayOfDeltaDays(iterativeDate, [deltaDays])[0]
+        // since deltaDAys is optional, add 0 if it wasn't included
+        const deltaDaysFromIterativeDate: string = getRealISODatesFromArrayOfDeltaDays(date, [deltaDays || 0])[0]
         // For all geoIds in that given date
-        for (let geoId in data[iterativeDate]){
+        for (let geoId in data[date]){
             // We are looking at two different dates, so make sure geoId is present in both dates.
             if (!(deltaDaysFromIterativeDate in data) || !(geoId in data[deltaDaysFromIterativeDate])) continue
+
             // Get the values for both days
-            const iterativeDateValue = data[iterativeDate][geoId]
+            const iterativeDateValue = data[date][geoId]
             const deltaDaysFromIterativeDateValue = data[deltaDaysFromIterativeDate][geoId]
-            // If one of the values is invalid, or falsy, continue.
-            if (iterativeDateValue === undefined || iterativeDateValue === null) continue
-            if (deltaDaysFromIterativeDateValue === undefined || deltaDaysFromIterativeDateValue === null) continue
-            // Do some calculation on the data using the calculation function.
-            let result: number | null = null;
 
-            switch (calculationType){
-                case 'absolute':
-                    result = iterativeDateValue
-                    break;
-                case 'difference':
-                    result = iterativeDateValue - deltaDaysFromIterativeDateValue
-                    break;
-                case 'perCapita':
-                    // Make sure the population is above 0, otherwise continue
-                    if (geoIdToPopulation?.[geoId] && geoIdToPopulation?.[geoId] > 0)
-                        result = ((iterativeDateValue - deltaDaysFromIterativeDateValue) / geoIdToPopulation[geoId])
-                    break;
-                case 'increase':
-                    result = (iterativeDateValue / deltaDaysFromIterativeDateValue) - 1
-                    break;
-                case 'absolutePerCapita':
-                    // Make sure the population is above 0, otherwise continue
-                    if (geoIdToPopulation?.[geoId] && geoIdToPopulation?.[geoId] > 0)
-                        result = (iterativeDateValue / geoIdToPopulation[geoId])
-                    break;
-            }
+            // Do some calculation on the data using the getResult function.
+            const result: number | null = getResult(
+                [deltaDaysFromIterativeDateValue, iterativeDateValue],
+                geoIdToPopulation?.[geoId],
+                calculationType)
 
-            // If the result is valid, store it
-            if (result || result === 0) {
+            // If the result is valid, store it otherwise, skip this specific value.
+            if (result !== undefined && result !== null) {
                 // If this is the first time storing this date in the output, make some room for it.
-                if (!(iterativeDate in outputData)) outputData[iterativeDate] = {}
-                outputData[iterativeDate][geoId] = result
+                if (!(date in outputData)) outputData[date] = {}
+                outputData[date][geoId] = result
             }
         }
-        // Add one to the iterativeDate. Example: from "2020-01-01" to "2020-01-02"
-        iterativeDate = addOrSubtractNDaysToDate(iterativeDate, 1)
+        // Add one day to the iterativeDate. Example: from "2020-01-01" to "2020-01-02".
+        date0 = date0.add(1, "days")
     }
     return outputData
+}
+
+/**
+ * Given two values (or one if absolute or absolutePerCapita), return the result of calculationType.
+ * @param values: [number, number] -> values[0] is date - deltaDays, values[1] is the actual date.
+ * @param population: some calculations require the population.
+ * @param calculationType: the type of calculating we are performing on the values
+ */
+const getResult = (values: [number, number],
+                   population: number | undefined,
+                   calculationType: string): number | null => {
+    // If there are no input values, we can't perform any calculation
+    if (values[0] === undefined || values[0] === null) return null
+    if (values[1] === undefined || values[1] === null) return null
+
+    let result: number | null = null;
+    switch (calculationType) {
+        case 'difference':
+            result = values[1] - values[0]
+            break;
+        case 'increase':
+            if (values[0] !== 0) result = (values[1] / values[0]) - 1
+            break;
+        case 'perCapita':
+            // Make sure the population is above 0, otherwise continue
+            if (population && population > 0) result = (values[1] - values[0]) / population
+            break;
+        case 'absolute':
+            result = values[1]
+            break;
+        case 'absolutePerCapita':
+            // Make sure the population is above 0, otherwise continue
+            if (population && population > 0) result = values[1] / population
+            break;
+    }
+    return result
 }

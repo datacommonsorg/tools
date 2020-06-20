@@ -18,7 +18,7 @@ const inputData = {
  */
 test('No input data', () => {
     const range: [string, string] = ['2020-01-01', '2020-01-02']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator({}, range, 1, 'difference');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator({}, range, 'difference', 1);
     expect(absoluteIncrease).toEqual({});
 });
 
@@ -27,7 +27,7 @@ test('No input data', () => {
  */
 test('Invalid ISO dates', () => {
     const range: [string, string] = ['20/19/4590', '2020-01-01']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'difference');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'difference', 1);
     expect(absoluteIncrease).toEqual({});
 });
 
@@ -37,8 +37,18 @@ test('Invalid ISO dates', () => {
  */
 test('Invalid range', () => {
     const range: [string, string] = ['2020-01-01', '2010-01-01']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'difference');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'difference', 1);
     expect(absoluteIncrease).toEqual({});
+});
+
+/**
+ * Passing in a range of the same dates is ok.
+ * [January 1, January 1] is a range of 1 day.
+ */
+test('Same dates passed in as a range is ok', () => {
+    const range: [string, string] = ['2020-01-01', '2020-01-01']
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'absolute', 0);
+    expect(absoluteIncrease).toEqual({'2020-01-01': {"geoId/01": 1, "geoId/02": 1}});
 });
 
 /**
@@ -54,7 +64,7 @@ test('Sometimes there is no data for a given geoId', () => {
         '2020-01-06': {"geoId/01": 6, "geoId/02": 6},
     }
     const range: [string, string] = ['2020-01-01', '2020-01-06']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'difference');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'difference', 1);
     expect(absoluteIncrease).toEqual({
         '2020-01-02': {'geoId/01': 1, 'geoId/02': 2},
         '2020-01-03': {'geoId/01': 1, 'geoId/02': 0},
@@ -69,7 +79,7 @@ test('Sometimes there is no data for a given geoId', () => {
  */
 test('No population as input for perCapita', () => {
     const range: [string, string] = ['2020-01-05', '2020-01-09']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'perCapita');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'perCapita', 1);
     expect(absoluteIncrease).toEqual({});
 });
 
@@ -78,7 +88,7 @@ test('No population as input for perCapita', () => {
  */
 test('Simple difference calculation', () => {
     const range: [string, string] = ['2020-01-05', '2020-01-09']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'difference');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'difference', 1);
     expect(absoluteIncrease).toEqual({
         '2020-01-05': {'geoId/01': 1, 'geoId/02': 1},
         '2020-01-06': {'geoId/01': 1, 'geoId/02': 1},
@@ -96,7 +106,7 @@ test('Simple increase calculation', () => {
         {"2020-01-05": {"geoId/01": 1, "geoId/02": 1, 'geoId/03': 10},
         "2020-01-06": {"geoId/01": 2, "geoId/02": 0, 'geoId/03': 10}}
     const range: [string, string] = ['2020-01-05', '2020-01-09']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'difference');
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'difference', 1);
     expect(absoluteIncrease).toEqual({
         '2020-01-06': {'geoId/01': 1, 'geoId/02': -1, 'geoId/03': 0},
     });
@@ -108,7 +118,7 @@ test('Simple increase calculation', () => {
 test('Simple perCapita calculation', () => {
     const population = {"geoId/01": 5, "geoId/02": 10}
     const range: [string, string] = ['2020-01-05', '2020-01-09']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'perCapita', population);
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'perCapita', 1, population);
     expect(absoluteIncrease).toEqual({
         '2020-01-05': {'geoId/01': 0.2, 'geoId/02': 0.1},
         '2020-01-06': {'geoId/01': 0.2, 'geoId/02': 0.1},
@@ -124,7 +134,7 @@ test('Simple perCapita calculation', () => {
 test('Simple absolutePerCapita calculation', () => {
     const population = {"geoId/01": 5, "geoId/02": 10}
     const range: [string, string] = ['2020-01-05', '2020-01-09']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'absolutePerCapita', population);
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'absolutePerCapita', 1, population);
     expect(absoluteIncrease).toEqual({
         '2020-01-05': {'geoId/01': 1, 'geoId/02': 0.5},
         '2020-01-06': {'geoId/01': 1.2, 'geoId/02': 0.6},
@@ -140,7 +150,7 @@ test('Simple absolutePerCapita calculation', () => {
 test('absolutePerCapita calculation with negative population', () => {
     const population = {"geoId/01": 5, "geoId/02": -10}
     const range: [string, string] = ['2020-01-05', '2020-01-09']
-    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 1, 'absolutePerCapita', population);
+    const absoluteIncrease: {date: {[geoId: string]: string}} | {} = dataCalculator(inputData, range, 'absolutePerCapita', 1, population);
     expect(absoluteIncrease).toEqual({
         '2020-01-05': {'geoId/01': 1},
         '2020-01-06': {'geoId/01': 1.2},
