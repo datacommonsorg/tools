@@ -33,7 +33,8 @@ cache = Cache(app)
 # Retrieve the API KEY from the configuration file
 API_KEY = app.config['API_KEY']
 
-DC_SERVER = "http://34.120.198.115"
+# Retrives DataCommons Server from configuration file
+DC_SERVER = app.config["DC_SERVER"]
 
 
 @app.route('/', defaults={'path': ''})
@@ -84,10 +85,10 @@ def get_total_deaths():
 def get_population():
     """Returns the total population of each region. dcid->population"""
 
-    state_response: dict = send_request(DC_SERVER + "/bulk/place-obs",
+    state_response: dict = send_request(DC_SERVER + "bulk/place-obs",
                                         dict(placeType='State', populationType="Person", observationDate="2018"),
                                         api_key=API_KEY, compress=True)
-    county_response: dict = send_request(DC_SERVER + "/bulk/place-obs",
+    county_response: dict = send_request(DC_SERVER + "bulk/place-obs",
                                      dict(placeType='County', populationType="Person", observationDate="2018"),
                                      api_key=API_KEY, compress=True)
 
@@ -127,11 +128,11 @@ def get_places():
     the name of the region and type is the type of region."""
 
     # Get state data
-    response: dict = send_request(DC_SERVER + "/node/places-in",
+    response: dict = send_request(DC_SERVER + "node/places-in",
                                   {"dcids": ["country/USA"], "placeType": "State"}, api_key=API_KEY)
 
     state_dcids: dict = [x['place'] for x in response]
-    response: dict = send_request(DC_SERVER + "/node/property-values",
+    response: dict = send_request(DC_SERVER + "node/property-values",
                                   {"dcids": state_dcids, "property": "name"}, api_key=API_KEY)
     states: dict = {}
     for geoId in response:
@@ -139,7 +140,7 @@ def get_places():
             states[geoId] = (response[geoId]['out'][0]['value'], 'country/USA')
 
     # Get county data
-    response: dict = send_request(DC_SERVER + "/node/places-in",
+    response: dict = send_request(DC_SERVER + "node/places-in",
                                   {"dcids": state_dcids, "placeType": "County"}, api_key=API_KEY)
 
     # Keep track of what county each state belongs to
@@ -151,7 +152,7 @@ def get_places():
             county_to_state[county_geoId]: str = belongs_to_state_geoId
 
     # Get the name of all counties
-    response: dict = send_request(DC_SERVER + "/node/property-values",
+    response: dict = send_request(DC_SERVER + "node/property-values",
                                   {"dcids": list(county_to_state.keys()), "property": "name"}, api_key=API_KEY)
 
     # Store all the counties
@@ -174,7 +175,7 @@ def get_stats_by_date(place: list, stats_var: str) -> dict:
     :param stats_var: the Data Commons stats_var to query data for
     :return: dictionary where every day contains several regions, and those regions contain an int of cases/deaths
     """
-    response: dict = send_request(DC_SERVER + "/bulk/stats",
+    response: dict = send_request(DC_SERVER + "bulk/stats",
                                   {"place": place, "stats_var": stats_var}, api_key=API_KEY)
     output: defaultdict = defaultdict(dict)
 
