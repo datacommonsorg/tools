@@ -15,16 +15,17 @@
  */
 
 import React from "react";
-import dataCalculator from "./DataCalculator";
 import ContentFile from "./ContentFile.json";
 import EmptyPanel from "./EmptyPanel";
-import {getRangeOfDates} from "./Utils";
+import {addOrSubtractNDaysToDate, getRangeOfDates} from "./Utils";
 import Graph from "./Graph";
-import generateGraphMetadata from "./MetaDataGenerator";
+import moment from "moment";
+import calculate from "./DataCalculator";
+import generateMetadata from "./MetadataGenerator";
+
 
 type Props = {
     allData: any[],
-    label: string,
     region: string,
     datePicked: string,
     selectedShowTopN: number,
@@ -39,51 +40,84 @@ type Metadata = {
     value: number
 }
 
-type DateToGeoIdToValue = {date: {geoId: number}} | {}
+type DateToGeoIdToValue = {[date: string]: {geoId: number}} | {}
+type DateToGeoIdToMetadata = {[date: string]: {geoId: number}} | {}
 
 export default function Panel(props: Props) {
     const content = ContentFile[props.panelId]
+    const label: string = content.label || "cases"
     const deltaDays: number = content.deltaDays || 0
+    const calculationType: string = content.calculationType || "absolute"
 
-    // inputData is different for cases or deaths. Set it to whatever we are observing.
-    const inputData: DateToGeoIdToValue = props.label === 'cases' ? props.allData[0] : props.allData[1]
-    const geoIdToPopulation: {geoId: number} = props.allData[2]
-    const geoIdToName: {geoId: string} = props.allData[3]
-    const rangeOfDates: [string, string] = getRangeOfDates(props.datePicked, deltaDays)
-    const calculatedData: DateToGeoIdToValue = dataCalculator(inputData, rangeOfDates, deltaDays, content.dataType, geoIdToPopulation)
+    // inputData is different for cases or deaths.
+    const inputData: DateToGeoIdToValue = label === 'cases' ? props.allData[0] : props.allData[1]
+    const geoIdToPopulation: {[geoId: string]: number} = props.allData[2]
+    const geoIdToName: {[geoId: string]: string} = props.allData[3]
+    const rangeOfDates = getRangeOfDates(props.datePicked, deltaDays)
 
-    // Some graphs require the absolute increase on-hover, generate those.
-    let absoluteIncrease: DateToGeoIdToValue = {}
-    if (content.dataType === 'perCapita' || content.dataType === 'increase') {
-        // If the graph is a percent-increase graph, we also want to show the absolute increase.
-        absoluteIncrease = dataCalculator(inputData, rangeOfDates, deltaDays, 'difference', geoIdToPopulation);
-    } else if (content.dataType === 'absolutePerCapita') {
-        absoluteIncrease = {...inputData}
+    // These variables are updated on iteration, hence why "let" is used
+    let [date0, date1] = [moment(rangeOfDates[0]), moment(rangeOfDates[1])]
+    let calculatedData: DateToGeoIdToValue = {}
+    let dateToGeoIdToAbsolute: DateToGeoIdToValue = {}
+
+    // From date0 to date1, do X calculation (increase, difference, absolute)
+    while (date0 <= date1) {
+        const date = date0.format("YYYY-MM-DD")
+        calculatedData[date] = {}
+        dateToGeoIdToAbsolute[date] = {}
+
+        for (let geoId in inputData[date]) {
+            const dateMinusDeltaDays = addOrSubtractNDaysToDate(date, -deltaDays)
+            const val0 = inputData[dateMinusDeltaDays][geoId]
+            const val1 = inputData[date][geoId]
+            // Perform the calculationType on the input data.
+            const result = calculate([val0, val1], calculationType)
+            // The charts also require the difference, so calculate it.
+            const difference = calculate([val0, val1], 'difference')
+            // The absolute increase (difference) is necessary to show on-hover info.
+            // absolutePerCapita takes the raw absolute number instead of the difference.
+            const absolute = calculationType === 'absolutePerCapita' ? val1 : difference
+
+            if (result) {
+                // Store result and absolute value
+                calculatedData[date][geoId] = result
+                dateToGeoIdToAbsolute[date][geoId] = absolute
+            }
+        }
+        date0 = date0.add(1, "days")
     }
 
-    // Generate the metadata for the graph (on-hover, bar text, region names)
-    const metadata: {date: {geoId: Metadata}} | {} = generateGraphMetadata(calculatedData, geoIdToPopulation,
-        geoIdToName, absoluteIncrease, props.label, content.dataType)
+    // If perCapita then then divide all results by the geoId's population
+    if (['perCapita', 'absolutePerCapita'].includes(calculationType)) {
+        for (let date in calculatedData) {
+            for (let geoId in calculatedData[date]) {
+                const result = calculatedData[date][geoId] / geoIdToPopulation[geoId]
+                if (result) calculatedData[date][geoId] = result
+            }
+        }
+    }
 
-    const calculatedDataForDatePicked: {string: Metadata} = metadata[props.datePicked]
+    // Generate the metadata for the graph (on-hover, bar text, region names, values, name, etc...)
+    const metadata: DateToGeoIdToMetadata = generateMetadata(calculatedData, geoIdToPopulation, geoIdToName,
+                                                                  dateToGeoIdToAbsolute, label, calculationType)
 
-    // If there is data available
+    // We only care about the data for picked date
+    const dataForPickedDate: {string: Metadata} = metadata[props.datePicked]
+
+    // If there is data available show charts
     if (Object.keys(inputData).length) {
         return (
             <div className={"panel shadow"}>
-                <h4 className={"title"}>{content?.title.replace("{TYPE}",
-                    props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h4>
-                <h6 className={"title"}>
-                    {content?.subtitle.replace("{TYPE}",
-                    props.label[0].toUpperCase() + props.label.slice(1, props.label.length))}</h6>
-                <Graph label={props.label}
-                       data={{[props.datePicked]: calculatedDataForDatePicked || {}}}
+                <h4 className={"title"}>{content.title}</h4>
+                <h6 className={"title"}>{content.subtitle}</h6>
+                <Graph label={label}
+                       data={{[props.datePicked]: dataForPickedDate || {}}}
                        selectedShowTopN={props.selectedShowTopN}
-                       type={content['graphType']}
-                       color={props.label === 'cases' ? '#990001' : 'grey'}/>
+                       type={content.graphType}
+                       color={label === 'cases' ? '#990001' : 'grey'}/>
             </div>
         )
-    } else {
-        return (<EmptyPanel reason={'loading'}/>)
     }
+    // Otherwise, show empty panel
+    return (<EmptyPanel reason={'loading'}/>)
 }
