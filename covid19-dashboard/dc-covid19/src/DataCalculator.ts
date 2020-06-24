@@ -16,15 +16,18 @@
  * @param values: [number, number] -> values[0] is date - deltaDays, values[1] is the actual date.
  * @param calculationType: the type of calculating we are performing on the values
  */
-export default function DataCalculator(values: [number, number], calculationType: string): number | null {
+
+export default function DataCalculator(values: [number, number], calculationType: string[]): number | null {
     // If there are no input values, we can't perform any calculation
     if (values[0] === undefined || values[0] === null) return null
     if (values[1] === undefined || values[1] === null) return null
 
-    if (calculationType === 'increase') {
-        if (values[0] !== 0) return (values[1] / values[0]) - 1
-    } else if (calculationType === 'absolute' || calculationType === 'absolutePerCapita'){
+    if (calculationType.includes('increase')) {
+        if (values[0] === 0) return null
+        return (values[1] / values[0]) - 1
+    } else if (calculationType.includes('difference')) {
+        return values[1] - values[0]
+    } else {
         return values[1]
     }
-    return values[1] - values[0]
 }
