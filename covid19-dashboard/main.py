@@ -19,7 +19,10 @@ from flask_caching import Cache
 from flask_cors import CORS
 from send_request import send_request
 
-config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR='/tmp', CACHE_DEFAULT_TIMEOUT=5000)
+config = dict(DEBUG=True,
+              CACHE_TYPE="filesystem",
+              CACHE_DIR='/tmp',
+              CACHE_DEFAULT_TIMEOUT=5000)
 
 app = Flask(__name__, static_folder='./dc-covid19/build')
 CORS(app)
@@ -86,11 +89,17 @@ def get_population():
     """Returns the total population of each region. dcid->population"""
 
     state_response: dict = send_request(DC_SERVER + "bulk/place-obs",
-                                        dict(placeType='State', populationType="Person", observationDate="2018"),
-                                        api_key=API_KEY, compress=True)
+                                        dict(placeType='State',
+                                             populationType="Person",
+                                             observationDate="2018"),
+                                        api_key=API_KEY,
+                                        compress=True)
     county_response: dict = send_request(DC_SERVER + "bulk/place-obs",
-                                     dict(placeType='County', populationType="Person", observationDate="2018"),
-                                     api_key=API_KEY, compress=True)
+                                         dict(placeType='County',
+                                              populationType="Person",
+                                              observationDate="2018"),
+                                         api_key=API_KEY,
+                                         compress=True)
 
     response: list = state_response['places'] + county_response['places']
 
@@ -128,20 +137,30 @@ def get_places():
     the name of the region and type is the type of region."""
 
     # Get state data
-    response: dict = send_request(DC_SERVER + "node/places-in",
-                                  {"dcids": ["country/USA"], "placeType": "State"}, api_key=API_KEY)
+    response: dict = send_request(DC_SERVER + "node/places-in", {
+        "dcids": ["country/USA"],
+        "placeType": "State"
+    },
+                                  api_key=API_KEY)
 
     state_dcids: dict = [x['place'] for x in response]
-    response: dict = send_request(DC_SERVER + "node/property-values",
-                                  {"dcids": state_dcids, "property": "name"}, api_key=API_KEY)
+    response: dict = send_request(DC_SERVER + "node/property-values", {
+        "dcids": state_dcids,
+        "property": "name"
+    },
+                                  api_key=API_KEY)
     states: dict = {}
     for geoId in response:
-        if 'out' in response[geoId] and response[geoId]['out'] and 'value' in response[geoId]['out'][0]:
+        if 'out' in response[geoId] and response[geoId][
+                'out'] and 'value' in response[geoId]['out'][0]:
             states[geoId] = (response[geoId]['out'][0]['value'], 'country/USA')
 
     # Get county data
-    response: dict = send_request(DC_SERVER + "node/places-in",
-                                  {"dcids": state_dcids, "placeType": "County"}, api_key=API_KEY)
+    response: dict = send_request(DC_SERVER + "node/places-in", {
+        "dcids": state_dcids,
+        "placeType": "County"
+    },
+                                  api_key=API_KEY)
 
     # Keep track of what county each state belongs to
     county_to_state: dict = {}
@@ -152,13 +171,17 @@ def get_places():
             county_to_state[county_geoId]: str = belongs_to_state_geoId
 
     # Get the name of all counties
-    response: dict = send_request(DC_SERVER + "node/property-values",
-                                  {"dcids": list(county_to_state.keys()), "property": "name"}, api_key=API_KEY)
+    response: dict = send_request(DC_SERVER + "node/property-values", {
+        "dcids": list(county_to_state.keys()),
+        "property": "name"
+    },
+                                  api_key=API_KEY)
 
     # Store all the counties
     counties: dict = {}
     for geoId in response:
-        if 'out' in response[geoId] and response[geoId]['out'] and 'value' in response[geoId]['out'][0]:
+        if 'out' in response[geoId] and response[geoId][
+                'out'] and 'value' in response[geoId]['out'][0]:
             name: str = response[geoId]['out'][0]['value']
             belongs_to = county_to_state[geoId]
             counties[geoId] = (name, belongs_to)
@@ -175,8 +198,11 @@ def get_stats_by_date(place: list, stats_var: str) -> dict:
     :param stats_var: the Data Commons stats_var to query data for
     :return: dictionary where every day contains several regions, and those regions contain an int of cases/deaths
     """
-    response: dict = send_request(DC_SERVER + "bulk/stats",
-                                  {"place": place, "stats_var": stats_var}, api_key=API_KEY)
+    response: dict = send_request(DC_SERVER + "bulk/stats", {
+        "place": place,
+        "stats_var": stats_var
+    },
+                                  api_key=API_KEY)
     output: defaultdict = defaultdict(dict)
 
     # Store the data in output as dates->dcid->value
