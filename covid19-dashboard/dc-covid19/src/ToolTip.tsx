@@ -22,7 +22,7 @@ import React from "react";
  */
 export default function ToolTip(props: {text: string[]}) {
     // Create a new line of text for every string in the array.
-    const textOnHover = props.text.map(text => <h6 className={"tooltip-content"}>{text}</h6>)
+    const textOnHover = props.text.map((text, index) => <h6 key={index} className={"tooltip-content"}>{text}</h6>)
     return (
         <div style={{backgroundColor: 'white', padding: 10, borderRadius: 5}} className={"shadow"}>
             {textOnHover}
