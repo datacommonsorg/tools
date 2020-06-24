@@ -103,7 +103,7 @@ class App extends React.Component <{}, State> {
      * The order is important [cases, deaths, population, places].
      */
     fetchData = () => {
-        const url: string = 'http://localhost/api/'
+        const url: string = '/api/'
         const apis = [
             url + 'total-cases',
             url + 'total-deaths',
