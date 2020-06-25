@@ -44,6 +44,7 @@ const getOnHoverInfoText = (geoId: string,
     let disclaimer = ""
     let onHoverInfo = [`${numberWithCommas(value)} ${label}`]
 
+
     // If it's New York City or Kansas City. Show a disclaimer.
     // These are NYT exceptions.
     if (['geoId/3651000', 'geoId/2938000'].includes(geoId)) {
@@ -51,18 +52,20 @@ const getOnHoverInfoText = (geoId: string,
             'are combined and reported as one.'
     }
 
+    const absoluteWithCommas = numberWithCommas(absolute)
     if (calculationType.includes('perCapita')) {
+        const populationWithCommas = numberWithCommas(population)
         const per10000People = (value * 10000).toFixed(3)
         onHoverInfo = [
-            ` ${per10000People }${label} per 10,000 people`,
-            `New ${label}: ${numberWithCommas(absolute)}`,
-            `Total population: ${numberWithCommas(population)} people`
+            `${per10000People} ${label} per 10,000 people`,
+            `New ${label}: ${absoluteWithCommas}`,
+            `Total population: ${populationWithCommas} people`
         ]
     } else if (calculationType.includes('increase')) {
-        const percentIncrease = numberWithCommas(Math.round(value * 100))
+        const percentWithCommas = numberWithCommas(Math.round(value * 100))
         const absoluteWithCommas = numberWithCommas(absolute)
         onHoverInfo = [
-            `Percent increase: ${percentIncrease}%`,
+            `Percent increase: ${percentWithCommas}%`,
             `Absolute increase: ${absoluteWithCommas} ${label}`
         ]
     }
@@ -98,11 +101,11 @@ const getTextOnTopOfBar = (geoId: string,
     const absoluteWithCommas = numberWithCommas(absoluteIncrease)
 
     if (calculationType.includes('perCapita')) {
-        const populationCommas = numberWithCommas(population)
-        return `${absoluteWithCommas} / ${populationCommas}`
+        const populationWithCommas = numberWithCommas(population)
+        return `${absoluteWithCommas} / ${populationWithCommas}`
     } else if (calculationType.includes('increase')) {
-        const increasePerCent = Math.round(value * 100)
-        return `${absoluteWithCommas} (${increasePerCent}%)`
+        const percentIncrease = Math.round(value * 100)
+        return `${absoluteWithCommas} (${percentIncrease}%)`
     } else {
         return `${numberWithCommas(value)}`
     }
@@ -136,8 +139,8 @@ function generateMetadata(dateToGeoIdToValue: DateToGeoIdToValue,
             let regionName: string = geoIdToName[geoId]?.[0] || geoId
 
             regionName.replace(" County", "")
-                .replace(" Parish", "")
-                .replace(" Borough", "")
+                      .replace(" Parish", "")
+                      .replace(" Borough", "")
 
             // containedIn holds the region that it belongs to
             // For example geoId/12345 belongs to geoId/12
