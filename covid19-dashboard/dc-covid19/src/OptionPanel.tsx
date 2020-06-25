@@ -35,18 +35,18 @@ export default function OptionPanel(props: Props) {
         props.handleSelectUpdate(id, newSelection)
     }
 
-    const showTopNOptions: JSX.Element[] = Configuration.SHOWTOPN.map(n => <option value={n}>Top {n}</option>)
+    const showTopNOptions: JSX.Element[] = Configuration.SHOWTOPN.map(n => <option key={n} value={n}>Top {n}</option>)
     const regionOptions: JSX.Element[] = Object.keys(props.availableRegions).map(region =>{
         let regionName = props.geoIdToName[region]?.[0]
 
         // If the region is 'All Counties' and 'All States'
         if (!region.includes('geoId/')) regionName = props.availableRegions[region]
 
-        return <option value={region}>{regionName}</option>
+        return <option key={region} value={region}>{regionName}</option>
     })
 
     const dateOptions: JSX.Element[] = [...props.datesToPick].reverse().map(date =>
-        <option value={date}>{date}</option>)
+        <option key={date} value={date}>{date}</option>)
 
     return (
         <div className={"option-panel panel shadow"}>

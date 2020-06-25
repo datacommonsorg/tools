@@ -15,10 +15,14 @@
  */
 
 import React from "react";
-import PanelInfo from './ContentFile.json'
+import PanelInfo from './ChartsConfiguration.json'
 
-export default function SideNav(props: {handleScrollOnRef}) {
-    const sideNavLinks = Object.keys(PanelInfo).map( key => {
+type Props = {
+    handleScrollOnRef: any,
+    panelIds: string[]
+}
+export default function SideNav(props: Props) {
+    const sideNavLinks = props.panelIds.map( key => {
         const text = PanelInfo[key].sideNavText;
         return <a id={key} key={key} onClick={props.handleScrollOnRef}>{text}</a>
     })

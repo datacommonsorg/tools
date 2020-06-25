@@ -41,7 +41,6 @@ export default function BarGraph(props: Props) {
     if (datesInData.length) {
         // Get the most recent date of the data, that's the only one we care about (for now).
         const dataForMostRecentDate: {string: number} = props.data[datesInData[0]]
-        console.log(dataForMostRecentDate)
         dataAsArray = Object.keys(dataForMostRecentDate).map(geoId => dataForMostRecentDate[geoId])
     }
 
@@ -102,9 +101,9 @@ export default function BarGraph(props: Props) {
     // NOTE: this is done because whe the bar graph has less than 2 points, the chart doesn't look good.
     // This is a workaround to fix the height of the chart.
     const graphHeight = dataAsArray.length <= 2 ? 70 * dataAsArray.length : 50 * dataAsArray.length // pixels
-    const graphWidth = 410 // pixels
+    const graphWidth = 400 // pixels
     const individualBarWidth = 18 // pixels
-    const tick = {fill: '#868E96', fontSize: 11} // tick style for x-axis and y-axis
+    const tick = {fill: '#868E96', fontSize: 11} // style for x-axis and y-axis labels
     return (
         <BarChart width={graphWidth}
                   height={graphHeight}
@@ -124,7 +123,7 @@ export default function BarGraph(props: Props) {
             <Bar dataKey={"value"}
                  fill={props.color}
                  onClick={barOnClick}
-                 radius={[4, 4, 4, 4]} isAnimationActive={true}>
+                 radius={[4, 4, 4, 4]} isAnimationActive={false}>
                 <LabelList dataKey={"textOnTopOfBar"}
                            content={renderCustomizedLabel}/>
             </Bar>
