@@ -1,12 +1,9 @@
 /**
   Copyright 2020 Google LLC
-
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
-
       https://www.apache.org/licenses/LICENSE-2.0
-
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,20 +16,40 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1, h2, h3, h4, h5, h6, a {
     color: black
 }
 
+.question {
+    border-radius: 10px;
+    padding: 20px;
+    font-size: 20px;
+    margin: 20px;
+    max-width: 100%;
+    background-color: #EBEBEB;
+    color: black;
+    list-style-type: none;
+    font-weight: bold;
+}
+
+.question button {
+    float: right;
+    height: 30px;
+    width: 100px;
+    background-color: #8A0000;
+    border-radius: 10px;
+    color: white;
+    border: none;
+}
 body {
     background-color: white;
     align-items: center;
     justify-content: center;
-    color: white;
     margin: 0;
 }
 
 .container {
-    margin-left: 10%;
+    margin-left: 5%;
     margin-right: 5%;
 }
 
@@ -45,7 +62,7 @@ body {
     margin: 5% 0;
     background-color: white;
     border-radius: 10px;
-    width: 450px;
+    width: 400px;
     min-height: 200px;
     padding: 20px 30px 0 0;
 }
@@ -69,12 +86,12 @@ body {
 
 .shadow {
     box-shadow:
-        0 3px 2px 1px rgba(0, 0, 0, 0.034),
-        0 7px 5px 1px rgba(0, 0, 0, 0.048),
-        0 13px 10px 1px rgba(0, 0, 0, 0.06),
-        0 22px 18px 1px rgba(0, 0, 0, 0.072),
-        0 42px 33px 1px rgba(0, 0, 0, 0.086),
-        0 0 50px 1px rgba(0, 0, 0, 0.12)
+            0 3px 2px 1px rgba(0, 0, 0, 0.034),
+            0 7px 5px 1px rgba(0, 0, 0, 0.048),
+            0 13px 10px 1px rgba(0, 0, 0, 0.06),
+            0 22px 18px 1px rgba(0, 0, 0, 0.072),
+            0 42px 33px 1px rgba(0, 0, 0, 0.086),
+            0 0 50px 1px rgba(0, 0, 0, 0.12)
 }
 
 .title {
@@ -182,13 +199,18 @@ body {
     cursor: pointer;
 }
 
-@media only screen and (max-width: 1360px) {
+@media only screen and (max-width: 1330px) {
     .left {
         float: none;
+        width: 50%;
+        margin: 0 auto;
     }
 
     .right {
-        float: none
+        float: none;
+        width: 50%;
+        margin: 0 auto;
+
     }
 
     .container {
@@ -228,9 +250,6 @@ body {
         margin-left: 0;
     }
 
-    #root {
-        zoom: 60%;
-    }
 
     .option-panel{
         width: 40%;

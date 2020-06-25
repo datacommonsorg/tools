@@ -25,7 +25,7 @@ import moment from "moment";
  * @param deltaDays
  */
 const getRealISODatesFromArrayOfDeltaDays = (date: string, deltaDays: number[]): string[] => {
-    if (!date) return []
+    if (date === undefined || date === null) return []
     const dates = deltaDays.map(deltaDate => addOrSubtractNDaysToDate(date, -deltaDate))
     return dates.sort((a, b) => (a < b) ? -1 : ((a > b) ? 1 : 0));
 }
@@ -33,7 +33,7 @@ const getRealISODatesFromArrayOfDeltaDays = (date: string, deltaDays: number[]):
 /**
  * Converts a number to a string including commas for readability.
  * For example, int(10000) would get converted to str(10,000)
- * @param num
+ * @param num: the number to replace
  */
 const numberWithCommas = (num: number): string => {
     if (!num) return "0"
@@ -71,12 +71,13 @@ const addOrSubtractNDaysToDate = (ISOdate: string, days: number): string => {
 /**
  * Returns an array containing [initialDate, lastDate]
  * For example, if we cared about the data from 01-01-10 to 1 week ago.
- * initialDate = 2020-01-10, deltaInDays = 7, returns [2020-01-03, 2020-01-10]
+ * initialDate = 2020-01-10, deltaDays = 7, returns [2020-01-03, 2020-01-10]
  * @param ISOdate: date to look at
- * @param deltaInDays: number of days before our ISOdate to look at
+ * @param deltaDays: number of days before our ISOdate to look at
  */
-const getRangeOfDates = (ISOdate: string, deltaInDays: number): [string, string] => {
-    return [addOrSubtractNDaysToDate(ISOdate, -deltaInDays), ISOdate]
+const getRangeOfDates = (ISOdate: string, deltaDays: number): [string, string] => {
+    // [ISOdate - deltaDays, ISOdate]
+    return [addOrSubtractNDaysToDate(ISOdate, -deltaDays), ISOdate]
 }
 
 /**
