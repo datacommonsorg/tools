@@ -14,84 +14,93 @@
  limitations under the License.
  */
 
-import ChartsConfiguration from "./ChartsConfiguration.json";
-import Configuration from "./Configuration.json";
-import DeltaDaysToEnglish from "./DeltaDaysToEnglish.json"
-import React from "react";
+import ChartsConfiguration from './ChartsConfiguration.json';
+import Configuration from './Configuration.json';
+import DeltaDaysToEnglish from './DeltaDaysToEnglish.json';
+import React from 'react';
 
-import Section from "./Section";
-import OptionPanel from "./OptionPanel";
-import {filterGeoIdThatBelongTo, filterJSONByArrayOfKeys} from "./Utils";
+import Section from './Section';
+import OptionPanel from './OptionPanel';
+import {filterByRegionsContainedIn, filterJSONByArrayOfKeys} from './Utils';
 
 type Props = {
-    allData: {}[],
-    selectedRegion: string,
-    selectedShowTopN: number,
-    datesToPick: string[]
-    datePicked: string,
-    availableRegions: {},
-    region: string,
-    content: string[],
-    handleSelectUpdate: (key: string, value: string | number) => void,
-}
+    allData: {}[];
+    selectedRegion: string;
+    selectedShowTopN: number;
+    datesToPick: string[];
+    datePicked: string;
+    availableRegions: {};
+    region: string;
+    content: string[];
+    handleSelectUpdate: (key: string, value: string | number) => void;
+};
 
 export default function Content(props: Props) {
-    /**
-     * Returns only the data corresponding to a specific region. County, State or within a State.
-     * @param allData: all the data in the form of [cases, deaths, population, names]
-     * @param region: can be State, County or a State's geoId: geoId/XX
-     */
-    const getStatsDataOnlyForRegion = (allData: {}[], region: string): {}[] => {
-        let output: {}[] = []
-        const geoIdsContainedInSelectedRegion = filterGeoIdThatBelongTo(allData[3], region)
+    const dataForRegion: {}[] = [];
+    const geoIdsInRegion = filterByRegionsContainedIn(
+        props.allData[3],
+        props.region
+    );
 
-        // Iterate through all-cases and all-deaths which are found in index 0 and 1
-        for (let dataSet of props.allData.slice(0, 2)){
-            let filteredDataSet = {}
-            for (let date in dataSet){
-                const geoIdsForIterativeDate = dataSet[date]
-                filteredDataSet[date] = filterJSONByArrayOfKeys(geoIdsForIterativeDate, geoIdsContainedInSelectedRegion)
-            }
-            output.push(filteredDataSet)
+    // Iterate through all-cases and all-deaths.
+    // Which are found in index 0 and 1.
+    for (const dataSet of props.allData.slice(0, 2)) {
+        const filteredDataSet = {};
+        for (const date in dataSet) {
+            filteredDataSet[date] = filterJSONByArrayOfKeys(
+                dataSet[date],
+                geoIdsInRegion
+            );
         }
-        output.push(props.allData[2])
-        output.push(props.allData[3])
-        return output
+        dataForRegion.push(filteredDataSet);
+    }
+    dataForRegion.push(props.allData[2]);
+    dataForRegion.push(props.allData[3]);
+
+    // Iterate through all panels and group panels by deltaDay.
+    // Each deltaDay is a section.
+    // Example: Today, 1 week ago, 1 month ago.
+    const sections: {[deltaDate: string]: string[]} = {};
+    for (const panelId of props.content) {
+        const deltaDays = ChartsConfiguration[panelId].deltaDays;
+        // If deltaDay not in the sections, create space for it.
+        if (!(deltaDays in sections)) {
+            sections[deltaDays] = [];
+        }
+        // Append the panelId to the corresponding section
+        sections[deltaDays] = [...sections[deltaDays], panelId];
     }
 
-    const allDataForSelectedRegion = getStatsDataOnlyForRegion(props.allData, props.selectedRegion)
-    const groupedByDeltaDay = {}
-    for (let panelId of props.content) {
-        const deltaDays = ChartsConfiguration[panelId].deltaDays || 0
-        if (!(deltaDays in groupedByDeltaDay)) groupedByDeltaDay[deltaDays] = []
-        groupedByDeltaDay[deltaDays] = [...groupedByDeltaDay[deltaDays], panelId]
-    }
-
-    const rows = Object.keys(groupedByDeltaDay)
-        .map((deltaDays, index) =>
-                <Section key={index}
-                         allData={allDataForSelectedRegion}
-                         title={DeltaDaysToEnglish[deltaDays]}
-                         panels={groupedByDeltaDay[deltaDays]}
-                         datePicked={props.datePicked}
-                         region={props.selectedRegion}
-                         selectedShowTopN={props.selectedShowTopN}/>
-    )
+    const rows = Object.keys(sections).map((deltaDays, index) =>
+        <Section
+            key={index}
+            allData={dataForRegion}
+            title={DeltaDaysToEnglish[deltaDays]}
+            panels={sections[deltaDays]}
+            datePicked={props.datePicked}
+            region={props.selectedRegion}
+            selectedShowTopN={props.selectedShowTopN}
+        />
+    );
 
     return (
-        <div className={"container"}>
-            {/*REMOVED TEMPORARILY --- <SideNav handleScrollOnRef={handleScrollOnRef} panelIds={props.content}/>*/}
-            <div className={"main-content"}>
-                <OptionPanel handleSelectUpdate={props.handleSelectUpdate}
-                             geoIdToName={props.allData[3]}
-                             defaultShowTopN={props.selectedShowTopN}
-                             datesToPick={props.datesToPick}
-                             datePicked={props.datePicked}
-                             availableRegions={props.availableRegions}
-                             selectedRegion={props.selectedRegion}/>
-                    {rows}
+        <div className={'container'}>
+            {/*REMOVED TEMPORARILY ---
+              <SideNav handleScrollOnRef={handleScrollOnRef}
+              panelIds={props.content}/>*/}
+            <div className={'main-content'}>
+                <OptionPanel
+                    handleSelectUpdate={props.handleSelectUpdate}
+                    geoIdToName={props.allData[3]}
+                    defaultShowTopN={props.selectedShowTopN}
+                    datesToPick={props.datesToPick}
+                    datePicked={props.datePicked}
+                    availableRegions={props.availableRegions}
+                    selectedRegion={props.selectedRegion}
+                />
+                {rows}
             </div>
-            <h5 className={"footer"}>{Configuration.FOOTER}</h5>
+            <h5 className={'footer'}>{Configuration.FOOTER}</h5>
         </div>
-    )
+    );
 }
