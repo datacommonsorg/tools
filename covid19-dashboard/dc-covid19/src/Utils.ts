@@ -83,7 +83,7 @@ const getRangeOfDates = (
  * @param geoIdToInfo: geoId->[name, belongsToRegion]
  * @param belongsToRegion: can be any geoId
  */
-const filterGeoIdThatBelongTo = (
+const filterByRegionsContainedIn = (
     geoIdToInfo: {geoId: string[]} | {},
     belongsToRegion: string
 ): string[] => {
@@ -123,6 +123,6 @@ export {
     numberWithCommas,
     addNDaysToDate,
     getRangeOfDates,
-    filterGeoIdThatBelongTo,
+    filterByRegionsContainedIn,
     filterJSONByArrayOfKeys,
 };
