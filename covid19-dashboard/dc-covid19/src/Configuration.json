@@ -1,8 +1,45 @@
 {
-  "REGIONS": {"State":  "All States", "County":  "All Counties"},
-  "SHOWTOPN": [5, 10, 20, 30, 40, 50],
-  "DATES": [0, 7, 14, 31],
-  "TITLE": "Data Commons",
-  "SUBTITLE": "COVID-19",
-  "FOOTER": "Data from The New York Times, based on reports from state and local health agencies."
+  "REGIONS":{
+    "State":"All States",
+    "County":"All Counties"
+  },
+  "SHOWTOPN":[
+    5,
+    10,
+    20,
+    30
+  ],
+  "DATES":[
+    0,
+    7,
+    14,
+    31
+  ],
+  "TITLE":"Data Commons",
+  "SUBTITLE":"COVID-19",
+  "FOOTER":"Data from The New York Times, based on reports from state and local health agencies.",
+  "content":[
+    "dailyCases",
+    "dailyDeaths",
+    "dailyPerCapitaCases",
+    "dailyPerCapitaDeaths",
+    "dailyIncreaseCases",
+    "dailyIncreaseDeaths",
+    "weeklyCases",
+    "weeklyDeaths",
+    "weeklyPerCapitaCases",
+    "weeklyPerCapitaDeaths",
+    "weeklyIncreaseCases",
+    "weeklyIncreaseDeaths",
+    "monthlyCases",
+    "monthlyDeaths",
+    "monthlyPerCapitaCases",
+    "monthlyPerCapitaDeaths",
+    "monthlyIncreaseCases",
+    "monthlyIncreaseDeaths",
+    "cumulativeCases",
+    "cumulativeDeaths",
+    "cumulativePerCapitaCases",
+    "cumulativePerCapitaDeaths"
+  ]
 }
