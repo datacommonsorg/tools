@@ -28,7 +28,10 @@ const getRealISODatesFromArrayOfDeltaDays = (
     date: string,
     deltaDays: number[]
 ): string[] => {
-    if (date === undefined || date === null) return [];
+    if (!date) {
+        return [];
+    }
+
     const dates = deltaDays.map(deltaDate => addNDaysToDate(date, -deltaDate));
     return dates.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 };
@@ -39,7 +42,10 @@ const getRealISODatesFromArrayOfDeltaDays = (
  * @param num: the number to replace
  */
 const numberWithCommas = (num: number): string => {
-    if (!num) return '0';
+    if (!num){
+        return '0';
+    }
+
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
@@ -52,10 +58,11 @@ const numberWithCommas = (num: number): string => {
  */
 const addNDaysToDate = (ISOdate: string, days: number): string => {
     let date;
-    // Subtracting to date
+
+    // Negative dates passed in -- subtracting
     if (days < 0) {
         date = moment(ISOdate).subtract(Math.abs(days), 'days');
-        // Adding to date
+    // Positive date passed in -- adding
     } else {
         date = moment(ISOdate).add(Math.abs(days), 'days');
     }
