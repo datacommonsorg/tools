@@ -154,12 +154,24 @@ function generateMetadata(dateToGeoIdToValue: DateToGeoIdToValue,
                 regionName += ", " + geoIdToName[containedIn]?.[0]
             }
 
-            // Generate the text that is displayed when the user hovers on a graph.
-            const onHoverInfo = getOnHoverInfoText(geoId, regionName, date, value,
-                iterativePopulation, absolute, label, calculationType)
+            // Generate the text displayed when the user hovers on a graph.
+            const onHoverInfo = getOnHoverInfoText(geoId,
+                                                   regionName,
+                                                   date,
+                                                   value,
+                                                   iterativePopulation,
+                                                   absolute,
+                                                   label,
+                                                   calculationType)
 
-            const textOnTopOfBar = getTextOnTopOfBar(geoId, regionName, date, value,
-                iterativePopulation, absolute, label, calculationType)
+            const textOnTopOfBar = getTextOnTopOfBar(geoId,
+                                                     regionName,
+                                                     date,
+                                                     value,
+                                                     iterativePopulation,
+                                                     absolute,
+                                                     label,
+                                                     calculationType)
 
             // If the date is not in the output, create it.
             if (!(date in output)){
