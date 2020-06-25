@@ -14,116 +14,150 @@
  limitations under the License.
  */
 
-import React from "react";
-import ContentFile from "./ChartsConfiguration.json";
-import moment from "moment";
+import React from 'react';
+import ContentFile from './ChartsConfiguration.json';
+import moment from 'moment';
 
-import EmptyPanel from "./EmptyPanel";
-import {addOrSubtractNDaysToDate, getRangeOfDates} from "./Utils";
-import Graph from "./Graph";
-import calculate from "./DataCalculator";
-import generateMetadata from "./MetadataGenerator";
-
+import EmptyPanel from './EmptyPanel';
+import {addNDaysToDate, getRangeOfDates} from './Utils';
+import Graph from './Graph';
+import calculate from './DataCalculator';
+import generateMetadata from './MetaDataGenerator';
 
 type Props = {
-    allData: any[],
-    region: string,
-    datePicked: string,
-    selectedShowTopN: number,
-    panelId: string
-}
+    allData: any[];
+    region: string;
+    datePicked: string;
+    selectedShowTopN: number;
+    panelId: string;
+};
 
 type Metadata = {
-    geoId: string,
-    name: string,
-    onHoverInfo: string[]
-    textOnTopOfBar: string,
-    value: number
-}
+    geoId: string;
+    name: string;
+    onHoverInfo: string[];
+    textOnTopOfBar: string;
+    value: number;
+};
 
-type DateToGeoIdToValue = {[date: string]: {geoId: number}} | {}
-type DateToGeoIdToMetadata = {[date: string]: {geoId: number}} | {}
+type DateToGeoIdToValue = {[date: string]: {geoId: number}} | {};
+type DateToGeoIdToMetadata = {[date: string]: {geoId: number}} | {};
 
 export default function Panel(props: Props) {
-    const panelContent = ContentFile[props.panelId] || {}
-    const label: string = panelContent.label || "cases"
-    const deltaDays: number = panelContent.deltaDays || 0
-    const calculationType: string[] = panelContent.calculationType || ["absolute"]
+    const panelContent = ContentFile[props.panelId];
+    const label: string = panelContent.label;
+    const deltaDays: number = panelContent.deltaDays;
+    const calculationType: string[] = panelContent.calculationType;
 
     // inputData is different for cases or deaths.
-    const inputData: DateToGeoIdToValue = label === 'cases' ? props.allData[0] : props.allData[1]
-    const geoIdToPopulation: {[geoId: string]: number} = props.allData[2]
-    const geoIdToName: {[geoId: string]: string} = props.allData[3]
-    const rangeOfDates = getRangeOfDates(props.datePicked, deltaDays)
+    let inputData: DateToGeoIdToValue;
+    if (label === 'cases') {
+        inputData = props.allData[0];
+    } else {
+        inputData = props.allData[1];
+    }
+    const geoIdToPopulation: {[geoId: string]: number} = props.allData[2];
+    const geoIdToName: {[geoId: string]: string} = props.allData[3];
+    const rangeOfDates = getRangeOfDates(props.datePicked, deltaDays);
 
-    // These variables are updated on iteration, hence why "let" is used
-    let [date0, date1] = [moment(rangeOfDates[0]), moment(rangeOfDates[1])]
-    let calculatedData: DateToGeoIdToValue = {}
-    let dateToGeoIdToAbsolute: DateToGeoIdToValue = {}
+    // startDate is updated on iteration, hence why "let" is used
+    let startDate = moment(rangeOfDates[0]);
+    const endDate = moment(rangeOfDates[1]);
 
-    // From date0 to date1, do X calculation (increase, difference, absolute)
-    while (date0 <= date1) {
-        const date = date0.format("YYYY-MM-DD")
-        calculatedData[date] = {}
-        dateToGeoIdToAbsolute[date] = {}
+    // calculatedData holds our data.
+    const calculatedData: DateToGeoIdToValue = {};
+    // absoluteData holds our absolute data (either difference or raw)
+    const absoluteData: DateToGeoIdToValue = {};
 
-        for (let geoId in inputData[date]) {
-            const dateMinusDeltaDays = addOrSubtractNDaysToDate(date, -deltaDays)
-            const val0 = inputData[dateMinusDeltaDays][geoId]
-            const val1 = inputData[date][geoId]
+    // From startDate to endDate, perform calculationType
+    while (startDate <= endDate) {
+        // convert date to isoFormat, since data is stored as such
+        const date = startDate.format('YYYY-MM-DD');
+        calculatedData[date] = {};
+        absoluteData[date] = {};
+
+        for (const geoId in inputData[date]) {
+            const dateMinusDeltaDays = addNDaysToDate(date, -deltaDays);
+            const valueDeltaDaysAgo = inputData[dateMinusDeltaDays][geoId];
+            const valueCurrentDate = inputData[date][geoId];
             // Perform the calculationType on the input data.
-            const result = calculate([val0, val1], calculationType)
-
-            // The absolute increase (difference) is necessary to show on-hover info.
-            let absolute: number | null = calculate([val0, val1], ['difference'])
+            const result = calculate(
+                [valueDeltaDaysAgo, valueCurrentDate],
+                        calculationType);
 
             // absolutePerCapita takes the raw absolute number instead of the difference
-            if (deltaDays === 0 && ['absolute', 'perCapita'].every(v => calculationType.includes(v))) {
-                absolute = val1
+            const absolutePerCapita = ['absolute', 'perCapita']
+                .every(v => calculationType.includes(v)
+            );
+
+            // The absolute increase (difference) is necessary to show on-hover info
+            let absolute: number | null;
+
+            // If the calculation is absolutePerCapita
+            // Let's store the raw cumulative value instead of the difference
+            if (absolutePerCapita) {
+                absolute = valueCurrentDate;
+            } else {
+                absolute = calculate([valueDeltaDaysAgo,
+                            valueCurrentDate],
+                    ['difference']);
             }
 
             // Make sure that the result is valid
             if (result || result === 0) {
                 // Store the result for this observation
-                calculatedData[date][geoId] = result
+                calculatedData[date][geoId] = result;
                 // Store the absolute value for this observation
-                dateToGeoIdToAbsolute[date][geoId] = absolute
+                absoluteData[date][geoId] = absolute;
             }
         }
-        date0 = date0.add(1, "days")
+        startDate = startDate.add(1, 'days');
     }
 
     // If perCapita then then divide all results by the geoId's population
-    if (calculationType.includes("perCapita")) {
-        for (let date in calculatedData) {
-            for (let geoId in calculatedData[date]) {
-                const result = calculatedData[date][geoId] / geoIdToPopulation[geoId]
-                if (result) calculatedData[date][geoId] = result
+    if (calculationType.includes('perCapita')) {
+        for (const date in calculatedData) {
+            for (const geoId in calculatedData[date]) {
+                const result = calculatedData[date][geoId] / geoIdToPopulation[geoId];
+                // Make sure that the division is valid
+                if (result) {
+                    calculatedData[date][geoId] = result;
+                }
             }
         }
     }
 
-    // Generate the metadata for the graph (on-hover, bar text, region names, values, name, etc...)
-    const metadata: DateToGeoIdToMetadata = generateMetadata(calculatedData, geoIdToPopulation, geoIdToName,
-                                                                  dateToGeoIdToAbsolute, label, calculationType)
+    // Generate the metadata for the graph
+    // This includes on-hover, bar text, region names, values, name, etc...
+    const metadata: DateToGeoIdToMetadata = generateMetadata(
+        calculatedData,
+        geoIdToPopulation,
+        geoIdToName,
+        absoluteData,
+        label,
+        calculationType
+    );
 
-    // We only care about the data for picked date
-    const dataForPickedDate: {string: Metadata} = metadata[props.datePicked]
+    // We only care about the data for the picked date
+    const dataForPickedDate: {string: Metadata} = metadata[props.datePicked];
 
     // If there is data available show charts
     if (Object.keys(inputData).length) {
         return (
-            <div className={"panel shadow"}>
-                <h4 className={"title"}>{panelContent.title}</h4>
-                <h6 className={"title"}>{panelContent.subtitle}</h6>
-                <Graph label={label}
-                       data={{[props.datePicked]: dataForPickedDate || {}}}
-                       selectedShowTopN={props.selectedShowTopN}
-                       type={panelContent.graphType}
-                       color={label === 'cases' ? '#990001' : 'grey'}/>
+            <div className={'panel shadow'}>
+                <h4 className={'title'}>{panelContent.title}</h4>
+                <h6 className={'title'}>{panelContent.subtitle}</h6>
+                <Graph
+                    label={label}
+                    data={{[props.datePicked]: dataForPickedDate || {}}}
+                    selectedShowTopN={props.selectedShowTopN}
+                    type={panelContent.graphType}
+                    color={label === 'cases' ? '#990001' : 'grey'}
+                />
             </div>
-        )
+        );
+    } else {
+        // Otherwise, show empty panel
+        return <EmptyPanel reason={'loading'} />;
     }
-    // Otherwise, show empty panel
-    return (<EmptyPanel reason={'loading'}/>)
 }
