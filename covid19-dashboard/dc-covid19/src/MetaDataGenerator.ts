@@ -11,15 +11,13 @@
  limitations under the License.
  */
 
-/**
- * Given two values, return the result of calculationType.
- * @param values: values[0] is date - deltaDays, values[1] is the date.
- * @param calculationType: the type of calculating we are performing
- */
 
-import {numberWithCommas} from "./Utils";
+import {numberWithCommas} from './Utils';
 
-type DateToGeoIdToValue = {[geoId: string]: {[date: string]: number}} | {}
+type DateToGeoIdToValue = {[geoId: string]: {[date: string]: number}} | {};
+
+// These are NYT exceptions
+const NYTEXCEPTIONS = ['geoId/3651000', 'geoId/2938000'];
 
 /**
  * Returns strings briefly explaining the calculation performed
@@ -33,49 +31,50 @@ type DateToGeoIdToValue = {[geoId: string]: {[date: string]: number}} | {}
  * @param calculationType: calculations performed on data: eg. ['difference']
  * @return onHoverInfo: human readable text to display on graph's on-hover
  */
-const getOnHoverInfoText = (geoId: string,
-                            regionName: string,
-                            date: string,
-                            value: number,
-                            population: number,
-                            absolute: number,
-                            label: string,
-                            calculationType: string[]) => {
-    let disclaimer = ""
-    let onHoverInfo = [`${numberWithCommas(value)} ${label}`]
+const getOnHoverInfoText = (
+    geoId: string,
+    regionName: string,
+    date: string,
+    value: number,
+    population: number,
+    absolute: number,
+    label: string,
+    calculationType: string[]
+) => {
 
+    let onHoverInfo: string[] = []
 
-    // If it's New York City or Kansas City. Show a disclaimer.
-    // These are NYT exceptions.
-    if (['geoId/3651000', 'geoId/2938000'].includes(geoId)) {
-        disclaimer = `All counties in ${regionName}` +
-            'are combined and reported as one.'
+    // Show disclaimer for NYTExceptions.
+    if (NYTEXCEPTIONS.includes(geoId)) {
+        const disclaimer =
+            `All counties in ${regionName} are combined and reported as one.`
+
+        onHoverInfo.push(disclaimer);
     }
 
-    const absoluteWithCommas = numberWithCommas(absolute)
+    // Build the on-hover info depending on the calculationType
+    const absoluteWithCommas = numberWithCommas(absolute);
     if (calculationType.includes('perCapita')) {
-        const populationWithCommas = numberWithCommas(population)
-        const per10000People = (value * 10000).toFixed(3)
-        onHoverInfo = [
+        const populationWithCommas = numberWithCommas(population);
+        const per10000People = (value * 10000).toFixed(3);
+        onHoverInfo.push(...[
             `${per10000People} ${label} per 10,000 people`,
             `New ${label}: ${absoluteWithCommas}`,
-            `Total population: ${populationWithCommas} people`
-        ]
+            `Total population: ${populationWithCommas} people`,
+        ]);
     } else if (calculationType.includes('increase')) {
-        const percentWithCommas = numberWithCommas(Math.round(value * 100))
-        const absoluteWithCommas = numberWithCommas(absolute)
-        onHoverInfo = [
+        const percentWithCommas = numberWithCommas(Math.round(value * 100));
+        const absoluteWithCommas = numberWithCommas(absolute);
+        onHoverInfo.push(...[
             `Percent increase: ${percentWithCommas}%`,
-            `Absolute increase: ${absoluteWithCommas} ${label}`
-        ]
+            `Absolute increase: ${absoluteWithCommas} ${label}`,
+        ]);
+    } else {
+        onHoverInfo.push(`${numberWithCommas(value)} ${label}`);
     }
 
-    if (disclaimer) {
-        return [disclaimer, ...onHoverInfo]
-    } else {
-        return onHoverInfo
-    }
-}
+    return onHoverInfo
+};
 
 /**
  * Returns strings display on top of graph's bar.
@@ -89,27 +88,28 @@ const getOnHoverInfoText = (geoId: string,
  * @param calculationType: calculations performed on data: eg. ['difference']
  * @return onHoverInfo: human readable text on top of
  */
-const getTextOnTopOfBar = (geoId: string,
-                           regionName: string,
-                           date: string,
-                           value: number,
-                           population: number,
-                           absoluteIncrease: number,
-                           label: string,
-                           calculationType: string[]): string => {
-
-    const absoluteWithCommas = numberWithCommas(absoluteIncrease)
+const getTextOnTopOfBar = (
+    geoId: string,
+    regionName: string,
+    date: string,
+    value: number,
+    population: number,
+    absoluteIncrease: number,
+    label: string,
+    calculationType: string[]
+): string => {
+    const absoluteWithCommas = numberWithCommas(absoluteIncrease);
 
     if (calculationType.includes('perCapita')) {
-        const populationWithCommas = numberWithCommas(population)
-        return `${absoluteWithCommas} / ${populationWithCommas}`
+        const populationWithCommas = numberWithCommas(population);
+        return `${absoluteWithCommas} / ${populationWithCommas}`;
     } else if (calculationType.includes('increase')) {
-        const percentIncrease = Math.round(value * 100)
-        return `${absoluteWithCommas} (${percentIncrease}%)`
+        const percentIncrease = Math.round(value * 100);
+        return `${absoluteWithCommas} (${percentIncrease}%)`;
     } else {
-        return `${numberWithCommas(value)}`
+        return `${numberWithCommas(value)}`;
     }
-}
+};
 
 /**
  * Generates an object for the information to display.
@@ -122,60 +122,69 @@ const getTextOnTopOfBar = (geoId: string,
  * @param label: Are we talking about cases or deaths?
  * @param calculationType: calculations performed on data: eg. ['difference']
  */
-function generateMetadata(dateToGeoIdToValue: DateToGeoIdToValue,
-                          geoIdToPopulation: {[geoId: string]: number},
-                          geoIdToName: {[geoId: string]: string},
-                          dateToGeoIdToAbsolute: DateToGeoIdToValue,
-                          label: string,
-                          calculationType: string[]): DateToGeoIdToValue {
-
-    let output: DateToGeoIdToValue | {} = {}
+const generateMetadata = (
+    dateToGeoIdToValue: DateToGeoIdToValue,
+    geoIdToPopulation: {[geoId: string]: number},
+    geoIdToName: {[geoId: string]: string},
+    dateToGeoIdToAbsolute: DateToGeoIdToValue,
+    label: string,
+    calculationType: string[]
+): DateToGeoIdToValue => {
+    const output: DateToGeoIdToValue | {} = {};
 
     // For every date and geoId in the dataset
-    for (let date in dateToGeoIdToValue){
-        for (let geoId in dateToGeoIdToValue[date]) {
-            const iterativePopulation = geoIdToPopulation[geoId]
+    for (const date in dateToGeoIdToValue) {
+        for (const geoId in dateToGeoIdToValue[date]) {
+            const unnecessaryNames = ['County', 'Parish', 'Borough'];
+            const iterativePopulation = geoIdToPopulation[geoId];
             // Get the name of the state, and get rid of county or Parish
-            let regionName: string = geoIdToName[geoId]?.[0] || geoId
+            let regionName: string = geoIdToName[geoId]?.[0] || geoId;
 
-            regionName.replace(" County", "")
-                      .replace(" Parish", "")
-                      .replace(" Borough", "")
+            // Get rid of unnecessary names
+            unnecessaryNames.forEach(name => regionName.replace(' ' + name, ''));
 
             // containedIn holds the region that it belongs to
             // For example geoId/12345 belongs to geoId/12
-            const containedIn: string = geoIdToName[geoId]?.[1]
-            const value: number = dateToGeoIdToValue[date]?.[geoId]
-            const absolute: number = dateToGeoIdToAbsolute[date]?.[geoId]
+            const containedIn: string = geoIdToName[geoId]?.[1];
+            const value: number = dateToGeoIdToValue[date]?.[geoId];
+            const absolute: number = dateToGeoIdToAbsolute[date]?.[geoId];
 
             // If the region is not a State, append the State to the name.
             // Example: "Miami, Florida"
-            if (containedIn.includes("geoId")) {
-                regionName += ", " + geoIdToName[containedIn]?.[0]
+
+            // Only counties are contained in another geoId.
+            // States would be contained in "country/"
+            if (containedIn.includes('geoId/')) {
+                const state = geoIdToName[containedIn]?.[0]
+                regionName += ', ' + state;
             }
 
             // Generate the text displayed when the user hovers on a graph.
-            const onHoverInfo = getOnHoverInfoText(geoId,
-                                                   regionName,
-                                                   date,
-                                                   value,
-                                                   iterativePopulation,
-                                                   absolute,
-                                                   label,
-                                                   calculationType)
+            const onHoverInfo = getOnHoverInfoText(
+                geoId,
+                regionName,
+                date,
+                value,
+                iterativePopulation,
+                absolute,
+                label,
+                calculationType
+            );
 
-            const textOnTopOfBar = getTextOnTopOfBar(geoId,
-                                                     regionName,
-                                                     date,
-                                                     value,
-                                                     iterativePopulation,
-                                                     absolute,
-                                                     label,
-                                                     calculationType)
+            const textOnTopOfBar = getTextOnTopOfBar(
+                geoId,
+                regionName,
+                date,
+                value,
+                iterativePopulation,
+                absolute,
+                label,
+                calculationType
+            );
 
             // If the date is not in the output, create it.
-            if (!(date in output)){
-                output[date] = {}
+            if (!(date in output)) {
+                output[date] = {};
             }
 
             output[date][geoId] = {
@@ -183,11 +192,11 @@ function generateMetadata(dateToGeoIdToValue: DateToGeoIdToValue,
                 name: regionName,
                 onHoverInfo: onHoverInfo,
                 textOnTopOfBar: textOnTopOfBar,
-                value: dateToGeoIdToValue[date][geoId]
-            }
+                value: dateToGeoIdToValue[date][geoId],
+            };
         }
     }
-    return output
+    return output;
 }
 
-export default generateMetadata
+export default generateMetadata;
