@@ -1,0 +1,178 @@
+{
+  "dailyCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Daily Cases",
+    "subtitle": "",
+    "deltaDays": 1,
+    "calculationType": ["difference"]
+  },
+  "dailyDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Daily Deaths",
+    "subtitle": "",
+    "deltaDays": 1,
+    "calculationType": ["difference"]
+  },
+  "dailyPerCapitaCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Daily Cases Per Capita",
+    "subtitle": "Cases Per 10,000 People",
+    "deltaDays": 1,
+    "calculationType": ["difference", "perCapita"]
+  },
+  "dailyPerCapitaDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Daily Deaths Per Capita",
+    "subtitle": "Deaths Per 10,000 People",
+    "deltaDays": 1,
+    "calculationType": ["difference", "perCapita"]
+  },
+  "dailyIncreaseCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Daily Cases Increase",
+    "subtitle": "In Percent",
+    "deltaDays": 1,
+    "calculationType": ["increase"]
+  },
+  "dailyIncreaseDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Daily Deaths Increase",
+    "subtitle": "In Percent",
+    "deltaDays": 1,
+    "calculationType": ["increase"]
+  },
+  "weeklyCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Weekly Cases",
+    "subtitle": "",
+    "deltaDays": 7,
+    "calculationType": ["difference"]
+  },
+  "weeklyDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Weekly Deaths",
+    "subtitle": "",
+    "deltaDays": 7,
+    "calculationType": ["difference"]
+  },
+  "weeklyPerCapitaCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Weekly Cases Per Capita",
+    "subtitle": "Cases Per 10,000 People",
+    "deltaDays": 7,
+    "calculationType": ["difference", "perCapita"]
+  },
+  "weeklyPerCapitaDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Weekly Deaths Per Capita",
+    "subtitle": "Deaths Per 10,000 People",
+    "deltaDays": 7,
+    "calculationType": ["difference", "perCapita"]
+  },
+  "weeklyIncreaseCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Weekly Cases Increase",
+    "subtitle": "In Percent",
+    "deltaDays": 7,
+    "calculationType": ["increase"]
+  },
+  "weeklyIncreaseDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Weekly Deaths Increase",
+    "subtitle": "In Percent",
+    "deltaDays": 7,
+    "calculationType": ["increase"]
+  },
+  "monthlyCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Monthly Cases",
+    "subtitle": "",
+    "deltaDays": 31,
+    "calculationType": ["difference"]
+  },
+  "monthlyDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Monthly Deaths",
+    "subtitle": "",
+    "deltaDays": 31,
+    "calculationType": ["difference"]
+  },
+  "monthlyPerCapitaCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Monthly Cases Per Capita",
+    "subtitle": "Deaths Per 10,000 People",
+    "deltaDays": 31,
+    "calculationType": ["difference", "perCapita"]
+  },
+  "monthlyPerCapitaDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Monthly Deaths Per Capita",
+    "subtitle": "Deaths Per 10,000 People",
+    "deltaDays": 31,
+    "calculationType": ["difference", "perCapita"]
+  },
+  "monthlyIncreaseCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Monthly Cases Increase",
+    "subtitle": "In Percent",
+    "deltaDays": 31,
+    "calculationType": ["increase"]
+  },
+  "monthlyIncreaseDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Monthly Deaths Increase",
+    "subtitle": "In Percent",
+    "deltaDays": 31,
+    "calculationType": ["increase"]
+  },
+  "cumulativeCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Cumulative Cases",
+    "subtitle": "",
+    "deltaDays": 0,
+    "calculationType": ["absolute"]
+  },
+  "cumulativeDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Cumulative Deaths",
+    "subtitle": "",
+    "deltaDays": 0,
+    "calculationType": ["absolute"]
+  },
+  "cumulativePerCapitaCases": {
+    "graphType": "bar",
+    "label": "cases",
+    "title": "Cumulative Cases Per Capita",
+    "subtitle": "Cases Per 10,000 People",
+    "deltaDays": 0,
+    "calculationType": ["absolute", "perCapita"]
+  },
+  "cumulativePerCapitaDeaths": {
+    "graphType": "bar",
+    "label": "deaths",
+    "title": "Cumulative Deaths Per Capita",
+    "subtitle": "Deaths Per 10,000 People",
+    "deltaDays": 0,
+    "calculationType": ["absolute", "perCapita"]
+  }
+}
