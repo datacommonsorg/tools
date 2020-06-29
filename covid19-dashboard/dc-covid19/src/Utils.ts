@@ -25,15 +25,15 @@ import moment from 'moment';
  * @param deltaDays: the date
  */
 const getRealISODatesFromArrayOfDeltaDays = (
-    date: string,
-    deltaDays: number[]
+  date: string,
+  deltaDays: number[]
 ): string[] => {
-    if (!date) {
-        return [];
-    }
+  if (!date) {
+    return [];
+  }
 
-    const dates = deltaDays.map(deltaDate => addNDaysToDate(date, -deltaDate));
-    return dates.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const dates = deltaDays.map(deltaDate => addNDaysToDate(date, -deltaDate));
+  return dates.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 };
 
 /**
@@ -42,11 +42,11 @@ const getRealISODatesFromArrayOfDeltaDays = (
  * @param num: the number to replace
  */
 const numberWithCommas = (num: number): string => {
-    if (!num){
-        return '0';
-    }
+  if (!num) {
+    return '0';
+  }
 
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
 /**
@@ -57,16 +57,16 @@ const numberWithCommas = (num: number): string => {
  * @param days: either positive or negative days to add
  */
 const addNDaysToDate = (ISOdate: string, days: number): string => {
-    let date;
+  let date;
 
-    // Negative dates passed in -- subtracting
-    if (days < 0) {
-        date = moment(ISOdate).subtract(Math.abs(days), 'days');
+  // Negative dates passed in -- subtracting
+  if (days < 0) {
+    date = moment(ISOdate).subtract(Math.abs(days), 'days');
     // Positive date passed in -- adding
-    } else {
-        date = moment(ISOdate).add(Math.abs(days), 'days');
-    }
-    return date.format('YYYY-MM-DD');
+  } else {
+    date = moment(ISOdate).add(Math.abs(days), 'days');
+  }
+  return date.format('YYYY-MM-DD');
 };
 
 /**
@@ -77,11 +77,11 @@ const addNDaysToDate = (ISOdate: string, days: number): string => {
  * @param deltaDays: number of days before our ISOdate to look at
  */
 const getRangeOfDates = (
-    ISOdate: string,
-    deltaDays: number
+  ISOdate: string,
+  deltaDays: number
 ): [string, string] => {
-    // Will return [ISOdate - deltaDays, ISOdate]
-    return [addNDaysToDate(ISOdate, -deltaDays), ISOdate];
+  // Will return [ISOdate - deltaDays, ISOdate]
+  return [addNDaysToDate(ISOdate, -deltaDays), ISOdate];
 };
 
 /**
@@ -91,22 +91,22 @@ const getRangeOfDates = (
  * @param belongsToRegion: can be any geoId
  */
 const filterByRegionsContainedIn = (
-    geoIdToInfo: {geoId: string[]} | {},
-    belongsToRegion: string
+  geoIdToInfo: {geoId: string[]} | {},
+  belongsToRegion: string
 ): string[] => {
-    if (belongsToRegion === 'County') {
-        return Object.keys(geoIdToInfo).filter(
-            geoId => geoIdToInfo[geoId][1] !== 'country/USA'
-        );
-    } else if (belongsToRegion === 'State') {
-        return Object.keys(geoIdToInfo).filter(
-            geoId => geoIdToInfo[geoId][1] === 'country/USA'
-        );
-    } else {
-        return Object.keys(geoIdToInfo).filter(
-            geoId => geoIdToInfo[geoId][1] === belongsToRegion
-        );
-    }
+  if (belongsToRegion === 'County') {
+    return Object.keys(geoIdToInfo).filter(
+      geoId => geoIdToInfo[geoId][1] !== 'country/USA'
+    );
+  } else if (belongsToRegion === 'State') {
+    return Object.keys(geoIdToInfo).filter(
+      geoId => geoIdToInfo[geoId][1] === 'country/USA'
+    );
+  } else {
+    return Object.keys(geoIdToInfo).filter(
+      geoId => geoIdToInfo[geoId][1] === belongsToRegion
+    );
+  }
 };
 
 /**
@@ -116,20 +116,20 @@ const filterByRegionsContainedIn = (
  * @param keys: an array of keys
  */
 const filterJSONByArrayOfKeys = (JSON: {}, keys: string[]): {} => {
-    const output = {};
-    keys.forEach(key => {
-        if (key in JSON) {
-            output[key] = JSON[key];
-        }
-    });
-    return output;
+  const output = {};
+  keys.forEach(key => {
+    if (key in JSON) {
+      output[key] = JSON[key];
+    }
+  });
+  return output;
 };
 
 export {
-    getRealISODatesFromArrayOfDeltaDays,
-    numberWithCommas,
-    addNDaysToDate,
-    getRangeOfDates,
-    filterByRegionsContainedIn,
-    filterJSONByArrayOfKeys,
+  getRealISODatesFromArrayOfDeltaDays,
+  numberWithCommas,
+  addNDaysToDate,
+  getRangeOfDates,
+  filterByRegionsContainedIn,
+  filterJSONByArrayOfKeys,
 };
