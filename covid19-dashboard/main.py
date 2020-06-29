@@ -26,7 +26,6 @@ config = dict(DEBUG=True,
 
 app = Flask(__name__, static_folder='./dc-covid19/build')
 CORS(app)
-
 app.config.from_mapping(config)
 
 # Load the configuration file from the instance folder
@@ -39,6 +38,13 @@ API_KEY = app.config['API_KEY']
 # Retrives DataCommons Server from configuration file
 DC_SERVER = app.config["DC_SERVER"]
 
+@app.after_request
+def add_header(response):
+    """Adds the Cache Control header to ensure browser stores a cache"""
+    # Keep cache in browser for 4 hours.
+    response.cache_control.max_age = 14400
+    return response
+
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -50,27 +56,10 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 
-# @app.route("/api/places")
-# @cache.cached(timeout=864000)
-# def get_places():
-#     """Returns a dictionary of dcid->(name, type)
-#     where name is the name of the region and type is the type of region."""
-#     response: dict = send_request(req_url='https://api.datacommons.org/node/property-values',
-#                                   req_json={"dcids": ['NYT_COVID19_County', 'NYT_COVID19_State'],
-#                                             "property": "member"},
-#                                   post=True,
-#                                   compress=False,
-#                                   api_key=API_KEY)
-#
-#     counties: dict = {county['dcid']: (county['name'], 'County') for county in response['NYT_COVID19_County']['out']}
-#     states: dict = {state['dcid']: (state['name'], 'State') for state in response['NYT_COVID19_State']['out']}
-#     return {**counties, **states}
-
-
 @app.route("/api/total-cases")
 @cache.cached(timeout=3600)
 def get_total_cases():
-    """Returns the total Cumulative Cases of each region per day. day->dcid->cases"""
+    """Returns the total cumulative cases. day->dcid->cases"""
     dcids: list = list(get_places().keys())
     return get_stats_by_date(dcids, 'NYTCovid19CumulativeCases')
 
@@ -78,7 +67,7 @@ def get_total_cases():
 @app.route("/api/total-deaths")
 @cache.cached(timeout=3600)
 def get_total_deaths():
-    """Returns the total Cumulative Deaths of each region. day->dcid->deaths"""
+    """Returns the total cumulative deaths. day->dcid->deaths"""
     dcids: list = list(get_places().keys())
     return get_stats_by_date(dcids, 'NYTCovid19CumulativeDeaths')
 
@@ -106,14 +95,15 @@ def get_population():
     output: defaultdict = defaultdict(int)
 
     for place in response:
-        # Some dcids return None if there is no data, so we have to make sure there is data first.
+        # Some dcids return None if there is no data.
+        # Make sure there is data first.
         if 'place' not in place and not place['place']:
             continue
         if "observations" not in place and not place["observations"]:
             continue
         dcid: str = place['place']
 
-        # Iterate through all oversvations until we find the Census Data Observation.
+        # Search for CensusACS5yrSurvey in observations.
         for observation in place["observations"]:
             if observation["measurementMethod"] == "CensusACS5yrSurvey":
                 if 'measuredValue' not in observation:
@@ -193,10 +183,11 @@ def get_places():
 
 def get_stats_by_date(place: list, stats_var: str) -> dict:
     """
-    In charge of querying and returning the covid data in the appropriate format.
+    Queries and returns the covid data in the appropriate format.
     :param place: list of dcids to get data for
     :param stats_var: the Data Commons stats_var to query data for
-    :return: dictionary where every day contains several regions, and those regions contain an int of cases/deaths
+    :return: dictionary where every day contains several regions,
+    and those regions contain an int of cases/deaths
     """
     response: dict = send_request(DC_SERVER + "bulk/stats", {
         "place": place,
