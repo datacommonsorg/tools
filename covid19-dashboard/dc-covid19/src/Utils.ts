@@ -14,8 +14,8 @@
  limitations under the License.
  */
 
-import HRNumbers from 'human-readable-numbers'
-import _ from 'lodash'
+import HRNumbers from 'human-readable-numbers';
+import _ from 'lodash';
 
 /**
  * Converts a number to a string including commas for readability.
@@ -28,7 +28,7 @@ const numberWithCommas = (num: number): string => {
     return '0';
   }
 
-  return outputNum
+  return outputNum;
 };
 
 /**
@@ -38,39 +38,39 @@ const numberWithCommas = (num: number): string => {
  * @param belongToRegion: can be any geoId, "County" or "State"
  */
 const filterGeoIdThatBelongTo = (
-    geoIdToType: {[geoId: string]: string[]} | {},
-    belongToRegion: string
+  geoIdToType: {[geoId: string]: string[]} | {},
+  belongToRegion: string
 ): string[] => {
-  let countries = new Set(['country/USA'])
-  let states: Set<string> = new Set()
-  let counties: Set<string> = new Set()
+  const countries = new Set(['country/USA']);
+  const states: Set<string> = new Set();
+  const counties: Set<string> = new Set();
 
   // Get all geoIds that are states.
   _.forEach(geoIdToType, ([name, belongsTo], geoId) => {
     // If region belongs to any of the countries, it must be a state.
     if (countries.has(belongsTo)) {
-      states.add(geoId)
+      states.add(geoId);
     }
-  })
+  });
 
   // If belongToRegion === 'State', no need to continue.
   // Return the list of state geoIds right away.
   if (belongToRegion === 'State') {
-    return [...states]
+    return [...states];
   }
 
   // Get all the geoIds that are counties.
   _.forEach(geoIdToType, ([name, belongsTo], geoId) => {
     // If region belongs to any of the states, it must be a county.
     if (states.has(belongsTo)) {
-      counties.add(geoId)
+      counties.add(geoId);
     }
-  })
+  });
 
   // If belongToRegion === 'County', no need to continue.
   // Return the list of county geoIds right away.
   if (belongToRegion === 'County') {
-    return [...counties]
+    return [...counties];
   }
 
   // Get all the geoIds that are counties belonging to belongsToRegion.
@@ -78,11 +78,11 @@ const filterGeoIdThatBelongTo = (
   _.forEach(geoIdToType, ([name, belongsTo], geoId) => {
     // If region belongs to any of the states, it must be a county.
     if (belongsTo === belongToRegion) {
-      countiesBelongingToState.add(geoId)
+      countiesBelongingToState.add(geoId);
     }
-  })
+  });
 
-  return [...countiesBelongingToState]
+  return [...countiesBelongingToState];
 };
 
 /**
@@ -102,8 +102,4 @@ const filterJSONByArrayOfKeys = (JSON: {}, keys: any[]): {} => {
   return output;
 };
 
-export {
-  numberWithCommas,
-  filterGeoIdThatBelongTo,
-  filterJSONByArrayOfKeys,
-};
+export {numberWithCommas, filterGeoIdThatBelongTo, filterJSONByArrayOfKeys};
