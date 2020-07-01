@@ -14,27 +14,8 @@
  limitations under the License.
  */
 
-import moment from 'moment';
-
-/**
- * Given a date and an array of deltaDays compute the real ISODates.
- * For example, date = 2020-01-10 and deltaDays = [0, 1, 7]
- * will return the following: [2020-01-10, 2020-01-09, 2020-01-03]
- * 0 represents today, N represents N days ago.
- * @param date: the date we are observing
- * @param deltaDays: the date
- */
-const getRealISODatesFromArrayOfDeltaDays = (
-  date: string,
-  deltaDays: number[]
-): string[] => {
-  if (!date) {
-    return [];
-  }
-
-  const dates = deltaDays.map(deltaDate => addNDaysToDate(date, -deltaDate));
-  return dates.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-};
+import HRNumbers from 'human-readable-numbers'
+import _ from 'lodash'
 
 /**
  * Converts a number to a string including commas for readability.
@@ -42,94 +23,87 @@ const getRealISODatesFromArrayOfDeltaDays = (
  * @param num: the number to replace
  */
 const numberWithCommas = (num: number): string => {
-  if (!num) {
+  const outputNum = HRNumbers.toHumanString(num);
+  if (!outputNum) {
     return '0';
   }
 
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return outputNum
 };
 
 /**
- * Adds or subtracts any number of days to an ISO date.
- * For example, 2020-01-07 minus 2 days would return 2020-01-05.
- * NOTE: You can pass in negative or positive days accordingly.
- * @param ISOdate: a string representing a date in ISO format
- * @param days: either positive or negative days to add
+ * Given a map of geoId->[name, belongToRegion]
+ * return a list of the geoId's that belong to the belongToRegion
+ * @param geoIdToType: geoId->[name, belongToRegion]
+ * @param belongToRegion: can be any geoId, "County" or "State"
  */
-const addNDaysToDate = (ISOdate: string, days: number): string => {
-  let date;
-
-  // Negative dates passed in -- subtracting
-  if (days < 0) {
-    date = moment(ISOdate).subtract(Math.abs(days), 'days');
-    // Positive date passed in -- adding
-  } else {
-    date = moment(ISOdate).add(Math.abs(days), 'days');
-  }
-  return date.format('YYYY-MM-DD');
-};
-
-/**
- * Returns an array containing [initialDate, lastDate]
- * For example, if we cared about the data from 01-01-10 to 1 week ago.
- * initialDate = 2020-01-10, deltaDays = 7, returns [2020-01-03, 2020-01-10]
- * @param ISOdate: date to look at
- * @param deltaDays: number of days before our ISOdate to look at
- */
-const getRangeOfDates = (
-  ISOdate: string,
-  deltaDays: number
-): [string, string] => {
-  // Will return [ISOdate - deltaDays, ISOdate]
-  return [addNDaysToDate(ISOdate, -deltaDays), ISOdate];
-};
-
-/**
- * Given a map of geoId->[name, belongsToRegion]
- * Returns a list of the geoId's that belong to a region
- * @param geoIdToInfo: geoId->[name, belongsToRegion]
- * @param belongsToRegion: can be any geoId
- */
-const filterByRegionsContainedIn = (
-  geoIdToInfo: {geoId: string[]} | {},
-  belongsToRegion: string
+const filterGeoIdThatBelongTo = (
+    geoIdToType: {[geoId: string]: string[]} | {},
+    belongToRegion: string
 ): string[] => {
-  if (belongsToRegion === 'County') {
-    return Object.keys(geoIdToInfo).filter(
-      geoId => geoIdToInfo[geoId][1] !== 'country/USA'
-    );
-  } else if (belongsToRegion === 'State') {
-    return Object.keys(geoIdToInfo).filter(
-      geoId => geoIdToInfo[geoId][1] === 'country/USA'
-    );
-  } else {
-    return Object.keys(geoIdToInfo).filter(
-      geoId => geoIdToInfo[geoId][1] === belongsToRegion
-    );
+  let countries = new Set(['country/USA'])
+  let states: Set<string> = new Set()
+  let counties: Set<string> = new Set()
+
+  // Get all geoIds that are states.
+  _.forEach(geoIdToType, ([name, belongsTo], geoId) => {
+    // If region belongs to any of the countries, it must be a state.
+    if (countries.has(belongsTo)) {
+      states.add(geoId)
+    }
+  })
+
+  // If belongToRegion === 'State', no need to continue.
+  // Return the list of state geoIds right away.
+  if (belongToRegion === 'State') {
+    return [...states]
   }
+
+  // Get all the geoIds that are counties.
+  _.forEach(geoIdToType, ([name, belongsTo], geoId) => {
+    // If region belongs to any of the states, it must be a county.
+    if (states.has(belongsTo)) {
+      counties.add(geoId)
+    }
+  })
+
+  // If belongToRegion === 'County', no need to continue.
+  // Return the list of county geoIds right away.
+  if (belongToRegion === 'County') {
+    return [...counties]
+  }
+
+  // Get all the geoIds that are counties belonging to belongsToRegion.
+  const countiesBelongingToState: Set<string> = new Set();
+  _.forEach(geoIdToType, ([name, belongsTo], geoId) => {
+    // If region belongs to any of the states, it must be a county.
+    if (belongsTo === belongToRegion) {
+      countiesBelongingToState.add(geoId)
+    }
+  })
+
+  return [...countiesBelongingToState]
 };
 
 /**
- * Returns new copy of the inputted JSON only containing keys present.
+ * Returns copy of the inputted JSON with only the keys that are in the array.
  * This is similar to the reduce() function, but for JSON.
  * @param JSON: any object
  * @param keys: an array of keys
  */
-const filterJSONByArrayOfKeys = (JSON: {}, keys: string[]): {} => {
-  const output = {};
+const filterJSONByArrayOfKeys = (JSON: {}, keys: any[]): {} => {
+  const output: {} = {};
   keys.forEach(key => {
     if (key in JSON) {
       output[key] = JSON[key];
     }
   });
+
   return output;
 };
 
 export {
-  getRealISODatesFromArrayOfDeltaDays,
   numberWithCommas,
-  addNDaysToDate,
-  getRangeOfDates,
-  filterByRegionsContainedIn,
+  filterGeoIdThatBelongTo,
   filterJSONByArrayOfKeys,
 };
