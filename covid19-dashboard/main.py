@@ -24,9 +24,12 @@ from flask_compress import Compress
 from send_request import send_request
 from calculate_data import calculate_data
 
-config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR="/tmp")
+config = dict(DEBUG=True,
+              CACHE_TYPE="filesystem",
+              CACHE_DIR="/tmp")
 
-app = Flask(__name__, static_folder="./build")
+app = Flask(__name__,
+            static_folder="./build")
 
 # All API responses are g-zipped/compressed.
 Compress(app)
