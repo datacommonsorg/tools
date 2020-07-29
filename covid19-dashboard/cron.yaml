@@ -1,5 +1,0 @@
-cron:
-   - description: 'keep data fresh'
-     url: /get-all-data
-     schedule: every 20 minutes
-
