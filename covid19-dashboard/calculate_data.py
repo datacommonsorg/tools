@@ -67,54 +67,50 @@ def _moving_average(date_to_val: DateToValueListType,
     return output
 
 
-def _clean_dataset(date_to_val: DateToValueListType,
+def _clean_dataset(date_to_value: DateToValueListType,
                    step_size: int = 2,
-                   start_date: str = '2020-03-01') -> DateToValueListType:
+                   keep_negatives: bool = False) -> DateToValueListType:
     """
-    Given a date_to_val, filter out data and make sure it's sorted by date.
-    Remove any negative values and dates starting prior to start_date.
+    Given a date_to_val, filter out data and sort it by date.
+    Remove negative values, if requested.
+    Only return the last 100 dates in the dataset.
     Remove indices not divisible by step_size.
-    :param date_to_val: a list of tuples: (date, value).
+    :param date_to_value: a list of tuples: (date, value).
     date type is a string in ISO-8601. Example: "2020-01-02"
     :param step_size: if an index is not divisible by step_size, drop it.
-    :param start_date: any date before this date will be omitted from output.
-    date type is a string in ISO-8601. Example: "2020-01-02"
     Only index divisible by step_size will be kept.
     :return: the same dataset but 1/nth of the size.
     """
     # If date_to_val has no data, return [].
-    if not date_to_val:
+    if not date_to_value:
         return []
 
-    # Sort the values by the date, that is, elem[0].
-    date_to_value_list = sorted(date_to_val, key=lambda elem: elem[0])
+    # Sort the values by the date found in elem[0].
+    date_to_value_list = sorted(date_to_value, key=lambda elem: elem[0])
 
-    # The latest date is always the last date from the sorted list.
-    # The date is found in the last element of the array.
-    latest_date = date_to_value_list[-1][0]
+    # Only include dates in the last 100 days.
+    date_to_value_list: DateToValueListType = date_to_value_list[-100:]
 
-    # Remove dates before start_date.
-    date_to_value_list = [(date, value)
-                          for date, value in date_to_value_list
-                          if date >= start_date]
+    # Keep a real copy of the last 7 days in the dataset.
+    original_copy_last_7d: DateToValueListType = date_to_value_list[-7:]
 
     # Only include the element if its index is divisible by step_size.
     # This filtering is done to reduce the size of the output.
-    date_to_value_list = date_to_value_list[::step_size]
+    filtered_dataset: DateToValueListType = date_to_value_list[:-7:step_size]
 
-    # Remove negative values from the data.
-    date_to_value_list = [(date, 0) if value < 0 else (date, value)
-                          for date, value in date_to_value_list]
+    # Combine filtered dataset and original's dataset's last 7 days.
+    # We want to keep the original quality of the last 7 days.
+    combined_dataset = filtered_dataset + original_copy_last_7d
 
-    # The latest date might have been skipped by the step_size filter.
-    # Check to see if latest_date is in our filtered dataset.
-    # If it's not, then append it.
-    # We NEED the latest_date to be present.
-    if date_to_value_list[-1][0] != latest_date:
-        latest_date_val = date_to_val[-1][1]
-        date_to_value_list.append((latest_date, latest_date_val))
+    # If keep_negatives requested, return.
+    if keep_negatives:
+        return combined_dataset
 
-    return date_to_value_list
+    # Otherwise, replace negative values with 0s.
+    dataset_without_negatives = [(date, 0) if value < 0 else (date, value)
+                                 for date, value in combined_dataset]
+
+    return dataset_without_negatives
 
 
 def _pct_changes(date_to_val: DateToValueListType,
@@ -131,7 +127,7 @@ def _pct_changes(date_to_val: DateToValueListType,
     where each date contains the pct_change from the baseline_date.
     """
 
-    # days_from_baseline can't be 0.
+    # days_from_baseline can't be 0 or negative.
     if days_from_baseline <= 0:
         return []
 
@@ -140,7 +136,7 @@ def _pct_changes(date_to_val: DateToValueListType,
     if len(date_to_val) <= days_from_baseline:
         return []
 
-    # Sort the data by the date, that is, elem[0].
+    # Sort the values by the date found in elem[0].
     date_to_val = sorted(date_to_val, key=lambda elem: elem[0])
 
     pct_changes_list: DateToValueListType = []
@@ -166,20 +162,21 @@ def _pct_changes(date_to_val: DateToValueListType,
     return pct_changes_list
 
 
-def calculate_data(
-        stats: DateToValueDictType,
-        population: int,
-        moving_average_chunk_size: int = 7) -> Dict[str, DateToValueDictType]:
+def calculate_data(stats: DateToValueDictType,
+                   population: int,
+                   moving_average_chunk_size: int = 7
+                   ) -> Dict[str, DateToValueDictType]:
     """
     Given a dataset for a region and its population,
-    perform different types of calculations on every date.
+    perform different types of calculations for every date.
     :param moving_average_chunk_size: In days. Defaults to 7 days.
     The size of the window to take the moving average of.
     :param stats: a dictionary containing date->int.
     date type is a string in ISO-8601. Example: "2020-01-02"
-    :param population: geoId -> population.
+    :param population: a integer representing the population.
     NOTE: for return type documentation, please see README.md's APIs section.
-    :return: a dictionary with the moving average and other calculations.
+    :return: a dictionary containing calculations of
+     movingAverage, perCapita and pctIncrease.
     """
     # The population is required.
     # If population is invalid, return nothing.
@@ -209,16 +206,15 @@ def calculate_data(
     ]
 
     # Calculate the percent changes for every day since the previous week.
-    pct_changes_list = _pct_changes(moving_averages_list,
-                                    days_from_baseline=7)
+    pct_changes_list = _pct_changes(moving_averages_list, 7)
 
     # Only keep even indices.
     # This filtering is done to improve file size.
     # Convert list of tuples back to a dictionary.
     # (date, value) converts to {date: value}.
-    moving_averages = dict(_clean_dataset(moving_averages_list, 2))
-    per_capitas = dict(_clean_dataset(per_capitas_list, 2))
-    pct_changes = dict(_clean_dataset(pct_changes_list, 2))
+    moving_averages = dict(_clean_dataset(moving_averages_list, 2, False))
+    per_capitas = dict(_clean_dataset(per_capitas_list, 2, False))
+    pct_changes = dict(_clean_dataset(pct_changes_list, 2, True))
 
     output: Dict[str, DateToValueDictType] = {
         'movingAverage': moving_averages,
