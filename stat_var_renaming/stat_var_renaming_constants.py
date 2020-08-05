@@ -1,23 +1,27 @@
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
 #
 #     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
 
 """
-  This file contains various constants and helper code to generate constants that are used in the Statistical Variable renaming. 
+  This file contains various constants and helper code to generate constants
+  that are used in the Statistical Variable renaming. 
 """
 
 import pandas as pd
 import re
 
 ### Helper Functions
+def capitalizeFirst(word):
+  return word[0].upper() + word[1:]
+
 def standard_name_remapper(orig_name):
   """ Renames lists into camel case without spaces """
 
@@ -32,7 +36,6 @@ def standard_name_remapper(orig_name):
   orig_name = orig_name.replace("and ", "")
   return "".join([word.capitalize() for word in orig_name.split(" ")])
 
-### Code that generates constants
 def _create_naics_map():
   """ Downloads all NAICS codes across long and short form codes """
 
@@ -87,31 +90,32 @@ def _create_naics_map():
 NAICS_MAP = _create_naics_map()
 
 ### True Constants
+# Template of Stat Var MCF.
+TEMPLATE_STAT_VAR = """
+Node: dcid:{human_readable_dcid}
+typeOf: dcs:StatisticalVariable
+populationType: dcs:{populationType}
+statType: dcs:{statType}
+measuredProperty: dcs:{measuredProperty}
+{CONSTRAINTS}"""
+
 # Main query for stat vars
 QUERY_FOR_ALL_STAT_VARS = """
-SELECT
-DISTINCT SP.population_type as populationType,
-{CONSTRAINTS}
-{POPULATIONS}
-O.measurement_qualifier AS measurementQualifier,
-O.measurement_denominator as measurementDenominator,
-O.measured_prop as measuredProp,
-SP.num_constraints as numConstraints,
-IF(O.measured_value IS NOT NULL, "measuredValue",
-    IF(O.sum_value IS NOT NULL, "sumValue",
-    IF(O.mean_value IS NOT NULL, "meanValue",
-        IF(O.min_value IS NOT NULL, "minValue",
-            IF(O.max_value IS NOT NULL, "maxValue",
-                IF(O.std_deviation_value IS NOT NULL, "stdDeviationValue",
-                IF(O.growth_rate IS NOT NULL, "growthRate",
-                    IF(O.median_value IS NOT NULL, "medianValue", "Unknown")))))))) AS statType,
-FROM `google.com:datcom-store-dev.dc_v3_dev.StatisticalPopulation` AS SP
-JOIN `google.com:datcom-store-dev.dc_v3_clustered.Observation` AS O ON TRUE
-WHERE
-SP.id = O.observed_node_key
-AND O.type <> "ComparativeObservation"
-AND SP.is_public = True
-AND SP.prov_id NOT IN ({comma_sep_prov_blacklist})
+SELECT DISTINCT SP.population_type as populationType, {CONSTRAINTS}
+{POPULATIONS} O.measurement_qualifier AS measurementQualifier,
+O.measurement_denominator as measurementDenominator, O.measured_prop as
+measuredProp, O.unit as unit, O.scaling_factor as scalingFactor,
+O.measurement_method as measurementMethod, SP.num_constraints as numConstraints,
+IF(O.measured_value IS NOT NULL, "measuredValue", IF(O.sum_value IS NOT NULL,
+"sumValue", IF(O.mean_value IS NOT NULL, "meanValue", IF(O.min_value IS NOT
+NULL, "minValue", IF(O.max_value IS NOT NULL, "maxValue",
+IF(O.std_deviation_value IS NOT NULL, "stdDeviationValue", IF(O.growth_rate IS
+NOT NULL, "growthRate", IF(O.median_value IS NOT NULL, "medianValue",
+"Unknown")))))))) AS statType, FROM
+`google.com:datcom-store-dev.dc_v3_clustered.StatisticalPopulation` AS SP JOIN
+`google.com:datcom-store-dev.dc_v3_clustered.Observation` AS O ON TRUE WHERE
+SP.id = O.observed_node_key AND O.type <> "ComparativeObservation" AND
+SP.is_public = True AND SP.prov_id NOT IN ({comma_sep_prov_blacklist})
 """
 
 # Dataset blacklist
@@ -247,7 +251,9 @@ MANUAL_CAUSE_OF_DEATH_RENAMINGS = {
 }
 
 # List of properties to perform a numerical quantity remap on  
-NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP = ['income', 'age', 'householderAge', 'homeValue', 'dateBuilt', 'grossRent', 'numberOfRooms', 'numberOfRooms', 'householdSize', 'numberOfVehicles', 'propertyTax']
+NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP = ['income', 'age', 'householderAge',
+'homeValue', 'dateBuilt', 'grossRent', 'numberOfRooms', 'numberOfRooms',
+'householdSize', 'numberOfVehicles', 'propertyTax']
 
 # Regex ules to apply to numerical quantity remap
 REGEX_NUMERICAL_QUANTITY_RENAMINGS = [
@@ -263,3 +269,57 @@ REGEX_NUMERICAL_QUANTITY_RENAMINGS = [
   # [A-Za-z]+[0-9]+ -> [0-9]+[A-Za-z]+
   (re.compile(r"^([A-Za-z]+)([0-9]+)$"), lambda match: match.group(2) + match.group(1))
 ]
+
+# Constants that power Statistical Variable documentation.
+STAT_VAR_POPULATION_GROUPINGS = [
+  ("Demographics", ['Person', 'Parent', 'Child', 'Student', 'Teacher'], True, False),
+  ("Crime", ['CriminalActivities'], False, False),
+  ("Health", ['Death', 'DrugDistribution', 'MedicalConditionIncident', 'MedicalTest', 'MedicareEnrollee'], True, False),
+  ("Employment", ['Worker', 'Establishment', 'JobPosting', 'UnemploymentInsuranceClaim'], True, False),
+  ("Economic", ['EconomicActivity', 'Consumption', 'Debt', 'TreasuryBill', 'TreasuryBond', 'TreasuryNote'], True, False),
+  ("Environment", ['Emissions'], False, False),
+  ("Household", ['Household'], False, False),
+  ("HousingUnit", ['HousingUnit'], False, False)
+]
+
+DOCUMENTATION_BASE_TEXT = \
+"""---
+layout: default
+title: Statistical Variables
+nav_order: 2
+---
+
+# Statistical Variables
+
+Many of the Data Commons APIs deal with Data Commons nodes of the type
+[StatisticalVariable](https://browser.datacommons.org/kg?dcid=StatisticalVariable).
+The following list contains all Statistical Variables with human-readable identifiers,
+grouped by domain and population type.
+
+<style>
+details details {
+  margin-left: 24px;
+}
+
+details details summary {
+  font-size: 16px;
+}
+
+li {
+  white-space: nowrap;
+}
+</style>
+"""
+
+DOCUMENTATION_HEADER_START = \
+"""
+<details>
+  <summary>{HEADER}</summary>
+"""
+
+DOCUMENTATION_DROPDOWN_START = \
+"""
+<details>
+  <summary>{POPULATION_TYPE}</summary>
+  <ul>
+"""
