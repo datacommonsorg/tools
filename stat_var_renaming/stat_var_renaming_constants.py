@@ -18,73 +18,72 @@
 import pandas as pd
 import re
 
-### Helper Functions
 def capitalizeFirst(word):
+  """ Capitalizes the first letter of a string. """
   return word[0].upper() + word[1:]
 
 def standard_name_remapper(orig_name):
-  """ Renames lists into camel case without spaces """
+  """ General renaming function for long strings into camel case.
 
-  # Remove text after first paren
+    Text inbetween trailing parentheses is removed. 
+    Commas, dashes, and "ands" are removed. Then string is converted into camel
+    case without and spaces present.
+   """
+  # Remove any trailing parentheses.
   paren_start = orig_name.find("(")
   if paren_start != -1:
     orig_name = orig_name[:paren_start]
 
-  # New text
+  # Removes separating words.
   orig_name = orig_name.replace(",", " ")
   orig_name = orig_name.replace("-", " ")
   orig_name = orig_name.replace("and ", "")
   return "".join([word.capitalize() for word in orig_name.split(" ")])
 
 def _create_naics_map():
-  """ Downloads all NAICS codes across long and short form codes """
-
-  # Read in list of industry topics
+  """ Downloads all NAICS codes across long and short form codes. """
+  # Read in list of industry topics.
   naics_codes = pd.read_excel("https://www.census.gov/eos/www/naics/2017NAICS/2-6%20digit_2017_Codes.xlsx")
   naics_codes = naics_codes.iloc[:, [1,2]]
   naics_codes.columns = ['NAICSCode', 'Title']
 
-  # Replace all ranges with individual rows. E.g. 31-33 -> 31, 32, 33
+  # Replace all ranges with individual rows. E.g. 31-33 -> 31, 32, 33.
   def range_to_array(read_code):
     if isinstance(read_code, str) and "-" in read_code:
       lower, upper = read_code.split("-")
       return list(range(int(lower), int(upper) +1))
-
-    # Not a range
-    else:
-      return read_code
+    return read_code
 
   naics_codes = naics_codes.dropna()
   naics_codes['NAICSCode'] = naics_codes['NAICSCode'].apply(range_to_array)
   naics_codes = naics_codes.explode('NAICSCode')
 
-  # Add Unclassified
-  naics_codes = naics_codes.append({"NAICSCode": 99, "Title": "Nonclassifiable"}, ignore_index=True)
+  # Add unclassified code which is used in some statistical variables.
+  naics_codes = naics_codes.append(
+    {"NAICSCode": 99, "Title": "Nonclassifiable"}, ignore_index=True)
 
-  # Query for only two letter codes
+  # Query for only two letter codes.
   short_codes = naics_codes[naics_codes['NAICSCode'] < 100]
   short_codes = short_codes.set_index("NAICSCode")
   short_codes = short_codes['Title'].to_dict()
 
-  # Read in overview codes
+  # Read in overview codes.
   overview_codes = pd.read_csv("https://data.bls.gov/cew/doc/titles/industry/high_level_industries.csv")
   overview_codes.columns = ["NAICSCode", "Title"]
   overview_codes = overview_codes.set_index("NAICSCode")
   overview_codes = overview_codes['Title'].to_dict()
 
-  # Rename all columns to new schema
+  # Combine the two sources of codes.
   NAICS_MAP = {}
-
   combined_codes = short_codes
   combined_codes.update(overview_codes)
 
-  # Rename industries into camel case
+  # Rename industries into camel case.
   for code, orig_name in combined_codes.items():
     NAICS_MAP[str(code)] = standard_name_remapper(orig_name)
 
-  # Other edge cases
+  # Other edge cases.
   NAICS_MAP['00'] = 'Unclassified'
-
   return NAICS_MAP
 
 NAICS_MAP = _create_naics_map()
@@ -99,26 +98,43 @@ statType: dcs:{statType}
 measuredProperty: dcs:{measuredProperty}
 {CONSTRAINTS}"""
 
-# Main query for stat vars
+# Main query for stat vars. Combines across populations and observations
+# to create statistical variables.
 QUERY_FOR_ALL_STAT_VARS = """
-SELECT DISTINCT SP.population_type as populationType, {CONSTRAINTS}
-{POPULATIONS} O.measurement_qualifier AS measurementQualifier,
-O.measurement_denominator as measurementDenominator, O.measured_prop as
-measuredProp, O.unit as unit, O.scaling_factor as scalingFactor,
-O.measurement_method as measurementMethod, SP.num_constraints as numConstraints,
-IF(O.measured_value IS NOT NULL, "measuredValue", IF(O.sum_value IS NOT NULL,
-"sumValue", IF(O.mean_value IS NOT NULL, "meanValue", IF(O.min_value IS NOT
-NULL, "minValue", IF(O.max_value IS NOT NULL, "maxValue",
-IF(O.std_deviation_value IS NOT NULL, "stdDeviationValue", IF(O.growth_rate IS
-NOT NULL, "growthRate", IF(O.median_value IS NOT NULL, "medianValue",
-"Unknown")))))))) AS statType, FROM
-`google.com:datcom-store-dev.dc_v3_clustered.StatisticalPopulation` AS SP JOIN
-`google.com:datcom-store-dev.dc_v3_clustered.Observation` AS O ON TRUE WHERE
-SP.id = O.observed_node_key AND O.type <> "ComparativeObservation" AND
-SP.is_public = True AND SP.prov_id NOT IN ({comma_sep_prov_blacklist})
+SELECT DISTINCT
+  SP.population_type as populationType,
+  {CONSTRAINTS}
+  {POPULATIONS}
+  O.measurement_qualifier AS measurementQualifier,
+  O.measurement_denominator as measurementDenominator,
+  O.measured_prop as measuredProp,
+  O.unit as unit,
+  O.scaling_factor as scalingFactor,
+  O.measurement_method as measurementMethod,
+  SP.num_constraints as numConstraints,
+  IF(O.measured_value IS NOT NULL, "measuredValue", 
+    IF(O.sum_value IS NOT NULL,"sumValue",
+    IF(O.mean_value IS NOT NULL, "meanValue",
+    IF(O.min_value IS NOT NULL, "minValue",
+    IF(O.max_value IS NOT NULL, "maxValue",
+    IF(O.std_deviation_value IS NOT NULL, "stdDeviationValue",
+    IF(O.growth_rate IS NOT NULL, "growthRate",
+    IF(O.median_value IS NOT NULL, "medianValue",
+    "Unknown")))))))) AS statType, 
+FROM
+  `google.com:datcom-store-dev.dc_v3_clustered.StatisticalPopulation`
+    AS SP JOIN
+  `google.com:datcom-store-dev.dc_v3_clustered.Observation`
+    AS O 
+  ON TRUE 
+WHERE
+  SP.id = O.observed_node_key
+  AND O.type <> "ComparativeObservation"
+  AND SP.is_public 
+  AND SP.prov_id NOT IN ({comma_sep_prov_blacklist})
 """
 
-# Dataset blacklist
+# Dataset blacklist.
 _BIO_DATASETS = frozenset([
   'dc/p47rsv3',  # UniProt
   'dc/0cwj4g1',  # FDA_Pharmacologic_Class
@@ -148,7 +164,7 @@ _MISC_DATASETS = frozenset([
   'dc/89fk9x3',  # CollegeScorecard
 ])
 
-# List of constraint prefixes to remove from certain properties 
+# List of constraint prefixes to remove from certain properties.
 CONSTRAINT_PREFIXES_TO_STRIP = {
   'nativity': 'USC',
   'age': 'USC',
@@ -250,12 +266,12 @@ MANUAL_CAUSE_OF_DEATH_RENAMINGS = {
   'ICD10/V01-Y89': 'ExternalCauses'
 }
 
-# List of properties to perform a numerical quantity remap on  
+# List of properties to perform a numerical quantity remap on.
 NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP = ['income', 'age', 'householderAge',
 'homeValue', 'dateBuilt', 'grossRent', 'numberOfRooms', 'numberOfRooms',
 'householdSize', 'numberOfVehicles', 'propertyTax']
 
-# Regex ules to apply to numerical quantity remap
+# Regex rules to apply to numerical quantity remap.
 REGEX_NUMERICAL_QUANTITY_RENAMINGS = [
   # [A-Za-z]+[0-9]+Onwards -> [0-9]+Onwards[A-Za-z]+
   (re.compile(r"^([A-Za-z]+)([0-9]+)Onwards$"), lambda match: match.group(2) + "OrMore" + match.group(1)),
@@ -271,17 +287,34 @@ REGEX_NUMERICAL_QUANTITY_RENAMINGS = [
 ]
 
 # Constants that power Statistical Variable documentation.
+# Tuple is defined as follows:
+# (Name of Vertical), (Population Type include),
+# (whether to subgroup by all population types in demographic),
+# (if subgroup all, whether you should group population types with more than 1
+# statistical variable).
 STAT_VAR_POPULATION_GROUPINGS = [
-  ("Demographics", ['Person', 'Parent', 'Child', 'Student', 'Teacher'], True, False),
-  ("Crime", ['CriminalActivities'], False, False),
-  ("Health", ['Death', 'DrugDistribution', 'MedicalConditionIncident', 'MedicalTest', 'MedicareEnrollee'], True, False),
-  ("Employment", ['Worker', 'Establishment', 'JobPosting', 'UnemploymentInsuranceClaim'], True, False),
-  ("Economic", ['EconomicActivity', 'Consumption', 'Debt', 'TreasuryBill', 'TreasuryBond', 'TreasuryNote'], True, False),
-  ("Environment", ['Emissions'], False, False),
-  ("Household", ['Household'], False, False),
-  ("HousingUnit", ['HousingUnit'], False, False)
+  ("Demographics", ['Person', 'Parent', 'Child', 'Student', 'Teacher'],
+    True, False),
+  ("Crime", ['CriminalActivities'],
+    False, False),
+  ("Health", ['Death', 'DrugDistribution', 'MedicalConditionIncident',
+              'MedicalTest', 'MedicareEnrollee'],
+    True, False),
+  ("Employment", ['Worker', 'Establishment', 'JobPosting',
+                  'UnemploymentInsuranceClaim'],
+    True, False),
+  ("Economic", ['EconomicActivity', 'Consumption', 'Debt', 'TreasuryBill',
+                'TreasuryBond', 'TreasuryNote'],
+    True, False),
+  ("Environment", ['Emissions'],
+    False, False),
+  ("Household", ['Household'],
+    False, False),
+  ("HousingUnit", ['HousingUnit'],
+    False, False)
 ]
 
+# HTML for statistical variable markdown.
 DOCUMENTATION_BASE_TEXT = \
 """---
 layout: default

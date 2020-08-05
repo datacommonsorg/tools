@@ -145,6 +145,39 @@ def download_stat_vars(client):
     stat_vars[f"orig_v{c}"] = stat_vars[f"v{c}"]
   return stat_vars
 
+### Variable renaming scripts
+def addPropertyRemapping(remapper, prop, function):
+  """ Helper function to add new remapping function to a certain property.
+
+  Args:
+    remapper -> Dictionary with mapping from properties to renaming functions.
+    prop -> Property to perform the remapping on.
+    function -> Renaming function that takes three arguments 
+      (prop, constraint, popType) and returns the new name for the constraint.
+  """
+  if prop not in remapper:
+    remapper[prop] = []
+  remapper[prop].append(function)
+
+
+def remap_constraint_from_prop(row, prop_remap):
+  """ Helper which applies property remappings to all constraints in a dataset.
+
+  Args: 
+    row -> Pandas row to apply function to.
+    prop_remap -> Dictionary of renaming functions for each property.
+  """
+  for constraint in range(1, 1 + row['numConstraints']):
+    prop = row[f"p{constraint}"]
+    if prop in prop_remap:
+      # May need to apply multiple functions for a single property.
+      remapper = prop_remap[prop]
+      for function in remapper:
+        row[f"v{constraint}"] = function(prop,
+                                         row[f"v{constraint}"],
+                                        row['populationType'])
+  return row
+
 
 def generate_dependent_constraint_list():
   """ Generates a list of dependent variables.
@@ -446,7 +479,7 @@ def create_human_readable_names(stat_vars, client):
   """
   # Build constraint remappings.
   prop_remap={}
-  rename_naics_codes(prop_remap)
+  rename_naics_codes(prop_remap, client)
   rename_dea_drugs(prop_remap, client)
   rename_isic_codes(prop_remap, client)
   cause_of_death_remap(prop_remap, client)

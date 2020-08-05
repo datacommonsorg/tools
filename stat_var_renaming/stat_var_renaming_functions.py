@@ -11,7 +11,30 @@
 # the License.
 
 """ Defines functions used for remapping constraints in the statistical
-variable renaming. """
+variable renaming. 
+
+Each function in this file defines a renaming of a particular constraint.
+Each encompassing function takes in a prop_remap object, which is a dictionary
+of properties to a list renaming functions. 
+Each renaming functions should be of the form(property, constraint, popType)
+and should return the renamed constraint. In the main code, these functions are
+iterated on all matching properties in the order that they are added.
+
+For example, 
+  (householderAge 25OrM
+
+Main Function.
+Args:
+  prop_remap -> Dictionary mapping properties to a list of renaming functions. 
+Returns:
+  prop_remap -> Updated dictionary.
+
+Renaming Function.
+Args:
+  property -> The property of the object to be renamed. E.g. householderAge.
+  constraint -> The value of the property. E.g. Years15Onwards.
+  popType -> The population type that this property belongs to. E.g. Person.
+"""
 
 from stat_var_renaming_constants import *
 
@@ -22,30 +45,31 @@ def remap_numerical_quantities(prop_remap):
     Examples: 'Years15Onwards' -> '15OrMoreYears'
               'Years25To44' -> '25To44Years'
   """
-  def rename_constraint(_, constraint, _pop):
+  def remap_numerical_quantities_helper(_, constraint, _pop):
     if not pd.isna(constraint):
-      # REGEX_NUMERICAL_QUANTITY_RENAMINGS has mappings from a regex expression
-      # to a remapping function.
-      for regex, rename_func in REGEX_NUMERICAL_QUANTITY_RENAMINGS:
+      for regex, renaming_func in REGEX_NUMERICAL_QUANTITY_RENAMINGS:
         match_obj = regex.match(constraint)
         if match_obj != None:
-          return rename_func(match_obj)
+          return renaming_func(match_obj)
       return constraint
 
   # Opt-in list to rename.
   for prop in NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP:
-    addPropertyRemapping(prop_remap, prop, rename_constraint)
-
+    addPropertyRemapping(prop_remap, prop, remap_numerical_quantities_helper)
   return prop_remap
 
 def rename_boolean_variables(prop_remap, stat_vars):
   """ Remaps all variables with boolean constraint values.
 
-    Example (hasComputer, False) -> noComputer 
+    Args:
+      stat_vars -> List of all statistical variables. Used to find which
+          properties have entirely boolean values.
+
+    Example: (hasComputer, False) -> noComputer.
   """
   def map_boolean_constraints(property, value, _pop):
     assert (value == "True" or value == "False")
-    constraint_value = True if value == "True" else False
+    constraint_value = value == "True"
     pop, prefix = None, None
 
     if property.startswith("has"):
@@ -61,7 +85,8 @@ def rename_boolean_variables(prop_remap, stat_vars):
   # Get all constraints with boolean values and add a remapping.
   boolean_populations = set()
   for c in range(1, MAX_CONSTRAINTS+1):
-    unique_constraints = stat_vars[stat_vars[f"v{c}"].isin(['True', 'False'])][f"p{c}"].unique()
+    unique_constraints = stat_vars[stat_vars[f"v{c}"].isin(
+        ['True', 'False'])][f"p{c}"].unique()
     boolean_populations.update(unique_constraints)
   for pop in boolean_populations:
     addPropertyRemapping(prop_remap, pop, map_boolean_constraints)
@@ -70,10 +95,10 @@ def rename_boolean_variables(prop_remap, stat_vars):
 def prefix_strip(prop_remap):
   """ Strips measurement method prefixes from constraints.
 
-    Example: BLS_InLaborForce -> InLaborForce
+    Example: BLS_InLaborForce -> InLaborForce.
   """
   def strip_prefixes(prop, constraint, _pop):
-      # Prefixes may be a list or single value
+      # Prefixes may be a list or single value.
       prefixes = CONSTRAINT_PREFIXES_TO_STRIP[prop]
       prefixes_for_prop = prefixes if isinstance(prefixes, list) else [prefixes]
 
@@ -81,10 +106,9 @@ def prefix_strip(prop_remap):
         if constraint.startswith(prefix):
           constraint = constraint.replace(prefix, "")
           return constraint.lstrip("_")
-
       return constraint
 
-  for prop_to_add, prefixes in CONSTRAINT_PREFIXES_TO_STRIP.items():
+  for prop_to_add, _ in CONSTRAINT_PREFIXES_TO_STRIP.items():
     addPropertyRemapping(prop_remap, prop_to_add, strip_prefixes)
 
   return prop_remap 
@@ -92,32 +116,31 @@ def prefix_strip(prop_remap):
 def cause_of_death_remap(prop_remap, client):
   """ Remaps ICD10 death codes into full names.
 
-    Example: (causeOfDeath, ICD10/A00-B99) -> CertainInfectiousParasiticDiseases
-  """
+    Args:
+      client -> Authenticated BigQuery client. Used to get names of ICD10 codes.
 
-  # Query all drug names from cluster
+    Example: (causeOfDeath, ICD10/A00-B99) -> InfectiousParasiticDiseases.
+  """
+  # Query all drug names from cluster.
   cause_of_death_query = """
   SELECT id, name FROM `google.com:datcom-store-dev.dc_v3_clustered.Instance`
   WHERE type = "ICD10Section" or type = "ICD10Code"
   """
   cause_of_death_instances = client.query(cause_of_death_query).to_dataframe()
 
-  # Simplify Names
+  # Helper function to rename ICD10 codes to easier to read names.
   def provide_consistent_naming(row):
-    id = row['ICD10Code']
-
-    # Manually remap abnormally long names
-    if id in MANUAL_CAUSE_OF_DEATH_RENAMINGS:
+    icd10_code = row['ICD10Code']
+    # Manually remap abnormally long names.
+    if icd10_code in MANUAL_CAUSE_OF_DEATH_RENAMINGS:
       return MANUAL_CAUSE_OF_DEATH_RENAMINGS[id]
     
-    # Otherwise just generate from the database name
-    icd10_code = id.replace("ICD10/", "")
-
+    # Otherwise remove codes and camel case the name. 
     name = row['name']
-    name = name.replace(icd10_code, "").strip().lstrip("(").rstrip("()")
+    name = (name.replace(icd10_code.replace("ICD10/", ""), "")
+            .strip().lstrip("(").rstrip("()"))
     name = standard_name_remapper(name)
-
-    row['id'] = id
+    row['id'] = icd10_code
     row['name'] = name
     return row
 
@@ -125,7 +148,7 @@ def cause_of_death_remap(prop_remap, client):
   cause_of_death_instances = cause_of_death_instances.set_index("id")
   cause_of_death_instances = cause_of_death_instances.apply(provide_consistent_naming, axis=1)
 
-  # Add modification function
+  # Add modification function.
   def death_id_to_name(_, death_id, _pop):
     return cause_of_death_instances.loc[death_id]['name']
   
@@ -140,7 +163,7 @@ def rename_dea_drugs(prop_remap, client):
 
   Example: (drugPrescribed, drug/dea/4000) -> AnabolicSteroids
   """
-  # Add modification function
+  # Add modification function from manual naming scheme.
   def drug_id_to_name(_, drug_id, _pop):
     if drug_id in DRUG_REMAPPINGS:
       return DRUG_REMAPPINGS[drug_id]
@@ -152,19 +175,18 @@ def rename_dea_drugs(prop_remap, client):
 def misc_mappings(prop_remap):
   """ Any misc. renamings that need to happen should go here.
 
-    1) Remove ACSED from memberStatus
-    2) Quantity for dateBuilt refers to time not count
+    1) Remove ACSED from memberStatus.
+    2) Quantity for dateBuilt refers to time not count so use different
+    terminology.
   """
   def remove_acsed(_, constraint, _pop):
     return constraint.replace("ACSED", "")
-
   addPropertyRemapping(prop_remap, 'memberStatus', remove_acsed)
 
   def replace_date_built(_, constraint, _pop):
     constraint = constraint.replace("OrMore", "OrLater")
     constraint = constraint.replace("Upto", "Before")
     return constraint
-
   addPropertyRemapping(prop_remap, 'dateBuilt', replace_date_built)
 
 def pre_postpend_text(prop_remap):
@@ -174,7 +196,18 @@ def pre_postpend_text(prop_remap):
     Example: (languageSpokenAtHome, AfricanLanguages) ->
     AfricanLanguagesSpokenAtHome 
   """
-  def addTextToConstraint(variable, prepend="", postpend="", include_pop =[], exclude_pop=[]):
+  def addTextToConstraint(prop, prepend="",
+                          postpend="", include_pop =[], exclude_pop=[]):
+    """ Helper to add a simple prepend/postpend renaming scheme to a property.
+
+    Args:
+      prop -> Property to apply the remapping to.
+      prepend -> Text to prepend to constraint.
+      postpend -> Text to postpend to constraint.
+      include_pop -> Only apply the remapping to popTypes in this group or
+        to all groups if this list is empty.
+      exclude_pop -> Do not apply the remapping to any popTypes in this group.
+    """
     def apply_to_pop(pop):
       if pop in exclude_pop:
         return False
@@ -183,8 +216,9 @@ def pre_postpend_text(prop_remap):
       else:
         return pop in include_pop
 
-    text_mod = lambda _, text, pop: prepend + capitalizeFirst(text) + postpend if apply_to_pop(pop) else text
-    addPropertyRemapping(prop_remap, variable, text_mod)
+    text_mod = (lambda _, text, pop:
+      prepend + capitalizeFirst(text) + postpend if apply_to_pop(pop) else text)
+    addPropertyRemapping(prop_remap, prop, text_mod)
 
   addTextToConstraint("languageSpokenAtHome", postpend="SpokenAtHome")
   addTextToConstraint("childSchoolEnrollment", prepend="Child")
@@ -211,11 +245,13 @@ def pre_postpend_text(prop_remap):
 
 def rename_isic_codes(prop_remap, client):
   """ Renames all ISIC economic codes to their full names in the database.
+    
+    Args:
+      client -> Authenticated BQ client.
 
-    Example: (isic, ISICv3.1/I) -> ISICTransportStorageCommunications
+    Example: (isic, ISICv3.1/I) -> ISICTransportStorageCommunications.
   """
-
-  # Download all isic codes names from cluster
+  # Download all isic codes names from cluster.
   ISIC_QUERY = """
   SELECT id, name FROM `google.com:datcom-store-dev.dc_v3_clustered.Instance`
   WHERE type = "ISICv3.1Enum"
@@ -229,12 +265,14 @@ def rename_isic_codes(prop_remap, client):
     return isic_instances.loc[isic]['name']
   
   addPropertyRemapping(prop_remap, 'isic', isic_id_to_name)
-
   return isic_instances
 
-def rename_naics_codes(prop_remap):
+def rename_naics_codes(prop_remap, client):
   """ Adds a remapping function to change NAICS codes to their corresponding
     industry.
+
+    Args:
+      client -> Authenticated BQ client.
 
     Example: (NAICS, NAICS/23) -> Construction)
   """
@@ -251,75 +289,55 @@ def rename_naics_codes(prop_remap):
   """
   naics_instances = client.query(NAICS_QUERY).to_dataframe()  
   naics_instances = naics_instances.set_index("id")
-  naics_instances['name'] = naics_instances['name'].apply(lambda name: filter_to_string(filter(lambda c: c.isalpha() or c ==" ", name)))
-  naics_instances['name'] = naics_instances['name'].apply(standard_name_remapper)
+  naics_instances['name'] = naics_instances['name'].apply(
+    lambda name: filter_to_string(
+      filter(lambda c: c.isalpha() or c ==" ", name)))
+  naics_instances['name'] = naics_instances['name'].apply(
+                                                      standard_name_remapper)
 
-  # Add modification function
   def naics_id_to_name(_, naics, _pop):
     code = naics.lstrip("NAICSnaics/jolts")
-
+    # Only remap 1-2 digit codes and JOLTS.
     if "JOLTS" not in naics and len(code) > 3:
       return "Unknown"
-
     if code in NAICS_MAP:
       return NAICS_MAP[code]
-
     if naics in naics_instances:
       return naics_instances.loc[naics]['name']
-
     return "Unknown"
   
   addPropertyRemapping(prop_remap, 'naics', naics_id_to_name)
-
   return prop_remap
 
-def remap_constraint_from_prop(row, prop_remap):
-  """ Helper which applies property remappings to all constraints in a dataset
-
-  Args: row: Pandas row to apply function to. prop_remap: Dictionary mapping
-    property names to functions that take (property, constraint) -> new
-    constraint name
-  """
-  for constraint in range(1, 1+ row['numConstraints']):
-    if constraint == 7:
-      break
-
-
-    prop = row[f"p{constraint}"]
-
-    if prop in prop_remap:
-      # May need to apply multiple functions for a single property
-      remapper = prop_remap[prop]
-      for function in remapper:
-        row[f"v{constraint}"] = function(prop, row[f"v{constraint}"], row['populationType'])
-
-  return row
-
 def rename_populations(stat_vars):
-  """ Applies various rules to remap population names for the stat vars
+  """ Applies various rules to remap population names for the stat vars.
 
-    1) Strips measurement prefixes. E.g. BLS_Worker -> Worker
-    2) Renames populations entirely. E.g. MortalityEvent -> Death
+    1) Strips measurement prefixes. E.g. BLS_Worker -> Worker.
+    2) Renames populations entirely. E.g. MortalityEvent -> Death.
+
+    Args:
+      stat_vars -> List of all statistical variables before human readable name
+        is generated.
+    Returns:
+      stat_vars with all populations renamed as defined in this function.
   """
-  # Strip prefixes
+  # Prefixes to strip.
   population_prefixes_to_strip = ['BLS', 'USC', 'ACSED']
 
   def strip_population_prefixes(population):
     for prefix in population_prefixes_to_strip:
       if population.startswith(prefix):
         return re.sub(f"^{prefix}", "", population)
-
     return population
 
   stat_vars['populationType'] = stat_vars['populationType'].apply(
       strip_population_prefixes)
 
-  # Rename populations
+  # Rename some populations entirely.
   populations_to_rename = {
     'MortalityEvent': 'Death',
   }
-
   stat_vars['populationType'] = stat_vars['populationType'].apply(
-      lambda pop: pop if pop not in populations_to_rename else populations_to_rename[pop])
-
+      lambda pop: pop if pop not in populations_to_rename 
+        else populations_to_rename[pop])
   return stat_vars
