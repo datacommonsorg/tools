@@ -1,0 +1,42 @@
+import './navigationbar.scss'
+import React, {ChangeEvent} from "react";
+
+type HeaderPropsType = {
+  title: string,
+  subtitle: string,
+  onType: (event: ChangeEvent) => void
+}
+
+/**
+ * The navigation header shown on top of the page.
+ * @param props.title: the title of the page.
+ * @param props.subtitle: the subtitle of the page.
+ * @param props.onSearchInput: callback for when the user types on search bar.
+ */
+export default (props: HeaderPropsType) => (
+  <header id="main-header">
+    <nav className="navbar navbar-dark navbar-expand-lg col"
+         id="main-nav">
+      <div className="container-fluid">
+        <div className="navbar-brand">
+          <a href={"https://datacommons.org"}>
+            {props.title}
+          </a>
+          <span> {props.subtitle}</span>
+        </div>
+        <button className="navbar-toggler"
+                type="button"
+                data-toggle="collapse"
+                data-target="#dc-main-nav">
+          <span className="navbar-toggler-icon"/>
+        </button>
+        <form className="form-inline">
+          <input className="form-control mr-sm"
+                 type="text"
+                 onChange={props.onType}
+                 placeholder={"Search"}/>
+        </form>
+      </div>
+    </nav>
+  </header>
+)
