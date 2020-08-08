@@ -1,9 +1,5 @@
 runtime: python38
 instance_class: B8
-manual_scaling:
-   instances: 1
-resources:
-   cpu: 1
-   memory_gb: 0.5
-   disk_size_gb: 10
-
+basic_scaling:
+   idle_timeout: 10m
+   max_instances: 11
