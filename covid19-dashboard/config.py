@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# DataCommons API KEY.
-API_KEY = "YOUR_API_KEY_HERE"
-
 # DataCommons Host Server.
 DC_SERVER = "https://api.datacommons.org/"
 
@@ -27,20 +24,26 @@ DC_SERVER = "https://api.datacommons.org/"
 STAT_VARS = {
     "Country": {
         "Cases":
-            "IncrementalCount_MedicalConditionIncident_COVID_19_ConfirmedCase",
+            "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedCase",
         "Deaths":
-            "IncrementalCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+        "Recovered":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
     },
     "State": {
         "Cases":
-            "IncrementalCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
+            "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
         "Deaths":
-            "IncrementalCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+        "Recovered":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
     },
     "County": {
         "Cases":
-            "IncrementalCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
+            "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
         "Deaths":
-            "IncrementalCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+        "Recovered":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
     },
 }

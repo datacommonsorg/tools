@@ -18,6 +18,31 @@ DateToValueDictType = Dict[str, float]
 DateToValueListType = List[Tuple[str, float]]
 
 
+def _difference(date_to_value: DateToValueListType,
+                n_difference: int):
+    # n_difference can't be negative.
+    # We can't perform the difference of a negative n_difference.
+    if n_difference <= 0:
+        return []
+
+    # If there are less elements than our n_difference, then exit.
+    # We can't perform the calculation.
+    if len(date_to_value) <= n_difference:
+        return []
+
+    # Sort the data by the date, that is, elem[0].
+    sorted_date_to_value = sorted(date_to_value, key=lambda elem: elem[0])
+
+    output = []
+
+    for i in range(n_difference, len(sorted_date_to_value)):
+        date, value = sorted_date_to_value[i]
+        prev_value = sorted_date_to_value[i - n_difference][1]
+        difference = value - prev_value
+        output.append((date, difference))
+    return output
+
+
 def _moving_average(date_to_val: DateToValueListType,
                     chunk_size: int = 7) -> DateToValueListType:
     """
@@ -65,53 +90,6 @@ def _moving_average(date_to_val: DateToValueListType,
         output.append((date, average))
 
     return output
-
-
-def _clean_dataset(date_to_value: DateToValueListType,
-                   step_size: int = 2,
-                   keep_negatives: bool = False) -> DateToValueListType:
-    """
-    Given a date_to_val, filter out data and sort it by date.
-    Remove negative values, if requested.
-    Only return the last 100 dates in the dataset.
-    Remove indices not divisible by step_size.
-    :param date_to_value: a list of tuples: (date, value).
-    date type is a string in ISO-8601. Example: "2020-01-02"
-    :param step_size: if an index is not divisible by step_size, drop it.
-    Only index divisible by step_size will be kept.
-    :return: the same dataset but 1/nth of the size.
-    """
-    # If date_to_val has no data, return [].
-    if not date_to_value:
-        return []
-
-    # Sort the values by the date found in elem[0].
-    date_to_value_list = sorted(date_to_value, key=lambda elem: elem[0])
-
-    # Only include dates in the last 100 days.
-    date_to_value_list: DateToValueListType = date_to_value_list[-100:]
-
-    # Keep a real copy of the last 7 days in the dataset.
-    original_copy_last_7d: DateToValueListType = date_to_value_list[-7:]
-
-    # Only include the element if its index is divisible by step_size.
-    # This filtering is done to reduce the size of the output.
-    filtered_dataset: DateToValueListType = date_to_value_list[:-7:step_size]
-
-    # Combine filtered dataset and original's dataset's last 7 days.
-    # We want to keep the original quality of the last 7 days.
-    combined_dataset = filtered_dataset + original_copy_last_7d
-
-    # If keep_negatives requested, return.
-    if keep_negatives:
-        return combined_dataset
-
-    # Otherwise, replace negative values with 0s.
-    dataset_without_negatives = [(date, 0) if value < 0 else (date, value)
-                                 for date, value in combined_dataset]
-
-    return dataset_without_negatives
-
 
 def _pct_changes(date_to_val: DateToValueListType,
                  days_from_baseline: int = 7) -> DateToValueListType:
@@ -162,7 +140,53 @@ def _pct_changes(date_to_val: DateToValueListType,
     return pct_changes_list
 
 
-def calculate_data(stats: DateToValueDictType,
+def _clean_dataset(date_to_value: DateToValueListType,
+                   step_size: int = 2,
+                   keep_negatives: bool = False) -> DateToValueListType:
+    """
+    Given a date_to_val, filter out data and sort it by date.
+    Remove negative values, if requested.
+    Only return the last 100 dates in the dataset.
+    Remove indices not divisible by step_size.
+    :param date_to_value: a list of tuples: (date, value).
+    date type is a string in ISO-8601. Example: "2020-01-02"
+    :param step_size: if an index is not divisible by step_size, drop it.
+    Only index divisible by step_size will be kept.
+    :return: the same dataset but 1/nth of the size.
+    """
+    # If date_to_val has no data, return [].
+    if not date_to_value:
+        return []
+
+    # Sort the values by the date found in elem[0].
+    date_to_value_list = sorted(date_to_value, key=lambda elem: elem[0])
+
+    # Only include dates in the last 100 days.
+    date_to_value_list: DateToValueListType = date_to_value_list[-100:]
+
+    # Keep a real copy of the last 7 days in the dataset.
+    original_copy_last_7d: DateToValueListType = date_to_value_list[-7:]
+
+    # Only include the element if its index is divisible by step_size.
+    # This filtering is done to reduce the size of the output.
+    filtered_dataset: DateToValueListType = date_to_value_list[:-7:step_size]
+
+    # Combine filtered dataset and original's dataset's last 7 days.
+    # We want to keep the original quality of the last 7 days.
+    combined_dataset = filtered_dataset + original_copy_last_7d
+
+    # If keep_negatives requested, return.
+    if keep_negatives:
+        return combined_dataset
+
+    # Otherwise, replace negative values with 0s.
+    dataset_without_negatives = [(date, 0) if value < 0 else (date, value)
+                                 for date, value in combined_dataset]
+
+    return dataset_without_negatives
+
+
+def calculate_data(cumulative_stats: DateToValueDictType,
                    population: int,
                    moving_average_chunk_size: int = 7
                    ) -> Dict[str, DateToValueDictType]:
@@ -171,12 +195,12 @@ def calculate_data(stats: DateToValueDictType,
     perform different types of calculations for every date.
     :param moving_average_chunk_size: In days. Defaults to 7 days.
     The size of the window to take the moving average of.
-    :param stats: a dictionary containing date->int.
+    :param cumulative_stats: a dictionary containing date->int.
     date type is a string in ISO-8601. Example: "2020-01-02"
     :param population: a integer representing the population.
     NOTE: for return type documentation, please see README.md's APIs section.
     :return: a dictionary containing calculations of
-     movingAverage, perCapita and pctIncrease.
+    movingAverage, perCapita and pctIncrease.
     """
     # The population is required.
     # If population is invalid, return nothing.
@@ -185,16 +209,21 @@ def calculate_data(stats: DateToValueDictType,
 
     # If there are less elements than our CHUNK_SIZE.
     # We can't perform any calculations.
-    if len(stats.keys()) <= moving_average_chunk_size:
+    if len(cumulative_stats.keys()) <= moving_average_chunk_size:
         return {}
 
     # Convert the moving_average to a list of tuples.
     # We want to sort by date. Tuples will help us.
     # Where each {date: value} becomes (date, value).
-    stats_list = list(stats.items())
+    cumulative_list = list(cumulative_stats.items())
+
+    # Sort the data by the date, that is, elem[0].
+    date_to_value_list = sorted(cumulative_list, key=lambda elem: elem[0])
+
+    difference_list = _difference(date_to_value_list, 1)
 
     # Calculate the time-series moving average.
-    moving_averages_list = _moving_average(stats_list,
+    moving_averages_list = _moving_average(difference_list,
                                            moving_average_chunk_size)
 
     # Divide all values by the place's population.
@@ -212,11 +241,14 @@ def calculate_data(stats: DateToValueDictType,
     # This filtering is done to improve file size.
     # Convert list of tuples back to a dictionary.
     # (date, value) converts to {date: value}.
-    moving_averages = dict(_clean_dataset(moving_averages_list, 2, False))
-    per_capitas = dict(_clean_dataset(per_capitas_list, 2, False))
-    pct_changes = dict(_clean_dataset(pct_changes_list, 2, True))
+    # Only keep negative values for cumulatives and pct_changes.
+    cumulatives = dict(_clean_dataset(cumulative_list, 3, True))
+    moving_averages = dict(_clean_dataset(moving_averages_list, 3, False))
+    per_capitas = dict(_clean_dataset(per_capitas_list, 3, False))
+    pct_changes = dict(_clean_dataset(pct_changes_list, 3, True))
 
     output: Dict[str, DateToValueDictType] = {
+        'cumulative': cumulatives,
         'movingAverage': moving_averages,
         'perCapita': per_capitas,
         'pctChange': pct_changes
