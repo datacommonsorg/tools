@@ -16,6 +16,7 @@
 """
 
 import pandas as pd
+import collections
 import re
 
 def capitalizeFirst(word):
@@ -23,13 +24,14 @@ def capitalizeFirst(word):
   return word[0].upper() + word[1:]
 
 def standard_name_remapper(orig_name):
-  """ General renaming function for long strings into camel case.
+  """ General renaming function for long strings into Pascal case.
 
     Text inbetween trailing parentheses is removed. 
-    Commas, dashes, and "ands" are removed. Then string is converted into camel
+    Commas, dashes, and "ands" are removed. Then string is converted into Pascal
     case without and spaces present.
    """
   # Remove any trailing parentheses.
+  # TODO(tjann): to check if this is safe.
   paren_start = orig_name.find("(")
   if paren_start != -1:
     orig_name = orig_name[:paren_start]
@@ -38,12 +40,13 @@ def standard_name_remapper(orig_name):
   orig_name = orig_name.replace(",", " ")
   orig_name = orig_name.replace("-", " ")
   orig_name = orig_name.replace("and ", "")
-  return "".join([word.capitalize() for word in orig_name.split(" ")])
+  return "".join([word.capitalize() for word in orig_name.split()])
 
 def _create_naics_map():
   """ Downloads all NAICS codes across long and short form codes. """
   # Read in list of industry topics.
-  naics_codes = pd.read_excel("https://www.census.gov/eos/www/naics/2017NAICS/2-6%20digit_2017_Codes.xlsx")
+  naics_codes = pd.read_excel(
+    "https://www.census.gov/eos/www/naics/2017NAICS/2-6%20digit_2017_Codes.xlsx")
   naics_codes = naics_codes.iloc[:, [1,2]]
   naics_codes.columns = ['NAICSCode', 'Title']
 
@@ -51,7 +54,7 @@ def _create_naics_map():
   def range_to_array(read_code):
     if isinstance(read_code, str) and "-" in read_code:
       lower, upper = read_code.split("-")
-      return list(range(int(lower), int(upper) +1))
+      return list(range(int(lower), int(upper) + 1))
     return read_code
 
   naics_codes = naics_codes.dropna()
@@ -62,13 +65,14 @@ def _create_naics_map():
   naics_codes = naics_codes.append(
     {"NAICSCode": 99, "Title": "Nonclassifiable"}, ignore_index=True)
 
-  # Query for only two letter codes.
+  # Query for only two digit codes.
   short_codes = naics_codes[naics_codes['NAICSCode'] < 100]
   short_codes = short_codes.set_index("NAICSCode")
   short_codes = short_codes['Title'].to_dict()
 
   # Read in overview codes.
-  overview_codes = pd.read_csv("https://data.bls.gov/cew/doc/titles/industry/high_level_industries.csv")
+  overview_codes = pd.read_csv(
+    "https://data.bls.gov/cew/doc/titles/industry/high_level_industries.csv")
   overview_codes.columns = ["NAICSCode", "Title"]
   overview_codes = overview_codes.set_index("NAICSCode")
   overview_codes = overview_codes['Title'].to_dict()
@@ -78,7 +82,7 @@ def _create_naics_map():
   combined_codes = short_codes
   combined_codes.update(overview_codes)
 
-  # Rename industries into camel case.
+  # Rename industries into Pascal case.
   for code, orig_name in combined_codes.items():
     NAICS_MAP[str(code)] = standard_name_remapper(orig_name)
 
@@ -112,24 +116,25 @@ SELECT DISTINCT
   O.scaling_factor as scalingFactor,
   O.measurement_method as measurementMethod,
   SP.num_constraints as numConstraints,
-  IF(O.measured_value IS NOT NULL, "measuredValue", 
-    IF(O.sum_value IS NOT NULL,"sumValue",
-    IF(O.mean_value IS NOT NULL, "meanValue",
-    IF(O.min_value IS NOT NULL, "minValue",
-    IF(O.max_value IS NOT NULL, "maxValue",
-    IF(O.std_deviation_value IS NOT NULL, "stdDeviationValue",
-    IF(O.growth_rate IS NOT NULL, "growthRate",
-    IF(O.median_value IS NOT NULL, "medianValue",
-    "Unknown")))))))) AS statType, 
+  CASE
+    WHEN O.measured_value IS NOT NULL THEN "measuredValue" 
+    WHEN O.sum_value IS NOT NULL THEN "sumValue"
+    WHEN O.mean_value IS NOT NULL THEN "meanValue"
+    WHEN O.min_value IS NOT NULL THEN "minValue"
+    WHEN O.max_value IS NOT NULL THEN "maxValue"
+    WHEN O.std_deviation_value IS NOT NULL THEN "stdDeviationValue"
+    WHEN O.growth_rate IS NOT NULL THEN "growthRate"
+    WHEN O.median_value IS NOT NULL THEN "medianValue"
+    ELSE "Unknown"
+  END AS statType
 FROM
   `google.com:datcom-store-dev.dc_v3_clustered.StatisticalPopulation`
     AS SP JOIN
   `google.com:datcom-store-dev.dc_v3_clustered.Observation`
     AS O 
-  ON TRUE 
+  ON (SP.id = O.observed_node_key) 
 WHERE
-  SP.id = O.observed_node_key
-  AND O.type <> "ComparativeObservation"
+  O.type <> "ComparativeObservation"
   AND SP.is_public 
   AND SP.prov_id NOT IN ({comma_sep_prov_blacklist})
 """
@@ -273,10 +278,10 @@ NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP = ['income', 'age', 'householderAge',
 
 # Regex rules to apply to numerical quantity remap.
 REGEX_NUMERICAL_QUANTITY_RENAMINGS = [
-  # [A-Za-z]+[0-9]+Onwards -> [0-9]+Onwards[A-Za-z]+
+  # [A-Za-z]+[0-9]+Onwards -> [0-9]+OrMore[A-Za-z]+
   (re.compile(r"^([A-Za-z]+)([0-9]+)Onwards$"), lambda match: match.group(2) + "OrMore" + match.group(1)),
 
-  # [A-Za-z]+UpTo[0-9]+ -> UpTo[0-9]+[A-Za-z]+
+  # [A-Za-z]+Upto[0-9]+ -> Upto[0-9]+[A-Za-z]+
   (re.compile(r"^([A-Za-z]+)Upto([0-9]+)$"), lambda match: "Upto" + match.group(2) + match.group(1)),
 
   # [A-Za-z]+[0-9]+To[0-9]+-> [0-9]+To[0-9]+[A-Za-z]+
@@ -292,30 +297,41 @@ REGEX_NUMERICAL_QUANTITY_RENAMINGS = [
 # (whether to subgroup by all population types in demographic),
 # (if subgroup all, whether you should group population types with more than 1
 # statistical variable).
+SVPopGroup = (
+  collections.namedtuple('STAT_VAR_DOCUMENTION_GROUPING',
+    'vertical popTypes subgroupAllPops subgroupIfMoreThanOne'))
 STAT_VAR_POPULATION_GROUPINGS = [
-  ("Demographics", ['Person', 'Parent', 'Child', 'Student', 'Teacher'],
+  SVPopGroup("Demographics",
+    ['Person', 'Parent', 'Child', 'Student', 'Teacher'],
     True, False),
-  ("Crime", ['CriminalActivities'],
+  SVPopGroup("Crime",
+    ['CriminalActivities'],
     False, False),
-  ("Health", ['Death', 'DrugDistribution', 'MedicalConditionIncident',
-              'MedicalTest', 'MedicareEnrollee'],
+  SVPopGroup("Health",
+    ['Death', 'DrugDistribution', 'MedicalConditionIncident',
+     'MedicalTest', 'MedicareEnrollee'],
     True, False),
-  ("Employment", ['Worker', 'Establishment', 'JobPosting',
-                  'UnemploymentInsuranceClaim'],
+  SVPopGroup("Employment",
+    ['Worker', 'Establishment', 'JobPosting',
+     'UnemploymentInsuranceClaim'],
     True, False),
-  ("Economic", ['EconomicActivity', 'Consumption', 'Debt', 'TreasuryBill',
-                'TreasuryBond', 'TreasuryNote'],
+  SVPopGroup("Economic",
+    ['EconomicActivity', 'Consumption', 'Debt', 'TreasuryBill',
+     'TreasuryBond', 'TreasuryNote'],
     True, False),
-  ("Environment", ['Emissions'],
+  SVPopGroup("Environment",
+  ['Emissions'],
     False, False),
-  ("Household", ['Household'],
+  SVPopGroup("Household",
+  ['Household'],
     False, False),
-  ("HousingUnit", ['HousingUnit'],
+  SVPopGroup("HousingUnit",
+  ['HousingUnit'],
     False, False)
 ]
 
 # HTML for statistical variable markdown.
-DOCUMENTATION_BASE_TEXT = \
+DOCUMENTATION_BASE_MARKDOWN = \
 """---
 layout: default
 title: Statistical Variables
@@ -327,7 +343,10 @@ nav_order: 2
 Many of the Data Commons APIs deal with Data Commons nodes of the type
 [StatisticalVariable](https://browser.datacommons.org/kg?dcid=StatisticalVariable).
 The following list contains all Statistical Variables with human-readable identifiers,
-grouped by domain and population type.
+grouped by domain and population type. Some verticals are grouped such that all
+population types are a sub-level grouping, while others (like disasters), only
+group by population types when there are multiple statistical variables for that
+population type.
 
 <style>
 details details {

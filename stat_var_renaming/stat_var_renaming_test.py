@@ -13,10 +13,12 @@
 """
   This file contains various tests for methods used in the Statiistical variable renaming.
 
-  TODO finish test coverage
+    TODO(iancostello): Finish test coverage.
 """
 
 from stat_var_renaming import *
+from stat_var_renaming_constants import *
+from stat_var_renaming_functions import *
 import unittest
 
 def test_with_remap(test_cases, function):
