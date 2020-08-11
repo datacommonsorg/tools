@@ -97,7 +97,7 @@ def _create_naics_map():
     NAICS_MAP['00'] = 'Unclassified'
     return NAICS_MAP
 
-
+# TODO(iancostello): Consider adding function memoization.
 NAICS_MAP = _create_naics_map()
 
 ### True Constants

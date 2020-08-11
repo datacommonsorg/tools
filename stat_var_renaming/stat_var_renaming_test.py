@@ -16,13 +16,13 @@
     TODO(iancostello): Finish test coverage.
 """
 
-from stat_var_renaming import *
-from stat_var_renaming_constants import *
-from stat_var_renaming_functions import *
+import stat_var_renaming as svr
+import stat_var_renaming_constants as svrc
+import stat_var_renaming_functions as svrf
 import unittest
 
 def test_with_remap(test_cases, function):
-    remapper = remap_numerical_quantities({})
+    remapper = svrf.remap_numerical_quantities({})
 
     for prop, constraint, expected in test_cases:
         if remapper[prop][0](prop, constraint) != expected:
@@ -32,9 +32,9 @@ def test_with_remap(test_cases, function):
 
 class TestHelperMethods(unittest.TestCase):
     def test_standard_name_remapper(self):
-        self.assertEqual(standard_name_remapper("Some,list,Of,stuff"), 'SomeListOfStuff')
-        self.assertEqual(standard_name_remapper("Google small-query"), 'GoogleSmallQuery')
-        self.assertEqual(standard_name_remapper("Bells and Whistles"), 'BellsWhistles')
+        self.assertEqual(svrf.standard_name_remapper("Some,list,Of,stuff"), 'SomeListOfStuff')
+        self.assertEqual(svrf.standard_name_remapper("Google small-query"), 'GoogleSmallQuery')
+        self.assertEqual(svrf.standard_name_remapper("Bells and Whistles"), 'BellsWhistles')
 
 class TestPropertyRemappers(unittest.TestCase):
     def test_regex_remapping(self):
@@ -46,7 +46,7 @@ class TestPropertyRemappers(unittest.TestCase):
             ('detailedLevelOfSchool', 'EnrolledInGrade1', 'EnrolledInGrade1')
         ]
 
-        self.assertTrue(test_with_remap(test_cases, remap_numerical_quantities))
+        self.assertTrue(test_with_remap(test_cases, svrf.remap_numerical_quantities))
 
     def test_naics_remapping(self):
         test_cases = [

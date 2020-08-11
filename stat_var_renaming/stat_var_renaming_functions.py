@@ -33,8 +33,10 @@ Args:
   popType: The population type that this property belongs to. E.g. Person.
 """
 
-from stat_var_renaming_constants import *
-
+import stat_var_renaming as svr
+import stat_var_renaming_constants as svrc
+import pandas as pd
+import re
 
 def remap_numerical_quantities(prop_remap):
     """ Adds a remapping function to change numerical quantities to a more
@@ -45,7 +47,7 @@ def remap_numerical_quantities(prop_remap):
   """
     def remap_numerical_quantities_helper(_, constraint, _pop):
         if not pd.isna(constraint):
-            for regex, renaming_func in REGEX_NUMERICAL_QUANTITY_RENAMINGS:
+            for regex, renaming_func in svrc.REGEX_NUMERICAL_QUANTITY_RENAMINGS:
                 match_obj = regex.match(constraint)
                 if match_obj:
                     return renaming_func(match_obj)
@@ -54,8 +56,8 @@ def remap_numerical_quantities(prop_remap):
             return None
 
     # Opt-in list to rename.
-    for prop in NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP:
-        addPropertyRemapping(prop_remap, prop,
+    for prop in svrc.NUMERICAL_QUANTITY_PROPERTIES_TO_REMAP:
+        svr.addPropertyRemapping(prop_remap, prop,
                              remap_numerical_quantities_helper)
     return prop_remap
 
@@ -86,12 +88,12 @@ def rename_boolean_variables(prop_remap, stat_vars):
 
     # Get all constraints with boolean values and add a remapping.
     boolean_populations = set()
-    for c in range(1, MAX_CONSTRAINTS + 1):
+    for c in range(1, svrc.MAX_CONSTRAINTS + 1):
         unique_constraints = stat_vars[stat_vars[f"v{c}"].isin(
             ['True', 'False'])][f"p{c}"].unique()
         boolean_populations.update(unique_constraints)
     for pop in boolean_populations:
-        addPropertyRemapping(prop_remap, pop, map_boolean_constraints)
+        svr.addPropertyRemapping(prop_remap, pop, map_boolean_constraints)
     return prop_remap
 
 
@@ -112,8 +114,8 @@ def prefix_strip(prop_remap):
                 return constraint.lstrip("_")
         return constraint
 
-    for prop_to_add in CONSTRAINT_PREFIXES_TO_STRIP:
-        addPropertyRemapping(prop_remap, prop_to_add, strip_prefixes)
+    for prop_to_add in svrc.CONSTRAINT_PREFIXES_TO_STRIP:
+        svr.addPropertyRemapping(prop_remap, prop_to_add, strip_prefixes)
 
     return prop_remap
 
@@ -139,12 +141,12 @@ def cause_of_death_remap(prop_remap, client):
     def provide_consistent_naming(row):
         icd10_code = row['ICD10Code']
         # Manually remap abnormally long names.
-        if icd10_code in MANUAL_CAUSE_OF_DEATH_RENAMINGS:
-            return MANUAL_CAUSE_OF_DEATH_RENAMINGS[id]
+        if icd10_code in svrc.MANUAL_CAUSE_OF_DEATH_RENAMINGS:
+            return svrc.MANUAL_CAUSE_OF_DEATH_RENAMINGS[id]
 
         # Otherwise remove codes and camel case the name.
         row['id'] = icd10_code
-        row['name'] = standard_name_remapper(
+        row['name'] = svrc.standard_name_remapper(
             (row['name'].replace(icd10_code.replace("ICD10/", ""),
                                  "").strip().lstrip("(").rstrip("()")))
         return row
@@ -158,8 +160,8 @@ def cause_of_death_remap(prop_remap, client):
     def death_id_to_name(_, death_id, _pop):
         return cause_of_death_instances.loc[death_id]['name']
 
-    addPropertyRemapping(prop_remap, 'medicalCode', death_id_to_name)
-    addPropertyRemapping(prop_remap, 'causeOfDeath', death_id_to_name)
+    svr.addPropertyRemapping(prop_remap, 'medicalCode', death_id_to_name)
+    svr.addPropertyRemapping(prop_remap, 'causeOfDeath', death_id_to_name)
 
 
 def rename_dea_drugs(prop_remap, client):
@@ -173,12 +175,12 @@ def rename_dea_drugs(prop_remap, client):
 
     # Add modification function from manual naming scheme.
     def drug_id_to_name(_, drug_id, _pop):
-        if drug_id in DRUG_REMAPPINGS:
-            return DRUG_REMAPPINGS[drug_id]
+        if drug_id in svrc.DRUG_REMAPPINGS:
+            return svrc.DRUG_REMAPPINGS[drug_id]
         else:
             return drug_id.replace("drug/", "")
 
-    addPropertyRemapping(prop_remap, 'drugPrescribed', drug_id_to_name)
+    svr.addPropertyRemapping(prop_remap, 'drugPrescribed', drug_id_to_name)
 
 
 def misc_mappings(prop_remap):
@@ -191,16 +193,16 @@ def misc_mappings(prop_remap):
     def remove_acsed(_, constraint, _pop):
         return constraint.replace("ACSED", "")
 
-    addPropertyRemapping(prop_remap, 'memberStatus', remove_acsed)
+    svr.addPropertyRemapping(prop_remap, 'memberStatus', remove_acsed)
 
     def replace_date_built(_, constraint, _pop):
         constraint = constraint.replace("OrMore", "OrLater")
         return constraint.replace("Upto", "Before")
 
-    addPropertyRemapping(prop_remap, 'dateBuilt', replace_date_built)
+    svr.addPropertyRemapping(prop_remap, 'dateBuilt', replace_date_built)
 
 
-def pre_append_text(prop_remap):
+def prepend_and_append_text(prop_remap):
     """ Adds remapping functions which either prepend or append text to all
     constraints for a property.
 
@@ -231,9 +233,9 @@ def pre_append_text(prop_remap):
                 return pop in include_pop
 
         text_mod = (
-            lambda _, text, pop: prepend + capitalizeFirst(text) + append
+            lambda _, text, pop: prepend + svrc.capitalizeFirst(text) + append
             if apply_to_pop(pop) else text)
-        addPropertyRemapping(prop_remap, prop, text_mod)
+        svr.addPropertyRemapping(prop_remap, prop, text_mod)
 
     addTextToConstraint("languageSpokenAtHome", append="SpokenAtHome")
     addTextToConstraint("childSchoolEnrollment", prepend="Child")
@@ -277,13 +279,13 @@ def rename_isic_codes(prop_remap, client):
     isic_instances = client.query(ISIC_QUERY).to_dataframe()
     isic_instances = isic_instances.set_index("id")
     isic_instances['name'] = isic_instances['name'].apply(
-        standard_name_remapper)
+        svrc.standard_name_remapper)
 
     # Add modification function
     def isic_id_to_name(_, isic, _pop):
         return isic_instances.loc[isic]['name']
 
-    addPropertyRemapping(prop_remap, 'isic', isic_id_to_name)
+    svr.addPropertyRemapping(prop_remap, 'isic', isic_id_to_name)
     return isic_instances
 
 
@@ -314,20 +316,20 @@ def rename_naics_codes(prop_remap, client):
         lambda name: filter_to_string(
             filter(lambda c: c.isalpha() or c == " ", name)))
     naics_instances['name'] = naics_instances['name'].apply(
-        standard_name_remapper)
+        svrc.standard_name_remapper)
 
     def naics_id_to_name(_, naics, _pop):
         code = naics.lstrip("NAICSnaics/jolts")
         # Only remap 1-2 digit codes and JOLTS.
         if "JOLTS" not in naics and len(code) > 3:
             return "Unknown"
-        if code in NAICS_MAP:
-            return NAICS_MAP[code]
+        if code in svrc.NAICS_MAP:
+            return svrc.NAICS_MAP[code]
         if naics in naics_instances:
             return naics_instances.loc[naics]['name']
         return "Unknown"
 
-    addPropertyRemapping(prop_remap, 'naics', naics_id_to_name)
+    svr.addPropertyRemapping(prop_remap, 'naics', naics_id_to_name)
     return prop_remap
 
 

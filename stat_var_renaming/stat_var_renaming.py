@@ -74,8 +74,8 @@ import os
 import pandas as pd
 import numpy as np
 
-from stat_var_renaming_constants import *
-from stat_var_renaming_functions import *
+import stat_var_renaming_constants as svrc
+import stat_var_renaming_functions as svrf
 
 # Constants
 # Max total number of constraints of a variable to include (Dependent
@@ -131,12 +131,13 @@ def download_stat_vars(client):
     # Dynamically create list of blacklisted provences, as a string.
     blacklist = [
         '"%s"' % prov_id
-        for prov_id in frozenset().union(*[_MISC_DATASETS, _BIO_DATASETS])
+        for prov_id in frozenset().union(*[svrc._MISC_DATASETS, 
+                                           svrc._BIO_DATASETS])
     ]
     blacklist_str = ', '.join(blacklist) if blacklist else '""'
 
     # Input information into SQL template and perform the query.
-    query_for_all_stat_vars = (QUERY_FOR_ALL_STAT_VARS.replace(
+    query_for_all_stat_vars = (svrc.QUERY_FOR_ALL_STAT_VARS.replace(
         "{CONSTRAINTS}",
         constraint_string).replace("{POPULATIONS}", pop_string).replace(
             "{comma_sep_prov_blacklist}",
@@ -319,14 +320,14 @@ def row_to_human_readable(row):
     dcid format: <?statType>_<mProp>_<popType>_<v1>_<v2>_..._<mQual>_<mDenom>
   """
     # Add measured property and population type. e.g. Count_InsuranceClaim.
-    human_string = (f"{capitalizeFirst(row['measuredProp'])}" +
-                    f"_{capitalizeFirst(row['populationType'])}")
+    human_string = (f"{svrc.capitalizeFirst(row['measuredProp'])}" +
+                    f"_{svrc.capitalizeFirst(row['populationType'])}")
 
     # StatType (e.g. median) is prepended if the stat type is not measuredValue.
     stat_type = row['statType']
     if stat_type != "measuredValue" and stat_type != "Unknown":
-        human_string = (capitalizeFirst(stat_type.replace("Value", "")) + "_" +
-                        human_string)
+        human_string = (svrc.capitalizeFirst(stat_type.replace("Value", ""))
+                        + "_" + human_string)
 
     # Append renamed constraint fields.
     row_constraints = min(row['numConstraints'], _MAX_CONSTRAINTS_WITH_DPV)
@@ -348,7 +349,7 @@ def row_to_human_readable(row):
         # MDoms that are properties (all lower case) are added as Per(Mdom).
         elif measurement_denominator[0].islower():
             human_string = (
-                f"{human_string}_Per{capitalizeFirst(measurement_denominator)}"
+                f"{human_string}_Per{svrc.capitalizeFirst(measurement_denominator)}"
             )
         # Everything else is AsAFractionOf.
         else:
@@ -441,7 +442,7 @@ def row_to_stat_var_mcf(row):
   Returns:
     Multiline string of the new MCF node for that statistical variable.
   """
-    new_stat_var = (TEMPLATE_STAT_VAR
+    new_stat_var = (svrc.TEMPLATE_STAT_VAR
       .replace("{human_readable_dcid}", row['HumanReadableName'])\
       .replace("{populationType}", row['orig_populationType'])\
       .replace("{statType}", row['statType'])\
@@ -496,15 +497,15 @@ def create_human_readable_names(stat_vars, client):
   """
     # Build constraint remappings.
     prop_remap = {}
-    rename_naics_codes(prop_remap, client)
-    rename_dea_drugs(prop_remap, client)
-    rename_isic_codes(prop_remap, client)
-    cause_of_death_remap(prop_remap, client)
-    prefix_strip(prop_remap)
-    rename_boolean_variables(prop_remap, stat_vars)
-    remap_numerical_quantities(prop_remap)
-    prepend_and_append_text(prop_remap)
-    misc_mappings(prop_remap)
+    svrf.rename_naics_codes(prop_remap, client)
+    svrf.rename_dea_drugs(prop_remap, client)
+    svrf.rename_isic_codes(prop_remap, client)
+    svrf.cause_of_death_remap(prop_remap, client)
+    svrf.prefix_strip(prop_remap)
+    svrf.rename_boolean_variables(prop_remap, stat_vars)
+    svrf.remap_numerical_quantities(prop_remap)
+    svrf.prepend_and_append_text(prop_remap)
+    svrf.misc_mappings(prop_remap)
 
     # Drop erroneous constraints.
     for c in range(1, _MAX_CONSTRAINTS + 1):
@@ -546,12 +547,12 @@ def output_stat_var_documentation(stat_vars):
             natural_disasters.append(popType)
     # (False, True) -> Only group disaster StatVar by populationType
     # if there are more than 1 statistical variables for that group.
-    STAT_VAR_POPULATION_GROUPINGS.append(
-        SVPopGroup(("Disasters", natural_disasters, False, True)))
+    svrc.STAT_VAR_POPULATION_GROUPINGS.append(
+        svrc.SVPopGroup(("Disasters", natural_disasters, False, True)))
 
     # Assert that all population types belong to a category.
     used = []
-    for _, group, _, _ in STAT_VAR_POPULATION_GROUPINGS:
+    for _, group, _, _ in svrc.STAT_VAR_POPULATION_GROUPINGS:
         used.extend(group)
     for popType in stat_vars['populationType'].unique():
         assert popType in used, (f"{popType} not sorted!")
@@ -559,16 +560,16 @@ def output_stat_var_documentation(stat_vars):
     # Output markdown file grouped by population type.
     with open('statistical_variables.md', 'w', newline='') as f_out:
         # Output heading.
-        f_out.write(DOCUMENTATION_BASE_MARKDOWN)
+        f_out.write(svrc.DOCUMENTATION_BASE_MARKDOWN)
 
         # Output each vertical group. Some verticals are always
         # nested by population.
         # If nested_grouping is True, and, if nested_grouping is false, then
         # stat var groups larger than 1 are grouped
         # if condense_big_groups is true.
-        for sv_grouping in STAT_VAR_POPULATION_GROUPINGS:
+        for sv_grouping in svrc.STAT_VAR_POPULATION_GROUPINGS:
             f_out.write(
-                DOCUMENTATION_HEADER_START.replace("{HEADER}",
+                svrc.DOCUMENTATION_HEADER_START.replace("{HEADER}",
                                                    sv_grouping.vertical))
 
             for population_type in sv_grouping.popTypes:
@@ -582,7 +583,7 @@ def output_stat_var_documentation(stat_vars):
 
                 if group_pop_type:
                     f_out.write(
-                        DOCUMENTATION_DROPDOWN_START.replace(
+                        svrc.DOCUMENTATION_DROPDOWN_START.replace(
                             "{POPULATION_TYPE}", population_type))
                 # Output individual statistical variable as a link to DC graph.
                 for stat_var in stat_vars_for_pop_type:
