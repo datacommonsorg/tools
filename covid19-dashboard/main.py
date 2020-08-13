@@ -15,7 +15,7 @@
 import json
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Union
 
 from flask import Flask, send_from_directory, Response
 from flask_caching import Cache
@@ -24,12 +24,9 @@ from flask_compress import Compress
 from send_request import send_request
 from calculate_data import calculate_data
 
-config = dict(DEBUG=True,
-              CACHE_TYPE="filesystem",
-              CACHE_DIR="/tmp")
+config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR="/tmp")
 
-app = Flask(__name__,
-            static_folder="./build")
+app = Flask(__name__, static_folder="./build")
 
 # All API responses are g-zipped/compressed.
 Compress(app)
@@ -40,9 +37,6 @@ app.config.from_mapping(config)
 app.config.from_pyfile("config.py")
 cache = Cache(app)
 
-# Retrieve the API KEY from the configuration file.
-API_KEY = app.config["API_KEY"]
-
 # Retrieves DataCommons Server from configuration file.
 DC_SERVER = app.config["DC_SERVER"]
 
@@ -50,12 +44,11 @@ DC_SERVER = app.config["DC_SERVER"]
 # Get the dictionary from the configuration file.
 STAT_VARS = app.config["STAT_VARS"]
 
-
 # COMMONLY-USED TYPES.
-DataType = Union[Dict[str, int], int, str]
-GeoIdToDataType = Dict[str, DataType]
+KeyToTimeSeries = Union[Dict[str, int], int, str]
+GeoIdToDataType = Dict[str, KeyToTimeSeries]
 GeoIdToStatsType = Dict[str, Dict[str, int]]
-PlaceToInfoType = Dict[str, Tuple[str, str]]
+PlaceToInfoType = Dict[str, Dict[str, str]]
 
 
 @app.route("/<path:path>", methods=["GET"])
@@ -91,52 +84,42 @@ def index():
     return response
 
 
-@app.route("/api/county-data")
+@app.route("/api/data/<string:geo_id>")
 @cache.cached(timeout=3600)
-def county_data():
+def county_data(geo_id: str):
     """
-    Returns US County data. Slower than /state-data api.
+    Returns any placeType's datta.
     NOTE: for return type documentation, please see README.md's APIs section.
-    :return: geo_id->{**data, name, geo_id, placeType, containedIn}.
+    :return: geo_id->{**key_to_timeserie}.
     """
     # Request data for only US Counties.
-    data = get_data("County")
+    data = _get_data(geo_id)
     # Adds HTTP headers for browser to store cache.
-    response = add_browser_cache_headers_to_response(data)
+    response = _add_browser_cache_headers_to_response(data)
     return response
 
 
-@app.route("/api/state-data")
+@app.route("/api/places")
 @cache.cached(timeout=3600)
-def state_data():
-    """
-    Returns US state data. Faster than /county-data api.
-    NOTE: for return type documentation, please see README.md's APIs section.
-    :return: geo_id->{**data, name, geo_id, placeType, containedIn}.
-    """
-    # Request data for only US States.
-    data = get_data("State")
-    # Adds HTTP headers for browser to store cache.
-    response = add_browser_cache_headers_to_response(data)
-    return response
-
-
-@app.route("/api/country-data")
-@cache.cached(timeout=3600)
-def country_data():
+def places():
     """
     Returns World Country data.
     NOTE: for return type documentation, please see README.md's APIs section.
-    :return: geo_id->{**data, name, geo_id, placeType, containedIn}.
+    :return: geo_id->{name, placeType, containedIn}.
     """
-    # Request data for only US States.
-    data = get_data("Country")
-    # Adds HTTP headers for browser to store cache.
-    response = add_browser_cache_headers_to_response(data)
+    countries = _get_countries()
+    states = _get_us_places('State')
+    counties = _get_us_places('County')
+
+    # Include the World as a geoId.
+    data = {**countries, **states, **counties,
+            'World': _place_info_factory("World", "", "")}
+
+    response = _add_browser_cache_headers_to_response(data)
     return response
 
 
-def get_data(place_type: str = "State") -> GeoIdToDataType:
+def _get_data(place_type: str = "State") -> GeoIdToDataType:
     """
     Requests cases and deaths from the DC, and performs calculations.
     NOTE: for return type documentation, please see README.md's APIs section.
@@ -148,12 +131,12 @@ def get_data(place_type: str = "State") -> GeoIdToDataType:
 
     # Request the geo_ids for the place_type.
     if place_type == "Country":
-        places: PlaceToInfoType = get_countries()
+        places: PlaceToInfoType = _get_countries()
     else:
-        places: PlaceToInfoType = get_us_places(place_type)
+        places: PlaceToInfoType = _get_us_places(place_type)
 
     # Get the total population of all geo_id.
-    geo_id_to_population: Dict[str, int] = get_population(place_type)
+    geo_id_to_population: Dict[str, int] = _get_population(place_type)
 
     # Convert the places to a list of geo_id.
     # The dictionary is keyed by geo_id.
@@ -175,7 +158,7 @@ def get_data(place_type: str = "State") -> GeoIdToDataType:
         # Store the stats for this stat_var in the map of all_stats.
         # The key might be 'Deaths', but the stat_var might be
         # IncrementalCount_MedicalConditionIncident_COVID_19_PatientDeceased
-        all_stats[key] = get_stats_by_date(geo_ids, stat_var)
+        all_stats[key] = _get_stats_by_date(geo_ids, stat_var)
 
     # Iterate through all geo_ids.
     # Calculate the data for all_stats.
@@ -185,55 +168,58 @@ def get_data(place_type: str = "State") -> GeoIdToDataType:
         if geo_id not in geo_id_to_population:
             continue
 
-        # Get the places's population.
+        # Get the places' population.
         place_population = geo_id_to_population[geo_id]
+
+        # Make sure the population is >= 0
+        if place_population <= 0:
+            continue
 
         for stat_var in all_stats:
             # If the geo_id isn't there, it means there is no data.
             if geo_id not in all_stats[stat_var]:
                 continue
+            # Make sure we have metadata for this geo_id.
+            if geo_id not in places:
+                continue
+            # Get the stats for this stat_var and geo_id.
             place_stats = all_stats[stat_var][geo_id]
-            calculated_data = calculate_data(stat_var, place_stats,
+
+            # Do calculations with the data.
+            # See README.md for more information about the return types.
+            calculated_data = calculate_data(place_stats,
                                              place_population)
-            # Combine and store all the calculated_data for this geo_id.
-            all_calculated_data = {**all_calculated_data, **calculated_data}
 
-        # Make sure we have metadata for this geo_id.
-        if geo_id not in places:
-            continue
+            # Rename keys to include stat_var.
+            # Example: 'movingAverage' becomes 'movingAverageCases'.
+            calculated_data = {f"{key}{stat_var}": value
+                               for key, value in calculated_data.items()}
 
-        # Retrieve metadata from places for this geo_id.
-        name: str = places[geo_id][0]
-        contained_in_geo_id: str = places[geo_id][1]
+            # Combine calculated_data with its other stat_vars.
+            all_calculated_data = {**all_calculated_data,
+                                   **calculated_data}
 
         # Combine both calculated cases and deaths under output[geo_id].
-        output[geo_id] = {
-            **all_calculated_data,
-            **{
-                "geoId": geo_id,
-                "containedIn": contained_in_geo_id,
-                "name": name,
-                "placeType": place_type,
-            },
-        }
+        output[geo_id] = all_calculated_data
     # Return a combination of stats + metadata for all geo_ids.
     # The output is keyed by geo_id.
-    # geo_id->{**calculated_data, name, geo_id, placeType, containedIn}
+    # geo_id->{**calculated_data, name, geo_id}
     return output
 
 
-def get_population(place_type: str = "Country") -> Dict[str, int]:
+def _get_population(place_type: str = "Country") -> Dict[str, int]:
     """
     Returns the total population of each place as a dictionary.
     The key is the geo_id and the value is the population number.
     :return: dict of geo_id->population.
     """
-    # Depending on the place_type, the population is stored differently.
-
+    # Depending on the place_type, the population is stored differently
+    # In the Data Commons KG.
     # US States and US Counties use the census.
     measurement_key = "measurementMethod"
     measurement = "CensusACS5yrSurvey"
     # Counties use a generic count variable.
+
     if place_type == "Country":
         measurement_key = "measuredProp"
         measurement = "count"
@@ -245,9 +231,8 @@ def get_population(place_type: str = "Country") -> Dict[str, int]:
             "populationType": "Person",
             "observationDate": "2018",
         },
-        api_key=API_KEY,
         compress=True,
-        )
+    )
 
     # If 'places' isn't a key in the response.
     # The response isn't valid, so return empty data.
@@ -261,7 +246,9 @@ def get_population(place_type: str = "Country") -> Dict[str, int]:
     for place in places:
         # Some geo_ids return None if there is no data.
         # Make sure there is data first.
-        if "place" not in place and not place["place"]:
+        if "place" not in place:
+            continue
+        if not place["place"]:
             continue
         geo_id: str = place["place"]
 
@@ -294,12 +281,41 @@ def get_population(place_type: str = "Country") -> Dict[str, int]:
     return output
 
 
-def get_countries() -> PlaceToInfoType:
+def _get_place_names(geo_ids: List[str]) -> Dict[str, str]:
+    """
+    Returns the names of the places given a list of geo_ids.
+    :param geo_ids: the list of geo_ids you want the names returned for.
+    :return: geo_id->name. A dictionary where the geo_id maps to the name.
+    """
+    output: Dict[str, str] = {}
+
+    # Request the names from the DC KG.
+    response = send_request(
+        DC_SERVER + "node/property-values",
+        {"dcids": geo_ids,
+         "property": "name"},
+    )
+
+    # For every geo_id in the response, store the name.
+    for geo_id in response:
+        if "out" not in response[geo_id]:
+            continue
+        if not response[geo_id]["out"]:
+            continue
+        if "value" not in response[geo_id]["out"][0]:
+            continue
+        name: str = response[geo_id]["out"][0]["value"]
+        output[geo_id] = name
+
+    return output
+
+
+def _get_countries() -> PlaceToInfoType:
     """
     Returns a dictionary of all Countries in the world.
     The return type is a dict where the key is the geo_id being observed
-    and the value is a tuple of metadata about that place.
-    :return: a dictionary of geo_id->(name: str, containedIn: str).
+    and the value is an object of information about that place.
+    :return: a dictionary of geo_id->{name, containedIn, placeType}.
     """
     # Get the name and geo_ids of all Counties.
     # When requesting the population of Countries.
@@ -311,9 +327,8 @@ def get_countries() -> PlaceToInfoType:
             "populationType": "Person",
             "observationDate": "2018",
         },
-        api_key=API_KEY,
         compress=True,
-        )
+    )
 
     output: PlaceToInfoType = {}
 
@@ -332,57 +347,25 @@ def get_countries() -> PlaceToInfoType:
         name: str = place["name"]
         geo_id: str = place["place"]
         # All countries belong to the world.
-        output[geo_id] = (name, "World")
+        output[geo_id] = _place_info_factory(name, "World", "Country")
 
     return output
 
 
-def _get_place_names(geo_ids: List[str]) -> Dict[str, str]:
-    """
-    Returns the names of the places given a list of geo_ids.
-    :param geo_ids: the list of geo_ids you want the names returned for.
-    :return: geo_id->name. A dictionary where the geo_id maps to the name.
-    """
-    output: Dict[str, str] = {}
-
-    # Request the names from the DC KG.
-    response = send_request(
-        DC_SERVER + "node/property-values",
-        {"dcids": geo_ids,
-         "property": "name"},
-        api_key=API_KEY,
-        )
-
-    # For every geo_id in the response, store the name.
-    for geo_id in response:
-        if "out" not in response[geo_id]:
-            continue
-        if not response[geo_id]["out"]:
-            continue
-        if "value" not in response[geo_id]["out"][0]:
-            continue
-        name: str = response[geo_id]["out"][0]["value"]
-        output[geo_id] = name
-
-    return output
-
-
-def get_us_places(place_type: str = "State") -> PlaceToInfoType:
+def _get_us_places(place_type: str = "State") -> PlaceToInfoType:
     """
     Returns a dictionary of either US States or US Counties.
     The return is a dict where the key is the geo_id being observed
-    and the value is a tuple of metadata about that place.
+    and the value is an object of information about that place.
     :param place_type: return states OR counties.
-    :return: a dictionary of geo_id->(name: str, containedIn: str).
+    :return: a dictionary of geo_id->{name: str, containedIn: str}.
     """
-
     # Get US State data.
     response = send_request(
         DC_SERVER + "node/places-in",
         {"dcids": ["country/USA"],
          "placeType": "State"},
-        api_key=API_KEY,
-        )
+    )
 
     # Get the geo_id for all the States.
     # The geo_id is stored under 'place'.
@@ -390,20 +373,26 @@ def get_us_places(place_type: str = "State") -> PlaceToInfoType:
 
     state_names = _get_place_names(state_geo_ids)
 
-    # Store all the US State metadata as a dict of tuples.
-    # geo_id -> (name, containedIn).
+    # Store all the US State metadata as an object of geoId->info.
+    # Where the object is of type geo_id -> {name, containedIn, placeType}
     states: PlaceToInfoType = {
-        geo_id: (name, "country/USA")
+        geo_id: _place_info_factory(name,
+                                    "country/USA",
+                                    "State")
         for geo_id, name in state_names.items()
     }
+
+    # If the user didn't request County data, they requested State data.
+    # Return state data.
+    if place_type != "County":
+        return states
 
     # Get US County data belonging to the US States.
     response = send_request(
         DC_SERVER + "node/places-in",
         {"dcids": state_geo_ids,
          "placeType": "County"},
-        api_key=API_KEY,
-        )
+    )
 
     # Keep track of what State each County belongs to.
     # geo_id -> belongs_to_geo_id.
@@ -419,32 +408,32 @@ def get_us_places(place_type: str = "State") -> PlaceToInfoType:
         belongs_to_geo_id: str = value["dcid"]
         county_to_state[county_geo_id]: str = belongs_to_geo_id
 
-    # If the user didn't request County data, they requested State data.
-    # Return state data.
-    if place_type != "County":
-        return states
-
     county_geo_ids = list(county_to_state.keys())
 
     county_names = _get_place_names(county_geo_ids)
 
     # Store all the US County metadata as a dict of tuples.
-    # geo_id -> (name: str, containedIn: str).
+    # geo_id -> (name: str, containedIn: str, placeType: str).
     counties: PlaceToInfoType = {
-        geo_id: (name, county_to_state[geo_id])
+        geo_id: _place_info_factory(name, county_to_state[geo_id], "County")
         for geo_id, name in county_names.items()
     }
 
     # NYT combines several counties into one larger county.
     # Only for the following two exceptions.
     # https://github.com/nytimes/covid-19-data#geographic-exceptions
-    counties["geoId/3651000"] = ("New York City", "geoId/36")
-    counties["geoId/2938000"] = ("Kansas City", "geoId/29")
+    counties["geoId/3651000"] = _place_info_factory("New York City",
+                                                    "geoId/36",
+                                                    "County")
+    counties["geoId/2938000"] = _place_info_factory("Kansas City",
+                                                    "geoId/29",
+                                                    "County")
 
     return counties
 
 
-def get_stats_by_date(geo_ids: List[str], stats_var: str) -> GeoIdToStatsType:
+def _get_stats_by_date(geo_ids: List[str],
+                       stats_var: str) -> GeoIdToStatsType:
     """
     Queries and returns the data in the as a dict of type geo_id->date->value.
     :param geo_ids: list of geo_ids to query data for.
@@ -457,8 +446,7 @@ def get_stats_by_date(geo_ids: List[str], stats_var: str) -> GeoIdToStatsType:
         DC_SERVER + "bulk/stats",
         {"place": geo_ids,
          "stats_var": stats_var},
-        api_key=API_KEY,
-        )
+    )
 
     # geo_id->date->value
     # EXAMPLE: {geoId/12: {'2020-01-01': 10, '2020-01-02: 20'},
@@ -479,8 +467,8 @@ def get_stats_by_date(geo_ids: List[str], stats_var: str) -> GeoIdToStatsType:
     return output
 
 
-def add_browser_cache_headers_to_response(data: Dict,
-                                          minutes: int = 100) -> Response:
+def _add_browser_cache_headers_to_response(data: Dict,
+                                           minutes: int = 100) -> Response:
     """
     Adds the HTTP headers to the response for browser to store cache.
     :param data: JSON data to return, any type.
@@ -488,7 +476,8 @@ def add_browser_cache_headers_to_response(data: Dict,
     :return: a flask.Response instance.
     """
     response: Response = app.response_class(
-        response=json.dumps(data), mimetype="application/json")
+        response=json.dumps(data),
+        mimetype="application/json")
     exp_time: datetime = datetime.now() + timedelta(minutes=minutes)
     response.headers.add("Expires",
                          exp_time.strftime("%a, %d %b %Y %H:%M:%S GMT"))
@@ -496,6 +485,14 @@ def add_browser_cache_headers_to_response(data: Dict,
                          "public,max-age=%d" % int(60 * minutes))
 
     return response
+
+
+def _place_info_factory(name, contained_in, place_type):
+    return {
+        "name": name,
+        "containedIn": contained_in,
+        "placeType": place_type
+    }
 
 
 if __name__ == "__main__":
