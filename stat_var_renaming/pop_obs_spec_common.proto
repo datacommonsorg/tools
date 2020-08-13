@@ -1,0 +1,30 @@
+syntax = "proto2";
+
+message PopObsSpec {
+  // A property-value pair
+  message PV {
+    optional string prop = 1;
+    optional string val = 2;
+  }
+
+  // Population type.
+  optional string pop_type = 1;
+  // Measured property.
+  optional string mprop = 2;
+  // Values are stat properties like measuredValue, medianValue, etc.
+  optional string stat_type = 3;
+  // Constraining properties of StatisticalPopulation.
+  repeated string cprop = 4;
+  // A list of depending property value pairs that a client does not indicate
+  // but needs to be added.
+  // For example, property "income" needs additional pv of "age=Years15Onwards"
+  repeated PV dpv = 5;
+  // Name for this spec.
+  optional string name = 6;
+  // Verticals of this spec.
+  repeated string vertical = 7;
+}
+// All published Pop/Obs spec. Stored in a textproto.
+message PopObsSpecList {
+  repeated PopObsSpec spec = 1;
+}
