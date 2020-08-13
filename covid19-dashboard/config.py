@@ -29,7 +29,7 @@ STAT_VARS = {
             "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
         "Recovered":
             "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
-    },
+   },
     "State": {
         "Cases":
             "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
