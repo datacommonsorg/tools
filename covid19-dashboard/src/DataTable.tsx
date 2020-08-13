@@ -15,14 +15,14 @@
  */
 
 import React from 'react';
-import orderBy from 'lodash/orderBy';
 import chunk from 'lodash/chunk';
 import Content from './Content.json';
-import {TimeSeriesType, ValueType} from './Types';
 import Configuration from './Config.json';
-import Table from 'react-bootstrap/Table';
+import Place from "./Place";
 import Th from './Th';
-import TableIndexPagination from './TableIndexPagination';
+import MultiButtonGroup from "./MultiButtonGroup";
+import {getLatestDate, goToPlace} from "./Utils";
+import Table from 'react-bootstrap/Table';
 
 type OrientationType = 'desc' | 'asc';
 
@@ -33,7 +33,7 @@ type TableStateType = {
 };
 
 type TablePropsType = {
-  data: ValueType[];
+  data: Place[];
 };
 
 /**
@@ -56,7 +56,7 @@ export default class DataTable extends React.Component<
   };
 
   chunkSize = 30;
-  chunkedData: ValueType[][] = [];
+  chunkedData: Place[][] = [];
 
   /**
    * Determines what type of arrow display
@@ -125,38 +125,35 @@ export default class DataTable extends React.Component<
   };
 
   render() {
-    // Every time the order or sortBy is changed,
-    // we have to recalculate the new value.
-    // Sort the time-series by the latest date.
-    // Our value is what we use to sort by.
-    const dataByKey: ValueType[] = this.props.data.map(obj => {
-      const timeSeries: TimeSeriesType = obj[this.state.sortBy] || {};
-      // Get the latest date in the timeSeries.
-      const dates = Object.keys(timeSeries);
-      const latestDate = dates[dates.length - 1];
-      // Store the value for the latest date.
-      const value = timeSeries[latestDate];
+    // Sort the data based on the last date in the timeSeries.
+    const sortedData = this.props.data.sort((a, b) => {
+      const timeSeriesA = a.keyToTimeSeries[this.state.sortBy] || {}
+      const timeSeriesB = b.keyToTimeSeries[this.state.sortBy] || {}
 
-      return {
-        ...obj,
-        timeSeries: timeSeries,
-        value: value,
-      };
-    });
+      const latestDateA = getLatestDate(Object.keys(timeSeriesA))
+      const latestDateB = getLatestDate(Object.keys(timeSeriesB))
 
-    // Filter out any undefined values or timeSeries.
-    const filteredData = dataByKey.filter(obj => {
-      return obj.value && obj.timeSeries;
-    });
+      const valueA = timeSeriesA[latestDateA] || 0
+      const valueB = timeSeriesB[latestDateB] || 0
 
-    // Sort the data by the value property.
-    // Value represents the number of selected sortBy on the given date.
-    const sortedData = orderBy(filteredData, ['value'], [this.state.order]);
+      // Descending order
+      if (this.state.order === 'desc') {
+        return valueB - valueA
+      // Ascending order
+      } else {
+        return valueA - valueB
+      }
+    })
+
+    // Filter out any values that are nullish.
+    const filteredData = sortedData.filter(place => {
+      return place.keyToTimeSeries[this.state.sortBy];
+    })
 
     // Chunk the dataset by groups of this.chunkSize.
     // Each element in the chunk represents a row.
     // Each chunk contains this.chunkSize rows.
-    this.chunkedData = chunk(sortedData, this.chunkSize);
+    this.chunkedData = chunk(filteredData, this.chunkSize);
 
     // Depending on what page of the table the user is on, display that chunk.
     // Example: If the user is on page 1, display this.chunkedData[0].
@@ -168,39 +165,60 @@ export default class DataTable extends React.Component<
       // Should the title have an arrow?
       const title = this.sortArrow(obj.id) + obj.title;
       return (
-        <th onClick={() => this.sortBy(obj.id)} key={index}>
+        <th onClick={() => this.sortBy(obj.id)}
+            key={index}>
           {title}
         </th>
       );
     });
 
     // Create the data for each row.
-    const rows = chunkDataShown.map((rowData, index) => {
+    const rows = chunkDataShown.map((place, index) => {
       const tableRanking = this.state.chunkIndex * this.chunkSize + index + 1;
-      const clickableClass = rowData.onClick ? 'clickable' : '';
+      let clickableClass: string;
+
+      // If the place has subregions, it should be clickable.
+      const placeIsClickable = place.getSubregionType()
+
+      // If the place is clickable, add the corresponding CSS class.
+      if (placeIsClickable) {
+        clickableClass = 'clickable';
+      } else {
+        clickableClass = '';
+      }
 
       // For every row, generate a Th for each column.
       const thValues = Content.table.map((category, index) => {
         // Get the timeSeries for our current column's id.
-        const timeSeries: TimeSeriesType = rowData[category.id] || {};
+        const timeSeries = place.keyToTimeSeries[category.id] || {};
         return (
           <Th
             timeSeries={timeSeries}
             typeOf={category.typeOf}
             key={index}
             className={clickableClass}
-            graphTitle={rowData.name}
+            graphTitle={place.name}
             graphSubtitle={category.graphSubtitle}
             color={category.color}
           />
         );
       });
 
+
+      let placeFullName: string;
+      if (place.placeType !== 'Country') {
+        placeFullName = `${place.name}, ${place.parentPlace?.name}`;
+      } else {
+        placeFullName = place.name;
+      }
+
       return (
         <tbody key={index}>
-        <tr key={index} className={clickableClass} onClick={rowData.onClick}>
+        <tr key={index}
+            className={clickableClass}
+            onClick={() => goToPlace(place.geoId, place.getSubregionType())}>
           <th>{tableRanking}</th>
-          <th>{rowData.name}</th>
+          <th>{placeFullName}</th>
           {thValues}
         </tr>
         </tbody>
@@ -228,3 +246,62 @@ export default class DataTable extends React.Component<
     );
   }
 }
+
+
+type TableIndexPaginationPropsType = {
+  index: number;
+  totalIndexCount: number;
+  onIndexChange: (index: number) => void;
+};
+
+
+/**
+ * Component that displays pagination buttons below the Table.
+ * @param props.index: active page.
+ * @param props.totalIndexCount: total amount of pages.
+ * @param props.onIndexChange: what should happen when the user changes page.
+ */
+const TableIndexPagination = (props: TableIndexPaginationPropsType) => {
+  const MAX_THRESHOLD = 5; // The maximum amount of buttons to display.
+  const totalIndexCount = props.totalIndexCount; // How many pages are there?
+
+  // Create an array from 0 to totalIndexCount.
+  let indexArray = Array.from(Array(totalIndexCount).keys());
+
+  // If there are more pages than our MAX_THRESHOLD.
+  // Slice the array and push the last number in the array.
+  // We don't wanna show 100 buttons.
+  // Example: [0, 1, 2, 3, 4, 100]
+  if (props.totalIndexCount > MAX_THRESHOLD) {
+    indexArray = indexArray.slice(0, MAX_THRESHOLD);
+    indexArray.push(props.totalIndexCount - 1);
+  }
+
+  // For every index in the array, create a button.
+  // When clicked, the button will change the index + 1.
+  const numberButtons = indexArray.map(index => {
+    return {
+      active: props.index === index,
+      text: String(index + 1),
+      onClick: () => props.onIndexChange(index),
+    };
+  });
+
+  // Previous button object.
+  const prevButton = {
+    active: props.index !== 0,
+    text: 'Previous',
+    onClick: () => props.onIndexChange(props.index - 1),
+  };
+
+  // Next button object.
+  const nextButton = {
+    active: props.index !== props.totalIndexCount,
+    text: 'Next',
+    onClick: () => props.onIndexChange(props.index + 1),
+  };
+
+  const allButtons = [prevButton, ...numberButtons, nextButton];
+
+  return <MultiButtonGroup items={allButtons} />;
+};

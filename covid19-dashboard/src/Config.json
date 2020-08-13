@@ -1,9 +1,6 @@
 {
-  "host": "http://localhost/",
-  "geoIdParam": "geoId",
-  "placeTypeParam": "placeType",
-  "SUBTITLE": "COVID-19 Dashboard",
-  "FOOTER": "Data from WHO & NYT, based on reports from state and local health agencies",
+  "subtitle": "COVID-19 Dashboard",
+  "footer": "Data from WHO & NYT, based on reports from state and local health agencies",
   "placeTypes": ["Country", "State", "County"],
   "subregionSelectionButton": [{
     "id": "County",
@@ -14,11 +11,6 @@
       "text": "Compare States"
     }
   ],
-  "subregions": {
-    "World": "Country",
-    "Country": "State",
-    "State": "County"
-  },
   "pluralPlaceTypes": {
     "Country": "Countries",
     "State": "States",

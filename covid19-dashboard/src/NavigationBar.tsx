@@ -1,3 +1,19 @@
+/**
+ Copyright 2020 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
 import './navigationbar.scss'
 import React, {ChangeEvent} from "react";
 
@@ -33,8 +49,13 @@ export default (props: HeaderPropsType) => (
         <form className="form-inline">
           <input className="form-control mr-sm"
                  type="text"
+                 onKeyDown={
+                   // Prevents re-load of page when on-enter.
+                   (e) => {
+                   if (e.keyCode === 13) e.preventDefault()
+                 }}
                  onChange={props.onType}
-                 placeholder={"Search"}/>
+                 placeholder={"Search for Place"}/>
         </form>
       </div>
     </nav>

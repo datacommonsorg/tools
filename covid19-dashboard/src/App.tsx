@@ -1,140 +1,119 @@
+/**
+ Copyright 2020 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
 import React from 'react';
 import DataTable from './DataTable';
 import MultiButtonGroup from './MultiButtonGroup';
 import CumulativePanel from './CumulativePanel';
 import NavigationBar from './NavigationBar';
-import BreadcrumbNav from './BreadcrumbNav';
-import {getLatestDate} from './Utils';
+import {getLatestDate, goToPlace} from './Utils';
 import Config from './Config.json';
 import './index.css';
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
-import {DataType, TimeSeriesType, ValueType} from './Types';
+import {GeoIdToDataType, GeoIdToPlaceInfoType} from './Types';
 import Content from './Content.json';
 import debounce from 'lodash/debounce';
+import Breadcrumb from "react-bootstrap/cjs/Breadcrumb";
+import Place from "./Place";
 
 type AppPropsType = {
   location: any;
 };
 
 type AppStateType = {
+  // When searching, this value gets updated.
   searchQuery: string;
 };
 
 class App extends React.Component<AppPropsType, AppStateType> {
+  // The geoId we are currently observing. Default is World.
   geoId: string;
+
+  // The place type we are currently observing. Default is Country.
+  // Can be "Country", "State" or "County.
   placeTypeToShow: string;
-  data: DataType;
-  places: {[geoId: string]: [string, string, string]};
+
+  // Every geoId contains a Place object.
+  // The place object has information such as name, containedIn and data.
+  places: {[geoId: string]: Place};
+
 
   state = {
-    searchQuery: '', // When searching, this value gets updated.
+    searchQuery: '',
   };
 
   constructor(props: AppPropsType) {
     super(props);
     const urlParams = new URLSearchParams(this.props.location.search);
-
-    // The geoId we are currently observing. Default is World.
-    this.geoId = urlParams.get(Config.geoIdParam) || 'World';
-
-    // The place type we are currently observing. Default is Country.
-    // Can be "Country", "State" or "County.
-    this.placeTypeToShow = urlParams.get(Config.placeTypeParam) || 'Country';
-
-    // Every geoId contains a TimeSeries.
-    // geoId -> date -> value
-    this.data = {};
-
-    // Every geoId contains information in the form of a tuple.
-    // geoId -> (name, containedIn, placeType)
-    // name: the name of the place. Example: "United States".
-    // containedIn: the geoId of its parent place.
-    // placeType: the type of place. "Country", "State", "County".
-    this.places = {};
+    this.geoId = urlParams.get('geoId') || 'World';
+    this.placeTypeToShow = urlParams.get('placeType') || 'Country';
+    this.places = {}
   }
 
   /**
-   * On page load, fetch all places and data in parallel.
+   * On page load, fetch all places and timeSeries data in parallel.
    */
   componentDidMount = () => {
-    this.fetchPlaces();
     this.fetchData();
   };
 
   /**
-   * Fetches all the place information.
-   * Stores an object where each key/geoId maps to a tuple of info.
-   * geoId -> (name, containedIn, placeType).
-   */
-  fetchPlaces = () => {
-    fetch(Config.host + 'api/places').then(response => {
-      response.json().then(json => {
-        // Store response.
-        this.places = json;
-        this.forceUpdate();
-      });
-    });
-  };
-
-  /**
-   * Fetches all the data.
+   * Fetches all the timeSeries data from APIs including /api/places
+   * which contains a place's info such as name and containedIn.
    * Stores an object where each geoId maps to
    * a set of keys containing the data.
    */
   fetchData = (): void => {
-    const url = Config.host + 'api/data/';
+    const currentData = `data/${this.placeTypeToShow}`
+    const apis = [
+      // contains  data
+      currentData,
+      // contains place information
+      "places",
+      // used to cache the data for speed
+      'data/Country', 'data/State', 'data/County']
+    const promises = apis.map(api => fetch('http://localhost/api/' + api))
 
-    // Iterate through the array of placeTypes
-    // Fetch data for that specific placeType.
-    const promises = Config.placeTypes.map(place => {
-      return fetch(url + place);
-    });
 
-    // Fetch all data in parallel.
-    Promise.all(promises).then(responses => {
-      responses.forEach(response => {
-        response.json().then(json => {
-          this.data = {...this.data, ...json};
-          // If this is the placeType we want to show
-          // Force update the page, to display the new data.
-          if (response.url.includes(this.placeTypeToShow)) {
-            this.forceUpdate();
-          }
-        });
-      });
-    });
-  };
+    Promise.all(promises).then(([dataResponse, placeInfoResponse]) => {
+      // Get the stat_var data as a dictionary, where geoId->stat_var->date->value.
+      dataResponse.json().then((geoIdToData: GeoIdToDataType) => {
+        // Get the placeInfo as an object.
+        // geoId->{name, containedIn, placeType}.
+        placeInfoResponse.json().then((geoIdToInfo: GeoIdToPlaceInfoType) => {
+          // Create the Place object and store it under places.
+          Object.keys(geoIdToInfo).forEach(geoId => {
+            const placeInfo = geoIdToInfo[geoId]
+            const timeSeriesData = geoIdToData?.[geoId] || {}
+            this.places[geoId] = new Place(geoId, placeInfo, timeSeriesData)
 
-  /**
-   * Navigate to a different geoId.
-   * @param geoId: the place's geoId we want to view.
-   * @param placeType: the types of places we want to view.
-   * Example: geoId=country/USA and placeType=County
-   * would display all counties in the USA.
-   */
-  goToGeoId = (geoId?: string, placeType?: string): void => {
-    let newUrl = '/';
+          })
 
-    // Redirect to a specific geoId.
-    if (geoId && geoId !== 'World') {
-      newUrl += `?${Config.geoIdParam}=${geoId}`;
-    } else {
-      // if !geoId or geoId == 'World', redirect to homepage.
-      window.location.href = '/';
-      return;
-    }
+          Object.values(this.places).forEach(place => {
+            const containedIn = place.containedIn
+            const parentPlace = this.places[containedIn]
+            place.setParentPlace(parentPlace)
+          })
 
-    // If placeType has been given, redirect to this placeType.
-    if (placeType && geoId) {
-      newUrl += `&${Config.placeTypeParam}=${placeType}`;
-    } else if (!placeType && geoId) {
-    // Otherwise, State is defaulted.
-      newUrl += `&${Config.placeTypeParam}=State`;
-    }
-
-    // Redirect to new url.
-    window.location.href = newUrl;
-  };
+          // Re-render page to display data.
+          this.forceUpdate()
+        })
+      })
+    })
+  }
 
   /**
    * Get the parent places of the current geoId.
@@ -144,7 +123,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
    * Note: The geoId is also returned in the list at the last index.
    */
   getParentPlaces = (): string[] => {
-    // If /places API hasn't finished loading yet, exit out.
+    // If none of the places have loaded yet, exit out.
     if (!Object.keys(this.places).length) {
       return [];
     }
@@ -156,14 +135,18 @@ class App extends React.Component<AppPropsType, AppStateType> {
     const parentPlaces: string[] = [];
 
     // There can only be "World", "Country", "States", "County".
-    // So our iteration shouldn't go above 4.
-    // If it does, there is an issue, break out.
-    for (let i = 0; i < 4; i++) {
+    // So our iteration shouldn't go above our placesTypes length.
+    // If it does, there is an issue and break out of loop.
+    for (let i = 0; i <= Config.placeTypes.length; i++) {
+      // If we've reached the highest-level place, break out.
       if (!geoId) break;
 
-      const placeInfo = this.places[geoId];
+      const place = this.places[geoId];
+      // Add geoId to list.
       parentPlaces.unshift(geoId);
-      geoId = placeInfo?.[1]; // place containedIn
+      // Travel up to parent geoId.
+      // Repeat step.
+      geoId = place?.containedIn;
     }
 
     return parentPlaces;
@@ -172,97 +155,69 @@ class App extends React.Component<AppPropsType, AppStateType> {
   /**
    * When the user searches on the search bar
    * searchQuery is updated in real-time.
+   * debounce is used to only trigger a one setState every 250ms.
    * @param value: contains the text the user inputted.
    */
   onSearchInput = debounce((value: string): void => {
     this.setState({searchQuery: value});
-  }, 500);
+  }, 250);
 
   render = () => {
-    // Create objects for all places in our dataset.
-    const data: ValueType[] = Object.values(this.data).map(obj => {
-      const geoId: string = obj.geoId; // geoId of the place
-      const placeInfo = this.places[geoId] || []; // (name, containedIn, placeType)
-      const [placeName, containedIn, placeType] = placeInfo; // place info
-      const parentPlaceName = this.places[containedIn]?.[0]; // name of parent
+    // The current Place we are viewing.
+    const selectedPlace = this.places[this.geoId]
 
-      // fullName is the placeName + parentPlaceName.
-      let fullName = placeName;
-
-      // If not a country, append parent place to name.
-      // Miami-Dade becomes "Miami-Dade, Florida".
-      if (placeType !== 'Country') {
-        fullName += ', ' + parentPlaceName;
-      }
-
-      // Decide what should happen when a user clicks on the place.
-      // Default is undefined, unless the place is a State or the US.
-      let onClick = undefined;
-      if (placeType === 'State' || obj.geoId === 'country/USA') {
-        // If the user wants to dive into a place,
-        // what placeTypes will they be shown?
-        // County, Country or State?
-        // Example: If user clicks on State, they should be shown counties.
-        const subregions: {[key: string]: string} = Config.subregions;
-        const placeTypeToShow = subregions[placeType];
-        onClick = () => this.goToGeoId(geoId, placeTypeToShow);
-      }
-
-      return {
-        ...obj, // destructure all timeSeries. They are stored by key.
-        name: fullName, // name of the place
-        containedIn: containedIn, // geoId of the parent place
-        placeType: placeType, // "Country", "State" or "County"
-        onClick: onClick, // What should happen when this geoId is clicked.
-      };
-    });
+    // Convert the object of geoId->Place to a list of Places.
+    const places: Place[] = Object.values(this.places).filter((place) => {
+      return place.keyToTimeSeries;
+    })
 
     // Filter the data to only contain the places that are contained
     // in this.geoId. That is, if this.geoId === "Florida".
     // Only show those places that are contained in Florida.
-    let filteredData = data.filter(obj => {
+    let filteredPlaces = places.filter(place => {
       // If the selected geoId === 'country/USA', then filter by placeType.
       // Otherwise filter by places containedIn this.geoId.
       if (this.geoId === 'country/USA') {
-        return obj.placeType === this.placeTypeToShow;
+        return place.placeType === this.placeTypeToShow;
       } else {
-        return obj.containedIn === this.geoId;
+        return place.containedIn === this.geoId;
       }
     });
 
-    // Generate the cumulativePanel columns given a configuration in Content.json
-    const cumulativePanelColumns = Content.cumulativePanel.map(config => {
-      // dataKey is the key we want to sum up the values for.
-      // This key must be present in the dataset.
-      // Example: cumulativeCases.
-      const dataKey = config.dataKey;
-      // Sum up all values for all geoIds for the latest date in the time-series.
-      const values = filteredData.map(data => {
+    // Generate the cumulativePanel columns from Content.json
+    const cumulativePanelColumns = Content.cumulativePanel
+      .map(({dataKey, title, color}: {
+        dataKey: string, title: string, color: string}) => {
+      // Sum values for all geoIds for the latest date in the time-series.
+      const values = filteredPlaces.map(place => {
         // Get the time-series for the given dataKey.
-        const cumulativeCases: TimeSeriesType = data[dataKey] || {};
+        // The dataKey comes from the configuration panel.
+        // It tells the panel what data to display.
+        const cumulativeStats = place.keyToTimeSeries[dataKey] || {};
         // Get a list of all dates.
-        const dates = Object.keys(cumulativeCases);
+        const dates = Object.keys(cumulativeStats);
         const latestDate = getLatestDate(dates);
         // Return the value for the latest date in the timeSeries.
-        return cumulativeCases[latestDate] || 0;
+        return cumulativeStats[latestDate] || 0;
       });
 
       // Sum up all the values for that specific dataKey.
       const value = values.reduce((a, b) => a + b, 0);
+
       // Return an object containing the configuration that column.
       return {
-        title: config.title,
-        color: config.color,
+        title: title,
+        color: color,
         value: value,
       };
     });
 
     // If the user entered something on the search bar.
-    // They are automatically filtering by searchQuery.
+    // Automatically filter by searchQuery.
     // Otherwise, omit this step.
     if (this.state.searchQuery) {
-      filteredData = data.filter(obj => {
-        const placeName = obj.name.toLowerCase();
+      filteredPlaces = places.filter(place => {
+        const placeName = (place.name + place.parentPlace?.name).toLowerCase()
         return placeName.includes(this.state.searchQuery);
       });
     }
@@ -272,17 +227,16 @@ class App extends React.Component<AppPropsType, AppStateType> {
     const parentPlaces = this.getParentPlaces();
 
     // Text describing the types of places viewing viewed.
-    // "Countries in", "States in", "Counties in"
+    // "Countries in", "States in", "Counties in".
     const pluralPlaceTypes: {[key: string]: string} = Config.pluralPlaceTypes;
     let subtitle = '';
 
-    // Get the name for the current geoId.
-    const placeName = this.places[this.geoId]?.[0] || '';
+
     // If placeName is "" or undefined, don't display a subtitle.
-    // Data hasn't finished loading.
-    if (placeName) {
+    // It means hasn't finished loading.
+    if (selectedPlace?.name) {
       // "Counties in Florida", "Countries in World"...
-      subtitle = pluralPlaceTypes[this.placeTypeToShow] + ' in ' + placeName;
+      subtitle = pluralPlaceTypes[this.placeTypeToShow] + ' in ' + selectedPlace.name;
     }
 
     // Update the site's HTML title to include the subtitle.
@@ -292,19 +246,27 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Example: World -> United States -> Florida
     const breadcrumbItems = parentPlaces.map(geoId => {
       return {
+        // Is the item active?
         active: this.geoId === geoId,
-        onClick: () => this.goToGeoId(geoId),
-        text: this.places[geoId]?.[0],
+        // What should happen when you click on it?
+        onClick: () => goToPlace(geoId),
+        // name of the place
+        text: this.places[geoId]?.name,
       };
     });
 
     // Subregion button that is displayed when viewing country/USA.
     // "Compare States" and "Compare Counties".
     const subregionButtons = Config.subregionSelectionButton.map(button => {
-      const onClick = () => this.goToGeoId(this.geoId, this.placeTypeToShow);
+      const placeType = button.id
+      // What should happen when a user clicks on the button.
+      const onClick = () => goToPlace(this.geoId, placeType);
       return {
+        // Is the button currently ON?
         active: this.placeTypeToShow === button.id,
+        // What should happen when you click on it?
         onClick: onClick,
+        // Text to display on button.
         text: button.text,
       };
     });
@@ -313,27 +275,40 @@ class App extends React.Component<AppPropsType, AppStateType> {
       <div>
         <NavigationBar
           title={'Data Commons'}
-          subtitle={Config.SUBTITLE}
+          subtitle={Config.subtitle}
           onType={e => {
             // Get the value and convert it to lowercase.
             const target = e.target as HTMLTextAreaElement;
             const value = target.value.toLowerCase();
             this.onSearchInput(value);
-          }}
-        />
+          }}/>
         <div className={'site-container'}>
           <div className={'header'}>
-            <BreadcrumbNav items={breadcrumbItems} />
+            {// Only display the breadcrumb if not in World view.
+              this.geoId !== 'World' &&
+            <Breadcrumb className={'breadcrumb-mod'}>
+              {breadcrumbItems.map((item, i) => {
+                return (
+                  <Breadcrumb.Item href="#"
+                                   key={i}
+                                   active={item.active}
+                                   onClick={item.onClick}>
+                    {item.text}
+                  </Breadcrumb.Item>
+                );
+              })}
+            </Breadcrumb>}
             <h2 className={'title'}>{subtitle}</h2>
-            {this.geoId === 'country/USA' && (
-              <MultiButtonGroup items={subregionButtons} />
-            )}
+            {
+              // Only display multi-button group if on US.
+              this.geoId === 'country/USA' &&
+            (<MultiButtonGroup items={subregionButtons}/>)}
           </div>
           <CumulativePanel textToValue={cumulativePanelColumns} />
           <div className={'content'}>
-            <DataTable data={filteredData} />
+            <DataTable data={filteredPlaces} />
           </div>
-          <footer>{Config.FOOTER}</footer>
+          <footer>{Config.footer}</footer>
         </div>
       </div>
     );

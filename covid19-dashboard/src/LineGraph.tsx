@@ -18,7 +18,7 @@ import React from "react";
 import {Tooltip, XAxis, YAxis, AreaChart, Area} from 'recharts';
 import sortBy from 'lodash/sortBy'
 import {numberWithCommas, Colors} from "./Utils";
-import IsoDate from "./IsoDate";
+import dayjs from "dayjs";
 
 type LineGraphPropsType = {
   data: {[date: string]: number},
@@ -45,7 +45,7 @@ type LineGraphPropsType = {
  */
 export default function LineGraph(props: LineGraphPropsType) {
   /**
-   * In charge of displaying the tooltip on-hover on the chart.
+   * Displays a larger LineGraph when hovering on a small LineGraph.
    */
   const customTooltip = ({active}: {active: boolean}) => {
     // Make sure that the current bar is actively being hovered on.
@@ -74,43 +74,60 @@ export default function LineGraph(props: LineGraphPropsType) {
 
   const inputData = props.data || {}
 
-  const data = Object.entries(inputData).map(obj => {
-    const date = new IsoDate(obj[0]).format("MMM D")
+  // Convert the data to a list of objects that the graph can understand.
+  const data = Object.entries(inputData).map(([date, value ]) => {
+    // Prettify the date.
+    const prettyDate = dayjs(date).format("MMM D")
     return {
-      xAxisLabel: date,
-      date: obj[0],
-      value: obj[1]
+      // The label to display on graph.
+      xAxisLabel: prettyDate,
+      // Real iso formatted date.
+      date: date,
+      // The number for that given date.
+      value: value
     }
   })
 
+  // If every value in timeSeries are 0, don't return anything.
   if (data.every(item => item.value === 0)) {
-    return <div>
-    </div>
+    return <></>
   }
 
+  // Sort the data by date.
   const sortedData = sortBy(data, ['date'])
 
-  let value: string;
+  // If value is a decimal, round to 1 significant digit.
+  // Otherwise, round to the nearest whole number.
+  let graphValue: string;
   if (props.value < 1) {
-    value = props.value.toFixed(1)
+    graphValue = props.value.toFixed(1)
   } else {
     const roundedValue = Math.round(props.value)
-    value = numberWithCommas(roundedValue)
+    graphValue = numberWithCommas(roundedValue)
   }
 
 
-  const color = Colors(props.color || "#990001")
+  // Color of the graph.
+  const color = Colors(props.color || "--dc-red-strong")
+  // Width of the graph.
   const width = props.width || 125
+  // Height of the graph.
   const height = props.height || 60
+  // Should the Y and X axis be shown?
   const showAxis = props.showAxis
+  // Only show axis every n-"interval" dates.
+  // Looks cleaner.
   const interval = Math.round(sortedData.length / 5)
+  // The style of the X-Axis and Y-Axis.
+  const axisStyle = {ill: color, fontSize: 12}
 
   return (
-    <div className={"line-graph"} style={{width: width}}>
-      {value &&
+    <div className={"line-graph"}
+         style={{width: width}}>
+      {graphValue &&
       <h6 className={"value"}
           style={{color: color}}>
-        {value}
+        {graphValue}
       </h6>}
       <AreaChart className={"graph " + props.className}
                  width={width}
@@ -125,12 +142,12 @@ export default function LineGraph(props: LineGraphPropsType) {
         <Tooltip position={{y: -170, x: -170}}
                  wrapperStyle={{zIndex: 1000}}
                  content={customTooltip}/>
-        <XAxis tick={{ill: color, fontSize: 12}}
+        <XAxis tick={axisStyle}
                dataKey={"xAxisLabel"}
                interval={interval}
                hide={!showAxis}/>
         <YAxis type={"number"}
-               tick={{ill: color, fontSize: 12}}
+               tick={axisStyle}
                hide={!showAxis}/>
       </AreaChart>
     </div>
