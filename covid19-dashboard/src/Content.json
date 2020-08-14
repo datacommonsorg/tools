@@ -1,0 +1,57 @@
+{
+  "cumulativePanel": [{
+    "title": "Total Cases",
+    "dataKey": "cumulativeCases",
+    "color": "--dc-red-strong"
+  },
+    {
+      "title": "Total Deaths",
+      "dataKey": "cumulativeDeaths",
+      "color": "grey"
+    }
+  ],
+  "table": [{
+    "title": "Cases",
+    "id": "movingAverageCases",
+    "typeOf": "lineGraph",
+    "color": "--dc-red-strong",
+    "graphSubtitle": "New Cases (7d Moving Average)"
+  },
+    {
+      "title": "Deaths",
+      "id": "movingAverageDeaths",
+      "typeOf": "lineGraph",
+      "color": "grey",
+      "graphSubtitle": "New Deaths (7d Moving Average)"
+    },
+    {
+      "title": "Cases / 1M People",
+      "id": "perCapitaCases",
+      "typeOf": "lineGraph",
+      "color": "--dc-red-strong",
+      "graphSubtitle": "New Cases / 1M People (7d Moving Average)"
+    },
+    {
+      "title": "Deaths / 1M People",
+      "id": "perCapitaDeaths",
+      "typeOf": "lineGraph",
+      "color": "grey",
+      "graphSubtitle": "New Deaths / 1M People (7d Moving Average)"
+    },
+    {
+      "title": "Cases 7d Change",
+      "id": "pctChangeCases",
+      "typeOf": "percent"
+    },
+    {
+      "title": "Deaths 7d Change",
+      "id": "pctChangeDeaths",
+      "typeOf": "percent"
+    },
+    {
+      "title": "Recovered",
+      "id": "movingAverageRecovered",
+      "typeOf": "number"
+    }
+  ]
+}
