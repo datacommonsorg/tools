@@ -1,0 +1,20 @@
+{
+  "subtitle": "COVID-19 Dashboard",
+  "footer": "Data from WHO & NYT, based on reports from state and local health agencies",
+  "placeTypes": ["Country", "State", "County"],
+  "subregionSelectionButton": [{
+    "id": "County",
+    "text": "Compare Counties"
+  },
+    {
+      "id": "State",
+      "text": "Compare States"
+    }
+  ],
+  "pluralPlaceTypes": {
+    "Country": "Countries",
+    "State": "States",
+    "County": "Counties"
+  },
+  "tableDefaultSortBy": "movingAverageCases"
+}
