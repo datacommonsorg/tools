@@ -20,6 +20,16 @@ DateToValueListType = List[Tuple[str, float]]
 
 def _difference(date_to_value: DateToValueListType,
                 n_difference: int):
+    """
+    Calculate the difference between any day and n_difference days.
+    Return a new list where each date contains that date's values difference.
+    :param date_to_value: a list of tuples: (date, value).
+    date type is a string in ISO-8601. Example: "2020-01-02"
+    :param n_difference: the number of days prior to any date to calculate.
+    Example: n_difference = 7, difference between a day and 1 week prior.
+    :return: a new list of tuples of type of (date, value)
+    where each date contains the difference of the previous n_difference days.
+    """
     # n_difference can't be negative.
     # We can't perform the difference of a negative n_difference.
     if n_difference <= 0:
@@ -46,13 +56,12 @@ def _difference(date_to_value: DateToValueListType,
 def _moving_average(date_to_val: DateToValueListType,
                     chunk_size: int = 7) -> DateToValueListType:
     """
-    Method allows us to calculate the time-series average on our dataset.
+    Allows us to calculate the time-series average on our dataset.
     :param date_to_val: a list of tuples of type of (date, value).
     date type is a string in ISO-8601. Example: "2020-01-02"
     :param chunk_size: number of days to take the average of.
     :return: a new list of tuples of type of (date, value)
-    where each date contains the average
-    of the previous N-chunk_size days.
+    where each date contains the average of the previous N-chunk_size days.
     """
     # chunk_size can't be negative.
     # We can't perform the moving average of negative chunk_size.
@@ -90,6 +99,7 @@ def _moving_average(date_to_val: DateToValueListType,
         output.append((date, average))
 
     return output
+
 
 def _pct_changes(date_to_val: DateToValueListType,
                  days_from_baseline: int = 7) -> DateToValueListType:

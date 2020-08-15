@@ -55,7 +55,7 @@ PlaceToInfoType = Dict[str, Dict[str, str]]
 def static_proxy(path):
     """
     Return the /path file in the directory from the ./build directory.
-    For example, /index.css would return the index.css file.
+    Example: /index.css would return the index.css file.
     No-caching HTTP headers are sent.
     :param path: the file path to return.
     :return: the file if it exists.
@@ -110,10 +110,10 @@ def places():
     countries = _get_countries()
     states = _get_us_places('State')
     counties = _get_us_places('County')
+    world = {'World': Place("World", "", "").to_json()}
 
     # Include the World as a geoId.
-    data = {**countries, **states, **counties,
-            'World': _place_info_factory("World", "", "")}
+    data = {**countries, **states, **counties, **world}
 
     response = _add_browser_cache_headers_to_response(data)
     return response
@@ -148,7 +148,7 @@ def _get_data(place_type: str = "State") -> GeoIdToDataType:
     if place_type not in STAT_VARS:
         return {}
 
-    # 'Cases' and 'Deaths' are example of keys.
+    # 'Cases' and 'Deaths' are examples of keys.
     # Get all the data for the requested place_type.
     # Example: All 'Cases' and 'Deaths' for 'Country'
     for key in STAT_VARS[place_type]:
@@ -347,7 +347,7 @@ def _get_countries() -> PlaceToInfoType:
         name: str = place["name"]
         geo_id: str = place["place"]
         # All countries belong to the world.
-        output[geo_id] = _place_info_factory(name, "World", "Country")
+        output[geo_id] = Place(name, "World", "Country").to_json()
 
     return output
 
@@ -376,9 +376,7 @@ def _get_us_places(place_type: str = "State") -> PlaceToInfoType:
     # Store all the US State metadata as an object of geoId->info.
     # Where the object is of type geo_id -> {name, containedIn, placeType}
     states: PlaceToInfoType = {
-        geo_id: _place_info_factory(name,
-                                    "country/USA",
-                                    "State")
+        geo_id: Place(name, "country/USA", "State").to_json()
         for geo_id, name in state_names.items()
     }
 
@@ -396,7 +394,7 @@ def _get_us_places(place_type: str = "State") -> PlaceToInfoType:
 
     # Keep track of what State each County belongs to.
     # geo_id -> belongs_to_geo_id.
-    # EXAMPLE: {"geoId/12000": "geoId/12"}
+    # Example: {"geoId/12000": "geoId/12"}
     county_to_state: Dict[str, str] = {}
     for value in response:
         if "place" not in value:
@@ -415,19 +413,15 @@ def _get_us_places(place_type: str = "State") -> PlaceToInfoType:
     # Store all the US County metadata as a dict of tuples.
     # geo_id -> (name: str, containedIn: str, placeType: str).
     counties: PlaceToInfoType = {
-        geo_id: _place_info_factory(name, county_to_state[geo_id], "County")
+        geo_id: Place(name, county_to_state[geo_id], "County").to_json()
         for geo_id, name in county_names.items()
     }
 
     # NYT combines several counties into one larger county.
     # Only for the following two exceptions.
     # https://github.com/nytimes/covid-19-data#geographic-exceptions
-    counties["geoId/3651000"] = _place_info_factory("New York City",
-                                                    "geoId/36",
-                                                    "County")
-    counties["geoId/2938000"] = _place_info_factory("Kansas City",
-                                                    "geoId/29",
-                                                    "County")
+    counties["geoId/3651000"] = Place("New York City", "geoId/36","County").to_json()
+    counties["geoId/2938000"] = Place("Kansas City", "geoId/29", "County").to_json()
 
     return counties
 
@@ -439,7 +433,7 @@ def _get_stats_by_date(geo_ids: List[str],
     :param geo_ids: list of geo_ids to query data for.
     :param stats_var: the DC stats_var to query data for.
     :return: a dict of type geo_id->date->value.
-    EXAMPLE: {geoId/12: {'2020-01-01': 10, '2020-01-02: 20'},
+    Example: {geoId/12: {'2020-01-01': 10, '2020-01-02: 20'},
               geoId/13: {'2020-01-01': 6, '2020-01-02: 15'}}
     """
     response = send_request(
@@ -449,7 +443,7 @@ def _get_stats_by_date(geo_ids: List[str],
     )
 
     # geo_id->date->value
-    # EXAMPLE: {geoId/12: {'2020-01-01': 10, '2020-01-02: 20'},
+    # Example: {geoId/12: {'2020-01-01': 10, '2020-01-02: 20'},
     #          geoId/13: {'2020-01-01': 6, '2020-01-02: 15'}}
     output: GeoIdToStatsType = defaultdict(dict)
 
@@ -487,12 +481,14 @@ def _add_browser_cache_headers_to_response(data: Dict,
     return response
 
 
-def _place_info_factory(name, contained_in, place_type):
-    return {
-        "name": name,
-        "containedIn": contained_in,
-        "placeType": place_type
-    }
+class Place:
+    def __init__(self, name, contained_in, place_type):
+        self.name = name
+        self.containedIn = contained_in
+        self.placeType = place_type
+
+    def to_json(self):
+        return self.__dict__
 
 
 if __name__ == "__main__":
