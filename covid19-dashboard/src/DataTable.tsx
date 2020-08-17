@@ -192,8 +192,7 @@ export default class DataTable extends React.Component<
         // Get the timeSeries for our current column's id.
         const timeSeries = place.keyToTimeSeries[category.id] || {};
         return (
-          <Th
-            timeSeries={timeSeries}
+          <Th timeSeries={timeSeries}
             typeOf={category.typeOf}
             key={index}
             className={clickableClass}
@@ -204,6 +203,7 @@ export default class DataTable extends React.Component<
         );
       });
 
+      const subregionType = place.getSubregionType()
 
       let placeFullName: string;
       if (place.placeType !== 'Country') {
@@ -212,15 +212,20 @@ export default class DataTable extends React.Component<
         placeFullName = place.name;
       }
 
+      let onClick = () => {};
+      if (subregionType) {
+        onClick = () => goToPlace(place.geoId, subregionType)
+      }
+
       return (
         <tbody key={index}>
-        <tr key={index}
-            className={clickableClass}
-            onClick={() => goToPlace(place.geoId, place.getSubregionType())}>
-          <th>{tableRanking}</th>
-          <th>{placeFullName}</th>
-          {thValues}
-        </tr>
+          <tr key={index}
+              className={clickableClass}
+              onClick={onClick}>
+            <th>{tableRanking}</th>
+            <th>{placeFullName}</th>
+            {thValues}
+          </tr>
         </tbody>
       );
     });
