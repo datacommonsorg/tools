@@ -67,11 +67,12 @@ class App extends React.Component<AppPropsType, AppStateType> {
    * On page load, fetch all places and timeSeries data in parallel.
    */
   componentDidMount = () => {
-    this.fetchData();
+    this.fetchData()
+    this.cacheData()
   };
 
   /**
-   * Fetches all the timeSeries data from APIs including /api/places
+   * Fetches placeTypeToShow's data from APIs including /api/places
    * which contains a place's info such as name and containedIn.
    * Stores an object where each geoId maps to
    * a set of keys containing the data.
@@ -82,11 +83,9 @@ class App extends React.Component<AppPropsType, AppStateType> {
       // contains  data
       currentData,
       // contains place information
-      "places",
-      // used to cache the data for speed
-      'data/Country', 'data/State', 'data/County']
-    const promises = apis.map(api => fetch('http://localhost/api/' + api))
+      "places"]
 
+    const promises = apis.map(api => fetch('/api/' + api))
 
     Promise.all(promises).then(([dataResponse, placeInfoResponse]) => {
       // Get the stat_var data as a dictionary, where geoId->stat_var->date->value.
@@ -99,7 +98,6 @@ class App extends React.Component<AppPropsType, AppStateType> {
             const placeInfo = geoIdToInfo[geoId]
             const timeSeriesData = geoIdToData?.[geoId] || {}
             this.places[geoId] = new Place(geoId, placeInfo, timeSeriesData)
-
           })
 
           Object.values(this.places).forEach(place => {
@@ -113,6 +111,24 @@ class App extends React.Component<AppPropsType, AppStateType> {
         })
       })
     })
+  }
+
+  /**
+   * Downloads all timeSeries data for all places and caches it locally.
+   * This is done for speed.
+   */
+  cacheData = (): void => {
+    const cacheApis = Config.placeTypes
+    // Delete this.placeTypeToShow since it is already being requested by fetch data.
+    cacheApis.splice(
+      cacheApis.indexOf(this.placeTypeToShow), 1
+    )
+
+    const cachePromises = cacheApis.map(api => {
+      return fetch('/api/data/' + api);
+    })
+
+    Promise.all(cachePromises).then()
   }
 
   /**
