@@ -23,7 +23,7 @@ import {Colors} from './Utils'
 type ThPropsType = {
   timeSeries: TimeSeriesType,
   typeOf: string,
-  className: string,
+  className?: string,
   graphTitle?: string,
   graphSubtitle?: string
   color?: string
