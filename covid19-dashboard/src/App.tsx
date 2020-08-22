@@ -67,8 +67,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
    * On page load, fetch all places and timeSeries data in parallel.
    */
   componentDidMount = () => {
-    this.fetchData()
-    this.cacheData()
+    this.fetchData();
   };
 
   /**
@@ -78,58 +77,78 @@ class App extends React.Component<AppPropsType, AppStateType> {
    * a set of keys containing the data.
    */
   fetchData = (): void => {
-    const currentData = `data/${this.placeTypeToShow}`
+    // Contains the data for placeTypeToShow
+    const currentData = `data/${this.placeTypeToShow}`;
     const apis = [
-      // contains  data
+      // contains data
       currentData,
       // contains place information
-      "places"]
+      'places',
+    ];
 
-    const promises = apis.map(api => fetch('/api/' + api))
+    const promises = apis.map(api => fetch(`/api/${api}`));
 
     Promise.all(promises).then(([dataResponse, placeInfoResponse]) => {
-      // Get the stat_var data as a dictionary, where geoId->stat_var->date->value.
+      // Get the stat_var data as a dictionary: geoId->stat_var->date->value.
       dataResponse.json().then((geoIdToData: GeoIdToDataType) => {
         // Get the placeInfo as an object.
         // geoId->{name, containedIn, placeType}.
         placeInfoResponse.json().then((geoIdToInfo: GeoIdToPlaceInfoType) => {
           // Create the Place object and store it under places.
           Object.keys(geoIdToInfo).forEach(geoId => {
-            const placeInfo = geoIdToInfo[geoId]
-            const timeSeriesData = geoIdToData?.[geoId] || {}
-            this.places[geoId] = new Place(geoId, placeInfo, timeSeriesData)
-          })
+            const placeInfo = geoIdToInfo[geoId];
+            const timeSeriesData = geoIdToData?.[geoId] || {};
+            this.places[geoId] = new Place(geoId, placeInfo, timeSeriesData);
+          });
 
           Object.values(this.places).forEach(place => {
-            const containedIn = place.containedIn
-            const parentPlace = this.places[containedIn]
-            place.setParentPlace(parentPlace)
-          })
+            const containedIn = place.containedIn;
+            const parentPlace = this.places[containedIn];
+            place.setParentPlace(parentPlace);
+          });
+
+          // Download the rest of the data once all placeInfo
+          // has been stored.
+          this.cacheData();
 
           // Re-render page to display data.
-          this.forceUpdate()
-        })
-      })
-    })
-  }
+          this.forceUpdate();
+        });
+      });
+    });
+  };
 
   /**
-   * Downloads all timeSeries data for all places and caches it locally.
+   * Downloads all timeSeries data for all places
+   * except this.placeTypeToView and caches it locally.
    * This is done for speed.
    */
   cacheData = (): void => {
-    const cacheApis = Config.placeTypes
-    // Delete this.placeTypeToShow since it is already being requested by fetch data.
-    cacheApis.splice(
-      cacheApis.indexOf(this.placeTypeToShow), 1
-    )
+    const cacheApis = Config.placeTypes;
+    // Delete this.placeTypeToShow from the array since
+    // since it is already being requested by fetch data.
+    cacheApis.splice(cacheApis.indexOf(this.placeTypeToShow), 1);
 
     const cachePromises = cacheApis.map(api => {
       return fetch('/api/data/' + api);
-    })
+    });
 
-    Promise.all(cachePromises).then()
-  }
+    // We don't really care about this data, we only wanted to cache it.
+    // None the less, we still store it in the background because
+    // it can help us search when using the search bar.
+    Promise.all(cachePromises).then(responses => {
+      responses.forEach(response => {
+        response.json().then(json => {
+          Object.entries(json).forEach(([geoId, value]) => {
+            if (geoId in this.places) {
+              // Store the timeSeries data for the geoId.
+              this.places[geoId].keyToTimeSeries = value as KeyToTimeSeriesType
+            }
+          })
+        })
+      })
+    });
+  };
 
   /**
    * Get the parent places of the current geoId.
