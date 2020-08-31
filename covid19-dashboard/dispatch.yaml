@@ -1,0 +1,3 @@
+dispatch:
+  - url: "*/covid19/*"
+    service: default
