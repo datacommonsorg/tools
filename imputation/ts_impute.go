@@ -1,37 +1,37 @@
 /*
-Package mean implements a library for data series imputation.
-The dates in the data series are assumed to be either of the forms of (all have the same format):
+Package imputation implements a library for time series imputation.
+The dates in the time series are assumed to be either of the forms of (all have the same format):
 "YYYY-MM-DD" or
 "YYYY-MM" or
 "YYYY"
 
-The writter library first find the minimum gap of existing points and then add
-new data points with values according to the selected method.
+The imputation library first finds the minimum gap of existing points and then adds new data points with values according to the selected method.
 */
 package imputation
 
 import (
-    "fmt"
+	"errors"
+	"fmt"
+	"log"
 	"sort"
 	"time"
-    "log"
-    "errors"
 )
 
+// TimeSeries stores a time series.  Dates are expressed in ISO 8061 format as illustrated in the constants below.
 type TimeSeries map[string]float64
 
-// We assume 3 formattig for the data points values: daily, monthly, and yearly.
+// Assume 3 formattig for the dates: daily, monthly, and yearly.
 const (
 	dayfmt   = "2006-01-02"
 	monthfmt = "2006-01"
 	yearfmt  = "2006"
 )
 
-// The diff function returns the minimum gap (will change to GCD) from a given set of data points 
+// The diff function returns the minimum gap (will change to GCD) from a given set of data points
 // that all have the same format.
 // TODO(eftekhari-mhs): add OK, ERR return values and handle errors.
 func diff(keys []string, dateFormat string) (int, int, int) {
-    year, month, day := 0, 0, 0
+	year, month, day := 0, 0, 0
 
 	duration := 1000 //A large number.
 
@@ -56,10 +56,11 @@ func diff(keys []string, dateFormat string) (int, int, int) {
 }
 
 // FillMean returns TimeSeries with missing datapoints with value = mean(value of existing points).
-// TODO(eftekhari-mhs): Add error to the return values and handle error cases.
+// TODO(eftekhari-mhs): Handle error cases.
 func FillMean(ts TimeSeries) (TimeSeries, error) {
 	if len(ts) < 3 {
-        return ts, errors.New("not enough data to impute")
+		log.Printf("not enough data to impute")
+		return ts, nil
 	}
 	keys := make([]string, 0)
 	var mean float64 = 0
@@ -69,27 +70,27 @@ func FillMean(ts TimeSeries) (TimeSeries, error) {
 	}
 	mean = mean / float64(len(keys))
 
-	parseFormat := "err"
+	var parseFormat string
 	switch len(keys[0]) {
 	case 4:
 		parseFormat = yearfmt
 	case 7:
 		parseFormat = monthfmt
-    case 10:
-        parseFormat = dayfmt
+	case 10:
+		parseFormat = dayfmt
 	}
-    
-    if parseFormat == "err" {
-        return ts, errors.New("date format is not ISO 8601")
-    }
+
+	if parseFormat == "" {
+		return ts, errors.New("date format is not ISO 8601")
+	}
 
 	yStep, mStep, dStep := diff(keys, parseFormat)
 
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
-    
-    sort.Strings(keys)
-    
-    //TODO(eftekhari-mhs): Handle errors.
+
+	sort.Strings(keys)
+
+	//TODO(eftekhari-mhs): Handle errors.
 	startDate, _ := time.Parse(parseFormat, keys[0])
 	endDate, _ := time.Parse(parseFormat, keys[len(keys)-1])
 
