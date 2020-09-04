@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// computeMeans computes the mean of the given non-empty time series's data.
 func computeMean(s TimeSeries) float64 {
 	var mean float64
 	for _, v := range s {
@@ -13,15 +14,18 @@ func computeMean(s TimeSeries) float64 {
 	return mean
 }
 
+// createOutput generate a new time series by adding desiredValues as data points and replace
+// their value by mean.
 func createOutput(ts TimeSeries, desiredValues []string) TimeSeries {
 	out := make(TimeSeries, len(ts)+len(desiredValues))
 	for k, v := range ts {
 		out[k] = v
 	}
-	m := computeMean(ts)
-
-	for _, k := range desiredValues {
-		out[k] = m
+	if len(ts) > 0 {
+		m := computeMean(ts)
+		for _, k := range desiredValues {
+			out[k] = m
+		}
 	}
 	return (out)
 }
