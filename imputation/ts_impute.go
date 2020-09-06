@@ -27,7 +27,7 @@ const (
 	yearfmt  = "2006"
 )
 
-// The diff function returns the minimum gap (will change to GCD) from a given *sorted* set of data points
+// The diff function returns the minimum gap (will change to GCD) from a given set of data points
 // that all have the same format.
 // TODO(eftekhari-mhs): add OK, ERR return values and handle errors.
 func diff(keys []string, dateFormat string) (int, int, int) {
@@ -35,6 +35,7 @@ func diff(keys []string, dateFormat string) (int, int, int) {
 
 	duration := 1000 //A large number.
 
+	sort.Strings(keys)
 	for i := 0; i < len(keys)-1; i++ {
 		start, _ := time.Parse(dateFormat, keys[i])
 		end, _ := time.Parse(dateFormat, keys[i+1])
@@ -54,37 +55,20 @@ func diff(keys []string, dateFormat string) (int, int, int) {
 	return year, month, day
 }
 
-// FillNA returns TimeSeries with missing datapoints with assigned values according to the selected method.
-// Method can be "mean", "median", and "zero".
+// FillMean returns TimeSeries with missing datapoints with value = mean(value of existing points).
 // TODO(eftekhari-mhs): Handle error cases.
-func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
+func FillMean(ts TimeSeries) (TimeSeries, error) {
 	if len(ts) < 3 {
 		log.Printf("not enough data to impute")
 		return ts, nil
 	}
 	keys := make([]string, 0)
-	values := make([]float64, 0)
+	var mean float64 = 0
 	for k, v := range ts {
 		keys = append(keys, k)
-		values = append(values, v)
+		mean += v
 	}
-	sort.Strings(keys)
-
-	var fillV float64
-	switch method {
-	case "mean":
-		for _, v := range values {
-			fillV += v
-		}
-		fillV = fillV / float64(len(keys))
-	case "zero":
-		fillV = 0
-	case "median":
-		sort.Float64s(values)
-		fillV = values[len(values)/2]
-	default:
-		return ts, errors.New("unknown method")
-	}
+	mean = mean / float64(len(keys))
 
 	var parseFormat string
 	switch len(keys[0]) {
@@ -104,13 +88,15 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
 
+	sort.Strings(keys)
+
 	//TODO(eftekhari-mhs): Handle errors.
 	startDate, _ := time.Parse(parseFormat, keys[0])
 	endDate, _ := time.Parse(parseFormat, keys[len(keys)-1])
 
 	for d := startDate; d.After(endDate) == false; d = d.AddDate(yStep, mStep, dStep) {
 		if _, ok := ts[fmt.Sprint(d.Format(parseFormat))]; !ok {
-			ts[fmt.Sprint(d.Format(parseFormat))] = fillV
+			ts[fmt.Sprint(d.Format(parseFormat))] = mean
 		}
 	}
 	return ts, nil
