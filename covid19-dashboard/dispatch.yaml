@@ -1,3 +1,9 @@
 dispatch:
   - url: "*/covid19/*"
     service: covid19
+
+  - url: "*/api/places"
+    service: covid19
+  
+  - url: "*/api/data/*"
+    service: covid19

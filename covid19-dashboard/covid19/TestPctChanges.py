@@ -13,76 +13,77 @@
 # limitations under the License.
 
 import unittest
-from calculate_data import _moving_average
+from calculate_data import _pct_changes
 
 
-class TestMovingAverage(unittest.TestCase):
-    def test_two_day_moving_average(self):
+class TestPctChanges(unittest.TestCase):
+    def test_one_day_from_baseline(self):
         """
-        Simple 2-day moving average with valid ints.
+        Simple 1-day percent increase with valid ints.
         """
         data = {'2020-01-02': 10,
                 '2020-01-03': 20,
                 '2020-01-04': 40}
 
-        actual = _moving_average(list(data.items()), chunk_size=2)
-        expected = {'2020-01-03': 15,
-                    '2020-01-04': 30}
+        actual = _pct_changes(list(data.items()), days_from_baseline=1)
+        expected = {'2020-01-03': 100,
+                    '2020-01-04': 100}
 
         self.assertListEqual(actual, list(expected.items()))
 
     def test_zero_and_negative_values(self):
         """
-        Tests to make sure that negative values and zeros
-        don't cause any issues. They are valid inputs.
+        Tests to make sure that negative values are accepted
+        and zero divisions are omitted.
         """
         data = {'2020-01-02': -10,
                 '2020-01-03': 0,
                 '2020-01-04': 0}
 
-        actual = _moving_average(list(data.items()), chunk_size=2)
-        expected = {'2020-01-03': -5, '2020-01-04': 0}
+        actual = _pct_changes(list(data.items()), days_from_baseline=1)
+        expected = {'2020-01-03': -100}
 
+        # 2020-01-04 is omitted. We can't divide by 0.
         self.assertListEqual(actual, list(expected.items()))
 
-    def test_negative_chunk_size(self):
+    def test_negative_days_from_baseline(self):
         """
-        Tests a negative chunk_size.
+        Tests a negative days_from_baseline.
         It is not a valid input, should return [].
         """
         data = {'2020-01-02': 10,
                 '2020-01-03': 20,
                 '2020-01-04': 40}
 
-        actual = _moving_average(list(data.items()), chunk_size=-2)
+        actual = _pct_changes(list(data.items()), days_from_baseline=-2)
         expected = {}
 
         self.assertListEqual(actual, list(expected.items()))
 
-    def test_chunk_size_equals_data_length(self):
+    def test_days_from_baseline_equals_data_length(self):
         """
-        Tests a chunk_size equal to len(data).
-        This is a valid input. Output should contain only one date->value.
+        Tests a days_from_baseline equal to len(data).
+        There is no calculation to perform, should return [].
         """
         data = {'2020-01-02': 10,
                 '2020-01-03': 20,
                 '2020-01-04': 30}
 
-        actual = _moving_average(list(data.items()), chunk_size=3)
-        expected = {'2020-01-04': 20}
+        actual = _pct_changes(list(data.items()), days_from_baseline=3)
+        expected = {}
 
         self.assertListEqual(actual, list(expected.items()))
 
-    def test_chunk_size_larger_than_data_length(self):
+    def test_days_from_baseline_larger_than_data_length(self):
         """
-        Tests a chunk_size larger to len(data).
+        Tests a chunk_size larger than len(data).
         This is not a valid input. Should return [].
         """
         data = {'2020-01-02': 10,
                 '2020-01-03': 20,
                 '2020-01-04': 30}
 
-        actual = _moving_average(list(data.items()), chunk_size=4)
+        actual = _pct_changes(list(data.items()), days_from_baseline=4)
         expected = {}
 
         self.assertListEqual(actual, list(expected.items()))

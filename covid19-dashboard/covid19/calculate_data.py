@@ -171,8 +171,8 @@ def _clean_dataset(date_to_value: DateToValueListType,
     # Sort the values by the date found in elem[0].
     date_to_value_list = sorted(date_to_value, key=lambda elem: elem[0])
 
-    # Only include dates in the last 100 days.
-    date_to_value_list: DateToValueListType = date_to_value_list[-100:]
+    # # Only include dates in the last 100 days.
+    # date_to_value_list: DateToValueListType = date_to_value_list[-100:]
 
     # Keep a real copy of the last 7 days in the dataset.
     original_copy_last_7d: DateToValueListType = date_to_value_list[-7:]
@@ -252,10 +252,10 @@ def calculate_data(cumulative_stats: DateToValueDictType,
     # Convert list of tuples back to a dictionary.
     # (date, value) converts to {date: value}.
     # Only keep negative values for cumulatives and pct_changes.
-    cumulatives = dict(_clean_dataset(cumulative_list, 3, True))
-    moving_averages = dict(_clean_dataset(moving_averages_list, 3, False))
-    per_capitas = dict(_clean_dataset(per_capitas_list, 3, False))
-    pct_changes = dict(_clean_dataset(pct_changes_list, 3, True))
+    cumulatives = dict(_clean_dataset(cumulative_list, 30, True))
+    moving_averages = dict(_clean_dataset(moving_averages_list, 6, False))
+    per_capitas = dict(_clean_dataset(per_capitas_list, 6, False))
+    pct_changes = dict(_clean_dataset(pct_changes_list, 6, True))
 
     output: Dict[str, DateToValueDictType] = {
         'cumulative': cumulatives,

@@ -17,7 +17,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Dict, Union
 
-from flask import Flask, send_from_directory, Response
+from flask import Flask, Response, redirect
 from flask_caching import Cache
 from flask_compress import Compress
 
