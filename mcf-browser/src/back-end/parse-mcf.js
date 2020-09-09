@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Assertion, Node} from 'graph.js';
+import {Assertion, Node} from './graph.js';
 
 const NAMESPACES = ['l', 'schema', 'dcs', 'dcid'];
 
