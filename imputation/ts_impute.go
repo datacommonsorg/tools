@@ -30,14 +30,24 @@ const (
 // The diff function returns the minimum gap (will change to GCD) from a given *sorted* set of data points
 // that all have the same format.
 // TODO(eftekhari-mhs): add OK, ERR return values and handle errors.
-func diff(keys []string, dateFormat string) (int, int, int) {
+func diff(keys []string) (string, int, int, int) {
+	var parseFormat string
+	switch len(keys[0]) {
+	case 4:
+		parseFormat = yearfmt
+	case 7:
+		parseFormat = monthfmt
+	case 10:
+		parseFormat = dayfmt
+	}
+
 	year, month, day := 0, 0, 0
 
 	duration := 1<<31 - 1 // A large number.
 
 	for i := 0; i < len(keys)-1; i++ {
-		start, _ := time.Parse(dateFormat, keys[i])
-		end, _ := time.Parse(dateFormat, keys[i+1])
+		start, _ := time.Parse(parseFormat, keys[i])
+		end, _ := time.Parse(parseFormat, keys[i+1])
 
 		// Calculate total number of days between each two points and compare to minimum gap so far.
 		if delta := int(end.Sub(start).Hours() / 24); duration > delta { //TODO: instead of min use GCD
@@ -51,7 +61,23 @@ func diff(keys []string, dateFormat string) (int, int, int) {
 		}
 	}
 
-	return year, month, day
+	return parseFormat, year, month, day
+}
+
+func getKeys(ts TimeSeries) []string {
+	keys := make([]string, 0)
+	for k, _ := range ts {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func getValues(ts TimeSeries) []float64 {
+	values := make([]float64, 0)
+	for _, v := range ts {
+		values = append(values, v)
+	}
+	return values
 }
 
 // FillNA returns TimeSeries with missing datapoints with assigned values according to the selected method.
@@ -62,14 +88,18 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 		log.Printf("not enough data to impute")
 		return ts, nil
 	}
-	keys := make([]string, 0)
-	values := make([]float64, 0)
-	for k, v := range ts {
-		keys = append(keys, k)
-		values = append(values, v)
-	}
+	keys := getKeys(ts)
+	values := getValues(ts)
 	sort.Strings(keys)
 
+	parseFormat, yStep, mStep, dStep := diff(keys)
+	if parseFormat == "" {
+		return ts, errors.New("date format is not ISO 8601")
+	}
+
+	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
+
+	// Computing the filling value.
 	var fillV float64
 	switch method {
 	case "mean":
@@ -81,33 +111,17 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 		fillV = 0
 	case "median":
 		sort.Float64s(values)
-        if len(values) % 2 == 0{
-            // In case of even length: median = average of two middle values.
-            fillV = (values[len(values)/2] + values[len(values)/2 -1])/2
-            log.Printf("Median is %v: for even case" , fillV)
-        }else{
-            fillV = values[len(values)/2]
-            log.Printf("Median is %v: for odd case" , fillV)
-        }
+		if len(values)%2 == 0 {
+			// In case of even length: median = average of two middle values.
+			fillV = (values[len(values)/2] + values[len(values)/2-1]) / 2
+			log.Printf("Median is %v: for even case", fillV)
+		} else {
+			fillV = values[len(values)/2]
+			log.Printf("Median is %v: for odd case", fillV)
+		}
 	default:
 		return ts, errors.New("unknown method")
 	}
-
-	var parseFormat string
-	switch len(keys[0]) {
-	case 4:
-		parseFormat = yearfmt
-	case 7:
-		parseFormat = monthfmt
-	case 10:
-		parseFormat = dayfmt
-    default: 
-        return ts, errors.New("date format is not ISO 8601")
-	}
-
-	yStep, mStep, dStep := diff(keys, parseFormat)
-
-	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
 
 	//TODO(eftekhari-mhs): Handle errors.
 	startDate, _ := time.Parse(parseFormat, keys[0])
@@ -116,6 +130,63 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 	for d := startDate; d.After(endDate) == false; d = d.AddDate(yStep, mStep, dStep) {
 		if _, ok := ts[fmt.Sprint(d.Format(parseFormat))]; !ok {
 			ts[fmt.Sprint(d.Format(parseFormat))] = fillV
+		}
+	}
+	return ts, nil
+}
+
+func Interpolate(ts TimeSeries, degree int) (TimeSeries, error) {
+	if len(ts) < 3+(degree-1) {
+		log.Printf("not enough data to impute")
+		return ts, nil
+	}
+
+	switch degree {
+	case 1:
+		return linear(ts)
+	default:
+		return ts, errors.New("Not implemented yet.")
+	}
+}
+
+// Linear interpolation; this is eqivalent to Spline degree 1.
+func linear(ts TimeSeries) (TimeSeries, error) {
+	keys := getKeys(ts)
+	sort.Strings(keys)
+
+	parseFormat, yStep, mStep, dStep := diff(keys)
+	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
+
+	//TODO(eftekhari-mhs): Handle errors.
+	startDate, _ := time.Parse(parseFormat, keys[0])
+	endDate, _ := time.Parse(parseFormat, keys[len(keys)-1])
+	// Assuming the time series is the form of {date1 : y1, date2: y2 ,date3 : y3} and y2
+	// is the missing value. d21 = date2-date1 and d31 = date3-date1
+	var d21, d31, y1, y2, y3 float64
+	nextDate := startDate
+
+	for d := startDate; d.After(endDate) == false; d = d.AddDate(yStep, mStep, dStep) {
+		if _, ok := ts[fmt.Sprint(d.Format(parseFormat))]; !ok {
+			d21 += 1
+			// Looking for the next available date (date3) and y3. Store gap in d31.
+			if nextDate.Before(d) {
+				d31 = d21
+				nextDate = d
+				for !ok {
+					nextDate = nextDate.AddDate(yStep, mStep, dStep)
+					_, ok = ts[fmt.Sprint(nextDate.Format(parseFormat))]
+					d31 += 1
+				}
+				y3, _ = ts[fmt.Sprint(nextDate.Format(parseFormat))]
+			}
+
+			y2 = ((d21) * (y3 - y1) / (d31)) + y1
+			ts[fmt.Sprint(d.Format(parseFormat))] = y2
+		} else {
+			d21 = 0
+			y1, _ = ts[fmt.Sprint(d.Format(parseFormat))]
+			// Reset next available date.
+			nextDate = startDate
 		}
 	}
 	return ts, nil
