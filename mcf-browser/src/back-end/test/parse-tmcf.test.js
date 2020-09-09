@@ -16,8 +16,8 @@
 import {
   csvToMCF, fillTemplateFromRow, getLocalIDFromEntityID,
   getEntityID, getArrowId, parsePropertyValues,
-} from '../ParseTMCF.js';
-import * as TestStr from './testStrs.js';
+} from '../parse-tmcf.js';
+import * as TestStr from './test-strs.js';
 
 test('testing getArrowId', () => {
   const colName = getArrowId('dcid: C:SomeDataset->ResponseOption_Dcid');
@@ -56,7 +56,7 @@ test('testing parsePropertyValues', () => {
 test('testing fillTemplateFromRow', () => {
   const index = 8;
   const filledTemp =
-  fillTemplateFromRow(TestStr.test_tmcf2, TestStr.test_csv2[0], index);
+  fillTemplateFromRow(TestStr.testTMCF2, TestStr.testCSV2[0], index);
   expect(filledTemp).toBe(TestStr.expectedFilledTemp0);
 
   // testing multiple propValues that are comma separated
@@ -73,6 +73,6 @@ test('testing fillTemplateFromRow', () => {
 });
 
 test('testing csvToMCF', () => {
-  const mcf = csvToMCF(TestStr.test_tmcf1, TestStr.test_csv1);
+  const mcf = csvToMCF(TestStr.testTMCF1, TestStr.testCSV1);
   expect(mcf).toBe(TestStr.expectedMCF1);
 });
