@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {shouldReadLine} from './ParseMCF.js';
+import {shouldReadLine} from './parse-mcf.js';
 
 const csv = require('csvtojson');
 
