@@ -65,7 +65,7 @@ func createOutput(ts TimeSeries, desiredValues []string, method string) TimeSeri
 	return (out)
 }
 
-// createOutputInterpolate generate a new time series by adding desiredValues as data points and replace
+// createOutputInterpolate generates a new time series by adding desiredValues as data points and replaces
 // their value using given precomputed values for each method.
 func createOutputInterpolate(ts TimeSeries, desiredValues map[string]InterpolateValues, method string) TimeSeries {
 	out := make(TimeSeries, len(ts)+len(desiredValues))
