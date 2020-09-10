@@ -20,15 +20,22 @@ import (
 // TimeSeries stores a time series.  Dates are expressed in ISO 8061 format as illustrated in the constants below.
 type TimeSeries map[string]float64
 
-// Assume 3 formattig for the dates: daily, monthly, and yearly.
+// Assume 3 formatting for the dates: daily, monthly, and yearly.
 const (
 	dayfmt   = "2006-01-02"
 	monthfmt = "2006-01"
 	yearfmt  = "2006"
 )
 
-// The diff function returns the minimum gap (will change to GCD) from a given *sorted* set of data points
-// that all have the same format.
+// diff returns the minimum time gap for the given times.
+//
+// Args:
+//   keys: A sorted list of times all with the same format, one of those listed above.
+// Returns:
+//   1) The time format of the keys.
+//   2) The minimum gap between the keys in terms of years, months, and days.
+// TODO(eftekhari-mbs): Modify the algorithm to compute a greatest common divisor-like algorithm, not
+// just the minimum gap.
 // TODO(eftekhari-mhs): add OK, ERR return values and handle errors.
 func diff(keys []string) (string, int, int, int) {
 	var parseFormat string
@@ -50,7 +57,7 @@ func diff(keys []string) (string, int, int, int) {
 		end, _ := time.Parse(parseFormat, keys[i+1])
 
 		// Calculate total number of days between each two points and compare to minimum gap so far.
-		if delta := int(end.Sub(start).Hours() / 24); duration > delta { //TODO: instead of min use GCD
+		if delta := int(end.Sub(start).Hours() / 24); duration > delta {
 			duration = delta
 			y1, M1, d1 := start.Date()
 			y2, M2, d2 := end.Date()
@@ -64,11 +71,12 @@ func diff(keys []string) (string, int, int, int) {
 	return parseFormat, year, month, day
 }
 
-func getKeys(ts TimeSeries) []string {
+func getSortedKeys(ts TimeSeries) []string {
 	keys := make([]string, 0)
 	for k, _ := range ts {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 	return keys
 }
 
@@ -88,9 +96,8 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 		log.Printf("not enough data to impute")
 		return ts, nil
 	}
-	keys := getKeys(ts)
+	keys := getSortedKeys(ts)
 	values := getValues(ts)
-	sort.Strings(keys)
 
 	parseFormat, yStep, mStep, dStep := diff(keys)
 	if parseFormat == "" {
@@ -123,7 +130,7 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 		return ts, errors.New("unknown method")
 	}
 
-	//TODO(eftekhari-mhs): Handle errors.
+	// TODO(eftekhari-mhs): Handle errors.
 	startDate, _ := time.Parse(parseFormat, keys[0])
 	endDate, _ := time.Parse(parseFormat, keys[len(keys)-1])
 
@@ -135,6 +142,9 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 	return ts, nil
 }
 
+// Interpolate function's input is a TimeSeries with possible missing datapoints.
+// The function returns a Timeseries with no missing dates. Interpolation method is used to fill the values.
+// Methods can vary by degree: d = {1} is implemented.
 func Interpolate(ts TimeSeries, degree int) (TimeSeries, error) {
 	if len(ts) < 3+(degree-1) {
 		log.Printf("not enough data to impute")
@@ -151,8 +161,7 @@ func Interpolate(ts TimeSeries, degree int) (TimeSeries, error) {
 
 // Linear interpolation; this is eqivalent to Spline degree 1.
 func linear(ts TimeSeries) (TimeSeries, error) {
-	keys := getKeys(ts)
-	sort.Strings(keys)
+	keys := getSortedKeys(ts)
 
 	parseFormat, yStep, mStep, dStep := diff(keys)
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
