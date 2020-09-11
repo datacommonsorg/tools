@@ -35,9 +35,9 @@ func computeMedian(s TimeSeries) float64 {
 	}
 }
 
-// createOutput generate a new time series by adding desiredValues as data points and replace
+// createExpectedTimeSeriesFillNA generate a new time series by adding desiredValues as data points and replace
 // their value by using the specified algorithm.
-func createOutput(ts TimeSeries, desiredValues []string, method string) TimeSeries {
+func createExpectedTimeSeriesFillNA(ts TimeSeries, desiredValues []string, method string) TimeSeries {
 	out := make(TimeSeries, len(ts)+len(desiredValues))
 	for k, v := range ts {
 		out[k] = v
@@ -65,9 +65,9 @@ func createOutput(ts TimeSeries, desiredValues []string, method string) TimeSeri
 	return (out)
 }
 
-// createOutputInterpolate generates a new time series by adding desiredValues as data points and replaces
+// createExpectedTimeSeriesInterpolate generate a new time series by adding desiredValues as data points and replace
 // their value using given precomputed values for each method.
-func createOutputInterpolate(ts TimeSeries, desiredValues map[string]InterpolateValues, method string) TimeSeries {
+func createExpectedTimeSeriesInterpolate(ts TimeSeries, desiredValues map[string]InterpolateValues, method string) TimeSeries {
 	out := make(TimeSeries, len(ts)+len(desiredValues))
 	for k, v := range ts {
 		out[k] = v
@@ -154,7 +154,7 @@ func TestFillNA(t *testing.T) {
 			},
 		}
 		for label, test := range tests {
-			want := createOutput(test.series, test.additionalKeys, m)
+			want := createExpectedTimeSeriesFillNA(test.series, test.additionalKeys, m)
 			got, err := FillNA(test.series, m)
 
 			if err != nil {
@@ -258,7 +258,7 @@ func TestInterpolate(t *testing.T) {
 			},
 		}
 		for label, test := range tests {
-			want := createOutputInterpolate(test.series, test.additionalKeys, m)
+			want := createExpectedTimeSeriesInterpolate(test.series, test.additionalKeys, m)
 			got, err := Interpolate(test.series, 1)
 
 			if err != nil {
