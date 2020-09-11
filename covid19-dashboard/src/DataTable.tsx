@@ -175,52 +175,37 @@ export default class DataTable extends React.Component<
     // Create the data for each row.
     const rows = chunkDataShown.map((place, index) => {
       const tableRanking = this.state.chunkIndex * this.chunkSize + index + 1;
-      let clickableClass: string;
-
-      // If the place has subregions, it should be clickable.
-      const placeIsClickable = place.getSubregionType()
-
-      // If the place is clickable, add the corresponding CSS class.
-      if (placeIsClickable) {
-        clickableClass = 'clickable';
-      } else {
-        clickableClass = '';
-      }
 
       // For every row, generate a Th for each column.
       const thValues = Content.table.map((category, index) => {
         // Get the timeSeries for our current column's id.
         const timeSeries = place.keyToTimeSeries[category.id] || {};
         return (
-          <Th
-            timeSeries={timeSeries}
+          <Th timeSeries={timeSeries}
             typeOf={category.typeOf}
             key={index}
-            className={clickableClass}
             graphTitle={place.name}
             graphSubtitle={category.graphSubtitle}
-            color={category.color}
-          />
+            color={category.color}/>
         );
       });
 
+      const subregionType = place.getSubregionType()
 
-      let placeFullName: string;
+      let placeFullName = place.name
       if (place.placeType !== 'Country') {
-        placeFullName = `${place.name}, ${place.parentPlace?.name}`;
-      } else {
-        placeFullName = place.name;
+        placeFullName += `, ${place.parentPlace?.name}`;
       }
 
       return (
         <tbody key={index}>
-        <tr key={index}
-            className={clickableClass}
-            onClick={() => goToPlace(place.geoId, place.getSubregionType())}>
-          <th>{tableRanking}</th>
-          <th>{placeFullName}</th>
-          {thValues}
-        </tr>
+          <tr className={subregionType ? 'clickable' : ''}
+              {...(subregionType && {
+                onClick: () => goToPlace(place.geoId, subregionType)})}>
+            <th>{tableRanking}</th>
+            <th>{placeFullName}</th>
+            {thValues}
+          </tr>
         </tbody>
       );
     });
