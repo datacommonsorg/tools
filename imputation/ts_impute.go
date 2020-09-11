@@ -27,7 +27,7 @@ const (
 	yearfmt  = "2006"
 )
 
-// diff returns the minimum time gap for the given times.
+// dateGapFinder returns the minimum time gap for the given times.
 //
 // Args:
 //   keys: A sorted list of times all with the same format, one of those listed above.
@@ -37,7 +37,7 @@ const (
 // TODO(eftekhari-mbs): Modify the algorithm to compute a greatest common divisor-like algorithm, not
 // just the minimum gap.
 // TODO(eftekhari-mhs): add OK, ERR return values and handle errors.
-func diff(keys []string) (string, int, int, int) {
+func dateGapFinder(keys []string) (string, int, int, int) {
 	var parseFormat string
 	switch len(keys[0]) {
 	case 4:
@@ -57,7 +57,7 @@ func diff(keys []string) (string, int, int, int) {
 		end, _ := time.Parse(parseFormat, keys[i+1])
 
 		// Calculate total number of days between each two points and compare to minimum gap so far.
-		if delta := int(end.Sub(start).Hours() / 24); duration > delta {
+		if delta := int(end.Sub(start).Hours() / 24); duration > delta { //TODO: instead of min use GCD
 			duration = delta
 			y1, M1, d1 := start.Date()
 			y2, M2, d2 := end.Date()
@@ -93,15 +93,15 @@ func getValues(ts TimeSeries) []float64 {
 // TODO(eftekhari-mhs): Handle error cases.
 func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 	if len(ts) < 3 {
-		log.Printf("not enough data to impute")
+		log.Printf("There is not enough data to impute.")
 		return ts, nil
 	}
 	keys := getSortedKeys(ts)
 	values := getValues(ts)
 
-	parseFormat, yStep, mStep, dStep := diff(keys)
+	parseFormat, yStep, mStep, dStep := dateGapFinder(keys)
 	if parseFormat == "" {
-		return ts, errors.New("date format is not ISO 8601")
+		return ts, errors.New("The date format is not ISO 8601.")
 	}
 
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
@@ -127,7 +127,7 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 			log.Printf("Median is %v: for odd case", fillV)
 		}
 	default:
-		return ts, errors.New("unknown method")
+		return ts, errors.New("The method is unknown.")
 	}
 
 	// TODO(eftekhari-mhs): Handle errors.
@@ -147,7 +147,7 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 // Methods can vary by degree: d = {1} is implemented.
 func Interpolate(ts TimeSeries, degree int) (TimeSeries, error) {
 	if len(ts) < 3+(degree-1) {
-		log.Printf("not enough data to impute")
+		log.Printf("There is not enough data to impute.")
 		return ts, nil
 	}
 
@@ -163,7 +163,7 @@ func Interpolate(ts TimeSeries, degree int) (TimeSeries, error) {
 func linear(ts TimeSeries) (TimeSeries, error) {
 	keys := getSortedKeys(ts)
 
-	parseFormat, yStep, mStep, dStep := diff(keys)
+	parseFormat, yStep, mStep, dStep := dateGapFinder(keys)
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
 
 	//TODO(eftekhari-mhs): Handle errors.
