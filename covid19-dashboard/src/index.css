@@ -83,7 +83,7 @@ footer {
 
 .content {
   clear: both;
-  margin: 2% 5%;
+  margin: 2% 8%;
 }
 
 /** PANEL */
@@ -97,15 +97,14 @@ footer {
   margin: 20px;
 }
 
-.empty-panel {
-  padding-top: 12%;
+.fadeIn {
   animation: fade-in 1s cubic-bezier(0.390, 0.575, 0.565, 1.000) both;
 }
 
 .count-panel {
   box-shadow: var(--shadow) !important;
   margin: 20px auto 0;
-  width: 40%;
+  width: 50%;
   min-width: 400px;
 }
 
@@ -181,6 +180,10 @@ button {
   font-weight: bold !important;
 }
 
+.button-group {
+  z-index: 0;
+}
+
 .button-group button:nth-child(1) {
   border-bottom-left-radius: var(--border-radius);
   border-top-left-radius: var(--border-radius);
@@ -195,7 +198,6 @@ button:hover {
   background-color: var(--grey);
   color: white;
 }
-
 
 /* GRAPH */
 
