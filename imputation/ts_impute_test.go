@@ -108,14 +108,15 @@ func TestFillNA(t *testing.T) {
 				},
 				additionalKeys: []string{"1999", "2000", "2001", "1997"},
 			},
-			"length 3, 2-month gap": {
+			"length 3, 1-month gap": {
 				series: TimeSeries{
 					"2003-02": 42.5,
-					"2002-02": 18.9,
+					"2002-03": 18.9,
 					"2003-04": 28,
 				},
-				// TODO(eftekhari-mhs): edge case : 2002-01 fails currently.
-				additionalKeys: []string{"2002-04", "2002-06", "2002-08", "2002-10", "2002-12"},
+				additionalKeys: []string{"2002-04", "2002-05", "2002-06",
+					"2002-07", "2002-08", "2002-09", "2002-10", "2002-11",
+					"2002-12", "2003-01", "2003-03"},
 			},
 			"days": {
 				series: TimeSeries{
@@ -150,6 +151,49 @@ func TestFillNA(t *testing.T) {
 					"2002-02-26",
 					"2002-02-27",
 					"2002-02-28",
+				},
+			},
+			"35days": {
+				series: TimeSeries{
+					"2020-02-09": 42.5,
+					"2020-03-15": 18.9,
+					"2020-05-24": 28,
+				},
+				additionalKeys: []string{
+					"2020-04-19",
+				},
+			},
+			"28days": {
+				series: TimeSeries{
+					"2020-01-02": 42.5,
+					"2020-05-21": 18.9,
+					"2020-01-30": 28,
+				},
+				additionalKeys: []string{
+					"2020-03-26",
+					"2020-02-27",
+					"2020-04-23",
+				},
+			},
+			"3months": {
+				series: TimeSeries{
+					"2020-10-15": 42.5,
+					"2020-07-15": 18.9,
+					"2020-01-15": 28,
+				},
+				additionalKeys: []string{
+					"2020-04-15",
+				},
+			},
+			"annually": {
+				series: TimeSeries{
+					"2020-03-05": 42.5,
+					"2016-03-05": 18.9,
+					"2017-03-05": 28,
+				},
+				additionalKeys: []string{
+					"2019-03-05",
+					"2018-03-05",
 				},
 			},
 		}

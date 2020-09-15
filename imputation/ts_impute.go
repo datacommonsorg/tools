@@ -5,7 +5,7 @@ The dates in the time series are assumed to be either of the forms of (all have 
 "YYYY-MM" or
 "YYYY"
 
-The imputation library first finds the minimum gap of existing points and then adds new data points with values according to the selected method.
+The imputation library first finds the GCD(gap) of existing points and then adds new data points with values according to the selected method.
 */
 package imputation
 
@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -27,15 +28,23 @@ const (
 	yearfmt  = "2006"
 )
 
-// dateGapFinder returns the minimum time gap for the given times.
+// Greatest common divisor (GCD) of two integer values.
+func gcd(a, b int) int {
+	for b != 0 {
+		t := b
+		b = a % b
+		a = t
+	}
+	return a
+}
+
+// dateGapFinder returns the greatest common divisor-like time gap for the given times.
 //
 // Args:
 //   keys: A sorted list of times all with the same format, one of those listed above.
 // Returns:
 //   1) The time format of the keys.
 //   2) The minimum gap between the keys in terms of years, months, and days.
-// TODO(eftekhari-mbs): Modify the algorithm to compute a greatest common divisor-like algorithm, not
-// just the minimum gap.
 // TODO(eftekhari-mhs): add OK, ERR return values and handle errors.
 func dateGapFinder(keys []string) (string, int, int, int) {
 	var parseFormat string
@@ -50,42 +59,102 @@ func dateGapFinder(keys []string) (string, int, int, int) {
 
 	year, month, day := 0, 0, 0
 
-	duration := 1<<31 - 1 // A large number.
+	equalMonths := true
+	equalDays := true
 
-	for i := 0; i < len(keys)-1; i++ {
-		start, _ := time.Parse(parseFormat, keys[i])
-		end, _ := time.Parse(parseFormat, keys[i+1])
-
-		// Calculate total number of days between each two points and compare to minimum gap so far.
-		if delta := int(end.Sub(start).Hours() / 24); duration > delta { //TODO: instead of min use GCD
-			duration = delta
-			y1, M1, d1 := start.Date()
-			y2, M2, d2 := end.Date()
-
-			year = int(y2 - y1)
-			month = int(M2 - M1)
-			day = int(d2 - d1)
+	if parseFormat != yearfmt {
+		for i := 0; i < len(keys)-1; i++ {
+			md1 := strings.Split(keys[i], "-")
+			md2 := strings.Split(keys[i+1], "-")
+			// Check for unequal months.
+			if md1[1] != md2[1] {
+				equalMonths = false
+			}
+			// Check for unequal days (if exists).
+			if len(md1) == 3 {
+				if md1[2] != md2[2] {
+					equalDays = false
+				}
+			}
 		}
 	}
 
+	if parseFormat == yearfmt || (equalMonths && equalDays) {
+		for i := 0; i < len(keys)-1; i++ {
+			if year == 1 {
+				// One year is the minimum possible gap in this case.
+				break
+			}
+			start, _ := time.Parse(parseFormat, keys[i])
+			end, _ := time.Parse(parseFormat, keys[i+1])
+
+			y1, _, _ := start.Date()
+			y2, _, _ := end.Date()
+			yGap := int(y2 - y1)
+
+			if i == 0 {
+				// Initialize year with the value of the first gap.
+				year = yGap
+			} else {
+				year = gcd(yGap, year)
+			}
+		}
+	} else if parseFormat == monthfmt || equalDays {
+		// One month is the minimum possible gap in this case.
+		for i := 0; i < len(keys)-1; i++ {
+			if month == 1 {
+				break
+			}
+			start, _ := time.Parse(parseFormat, keys[i])
+			end, _ := time.Parse(parseFormat, keys[i+1])
+
+			y1, M1, _ := start.Date()
+			y2, M2, _ := end.Date()
+			yGap := int(y2 - y1)
+			mGap := int(M2 - M1)
+			if mGap < 1 {
+				mGap += 12
+				yGap -= 1
+			}
+
+			if i == 0 {
+				// Initialize year and month with the value of the first gap.
+				year = yGap
+				month = mGap
+			} else {
+				log.Println(mGap)
+				month = gcd(mGap, month)
+			}
+		}
+	} else {
+		for i := 0; i < len(keys)-1; i++ {
+			// One day is the minimum possible gap in this case.
+			if day == 1 {
+				break
+			}
+			start, _ := time.Parse(parseFormat, keys[i])
+			end, _ := time.Parse(parseFormat, keys[i+1])
+
+			dGap := int(end.Sub(start).Hours() / 24)
+			if i == 0 {
+				// Initialize day with the value of the first gap.
+				day = dGap
+			} else {
+				day = gcd(dGap, day)
+			}
+		}
+	}
 	return parseFormat, year, month, day
 }
 
-func getSortedKeys(ts TimeSeries) []string {
-	keys := make([]string, 0)
-	for k, _ := range ts {
+func getKeysAndValues(ts TimeSeries) ([]string, []float64) {
+	keys := make([]string, 0, len(ts))
+	values := make([]float64, 0, len(ts))
+	for k, v := range ts {
 		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func getValues(ts TimeSeries) []float64 {
-	values := make([]float64, 0)
-	for _, v := range ts {
 		values = append(values, v)
 	}
-	return values
+	return keys, values
 }
 
 // FillNA returns TimeSeries with missing datapoints with assigned values according to the selected method.
@@ -96,8 +165,8 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 		log.Printf("There is not enough data to impute.")
 		return ts, nil
 	}
-	keys := getSortedKeys(ts)
-	values := getValues(ts)
+	keys, values := getKeysAndValues(ts)
+	sort.Strings(keys)
 
 	parseFormat, yStep, mStep, dStep := dateGapFinder(keys)
 	if parseFormat == "" {
@@ -161,7 +230,8 @@ func Interpolate(ts TimeSeries, degree int) (TimeSeries, error) {
 
 // Linear interpolation; this is eqivalent to Spline degree 1.
 func linear(ts TimeSeries) (TimeSeries, error) {
-	keys := getSortedKeys(ts)
+	keys, _ := getKeysAndValues(ts)
+	sort.Strings(keys)
 
 	parseFormat, yStep, mStep, dStep := dateGapFinder(keys)
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
