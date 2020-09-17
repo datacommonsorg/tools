@@ -111,15 +111,10 @@ func dateGapFinder(keys []string) (string, int, int, int) {
 			y1, M1, _ := start.Date()
 			y2, M2, _ := end.Date()
 			yGap := int(y2 - y1)
-			mGap := int(M2 - M1)
-			if mGap < 1 {
-				mGap += 12
-				yGap -= 1
-			}
+			mGap := yGap * 12 + int(M2 - M1)
 
 			if i == 0 {
-				// Initialize year and month with the value of the first gap.
-				year = yGap
+				// Initialize month with the value of the first gap.
 				month = mGap
 			} else {
 				log.Println(mGap)
