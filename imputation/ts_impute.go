@@ -49,6 +49,8 @@ func gcd(a, b int) int {
 //   4) Error != nil in case input has multiple date formats or non ISO 8601.
 func dateGapFinder(keys []string) (string, int, int, int, bool, error) {
 	var parseFormat string
+	year, month, day := 0, 0, 0
+
 	switch len(keys[0]) {
 	case 4:
 		parseFormat = yearfmt
@@ -56,11 +58,9 @@ func dateGapFinder(keys []string) (string, int, int, int, bool, error) {
 		parseFormat = monthfmt
 	case 10:
 		parseFormat = dayfmt
+	default:
+		return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
 	}
-	year, month, day := 0, 0, 0
-
-default:
-  return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
 
 	equalMonths := true
 	equalDays := true
@@ -68,13 +68,18 @@ default:
 	if parseFormat != yearfmt {
 		for i := 0; i < len(keys)-1; i++ {
 			// Return error in case the dates do not have equal formats.
-			if len(keys[i]) != len(parseFormat) {
+			if len(keys[i+1]) != len(parseFormat) {
 				return parseFormat, year, month,
 					day, false, errors.New("The dates have multiple formats.")
 			}
 
 			md1 := strings.Split(keys[i], "-")
 			md2 := strings.Split(keys[i+1], "-")
+
+			if len(md1) != len(md2) {
+				return parseFormat, year, month,
+					day, false, errors.New("The dates have multiple formats.")
+			}
 			// Check for unequal months.
 			if md1[1] != md2[1] {
 				equalMonths = false
@@ -94,8 +99,11 @@ default:
 				// One year is the minimum possible gap in this case.
 				break
 			}
-			start, _ := time.Parse(parseFormat, keys[i])
-			end, _ := time.Parse(parseFormat, keys[i+1])
+			start, err1 := time.Parse(parseFormat, keys[i])
+			end, err2 := time.Parse(parseFormat, keys[i+1])
+			if err1 != nil || err2 != nil {
+				return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
+			}
 
 			y1, _, _ := start.Date()
 			y2, _, _ := end.Date()
@@ -114,8 +122,11 @@ default:
 			if month == 1 {
 				break
 			}
-			start, _ := time.Parse(parseFormat, keys[i])
-			end, _ := time.Parse(parseFormat, keys[i+1])
+			start, err1 := time.Parse(parseFormat, keys[i])
+			end, err2 := time.Parse(parseFormat, keys[i+1])
+			if err1 != nil || err2 != nil {
+				return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
+			}
 
 			y1, M1, _ := start.Date()
 			y2, M2, _ := end.Date()
@@ -136,8 +147,11 @@ default:
 			if day == 1 {
 				break
 			}
-			start, _ := time.Parse(parseFormat, keys[i])
-			end, _ := time.Parse(parseFormat, keys[i+1])
+			start, err1 := time.Parse(parseFormat, keys[i])
+			end, err2 := time.Parse(parseFormat, keys[i+1])
+			if err1 != nil || err2 != nil {
+				return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
+			}
 
 			dGap := int(end.Sub(start).Hours() / 24)
 			if i == 0 {
@@ -208,9 +222,9 @@ func FillNA(ts TimeSeries, method string) (TimeSeries, error) {
 		return ts, errors.New("The method is unknown.")
 	}
 
-	startDate, er1 := time.Parse(parseFormat, keys[0])
-	endDate, er2 := time.Parse(parseFormat, keys[len(keys)-1])
-	if er1 != nil || er2 != nil {
+	startDate, err1 := time.Parse(parseFormat, keys[0])
+	endDate, err2 := time.Parse(parseFormat, keys[len(keys)-1])
+	if err1 != nil || err2 != nil {
 		return ts, errors.New("The date format is not ISO 8601.")
 	}
 
@@ -253,9 +267,9 @@ func linear(ts TimeSeries) (TimeSeries, error) {
 	}
 	log.Printf("Step is equal to : %v years, %v months, %v days \n", yStep, mStep, dStep)
 
-	startDate, er1 := time.Parse(parseFormat, keys[0])
-	endDate, er2 := time.Parse(parseFormat, keys[len(keys)-1])
-	if er1 != nil || er2 != nil {
+	startDate, err1 := time.Parse(parseFormat, keys[0])
+	endDate, err2 := time.Parse(parseFormat, keys[len(keys)-1])
+	if err1 != nil || err2 != nil {
 		return ts, errors.New("The date format is not ISO 8601.")
 	}
 
