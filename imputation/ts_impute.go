@@ -45,7 +45,7 @@ func gcd(a, b int) int {
 // Returns:
 //   1) The time format of the keys.
 //   2) The GCD (gap between the keys) in terms of years, months, and days.
-//   3) OK if the function compute the frequency of data collection.
+//   3) OK is True iff the function successfully computed the frequency of data collection.
 //   4) Error != nil in case input has multiple date formats or non ISO 8601.
 func dateGapFinder(keys []string) (string, int, int, int, bool, error) {
 	var parseFormat string
