@@ -59,9 +59,8 @@ func dateGapFinder(keys []string) (string, int, int, int, bool, error) {
 	}
 	year, month, day := 0, 0, 0
 
-	if parseFormat == "" {
-		return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
-	}
+default:
+  return parseFormat, year, month, day, false, errors.New("The date format is not ISO 8601.")
 
 	equalMonths := true
 	equalDays := true
