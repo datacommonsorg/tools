@@ -196,6 +196,22 @@ func TestFillNA(t *testing.T) {
 					"2018-03-05",
 				},
 			},
+			"non_ISO8601_format": {
+				series: TimeSeries{
+					"2020-03-05": 42.5,
+					"2016-03-05": 18.9,
+					"2017-0305":  28,
+				},
+				additionalKeys: []string{},
+			},
+			"multiple_date_formats": {
+				series: TimeSeries{
+					"2020-03-05": 42.5,
+					"2016-03-05": 18.9,
+					"2017-03":    28,
+				},
+				additionalKeys: []string{},
+			},
 		}
 		for label, test := range tests {
 			want := createExpectedTimeSeriesFillNA(test.series, test.additionalKeys, m)
