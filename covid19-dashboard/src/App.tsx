@@ -23,11 +23,12 @@ import {getLatestDate, goToPlace} from './Utils';
 import Config from './Config.json';
 import './index.css';
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
-import {GeoIdToDataType, GeoIdToPlaceInfoType} from './Types';
+import {GeoIdToDataType, GeoIdToPlaceInfoType, KeyToTimeSeriesType} from './Types';
 import Content from './Content.json';
 import debounce from 'lodash/debounce';
-import Breadcrumb from "react-bootstrap/cjs/Breadcrumb";
-import Place from "./Place";
+import Breadcrumb from 'react-bootstrap/cjs/Breadcrumb';
+import Place from './Place';
+import dayjs from 'dayjs';
 
 type AppPropsType = {
   location: any;
@@ -50,7 +51,6 @@ class App extends React.Component<AppPropsType, AppStateType> {
   // The place object has information such as name, containedIn and data.
   places: {[geoId: string]: Place};
 
-
   state = {
     searchQuery: '',
   };
@@ -60,7 +60,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     const urlParams = new URLSearchParams(this.props.location.search);
     this.geoId = urlParams.get('geoId') || 'World';
     this.placeTypeToShow = urlParams.get('placeType') || 'Country';
-    this.places = {}
+    this.places = {};
   }
 
   /**
@@ -134,8 +134,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
     });
 
     // We don't really care about this data, we only wanted to cache it.
-    // None the less, we still store it in the background because
-    // it can help us search when using the search bar.
+    // None the less, we still store it because
+    // it can help when using the search bar.
     Promise.all(cachePromises).then(responses => {
       responses.forEach(response => {
         response.json().then(json => {
@@ -159,9 +159,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
    */
   getParentPlaces = (): string[] => {
     // If none of the places have loaded yet, exit out.
-    if (!Object.keys(this.places).length) {
-      return [];
-    }
+    if (!Object.keys(this.places).length) return [];
 
     // Starting geoId.
     let geoId = this.geoId;
@@ -199,12 +197,12 @@ class App extends React.Component<AppPropsType, AppStateType> {
 
   render = () => {
     // The current Place we are viewing.
-    const selectedPlace = this.places[this.geoId]
+    const selectedPlace = this.places[this.geoId];
 
     // Convert the object of geoId->Place to a list of Places.
-    const places: Place[] = Object.values(this.places).filter((place) => {
+    const places: Place[] = Object.values(this.places).filter(place => {
       return place.keyToTimeSeries;
-    })
+    });
 
     // Filter the data to only contain the places that are contained
     // in this.geoId. That is, if this.geoId === "Florida".
@@ -220,39 +218,47 @@ class App extends React.Component<AppPropsType, AppStateType> {
     });
 
     // Generate the cumulativePanel columns from Content.json
-    const cumulativePanelColumns = Content.cumulativePanel
-      .map(({dataKey, title, color}: {
-        dataKey: string, title: string, color: string}) => {
-      // Sum values for all geoIds for the latest date in the time-series.
-      const values = filteredPlaces.map(place => {
-        // Get the time-series for the given dataKey.
-        // The dataKey comes from the configuration panel.
-        // It tells the panel what data to display.
-        const cumulativeStats = place.keyToTimeSeries[dataKey] || {};
-        // Get a list of all dates.
-        const dates = Object.keys(cumulativeStats);
-        const latestDate = getLatestDate(dates);
-        // Return the value for the latest date in the timeSeries.
-        return cumulativeStats[latestDate] || 0;
-      });
+    const cumulativePanelColumns = Content.cumulativePanel.map(
+      ({
+         dataKey,
+         title,
+         color,
+       }: {
+        dataKey: string;
+        title: string;
+        color: string;
+      }) => {
+        // Sum values for all geoIds for the latest date in the time-series.
+        const values = filteredPlaces.map(place => {
+          // Get the time-series for the given dataKey.
+          // The dataKey comes from the configuration panel.
+          // It tells the panel what data to display.
+          const cumulativeStats = place.keyToTimeSeries[dataKey] || {};
+          // Get a list of all dates.
+          const dates = Object.keys(cumulativeStats);
+          const latestDate = getLatestDate(dates);
+          // Return the value for the latest date in the timeSeries.
+          return cumulativeStats[latestDate] || 0;
+        });
 
-      // Sum up all the values for that specific dataKey.
-      const value = values.reduce((a, b) => a + b, 0);
+        // Sum up all the values for that specific dataKey.
+        const value = values.reduce((a, b) => a + b, 0);
 
-      // Return an object containing the configuration that column.
-      return {
-        title: title,
-        color: color,
-        value: value,
-      };
-    });
+        // Return an object containing the configuration that column.
+        return {
+          title: title,
+          color: color,
+          value: value,
+        };
+      }
+    );
 
     // If the user entered something on the search bar.
     // Automatically filter by searchQuery.
     // Otherwise, omit this step.
     if (this.state.searchQuery) {
       filteredPlaces = places.filter(place => {
-        const placeName = (place.name + place.parentPlace?.name).toLowerCase()
+        const placeName = (place.name + place.parentPlace?.name).toLowerCase();
         return placeName.includes(this.state.searchQuery);
       });
     }
@@ -261,17 +267,42 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Example: parent places of Florida: ["World", "US", "Florida"].
     const parentPlaces = this.getParentPlaces();
 
+    // Get the latest date for all places.
+    const dates = places
+      .map(place => {
+        const keyToTimeSeries = place.keyToTimeSeries[Config.tableDefaultSortBy] || {};
+        // Config.defaultKey contains our reference key for dates.
+        // AKA, what is our most complete dataset? We want to get the date
+        // from that dataset.
+        const dates = Object.keys(keyToTimeSeries);
+        return getLatestDate(dates);
+      })
+      .filter(date => date);
+
+    // From all the latest dates, calculate the latest date.
+    // This will tell us the actual date.
+    // Example: If Spain was updated August 17 and the US on August 18,
+    // Our latest date will be "August 18" because, that's the most recent date.
+    const maxDate = getLatestDate(dates);
+
+    // Format maxDate into a more readable version.
+    // Only format the date, if maxDate is valid.
+    let formattedDate = '';
+    if (maxDate) {
+      formattedDate = dayjs(maxDate).format('MMM D, YYYY');
+    }
+
     // Text describing the types of places viewing viewed.
     // "Countries in", "States in", "Counties in".
     const pluralPlaceTypes: {[key: string]: string} = Config.pluralPlaceTypes;
     let subtitle = '';
 
-
     // If placeName is "" or undefined, don't display a subtitle.
     // It means hasn't finished loading.
     if (selectedPlace?.name) {
+      const pluralPlaceType = pluralPlaceTypes[this.placeTypeToShow];
       // "Counties in Florida", "Countries in World"...
-      subtitle = pluralPlaceTypes[this.placeTypeToShow] + ' in ' + selectedPlace.name;
+      subtitle = pluralPlaceType + ' in ' + selectedPlace.name;
     }
 
     // Update the site's HTML title to include the subtitle.
@@ -293,7 +324,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Subregion button that is displayed when viewing country/USA.
     // "Compare States" and "Compare Counties".
     const subregionButtons = Config.subregionSelectionButton.map(button => {
-      const placeType = button.id
+      const placeType = button.id;
       // What should happen when a user clicks on the button.
       const onClick = () => goToPlace(this.geoId, placeType);
       return {
@@ -305,7 +336,6 @@ class App extends React.Component<AppPropsType, AppStateType> {
         text: button.text,
       };
     });
-
     return (
       <div>
         <NavigationBar
@@ -316,28 +346,36 @@ class App extends React.Component<AppPropsType, AppStateType> {
             const target = e.target as HTMLTextAreaElement;
             const value = target.value.toLowerCase();
             this.onSearchInput(value);
-          }}/>
-        <div className={'site-container'}>
+          }}
+        />
+        <div className={'site-container fadeIn'}>
           <div className={'header'}>
-            {// Only display the breadcrumb if not in World view.
-              this.geoId !== 'World' &&
-            <Breadcrumb className={'breadcrumb-mod'}>
-              {breadcrumbItems.map((item, i) => {
-                return (
-                  <Breadcrumb.Item href="#"
-                                   key={i}
-                                   active={item.active}
-                                   onClick={item.onClick}>
-                    {item.text}
-                  </Breadcrumb.Item>
-                );
-              })}
-            </Breadcrumb>}
-            <h2 className={'title'}>{subtitle}</h2>
+            <h6>{formattedDate}</h6>
+            {
+              // Only display the breadcrumb if not in World view.
+              this.geoId !== 'World' && (
+                <Breadcrumb className={'breadcrumb-mod'}>
+                  {breadcrumbItems.map((item, i) => {
+                    return (
+                      <Breadcrumb.Item
+                        href="#"
+                        key={i}
+                        active={item.active}
+                        onClick={item.onClick}>
+                        {item.text}
+                      </Breadcrumb.Item>
+                    );
+                  })}
+                </Breadcrumb>
+              )
+            }
+            <h2 className={'title'}>{subtitle || <br />}</h2>
             {
               // Only display multi-button group if on US.
-              this.geoId === 'country/USA' &&
-            (<MultiButtonGroup items={subregionButtons}/>)}
+              this.geoId === 'country/USA' && (
+                <MultiButtonGroup items={subregionButtons} />
+              )
+            }
           </div>
           <CumulativePanel textToValue={cumulativePanelColumns} />
           <div className={'content'}>
