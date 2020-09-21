@@ -13,116 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const API_ROOT = 'https://api.datacommons.org';
-
 /**
- * Generates the url to get property labels for a dcid using DC REST API.
- *
- * @param {string} dcid The dcid to find property labels for.
- * @return {string} The generated url.
+ * Module contains Node and Assertion classes which together create a local
+ * version of the Data Commons Knowledge Graph.
  */
-function getLabelsTargetUrl(dcid) {
-  const targetUrl = (API_ROOT + '/node/property-labels?dcids=' + dcid);
-  return targetUrl;
-}
 
-/**
- * Generates the url to get property values from the DC KG using REST API.
- *
- * @param {string} dcid The dcid of the node to get the property values for.
- * @param {string} label The property label to query for.
- * @param {boolean} out The direction of label, true indicates outgoing label.
- * @return {string} The generated url.
- */
-function getValuesTargetUrl(dcid, label, out) {
-  let targetUrl = (API_ROOT + '/node/property-values?dcids=' + dcid +
-                   '&property=' + label + '&direction=');
-  if (out) {
-    targetUrl += 'out';
-  } else {
-    targetUrl += 'in';
-  }
-  targetUrl += '&limit=500';
-  return targetUrl;
-}
-
-/**
- * Gets all property labels of the given dcid that are in the DC KG.
- *
- * @param {string} dcid The dcid of the node to find property labels for.
- * @return {Object} An object containing both 'in' and 'out' property labels.
- */
-async function getRemotePropertyLabels(dcid) {
-  const targetUrl = getLabelsTargetUrl(dcid);
-  return fetch(targetUrl)
-      .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid]);
-}
-
-/**
- * Gets all property values containing the given dcid, property label, and
- * direction.
- *
- * @param {string} dcid The dcid of the node to find property value for.
- * @param {string} label The property label to query for.
- * @param {boolean} out The direction of label, true indicates outgoing label.
- * @return {Object} An object containing all found values matching the query.
- */
-async function getRemotePropertyValues(dcid, label, out) {
-  const targetUrl = getValuesTargetUrl(dcid, label, out);
-  return fetch(targetUrl)
-      .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid])
-      .then((triples) => {
-        console.log('url: ' + targetUrl + ', values: ' + triples);
-        if (out) {
-          return triples.out;
-        } else {
-          return triples.in;
-        }
-      });
-}
-
-/**
- * Parses an Object returned from the DC REST get_values API to create a Node
- * object from the value's dcid or to return the string value that the object
- * holds.
- *
- * @param {Object} valueObj An object returned from DC REST get_values API.
- * @return {Node | string} The created Node if the value obj has a dcid,
- *     otherwise the string of the value.
- */
-function getValueFromValueObj(valueObj) {
-  let value;
-  if ('dcid' in valueObj) {
-    value = Node.getNode(valueObj.dcid, true, true);
-    value.existsInKG = true;
-  } else if ('value' in valueObj) {
-    value = valueObj.value;
-  } else {
-    console.log('ERROR remote fetch no dcid or value prop: ' + valueObj);
-  }
-  return value;
-}
+import * as utils from './utils.js'
 
 /** Class representation of a single Node in the KG. */
 class Node {
+  localId;
+  alreadyFetched;
+  existsInKG;
+  dcid;
+  assertions;
+  invAssertions;
+
   /**
    * Create a Node based on a given id.
-   * @param {string} id The id of the node to find.
-   * @param {boolean} isDCID True if the given id is a dcid.
+   * @param {string} id The id of the node to create.
    */
-  constructor(id, isDCID) {
-    this.localID = id;
+  constructor(id) {
+    this.localId = id;
     this.alreadyFetched = false;
     this.existsInKG = false;
-    if (isDCID) {
-      this.dcid = id;
-      this.ref = id;
-    } else {
-      this.dcid = null;
-      this.ref = 'l:' + id;
-    }
+    this.dcid = null;
+    this.assertions = null;
+    this.invAssertions = null;
   }
 
   /**
@@ -130,9 +47,7 @@ class Node {
    * @param {Object} obj The object to check.
    * @return {boolean} True if the object is an instance of Node.
    */
-  static isNode(obj) {
-    return obj instanceof Node;
-  }
+  static isNode(obj) { return obj instanceof Node; }
 
   /**
    * Returns a node with the given ID, creates a new node if shouldCreate is
@@ -141,28 +56,17 @@ class Node {
    * @param {string} id The id of the node to find.
    * @param {boolean} shouldCreate True if a new Node should be created if it
    *     does not already exist.
-   * @param {boolean} isDCID True if the given id is a dcid.
    * @return {Node|null} The found node if it exists or is created.
    */
-  static getNode(id, shouldCreate, isDCID) {
-    let existing;
+  static getNode(id, shouldCreate) {
 
-    // check if the DCID can be converted to localID
-    if (isDCID) {
-      existing = Node.nodeHash[Node.dcidToLocal[id]];
-      if (existing) {
-        return existing;
-      }
-    }
-
-    // check if id is in node hash already (cache)
-    existing = Node.nodeHash[id];
+    let existing = Node.nodeHash[id];
     if (existing) {
       return existing;
     }
 
     if (shouldCreate) {
-      const newNode = new Node(id, isDCID);
+      const newNode = new Node(id);
       Node.nodeHash[id] = newNode;
       return newNode;
     }
@@ -170,8 +74,26 @@ class Node {
   }
 
   /**
-   * Sets the dcid of Node object and adds the dcid to localId mapping to
-   * Node.dcidToLocal
+   * Returns the reference to the node that is displayed in browser. If the
+   * node has a dcid, then the dcid will be displayed. If the node's local id
+   * is different, then the local id is also displayed.
+   * Ex: <dcid> [l:<localId>]
+   * @return {string} The reference to the node to be displayed.
+   */
+  getRef() {
+    const dcidRef = this.dcid ? this.dcid : '';
+    let localRef = '';
+
+    if (!this.dcid || this.dcid !== this.localId) {
+      localRef = '[l:' + this.localId + ']';
+    }
+    return [ dcidRef, localRef ].join(' ').trim();
+  }
+
+  /**
+   * Sets the dcid of Node object. Checks if a separate node based on the dcid
+   * already exists. If remote node exists, then the remote node is absorbed by
+   * current node via mergeNode() method.
    *
    * @param {string} dcid The dcid to be added to the Node object.
    */
@@ -181,93 +103,92 @@ class Node {
       this.mergeNode(remote);
     }
     this.dcid = dcid;
-    Node.dcidToLocal[dcid] = this.localID;
     Node.nodeHash[dcid] = this;
   }
 
   /**
-   * Moves the assertions and invAssertions from the given param node to the
-   * calling Node object by changing the src property for assertions and the
+   * Moves the assertions and inverse Assertions from the given param node to
+   * the calling Node object by changing the src property for assertions and the
    * target property of the invAssertions.
    *
    * @param {Node} absorbedNode The node object whose triples should be copied.
    */
   mergeNode(absorbedNode) {
-    const aquiredAsserts = absorbedNode.getAssertions();
-    for (const assert of aquiredAsserts) {
+
+    if (this.localId === absorbedNode.localId)
+      return;
+
+    absorbedNode.getAssertions().forEach(assert => {
       assert.src = this;
       assert.nextAssertion = this.assertions;
       this.assertions = assert;
-    }
+    });
 
-    const aquiredInvAsserts = absorbedNode.getInvAssertions();
-    for (const invAssert of aquiredInvAsserts) {
+    absorbedNode.getInvAssertions().forEach(invAssert => {
       invAssert.target = this;
-      invAssert.nextInvAssertion = this.invAssertions;
+      invAssert.invNextAssertion = this.invAssertions;
       this.invAssertions = invAssert;
-    }
+    });
   }
 
   /**
    * Sets the property existsInKG to true if the Node has triples in the DC KG.
    */
   async setExistsInKG() {
-    if (!this.dcid || this.existsInKG) {
+    if (!this.dcid || this.existsInKG)
       return;
-    }
-
-    const url = API_ROOT + '/node/triples?dcids=' + this.dcid + '&limit=1';
-    const curNode = this;
-
-    return fetch(url).then((res) => res.json()).then((data) => {
-      if (JSON.parse(data.payload)[curNode.dcid]) {
-        curNode.existsInKG = true;
-      }
-    });
+    this.existsInKG = await utils.getExistsInKG(this.dcid);
   }
 
   /**
-   * Stores remote triples as assertions and invAssertions of the calling Node
-   * object. Sets the alreadyFetched property to true if data is fetched.
+   * Creates Assertion objects from a list of property labels by calling the
+   * helper function getRemotePropertyValues from utils.js to find the values
+   * in Data Commons given the current node, a property label, and the direction
+   * of the label.
+   *
+   * @param {Array<string>} propLabels List of property labels associated with
+   *     the calling Node object in Data Commons.
+   * @param {boolean} isInverse True if the list of labels are incoming labels,
+   *     meaning the calling Node object is the target of the triple. False if
+   *     the calling Node is the source of the triple.
+   */
+  async createAssertionsFromLabels(propLabels, isInverse) {
+
+    for (const label of propLabels) {
+      await utils.getRemotePropertyValues(this.dcid, label, isInverse)
+          .then((valueList) => {
+            if (!valueList) {
+              throw new Error('No property values for dcid: ' + this.dcid +
+                              ' label: ' + label);
+            }
+
+            valueList.forEach(valueObj => {
+              const val = utils.getValueFromValueObj(valueObj);
+              const source = isInverse ? val : this;
+              const target = isInverse ? this : val;
+              new Assertion(source, label, target, valueObj.provenanceId);
+            });
+          });
+    }
+  }
+
+  /**
+   * Stores remote triples as assertions and inverse Assertions of the calling
+   * Node object. Sets the alreadyFetched property to true if data is fetched.
    */
   async fetchRemoteData() {
-    const curNode = this;
 
-    if (curNode.alreadyFetched || !curNode.dcid) {
+    if (this.alreadyFetched || !this.dcid) {
       return;
     }
 
-    await getRemotePropertyLabels(curNode.dcid).then(async (allLabels) => {
-      // create Assertions for each triple current node is source
-      for (const label of allLabels.outLabels) {
-        await getRemotePropertyValues(curNode.dcid, label, true)
-            .then((valueList) => {
-              if (!valueList) {
-                console.log('ERROR: could not find value for node: ' +
-                            curNode.dcid + ', label: ' + label);
-                return;
-              }
-              for (const valueObj of valueList) {
-                const target = getValueFromValueObj(valueObj);
-                Assertion.addAssertion(curNode, label, target,
-                    valueObj.provenanceId);
-              }
-            });
-      }
-
-      // create Inverse Assertion for each triple current node is target
-      for (const label of allLabels.inLabels) {
-        await getRemotePropertyValues(curNode.dcid, label, false)
-            .then((valueList) => {
-              for (const valueObj of valueList) {
-                const source = getValueFromValueObj(valueObj);
-                Assertion.addAssertion(source, label, curNode,
-                    valueObj.provenanceId);
-              }
-            });
-      }
+    await utils.getRemotePropertyLabels(this.dcid).then(async (allLabels) => {
+      await this.createAssertionsFromLabels(allLabels.outLabels,
+                                            /* isInverse */ false);
+      await this.createAssertionsFromLabels(allLabels.inLabels,
+                                            /* isInverse */ true);
     });
-    curNode.alreadyFetched = true;
+    this.alreadyFetched = true;
   }
 
   /**
@@ -275,6 +196,7 @@ class Node {
    * @return {Array<Assertion>} The array of assertions.
    */
   getAssertions() {
+
     const assertList = [];
     let assert = this.assertions;
 
@@ -302,12 +224,16 @@ class Node {
   }
 }
 
-Node.nodeLocalHash = {}; // stores mapping of mcf local subject IDs to the Node
-Node.dcidToLocal = {}; // stores mapping of dcids to local id equivalents
 Node.nodeHash = {}; // stores all created nodes
 
-/** Class representation of a single Assertion (triple) in the KG. */
+/** Class representation of a single Assertion or triple in the KG. */
 class Assertion {
+  src;
+  property;
+  provenance;
+  target;
+  nextAssertion;
+  invNextAssertion;
   /**
    * Create a triple, setting the source's assertion prop to be the new object.
    *
@@ -329,22 +255,5 @@ class Assertion {
       target.invAssertions = this;
     }
   }
-
-  /**
-   * Creates a new Assertion object given the params.
-   * @param {Node} src The source or subject of the triple.
-   * @param {string} property The property label of the triple.
-   * @param {Node|string} target The predicate or target of the triple.
-   * @param {string} provenance The provenance of the triple.
-   */
-  static addAssertion(src, property, target, provenance) {
-    new Assertion(src, property, target, provenance);
-  }
 }
-export {
-  Assertion,
-  Node,
-  getRemotePropertyLabels,
-  getRemotePropertyValues,
-  getValueFromValueObj,
-};
+export {Node, Assertion};
