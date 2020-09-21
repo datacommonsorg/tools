@@ -17,7 +17,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Dict, Union
 
-from flask import Flask, send_from_directory, Response
+from flask import Flask, Response, redirect
 from flask_caching import Cache
 from flask_compress import Compress
 
@@ -50,47 +50,13 @@ GeoIdToDataType = Dict[str, KeyToTimeSeries]
 GeoIdToStatsType = Dict[str, Dict[str, int]]
 PlaceToInfoType = Dict[str, Dict[str, str]]
 
-
-@app.route("/<path:path>", methods=["GET"])
-def static_proxy(path):
-    """
-    Return the /path file in the directory from the ./build directory.
-    Example: /index.css would return the index.css file.
-    No-caching HTTP headers are sent.
-    :param path: the file path to return.
-    :return: the file if it exists.
-    """
-    response = send_from_directory(app.static_folder, path)
-    response.cache_control.max_age = 0
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
-
-
-@app.route("/", methods=["GET"])
-def index():
-    """
-    Returns the site's HTML file. No-caching HTTP headers are sent.
-    NOTE: Caching may be turned on once the frequency of updates is reduced.
-    Otherwise, users my experience a white page due to old files.
-    :return: returns the index file for the site.
-    """
-    response = send_from_directory(app.static_folder, "index.html")
-    response.cache_control.max_age = 0
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
-
-
 @app.route("/api/data/<string:geo_id>")
 @cache.cached(timeout=3600)
 def county_data(geo_id: str):
     """
     Returns any placeType's datta.
     NOTE: for return type documentation, please see README.md's APIs section.
-    :return: geo_id->{**key_to_timeserie}.
+    :return: geo_id->{**key_to_timeseries}.
     """
     # Request data for only US Counties.
     data = _get_data(geo_id)
