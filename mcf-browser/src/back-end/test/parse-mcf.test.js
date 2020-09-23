@@ -32,11 +32,14 @@ test('testing parsePropValues: should output property values', () => {
     '"GO:BioIdTextVal"',
     {'ns' : 'schema', 'ref' : 'remoteNodeId'},
   ];
-  const parsedVals = ParseMcf.parsePropValues(rawVals, 0);
+  const fileName = 'fileName';
+  const mcfParser = new ParseMcf(fileName);
+  mcfParser.lineNum = 0;
+  const parsedVals = mcfParser.parsePropValues(rawVals, 0);
   expect(parsedVals).toStrictEqual(expectedParsedVals);
 
   const expectedErrorMsg = 'Error, no property values to parse (line 0)';
-  expect(() => ParseMcf.parsePropValues('', 0))
+  expect(() => mcfParser.parsePropValues('', 0))
       .toThrow(new Error(expectedErrorMsg));
 });
 

@@ -19,18 +19,36 @@
  */
 
 import {Assertion, Node} from './graph.js';
-import * as utils from './utils.js'
+import {shouldReadLine} from './utils.js';
 const NAMESPACES = [ 'l', 'schema', 'dcs', 'dcid' ];
 const LOCAL_NS = 'l';
 
 /** Class responsible for parsing an mcf file. */
 class ParseMcf {
+  /**
+   * Provenance to be used for any Assertion objects created during parsing,
+   * based off of the mcf file name.
+   * @type {string}
+   */
   prov;
+  /**
+   * Current subject Node for any Assertion created. Set when a 'Node:' property
+   * label is parsed.
+   * @type {Node}
+   */
   curNode;
+  /**
+   * Current line number of the line being parsed, used for identifying location
+   * of syntax error in the mcf file.
+   * @type {number}
+   */
+
   lineNum;
   /**
    * Create a ParseMcf object which keeps tracks of the current source node of
    * each triple in the mcf and the provenance, which is the mcf file name.
+   * @param {string} fileFullName Name of file to be converted to a provenance
+   *     representing the file in teh Assertion Objects created while parsing.
    */
   constructor(fileFullName) {
     let fileName = fileFullName;
@@ -52,13 +70,13 @@ class ParseMcf {
    * <namespace, reference> pair.
    *
    * @param {string} propValues A comma separated list of property values.
-   * @return {Array<string|<namespace:string, reference:string>>} Array of
+   * @return {Array<(string|Object)>} Array of
    *     parsed values.
    */
-  static parsePropValues(propValues, lineNum) {
+  parsePropValues(propValues) {
     if (!propValues) {
-      throw new Error('Error, no property values to parse (line ' + lineNum +
-                      ')');
+      throw new Error('Error, no property values to parse (line ' +
+                      this.lineNum + ')');
     }
     const values = [];
     for (const propValue of propValues.split(',')) {
@@ -98,13 +116,15 @@ class ParseMcf {
 
     if (parsedValues[0] instanceof Object) {
       nodeId = parsedValues[0]['ref'];
-      if (parsedValues[0]['ns'] !== LOCAL_NS)
+      if (parsedValues[0]['ns'] !== LOCAL_NS) {
         isDCID = true;
+      }
     }
 
     this.curNode = Node.getNode(nodeId, /* shouldCreate */ true);
-    if (isDCID)
+    if (isDCID) {
       this.curNode.setDCID(parsedValues[0]['ref']);
+    }
     ParseMcf.localNodeHash[nodeId] = this.curNode;
   }
 
@@ -158,19 +178,20 @@ class ParseMcf {
   parseLine(line) {
     line = line.trim();
 
-    if (!utils.shouldReadLine(line))
-      return; // not an error
+    if (!shouldReadLine(line)) {
+      return;
+    } // not an error
 
     if (!line.includes(':')) {
       throw new Error('Error, line ' + this.lineNum + ' does not contain ":"');
     }
 
-    const propLabel = line.substring(0, line.indexOf(':')).trim()
-    const propValues = line.substring(line.indexOf(':') + 1)
+    const propLabel = line.split(':', 1)[0].trim();
+    const propValues = line.substring(line.indexOf(':') + 1);
 
     // parsePropValues() returns a list having either a string or <namespace,
     // reference> pair.
-    const parsedValues = ParseMcf.parsePropValues(propValues, this.lineNum);
+    const parsedValues = this.parsePropValues(propValues);
 
     switch (propLabel) {
     case '':
@@ -201,7 +222,7 @@ class ParseMcf {
     const lines = mcf.split('\n');
     this.lineNum = 1;
 
-    lines.forEach(line => {
+    lines.forEach((line) => {
       this.parseLine(line);
       this.lineNum++;
     });

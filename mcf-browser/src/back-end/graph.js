@@ -18,15 +18,50 @@
  * version of the Data Commons Knowledge Graph.
  */
 
-import * as utils from './utils.js'
+import {
+  getExistsInKG,
+  getRemotePropertyLabels,
+  getRemotePropertyValues,
+  getValueFromValueObj,
+} from './utils.js';
 
 /** Class representation of a single Node in the KG. */
 class Node {
+  /**
+   * Universal id of the node. Every Node obj has a localId, which is either a
+   * local reference used in an uplaoded file, or the dcid if the node is never
+   * referred to locally (remote only Node).
+   * @type {string}
+   */
   localId;
+  /**
+   * Whether triples from the remote Data Commons Knowledge Graph have already
+   * been fetched.
+   * @type {boolean}
+   */
   alreadyFetched;
+  /**
+   * Whether the node exists in the Data Commons Knowledge Graph.
+   * @type {boolean}
+   */
   existsInKG;
+  /**
+   * Dcid of the node. Set only if a remote id is referred to in a local file or
+   * pulled from the Data Commons Knowledge Graph.
+   * @type {?string}
+   */
   dcid;
+  /**
+   * The head of a linked list of Assertion objects representing the outgoing
+   * triples of the Node object.
+   * @type {?Assertion}
+   */
   assertions;
+  /**
+   * The head of a linked list of Assertion objects representing the incoming
+   * triples of the Node object.
+   * @type {?Assertion}
+   */
   invAssertions;
 
   /**
@@ -59,8 +94,7 @@ class Node {
    * @return {Node|null} The found node if it exists or is created.
    */
   static getNode(id, shouldCreate) {
-
-    let existing = Node.nodeHash[id];
+    const existing = Node.nodeHash[id];
     if (existing) {
       return existing;
     }
@@ -114,17 +148,17 @@ class Node {
    * @param {Node} absorbedNode The node object whose triples should be copied.
    */
   mergeNode(absorbedNode) {
-
-    if (this.localId === absorbedNode.localId)
+    if (this.localId === absorbedNode.localId) {
       return;
+    }
 
-    absorbedNode.getAssertions().forEach(assert => {
+    absorbedNode.getAssertions().forEach((assert) => {
       assert.src = this;
       assert.nextAssertion = this.assertions;
       this.assertions = assert;
     });
 
-    absorbedNode.getInvAssertions().forEach(invAssert => {
+    absorbedNode.getInvAssertions().forEach((invAssert) => {
       invAssert.target = this;
       invAssert.invNextAssertion = this.invAssertions;
       this.invAssertions = invAssert;
@@ -135,9 +169,10 @@ class Node {
    * Sets the property existsInKG to true if the Node has triples in the DC KG.
    */
   async setExistsInKG() {
-    if (!this.dcid || this.existsInKG)
+    if (!this.dcid || this.existsInKG) {
       return;
-    this.existsInKG = await utils.getExistsInKG(this.dcid);
+    }
+    this.existsInKG = await getExistsInKG(this.dcid);
   }
 
   /**
@@ -153,17 +188,16 @@ class Node {
    *     the calling Node is the source of the triple.
    */
   async createAssertionsFromLabels(propLabels, isInverse) {
-
     for (const label of propLabels) {
-      await utils.getRemotePropertyValues(this.dcid, label, isInverse)
+      await getRemotePropertyValues(this.dcid, label, isInverse)
           .then((valueList) => {
             if (!valueList) {
               throw new Error('No property values for dcid: ' + this.dcid +
                               ' label: ' + label);
             }
 
-            valueList.forEach(valueObj => {
-              const val = utils.getValueFromValueObj(valueObj);
+            valueList.forEach((valueObj) => {
+              const val = getValueFromValueObj(valueObj);
               const source = isInverse ? val : this;
               const target = isInverse ? this : val;
               new Assertion(source, label, target, valueObj.provenanceId);
@@ -177,12 +211,11 @@ class Node {
    * Node object. Sets the alreadyFetched property to true if data is fetched.
    */
   async fetchRemoteData() {
-
     if (this.alreadyFetched || !this.dcid) {
       return;
     }
 
-    await utils.getRemotePropertyLabels(this.dcid).then(async (allLabels) => {
+    await getRemotePropertyLabels(this.dcid).then(async (allLabels) => {
       await this.createAssertionsFromLabels(allLabels.outLabels,
                                             /* isInverse */ false);
       await this.createAssertionsFromLabels(allLabels.inLabels,
@@ -196,7 +229,6 @@ class Node {
    * @return {Array<Assertion>} The array of assertions.
    */
   getAssertions() {
-
     const assertList = [];
     let assert = this.assertions;
 
@@ -228,12 +260,39 @@ Node.nodeHash = {}; // stores all created nodes
 
 /** Class representation of a single Assertion or triple in the KG. */
 class Assertion {
+  /**
+   * The source or subject of the triple.
+   * @type {Node}
+   */
   src;
+  /**
+   * The property label or predicate of the triple.
+   * @type {string}
+   */
   property;
+  /**
+   * The provenance of the triple.
+   * @type {string}
+   */
   provenance;
+  /**
+   * The target or object of the triple.
+   * @type {string|Node}
+   */
   target;
+  /**
+   * The next Assertion object in a linked list representing the outgoing
+   * triples of the Node object stored in src property.
+   * @type {?Assertion}
+   */
   nextAssertion;
+  /**
+   * The next Assertion object in a linked list representing the incoming
+   * triples of the Node object stored in src property.
+   * @type {?Assertion}
+   */
   invNextAssertion;
+
   /**
    * Create a triple, setting the source's assertion prop to be the new object.
    *
