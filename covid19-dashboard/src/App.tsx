@@ -134,7 +134,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     });
 
     // We don't really care about this data, we only wanted to cache it.
-    // None the less, we still store it because
+    // Nonetheless, we still store it because
     // it can help when using the search bar.
     Promise.all(cachePromises).then(responses => {
       responses.forEach(response => {

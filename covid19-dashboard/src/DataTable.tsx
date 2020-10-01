@@ -238,6 +238,8 @@ export default class DataTable extends React.Component<
             obj.enabled = !enabled
             localStorage[obj.id] = !enabled
           }
+          // TODO(edumorales): Use this.setState() instead of forceUpdate.
+          // This should be done on re-design of button selection.
           this.forceUpdate()
         }}/>
         <Table responsive="l">
