@@ -30,6 +30,7 @@ type TableStateType = {
   sortBy: string;
   order: OrientationType;
   chunkIndex: number;
+  categories: any[]
 };
 
 type TablePropsType = {
@@ -42,21 +43,30 @@ type TablePropsType = {
  * @var state.order: display data ascending or descending order
  * @var state.chunkIndex: what chunk of data to display.
  * @param props.data: an object where each key is a geoId
- * and each value contains different timeSeries .
+ * and each value contains different timeSeries.
  * The table is divided into pages.
  */
 export default class DataTable extends React.Component<
-  TablePropsType,
-  TableStateType
-  > {
+  TablePropsType, TableStateType> {
   state = {
     sortBy: Configuration.tableDefaultSortBy,
     order: 'desc' as OrientationType,
     chunkIndex: 0,
+    categories: Content.table
   };
 
   chunkSize = 30;
   chunkedData: Place[][] = [];
+
+  componentDidMount() {
+    // If this is the first time loading the page, store category's status.
+    // This way, when the user moves around the dashboard, the checkboxes
+    // of the headers will be untouched.
+    this.state.categories.forEach(header => {
+      if (localStorage[header.id])
+        header.enabled = localStorage[header.id] === 'true'
+    })
+  }
 
   /**
    * Determines what type of arrow display
@@ -150,6 +160,7 @@ export default class DataTable extends React.Component<
       return place.keyToTimeSeries[this.state.sortBy];
     })
 
+
     // Chunk the dataset by groups of this.chunkSize.
     // Each element in the chunk represents a row.
     // Each chunk contains this.chunkSize rows.
@@ -161,7 +172,9 @@ export default class DataTable extends React.Component<
 
     // Get the header names from Content.json
     // When the header is clicked, change the sorting.
-    const tableHeaders = Content.table.map((obj, index) => {
+    const enabledHeaders = this.state.categories.filter(header => header.enabled)
+
+    const tableHeaders = enabledHeaders.map((obj, index) => {
       // Should the title have an arrow?
       const title = this.sortArrow(obj.id) + obj.title;
       return (
@@ -177,7 +190,7 @@ export default class DataTable extends React.Component<
       const tableRanking = this.state.chunkIndex * this.chunkSize + index + 1;
 
       // For every row, generate a Th for each column.
-      const thValues = Content.table.map((category, index) => {
+      const thValues = enabledHeaders.map((category, index) => {
         // Get the timeSeries for our current column's id.
         const timeSeries = place.keyToTimeSeries[category.id] || {};
         return (
@@ -192,6 +205,8 @@ export default class DataTable extends React.Component<
 
       const subregionType = place.getSubregionType()
 
+      // Place's name in the form of "subregion, region".
+      // Example: Miami, Florida.
       let placeFullName = place.name
       if (place.placeType !== 'Country') {
         placeFullName += `, ${place.parentPlace?.name}`;
@@ -210,8 +225,23 @@ export default class DataTable extends React.Component<
       );
     });
 
+    const content = this.state.categories.map(obj => {
+      return {id: obj.id, title: obj.title, enabled: obj.enabled}
+    })
+
     return (
       <>
+        <HeaderSelector content={content} onClick={(id: string) => {
+          const obj = this.state.categories.find(obj => obj.id === id)
+          if (obj) {
+            const enabled = localStorage[obj.id] === 'true'
+            obj.enabled = !enabled
+            localStorage[obj.id] = !enabled
+          }
+          // TODO(edumorales): Use this.setState() instead of forceUpdate.
+          // This should be done on re-design of button selection.
+          this.forceUpdate()
+        }}/>
         <Table responsive="l">
           <thead>
           <tr>
@@ -286,7 +316,37 @@ const TableIndexPagination = (props: TableIndexPaginationPropsType) => {
     onClick: () => props.onIndexChange(props.index + 1),
   };
 
+  // Example: Previous 1 2 3 4 Next
   const allButtons = [prevButton, ...numberButtons, nextButton];
 
   return <MultiButtonGroup items={allButtons} />;
 };
+
+type HeaderSelectorProps = {
+  content: {title: string, id: string, enabled: boolean}[],
+  onClick: (id: string) => void
+}
+
+/**
+ * Component for the category selectors on top of the table.
+ * These are buttons that can be enabled or disabled to
+ * add more categories to the table.
+ * When a category is added, a new column is created on the table.
+ */
+const HeaderSelector = (props: HeaderSelectorProps) => {
+  return (
+    <div className="btn-group-toggle">
+    {
+        props.content.map(({title, id, enabled}: { title: string, id: string, enabled: boolean }) => {
+          const activeClass = enabled ? "btn-secondary" : "btn-outline-dark"
+          return (
+            <label className={`m-2 btn ${activeClass}`} onClick={() => props.onClick(id)} key={id}>
+              <input type="checkbox" checked={enabled} onClick={() => props.onClick(id)}/>
+              {title}
+            </label>
+          )
+        })
+      }
+    </div>
+  )
+}

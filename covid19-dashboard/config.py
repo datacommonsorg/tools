@@ -27,23 +27,36 @@ STAT_VARS = {
             "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedCase",
         "Deaths":
             "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+        "Hospitalized":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized",
         "Recovered":
-            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
-   },
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered",
+        "ICU":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU"
+
+    },
     "State": {
         "Cases":
             "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
         "Deaths":
             "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+        "Hospitalized":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized",
         "Recovered":
-            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered",
+        "ICU":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU"
     },
     "County": {
         "Cases":
             "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedOrProbableCase",
         "Deaths":
             "CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased",
+        "Hospitalized":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized",
         "Recovered":
-            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered"
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered",
+        "ICU":
+            "CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU"
     },
 }
