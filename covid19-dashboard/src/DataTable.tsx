@@ -14,7 +14,7 @@
  limitations under the License.
  */
 
-import React from 'react';
+import React, {useState} from 'react';
 import chunk from 'lodash/chunk';
 import Content from './Content.json';
 import Configuration from './Config.json';
@@ -231,17 +231,29 @@ export default class DataTable extends React.Component<
 
     return (
       <>
-        <HeaderSelector content={content} onClick={(id: string) => {
-          const obj = this.state.categories.find(obj => obj.id === id)
-          if (obj) {
-            const enabled = localStorage[obj.id] === 'true'
-            obj.enabled = !enabled
-            localStorage[obj.id] = !enabled
-          }
-          // TODO(edumorales): Use this.setState() instead of forceUpdate.
-          // This should be done on re-design of button selection.
-          this.forceUpdate()
-        }}/>
+        <div style={{textAlign: "left"}}>
+          <TableOptions content={content} triggered={(id: string) => {
+            // We will store this in State, so make a deep copy.
+            const deepCopyCategories = [...this.state.categories]
+            // Find the header that matches the id.
+            const header = deepCopyCategories.find(header => header.id === id)
+            if (header) {
+              // Store it in localStorage so that we can move around pages.
+              // Every time the user changes the header, update the localStorage.
+
+              // Current enabled status.
+              const enabled = localStorage[header.id] === 'true'
+
+              // Negate the enabled status.
+              // When onClick -> ON or OFF.
+              header.enabled = !enabled
+              localStorage[header.id] = !enabled
+
+              // Update the header selection in State.
+              this.setState({categories: deepCopyCategories})
+            }
+          }}/>
+        </div>
         <Table responsive="l">
           <thead>
           <tr>
@@ -322,31 +334,45 @@ const TableIndexPagination = (props: TableIndexPaginationPropsType) => {
   return <MultiButtonGroup items={allButtons} />;
 };
 
-type HeaderSelectorProps = {
-  content: {title: string, id: string, enabled: boolean}[],
-  onClick: (id: string) => void
+type HeaderType = {title: string, id: string, enabled: boolean}
+type TableOptionsPropsType = {
+  content: HeaderType[],
+  triggered: (id: string) => void
 }
 
-/**
- * Component for the category selectors on top of the table.
- * These are buttons that can be enabled or disabled to
- * add more categories to the table.
- * When a category is added, a new column is created on the table.
- */
-const HeaderSelector = (props: HeaderSelectorProps) => {
+const TableOptions = (props: TableOptionsPropsType) => {
+  // if "show" class, the menu will be displayed.
+  // if "" class, no menu will be shown.
+  const [showOptionsClass, setShowOptionsClass] = useState("");
+
   return (
-    <div className="btn-group-toggle">
-    {
-        props.content.map(({title, id, enabled}: { title: string, id: string, enabled: boolean }) => {
-          const activeClass = enabled ? "btn-secondary" : "btn-outline-dark"
-          return (
-            <label className={`m-2 btn ${activeClass}`} onClick={() => props.onClick(id)} key={id}>
-              <input type="checkbox" checked={enabled} onClick={() => props.onClick(id)}/>
-              {title}
-            </label>
-          )
-        })
-      }
+    <div className="btn-group-vertical">
+      <label className={"btn btn-secondary"} onClick={() => {
+        // Logic for displaying options panel.
+        setShowOptionsClass(showOptionsClass ? "" : "show")}
+      }>
+        <img src={require("./options_icon_18dp.png")}
+             alt="Options"
+             className={"icon-in-button"}/>
+        {"Options"}
+      </label>
+      <div className={`dropdown-menu shadow ${showOptionsClass}`}
+           style={{width: 300, marginTop: -10, marginLeft: -1}}>
+        {
+          props.content.map(({title, id, enabled}: HeaderType) => {
+            return (
+              <div style={{textAlign: "left"}} key={id}>
+                <label className={'btn'}>
+                  <input type="checkbox"
+                         onChange={() => props.triggered(id)}
+                         style={{marginRight: 5}}
+                         checked={enabled}/>
+                  {title}
+                </label>
+              </div>
+            )})
+        }
+      </div>
     </div>
   )
 }
