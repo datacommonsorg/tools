@@ -44,7 +44,6 @@ export default (props: HeaderPropsType) => (
                 type="button"
                 data-toggle="collapse"
                 data-target="#dc-main-nav">
-          <span className="navbar-toggler-icon"/>
         </button>
         <form className="form-inline">
           <input className="form-control mr-sm"
