@@ -28,7 +28,13 @@ export default function CumulativePanel(props: CountPanelPropsType) {
     <div className={'panel count-panel'}>
       {props.textToValue.map((obj, index) => {
         const title = obj.title;
-        const value = numberWithCommas(obj.value);
+
+        // If value is nullish (including 0), display a dash.
+        let value = "-"
+        if (obj.value) {
+          value = numberWithCommas(obj.value);
+        }
+
         const color = obj.color ? Colors(obj.color) : 'grey';
         return (
           <div className={'column'} key={index} style={{width: pctWidthPerRow}}>

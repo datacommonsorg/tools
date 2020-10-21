@@ -54,14 +54,14 @@ export const Colors = (color: string): string => {
  * would display all counties in the USA.
  */
 export const goToPlace = (geoId?: string, placeType?: string): void => {
-  let newUrl = '/';
+  let newUrl = '/covid19/';
 
   // Redirect to a specific geoId.
   if (geoId && geoId !== 'World') {
     newUrl += `?geoId=${geoId}`;
   } else {
     // if !geoId or geoId == 'World', redirect to homepage.
-    window.location.href = '/';
+    window.location.href = newUrl;
     return;
   }
 

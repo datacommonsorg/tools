@@ -20,14 +20,13 @@ import zlib
 import base64
 
 
-def send_request(req_url, req_json={}, compress=False, post=True, api_key=None):
+def send_request(req_url, req_json={}, compress=False, post=True):
     """ Sends a POST/GET request to req_url with req_json, default to POST.
     Returns:
     The payload returned by sending the POST/GET request formatted as a dict.
     """
     # Get the API key
     headers = {
-        'x-api-key': api_key,
         'Content-Type': 'application/json'
     }
 

@@ -76,7 +76,7 @@ class TestPctChanges(unittest.TestCase):
 
     def test_days_from_baseline_larger_than_data_length(self):
         """
-        Tests a chunk_size larger to len(data).
+        Tests a chunk_size larger than len(data).
         This is not a valid input. Should return [].
         """
         data = {'2020-01-02': 10,
