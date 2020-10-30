@@ -32,11 +32,12 @@ WHERE {
 '''
 
 
-# Get the API Key and perform the POST request.
 response = requests.post(
   'https://api.datacommons.org/query', json={'sparql': sparql})
 res_json = response.json()
 
+
+# Parent -> [Child] mapping
 tree = collections.defaultdict(list)
 for row in  res_json['rows']:
 		ptype = row['cells'][3].get('value', '')
@@ -50,14 +51,14 @@ for row in  res_json['rows']:
 with open('result.csv', mode='w') as csv_file:
     csv_writer = csv.writer(csv_file, delimiter=',')
     for parent, children in tree.items():
+        # Sort the children by name
         children.sort(key=lambda place: place[0])
-        logging.info(parent)
-
         current = []
         token = "."
         first = True
         for c in children:
             parts = c[0].split(" ")
+            # This is the similary check, can expand this to handle more cases.
             if parts[0] == token:
                 if first:
                     csv_writer.writerow(current)
