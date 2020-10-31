@@ -19,38 +19,38 @@ import {Assertion, Node} from '../graph.js';
 test('testing setDCID w/ merge', async () => {
   Node.nodeHash = {};
 
-  const remoteNode = Node.getNode('remoteId', true);
+  const remoteNode = Node.getNode('dcid:remoteId');
   remoteNode.setDCID('remoteId');
 
-  const targetNode = Node.getNode('targetId', true);
-  const srcNode = Node.getNode('srcId', true);
+  const targetNode = Node.getNode('l:targetId');
+  const srcNode = Node.getNode('l:srcId');
 
   new Assertion(remoteNode, 'label1', 'val1', 'prov');
   new Assertion(remoteNode, 'label2', targetNode, 'prov');
   new Assertion(srcNode, 'label3', remoteNode, 'prov');
 
-  const localNode = Node.getNode('localId', true);
+  const localNode = Node.getNode('l:localId');
   new Assertion(localNode, 'label4', 'val2', 'prov');
   localNode.setDCID('remoteId');
 
   const expectedHash = {
-    'remoteId' : localNode,
-    'localId' : localNode,
-    'targetId' : targetNode,
-    'srcId' : srcNode,
+    'dcid:remoteId' : localNode,
+    'l:localId' : localNode,
+    'l:targetId' : targetNode,
+    'l:srcId' : srcNode,
   };
 
   expect(Node.nodeHash).toStrictEqual(expectedHash);
 
-  const asserts = localNode.getAssertions();
+  const asserts = localNode.assertions;
   expect(asserts.length).toBe(3);
 
-  const invAsserts = localNode.getInvAssertions();
+  const invAsserts = localNode.invAssertions;
   expect(invAsserts.length).toBe(1);
 
   // assertions with remoteNode as target should now point to localNode
   const srcAssert = srcNode.assertions;
-  expect(srcAssert.target).toStrictEqual(localNode);
+  expect(srcAssert[0].target).toStrictEqual(localNode);
 });
 
 test('testing merge duplicate assertions', async () => {
@@ -66,9 +66,9 @@ test('testing merge duplicate assertions', async () => {
 
   Node.nodeHash = {};
 
-  const localNode = Node.getNode('localNode', true);
-  const localValNode = Node.getNode('localId', true);
-  const remoteNode = Node.getNode('remoteId', true);
+  const localNode = Node.getNode('l:localNode');
+  const localValNode = Node.getNode('l:localId');
+  const remoteNode = Node.getNode('dcid:remoteId');
   remoteNode.setDCID('remoteId');
 
   new Assertion(localNode, 'propLabel', localValNode, 'prov');
@@ -76,27 +76,27 @@ test('testing merge duplicate assertions', async () => {
 
   localValNode.setDCID('remoteId');
   const expectedHash = {
-    'remoteId' : localValNode,
-    'localId' : localValNode,
-    'localNode' : localNode,
+    'dcid:remoteId' : localValNode,
+    'l:localId' : localValNode,
+    'l:localNode' : localNode,
   };
   expect(Node.nodeHash).toStrictEqual(expectedHash);
 
-  const asserts = localValNode.getAssertions();
+  const asserts = localValNode.assertions;
   expect(asserts.length).toStrictEqual(0);
 
-  const invAsserts = localValNode.getInvAssertions();
+  const invAsserts = localValNode.invAssertions;
   expect(invAsserts.length).toStrictEqual(2);
 });
 
 test('testing getRef', () => {
   Node.nodeHash = {};
 
-  const node = Node.getNode('localId', true);
+  const node = Node.getNode('l:localId');
   expect(node.getRef()).toBe('[l:localId]');
   node.setDCID('remoteId');
   expect(node.getRef()).toBe('remoteId [l:localId]');
-  node.localId = 'sameId';
+  node.localId = 'l:dcid:sameId';
   node.dcid = 'sameId';
   expect(node.getRef()).toBe('sameId');
 });
@@ -104,17 +104,17 @@ test('testing getRef', () => {
 test('testing setExistsInKG', async () => {
   Node.nodeHash = {};
 
-  const tempNode = Node.getNode('BasePairs171115067', true);
+  const tempNode = Node.getNode('BasePairs171115067');
   tempNode.setDCID('BasePairs171115067');
   await tempNode.setExistsInKG();
   expect(tempNode.existsInKG).toBe(true);
 
-  const tempNode2 = Node.getNode('test', true);
+  const tempNode2 = Node.getNode('test');
   tempNode2.setDCID('test');
   await tempNode2.setExistsInKG();
   expect(tempNode2.existsInKG).toBe(false);
 
-  const tempNode3 = Node.getNode('StatVarObservation', true);
+  const tempNode3 = Node.getNode('StatVarObservation');
   tempNode3.setDCID('StatVarObservation');
   await tempNode3.setExistsInKG();
   expect(tempNode3.existsInKG).toBe(true);
@@ -123,10 +123,10 @@ test('testing setExistsInKG', async () => {
 test('testing fetchRemoteData', async () => {
   Node.nodeHash = {};
 
-  const tempNode = Node.getNode('BasePairs171115067', true);
+  const tempNode = Node.getNode('BasePairs171115067');
   tempNode.setDCID('BasePairs171115067');
   await tempNode.fetchRemoteData();
 
-  expect(tempNode.getAssertions().length).toEqual(5);
-  expect(tempNode.getInvAssertions().length).toEqual(1);
+  expect(tempNode.assertions.length).toEqual(5);
+  expect(tempNode.invAssertions.length).toEqual(1);
 });

@@ -19,7 +19,7 @@
  */
 
 import {
-  getExistsInKG,
+  doesExistsInKG,
   getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
@@ -28,53 +28,72 @@ import {
 /** Class representation of a single Node in the KG. */
 class Node {
   /**
-   * Universal id of the node. Every Node obj has a localId, which is either a
-   * local reference used in an uplaoded file, or the dcid if the node is never
-   * referred to locally (remote only Node).
+   * The local id used in a parsed mcf file.
    * @type {string}
    */
   localId;
+
   /**
    * Whether triples from the remote Data Commons Knowledge Graph have already
    * been fetched.
    * @type {boolean}
    */
+
   alreadyFetched;
+
   /**
    * Whether the node exists in the Data Commons Knowledge Graph.
    * @type {boolean}
    */
   existsInKG;
+
   /**
    * Dcid of the node. Set only if a remote id is referred to in a local file or
    * pulled from the Data Commons Knowledge Graph.
-   * @type {?string}
+   * @type {string}
    */
+
   dcid;
   /**
-   * The head of a linked list of Assertion objects representing the outgoing
-   * triples of the Node object.
-   * @type {?Assertion}
+   * Array of Assertion objects representing the outgoing triples of the Node
+   * object.
+   * @type {Array<Assertion>}
    */
   assertions;
   /**
-   * The head of a linked list of Assertion objects representing the incoming
-   * triples of the Node object.
-   * @type {?Assertion}
+   * Array of Assertion objects representing the incoming triples of the Node
+   * object.
+   * @type {Array<Assertion>}
    */
   invAssertions;
 
   /**
    * Create a Node based on a given id.
-   * @param {string} id The id of the node to create.
+   * @param {string} id The id of the node to create, including the namespace.
    */
   constructor(id) {
-    this.localId = id;
+    this.localId = id.startsWith('l:') ? id : null;
+    this.dcid = null;
+
     this.alreadyFetched = false;
     this.existsInKG = false;
-    this.dcid = null;
-    this.assertions = null;
-    this.invAssertions = null;
+
+    this.assertions = [];
+    this.invAssertions = [];
+
+    Node.nodeHash[id] = this;
+  }
+
+  /**
+   * Returns a node with the given ID, creates a new node if shouldCreate is
+   * true, or null if the node does not exist and a node should not be created.
+   *
+   * @param {string} id The id of the node to find, including the namespace.
+   * @return {Node|null} The found node if it exists or is created.
+   */
+  static getNode(id) {
+    const existing = Node.nodeHash[id];
+    return existing ? existing : new Node(id);
   }
 
   /**
@@ -82,46 +101,8 @@ class Node {
    * @param {Object} obj The object to check.
    * @return {boolean} True if the object is an instance of Node.
    */
-  static isNode(obj) { return obj instanceof Node; }
-
-  /**
-   * Returns a node with the given ID, creates a new node if shouldCreate is
-   * true, or null if the node does not exist and a node should not be created.
-   *
-   * @param {string} id The id of the node to find.
-   * @param {boolean} shouldCreate True if a new Node should be created if it
-   *     does not already exist.
-   * @return {Node|null} The found node if it exists or is created.
-   */
-  static getNode(id, shouldCreate) {
-    const existing = Node.nodeHash[id];
-    if (existing) {
-      return existing;
-    }
-
-    if (shouldCreate) {
-      const newNode = new Node(id);
-      Node.nodeHash[id] = newNode;
-      return newNode;
-    }
-    return null;
-  }
-
-  /**
-   * Returns the reference to the node that is displayed in browser. If the
-   * node has a dcid, then the dcid will be displayed. If the node's local id
-   * is different, then the local id is also displayed.
-   * Ex: <dcid> [l:<localId>]
-   * @return {string} The reference to the node to be displayed.
-   */
-  getRef() {
-    const dcidRef = this.dcid ? this.dcid : '';
-    let localRef = '';
-
-    if (!this.dcid || this.dcid !== this.localId) {
-      localRef = '[l:' + this.localId + ']';
-    }
-    return [ dcidRef, localRef ].join(' ').trim();
+  static isNode(obj) {
+    return obj instanceof Node;
   }
 
   /**
@@ -129,15 +110,23 @@ class Node {
    * already exists. If remote node exists, then the remote node is absorbed by
    * current node via mergeNode() method.
    *
-   * @param {string} dcid The dcid to be added to the Node object.
+   * @param {string} dcid The dcid to be added to the Node object, should not
+   *     include the dcid namespace.
+   * @return {boolean} False if the node already has a different dcid, true
+   *     otherwise.
    */
   setDCID(dcid) {
-    const remote = Node.nodeHash[dcid];
-    if (remote) {
+    if (this.dcid && this.dcid !== dcid) {
+      return false;
+    }
+
+    const remote = Node.nodeHash['dcid:' + dcid];
+    if (remote && remote !== this) {
       this.mergeNode(remote);
     }
     this.dcid = dcid;
-    Node.nodeHash[dcid] = this;
+    Node.nodeHash['dcid:' + dcid] = this;
+    return true;
   }
 
   /**
@@ -152,16 +141,14 @@ class Node {
       return;
     }
 
-    absorbedNode.getAssertions().forEach((assert) => {
+    absorbedNode.assertions.forEach((assert) => {
       assert.src = this;
-      assert.nextAssertion = this.assertions;
-      this.assertions = assert;
+      this.assertions.push(assert);
     });
 
-    absorbedNode.getInvAssertions().forEach((invAssert) => {
+    absorbedNode.invAssertions.forEach((invAssert) => {
       invAssert.target = this;
-      invAssert.invNextAssertion = this.invAssertions;
-      this.invAssertions = invAssert;
+      this.invAssertions.push(invAssert);
     });
   }
 
@@ -172,7 +159,7 @@ class Node {
     if (!this.dcid || this.existsInKG) {
       return;
     }
-    this.existsInKG = await getExistsInKG(this.dcid);
+    this.existsInKG = await doesExistsInKG(this.dcid);
   }
 
   /**
@@ -198,9 +185,20 @@ class Node {
 
             valueList.forEach((valueObj) => {
               const val = getValueFromValueObj(valueObj);
+
+              if (isInverse && !Node.isNode(val)) {
+                throw new Error(
+                    'Error creating assertion with non Node source');
+              }
+
               const source = isInverse ? val : this;
               const target = isInverse ? this : val;
-              new Assertion(source, label, target, valueObj.provenanceId);
+
+              // if val is a node and has already been fetched, then the
+              // assertion would already be stored in both nodes
+              if (!Node.isNode(val) || !val.alreadyFetched) {
+                new Assertion(source, label, target, valueObj.provenanceId);
+              }
             });
           });
     }
@@ -217,42 +215,28 @@ class Node {
 
     await getRemotePropertyLabels(this.dcid).then(async (allLabels) => {
       await this.createAssertionsFromLabels(allLabels.outLabels,
-                                            /* isInverse */ false);
+          /* isInverse */ false);
       await this.createAssertionsFromLabels(allLabels.inLabels,
-                                            /* isInverse */ true);
+          /* isInverse */ true);
     });
     this.alreadyFetched = true;
   }
 
   /**
-   * Returns the linked list of assertions of the calling Node as an Array.
-   * @return {Array<Assertion>} The array of assertions.
+   * Returns the reference to the node that is displayed in browser. If the
+   * node has a dcid, then the dcid will be displayed. If the node's local id
+   * is different, then the local id is also displayed.
+   * Ex: <dcid> [l:<localId>]
+   * @return {string} The reference to the node to be displayed.
    */
-  getAssertions() {
-    const assertList = [];
-    let assert = this.assertions;
+  getRef() {
+    const dcidRef = this.dcid ? this.dcid : '';
+    let localRef = '';
 
-    while (assert) {
-      assertList.push(assert);
-      assert = assert.nextAssertion;
+    if (this.localId && !this.localId.includes('dcid')) {
+      localRef = '[' + this.localId + ']';
     }
-    return assertList;
-  }
-
-  /**
-   * Returns the linked list of inverse assertions of the calling Node as an
-   * Array.
-   * @return {Array<Assertion>} The array of Inverse assertions.
-   */
-  getInvAssertions() {
-    const invAssertList = [];
-
-    let invAssert = this.invAssertions;
-    while (invAssert) {
-      invAssertList.push(invAssert);
-      invAssert = invAssert.invNextAssertion;
-    }
-    return invAssertList;
+    return [dcidRef, localRef].join(' ').trim();
   }
 }
 
@@ -280,18 +264,6 @@ class Assertion {
    * @type {string|Node}
    */
   target;
-  /**
-   * The next Assertion object in a linked list representing the outgoing
-   * triples of the Node object stored in src property.
-   * @type {?Assertion}
-   */
-  nextAssertion;
-  /**
-   * The next Assertion object in a linked list representing the incoming
-   * triples of the Node object stored in src property.
-   * @type {?Assertion}
-   */
-  invNextAssertion;
 
   /**
    * Create a triple, setting the source's assertion prop to be the new object.
@@ -306,13 +278,13 @@ class Assertion {
     this.property = property;
     this.provenance = provenance;
     this.target = target;
-    this.nextAssertion = src.assertions;
-    src.assertions = this;
+
+    src.assertions.push(this);
 
     if (target instanceof Object) {
-      this.invNextAssertion = target.invAssertions;
-      target.invAssertions = this;
+      target.invAssertions.push(this);
     }
   }
 }
+
 export {Node, Assertion};

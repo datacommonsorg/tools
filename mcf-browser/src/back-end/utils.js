@@ -21,6 +21,21 @@
 import {Node} from './graph.js';
 const API_ROOT = 'https://api.datacommons.org';
 
+const ERROR_MESSAGES =
+    {
+      'curNode-length': 'error in declaring node',
+      'curNode-ns': 'invalid namespace in node declaration',
+      'setDCID-noCur': 'current node must be set before setting dcid',
+      'setDCID-multiple': 'a node can only have one dcid',
+      'setDCID-ref': 'dcid property must be a string, not a node reference',
+      'setDCID':
+          'cannot set dcid for current node; check if dcid is already set',
+      'assert-noCur': 'current node must be set before declaring properties',
+      'parse-noColon': 'missing \':\', incorrect mcf triple format',
+      'parse-noLabel': 'missing property label',
+      'parse-noValues': 'missing property value',
+    };
+
 /**
  * Gets all property labels of the given dcid that are in the DC KG.
  *
@@ -67,11 +82,13 @@ async function getRemotePropertyValues(dcid, label, isInverse) {
  */
 function getValueFromValueObj(valueObj) {
   if (!('dcid' in valueObj || 'value' in valueObj)) {
-    throw new Error('ERROR remote fetch no dcid or value prop: ' + valueObj);
+    throw new Error(
+        'ERROR: DC API returned an object with no "dcid" or "value" field: ' +
+        valueObj);
   }
 
   if ('dcid' in valueObj) {
-    const value = Node.getNode(valueObj.dcid, true);
+    const value = Node.getNode('dcid:' + valueObj.dcid);
     value.setDCID(valueObj.dcid);
     value.existsInKG = true;
     return value;
@@ -86,7 +103,7 @@ function getValueFromValueObj(valueObj) {
  * @return {Promise<boolean>} Returns true if given dcid is in any triples in
  *     Data Commons Knowledge Graph.
  */
-async function getExistsInKG(dcid) {
+async function doesExistsInKG(dcid) {
   const url = API_ROOT + '/node/triples?dcids=' + dcid + '&limit=1';
   return fetch(url)
       .then((res) => res.json())
@@ -107,9 +124,10 @@ function shouldReadLine(line) {
 }
 
 export {
+  ERROR_MESSAGES,
   getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
-  getExistsInKG,
+  doesExistsInKG,
   shouldReadLine,
 };

@@ -16,7 +16,7 @@
 
 import {Node} from '../graph.js';
 import {
-  getExistsInKG,
+  doesExistsInKG,
   getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
@@ -72,10 +72,10 @@ test('testing getValueFromValueObj', async () => {
   expect(node).toStrictEqual(expectNode);
 });
 
-test('testing getExistsInKG', async () => {
-  const notInKg = await getExistsInKG('test');
+test('testing doesExistsInKG', async () => {
+  const notInKg = await doesExistsInKG('test');
   expect(notInKg).toStrictEqual(false);
 
-  const inKg = await getExistsInKG('bio/CHEMBL2');
+  const inKg = await doesExistsInKG('bio/CHEMBL2');
   expect(inKg).toStrictEqual(true);
 });
