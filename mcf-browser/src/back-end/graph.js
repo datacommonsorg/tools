@@ -85,11 +85,14 @@ class Node {
   }
 
   /**
-   * Returns a node with the given ID, creates a new node if shouldCreate is
-   * true, or null if the node does not exist and a node should not be created.
+   * Returns a node with the given ID. All callers of this function expect a
+   * Node object to be returned.If the node does not exist already, then it
+   * should be created. If the created node with the requested id does not exist
+   * in the local file or in the Data Commons Knowledge Graph, then the
+   * front-end will demonstrate this to the user. 
    *
    * @param {string} id The id of the node to find, including the namespace.
-   * @return {Node|null} The found node if it exists or is created.
+   * @return {Node} The found node if it exists or is created.
    */
   static getNode(id) {
     const existing = Node.nodeHash[id];

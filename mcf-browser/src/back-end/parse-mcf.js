@@ -70,7 +70,7 @@ class ParseMcf {
   }
 
   /**
-   * Parses a string represetnaing a comma separated list of property values
+   * Parses a string representing a comma separated list of property values
    * from a line of an mcf file. Returns a list having either a string or
    * <namespace, reference> pair.
    *
@@ -81,6 +81,8 @@ class ParseMcf {
   parsePropValues(propValues) {
     const values = [];
     // split propValues on commas which are not enclosed by double quotes
+    // split string at each comma followed by even number of double quotes
+    // caveat: does not work if quotes are unbalanced
     for (const propValue of propValues.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)) {
       const namespace = propValue.split(':')[0].trim();
       if (namespace in NAMESPACES) {
@@ -118,13 +120,12 @@ class ParseMcf {
       return;
     }
 
-    // handle case: Node: localRef, which means parsedValues[0]==='localRef'
-    let nodeRef = parsedValues[0];
-    let ns = '';
+    let nodeRef;
+    let ns;
 
-    // handle case: Node: dcid:remoteRef, which means that
-    // parsedValues[0] === {'ns':'dcid', 'ref':'remoteRef' }
     if (parsedValues[0] instanceof Object) {
+      // handle case: Node: dcid:remoteRef, which means that
+      // parsedValues[0] === {'ns':'dcid', 'ref':'remoteRef' }
       ns = parsedValues[0]['ns'];
       if (ns === 'dcid') {
         ns = ns + ':';
@@ -134,13 +135,20 @@ class ParseMcf {
             [this.lineNum, this.line, ERROR_MESSAGES['curNode-ns']]);
         return;
       }
+    } else{
+      // handle case: Node: localRef, which means parsedValues[0]==='localRef'
+      nodeRef = parsedValues[0];
+      ns = '';
     }
     // combine the namespace and reference into single id
     const nodeId = 'l:' + ns + nodeRef;
     this.curNode = Node.getNode(nodeId);
 
     if (ns === 'dcid:') {
-      this.curNode.setDCID(nodeRef);
+      if(!this.curNode.setDCID(nodeRef)){
+        this.errors.push([this.lineNum, this.line, ERROR_MESSAGES['setDCID']]);
+        return;
+      }
       ParseMcf.localNodeHash[ns + nodeRef] = this.curNode;
     } else {
       ParseMcf.localNodeHash[nodeId] = this.curNode;
@@ -229,7 +237,7 @@ class ParseMcf {
     }
 
     const propLabel = line.split(':', 1)[0].trim();
-    const propValues = line.substring(line.indexOf(':') + 1);
+    const propValues = line.substring(line.indexOf(':') + 1).trim();
 
     if (!propLabel) {
       this.errors.push(
