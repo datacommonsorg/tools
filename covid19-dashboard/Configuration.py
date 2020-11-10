@@ -12,16 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# DataCommons Host Server.
-DC_SERVER = "https://api.datacommons.org/"
-
 # A dictionary of stat_vars where place_type->key->stat_var.
 # There must be at least one stat_var per place_type.
 # The key can be made up, this key will be used to output the data.
 # Instead of using the long stat_var name.
 # The key will be used to identify the stat_var.
 
-STAT_VARS = {
+covid19 = {
     "Country": {
         "Cases":
             "CumulativeCount_MedicalConditionIncident_COVID_19_ConfirmedCase",
@@ -59,4 +56,59 @@ STAT_VARS = {
         "ICU":
             "CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU"
     },
+}
+
+socialWellness = {
+    "Country": {
+        "AbovePovertyInLast12Months":
+            "Count_Person_AbovePovertyLevelInThePast12Months",
+        "BelowPovertyInLast12Months":
+            "Count_Person_BelowPovertyLevelInThePast12Months",
+        "Unemployed":
+            "Count_UnemploymentInsuranceClaim_StateUnemploymentInsurance",
+        "UnemploymentRate":
+            "UnemploymentRate_Person",
+        "Crime":
+            "Count_CriminalActivities_CombinedCrime",
+        "GiniIndex":
+            "GiniIndex_EcconomicActivity",
+        "LifeExpectancy":
+            "LifeExpectancy_Person",
+        "GDP":
+            "Amount_EconomicActivity_GrossDomesticProduction_Nominal"
+
+
+    },
+    "State": {
+        "AbovePovertyInLast12Months":
+            "Count_Person_AbovePovertyLevelInThePast12Months",
+        "BelowPovertyInLast12Months":
+            "Count_Person_BelowPovertyLevelInThePast12Months",
+        "Unemployed":
+            "Count_UnemploymentInsuranceClaim_StateUnemploymentInsurance",
+        "UnemploymentRate":
+            "UnemploymentRate_Person",
+        "Crime":
+            "Count_CriminalActivities_CombinedCrime",
+        "LifeExpectancy":
+            "LifeExpectancy_Person",
+        "GDP":
+            "Amount_EconomicActivity_GrossDomesticProduction_Nominal"
+    },
+    "County": {
+        "AbovePovertyInLast12Months":
+            "Count_Person_AbovePovertyLevelInThePast12Months",
+        "BelowPovertyInLast12Months":
+            "Count_Person_BelowPovertyLevelInThePast12Months",
+        "Unemployed":
+            "Count_UnemploymentInsuranceClaim_StateUnemploymentInsurance",
+        "UnemploymentRate":
+            "UnemploymentRate_Person",
+        "Crime":
+            "Count_CriminalActivities_CombinedCrime",
+        "LifeExpectancy":
+            "LifeExpectancy_Person",
+        "GDP":
+            "Amount_EconomicActivity_GrossDomesticProduction_Nominal"
+    }
 }
