@@ -19,12 +19,10 @@ import DataTable from './DataTable';
 import MultiButtonGroup from './MultiButtonGroup';
 import CumulativePanel from './CumulativePanel';
 import NavigationBar from './NavigationBar';
-import {getLatestDate, goToPlace} from './Utils';
-import Config from './Config.json';
+import {getConfiguration, getContent, getLatestDate, goToPlace} from './Utils';
 import './index.css';
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
 import {GeoIdToDataType, GeoIdToPlaceInfoType, KeyToTimeSeriesType} from './Types';
-import Content from './Content.json';
 import debounce from 'lodash/debounce';
 import Breadcrumb from 'react-bootstrap/cjs/Breadcrumb';
 import Place from './Place';
@@ -39,6 +37,7 @@ type AppStateType = {
   searchQuery: string;
 };
 
+
 class App extends React.Component<AppPropsType, AppStateType> {
   // The geoId we are currently observing. Default is World.
   geoId: string;
@@ -51,6 +50,10 @@ class App extends React.Component<AppPropsType, AppStateType> {
   // The place object has information such as name, containedIn and data.
   places: {[geoId: string]: Place};
 
+  dashboardId: string;
+  Content: any;
+  Configuration: any;
+
   state = {
     searchQuery: '',
   };
@@ -61,6 +64,10 @@ class App extends React.Component<AppPropsType, AppStateType> {
     this.geoId = urlParams.get('geoId') || 'World';
     this.placeTypeToShow = urlParams.get('placeType') || 'Country';
     this.places = {};
+
+    this.dashboardId = urlParams.get('dashboardId') || 'covid19'
+    this.Content = getContent(this.dashboardId)
+    this.Configuration = getConfiguration(this.dashboardId)
   }
 
   /**
@@ -78,10 +85,9 @@ class App extends React.Component<AppPropsType, AppStateType> {
    */
   fetchData = (): void => {
     // Contains the data for placeTypeToShow
-    const currentData = `data/${this.placeTypeToShow}`;
     const apis = [
       // contains data
-      currentData,
+      `data/${this.placeTypeToShow}/${this.dashboardId}`,
       // contains place information
       'places',
     ];
@@ -124,13 +130,13 @@ class App extends React.Component<AppPropsType, AppStateType> {
    * This is done for speed.
    */
   cacheData = (): void => {
-    const cacheApis = Config.placeTypes;
+    const cacheApis: string[] = [...this.Configuration.placeTypes];
     // Delete this.placeTypeToShow from the array since
     // since it is already being requested by fetch data.
     cacheApis.splice(cacheApis.indexOf(this.placeTypeToShow), 1);
 
     const cachePromises = cacheApis.map(api => {
-      return fetch('/api/data/' + api);
+      return fetch(`/api/data/${api}/${this.dashboardId}`);
     });
 
     // We don't really care about this data, we only wanted to cache it.
@@ -170,7 +176,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // There can only be "World", "Country", "States", "County".
     // So our iteration shouldn't go above our placesTypes length.
     // If it does, there is an issue and break out of loop.
-    for (let i = 0; i <= Config.placeTypes.length; i++) {
+    for (let i = 0; i <= this.Configuration.placeTypes.length; i++) {
       // If we've reached the highest-level place, break out.
       if (!geoId) break;
 
@@ -200,7 +206,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
     const selectedPlace = this.places[this.geoId];
 
     // Convert the object of geoId->Place to a list of Places.
-    const places: Place[] = Object.values(this.places).filter(place => {
+    const places: Place[] = Object.values(this.places)
+      .filter(place => {
       return place.keyToTimeSeries;
     });
 
@@ -217,8 +224,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
       }
     });
 
-    // Generate the cumulativePanel columns from Content.json
-    const cumulativePanelColumns = Content.cumulativePanel.map(
+    // Generate the cumulativePanel columns from Content.
+    const cumulativePanelColumns = this.Content.cumulativePanel.map(
       ({
          dataKey,
          title,
@@ -270,7 +277,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Get the latest date for all places.
     const dates = places
       .map(place => {
-        const keyToTimeSeries = place.keyToTimeSeries[Config.tableDefaultSortBy] || {};
+        const keyToTimeSeries = place.keyToTimeSeries[this.Configuration.tableDefaultSortBy] || {};
         // Config.defaultKey contains our reference key for dates.
         // AKA, what is our most complete dataset? We want to get the date
         // from that dataset.
@@ -294,7 +301,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
 
     // Text describing the types of places viewing viewed.
     // "Countries in", "States in", "Counties in".
-    const pluralPlaceTypes: {[key: string]: string} = Config.pluralPlaceTypes;
+    const pluralPlaceTypes: {[key: string]: string} = this.Configuration.pluralPlaceTypes;
     let subtitle = '';
 
     // If placeName is "" or undefined, don't display a subtitle.
@@ -306,7 +313,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     }
 
     // Update the site's HTML title to include the subtitle.
-    document.title = `${subtitle} - Data Commons COVID-19`;
+    document.title = `${subtitle} - Data Commons ${this.Configuration.subtitle}`;
 
     // Iterate through parent places and create an item for each place.
     // Example: World -> United States -> Florida
@@ -315,7 +322,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
         // Is the item active?
         active: this.geoId === geoId,
         // What should happen when you click on it?
-        onClick: () => goToPlace(geoId),
+        onClick: () => goToPlace(this.dashboardId, geoId),
         // name of the place
         text: this.places[geoId]?.name,
       };
@@ -323,10 +330,14 @@ class App extends React.Component<AppPropsType, AppStateType> {
 
     // Subregion button that is displayed when viewing country/USA.
     // "Compare States" and "Compare Counties".
-    const subregionButtons = Config.subregionSelectionButton.map(button => {
+
+    const subregionSelectionButton: {id: string, text: string}[]
+      = this.Configuration.subregionSelectionButton
+
+    const subregionButtons = subregionSelectionButton.map(button => {
       const placeType = button.id;
       // What should happen when a user clicks on the button.
-      const onClick = () => goToPlace(this.geoId, placeType);
+      const onClick = () => goToPlace(this.dashboardId, this.geoId, placeType);
       return {
         // Is the button currently ON?
         active: this.placeTypeToShow === button.id,
@@ -340,7 +351,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
       <div>
         <NavigationBar
           title={'Data Commons'}
-          subtitle={Config.subtitle}
+          subtitle={this.Configuration.subtitle}
           onType={e => {
             // Get the value and convert it to lowercase.
             const target = e.target as HTMLTextAreaElement;
@@ -350,7 +361,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
         />
         <div className={'site-container fadeIn'}>
           <div className={'header'}>
-            <h6>{formattedDate}</h6>
+            <h6>{"Latest data from " + formattedDate}</h6>
             {
               // Only display the breadcrumb if not in World view.
               this.geoId !== 'World' && (
@@ -379,9 +390,9 @@ class App extends React.Component<AppPropsType, AppStateType> {
           </div>
           <CumulativePanel textToValue={cumulativePanelColumns} />
           <div className={'content'}>
-            <DataTable data={filteredPlaces} />
+            <DataTable goToPlace={(geoId?: string, placeType?: string) => {goToPlace(this.dashboardId, geoId, placeType)}} data={filteredPlaces} configuration={this.Configuration} content={this.Content}/>
           </div>
-          <footer>{Config.footer}</footer>
+          <footer>{this.Configuration.footer}</footer>
         </div>
       </div>
     );
