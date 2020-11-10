@@ -198,7 +198,8 @@ def _clean_dataset(date_to_value: DateToValueListType,
 
 def calculate_data(cumulative_stats: DateToValueDictType,
                    population: int,
-                   moving_average_chunk_size: int = 7
+                   moving_average_chunk_size: int = 7,
+                   clean_step_size: int = 2
                    ) -> Dict[str, DateToValueDictType]:
     """
     Given a dataset for a region and its population,
@@ -233,8 +234,11 @@ def calculate_data(cumulative_stats: DateToValueDictType,
     difference_list = _difference(date_to_value_list, 1)
 
     # Calculate the time-series moving average.
-    moving_averages_list = _moving_average(difference_list,
-                                           moving_average_chunk_size)
+    # TODO: fix this
+    if moving_average_chunk_size:
+        moving_averages_list = _moving_average(difference_list, moving_average_chunk_size)
+    else:
+        moving_averages_list = date_to_value_list
 
     # Divide all values by the place's population.
     # Multiply by 1M to amplify solution.
@@ -252,10 +256,10 @@ def calculate_data(cumulative_stats: DateToValueDictType,
     # Convert list of tuples back to a dictionary.
     # (date, value) converts to {date: value}.
     # Only keep negative values for cumulatives and pct_changes.
-    cumulatives = dict(_clean_dataset(cumulative_list, 3, True))
-    moving_averages = dict(_clean_dataset(moving_averages_list, 3, False))
-    per_capitas = dict(_clean_dataset(per_capitas_list, 3, False))
-    pct_changes = dict(_clean_dataset(pct_changes_list, 3, True))
+    cumulatives = dict(_clean_dataset(cumulative_list, clean_step_size, True))
+    moving_averages = dict(_clean_dataset(moving_averages_list, clean_step_size, True))
+    per_capitas = dict(_clean_dataset(per_capitas_list, clean_step_size, True))
+    pct_changes = dict(_clean_dataset(pct_changes_list, clean_step_size, True))
 
     output: Dict[str, DateToValueDictType] = {
         'cumulative': cumulatives,

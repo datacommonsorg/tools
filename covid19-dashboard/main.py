@@ -20,9 +20,11 @@ from typing import List, Dict, Union
 from flask import Flask, Response
 from flask_caching import Cache
 from flask_compress import Compress
+from flask import request
 
 from send_request import send_request
 from calculate_data import calculate_data
+from Configuration import covid19, socialWellness
 
 config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR="/tmp")
 
@@ -33,16 +35,10 @@ Compress(app)
 
 app.config.from_mapping(config)
 
-# Load the configuration file from the instance folder.
-app.config.from_pyfile("config.py")
 cache = Cache(app)
 
-# Retrieves DataCommons Server from configuration file.
-DC_SERVER = app.config["DC_SERVER"]
-
-# Each place_type has its own stat_var.
-# Get the dictionary from the configuration file.
-STAT_VARS = app.config["STAT_VARS"]
+# DataCommons Host Server.
+DC_SERVER = "https://api.datacommons.org/"
 
 # COMMONLY-USED TYPES.
 KeyToTimeSeries = Union[Dict[str, int], int, str]
@@ -50,16 +46,34 @@ GeoIdToDataType = Dict[str, KeyToTimeSeries]
 GeoIdToStatsType = Dict[str, Dict[str, int]]
 PlaceToInfoType = Dict[str, Dict[str, str]]
 
-@app.route("/api/data/<string:geo_id>")
+
+@app.route("/api/data/<string:geo_id>/<string:dashboard_id>")
 @cache.cached(timeout=3600)
-def county_data(geo_id: str):
+def data(geo_id: str, dashboard_id: str):
     """
-    Returns any placeType's datta.
+    Returns any placeType's data.
     NOTE: for return type documentation, please see README.md's APIs section.
     :return: geo_id->{**key_to_timeseries}.
     """
+    dashboard_id = dashboard_id or "covid19"
+    print(dashboard_id)
+
+    # How many days should we perform the moving average for?
+    # 0 == None
+    moving_averages_chunks = {"covid19": 7, "socialWellness": 0}
+    moving_average_chunk = moving_averages_chunks[dashboard_id]
+
+
+    # How many days should we skip to reduce response size?
+    # In days, 1 == None.
+    clean_step_sizes = {"covid19": 6, "socialWellness": 1}
+    clean_step_size = clean_step_sizes[dashboard_id]
+
+    # Get the stat vars for the given dashboardId.
+    stat_vars = _get_stat_vars(dashboard_id)
+
     # Request data for only US Counties.
-    data = _get_data(geo_id)
+    data = _get_data(geo_id, stat_vars, moving_average_chunk, clean_step_size)
     # Adds HTTP headers for browser to store cache.
     response = _add_browser_cache_headers_to_response(data)
     return response
@@ -85,7 +99,7 @@ def places():
     return response
 
 
-def _get_data(place_type: str = "State") -> GeoIdToDataType:
+def _get_data(place_type: str = "State", STAT_VARS={}, moving_average_chunk=7, clean_step_size=2) -> GeoIdToDataType:
     """
     Requests cases and deaths from the DC, and performs calculations.
     NOTE: for return type documentation, please see README.md's APIs section.
@@ -154,7 +168,7 @@ def _get_data(place_type: str = "State") -> GeoIdToDataType:
             # Do calculations with the data.
             # See README.md for more information about the return types.
             calculated_data = calculate_data(place_stats,
-                                             place_population)
+                                             place_population, moving_average_chunk, clean_step_size)
 
             # Rename keys to include stat_var.
             # Example: 'movingAverage' becomes 'movingAverageCases'.
@@ -445,6 +459,13 @@ def _add_browser_cache_headers_to_response(data: Dict,
                          "public,max-age=%d" % int(60 * minutes))
 
     return response
+
+
+def _get_stat_vars(dashboard_id: str):
+    if dashboard_id == 'socialWellness':
+        return socialWellness
+    else:
+        return covid19
 
 
 class Place:
