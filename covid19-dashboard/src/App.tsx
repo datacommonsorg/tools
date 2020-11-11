@@ -51,7 +51,10 @@ class App extends React.Component<AppPropsType, AppStateType> {
   places: {[geoId: string]: Place};
 
   dashboardId: string;
+
+  // JSON containing the charts.
   Content: any;
+  // JSON containing the site's configuration.
   Configuration: any;
 
   state = {
@@ -390,7 +393,11 @@ class App extends React.Component<AppPropsType, AppStateType> {
           </div>
           <CumulativePanel textToValue={cumulativePanelColumns} />
           <div className={'content'}>
-            <DataTable goToPlace={(geoId?: string, placeType?: string) => {goToPlace(this.dashboardId, geoId, placeType)}} data={filteredPlaces} configuration={this.Configuration} content={this.Content}/>
+            <DataTable goToPlace={(geoId?: string, placeType?: string) => {
+                                  goToPlace(this.dashboardId, geoId, placeType)}}
+                       data={filteredPlaces}
+                       configuration={this.Configuration}
+                       content={this.Content}/>
           </div>
           <footer>{this.Configuration.footer}</footer>
         </div>
