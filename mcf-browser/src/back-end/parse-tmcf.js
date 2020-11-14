@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {shouldReadLine} from './parse-mcf.js';
-
-const csv = require('csvtojson');
+import * as csv from 'csvtojson';
+import {shouldReadLine} from './utils.js';
 
 /**
  * Returns the string following '->' in  a given string. Used for getting csv
@@ -37,166 +36,197 @@ function getArrowId(propValue) {
  * @return {string|null} The entity id that matches the specified format.
  */
 function getEntityID(line) {
-  const localIDMatch = line.match('E:(.*)->(.*)');
-  if (localIDMatch) {
-    return localIDMatch[0];
+  const localIdMatch = line.match('E:(.*)->(.*)');
+  if (localIdMatch) {
+    return localIdMatch[0];
   }
   return null;
 }
 
 /**
- * Generates a local id for a node of specfic row in csv from an entity id used
- * in tmcf file.
- * Ex: E:SomeDataset->E1 => SomeDataset_E1_R<index>
- * @param {string} entityID The entity id used in tmcf file.
- * @param {string} index The row number in the csv of the node to be created.
- * @return {string|null} The local id for the node of the specific csv row.
+ * Class responsible for converting one TMCF file and one CSV file into an MCF
+ * string.
  */
-function getLocalIDFromEntityID(entityID, index) {
-  if (entityID) {
-    return 'l:' + entityID.replace('->', '_').replace('E:', '') + '_R' + index;
+class ParseTmcf {
+  /**
+   * Current row number of the csv file that us being parsed.
+   * @type {number}
+   */
+  csvIndex;
+
+  /**
+  * Create a ParseTmcf object which keeps tracks of the current csv row
+  * number being parsed.
+  */
+  constructor() {
+    this.csvIndex = -1;
   }
-  return null;
-}
 
-/**
- * Converts propertyValues from a line of tmcf to mcf by either converting
- * entity ids to local ids or replacing a csv column reference with the actual
- * value from the csv.
- *
- * @param {string} propValues The property values from the line of TMCF.
- * @param {Object} csvRow The JSON representation of a single row of a csv file.
- *     The keys are the column names and values are the corresponding entries of
- *     the csv for the specfic row/column.
- * @param {number} index The row number of the csvRow, used to generate a local
- *     id if needed.
- * @return {string} The mcf version of the given propValues which has local ids
- *     in lieu of entity ids and csv column references replaces with csv values.
- */
-function parsePropertyValues(propValues, csvRow, index) {
-  const parsedValues = [];
-
-  for (const propValue of propValues.split(',')) {
-    let parsedValue = propValue;
-
-    const entityID = getEntityID(propValue);
-
-    // convert entity id format to local id format
-    // Ex: E:SomeDataset->E1 => SomeDataset_E1_R<index>
+  /**
+   * Generates a local id for a node of specfic row in csv from an entity id
+   * used in tmcf file. Ex: E:SomeDataset->E1 => SomeDataset_E1_R<index>
+   * @param {string} entityID The entity id used in tmcf file.
+   * @return {string|null} The local id for the node of the specific csv row.
+   */
+  getLocalIdFromEntityId(entityID) {
     if (entityID) {
-      const localID = getLocalIDFromEntityID(entityID, index);
-      parsedValue = parsedValue.replace(entityID, localID);
-    } else {
-      // Replace csv column placeholder with the value
+      return entityID.replace('->', '_').replace('E:', '') + '_R' +
+             this.csvIndex;
+    }
+    return null;
+  }
+
+  /**
+   * Converts propertyValues from a line of tmcf to mcf by either converting
+   * entity ids to local ids or replacing a csv column reference with the actual
+   * value from the csv.
+   *
+   * @param {string} propValues The property values from the line of TMCF.
+   * @param {Object} csvRow The JSON representation of a single row of a csv
+   *     file. The keys are the column names and values are the corresponding
+   *     entries of the csv for the specfic row/column.
+   * @return {string} The mcf version of the given propValues which has local
+   *     ids in lieu of entity ids and csv column references replaces with csv
+   *     values.
+   */
+  fillPropertyValues(propValues, csvRow) {
+    const filledValues = [];
+
+    for (const propValue of propValues.split(',')) {
+      let filledValue;
+
+      const entityID = getEntityID(propValue);
       const colName = getArrowId(propValue);
-      parsedValue = parsedValue.replace(/C:(.*)->(.*)/, csvRow[colName]);
+
+      if (entityID) {
+        // convert entity id format to local id format
+        // Ex: E:SomeDataset->E1 => l:SomeDataset_E1_R<index>
+        const localId = 'l:' + this.getLocalIdFromEntityId(entityID);
+        filledValue = propValue.replace(entityID, localId);
+      } else if (colName) {
+        // Replace csv column placeholder with the value
+        filledValue = propValue.replace(/C:(.*)->(.*)/, csvRow[colName]);
+      } else {
+        filledValue = propValue;
+      }
+      filledValues.push(filledValue);
     }
-    parsedValues.push(parsedValue);
+    return filledValues.join(',');
   }
-  return parsedValues.join(',');
-}
 
-/**
- * Convert a row of csv to mcf using the tmcf as a template.
- * @param {string} template The string representation of tmcf file.
- * @param {Object} csvRow The JSON representation of a single row of a csv file.
- *     The keys are the column names and values are the corresponding entries of
- *     the csv for the specfic row/column.
- * @param {number} index The row number of the csvRow, used to generate a local
- *     id if needed.
- * @return {string} The constructed mcf for the single row from csv file.
- */
-function fillTemplateFromRow(template, csvRow, index) {
-  const filledTemplate = [];
-  for (const line of template.split('\n')) {
-    if (!line.trim()) {
-      filledTemplate.push('');
-      continue;
+  /**
+   * Convert a single row from the csv file to multiple lines of mcf by filling
+   * in the appropriate values in the tmcf template.
+   * @param {string} template The string representation of tmcf file.
+   * @param {Object} csvRow The JSON representation of a single row of a csv
+   *     file. The keys are the column names and values are the corresponding
+   *     entries of the csv for the specfic row/column.
+   * @return {string} The constructed mcf for the single row from csv file.
+   */
+  fillTemplateFromRow(template, csvRow) {
+    const filledTemplate = [];
+
+    for (const line of template.split('\n')) {
+      if (!line.trim() || !shouldReadLine(line)) {
+        filledTemplate.push('');
+        continue;
+      }
+
+      const propLabel = line.split(':')[0].trim();
+      const propValues = line.substring(line.indexOf(':') + 1).trim();
+      ;
+
+      if (propLabel === 'Node') {
+        if (propValues.includes(',')) {
+          throw new Error('cannot have multiple ids for Node declaration');
+        }
+        const entityID = getEntityID(propValues);
+        if (entityID) {
+          filledTemplate.push(propLabel + ': ' +
+                              this.getLocalIdFromEntityId(entityID));
+        } else {
+          filledTemplate.push(propLabel + ': ' + propValues);
+        }
+      } else {
+        const filledValues = this.fillPropertyValues(propValues, csvRow);
+        filledTemplate.push(propLabel + ': ' + filledValues);
+      }
     }
-
-    if (!shouldReadLine(line)) continue;
-
-    const propLabel = line.split(':')[0];
-    const propValues = line.replace(propLabel + ':', '').trim();
-
-    const parsedValues = parsePropertyValues(propValues, csvRow, index);
-
-    filledTemplate.push(propLabel + ': ' + parsedValues);
+    return filledTemplate.join('\n');
   }
-  return filledTemplate.join('\n');
-}
 
-/**
- * Creates an mcf string from a string representation of TMCF file and the json
- * representation of a CSV file. The tmcf is populated with csv files for each
- * row of the csv.
- * @param {string} template The string representation of a tmcf file.
- * @param {Array<Object>} csvRows The json representation of the csv file. Each
- *     Object element of the array represents one row of the csv.
- * @return {string} The created mcf as a string.
- */
-function csvToMCF(template, csvRows) {
-  let index = 1;
-  const mcfStrList = [];
-  for (const row of csvRows) {
-    mcfStrList.push(fillTemplateFromRow(template, row, index));
-    index += 1;
+  /**
+   * Creates an mcf string from a string representation of TMCF file and the
+   * json representation of a CSV file. The whole template from the tmcf is
+   * populated with values for each row of the csv.
+   * @param {string} template The string representation of a tmcf file.
+   * @param {Array<Object>} csvRows The json representation of the csv file.
+   *     Each Object element of the array represents one row of the csv.
+   * @return {string} The generated mcf as a string.
+   */
+  csvToMcf(template, csvRows) {
+    this.csvIndex = 1;
+    const mcfLines = [];
+    for (const row of csvRows) {
+      mcfLines.push(this.fillTemplateFromRow(template, row));
+      this.csvIndex += 1;
+    }
+    return mcfLines.join('\n');
   }
-  return mcfStrList.join('\n');
-}
 
-/**
- * Converts CSV file to an array of JS Object where each JS Object in the array
- * represents one row of the csv. The keys of the object are the column header
- * names and the values of the object are the csv entries in that column of the
- * given row the object represents.
- * @param {string} template The string representation of a tmcf file.
- * @param {FileObject} csvFile THe csv file from html file-input element.
- * @return {Array<Object>} The json representation of the csv file.
- */
-async function readCSVFile(template, csvFile) {
-  const fileReader = new FileReader();
-  fileReader.readAsText(csvFile);
-  return new Promise((res, rej) => {
-    fileReader.addEventListener('loadend', (result) => {
-      csv().fromString(fileReader.result).then((csvRows) => {
-        const mcf = csvToMCF(template, csvRows);
-        res(mcf);
+  /**
+   * Converts CSV file to an array of JS Object where each JS Object in the
+   * array represents one row of the csv. The keys of the object are the column
+   * header names and the values of the object are the csv entries in that
+   * column of the given row the object represents.
+   * @param {string} template The string representation of a tmcf file.
+   * @param {FileObject} csvFile THe csv file from html file-input element.
+   * @return {Array<Object>} The json representation of the csv file.
+   */
+  async readCsvFile(template, csvFile) {
+    const fileReader = new FileReader();
+    fileReader.readAsText(csvFile);
+    return new Promise((res, rej) => {
+      fileReader.addEventListener('loadend', (result) => {
+        csv()
+            .fromString(fileReader.result)
+            .then((csvRows) => {
+              res(this.csvToMcf(template, csvRows));
+            });
       });
+      fileReader.addEventListener('error', rej);
     });
-    fileReader.addEventListener('error', rej);
-  });
-}
+  }
 
-/**
- * Reads a tmcf file and returns the contents as a string
- * @param {FileObject} tmcfFile The tmcf file from html file-input element.
- * @return {string} The string representation of the tmcf file.
- */
-async function readTMCFFile(tmcfFile) {
-  const fileReader = new FileReader();
-  fileReader.readAsText(tmcfFile);
-  return new Promise((res, rej) => {
-    fileReader.addEventListener('loadend', (result) => {
-      res(fileReader.result);
+  /**
+   * Reads a tmcf file and returns the contents as a string
+   * @param {FileObject} tmcfFile The tmcf file from html file-input element.
+   * @return {string} The string representation of the tmcf file.
+   */
+  static async readTmcfFile(tmcfFile) {
+    const fileReader = new FileReader();
+    fileReader.readAsText(tmcfFile);
+    return new Promise((res, rej) => {
+      fileReader.addEventListener('loadend',
+          (result) => {
+            res(fileReader.result);
+          });
+      fileReader.addEventListener('error', rej);
     });
-    fileReader.addEventListener('error', rej);
-  });
+  }
+
+  /**
+   * Converts a TMCF file and CSV file to an MCF string.
+   * @param {FileObject} tmcfFile The tmcf file from html file-input element.
+   * @param {FileObject} csvFile THe csv file from html file-input element.
+   * @return {string} The translated mcf as a string.
+   */
+  static async generateMcf(tmcfFile, csvFile) {
+    return ParseTmcf.readTmcfFile(tmcfFile).then((template) => {
+      const tmcfParser = new ParseTmcf();
+      return tmcfParser.readCsvFile(template, csvFile);
+    });
+  }
 }
 
-
-/**
- * Converts a TMCF file and CSV file to an MCF string.
- * @param {FileObject} tmcfFile The tmcf file from html file-input element.
- * @param {FileObject} csvFile THe csv file from html file-input element.
- * @return {string} The translated mcf as a string.
- */
-async function tmcfCSVToMCF(tmcfFile, csvFile) {
-  return readTMCFFile(tmcfFile)
-      .then((template) => readCSVFile(template, csvFile));
-}
-
-export {
-  tmcfCSVToMCF, csvToMCF, fillTemplateFromRow, getLocalIDFromEntityID,
-  getEntityID, getArrowId, parsePropertyValues
-};
+export {ParseTmcf};
