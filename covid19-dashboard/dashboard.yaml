@@ -1,4 +1,4 @@
-service: covid19
+service: dashboard
 runtime: python38
 instance_class: B8
 basic_scaling:
@@ -8,28 +8,28 @@ basic_scaling:
 default_expiration: "0h"
 
 handlers:
-- url: /covid19/
+- url: /dashboard/
   static_files: build/index.html
   upload: build/index.html
 
-- url: /covid19
+- url: /dashboard
   static_files: build/index.html
   upload: build/index.html
 
-- url: /covid19/index.html
+- url: /dashboard/index.html
   static_files: build/index.html
   upload: build/index.html
 
-- url: /covid19/favicon.png
+- url: /dashboard/favicon.png
   static_files: build/favicon.png
   upload: build/favicon.png
 
-- url: /covid19/manifest.json
+- url: /dashboard/manifest.json
   static_files: build/manifest.json
   upload: build/manifest.json
 
-- url: /covid19/static/css/
+- url: /dashboard/static/css/
   static_dir: build/static/css
 
-- url: /covid19/static/js/
+- url: /dashboard/static/js/
   static_dir: build/static/js

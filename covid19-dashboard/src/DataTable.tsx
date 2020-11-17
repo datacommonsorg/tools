@@ -16,25 +16,27 @@
 
 import React, {useState} from 'react';
 import chunk from 'lodash/chunk';
-import Content from './Content.json';
-import Configuration from './Config.json';
 import Place from "./Place";
 import Th from './Th';
 import MultiButtonGroup from "./MultiButtonGroup";
-import {getLatestDate, goToPlace} from "./Utils";
+import {getLatestDate} from "./Utils";
 import Table from 'react-bootstrap/Table';
 
+type CategoryType = {title: string,id: string, typeOf: string, color: string, graphSubtitle: string, enabled: boolean}
 type OrientationType = 'desc' | 'asc';
 
 type TableStateType = {
   sortBy: string;
   order: OrientationType;
   chunkIndex: number;
-  categories: any[]
+  categories: CategoryType[];
 };
 
 type TablePropsType = {
+  goToPlace: (geoId?: string, placeType?: string) => void;
   data: Place[];
+  configuration: any;
+  content: any;
 };
 
 /**
@@ -49,10 +51,10 @@ type TablePropsType = {
 export default class DataTable extends React.Component<
   TablePropsType, TableStateType> {
   state = {
-    sortBy: Configuration.tableDefaultSortBy,
+    sortBy: this.props.configuration.tableDefaultSortBy as string,
     order: 'desc' as OrientationType,
-    chunkIndex: 0,
-    categories: Content.table
+    chunkIndex: 0 as number,
+    categories: this.props.content.table as CategoryType[]
   };
 
   chunkSize = 30;
@@ -155,22 +157,18 @@ export default class DataTable extends React.Component<
       }
     })
 
-    // Filter out any values that are nullish.
-    const filteredData = sortedData.filter(place => {
-      return place.keyToTimeSeries[this.state.sortBy];
-    })
 
 
     // Chunk the dataset by groups of this.chunkSize.
     // Each element in the chunk represents a row.
     // Each chunk contains this.chunkSize rows.
-    this.chunkedData = chunk(filteredData, this.chunkSize);
+    this.chunkedData = chunk(sortedData, this.chunkSize);
 
     // Depending on what page of the table the user is on, display that chunk.
     // Example: If the user is on page 1, display this.chunkedData[0].
     const chunkDataShown = this.chunkedData?.[this.state.chunkIndex] || [];
 
-    // Get the header names from Content.json
+    // Get the header names from Content.
     // When the header is clicked, change the sorting.
     const enabledHeaders = this.state.categories.filter(header => header.enabled)
 
@@ -204,6 +202,9 @@ export default class DataTable extends React.Component<
       });
 
       const subregionType = place.getSubregionType()
+      console.log(subregionType)
+      const isClickable = this.props.configuration['placeTypes'].indexOf(subregionType) !== -1
+      console.log(this.props.configuration['placeTypes'])
 
       // Place's name in the form of "subregion, region".
       // Example: Miami, Florida.
@@ -214,9 +215,9 @@ export default class DataTable extends React.Component<
 
       return (
         <tbody key={index}>
-          <tr className={subregionType ? 'clickable' : ''}
-              {...(subregionType && {
-                onClick: () => goToPlace(place.geoId, subregionType)})}>
+          <tr className={isClickable ? 'clickable' : ''}
+              {...(isClickable && {
+                onClick: () => this.props.goToPlace(place.geoId, subregionType)})}>
             <th>{tableRanking}</th>
             <th>{placeFullName}</th>
             {thValues}
@@ -347,14 +348,14 @@ const TableOptions = (props: TableOptionsPropsType) => {
 
   return (
     <div className="btn-group-vertical">
-      <label className={"btn btn-secondary"} onClick={() => {
+      <label className={"btn btn-secondary options"} onClick={() => {
         // Logic for displaying options panel.
         setShowOptionsClass(showOptionsClass ? "" : "show")}
       }>
         <img src={require("./options_icon_18dp.png")}
-             alt="Options"
+             alt={"Statistical Variables"}
              className={"icon-in-button"}/>
-        {"Options"}
+        {showOptionsClass ? "Close" : "Statistical Variables"}
       </label>
       <div className={`dropdown-menu shadow ${showOptionsClass}`}
            style={{width: 300, marginTop: -10, marginLeft: -1}}>
