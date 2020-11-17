@@ -1,0 +1,142 @@
+{
+  "configuration": {
+    "subtitle": "Social Wellness Dashboard",
+    "footer": "Data from U.S. Census & Europa.eu",
+    "placeTypes": ["Country", "State"],
+    "subregionSelectionButton": [
+    ],
+    "pluralPlaceTypes": {
+      "Country": "Countries",
+      "State": "States",
+      "County": "Counties"
+    },
+    "tableDefaultSortBy": "cumulativeUnemploymentRate"
+  },
+  "content": {
+    "cumulativePanel": [{
+      "title": "Currrently Above Poverty",
+      "dataKey": "cumulativeAbovePovertyInLast12Months",
+      "color": "--dc-red-strong"
+    },
+      {
+        "title": "Currently Below Poverty",
+        "dataKey": "cumulativeBelowPovertyInLast12Months",
+        "color": "grey"
+      },
+      {
+        "title": "Total Unemployed",
+        "dataKey": "cumulativeUnemployed",
+        "color": "navy"
+      },
+      {
+        "title": "Newly Reported Crimes",
+        "dataKey": "cumulativeCrime",
+        "color": "black"
+      },
+      {
+        "title": "Gross Domestic Product",
+        "dataKey": "cumulativeGDP",
+        "color": "black"
+      }
+    ],
+    "table": [
+      {
+        "title": "Above Poverty",
+        "id": "cumulativeAbovePovertyInLast12Months",
+        "typeOf": "lineGraph",
+        "color": "--dc-red-strong",
+        "graphSubtitle": "Total Population Above Poverty (Last 12 Months)",
+        "enabled": false
+      },
+      {
+        "title": "Above Poverty / 1M People",
+        "id": "perCapitaAbovePovertyInLast12Months",
+        "typeOf": "lineGraph",
+        "color": "--dc-red-strong",
+        "graphSubtitle": "Total Population Above Poverty (Last 12 Months) / 1M People",
+        "enabled": true
+      },
+      {
+        "title": "Below Poverty",
+        "id": "cumulativeBelowPovertyInLast12Months",
+        "typeOf": "lineGraph",
+        "color": "grey",
+        "graphSubtitle": "Total Population Below Poverty (Last 12 Months)",
+        "enabled": false
+      },
+      {
+        "title": "Below Poverty / 1M People",
+        "id": "perCapitaBelowPovertyInLast12Months",
+        "typeOf": "lineGraph",
+        "color": "grey",
+        "graphSubtitle": "Total Population Below Poverty (Last 12 Months) / 1M People",
+        "enabled": true
+      },
+      {
+        "title": "Unemployed",
+        "id": "cumulativeUnemployed",
+        "typeOf": "lineGraph",
+        "color": "navy",
+        "graphSubtitle": "Total Unemployed Population",
+        "enabled": false
+      },
+      {
+        "title": "Unemploy. % Rate",
+        "id": "cumulativeUnemploymentRate",
+        "typeOf": "lineGraph",
+        "color": "navy",
+        "graphSubtitle": "Unemployment Rate (In Percent)",
+        "enabled": true
+      },
+      {
+        "title": "Crimes",
+        "id": "cumulativeCrime",
+        "typeOf": "lineGraph",
+        "color": "orange",
+        "graphSubtitle": "Total Reported Crimes",
+        "enabled": false
+      },
+      {
+        "title": "Crimes / 1M People",
+        "id": "perCapitaCrime",
+        "typeOf": "lineGraph",
+        "color": "orange",
+        "graphSubtitle": "Total Reported Crimes / 1M People",
+        "enabled": true
+      },
+      {
+        "title": "Gini Index %",
+        "id": "cumulativeGiniIndex",
+        "typeOf": "lineGraph",
+        "color": "purple",
+        "graphSubtitle": "Economic Gini Index (In Percent)",
+        "enabled": true
+      },
+      {
+        "title": "Life Expectancy",
+        "id": "cumulativeLifeExpectancy",
+        "typeOf": "lineGraph",
+        "color": "green",
+        "graphSubtitle": "Human Life Expectancy",
+        "enabled": true
+      },
+      {
+        "title": "GDP",
+        "id": "cumulativeGDP",
+        "typeOf": "lineGraph",
+        "color": "black",
+        "graphSubtitle": "Gross Domestic Product",
+        "enabled": false
+      },
+      {
+        "title": "GDP / 1M People",
+        "id": "perCapitaGDP",
+        "typeOf": "lineGraph",
+        "color": "black",
+        "graphSubtitle": "Gross Domestic Product / 1M People",
+        "enabled": true
+      }
+    ]
+  }
+
+}
