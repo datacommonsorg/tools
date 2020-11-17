@@ -204,12 +204,14 @@ def calculate_data(cumulative_stats: DateToValueDictType,
     """
     Given a dataset for a region and its population,
     perform different types of calculations for every date.
-    :param moving_average_chunk_size: In days. Defaults to 7 days.
-    The size of the window to take the moving average of.
     :param cumulative_stats: a dictionary containing date->int.
     date type is a string in ISO-8601. Example: "2020-01-02"
+    :param moving_average_chunk_size: In days. Defaults to 7 days.
+    The size of the window to take the moving average of.
     :param population: a integer representing the population.
     NOTE: for return type documentation, please see README.md's APIs section.
+    :param clean_step_size: if an index is not divisible by clean_step_size, drop it.
+    Only index divisible by step_size will be kept.
     :return: a dictionary containing calculations of
     movingAverage, perCapita and pctIncrease.
     """
@@ -234,7 +236,6 @@ def calculate_data(cumulative_stats: DateToValueDictType,
     difference_list = _difference(date_to_value_list, 1)
 
     # Calculate the time-series moving average.
-    # TODO: fix this
     if moving_average_chunk_size:
         moving_averages_list = _moving_average(difference_list, moving_average_chunk_size)
     else:

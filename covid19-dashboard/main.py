@@ -56,8 +56,8 @@ def data(geo_id: str, dashboard_id: str):
     :return: geo_id->{**key_to_timeseries}.
     """
     dashboard_id = dashboard_id or "covid19"
-    print(dashboard_id)
 
+    # TODO(edumorales): make these options config-driven.
     # How many days should we perform the moving average for?
     # 0 == None
     moving_averages_chunks = {"covid19": 7, "socialWellness": 0}
