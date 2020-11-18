@@ -1,0 +1,125 @@
+{
+  "configuration": {
+    "subtitle": "COVID-19 Dashboard",
+    "footer": "Data from WHO & NYT, based on reports from state and local health agencies.",
+    "placeTypes": ["Country", "State", "County"],
+    "subregionSelectionButton": [{
+      "id": "County",
+      "text": "Compare Counties"
+    },
+      {
+        "id": "State",
+        "text": "Compare States"
+      }
+    ],
+    "pluralPlaceTypes": {
+      "Country": "Countries",
+      "State": "States",
+      "County": "Counties"
+    },
+    "tableDefaultSortBy": "movingAverageCases"
+  },
+  "content": {
+    "cumulativePanel": [{
+      "title": "Total Cases",
+      "dataKey": "cumulativeCases",
+      "color": "--dc-red-strong"
+    },
+      {
+        "title": "Total Deaths",
+        "dataKey": "cumulativeDeaths",
+        "color": "grey"
+      },
+      {
+        "title": "Total Recovered",
+        "dataKey": "cumulativeRecovered",
+        "color": "green"
+      },
+      {
+        "title": "Total Hospitalized",
+        "dataKey": "cumulativeHospitalized",
+        "color": "orange"
+      },
+      {
+        "title": "Total ICU",
+        "dataKey": "cumulativeICU",
+        "color": "navy"
+      }
+    ],
+    "table": [
+      {
+        "title": "Cases",
+        "id": "movingAverageCases",
+        "typeOf": "lineGraph",
+        "color": "--dc-red-strong",
+        "graphSubtitle": "New Cases (7d Moving Average)",
+        "enabled": true
+      },
+      {
+        "title": "Cases / 1M People",
+        "id": "perCapitaCases",
+        "typeOf": "lineGraph",
+        "color": "--dc-red-strong",
+        "graphSubtitle": "New Cases / 1M People (7d Moving Average)",
+        "enabled": true
+      },
+      {
+        "title": "Deaths",
+        "id": "movingAverageDeaths",
+        "typeOf": "lineGraph",
+        "color": "grey",
+        "graphSubtitle": "New Deaths (7d Moving Average)",
+        "enabled": true
+      },
+      {
+        "title": "Deaths / 1M People",
+        "id": "perCapitaDeaths",
+        "typeOf": "lineGraph",
+        "color": "grey",
+        "graphSubtitle": "New Deaths / 1M People (7d Moving Average)",
+        "enabled": true
+      },
+      {
+        "title": "Cases 7d % Change",
+        "id": "pctChangeCases",
+        "typeOf": "lineGraph",
+        "color": "--dc-red-strong",
+        "graphSubtitle": "Cases % Change from Previous Week",
+        "enabled": true
+      },
+      {
+        "title": "Deaths 7d % Change",
+        "id": "pctChangeDeaths",
+        "typeOf": "lineGraph",
+        "color": "grey",
+        "graphSubtitle": "Deaths % Change from Previous Week",
+        "enabled": true
+      },
+      {
+        "title": "Recovered",
+        "id": "movingAverageRecovered",
+        "typeOf": "lineGraph",
+        "color": "green",
+        "graphSubtitle": "New Recoveries (7d Moving Average)",
+        "enabled": false
+      },
+      {
+        "title": "Hospitalized",
+        "id": "movingAverageHospitalized",
+        "typeOf": "lineGraph",
+        "color": "orange",
+        "graphSubtitle": "New Hospitalizations (7d Moving Average)",
+        "enabled": false
+      },
+      {
+        "title": "ICU",
+        "id": "movingAverageICU",
+        "typeOf": "lineGraph",
+        "color": "navy",
+        "graphSubtitle": "New ICU Hospitalizations (7d Moving Average)",
+        "enabled": false
+      }
+    ]
+  }
+
+}
