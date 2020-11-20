@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.css": "/tools/mcf-browser/static/css/main.5a2766ca.chunk.css",
+    "main.js": "/tools/mcf-browser/static/js/main.5db0e3c7.chunk.js",
+    "main.js.map": "/tools/mcf-browser/static/js/main.5db0e3c7.chunk.js.map",
+    "runtime-main.js": "/tools/mcf-browser/static/js/runtime-main.832ef26c.js",
+    "runtime-main.js.map": "/tools/mcf-browser/static/js/runtime-main.832ef26c.js.map",
+    "static/js/2.b0b29306.chunk.js": "/tools/mcf-browser/static/js/2.b0b29306.chunk.js",
+    "static/js/2.b0b29306.chunk.js.map": "/tools/mcf-browser/static/js/2.b0b29306.chunk.js.map",
+    "index.html": "/tools/mcf-browser/index.html",
+    "precache-manifest.30abe270f7d01122bd6465c8b91d3ce1.js": "/tools/mcf-browser/precache-manifest.30abe270f7d01122bd6465c8b91d3ce1.js",
+    "service-worker.js": "/tools/mcf-browser/service-worker.js",
+    "static/css/main.5a2766ca.chunk.css.map": "/tools/mcf-browser/static/css/main.5a2766ca.chunk.css.map",
+    "static/js/2.b0b29306.chunk.js.LICENSE.txt": "/tools/mcf-browser/static/js/2.b0b29306.chunk.js.LICENSE.txt"
+  },
+  "entrypoints": [
+    "static/js/runtime-main.832ef26c.js",
+    "static/js/2.b0b29306.chunk.js",
+    "static/css/main.5a2766ca.chunk.css",
+    "static/js/main.5db0e3c7.chunk.js"
+  ]
+}
