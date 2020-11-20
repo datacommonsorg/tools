@@ -56,9 +56,13 @@ class Home extends Component {
         <h3>Current Files:</h3>
         {/* list current file names*/}
         <ul>
-          {this.props.fileList.map((file) =>
-            <li className='clickable' key={file.name} onClick={() =>
-              openFile(file.name)}>{file.name}</li>)}
+          {this.props.fileList.map((file) => {
+            const className = file.name.startsWith('https:') ? 'clickable' : '';
+
+            return (<li className={className} key={file.name} onClick={() => {
+              if (className) openFile(file.name);
+            }}>{file.name}</li>);
+          })}
         </ul>
         <br/>
 

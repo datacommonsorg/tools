@@ -21,34 +21,23 @@ import {ParseMcf} from './parse-mcf.js';
 import {ParseTmcf} from './parse-tmcf.js';
 
 /**
- * Parses App state's fileList to find either one mcf file or one set of
+ * Parses App state's files object to find either one mcf file or one set of
  * tmcf+csv. Parses the files according to their file type.
- * @param {Array<FileBlob>} fileList The list of files to load into memory.
+ * @param {Object} files The object which contains files labeled by
+ *      their file type to parse and load into memory.
  * @return {Object} An object containing the ids of the subject nodes and any
  *     parsiing errorr messagges.
  */
-async function readFileList(fileList) {
-  let tmcfFile;
-  let csvFile;
-  let mcfFile;
-
-  // parse file list
-  for (const file of fileList) {
-    if (file.name.endsWith('.tmcf')) {
-      tmcfFile = file;
-    } else if (file.name.endsWith('.csv')) {
-      csvFile = file;
-    } else {
-      mcfFile = file;
-    }
-  }
-
-  if (mcfFile) {
+async function readFileList(files) {
+  console.log(files);
+  if (files.mcf) {
     // read mcf file
-    return ParseMcf.readFile(mcfFile);
+    return ParseMcf.readFile(files.mcf);
   }
 
-  if (tmcfFile && csvFile) {
+  if (files.tmcf && files.csv) {
+    const tmcfFile = files.tmcf;
+    const csvFile = files.csv;
     // generate mcf string, then parse it
     return ParseTmcf.generateMcf(tmcfFile, csvFile).then((mcf) => {
       console.log(mcf);

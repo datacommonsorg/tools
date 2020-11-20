@@ -25,14 +25,14 @@ import * as utils from './utils.js';
 import * as API from './back-end/server-api.js';
 
 
-/* Drives the entire app and holds the state of the files and current node. */
+/** Drives the entire app and holds the state of the files and current node. */
 class App extends Component {
   constructor(props) {
     super(props);
     this.state = {
       subjNodes: [],
       curNode: null,
-      fileList: [],
+      files: {},
       loading: false,
       firstLoad: true,
       parsingErrs: [],
@@ -101,11 +101,11 @@ class App extends Component {
 
   /**
   * Gets a remote file from an Array of urls at index i and appends the
-  * retrieved file to App state's fileList. This is a recursive method that
+  * retrieved file to App state's files. This is a recursive method that
   * calls itself to iterate through the entire Array of fileUrls.
   * @param {number} i The index of the url to get from fileUrls array.
   * @param {Array<string>} fileUrls The array of file urls to load and append
-  *     to App state's fileList.
+  *     to App state's files object.
   */
   loadRemoteFiles(i, fileUrls) {
     if (i >= fileUrls.length) {
@@ -119,22 +119,23 @@ class App extends Component {
 
     xhr.onload = () => {
       xhr.response.name = fileUrls[i];
-      this.setState({
-        fileList: this.state.fileList.concat(xhr.response),
-      }, () => this.loadRemoteFiles(i + 1, fileUrls));
-    };
+      const fileExt = fileUrls[i].split('.').pop();
+      const updatedFiles = Object.assign({[fileExt]: xhr.response}, this.state.files);
 
+      this.setState({files: updatedFiles},
+          () => this.loadRemoteFiles(i + 1, fileUrls));
+    };
     xhr.send();
   }
 
   /**
-  * Passes App state's fileList array to the 'back-end' API to be parsed and
+  * Passes App state's files object to the 'back-end' API to be parsed and
   * the files loaded into memory.
   */
   submitFileList() {
     this.setState({loading: true});
 
-    API.readFileList(this.state.fileList).then((res) => {
+    API.readFileList(this.state.files).then((res) => {
       this.setState({
         parsingErrs: res['errMsgs'],
         subjNodes: res['localNodes'],
@@ -149,7 +150,7 @@ class App extends Component {
   onClearPress() {
     this.setState({
       subjNodes: [],
-      fileList: [],
+      files: {},
       loading: false,
       parsingErrs: [],
     });
@@ -162,9 +163,15 @@ class App extends Component {
     * Save and submit files uploaded from 'Choose File' selector in the Header.
     */
   uploadFiles(filesList) {
+    let updatedFiles = this.state.files;
+    for (const file of filesList) {
+      const fileExt = file.name.split('.').pop();
+      updatedFiles = Object.assign({[fileExt]: file}, updatedFiles);
+    }
+
     this.setState({
       curNode: null,
-      fileList: this.state.fileList.concat(filesList),
+      files: updatedFiles,
     }, () => this.submitFileList());
   }
 
@@ -181,7 +188,7 @@ class App extends Component {
             // if curNode is set, then display it
             <DisplayNode node={this.state.curNode} /> :
             // otherwise display home
-            <Home fileList={this.state.fileList}
+            <Home fileList={Object.values(this.state.files)}
               clear={() => this.onClearPress()}
               errs={this.state.parsingErrs}
               loading={this.state.loading}
