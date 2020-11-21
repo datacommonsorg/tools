@@ -41,7 +41,8 @@ class TestMovingAverage(unittest.TestCase):
                 '2020-01-04': 0}
 
         actual = _moving_average(list(data.items()), chunk_size=2)
-        expected = {'2020-01-03': -5, '2020-01-04': 0}
+        expected = {'2020-01-03': -5,
+                    '2020-01-04': 0}
 
         self.assertListEqual(actual, list(expected.items()))
 
@@ -75,7 +76,7 @@ class TestMovingAverage(unittest.TestCase):
 
     def test_chunk_size_larger_than_data_length(self):
         """
-        Tests a chunk_size larger to len(data).
+        Tests a chunk_size larger than len(data).
         This is not a valid input. Should return [].
         """
         data = {'2020-01-02': 10,

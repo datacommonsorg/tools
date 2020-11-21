@@ -137,7 +137,7 @@ export default function LineGraph(props: LineGraphPropsType) {
               dataKey="value"
               stroke={color}
               fillOpacity={0.4}
-              animationDuration={500}
+              isAnimationActive={false}
               fill={color}/>
         <Tooltip position={{y: -170, x: -170}}
                  wrapperStyle={{zIndex: 1000}}
