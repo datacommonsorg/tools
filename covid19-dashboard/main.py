@@ -65,7 +65,6 @@ def data(geo_id: str, dashboard_id: str):
     moving_averages_chunks = {"covid19": 7, "socialWellness": 0}
     moving_average_chunk = moving_averages_chunks[dashboard_id]
 
-
     # How many dates should we skip to reduce response size?
     # In days, 1 == None.
     clean_step_sizes = {"covid19": 6, "socialWellness": 1}
@@ -101,7 +100,8 @@ def places():
     return response
 
 
-def _get_data(place_type: str = "State", STAT_VARS={}, moving_average_chunk=7, clean_step_size=2) -> GeoIdToDataType:
+def _get_data(place_type: str = "State", STAT_VARS={},
+              moving_average_chunk=7, clean_step_size=2) -> GeoIdToDataType:
     """
     Requests cases and deaths from the DC, and performs calculations.
     NOTE: for return type documentation, please see README.md's APIs section.
@@ -170,7 +170,8 @@ def _get_data(place_type: str = "State", STAT_VARS={}, moving_average_chunk=7, c
             # Do calculations with the data.
             # See README.md for more information about the return types.
             calculated_data = calculate_data(place_stats,
-                                             place_population, moving_average_chunk, clean_step_size)
+                                             place_population, moving_average_chunk,
+                                             clean_step_size)
 
             # Rename keys to include stat_var.
             # Example: 'movingAverage' becomes 'movingAverageCases'.
@@ -402,8 +403,10 @@ def _get_us_places(place_type: str = "State") -> PlaceToInfoType:
     # NYT combines several counties into one larger county.
     # Only for the following two exceptions.
     # https://github.com/nytimes/covid-19-data#geographic-exceptions
-    counties["geoId/3651000"] = Place("New York City", "geoId/36","County").to_json()
-    counties["geoId/2938000"] = Place("Kansas City", "geoId/29", "County").to_json()
+    counties["geoId/3651000"] = Place("New York City",
+                                      "geoId/36", "County").to_json()
+    counties["geoId/2938000"] = Place("Kansas City",
+                                      "geoId/29", "County").to_json()
 
     return counties
 
