@@ -28,7 +28,7 @@ from Configuration import covid19, socialWellness
 
 config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR="/tmp")
 
-app = Flask(__name__, static_folder="./build")
+app = Flask(__name__)
 
 # All API responses are g-zipped/compressed.
 Compress(app)
@@ -46,6 +46,8 @@ GeoIdToDataType = Dict[str, KeyToTimeSeries]
 GeoIdToStatsType = Dict[str, Dict[str, int]]
 PlaceToInfoType = Dict[str, Dict[str, str]]
 
+print("HI WORLD")
+
 
 @app.route("/api/data/<string:geo_id>/<string:dashboard_id>")
 @cache.cached(timeout=3600)
@@ -58,13 +60,13 @@ def data(geo_id: str, dashboard_id: str):
     dashboard_id = dashboard_id or "covid19"
 
     # TODO(edumorales): make these options config-driven.
-    # How many days should we perform the moving average for?
+    # How many dates should we perform the moving average for?
     # 0 == None
     moving_averages_chunks = {"covid19": 7, "socialWellness": 0}
     moving_average_chunk = moving_averages_chunks[dashboard_id]
 
 
-    # How many days should we skip to reduce response size?
+    # How many dates should we skip to reduce response size?
     # In days, 1 == None.
     clean_step_sizes = {"covid19": 6, "socialWellness": 1}
     clean_step_size = clean_step_sizes[dashboard_id]
@@ -479,4 +481,4 @@ class Place:
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80)
+    app.run(host="0.0.0.0", port=8080)
