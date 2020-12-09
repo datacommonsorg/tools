@@ -18,6 +18,10 @@
 # Instead of using the long stat_var name.
 # The key will be used to identify the stat_var.
 
+# Data is broken down by place_type -> key -> DC statistical variable.
+# The statistical variable is never used or referred throughout the app, only the key is.
+# The key replaces the statistical variable throughout the dashboard.
+
 covid19 = {
     "Country": {
         "Cases":
