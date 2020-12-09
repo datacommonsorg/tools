@@ -19,6 +19,7 @@ import {TimeSeriesType} from "./Types";
 import LineGraph from "./LineGraph";
 import React from "react";
 import {Colors} from './Utils'
+import numeral from 'numeral'
 
 type ThPropsType = {
   timeSeries: TimeSeriesType,
@@ -42,7 +43,8 @@ export default (props: ThPropsType) => {
   const timeSeries = props.timeSeries // the timeSeries being observed.
   const dates = Object.keys(timeSeries)
   const latestDate = dates[dates.length - 1]
-  const value = timeSeries[latestDate] as number // the value to display
+  const value = timeSeries[latestDate]
+  const valueString = numeral(value).format('0.0a')
   const color = props.color ? Colors(props.color) : Colors('grey')
 
   // Depending on the type of Th, display different th.
@@ -56,14 +58,14 @@ export default (props: ThPropsType) => {
           title={props.graphTitle}
           subtitle={props.graphSubtitle}
           color={color}
-          value={value}/>
+          value={valueString}/>
       </th>
     )
   } else if (props.typeOf === 'number' && value) {
-    return <th>{value?.toFixed(2)}</th>
+    return <th>{valueString}</th>
   } else if (props.typeOf === 'percent' && value) {
-    return <th>{value?.toFixed(2) + "%"}</th>
+    return <th>{valueString + "%"}</th>
   } else {
-    return <th>{'~'}</th>
+    return <th>{'-'}</th>
   }
 }

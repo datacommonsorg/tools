@@ -17,12 +17,12 @@
 import React from "react";
 import {Tooltip, XAxis, YAxis, AreaChart, Area} from 'recharts';
 import sortBy from 'lodash/sortBy'
-import {numberWithCommas, Colors} from "./Utils";
+import {Colors} from "./Utils";
 import dayjs from "dayjs";
 
 type LineGraphPropsType = {
   data: {[date: string]: number},
-  value: number,
+  value: string,
   width?: number,
   height?: number,
   color?: string,
@@ -77,7 +77,7 @@ export default function LineGraph(props: LineGraphPropsType) {
   // Convert the data to a list of objects that the graph can understand.
   const data = Object.entries(inputData).map(([date, value ]) => {
     // Prettify the date.
-    const prettyDate = dayjs(date).format("MMM D")
+    const prettyDate = dayjs(date).format("MMM D 'YY")
     return {
       // The label to display on graph.
       xAxisLabel: prettyDate,
@@ -96,17 +96,6 @@ export default function LineGraph(props: LineGraphPropsType) {
   // Sort the data by date.
   const sortedData = sortBy(data, ['date'])
 
-  // If value is a decimal, round to 1 significant digit.
-  // Otherwise, round to the nearest whole number.
-  let graphValue: string;
-  if (props.value < 1) {
-    graphValue = props.value.toFixed(1)
-  } else {
-    const roundedValue = Math.round(props.value)
-    graphValue = numberWithCommas(roundedValue)
-  }
-
-
   // Color of the graph.
   const color = Colors(props.color || "--dc-red-strong")
   // Width of the graph.
@@ -124,10 +113,10 @@ export default function LineGraph(props: LineGraphPropsType) {
   return (
     <div className={"line-graph"}
          style={{width: width}}>
-      {graphValue &&
+      {props.value &&
       <h6 className={"value"}
           style={{color: color}}>
-        {graphValue}
+        {props.value}
       </h6>}
       <AreaChart className={"graph " + props.className}
                  width={width}
