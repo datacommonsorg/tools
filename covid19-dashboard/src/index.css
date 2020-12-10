@@ -168,19 +168,16 @@ thead:nth-child(1) th {
 
 /* BUTTONS and BUTTON GROUPS */
 
-button, .btn {
+button {
   font-size: 14px;
   background-color: var(--dc-red);
   border: 0 none var(--dc-red) !important;
   color: white;
   padding: 12px !important;
   cursor: pointer;
-  border-radius: var(--border-radius) !important;
-  font-weight: bold !important;
-}
-
-button {
+  border-radius: var(--border-radius);
   box-shadow: var(--shadow);
+  font-weight: bold !important;
 }
 
 .button-group {
@@ -205,6 +202,10 @@ button:hover {
 .icon-in-button {
   margin-right: 2px;
   width: 20px;
+}
+
+.options {
+  border-radius: var(--border-radius) !important;
 }
 
 /* GRAPH */
