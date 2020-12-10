@@ -15,7 +15,8 @@
  */
 
 import React from 'react';
-import {numberWithCommas, Colors} from './Utils';
+import {Colors} from './Utils';
+import numeral from 'numeral'
 
 type CountPanelPropsType = {
   textToValue: {title: string; value: number; color?: string}[];
@@ -32,7 +33,7 @@ export default function CumulativePanel(props: CountPanelPropsType) {
         // If value is nullish (including 0), display a dash.
         let value = "-"
         if (obj.value) {
-          value = numberWithCommas(obj.value);
+          value = numeral(obj.value).format('0.0a')
         }
 
         const color = obj.color ? Colors(obj.color) : 'grey';
