@@ -120,21 +120,21 @@ The configuration files have a `table` property with a list of category objects.
 
 ### Set Google Application Credential
 
-**NOTE:** This project is currently deployed under the GCP Project `datcom-wesbite`, but any other project can be used instead.
+**NOTE:** This project is currently deployed under the GCP Project `datcom-website`, but any other project can be used instead.
 
 ```bash
-export GOOGLE_CLOUD_PROJECT="datcom-website"
-gcloud config set project $GCP_PROJECT && \
 gcloud auth application-default login
 ```
 
 #### Install Node.JS 12 and Python 3.7
 
-**NOTE:** Although other versoins of Node might work, only Node 12 has been tested.
-**NOTE:** Although other versions of Python might work, only Python 3.7 has been tested.
+**NOTE:** Although other versions might work, only Node 12 and Python 3.7 have been tested.
 
-Before running the server, install [nodejs](https://nodejs.org/en/download/)
-Before running the server, install [python](https://www.python.org/downloads/)
+##### Prerequisites
+
+- [NodeJS 12](https://nodejs.org/en/download/)
+- [Python 3.7](https://www.python.org/downloads/)
+- [Google Cloud](https://cloud.google.com/sdk/docs/install)
 
 #### Run Google Cloud App Engine Locally
 
