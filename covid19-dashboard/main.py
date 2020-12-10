@@ -46,7 +46,6 @@ GeoIdToDataType = Dict[str, KeyToTimeSeries]
 GeoIdToStatsType = Dict[str, Dict[str, int]]
 PlaceToInfoType = Dict[str, Dict[str, str]]
 
-print("HI WORLD")
 
 
 @app.route("/api/data/<string:geo_id>/<string:dashboard_id>")
