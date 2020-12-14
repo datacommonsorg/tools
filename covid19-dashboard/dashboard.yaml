@@ -1,9 +1,5 @@
 service: dashboard
-runtime: python38
-instance_class: B8
-basic_scaling:
-   idle_timeout: 10m
-   max_instances: 11
+runtime: python37
 
 default_expiration: "0h"
 
