@@ -48,20 +48,21 @@ export const Colors = (color: string): string => {
 
 /**
  * Navigate to a different geoId.
+ * @param dashboardId: the id of the dashboard to direct to.
  * @param geoId: the place's geoId we want to view.
  * @param placeType: the types of places we want to view.
  * Example: geoId=country/USA and placeType=County
  * would display all counties in the USA.
  */
-export const goToPlace = (geoId?: string, placeType?: string): void => {
-  let newUrl = '/';
+export const goToPlace = (dashboardId: string, geoId?: string, placeType?: string): void => {
+  let newUrl = `/dashboard/?dashboardId=${dashboardId}`;
 
   // Redirect to a specific geoId.
   if (geoId && geoId !== 'World') {
-    newUrl += `?geoId=${geoId}`;
+    newUrl += `&geoId=${geoId}`;
   } else {
     // if !geoId or geoId == 'World', redirect to homepage.
-    window.location.href = '/';
+    window.location.href = newUrl;
     return;
   }
 
@@ -76,3 +77,11 @@ export const goToPlace = (geoId?: string, placeType?: string): void => {
   // Redirect to new url.
   window.location.href = newUrl;
 };
+
+export const getContent = (dashboardId: string) => {
+  return require(`./${dashboardId}.json`)?.['content'] || {}
+}
+
+export const getConfiguration = (dashboardId: string) => {
+  return require(`./${dashboardId}.json`)?.['configuration'] || {}
+}

@@ -1,1 +1,1 @@
-Go module for adding missing dates of a time series with value = mean
+Go module for adding missing values to a time series.
