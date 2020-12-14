@@ -23,9 +23,10 @@ import {shouldReadLine} from './utils.js';
  * @param {string} propValue The string to look for a column name in.
  * @return {string|null} The column name that comes after '->'.
  */
-function getArrowId(propValue) {
-  if (propValue.includes('->')) {
-    return propValue.split('->')[1];
+function getColumnId(propValue) {
+  const colIdMatch = propValue.match('C:(.*)->(.*)');
+  if (colIdMatch) {
+    return colIdMatch[0];
   }
   return null;
 }
@@ -49,7 +50,7 @@ function getEntityID(line) {
  */
 class ParseTmcf {
   /**
-   * Current row number of the csv file that us being parsed.
+   * Current row number of the csv file that is being parsed.
    * @type {number}
    */
   csvIndex;
@@ -96,16 +97,17 @@ class ParseTmcf {
       let filledValue;
 
       const entityID = getEntityID(propValue);
-      const colName = getArrowId(propValue);
+      const colId = getColumnId(propValue);
 
       if (entityID) {
         // convert entity id format to local id format
         // Ex: E:SomeDataset->E1 => l:SomeDataset_E1_R<index>
         const localId = 'l:' + this.getLocalIdFromEntityId(entityID);
         filledValue = propValue.replace(entityID, localId);
-      } else if (colName) {
+      } else if (colId) {
         // Replace csv column placeholder with the value
-        filledValue = propValue.replace(/C:(.*)->(.*)/, csvRow[colName]);
+        const colName = colId.split('->')[1];
+        filledValue = propValue.replace(colId, csvRow[colName]);
       } else {
         filledValue = propValue;
       }
@@ -134,7 +136,6 @@ class ParseTmcf {
 
       const propLabel = line.split(':')[0].trim();
       const propValues = line.substring(line.indexOf(':') + 1).trim();
-      ;
 
       if (propLabel === 'Node') {
         if (propValues.includes(',')) {
