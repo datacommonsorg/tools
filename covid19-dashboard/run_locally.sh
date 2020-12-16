@@ -15,6 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# NOTE: Make sure you have dev_appserver.py installed.
+# It normally comes pre-installed with gcloud but sometimes you have to run:
+# gcloud components install app-engine-go
+
+# IMPORTANT: You MUST have node12+, python3.7+ and gcloud installed.
+
 # Change variable if running different project.
 export GOOGLE_CLOUD_PROJECT="datcom-tools-staging"
 
