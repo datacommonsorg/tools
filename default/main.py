@@ -20,22 +20,22 @@ app = Flask(__name__)
 @app.route("/")
 def main():
     """Temporarly, redirect / to /covid19/"""
-    return redirect('http://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=covid19')
+    return redirect('https://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=covid19')
 
 @app.route("/dashboard")
 def dashboard():
     """Temporarly, redirect / to /covid19/"""
-    return redirect('http://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=covid19')
+    return redirect('https://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=covid19')
 
 @app.route("/covid19")
 def covid19():
     """Only /covid19/ is a service.
     If the user types in /covid19, redirect to /covid19/."""
-    return redirect('http://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=covid19')
+    return redirect('https://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=covid19')
 
 @app.route("/socialWellness")
 def socialWellness():
-    return redirect('http://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=socialWellness')
+    return redirect('https://datcom-tools-staging.uc.r.appspot.com/dashboard/?dashboardId=socialWellness')
 
 
 if __name__ == "__main__":
