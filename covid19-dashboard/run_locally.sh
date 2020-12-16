@@ -15,8 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Change GOOGLE_CLOUD_PROJECT if deploying to diffrent project.
-export GOOGLE_CLOUD_PROJECT="datcom-website"
+# Change variable if running different project.
+export GOOGLE_CLOUD_PROJECT="datcom-tools-staging"
 
 # App Engine only understands static files, so build these files.
 npm install

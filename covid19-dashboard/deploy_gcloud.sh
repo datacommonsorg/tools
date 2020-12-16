@@ -15,7 +15,7 @@
 # limitations under the License.
 
 # Change variable if deploying to different project.
-export GOOGLE_CLOUD_PROJECT="datcom-website"
+export GOOGLE_CLOUD_PROJECT="datcom-tools-staging"
 
 # Set the project on gcloud.
 gcloud config set project $GOOGLE_CLOUD_PROJECT
