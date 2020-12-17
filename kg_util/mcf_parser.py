@@ -51,9 +51,8 @@ def _strip_ns(v):
 
 
 def _is_schema_ref_property(prop):
-    return (prop == 'typeOf' or prop == 'subClassOf' or
-            prop == 'subPropertyOf' or prop == 'rangeIncludes' or
-            prop == 'domainIncludes' or prop == 'specializationOf')
+    return prop in ('typeOf', 'subClassOf', 'subPropertyOf', 'rangeIncludes',
+                    'domainIncludes', 'specializationOf')
 
 
 def _is_common_ref_property(prop):
@@ -94,6 +93,16 @@ def _as_err(msg, pc):
 
 
 def _parse_value(prop, value, pc):
+    """Parses an MCF value string into a pair of value and type.
+
+    Args:
+        prop: Property name
+        value: Value string
+        pc: ParseContext instance
+
+    Returns:
+        Pair of value and type.
+    """
     expect_ref = _is_common_ref_property(prop)
 
     if value.startswith('"'):
@@ -105,20 +114,21 @@ def _parse_value(prop, value, pc):
 
     if _is_global_ref(value):
         return (_strip_ns(value), _ID)
-    elif _is_local_ref(value):
+
+    if _is_local_ref(value):
         # For local ref, we retain the prefix.
         return (value, _ID)
-    else:
-        ns_prefix = value.split(':', 1)[0] + _delim
-        if ns_prefix != value and ns_prefix in pc.ns_map:
-            value = value.replace(ns_prefix, pc.ns_map[ns_prefix], 1)
-            return (value, _ID)
+
+    ns_prefix = value.split(':', 1)[0] + _delim
+    if ns_prefix != value and ns_prefix in pc.ns_map:
+        value = value.replace(ns_prefix, pc.ns_map[ns_prefix], 1)
+        return (value, _ID)
 
     if expect_ref:
-        # If we're here, user likely forgot to add a "dcid:", "dcs:" or "schema:"
-        # prefix.  We cannot tell apart if they failed to add an local ref ('l:'),
-        # but we err on the side of user being careful about adding local refs and
-        # accept the MCF without failing.
+        # If we're here, user likely forgot to add a "dcid:", "dcs:" or
+        # "schema:" prefix.  We cannot tell apart if they failed to add an local
+        # ref ('l:'), but we err on the side of user being careful about adding
+        # local refs and accept the MCF without failing.
         return (value, _ID)
 
     return (value, _VALUE)
@@ -134,6 +144,12 @@ def _parse_values(prop, values_str, pc):
 
 
 def _update_ns_map(values_str, pc):
+    """Updates the namespace map with namespace values.
+
+    Args:
+        values_str: String of values for namespace prop from MCF.
+        pc: ParseContext instance.
+    """
     for values in reader([values_str]):
         for value in values:
             value = _strip_quotes(value.strip())

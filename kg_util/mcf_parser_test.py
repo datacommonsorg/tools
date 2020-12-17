@@ -66,9 +66,8 @@ class MCFParserTest(unittest.TestCase):
     def test_success(self):
 
         mcf_triples_list = [
-            (
-                # Test simple MCF, with multiple values and different value types.
-                """
+            # Test simple MCF, with multiple values & different value types.
+            ("""
             Node: MTV
             # City shouldn't be quoted, but we know typeOf is a reference prop.
             typeOf: "City"
@@ -80,30 +79,26 @@ class MCFParserTest(unittest.TestCase):
             population: 81438
             area: 31.788
             inCounty: true
-          """,
-                [
-                    ['MTV', 'typeOf', 'City', 'ID'],
-                    ['MTV', 'name', 'Mountain View', 'VALUE'],
-                    ['MTV', 'name', 'MTV, CA, USA', 'VALUE'],
-                    ['MTV', 'containedInPlace', 'dc/4fef4e', 'ID'],
-                    ['MTV', 'containedInPlace', 'l:USACountry', 'ID'],
-                    ['MTV', 'population', '81438', 'VALUE'],
-                    ['MTV', 'area', '31.788', 'VALUE'],
-                    ['MTV', 'inCounty', 'true', 'VALUE'],
-                ]),
-            (
-                # MCF with dcid: notation for node name.
-                """
+          """, [
+                ['MTV', 'typeOf', 'City', 'ID'],
+                ['MTV', 'name', 'Mountain View', 'VALUE'],
+                ['MTV', 'name', 'MTV, CA, USA', 'VALUE'],
+                ['MTV', 'containedInPlace', 'dc/4fef4e', 'ID'],
+                ['MTV', 'containedInPlace', 'l:USACountry', 'ID'],
+                ['MTV', 'population', '81438', 'VALUE'],
+                ['MTV', 'area', '31.788', 'VALUE'],
+                ['MTV', 'inCounty', 'true', 'VALUE'],
+            ]),
+            # MCF with dcid: notation for node name.
+            ("""
             Node: dcid:dc/mx44
             typeOf: schema:City
             name: "Über"
-          """,
-                [['dcid:dc/mx44', 'typeOf', 'City', 'ID'],
-                 ['dcid:dc/mx44', 'name', 'Über', 'VALUE'],
-                 ['dcid:dc/mx44', 'dcid', 'dc/mx44', 'VALUE']]),
-            (
-                # MCF with Context block.
-                """
+          """, [['dcid:dc/mx44', 'typeOf', 'City', 'ID'],
+                ['dcid:dc/mx44', 'name', 'Über', 'VALUE'],
+                ['dcid:dc/mx44', 'dcid', 'dc/mx44', 'VALUE']]),
+            # MCF with Context block.
+            ("""
             Context:
             namespace: "dbc=http://purl.org/dc/terms/"
             namespace: "rs=http://www.openarchives.org/rs/terms/"
@@ -114,31 +109,28 @@ class MCFParserTest(unittest.TestCase):
             sameAs: dbc:VilleMtv
             name: "United States Of America"
             dcid: "dc/2sffw13"
-          """,
+          """, [
+                ['USACountry', 'typeOf', 'Country', 'ID'],
                 [
-                    ['USACountry', 'typeOf', 'Country', 'ID'],
-                    [
-                        'USACountry', 'equivalentTo',
-                        'http://www.openarchives.org/rs/terms/PaisUSA', 'ID'
-                    ],
-                    [
-                        'USACountry', 'sameAs',
-                        'http://purl.org/dc/terms/VilleMtv', 'ID'
-                    ],
-                    ['USACountry', 'name', 'United States Of America', 'VALUE'],
-                    ['USACountry', 'dcid', 'dc/2sffw13', 'VALUE'],
-                ]),
-            (
-                # MCF with Complex Value.
-                """
+                    'USACountry', 'equivalentTo',
+                    'http://www.openarchives.org/rs/terms/PaisUSA', 'ID'
+                ],
+                [
+                    'USACountry', 'sameAs', 'http://purl.org/dc/terms/VilleMtv',
+                    'ID'
+                ],
+                ['USACountry', 'name', 'United States Of America', 'VALUE'],
+                ['USACountry', 'dcid', 'dc/2sffw13', 'VALUE'],
+            ]),
+            # MCF with Complex Value.
+            ("""
             Node: Pop
             typeOf: schema:StatisticalPopulation
             age: [10 20 dcs:Years]
-          """,
-                [
-                    ['Pop', 'typeOf', 'StatisticalPopulation', 'ID'],
-                    ['Pop', 'age', '[10 20 dcs:Years]', 'VALUE'],
-                ]),
+          """, [
+                ['Pop', 'typeOf', 'StatisticalPopulation', 'ID'],
+                ['Pop', 'age', '[10 20 dcs:Years]', 'VALUE'],
+            ]),
         ]
 
         for (mcf, want) in mcf_triples_list:
