@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
+
 # Change variable if deploying to different project.
 export GOOGLE_CLOUD_PROJECT="datcom-tools-staging"
 
