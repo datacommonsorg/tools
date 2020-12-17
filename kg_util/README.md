@@ -15,6 +15,8 @@ Arguments:
 
 Returns an Iterable of triples. Each triple has four string values:
 
-    `[ <subject-id>, <property>, <object-id or object-value>, <'ID' | 'VALUE'>]`
+  ```
+  [ <subject-id>, <property>, <object-id or object-value>, <'ID' | 'VALUE'>]
+  ```
 
 Also refer to `mcf_parser_test.py` for usage.
