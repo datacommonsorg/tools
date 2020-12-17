@@ -5,27 +5,27 @@ default_expiration: "0h"
 
 handlers:
 - url: /dashboard/
-  static_files: build/index.html
-  upload: build/index.html
+  static_files: public/index.html
+  upload: public/index.html
 
 - url: /dashboard
-  static_files: build/index.html
-  upload: build/index.html
+  static_files: public/index.html
+  upload: public/index.html
 
 - url: /dashboard/index.html
-  static_files: build/index.html
-  upload: build/index.html
+  static_files: public/index.html
+  upload: public/index.html
 
 - url: /dashboard/favicon.png
-  static_files: build/favicon.png
-  upload: build/favicon.png
+  static_files: public/favicon.png
+  upload: public/favicon.png
 
 - url: /dashboard/manifest.json
-  static_files: build/manifest.json
-  upload: build/manifest.json
+  static_files: public/manifest.json
+  upload: public/manifest.json
 
 - url: /dashboard/static/css/
-  static_dir: build/static/css
+  static_dir: public/static/css
 
 - url: /dashboard/static/js/
-  static_dir: build/static/js
+  static_dir: public/static/js

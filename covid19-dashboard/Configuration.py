@@ -75,7 +75,7 @@ socialWellness = {
         "Crime":
             "Count_CriminalActivities_CombinedCrime",
         "GiniIndex":
-            "GiniIndex_EcconomicActivity",
+            "GiniIndex_EconomicActivity",
         "LifeExpectancy":
             "LifeExpectancy_Person",
         "GDP":
