@@ -17,7 +17,7 @@
 import React, {Component} from 'react';
 
 import * as API from './back-end/server-api.js';
-import {TriplesTable} from './TriplesTable.js';
+import {TriplesTable} from './TriplesTable.jsx';
 import {LoadingSpinner} from './LoadingSpinner.jsx';
 import {colorLegend} from './utils.js';
 

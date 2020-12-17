@@ -20,9 +20,9 @@ import React, {Component} from 'react';
 
 import axios from 'axios';
 
-import {DisplayNode} from './DisplayNode.js';
-import {Header} from './Header.js';
-import {Home} from './Home.js';
+import {DisplayNode} from './DisplayNode.jsx';
+import {Header} from './Header.jsx';
+import {Home} from './Home.jsx';
 import * as utils from './utils.js';
 import * as API from './back-end/server-api.js';
 
