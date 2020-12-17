@@ -28,6 +28,7 @@ def _triplify(mcf_str):
 
 
 class MCFParserTest(unittest.TestCase):
+
     def test_failure(self):
 
         mcf_errmsg_list = [
@@ -124,10 +125,7 @@ class MCFParserTest(unittest.TestCase):
                         'USACountry', 'sameAs',
                         'http://purl.org/dc/terms/VilleMtv', 'ID'
                     ],
-                    [
-                        'USACountry', 'name', 'United States Of America',
-                        'VALUE'
-                    ],
+                    ['USACountry', 'name', 'United States Of America', 'VALUE'],
                     ['USACountry', 'dcid', 'dc/2sffw13', 'VALUE'],
                 ]),
             (

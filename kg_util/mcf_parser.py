@@ -51,23 +51,23 @@ def _strip_ns(v):
 
 
 def _is_schema_ref_property(prop):
-    return (prop == 'typeOf' or prop == 'subClassOf' or prop == 'subPropertyOf'
-            or prop == 'rangeIncludes' or prop == 'domainIncludes'
-            or prop == 'specializationOf')
+    return (prop == 'typeOf' or prop == 'subClassOf' or
+            prop == 'subPropertyOf' or prop == 'rangeIncludes' or
+            prop == 'domainIncludes' or prop == 'specializationOf')
 
 
 def _is_common_ref_property(prop):
-    return (_is_schema_ref_property(prop) or prop == 'location'
-            or prop == 'observedNode' or prop == 'containedInPlace'
-            or prop == 'containedIn' or prop == 'populationType'
-            or prop == 'measuredProperty' or prop == 'measurementDenominator'
-            or prop == 'populationGroup' or prop == 'constraintProperties'
-            or prop == 'measurementMethod' or prop == 'comparedNode')
+    return (_is_schema_ref_property(prop) or prop == 'location' or
+            prop == 'observedNode' or prop == 'containedInPlace' or
+            prop == 'containedIn' or prop == 'populationType' or
+            prop == 'measuredProperty' or prop == 'measurementDenominator' or
+            prop == 'populationGroup' or prop == 'constraintProperties' or
+            prop == 'measurementMethod' or prop == 'comparedNode')
 
 
 def _is_global_ref(value):
-    return (value.startswith(_dcid_prefix) or value.startswith(_dcs_prefix)
-            or value.startswith(_schema_prefix))
+    return (value.startswith(_dcid_prefix) or value.startswith(_dcs_prefix) or
+            value.startswith(_schema_prefix))
 
 
 def _is_local_ref(value):
