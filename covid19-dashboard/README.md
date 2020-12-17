@@ -144,13 +144,32 @@ Visit `localhost:8080/dashboard/?dashboardId=covid19` to view the COVID-19 dashb
 Visit `localhost:8080/dashboard/?dashboardId=socialWellness` to view the Sociall Wellness dashboard.
 
 ```bash
-sh run_locally.sh
+./run_locally.sh
 ```
+
+## Deployment
+
+**NOTE:** This project is currently deployed under the GCP Project `datcom-tools-staging`, but any other project can be used instead.
+
+The dashboard web app is hosted in App Engine as `dashboard`, [dashboard.yaml](./dashboard.yaml) contains the configuration.
+
+When deploying, both the `dashboard` app and the `default` app will be pushed:
+**dashboard** app is in charge of the dashboard static files and APIs.
+**default** app simply exists to redirect some urls and is unrelated to the dashboard.
+For example: visiting / will redirect to /dashboard/. Currently, `dashboard` is the only app in the /tools repository.
+
+
+Use `dispatch.yaml` to redirect requests to the appropriate app.
+For example: `/api/places/` should be handled by the `dashboard` app.
+Any non-related dashboard request should be handled by the `default` app.
+
+
 
 #### Deploy to Google Cloud App Engine
 
-You will be asked some questions prior to deployment. This step requires your input.
+Run the following script, you will be asked some questions prior to deployment.
+Please make sure you have set up your credentials on Google Cloud. See steps above.
 
 ```bash
-sh deploy_gcloud.sh
+./deploy_gcloud.sh
 ```
