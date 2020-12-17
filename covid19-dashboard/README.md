@@ -141,7 +141,7 @@ gcloud auth application-default login
 App Engine Documentation [here](https://cloud.google.com/appengine/docs/standard/python3/testing-and-deploying-your-app)
 Will start a local server on port 8080.
 Visit `localhost:8080/dashboard/?dashboardId=covid19` to view the COVID-19 dashboard.
-Visit `localhost:8080/dashboard/?dashboardId=socialWellness` to view the Sociall Wellness dashboard.
+Visit `localhost:8080/dashboard/?dashboardId=socialWellness` to view the Social Wellness dashboard.
 
 ```bash
 ./run_locally.sh
@@ -151,15 +151,16 @@ Visit `localhost:8080/dashboard/?dashboardId=socialWellness` to view the Sociall
 
 **NOTE:** This project is currently deployed under the GCP Project `datcom-tools-staging`, but any other project can be used instead.
 
-The dashboard web app is hosted in App Engine as `dashboard`, [dashboard.yaml](./dashboard.yaml) contains the configuration.
+The dashboard web app is hosted in App Engine as `dashboard`.
+[dashboard.yaml](./dashboard.yaml) contains the App Engine configuration for the dashboard.
 
-When deploying, both the `dashboard` app and the `default` app will be pushed:
+When deploying, both the `dashboard` app and the `default` app will be pushed to App Engine:
 **dashboard** app is in charge of the dashboard static files and APIs.
 **default** app simply exists to redirect some urls and is unrelated to the dashboard.
-For example: visiting / will redirect to /dashboard/. Currently, `dashboard` is the only app in the /tools repository.
+For example: visiting `/` will redirect to `/dashboard/` because currently, `dashboard` is the only app in the `/tools` repository.
 
 
-Use `dispatch.yaml` to redirect requests to the appropriate app.
+Use [`dispatch.yaml`]('../dispatch.yaml') to redirect requests to the appropriate app.
 For example: `/api/places/` should be handled by the `dashboard` app.
 Any non-related dashboard request should be handled by the `default` app.
 
@@ -167,7 +168,7 @@ Any non-related dashboard request should be handled by the `default` app.
 
 #### Deploy to Google Cloud App Engine
 
-Run the following script, you will be asked some questions prior to deployment.
+Run the following script. Your input is required.
 Please make sure you have set up your credentials on Google Cloud. See steps above.
 
 ```bash
