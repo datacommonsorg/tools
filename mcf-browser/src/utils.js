@@ -13,53 +13,52 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React from 'react';
 
-let fileHash = '#';
-
-/**
- * Sets the window hash value to query a given id.
- * @param {string} id The id of the desired node to display. This can be either
- *     a dcid or a local id.
- */
-function goToId(id) {
-  if (id.includes(':')) {
-    window.location.hash = fileHash + '&id=' + id;
-  } else {
-    window.location.hash = fileHash + '&id=dcid:' + id;
-  }
-}
+/* Simple component to render the colors legend. */
+const colorLegend = {
+  'exist-in-kg': 'Node has dcid that exists in DC KG',
+  'exist-in-local': 'Node has resolved local reference and no dcid',
+  'not-in-local': 'Node has unresolved local reference and no dcid',
+  'not-in-kg': 'Node has dcid which does not exist in DC KG',
+};
 
 /**
  * Sets the window hash value to query a given id.
+ *
+ * @param {string} homeHash The hash saveed in App's state, preserving file
+ *     names within url.
  * @param {string} id The id of the desired node to display. This can be either
  *     a dcid or a local id.
  */
-function searchId(id) {
+function goToId(homeHash, id) {
   if (id.includes(':')) {
-    window.location.hash = fileHash + '&search=' + id;
+    window.location.hash = homeHash + '&id=' + id;
   } else {
-    window.location.hash = fileHash + '&search=dcid:' + id;
+    window.location.hash = homeHash + '&id=dcid:' + id;
   }
 }
 
 /**
- * Sets the window hash value to empty to redirect user to home page.
+ * Sets the window hash value to query a given id.
+ * @param {string} homeHash The hash saveed in App's state, preserving file
+ *     names within url.
+ * @param {string} id The id of the desired node to display. This can be either
+ *     a dcid or a local id.
  */
-function goToHome() {
-  window.location.hash = fileHash;
+function searchId(homeHash, id) {
+  if (id.includes(':')) {
+    window.location.hash = homeHash + '&search=' + id;
+  } else {
+    window.location.hash = homeHash + '&search=dcid:' + id;
+  }
 }
 
 /**
- * Saves the file params as part of the current url hash so that the files
- * remain in the url when navigating between nodes.
- * @param {Array<String>} fileUrlList List of file urls to be saved in the hash.
+ * Sets the window hash value to given value.
+ * @param {string} hash The value that the window's hash should be set to.
  */
-function setFileHash(fileUrlList) {
-  fileHash = '#';
-  for (const fileUrl of fileUrlList) {
-    fileHash += '&file=' + fileUrl;
-  }
+function goTo(hash) {
+  window.location.hash = hash;
 }
 
 /**
@@ -72,19 +71,5 @@ function openFile(fileUrl) {
   }
 }
 
-// spinning animation to demonstrate loading, used in DisplayNode and Home
-const LoadingSpinner = (props) => {
-  if (!props.loading) {
-    return null;
-  }
-  return (
-    <div className='centered col'>
-      <br/>
-      <div className='loadingSpinner'></div>
-      <h2>{props.msg}</h2>
-    </div>
-  );
-};
 
-
-export {goToId, goToHome, setFileHash, openFile, searchId, LoadingSpinner};
+export {colorLegend, goToId, goTo, openFile, searchId};

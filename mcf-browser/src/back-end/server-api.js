@@ -21,31 +21,45 @@ import {ParseMcf} from './parse-mcf.js';
 import {ParseTmcf} from './parse-tmcf.js';
 
 /**
- * Parses App state's files object to find either one mcf file or one set of
- * tmcf+csv. Parses the files according to their file type.
- * @param {Object} files The object which contains files labeled by
- *      their file type to parse and load into memory.
+ * Parses App state's files list.
+ * @param {Array<Blob>} fileList The list of blobs to be parsed.
  * @return {Object} An object containing the ids of the subject nodes and any
  *     parsiing errorr messagges.
  */
-async function readFileList(files) {
-  console.log(files);
-  if (files.mcf) {
-    // read mcf file
-    return ParseMcf.readFile(files.mcf);
-  }
+async function readFileList(fileList) {
+  console.log(fileList);
+  let curTmcf = null;
+  const finalReturn = {'errMsgs': [], 'localNodes': []};
 
-  if (files.tmcf && files.csv) {
-    const tmcfFile = files.tmcf;
-    const csvFile = files.csv;
-    // generate mcf string, then parse it
-    return ParseTmcf.generateMcf(tmcfFile, csvFile).then((mcf) => {
-      console.log(mcf);
-      const mcfParser = new ParseMcf(tmcfFile.name + '&' + csvFile.name);
-      return mcfParser.parseMcfStr(mcf);
-    });
+  for (const file of fileList) {
+    const fileExt = file.name.split('.').pop();
+
+    if (fileExt === 'mcf') {
+      const mcfOut = await ParseMcf.readFile(file);
+      console.log(mcfOut);
+      finalReturn['errMsgs'] = finalReturn['errMsgs'].concat(mcfOut['errMsgs']);
+      finalReturn['localNodes'] =
+        finalReturn['localNodes'].concat(mcfOut['localNodes']);
+    } else if (fileExt === 'tmcf') {
+      curTmcf = file;
+    } else {
+      if (curTmcf) {
+        const tmcf = curTmcf;
+        const tmcfOut =
+          await ParseTmcf.generateMcf(curTmcf, file).then((mcf) => {
+            console.log(mcf);
+            const mcfParser = new ParseMcf(tmcf.name + '&' + file.name);
+            return mcfParser.parseMcfStr(mcf);
+          });
+        finalReturn['errMsgs'] =
+          finalReturn['errMsgs'].concat(tmcfOut['errMsgs']);
+        finalReturn['localNodes'] =
+          finalReturn['localNodes'].concat(tmcfOut['localNodes']);
+      }
+      curTmcf = null;
+    }
   }
-  return {'errMsgs': [], 'localNodes': []};
+  return finalReturn;
 }
 
 /**
@@ -89,38 +103,34 @@ function isNodeObj(obj) {
 }
 
 /**
-  * Returns the color that a node should be displayed as in the UI. This String
-  * is used as the jsx element id for the text containing the node id.
-  * Blue = dcid exists in the DC KG
-  * Purple = no dcid, local id is resolved in the local data
-  * Orange = no dcid, local id is unresolved
-  * Red = default, including dcid does not exist in KG
+  * Returns the class that a node should be contained in based on how it is
+  * resolved locally and remotely.
   *
   * @param {Node} target The node object whose element color needs to be found.
-  * @return {String} The appropriate display color for the node.
+  * @return {String} The appropriate css class for the node.
   */
-async function getElemId(target) {
+async function getElemClass(target) {
   if (!target) {
     return null;
   }
   if (target.existsInKG) {
-    return 'blue';
+    return 'exist-in-kg';
   }
 
   return target.setExistsInKG().then(() => {
     if (target.existsInKG) {
-      return 'blue';
+      return 'exist-in-kg';
     }
 
     if (!target.dcid && target.localId &&
         target.localId in ParseMcf.localNodeHash) {
-      return 'purple';
+      return 'exist-in-local';
     }
 
     if (!target.dcid && !(target.localId in ParseMcf.localNodeHash)) {
-      return 'orange';
+      return 'not-in-local';
     }
-    return 'red';
+    return 'not-in-kg';
   });
 }
 
@@ -129,5 +139,5 @@ export {
   clearFiles,
   retrieveNode,
   isNodeObj,
-  getElemId,
+  getElemClass,
 };
