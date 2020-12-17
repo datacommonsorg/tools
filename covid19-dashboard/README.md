@@ -120,7 +120,7 @@ The configuration files have a `table` property with a list of category objects.
 
 ### Set Google Application Credential
 
-**NOTE:** This project is currently deployed under the GCP Project `datcom-website`, but any other project can be used instead.
+**NOTE:** This project is currently deployed under the GCP Project `datcom-tools-staging`, but any other project can be used instead.
 
 ```bash
 gcloud auth application-default login
