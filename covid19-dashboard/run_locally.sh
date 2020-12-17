@@ -21,6 +21,8 @@
 
 # IMPORTANT: You MUST have node12+, python3.7+ and gcloud installed.
 
+set -e
+
 # Change variable if running different project.
 export GOOGLE_CLOUD_PROJECT="datcom-tools-staging"
 
