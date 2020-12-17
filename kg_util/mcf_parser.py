@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Library functions to parse an MCF file into other forms."""
+"""Library to parse an MCF file into triples."""
 
-# TODO: Add API that returns a map-like structure
-# TODO: Support TMCF parsing
-# TODO: Support properties from non-DC/-schema.org namespace
-# TODO: Support complex values enclosed in [] (LatLng, Quantity, QuantityRange)
+# TODO: Support TMCF parsing.
+# TODO: Support properties from non-DC/-schema.org namespace.
+# TODO: Support complex values enclosed in [] (LatLng, Quantity, QuantityRange).
+# TODO: Support provenance and other props in Context block.
+# TODO: Add API that returns a map-like structure.
 
 from csv import reader
 import dataclasses
@@ -47,6 +48,10 @@ def _strip_quotes(s):
   return s
 
 
+def _strip_ns(v):
+  return v[v.find(_delim) + 1:]
+
+
 def _is_schema_ref_property(prop):
   return (prop == 'typeOf' or prop == 'subClassOf' or
           prop == 'subPropertyOf' or prop == 'rangeIncludes' or
@@ -74,10 +79,15 @@ def _is_local_ref(value):
 @dataclasses.dataclass
 class ParseContext:
   """Context used for parser"""
+  # MCF file line number.
   lno: int = 0
-  current_node: str = ''
+  # Indicates we're within Context block.
   in_context: bool = False
+  # Namespace map.
   ns_map: dict = dataclasses.field(default_factory=dict)
+  # Current Node block name.
+  node: str = ''
+  # Indicates whether the current Node block includes dcid property.
   has_dcid: bool = False
 
 
@@ -96,7 +106,7 @@ def _parse_value(prop, value, pc):
       return (value, _VALUE)
 
   if _is_global_ref(value):
-    return (value[value.find(_delim) + 1:], _ID)
+    return (_strip_ns(value), _ID)
   elif _is_local_ref(value):
     # For local ref, we retain the prefix.
     return (value, _ID)
@@ -116,34 +126,37 @@ def _parse_value(prop, value, pc):
   return (value, _VALUE)
 
 
-def _parse_line(line, pc):
-  line = line.strip()
-  if not line or line.startswith('//') or line.startswith('#'):
-    return '', []
-  prop, rest = line.split(_delim, 1)
+def _parse_values(prop, values_str, pc):
   value_pairs = []
-  for values in reader([rest]):
+  for values in reader([values_str]):
     for value in values:
-      if pc.in_context and prop == _namespace:
-        value = _strip_quotes(value.strip())
-        parts = value.split('=', 1)
-        assert len(parts) == 2, _as_err('malformed namespace value', pc)
-        pc.ns_map[parts[0] + _delim] = parts[1].rstrip('/') + '/'
-      else:
-        value_pairs.append(_parse_value(prop, value.strip(), pc))
+      value_pairs.append(_parse_value(prop, value.strip(), pc))
     break
-  return prop, value_pairs
+  return value_pairs
+
+
+def _update_ns_map(values_str, pc):
+  for values in reader([values_str]):
+    for value in values:
+      value = _strip_quotes(value.strip())
+      parts = value.split('=', 1)
+      assert len(parts) == 2, _as_err('malformed namespace value', pc)
+      k = parts[0] + _delim
+      assert k not in pc.ns_map,\
+          _as_err('duplicate values for namespace prefix ' + k, pc)
+      pc.ns_map[k] = parts[1].rstrip('/') + '/'
+    break
 
 
 #
-# Public functions
+# Public Functions
 #
 
 def mcf_to_triples(mcf_file):
   """ Parses the file containing a Node MCF graph into triples.
 
   Args:
-    mcf_file: Input Node MCF file.
+    mcf_file: Node MCF file object opened for read.
 
   Returns:
     An Iterable of triples. Each triple has four values:
@@ -154,34 +167,62 @@ def mcf_to_triples(mcf_file):
   """
 
   pc = ParseContext()
-  with open(mcf_file, 'r') as f:
-    for line in f:
-      pc.lno += 1
-      prop, value_pairs = _parse_line(line, pc)
-      if not prop:
-        continue
-      if prop == _node:
-        assert len(value_pairs) == 1, _as_err('Node with no name', pc)
-        assert value_pairs[0], _as_err('Node has multiple values', pc)
-        if (pc.current_node and not pc.has_dcid and
-            _is_global_ref(pc.current_node)):
-          yield [pc.current_node, _dcid, _strip_ns(pc.current_node), _VALUE]
-        pc.in_context = False
-        pc.current_node = value_pairs[0][0]
-        pc.has_dcid = False
-      elif prop == _context:
-        assert not pc.current_node, _as_err('found Context after Node', pc)
-        pc.in_context = True
-      else:
-        if pc.in_context:
-          continue
-        assert pc.current_node, _as_err('prop/values without Node block', pc)
-        for vp in value_pairs:
-          yield [pc.current_node, prop, vp[0], vp[1]]
-        if prop == _dcid:
-          pc.has_dcid = True
+  for line in mcf_file:
+    pc.lno += 1
+
+    line = line.strip()
+    if not line or line.startswith('//') or line.startswith('#'):
+      continue
+
+    parts = line.split(_delim, 1)
+    assert len(parts) == 2,\
+        _as_err('Malformed line without a colon delimiter', pc)
+    assert parts[0], _as_err('Malformed empty property', pc)
+    prop, val_str = parts[0].strip(), parts[1].strip()
+
+    if prop == _context:
+      # New Context block.
+      assert not pc.node, _as_err('found Context block after Node', pc)
+      pc.in_context = True
+
+    elif prop == _node:
+      # New Node block.
+      assert val_str, _as_err('Node with no name', pc)
+      assert ',' not in val_str, _as_err('Malformed Node name with ","', pc)
+      assert not val_str.startswith('"'),\
+          _as_err('Malformed Node name starting with "', pc)
+
+      # Finalize current node.
+      if (pc.node and not pc.has_dcid and _is_global_ref(pc.node)):
+        yield [pc.node, _dcid, _strip_ns(pc.node), _VALUE]
+
+      # Update to new node.
+      pc.node = val_str
+      pc.in_context = False
+      pc.has_dcid = False
+
+    elif pc.in_context:
+      # Processing inside Context block.
+      assert prop == _namespace,\
+          _as_err('Context block only supports "namespace" property', pc)
+      _update_ns_map(val_str, pc)
+
+    else:
+      # Processing inside Node block.
+      assert pc.node, _as_err('Prop-Values before Node or Context block', pc)
+
+      for vp in _parse_values(prop, val_str, pc):
+        yield [pc.node, prop, vp[0], vp[1]]
+
+      if prop == _dcid:
+        pc.has_dcid = True
+
+  # Finalize current node.
+  if (pc.node and not pc.has_dcid and _is_global_ref(pc.node)):
+    yield [pc.node, _dcid, _strip_ns(pc.node), _VALUE]
 
 
 if __name__ == '__main__':
-  for t in mcf_to_triples(sys.argv[1]):
-    print(t)
+  with open(sys.argv[1], 'r') as f:
+    for t in mcf_to_triples(f):
+      print(t)
