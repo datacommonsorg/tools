@@ -56,12 +56,11 @@ def _is_schema_ref_property(prop):
 
 
 def _is_common_ref_property(prop):
-    return (_is_schema_ref_property(prop) or prop == 'location' or
-            prop == 'observedNode' or prop == 'containedInPlace' or
-            prop == 'containedIn' or prop == 'populationType' or
-            prop == 'measuredProperty' or prop == 'measurementDenominator' or
-            prop == 'populationGroup' or prop == 'constraintProperties' or
-            prop == 'measurementMethod' or prop == 'comparedNode')
+    return (_is_schema_ref_property(prop) or prop
+            in ('location', 'observedNode', 'containedInPlace', 'containedIn',
+                'populationType', 'measuredProperty', 'measurementDenominator',
+                'populationGroup', 'constraintProperties', 'measurementMethod',
+                'comparedNode'))
 
 
 def _is_global_ref(value):
