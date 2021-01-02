@@ -24,7 +24,7 @@ import {ParseTmcf} from './parse-tmcf.js';
  * Parses App state's files list.
  * @param {Array<Blob>} fileList The list of blobs to be parsed.
  * @return {Object} An object containing the ids of the subject nodes and any
- *     parsiing errorr messagges.
+ *     parsing error message objects.
  */
 async function readFileList(fileList) {
   console.log(fileList);
@@ -37,7 +37,10 @@ async function readFileList(fileList) {
     if (fileExt === 'mcf') {
       const mcfOut = await ParseMcf.readFile(file);
       console.log(mcfOut);
-      finalReturn['errMsgs'] = finalReturn['errMsgs'].concat(mcfOut['errMsgs']);
+      finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
+        'file':file.name,
+        'errs': mcfOut['errMsgs'],
+      });
       finalReturn['localNodes'] =
         finalReturn['localNodes'].concat(mcfOut['localNodes']);
     } else if (fileExt === 'tmcf') {
@@ -52,7 +55,10 @@ async function readFileList(fileList) {
             return mcfParser.parseMcfStr(mcf);
           });
         finalReturn['errMsgs'] =
-          finalReturn['errMsgs'].concat(tmcfOut['errMsgs']);
+          finalReturn['errMsgs'].concat({
+            'file':tmcf.name,
+            'errs': tmcfOut['errMsgs'],
+          });
         finalReturn['localNodes'] =
           finalReturn['localNodes'].concat(tmcfOut['localNodes']);
       }

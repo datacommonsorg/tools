@@ -52,10 +52,13 @@ interface AppStateType{
    */
   firstLoad: boolean;
   /**
-   * Error messages from parsing files specifying line number, line, and helpful
-   * message indicating the error.
+   * Array of error message objects, one object per parsed file with errors. The
+   * property 'errs' is in each object is an array of String arrays, one String
+   * array per error within the given file which specifies line number, line,
+   * and helpful message indicating the error. The 'file' property provides the
+   * file name from which the error came.
    */
-  parsingErrs: string[][];
+  parsingErrs: Object[];
   /**
    * Contains the remote files specified by user in url format to be used as a
    * home base in the hash portion of the url while using those files.
@@ -202,11 +205,11 @@ class App extends Component {
     this.setState({loading: true});
 
     API.readFileList(fileList).then((res) => {
-      this.setState({
-        parsingErrs: res['errMsgs'],
+      this.setState(prevState => ({
+        parsingErrs: prevState['parsingErrs'].concat(res['errMsgs']),
         subjNodes: res['localNodes'],
         loading: false,
-      }, () => this.handleHashChange());
+      }), () => this.handleHashChange());
     });
   }
 
