@@ -100,6 +100,12 @@ input[type='text'],input[type='search'] {
   background-color: var(--light-gray);
 }
 
+.expanded{
+  border: 2px solid var(--light-gray);
+  color: var(--dc-red-strong);
+  background-color: var(--med-light-gray);
+}
+
 /* style for overall application */
 
 /* style for header */

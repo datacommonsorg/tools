@@ -85,17 +85,28 @@ class Home extends Component {
 
   render() {
     if (this.props.fileList.length === 0) {
-      // show file entry options
+      // show file entry options, but do not toggle dropdown on file submission
       return (
         <div className="home centered col">
           <div className="box ">
             <FileEntry upload={this.props.upload}
               loadFiles={this.props.loadFiles}
               goToHome={this.props.goToHome}
-              toggle={() => this.toggleDropdown()}/>
+              toggle={() => {}}/>
           </div>
         </div>
       );
+    }
+
+    let addFileButtonClass;
+    let addFileButtonText;
+
+    if(this.state.dropdown){
+      addFileButtonClass = 'button expanded';
+      addFileButtonText = 'Add File (-)';
+    } else {
+        addFileButtonClass = 'button';
+        addFileButtonText = 'Add File (+)';
     }
 
     // show current files and subject nodes
@@ -122,8 +133,8 @@ class Home extends Component {
           {/* display clear files button*/}
           <button className='button' onClick={this.props.clear} >Clear</button>
 
-          <button className='button' onClick={() =>
-              this.toggleDropdown()} >Add File(s)</button>
+          <button className={addFileButtonClass} onClick={() =>
+            this.toggleDropdown()}>{addFileButtonText}</button>
 
           {this.state.dropdown ?
             <FileEntry
@@ -135,13 +146,12 @@ class Home extends Component {
         </div>
         <br/>
 
-
         {/* display parsing errors, if any*/}
         <ParsingErrorsTable errsList={this.props.errs}/>
         <br/>
 
         <div className = "box">
-
+          
           {/* display loading animation while waiting*/}
           <LoadingSpinner loading={this.props.loading}
             msg='...loading mcf...'/>
