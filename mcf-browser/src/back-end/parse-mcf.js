@@ -135,7 +135,7 @@ class ParseMcf {
             [this.lineNum, this.line, ERROR_MESSAGES['curNode-ns']]);
         return;
       }
-    } else{
+    } else {
       // handle case: Node: localRef, which means parsedValues[0]==='localRef'
       nodeRef = parsedValues[0];
       ns = '';
@@ -145,7 +145,7 @@ class ParseMcf {
     this.curNode = Node.getNode(nodeId);
 
     if (ns === 'dcid:') {
-      if(!this.curNode.setDCID(nodeRef)){
+      if (!this.curNode.setDCID(nodeRef)) {
         this.errors.push([this.lineNum, this.line, ERROR_MESSAGES['setDCID']]);
         return;
       }
@@ -245,8 +245,7 @@ class ParseMcf {
       return;
     }
     if (!propValues) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['parse-noValues']]);
+      // if there is a missing property value, do not return error
       return;
     }
 
