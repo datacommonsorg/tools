@@ -33,7 +33,6 @@ const ERROR_MESSAGES =
       'assert-noCur': 'current node must be set before declaring properties',
       'parse-noColon': 'missing \':\', incorrect mcf triple format',
       'parse-noLabel': 'missing property label',
-      'parse-noValues': 'missing property value',
     };
 
 /**
