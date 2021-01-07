@@ -35,19 +35,15 @@ export default (props: HeaderPropsType) => (
          id="main-nav">
       <div className="container-fluid">
         <div className="navbar-brand">
-          <a href={"https://datacommons.org"}>
+          <a href={"https://datacommons.org/"}>
             {props.title}
           </a>
           <span> {props.subtitle}</span>
         </div>
-        <button className="navbar-toggler"
-                type="button"
-                data-toggle="collapse"
-                data-target="#dc-main-nav">
-          <span className="navbar-toggler-icon"/>
-        </button>
         <form className="form-inline">
-          <input className="form-control mr-sm"
+          <a className="nav-link" href={"/dashboard/?dashboardId=covid19"}>COVID-19</a>
+          <a className="nav-link" href={"/dashboard/?dashboardId=socialWellness"}>Social Wellness</a>
+          <input className="form-control mr-sm ml-4"
                  type="text"
                  onKeyDown={
                    // Prevents re-load of page when on-enter.

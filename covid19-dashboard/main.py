@@ -17,32 +17,28 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Dict, Union
 
-from flask import Flask, send_from_directory, Response
+from flask import Flask, Response
 from flask_caching import Cache
 from flask_compress import Compress
+from flask import request
 
 from send_request import send_request
 from calculate_data import calculate_data
+from Configuration import covid19, socialWellness
 
 config = dict(DEBUG=True, CACHE_TYPE="filesystem", CACHE_DIR="/tmp")
 
-app = Flask(__name__, static_folder="./build")
+app = Flask(__name__)
 
 # All API responses are g-zipped/compressed.
 Compress(app)
 
 app.config.from_mapping(config)
 
-# Load the configuration file from the instance folder.
-app.config.from_pyfile("config.py")
 cache = Cache(app)
 
-# Retrieves DataCommons Server from configuration file.
-DC_SERVER = app.config["DC_SERVER"]
-
-# Each place_type has its own stat_var.
-# Get the dictionary from the configuration file.
-STAT_VARS = app.config["STAT_VARS"]
+# DataCommons Host Server.
+DC_SERVER = "https://api.datacommons.org/"
 
 # COMMONLY-USED TYPES.
 KeyToTimeSeries = Union[Dict[str, int], int, str]
@@ -51,49 +47,33 @@ GeoIdToStatsType = Dict[str, Dict[str, int]]
 PlaceToInfoType = Dict[str, Dict[str, str]]
 
 
-@app.route("/<path:path>", methods=["GET"])
-def static_proxy(path):
-    """
-    Return the /path file in the directory from the ./build directory.
-    Example: /index.css would return the index.css file.
-    No-caching HTTP headers are sent.
-    :param path: the file path to return.
-    :return: the file if it exists.
-    """
-    response = send_from_directory(app.static_folder, path)
-    response.cache_control.max_age = 0
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
 
-
-@app.route("/", methods=["GET"])
-def index():
-    """
-    Returns the site's HTML file. No-caching HTTP headers are sent.
-    NOTE: Caching may be turned on once the frequency of updates is reduced.
-    Otherwise, users my experience a white page due to old files.
-    :return: returns the index file for the site.
-    """
-    response = send_from_directory(app.static_folder, "index.html")
-    response.cache_control.max_age = 0
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
-
-
-@app.route("/api/data/<string:geo_id>")
+@app.route("/api/data/<string:geo_id>/<string:dashboard_id>")
 @cache.cached(timeout=3600)
-def county_data(geo_id: str):
+def data(geo_id: str, dashboard_id: str):
     """
-    Returns any placeType's datta.
+    Returns any placeType's data.
     NOTE: for return type documentation, please see README.md's APIs section.
-    :return: geo_id->{**key_to_timeserie}.
+    :return: geo_id->{**key_to_timeseries}.
     """
+    dashboard_id = dashboard_id or "covid19"
+
+    # TODO(edumorales): make these options config-driven.
+    # How many dates should we perform the moving average for?
+    # 0 == None
+    moving_averages_chunks = {"covid19": 7, "socialWellness": 0}
+    moving_average_chunk = moving_averages_chunks[dashboard_id]
+
+    # How many dates should we skip to reduce response size?
+    # In days, 1 == None.
+    clean_step_sizes = {"covid19": 6, "socialWellness": 1}
+    clean_step_size = clean_step_sizes[dashboard_id]
+
+    # Get the stat vars for the given dashboardId.
+    stat_vars = _get_stat_vars(dashboard_id)
+
     # Request data for only US Counties.
-    data = _get_data(geo_id)
+    data = _get_data(geo_id, stat_vars, moving_average_chunk, clean_step_size)
     # Adds HTTP headers for browser to store cache.
     response = _add_browser_cache_headers_to_response(data)
     return response
@@ -119,7 +99,8 @@ def places():
     return response
 
 
-def _get_data(place_type: str = "State") -> GeoIdToDataType:
+def _get_data(place_type: str = "State", STAT_VARS={},
+              moving_average_chunk=7, clean_step_size=2) -> GeoIdToDataType:
     """
     Requests cases and deaths from the DC, and performs calculations.
     NOTE: for return type documentation, please see README.md's APIs section.
@@ -188,7 +169,8 @@ def _get_data(place_type: str = "State") -> GeoIdToDataType:
             # Do calculations with the data.
             # See README.md for more information about the return types.
             calculated_data = calculate_data(place_stats,
-                                             place_population)
+                                             place_population, moving_average_chunk,
+                                             clean_step_size)
 
             # Rename keys to include stat_var.
             # Example: 'movingAverage' becomes 'movingAverageCases'.
@@ -420,8 +402,10 @@ def _get_us_places(place_type: str = "State") -> PlaceToInfoType:
     # NYT combines several counties into one larger county.
     # Only for the following two exceptions.
     # https://github.com/nytimes/covid-19-data#geographic-exceptions
-    counties["geoId/3651000"] = Place("New York City", "geoId/36","County").to_json()
-    counties["geoId/2938000"] = Place("Kansas City", "geoId/29", "County").to_json()
+    counties["geoId/3651000"] = Place("New York City",
+                                      "geoId/36", "County").to_json()
+    counties["geoId/2938000"] = Place("Kansas City",
+                                      "geoId/29", "County").to_json()
 
     return counties
 
@@ -481,6 +465,13 @@ def _add_browser_cache_headers_to_response(data: Dict,
     return response
 
 
+def _get_stat_vars(dashboard_id: str):
+    if dashboard_id == 'socialWellness':
+        return socialWellness
+    else:
+        return covid19
+
+
 class Place:
     def __init__(self, name, contained_in, place_type):
         self.name = name
@@ -492,4 +483,4 @@ class Place:
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80)
+    app.run(host="0.0.0.0", port=8080)
