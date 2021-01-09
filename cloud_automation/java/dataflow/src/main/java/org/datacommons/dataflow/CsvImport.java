@@ -6,17 +6,24 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
+import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.io.gcp.bigtable.BigtableIO;
+import org.apache.beam.sdk.io.gcp.bigtable.BigtableWriteResult;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.ValueProvider;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
+import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.MapElements;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.Wait;
+import org.apache.beam.sdk.transforms.windowing.GlobalWindows;
+import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
+import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
@@ -26,6 +33,7 @@ import java.util.*;
 
 public class CsvImport {
 
+  private static boolean USE_IMPROVED_FLOW = true;
   private static final String FAMILY = "csv";
   private static final Logger LOG = LoggerFactory.getLogger(CsvImport.class);
 
@@ -74,6 +82,13 @@ public class CsvImport {
 
     @SuppressWarnings("unused")
     void setInputFile(ValueProvider<String> location);
+
+    @Description("The GCS completion file (prefixed with gs://).")
+    ValueProvider<String> getCompletionFile();
+
+    @SuppressWarnings("unused")
+    void setCompletionFile(ValueProvider<String> completionFile);
+
   }
 
 
@@ -102,17 +117,43 @@ public class CsvImport {
     BigtableCsvOptions options =
         PipelineOptionsFactory.fromArgs(args).withValidation().as(BigtableCsvOptions.class);
 
-    Pipeline p = Pipeline.create(options);
+    Pipeline pipeline = Pipeline.create(options);
+    PCollection<KV<ByteString, Iterable<Mutation>>> cacheData = pipeline
+        .apply("ReadMyFile", TextIO.read().from(options.getInputFile()).withHintMatchesManyFiles())
+        .apply("TransformParsingsToBigtable", ParDo.of(new CsvToBigtableFn()));
 
     BigtableIO.Write write = BigtableIO.write()
-            .withProjectId(options.getBigtableProjectId())
-            .withInstanceId(options.getBigtableInstanceId())
-            .withTableId(options.getBigtableTableId());
-    p.apply("ReadMyFile", TextIO.read().from(options.getInputFile()).withHintMatchesManyFiles())
-        .apply("TransformParsingsToBigtable", ParDo.of(new CsvToBigtableFn()))
-        .apply("WriteToBigtable", write);
+        .withProjectId(options.getBigtableProjectId())
+        .withInstanceId(options.getBigtableInstanceId())
+        .withTableId(options.getBigtableTableId());
+    if (USE_IMPROVED_FLOW) {
+      // Write with results.
+      PCollection<BigtableWriteResult> writeResults = cacheData
+          .apply("WriteToBigtable", write.withWriteResults());
 
-    PipelineResult result = p.run();
+      // Create a global window since we will wait on it to be fully complete.
+      PCollection<BigtableWriteResult> batchedResults = writeResults
+          .apply(Window.<BigtableWriteResult>into(new GlobalWindows()));
+
+      // NOTE: Java generics seems very finicky.
+      // (1) completion.apply(Wait.on(batchedResults)):
+      //     This is what the docs suggest, but the compiler is unable to detect the outputT of
+      //     PTransform<inputT, outputT>.
+      // (2) completion.apply(Wait.OnSignal<String>(batchedResults)):
+      //     In this case, it errors out saying PCollection<BigtableWriteResult> doesn't match
+      //     PCollection<?>.
+      Wait.OnSignal<String> waiter = Wait.on(batchedResults);
+
+      // Prepare to write input filepath to completion-file after waiting for batchedResults.
+      pipeline
+          .apply(Create.ofProvider(options.getInputFile(), StringUtf8Coder.of()))
+          .apply("WaitOnWrites", waiter)
+          .apply("WriteCompletionToFile", TextIO.write().to(options.getCompletionFile()).withoutSharding());
+    } else {
+      cacheData.apply("WriteToBigtable", write);
+    }
+
+    PipelineResult result = pipeline.run();
     // Wait for pipeline to finish only if it is not constructing a template.
     if (options.as(DataflowPipelineOptions.class).getTemplateLocation() == null) {
       result.waitUntilFinish();
