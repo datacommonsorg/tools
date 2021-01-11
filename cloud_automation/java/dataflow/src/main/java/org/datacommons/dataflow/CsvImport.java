@@ -33,7 +33,11 @@ import java.util.*;
 
 public class CsvImport {
 
+  // ValueProvider cannot be used to change pipeline's workflow graph, so we use a static global.
+  // https://cloud.google.com/dataflow/docs/guides/templates/creating-templates#runtime-parameters-and-the-valueprovider-interface
+  // TODO: Deprecate old flow and delete this.
   private static boolean USE_IMPROVED_FLOW = true;
+
   private static final String FAMILY = "csv";
   private static final Logger LOG = LoggerFactory.getLogger(CsvImport.class);
 
