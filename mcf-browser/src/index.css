@@ -1,0 +1,253 @@
+/**
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* data commons color palletes */
+:root {
+    --font-family: "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+    --breakpoint-xl: 1040px;
+    --dc-red-strong: #660000;
+    --dc-red-lite: #9A0000;
+    --dc-red-fade: #f0e6e7;
+    --dc-gray: #3B3B3B;
+    --dc-gray-lite: #ccc;
+    --link-color: #660000;
+
+    --lightest-gray: #f0f0f0;
+    --light-gray: #E8E8E8;
+    --med-light-gray: #C8C8C8;
+}
+
+/* styles based on element type */
+
+table {
+  border-spacing: 0;
+  font-size: 14px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 85%;
+}
+
+th {
+  background-color: white;
+  padding: 5px;
+  padding-bottom: 10px;
+  padding-top: 10px;
+  text-align:left;
+  text-decoration: underline;
+}
+
+td {
+  padding: 10px;
+}
+
+tr:nth-child(odd) {
+  background-color: var(--lightest-gray);
+}
+tr:nth-child(even) {
+  background-color: white;
+}
+
+table p{
+  display: inline-block;
+  margin: 0;
+}
+
+ul {
+  display: inline-block;
+  flex-direction: column;
+  list-style-type: square;
+  list-style-position: inside;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+input {
+  margin: 10px;
+}
+
+input[type='file'] {
+  display: none;
+}
+
+input[type='text'],input[type='search'] {
+  border: 1px solid var(--dc-gray);
+  border-radius: 5px;
+  height: 4vh;
+  padding:5px;
+  width:15vw;
+}
+.button{
+  border: 2px solid var(--med-light-gray);
+  display: inline-block;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 10px;
+  margin: 10px;
+  color: var(--dc-red-strong);
+  background-color: var(--light-gray);
+}
+
+.expanded{
+  border: 2px solid var(--light-gray);
+  color: var(--dc-red-strong);
+  background-color: var(--med-light-gray);
+}
+
+/* style for overall application */
+
+/* style for header */
+
+.Header {
+  align-items: center;
+  background-color: var(--dc-red-strong);
+  border-radius: 25;
+  box-shadow: 0px 2px 3px rgba(0,0,0,.1);
+  color: white;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 15px;
+  height:5vh;
+}
+
+/* style for parsing errors table */
+
+.box {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--dc-gray-lite);
+  box-shadow:  2px 2px 2px 1px var(--dc-gray-lite);
+  width: 70%;
+}
+
+.home{
+  padding-top:25vh;
+}
+
+
+/* layout styles */
+
+.col {
+  display:flex;
+  flex-direction: column;
+  padding: 15px;
+}
+
+.row {
+  display:flex;
+  flex-direction: row;
+  padding: 15px;
+  align-content: center;
+  justify-content: space-evenly;
+}
+
+.url-entry{
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.padded {
+   margin-left: 5%;
+}
+
+.center-text{
+  text-align: center;
+}
+
+.centered {
+  align-items: center;
+  justify-content: center;
+}
+
+
+/* style for clickable text */
+
+.clickable{
+  color: var(--dc-red-strong);
+  cursor: pointer;
+}
+
+.clickable:hover{
+  text-decoration: underline;
+}
+
+/* create spinning animation for loading */
+
+.loadingSpinner {
+  animation: spin 2s linear infinite;
+  border: 8px solid #f3f3f3; /* Light grey */
+  border-top: 8px solid  var(--dc-red-strong);
+  border-radius: 50%;
+  height: 30px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 30px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* font styling */
+
+.bold {
+  font-weight: bold;
+}
+
+.normal {
+  font-weight: normal;
+}
+
+.inline {
+  display: inline;
+}
+
+.exist-in-kg {
+  color: blue;
+}
+
+.exist-in-local {
+  color: purple;
+}
+
+.not-in-local {
+  color: orange;
+}
+
+.not-in-kg {
+  color: red;
+}
+
+.dc-provenance {
+  color: black;
+}
+
+/* helpful style from create react app */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}

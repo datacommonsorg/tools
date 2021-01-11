@@ -1,0 +1,37 @@
+{
+  "parser": "babel-eslint",
+    "env": {
+        "browser": true,
+        "es2021": true
+    },
+    "extends": [
+        "plugin:react/recommended",
+        "google"
+    ],
+    "parserOptions": {
+        "ecmaFeatures": {
+            "jsx": true
+        },
+        "ecmaVersion": 12,
+        "sourceType": "module"
+    },
+    "plugins": [
+        "react"
+    ],
+    "rules": {
+      "no-unused-expressions": "off"
+    },
+    "settings": {
+      "react": {
+        "createClass": "createReactClass",
+        "pragma": "React",
+        "fragment": "Fragment",
+        "version": "detect",
+        "flowVersion": "0.53"
+      },
+      "propWrapperFunctions": [
+          ],
+      "linkComponents": [
+        ]
+      }
+}
