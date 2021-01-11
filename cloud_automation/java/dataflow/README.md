@@ -9,6 +9,9 @@ To deploy changes to the template run the following commands.
 
 ## Improved Flow
 
+In this mode, the dataflow pipeline writes a completion file after writes to BT
+are complete.
+
 ```
   mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/improved_staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt_improved --region=us-central1"
 
@@ -29,6 +32,8 @@ gcloud dataflow jobs run job-${TABLE}-1 \
 
 ## Legacy Flow
 
+In this mode, the dataflow pipeline just writes to BT.
+
 IMPORTANT: Set the `USE_IMPROVED_FLOW` bool in CsvImport.java to false before
 running the command below.
 
@@ -48,5 +53,4 @@ gcloud dataflow jobs run job-${TABLE}-1 \
   --gcs-location gs://datcom-dataflow-templates/templates/csv_to_bt \
   --parameters inputFile=gs://prophet_cache/${TABLE}/cache.csv*,bigtableInstanceId=prophet-cache,bigtableTableId=${TABLE},bigtableProjectId=google.com:datcom-store-dev
 ```
-
 
