@@ -10,7 +10,8 @@ go run main.go
 
 To test the cloud function locally:
 
-NOTE: tweak the script to use a recent branch cache.
+NOTE: tweak the script to use a recent branch cache (instead of
+`branch_2021_01_08_13_25_48`).
 
 ```
 # To create cache and fire off dataflow (follow the output from main.go above).
