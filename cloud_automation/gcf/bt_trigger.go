@@ -110,16 +110,17 @@ func launchDataflowJob(ctx context.Context, btInstance, cacheType, tableID strin
   inFile := fmt.Sprintf("gs://%s/%s/%s", dataBucket, tableID, dataFilePattern)
   outFile := fmt.Sprintf("gs://%s/%s/%s/%s", controlBucket, cacheType, tableID, completedFile)
   params := &dataflow.LaunchTemplateParameters{
-    JobName: "Job-" + tableID,
+    JobName: "csv2bt-" + tableID,
     Parameters: map[string]string{
       "inputFile": inFile,
       "completionFile": outFile,
       "bigtableInstanceId": btInstance,
-      "bigtableId": tableID,
+      "bigtableTableId": tableID,
       "bigtableProjectId": btProjectID,
     },
   }
 
+	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", btInstance, tableID, inFile, outFile)
   launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(btProjectID, params)
   _, err = launchCall.GcsPath(dataflowTemplate).Do()
   if err != nil {
@@ -130,7 +131,6 @@ func launchDataflowJob(ctx context.Context, btInstance, cacheType, tableID strin
 }
 
 func setupBigtable(ctx context.Context, btInstance, tableID string) error {
-  log.Printf("Creating new bigtable table: %s", tableID)
   adminClient, err := bigtable.NewAdminClient(ctx, btProjectID, btInstance)
   if err != nil {
     log.Printf("Unable to create a table admin client. %v", err)
@@ -142,6 +142,7 @@ func setupBigtable(ctx context.Context, btInstance, tableID string) error {
   defer cancel()
   var ok bool
   for ii := 0; ii < createTableRetries; ii++ {
+		log.Printf("Creating new bigtable table (%d): %s/%s", ii, btInstance, tableID)
     if err = adminClient.CreateTable(dctx, tableID); err == nil {
       ok = true
       break
@@ -154,6 +155,7 @@ func setupBigtable(ctx context.Context, btInstance, tableID string) error {
   }
 
   // Create table columnFamily.
+	log.Printf("Creating column family %s in table %s/%s", columnFamily, btInstance, tableID)
   if err := adminClient.CreateColumnFamily(dctx, tableID, columnFamily); err != nil {
     log.Printf("Unable to create column family: csv for table: %s, got error: %v", tableID, err)
     return err
@@ -171,6 +173,7 @@ func scaleBaseBT(ctx context.Context, numNodes int32) error {
     log.Printf("Unable to create a table instance admin client. %v", err)
     return err
   }
+	log.Printf("Scaling BT %s instance to %d nodes", baseBTInstance, numNodes)
   if err := instanceAdminClient.UpdateCluster(dctx, baseBTInstance, baseBTCluster, numNodes); err != nil {
     log.Printf("Unable to increase bigtable cluster size: %v", err)
     return err
@@ -229,6 +232,7 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
   }
 
   if strings.HasSuffix(e.Name, initFile) {
+		log.Printf("[%s] State Init", e.Name)
     // Called when the state-machine is at Init. Logic below moves it to Launched state.
 
     // (base|branch)/<tableID>/<initFile>
@@ -264,7 +268,9 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
     if err != nil {
       return err
     }
+		log.Printf("[%s] State Launched", e.Name)
   } else if strings.HasSuffix(e.Name, completedFile) {
+		log.Printf("[%s] State Completed", e.Name)
     // Called when the state-machine moves to Completed state from Launched.
 
     // (base|branch)/<tableID>/<completedFile>
