@@ -20,18 +20,40 @@ import (
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/dataflow/v1b3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 const (
 	projectID          = "google.com:datcom-store-dev"
-	bigtableInstance   = "prophet-cache"
-	bigtableCluster    = "prophet-cache-c1"
+	baseBTInstance		 = "prophet-cache"
+	baseBTCluster			 = "prophet-cache-c1"
+	branchBTInstance   = "prophet-branch-cache"
+
+	dataBucket				 = "prophet_cache"
+	controlBucket			 = "automation_control"
+	dataFilePattern    = "cache.csv*"
+	dataflowTemplate   = "gs://datcom-dataflow-templates/templates/csv_to_bt_improved"
 	createTableRetries = 3
 	columnFamily       = "csv"
 	bigtableNodesHigh  = 300
 	bigtableNodesLow   = 20
+	baseCacheType			 = "base"
+	branchCacheType    = "branch"
+
+	// NOTE: The following three files represents the state of a BT import.
+	//
+	//		gs://<controlBucket>/(base|branch)/<tableID>/
+	//
+	// Init: written by google3 to start BT import.
+	initFile					 = "init.txt"
+	// Launched: written by this cloud function to mark launching of BT import job.
+	launchedFile			 = "launched.txt"
+	// Completed: written by dataflow to mark completion of BT import.
+	completedFile      = "completed.txt"
+
+	// TODO: Deprecate these files.
 	triggerFile        = "latest_base_cache_version.txt"
 	successFile        = "success.txt"
 	failureFile        = "failure.txt"
@@ -44,7 +66,13 @@ type GCSEvent struct {
 	Bucket string `json:"bucket"`
 }
 
-func readFromGCS(ctx context.Context, gcsClient *storage.Client, bucketName, fileName string) ([]byte, error) {
+func readFromGCS(ctx context.Context, bucketName, fileName string) ([]byte, error) {
+	gcsClient, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Printf("Failed to create gcsClient: %v\n", err)
+		return status.Errorf(codes.Internal, "Failed to create gcsClient: %v", err)
+	}
+
 	bucket := gcsClient.Bucket(bucketName)
 	rc, err := bucket.Object(fileName).NewReader(ctx)
 	if err != nil {
@@ -56,10 +84,15 @@ func readFromGCS(ctx context.Context, gcsClient *storage.Client, bucketName, fil
 	return ioutil.ReadAll(rc)
 }
 
-func writeToGCS(ctx context.Context, gcsClient *storage.Client, bucketName, fileName string, data string) error {
+func writeToGCS(ctx context.Context, bucketName, fileName, data string) error {
+	gcsClient, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Printf("Failed to create gcsClient: %v\n", err)
+		return status.Errorf(codes.Internal, "Failed to create gcsClient: %v", err)
+	}
+
 	bucket := gcsClient.Bucket(bucketName)
 	w := bucket.Object(fileName).NewWriter(ctx)
-
 	if _, err := fmt.Fprint(w, data); err != nil {
 		w.Close()
 		log.Printf("Unable to open file for writing from bucket %q, file %q: %v\n", bucketName, fileName, err)
@@ -68,9 +101,37 @@ func writeToGCS(ctx context.Context, gcsClient *storage.Client, bucketName, file
 	return w.Close()
 }
 
-func setupBigtable(ctx context.Context, tableID string) error {
+func launchDataflowJob(ctx context.Context, btInstance, cacheType, tableID string) error {
+	dataflowService, err := dataflow.NewService(ctx)
+	if err != nil {
+		log.Printf("Unable to create dataflow service: %v\n", err)
+		return status.Errorf(codes.Internal, "Unable to create dataflow service: %v", err)
+	}
+	inFile := fmt.Printf("gs://%s/%s/%s", dataBucket, tableID, dataFilePattern)
+	outFile := fmt.Printf("gs://%s/%s/%s/%s", controlBucket, cacheType, tableID, completedFile)
+	params := &dataflow.LaunchTemplateParameters{
+		JobName: 'Job-' + tableID,
+		Parameters: &map[string]string{
+			"inputFile": inFile,
+			"completionFile": outFile,
+			"bigtableInstanceId": btInstance,
+			"bigtableId": tableID,
+			"bigtableProjectId": bigtableProjectId
+		}
+	}
+
+	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(bigtableProjectId, params)
+	resp, err := launchCall.GcsPath(dataflowTemplate).Do()
+	if err != nil {
+		log.Printf("Unable to launch dataflow job (%s, %s): %v\n", inFile, outFile, err)
+		return status.Errorf(codes.Internal, "Unable to launch dataflow job (%s, %s): %v\n", inFile, outFile, err)
+	}
+	return nil
+}
+
+func setupBigtable(ctx context.Context, btInstance, tableID string) error {
 	log.Printf("Creating new bigtable table: %s", tableID)
-	adminClient, err := bigtable.NewAdminClient(ctx, projectID, bigtableInstance)
+	adminClient, err := bigtable.NewAdminClient(ctx, projectID, btInstance)
 	if err != nil {
 		log.Printf("Unable to create a table admin client. %v", err)
 		return err
@@ -97,10 +158,10 @@ func setupBigtable(ctx context.Context, tableID string) error {
 		log.Printf("Unable to create column family: csv for table: %s, got error: %v", tableID, err)
 		return err
 	}
-	return scaleBT(ctx, bigtableNodesHigh)
+	return nil
 }
 
-func scaleBT(ctx context.Context, numNodes int32) error {
+func scaleBaseBT(ctx context.Context, numNodes int32) error {
 	// Scale up bigtable cluster. This helps speed up the dataflow job.
 	// We scale down again once dataflow job completes.
 	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, projectID)
@@ -110,26 +171,32 @@ func scaleBT(ctx context.Context, numNodes int32) error {
 		log.Printf("Unable to create a table instance admin client. %v", err)
 		return err
 	}
-	if err := instanceAdminClient.UpdateCluster(dctx, bigtableInstance, bigtableCluster, numNodes); err != nil {
+	if err := instanceAdminClient.UpdateCluster(dctx, baseBTInstance, baseBTCluster, numNodes); err != nil {
 		log.Printf("Unable to increase bigtable cluster size: %v", err)
 		return err
 	}
 	return nil
 }
 
+func parsePath(path string) (string, string, err) {
+	parts := strings.Split(path, "/")
+	if len(parts) != 3 {
+		return "", "", status.Errorf(codes.Internal, "Unexpected number of parts %s", path)
+	}
+	if parts[0] != baseCacheType && parts[0] != branchCacheType {
+		return "", "", status.Errorf(codes.Internal, "Unexpected cache type %s", parts[0])
+	}
+	return parts[0], parts[1], nil
+}
+
 // GCSTrigger consumes a GCS event.
+// TODO: Delete this after BTImportController() is launched.
 func GCSTrigger(ctx context.Context, e GCSEvent) error {
 
 	if strings.HasSuffix(e.Name, triggerFile) {
 		// Read contents of GCS file. it contains path to csv files
 		// for base cache.
-		gcsClient, err := storage.NewClient(ctx)
-		if err != nil {
-			log.Printf("Failed to create gcsClient: %v\n", err)
-			return status.Errorf(codes.Internal, "Failed to create gcsClient: %v", err)
-		}
-
-		tableID, err := readFromGCS(ctx, gcsClient, e.Bucket, e.Name)
+		tableID, err := readFromGCS(ctx, e.Bucket, e.Name)
 		if err != nil {
 			log.Printf("Unable to read from gcs gs://%s/%s, got err: %v", e.Bucket, e.Name, err)
 			return err
@@ -137,16 +204,79 @@ func GCSTrigger(ctx context.Context, e GCSEvent) error {
 		// Create and scale up cloud BT.
 		tableIDStr := strings.TrimSpace(fmt.Sprintf("%s", tableID))
 		if err := setupBigtable(ctx, tableIDStr); err != nil {
-			return nil
+			return err
+		}
+		if err := scaleBaseBT(ctx, bigtableNodesHigh); err != nil {
+			return err
 		}
 		// Write to GCS file that triggers airflow job.
 		inputFile := fmt.Sprintf("gs://prophet_cache/%s/cache.csv*", tableIDStr)
-		err = writeToGCS(ctx, gcsClient, e.Bucket, airflowTriggerFile, inputFile)
+		err = writeToGCS(ctx, e.Bucket, airflowTriggerFile, inputFile)
 		if err != nil {
-			return nil
+			return err
 		}
 	} else if strings.HasSuffix(e.Name, successFile) || strings.HasSuffix(e.Name, failureFile) {
-		return scaleBT(ctx, bigtableNodesLow)
+		return scaleBaseBT(ctx, bigtableNodesLow)
+	}
+	return nil
+}
+
+// BTImportController consumes a GCS event and runs an import state machine.
+func BTImportController(ctx context.Context, e GCSEvent) error {
+
+	if e.Bucket != automation_control {
+		return status.Errorf(codes.Internal, "Unexpected bucket %s: %v", automation_control, err)
+	}
+
+	if strings.HasSuffix(e.Name, initFile) {
+		// Called when the state-machine is at Init. Logic below moves it to Launched state.
+
+		// (base|branch)/<tableID>/<initFile>
+		cacheType, tableID, err := parsePath(e.Name)
+		if err != nil {
+			return err
+		}
+		btInstance := ""
+		if cacheType == baseCacheType {
+			btInstance = baseBTInstance
+		} else {
+			btInstance = branchBTInstance
+		}
+		launchedPath := fmt.Sprintf("%s/%s/%s", cacheType, tableID, launchedFile)
+		if _, err := readFromGCS(ctx, e.Bucket, launchedPath); err == nil {
+			return status.Errorf(codes.Internal, "Cache was already built for %s/%s: %v", cacheType, tableID, err)
+		}
+		if err := setupBigtable(ctx, btInstance, tableID); err != nil {
+			return err
+		}
+		if cacheType == baseCacheType {
+			// Scale up only for base cache.
+			if err := scaleBaseBT(ctx, bigtableNodesHigh); err != nil {
+				return err
+			}
+		}
+		err := launchDataflowJob(ctx, btInstance, cacheType, tableID)
+		if err != nil {
+			return err
+		}
+		// Save the fact that we've launched the dataflow job.
+		err = writeToGCS(ctx, e.Bucket, launchedPath, "")
+		if err != nil {
+			return err
+		}
+	} else if strings.HasSuffix(e.Name, completedFile) {
+		// Called when the state-machine moves to Completed state from Launched.
+
+		// (base|branch)/<tableID>/<completedFile>
+		cacheType, tableID, err := parsePath(e.Name)
+		if err != nil {
+			return err
+		}
+		if cacheType == baseCacheType {
+			if err := scaleBaseBT(ctx, bigtableNodesLow); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
