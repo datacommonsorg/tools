@@ -1,8 +1,8 @@
 // Package btcachegeneration runs a GCF function that triggers in 2 scenarios:
 // 1) completion of prophet-flume job in borg.
-//		The trigger is based on GCS file prophet-cache/latest_base_cache_run.txt.
+//	  The trigger is based on GCS file prophet-cache/latest_base_cache_run.txt.
 // 2) On completion of BT cache ingestion via an airflow job. This trigger is based
-//		on GCS file prophet-cache/[success|failure].txt
+//	  on GCS file prophet-cache/[success|failure].txt
 //
 // In the first case, on triggering it sets up new cloud BT table, scales up BT cluster to 300 nodes
 // and starts an airflow job by writing to prophet-cache/airflow.txt
@@ -62,7 +62,7 @@ const (
 
 // GCSEvent is the payload of a GCS event.
 type GCSEvent struct {
-	Name	 string `json:"name"`
+	Name   string `json:"name"`
 	Bucket string `json:"bucket"`
 }
 
