@@ -29,7 +29,7 @@ cd cmd
 go build main.go
 ```
 
-## Validate in Test Environment
+## Validate BT Import End-to-end using (GCS | BT) Test Environment
 
 0.  First start the Cloud Function locally, as follows:
 

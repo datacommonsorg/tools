@@ -1,13 +1,11 @@
 // Package btcachegeneration runs a GCF function that triggers in 2 scenarios:
 // 1) completion of prophet-flume job in borg.
-//	  The trigger is based on GCS file prophet-cache/latest_base_cache_run.txt.
-// 2) On completion of BT cache ingestion via an airflow job. This trigger is based
-//	  on GCS file prophet-cache/[success|failure].txt
+// 2) completion of BT cache ingestion dataflow job.
 //
-// In the first case, on triggering it sets up new cloud BT table, scales up BT cluster to 300 nodes
-// and starts an airflow job by writing to prophet-cache/airflow.txt
+// In the first case, on triggering it sets up new cloud BT table, scales up BT
+// cluster (only for base cache) and starts a dataflow job.
 //
-// In the second case it scales BT cluster to 20 nodes.
+// In the second case it scales BT cluster down (only for base cache).
 package btcachegeneration
 
 import (
@@ -26,71 +24,74 @@ import (
 )
 
 const (
-	PROD							= "prod"
-	TEST							= "test"
+	// TEST represents the test environment, and exported for use in cmd/main.go.
+	TEST = "test"
+	// Prod environment.
+	prod = "prod"
 
-	btProjectID				= "google.com:datcom-store-dev"
-	dataBucket				= "prophet_cache"
-	dataFilePattern		= "cache.csv*"
-	dataflowTemplate	= "gs://datcom-dataflow-templates/templates/csv_to_bt_improved"
+	btProjectID        = "google.com:datcom-store-dev"
+	dataBucket         = "prophet_cache"
+	dataFilePattern    = "cache.csv*"
+	dataflowTemplate   = "gs://datcom-dataflow-templates/templates/csv_to_bt_improved"
 	createTableRetries = 3
-	columnFamily			= "csv"
-	baseCacheType			= "base"
-	branchCacheType		= "branch"
+	columnFamily       = "csv"
+	baseCacheType      = "base"
+	branchCacheType    = "branch"
 
 	// NOTE: The following three files represents the state of a BT import. They
 	// get written under:
 	//
-	//		gs://<env.ControlBucket>/(base|branch)/<TableID>/
+	//		gs://<env.controlBucket>/(base|branch)/<TableID>/
 	//
 	// Init: written by borg to start BT import.
-	initFile					 = "init.txt"
+	initFile = "init.txt"
 	// Launched: written by this cloud function to mark launching of BT import job.
-	launchedFile			 = "launched.txt"
+	launchedFile = "launched.txt"
 	// Completed: written by dataflow to mark completion of BT import.
-	completedFile			= "completed.txt"
+	completedFile = "completed.txt"
 
 	// TODO: Deprecate these files.
-	triggerFile				= "latest_base_cache_version.txt"
-	successFile				= "success.txt"
-	failureFile				= "failure.txt"
+	triggerFile        = "latest_base_cache_version.txt"
+	successFile        = "success.txt"
+	failureFile        = "failure.txt"
 	airflowTriggerFile = "airflow_trigger.txt"
 )
 
-type Environment struct {
+type environment struct {
 	// BT instance holding base caches.
-	BaseBTInstance string
+	baseBTInstance string
 	// Clusters in base BT instance. There can be >1 for replicated instances.
-	BaseBTClusters []string
-	// High and Low node count for Base BT instance. Normally the node count is
+	baseBTClusters []string
+	// High and Low node count for base BT instance. Normally the node count is
 	// at Low. Only during the base import, the count is raised to High.
-	BaseBTNodesHigh	int32
-	BaseBTNodesLow	int32
+	baseBTNodesHigh int32
+	baseBTNodesLow  int32
 	// BT instance holding branch caches.
-	BranchBTInstance string
+	branchBTInstance string
 	// GCS Bucket used for control files.
-	ControlBucket string
+	controlBucket string
 }
 
 var (
-	CurrentEnv = PROD
+	// CurrentEnv defaults to prod, and exported for overriding in `cmd/main.go`.
+	CurrentEnv = prod
 
-	envs = map[string]*Environment{
-		PROD: &Environment{
-			BaseBTInstance: "prophet-cache",
-			BaseBTClusters: []string{"prophet-cache-c1"},
-			BaseBTNodesHigh: 300,
-			BaseBTNodesLow: 20,
-			BranchBTInstance: "prophet-branch-cache",
-			ControlBucket: "automation_control",
+	envs = map[string]*environment{
+		prod: &environment{
+			baseBTInstance:   "prophet-cache",
+			baseBTClusters:   []string{"prophet-cache-c1"},
+			baseBTNodesHigh:  300,
+			baseBTNodesLow:   20,
+			branchBTInstance: "prophet-branch-cache",
+			controlBucket:    "automation_control",
 		},
-		TEST: &Environment{
-			BaseBTInstance: "prophet-test",
-			BaseBTClusters: []string{"prophet-test-c1"},
-			BaseBTNodesHigh: 3,
-			BaseBTNodesLow: 1,
-			BranchBTInstance: "prophet-test",
-			ControlBucket: "automation_control_test",
+		TEST: &environment{
+			baseBTInstance:   "prophet-test",
+			baseBTClusters:   []string{"prophet-test-c1"},
+			baseBTNodesHigh:  3,
+			baseBTNodesLow:   1,
+			branchBTInstance: "prophet-test",
+			controlBucket:    "automation_control_test",
 		},
 	}
 )
@@ -147,11 +148,11 @@ func launchDataflowJob(ctx context.Context, btInstance, controlBucket, cacheType
 	params := &dataflow.LaunchTemplateParameters{
 		JobName: fmt.Sprintf("%s-csv2bt-%s", CurrentEnv, tableID),
 		Parameters: map[string]string{
-			"inputFile": inFile,
-			"completionFile": outFile,
+			"inputFile":          inFile,
+			"completionFile":     outFile,
 			"bigtableInstanceId": btInstance,
-			"bigtableTableId": tableID,
-			"bigtableProjectId": btProjectID,
+			"bigtableTableId":    tableID,
+			"bigtableProjectId":  btProjectID,
 		},
 	}
 
@@ -245,10 +246,10 @@ func GCSTrigger(ctx context.Context, e GCSEvent) error {
 		}
 		// Create and scale up cloud BT.
 		tableIDStr := strings.TrimSpace(fmt.Sprintf("%s", tableID))
-		if err := setupBTTable(ctx, env.BaseBTInstance, tableIDStr); err != nil {
+		if err := setupBTTable(ctx, env.baseBTInstance, tableIDStr); err != nil {
 			return err
 		}
-		if err := scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesHigh); err != nil {
+		if err := scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesHigh); err != nil {
 			return err
 		}
 		// Write to GCS file that triggers airflow job.
@@ -258,7 +259,7 @@ func GCSTrigger(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 	} else if strings.HasSuffix(e.Name, successFile) || strings.HasSuffix(e.Name, failureFile) {
-		return scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesLow)
+		return scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesLow)
 	}
 	return nil
 }
@@ -268,7 +269,7 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 
 	env := envs[CurrentEnv]
 
-	if e.Bucket != env.ControlBucket {
+	if e.Bucket != env.controlBucket {
 		return status.Errorf(codes.Internal, "Unexpected bucket %s", e.Bucket)
 	}
 
@@ -283,9 +284,9 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 		}
 		btInstance := ""
 		if cacheType == baseCacheType {
-			btInstance = env.BaseBTInstance
+			btInstance = env.baseBTInstance
 		} else {
-			btInstance = env.BranchBTInstance
+			btInstance = env.branchBTInstance
 		}
 		launchedPath := fmt.Sprintf("%s/%s/%s", cacheType, tableID, launchedFile)
 		if _, err := readFromGCS(ctx, e.Bucket, launchedPath); err == nil {
@@ -296,11 +297,11 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 		}
 		if cacheType == baseCacheType {
 			// Scale up only for base cache.
-			if err := scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesHigh); err != nil {
+			if err := scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesHigh); err != nil {
 				return err
 			}
 		}
-		err = launchDataflowJob(ctx, btInstance, env.ControlBucket, cacheType, tableID)
+		err = launchDataflowJob(ctx, btInstance, env.controlBucket, cacheType, tableID)
 		if err != nil {
 			return err
 		}
@@ -320,7 +321,7 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 		if cacheType == baseCacheType {
-			if err := scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesLow); err != nil {
+			if err := scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesLow); err != nil {
 				return err
 			}
 		}
