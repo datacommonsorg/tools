@@ -10,6 +10,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	btcachegeneration.CurrentEnv = btcachegeneration.TEST
 	if err := funcframework.RegisterEventFunctionContext(ctx, "/", btcachegeneration.BTImportController); err != nil {
 		log.Fatalf("funcframework.RegisterEventFunctionContext: %v\n", err)
 	}

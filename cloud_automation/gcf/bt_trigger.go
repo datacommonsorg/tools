@@ -26,27 +26,24 @@ import (
 )
 
 const (
-	btProjectID				= "google.com:datcom-store-dev"
-	baseBTInstance		= "prophet-cache"
-	baseBTCluster			= "prophet-cache-c1"
-	branchBTInstance	 = "prophet-branch-cache"
+	PROD							= "prod"
+	TEST							= "test"
 
+	btProjectID				= "google.com:datcom-store-dev"
 	dataBucket				= "prophet_cache"
-	controlBucket			= "automation_control"
 	dataFilePattern		= "cache.csv*"
 	dataflowTemplate	= "gs://datcom-dataflow-templates/templates/csv_to_bt_improved"
 	createTableRetries = 3
 	columnFamily			= "csv"
-	bigtableNodesHigh	= 300
-	bigtableNodesLow	= 20
 	baseCacheType			= "base"
 	branchCacheType		= "branch"
 
-	// NOTE: The following three files represents the state of a BT import.
+	// NOTE: The following three files represents the state of a BT import. They
+	// get written under:
 	//
-	//		gs://<controlBucket>/(base|branch)/<tableID>/
+	//		gs://<env.ControlBucket>/(base|branch)/<TableID>/
 	//
-	// Init: written by google3 to start BT import.
+	// Init: written by borg to start BT import.
 	initFile					 = "init.txt"
 	// Launched: written by this cloud function to mark launching of BT import job.
 	launchedFile			 = "launched.txt"
@@ -58,6 +55,44 @@ const (
 	successFile				= "success.txt"
 	failureFile				= "failure.txt"
 	airflowTriggerFile = "airflow_trigger.txt"
+)
+
+type Environment struct {
+	// BT instance holding base caches.
+	BaseBTInstance string
+	// Clusters in base BT instance. There can be >1 for replicated instances.
+	BaseBTClusters []string
+	// High and Low node count for Base BT instance. Normally the node count is
+	// at Low. Only during the base import, the count is raised to High.
+	BaseBTNodesHigh	int32
+	BaseBTNodesLow	int32
+	// BT instance holding branch caches.
+	BranchBTInstance string
+	// GCS Bucket used for control files.
+	ControlBucket string
+}
+
+var (
+	CurrentEnv = PROD
+
+	envs = map[string]*Environment{
+		PROD: &Environment{
+			BaseBTInstance: "prophet-cache",
+			BaseBTClusters: []string{"prophet-cache-c1"},
+			BaseBTNodesHigh: 300,
+			BaseBTNodesLow: 20,
+			BranchBTInstance: "prophet-branch-cache",
+			ControlBucket: "automation_control",
+		},
+		TEST: &Environment{
+			BaseBTInstance: "prophet-test",
+			BaseBTClusters: []string{"prophet-test-c1"},
+			BaseBTNodesHigh: 3,
+			BaseBTNodesLow: 1,
+			BranchBTInstance: "prophet-test",
+			ControlBucket: "automation_control_test",
+		},
+	}
 )
 
 // GCSEvent is the payload of a GCS event.
@@ -101,7 +136,7 @@ func writeToGCS(ctx context.Context, bucketName, fileName, data string) error {
 	return w.Close()
 }
 
-func launchDataflowJob(ctx context.Context, btInstance, cacheType, tableID string) error {
+func launchDataflowJob(ctx context.Context, btInstance, controlBucket, cacheType, tableID string) error {
 	dataflowService, err := dataflow.NewService(ctx)
 	if err != nil {
 		log.Printf("Unable to create dataflow service: %v\n", err)
@@ -110,7 +145,7 @@ func launchDataflowJob(ctx context.Context, btInstance, cacheType, tableID strin
 	inFile := fmt.Sprintf("gs://%s/%s/%s", dataBucket, tableID, dataFilePattern)
 	outFile := fmt.Sprintf("gs://%s/%s/%s/%s", controlBucket, cacheType, tableID, completedFile)
 	params := &dataflow.LaunchTemplateParameters{
-		JobName: "csv2bt-" + tableID,
+		JobName: fmt.Sprintf("%s-csv2bt-%s", CurrentEnv, tableID),
 		Parameters: map[string]string{
 			"inputFile": inFile,
 			"completionFile": outFile,
@@ -130,7 +165,7 @@ func launchDataflowJob(ctx context.Context, btInstance, cacheType, tableID strin
 	return nil
 }
 
-func setupBigtable(ctx context.Context, btInstance, tableID string) error {
+func setupBTTable(ctx context.Context, btInstance, tableID string) error {
 	adminClient, err := bigtable.NewAdminClient(ctx, btProjectID, btInstance)
 	if err != nil {
 		log.Printf("Unable to create a table admin client. %v", err)
@@ -163,7 +198,7 @@ func setupBigtable(ctx context.Context, btInstance, tableID string) error {
 	return nil
 }
 
-func scaleBaseBT(ctx context.Context, numNodes int32) error {
+func scaleBT(ctx context.Context, btInstance string, btClusters []string, numNodes int32) error {
 	// Scale up bigtable cluster. This helps speed up the dataflow job.
 	// We scale down again once dataflow job completes.
 	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, btProjectID)
@@ -173,10 +208,12 @@ func scaleBaseBT(ctx context.Context, numNodes int32) error {
 		log.Printf("Unable to create a table instance admin client. %v", err)
 		return err
 	}
-	log.Printf("Scaling BT %s instance to %d nodes", baseBTInstance, numNodes)
-	if err := instanceAdminClient.UpdateCluster(dctx, baseBTInstance, baseBTCluster, numNodes); err != nil {
-		log.Printf("Unable to increase bigtable cluster size: %v", err)
-		return err
+	for _, c := range btClusters {
+		log.Printf("Scaling BT %s cluster %s to %d nodes", btInstance, c, numNodes)
+		if err := instanceAdminClient.UpdateCluster(dctx, btInstance, c, numNodes); err != nil {
+			log.Printf("Unable to resize bigtable cluster %s to %d: %v", c, numNodes, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -196,6 +233,8 @@ func parsePath(path string) (string, string, error) {
 // TODO: Delete this after BTImportController() is launched.
 func GCSTrigger(ctx context.Context, e GCSEvent) error {
 
+	env := envs[CurrentEnv]
+
 	if strings.HasSuffix(e.Name, triggerFile) {
 		// Read contents of GCS file. it contains path to csv files
 		// for base cache.
@@ -206,10 +245,10 @@ func GCSTrigger(ctx context.Context, e GCSEvent) error {
 		}
 		// Create and scale up cloud BT.
 		tableIDStr := strings.TrimSpace(fmt.Sprintf("%s", tableID))
-		if err := setupBigtable(ctx, baseBTInstance, tableIDStr); err != nil {
+		if err := setupBTTable(ctx, env.BaseBTInstance, tableIDStr); err != nil {
 			return err
 		}
-		if err := scaleBaseBT(ctx, bigtableNodesHigh); err != nil {
+		if err := scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesHigh); err != nil {
 			return err
 		}
 		// Write to GCS file that triggers airflow job.
@@ -219,7 +258,7 @@ func GCSTrigger(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 	} else if strings.HasSuffix(e.Name, successFile) || strings.HasSuffix(e.Name, failureFile) {
-		return scaleBaseBT(ctx, bigtableNodesLow)
+		return scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesLow)
 	}
 	return nil
 }
@@ -227,7 +266,9 @@ func GCSTrigger(ctx context.Context, e GCSEvent) error {
 // BTImportController consumes a GCS event and runs an import state machine.
 func BTImportController(ctx context.Context, e GCSEvent) error {
 
-	if e.Bucket != controlBucket {
+	env := envs[CurrentEnv]
+
+	if e.Bucket != env.ControlBucket {
 		return status.Errorf(codes.Internal, "Unexpected bucket %s", e.Bucket)
 	}
 
@@ -242,24 +283,24 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 		}
 		btInstance := ""
 		if cacheType == baseCacheType {
-			btInstance = baseBTInstance
+			btInstance = env.BaseBTInstance
 		} else {
-			btInstance = branchBTInstance
+			btInstance = env.BranchBTInstance
 		}
 		launchedPath := fmt.Sprintf("%s/%s/%s", cacheType, tableID, launchedFile)
 		if _, err := readFromGCS(ctx, e.Bucket, launchedPath); err == nil {
 			return status.Errorf(codes.Internal, "Cache was already built for %s/%s: %v", cacheType, tableID, err)
 		}
-		if err := setupBigtable(ctx, btInstance, tableID); err != nil {
+		if err := setupBTTable(ctx, btInstance, tableID); err != nil {
 			return err
 		}
 		if cacheType == baseCacheType {
 			// Scale up only for base cache.
-			if err := scaleBaseBT(ctx, bigtableNodesHigh); err != nil {
+			if err := scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesHigh); err != nil {
 				return err
 			}
 		}
-		err = launchDataflowJob(ctx, btInstance, cacheType, tableID)
+		err = launchDataflowJob(ctx, btInstance, env.ControlBucket, cacheType, tableID)
 		if err != nil {
 			return err
 		}
@@ -279,11 +320,12 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 		if cacheType == baseCacheType {
-			if err := scaleBaseBT(ctx, bigtableNodesLow); err != nil {
+			if err := scaleBT(ctx, env.BaseBTInstance, env.BaseBTClusters, env.BaseBTNodesLow); err != nil {
 				return err
 			}
 		}
 		// TODO: else, notify Mixer to load the BT table.
+		log.Printf("[%s] Completed work", e.Name)
 	}
 	return nil
 }
