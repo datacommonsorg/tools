@@ -2,8 +2,15 @@
 #
 # Test GCF locally.
 #
+set -x
 
-if [[ "$1" == "init" ]]; then
+if [[ $# != 2 ]]; then
+  echo "Usage: $0 <CACHE_NAME> (init|completed)" >&2
+  exit 1
+fi
+
+CACHE_NAME=$1
+if [[ "$2" == "init" ]]; then
   curl localhost:8080 \
     -X POST \
     -H "Content-Type: application/json" \
@@ -14,7 +21,7 @@ if [[ "$1" == "init" ]]; then
           "eventType": "google.storage.object.finalize",
           "resource": {
              "service": "storage.googleapis.com",
-             "name": "projects/_/buckets/automation_control_test/base/branch_2021_01_08_13_25_48/init.txt",
+             "name": "projects/_/buckets/automation_control_test/base/'"$CACHE_NAME"'/init.txt",
              "type": "storage#object"
           }
         },
@@ -24,7 +31,7 @@ if [[ "$1" == "init" ]]; then
           "kind": "storage#object",
           "md5Hash": "...",
           "metageneration": "1",
-          "name": "base/branch_2021_01_08_13_25_48/init.txt",
+          "name": "base/'"$CACHE_NAME"'/init.txt",
           "size": "0",
           "storageClass": "MULTI_REGIONAL",
           "timeCreated": "2020-04-23T07:38:57.230Z",
@@ -32,7 +39,7 @@ if [[ "$1" == "init" ]]; then
           "updated": "2020-04-23T07:38:57.230Z"
         }
       }'
-elif [[ "$1" == "completed" ]]; then
+elif [[ "$2" == "completed" ]]; then
   curl localhost:8080 \
     -X POST \
     -H "Content-Type: application/json" \
@@ -43,7 +50,7 @@ elif [[ "$1" == "completed" ]]; then
           "eventType": "google.storage.object.finalize",
           "resource": {
              "service": "storage.googleapis.com",
-             "name": "projects/_/buckets/automation_control_test/base/branch_2021_01_08_13_25_48/completed.txt",
+             "name": "projects/_/buckets/automation_control_test/base/'"$CACHE_NAME"'/completed.txt",
              "type": "storage#object"
           }
         },
@@ -53,7 +60,7 @@ elif [[ "$1" == "completed" ]]; then
           "kind": "storage#object",
           "md5Hash": "...",
           "metageneration": "1",
-          "name": "base/branch_2021_01_08_13_25_48/completed.txt",
+          "name": "base/'"$CACHE_NAME"'/completed.txt",
           "size": "0",
           "storageClass": "MULTI_REGIONAL",
           "timeCreated": "2020-04-23T07:38:57.230Z",
@@ -62,5 +69,6 @@ elif [[ "$1" == "completed" ]]; then
         }
       }'
 else
-  echo "Usage: $0 (init | completed)" >&2
+  echo "Usage: $0 <CACHE_NAME> (init|completed)" >&2
+  exit 1
 fi

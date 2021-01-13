@@ -20,23 +20,33 @@ The Cloud Function supports two environments: Prod and Test (refer to
 `environments` global in the source file). The default is Prod, while Test env
 is only used for local testing of the function via `cmd/main.go`.
 
-## Validation
+## Build
 
-0.  To validate that the cloud function builds, first start the Cloud Function
-    locally, as follows:
+To build the cloud function locally:
+
+```
+cd cmd
+go build main.go
+```
+
+## Validate in Test Environment
+
+0.  First start the Cloud Function locally, as follows:
 
     ```
     cd cmd
     go run main.go
     ```
 
-1. Tweak the `test.sh` script to use a recent branch cache (instead of
-   `branch_2021_01_08_13_25_48`).
+1. Pick a recent branch cache build to use for the test---any `branch_` prefix
+   directory from [`prophet-cache`
+   bucket](https://pantheon.corp.google.com/storage/browser/prophet_cache;tab=objects)
+   will do.
 
 2. Fake an init trigger from Google pipeline:
 
     ```
-    ./test.sh init
+    ./test.sh branch_2021_01_08_13_25_48 init
     ```
 
     To validate this step:
@@ -56,12 +66,13 @@ is only used for local testing of the function via `cmd/main.go`.
 2. Fake a completion trigger from Dataflow job:
 
     ```
-    ./test.sh completed
+    ./test.sh branch_2021_01_08_13_25_48 completed
     ```
 
     Validate this step by confirming that the
     [`prophet-test`](https://pantheon.corp.google.com/bigtable/instances/prophet-test/overview?project=google.com:datcom-store-dev)
     BT instance now has 1 node.
+
 
 # `airflow_trigger.py`
 
