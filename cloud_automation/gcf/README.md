@@ -3,9 +3,9 @@ This directory contains Google Cloud Function involved in BT cache generation.
 # `bt_trigger.go`
 
 This Cloud Function, with entry point `BTImportController`, first gets notified
-by the Google3 pipeline when the cache files have been uploaded into GCS, via
-`init.txt`. As a result, it creates a new BT table, scales-up the node-limit
-(for faster loads, only on base cache), kicks off the [CsvImport Dataflow
+by the Google3 pipeline, via `init.txt`, when the cache files have been uploaded
+to GCS. As a result, it creates a new BT table, scales-up the node-limit (for
+faster loads, only on base cache), kicks off the [CsvImport Dataflow
 job](https://github.com/datacommonsorg/tools/tree/master/cloud_automation/java/dataflow)
 and registers `launched.txt`.
 
@@ -13,25 +13,27 @@ After the dataflow job has run to completion, it notifies this Cloud Function
 again, via `completed.txt`. As a result, it scales-down the node-limit (only on
 base cache). In future, for branch cache, it will notify Mixer.
 
-There function supports two environments: Prod and Test (refer to `environments`
-global in the source file). Test env is only used for local testing of the
-function via `cmd/main.go`.
+All of the above `.txt` files are created in a per-cache directory. So, they
+allow for concurrent cache builds and tracking past state.
+
+The Cloud Function supports two environments: Prod and Test (refer to
+`environments` global in the source file). The default is Prod, while Test env
+is only used for local testing of the function via `cmd/main.go`.
 
 ## Validation
 
-To validate that the cloud function builds, first start up the function locally,
-as follows:
+0.  To validate that the cloud function builds, first start the Cloud Function
+    locally, as follows:
 
-```
-cd cmd
-# This will build and start the serving function...
-go run main.go
-```
+    ```
+    cd cmd
+    go run main.go
+    ```
 
-0. Tweak the `test.sh` script to use a recent branch cache (instead of
+1. Tweak the `test.sh` script to use a recent branch cache (instead of
    `branch_2021_01_08_13_25_48`).
 
-1. Fake a trigger from Google pipeline, run:
+2. Fake an init trigger from Google pipeline:
 
     ```
     ./test.sh init
@@ -51,7 +53,7 @@ go run main.go
        containing a `launched.txt` file. When the dataflow job above ends, there
        should be a `completed.txt` file.
 
-3. Fake a dataflow completion trigger.
+2. Fake a completion trigger from Dataflow job:
 
     ```
     ./test.sh completed
