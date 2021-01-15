@@ -49,12 +49,6 @@ const (
 	launchedFile = "launched.txt"
 	// Completed: written by dataflow to mark completion of BT import.
 	completedFile = "completed.txt"
-
-	// TODO: Deprecate these files.
-	triggerFile        = "latest_base_cache_version.txt"
-	successFile        = "success.txt"
-	failureFile        = "failure.txt"
-	airflowTriggerFile = "airflow_trigger.txt"
 )
 
 type environment struct {
@@ -230,42 +224,7 @@ func parsePath(path string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
-// GCSTrigger consumes a GCS event.
-// TODO: Delete this after BTImportController() is launched.
-func GCSTrigger(ctx context.Context, e GCSEvent) error {
-
-	env := envs[CurrentEnv]
-
-	if strings.HasSuffix(e.Name, triggerFile) {
-		// Read contents of GCS file. it contains path to csv files
-		// for base cache.
-		tableID, err := readFromGCS(ctx, e.Bucket, e.Name)
-		if err != nil {
-			log.Printf("Unable to read from gcs gs://%s/%s, got err: %v", e.Bucket, e.Name, err)
-			return err
-		}
-		// Create and scale up cloud BT.
-		tableIDStr := strings.TrimSpace(fmt.Sprintf("%s", tableID))
-		if err := setupBTTable(ctx, env.baseBTInstance, tableIDStr); err != nil {
-			return err
-		}
-		if err := scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesHigh); err != nil {
-			return err
-		}
-		// Write to GCS file that triggers airflow job.
-		inputFile := fmt.Sprintf("gs://prophet_cache/%s/cache.csv*", tableIDStr)
-		err = writeToGCS(ctx, e.Bucket, airflowTriggerFile, inputFile)
-		if err != nil {
-			return err
-		}
-	} else if strings.HasSuffix(e.Name, successFile) || strings.HasSuffix(e.Name, failureFile) {
-		return scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesLow)
-	}
-	return nil
-}
-
-// BTImportController consumes a GCS event and runs an import state machine.
-func BTImportController(ctx context.Context, e GCSEvent) error {
+func BTImportControllerInternal(ctx context.Context, e GCSEvent) error {
 
 	env := envs[CurrentEnv]
 
@@ -327,6 +286,18 @@ func BTImportController(ctx context.Context, e GCSEvent) error {
 		}
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
+	}
+	return nil
+}
+
+// BTImportController consumes a GCS event and runs an import state machine.
+func BTImportController(ctx context.Context, e GCSEvent) error {
+	err := BTImportControllerInternal(ctx, e)
+	if err != nil {
+		// Panic gets reported to Cloud Logging Error Reporting that we can then
+		// alert on
+		// (https://cloud.google.com/functions/docs/monitoring/error-reporting#functions-errors-log-go)
+		panic(err)
 	}
 	return nil
 }

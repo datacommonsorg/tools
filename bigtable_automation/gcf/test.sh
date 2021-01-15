@@ -5,7 +5,7 @@
 set -x
 
 if [[ $# != 2 ]]; then
-  echo "Usage: $0 <CACHE_NAME> (init|completed)" >&2
+  echo "Usage: $0 <CACHE_NAME> (init|completed|cleanup)" >&2
   exit 1
 fi
 
@@ -68,6 +68,10 @@ elif [[ "$2" == "completed" ]]; then
           "updated": "2020-04-23T07:38:57.230Z"
         }
       }'
+elif [[ "$2" == "cleanup" ]]; then
+  gsutil rm gs://automation_control_test/base/"$CACHE_NAME"/completed.txt
+  gsutil rm gs://automation_control_test/base/"$CACHE_NAME"/launched.txt
+  cbt -instance prophet-cache-test deletetable "$CACHE_NAME"
 else
   echo "Usage: $0 <CACHE_NAME> (init|completed)" >&2
   exit 1

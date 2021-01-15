@@ -42,6 +42,12 @@ go build main.go
    bucket](https://pantheon.corp.google.com/storage/browser/prophet_cache;tab=objects)
    will do.
 
+   Just in case a test was run with that cache before, clean-up first:
+
+   ```
+   ./test.sh branch_2021_01_08_13_25_48 cleanup
+   ```
+
 2. Fake an init trigger from Google pipeline:
 
     ```
