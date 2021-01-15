@@ -224,7 +224,7 @@ func parsePath(path string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
-func BTImportControllerInternal(ctx context.Context, e GCSEvent) error {
+func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 
 	env := envs[CurrentEnv]
 
@@ -292,7 +292,7 @@ func BTImportControllerInternal(ctx context.Context, e GCSEvent) error {
 
 // BTImportController consumes a GCS event and runs an import state machine.
 func BTImportController(ctx context.Context, e GCSEvent) error {
-	err := BTImportControllerInternal(ctx, e)
+	err := btImportControllerInternal(ctx, e)
 	if err != nil {
 		// Panic gets reported to Cloud Logging Error Reporting that we can then
 		// alert on
