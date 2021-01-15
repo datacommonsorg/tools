@@ -1,12 +1,11 @@
-This directory contains Google Cloud Function involved in BT cache generation.
+This directory contains the Google Cloud Function involved in BT cache
+generation, with entry point `BTImportController`.
 
-# `bt_trigger.go`
-
-This Cloud Function, with entry point `BTImportController`, first gets notified
-by the Google3 pipeline, via `init.txt`, when the cache files have been uploaded
-to GCS. As a result, it creates a new BT table, scales-up the node-limit (for
-faster loads, only on base cache), kicks off the [CsvImport Dataflow
-job](https://github.com/datacommonsorg/tools/tree/master/cloud_automation/java/dataflow)
+The Cloud Function first gets notified by a Borg pipeline, via `init.txt`, when
+the cache files have been uploaded to GCS. As a result, it creates a new BT
+table, scales-up the node-limit (for faster loads, only on base cache), kicks
+off the [CsvImport Dataflow
+job](https://github.com/datacommonsorg/tools/tree/master/bigtable_automation/java/dataflow)
 and registers `launched.txt`.
 
 After the dataflow job has run to completion, it notifies this Cloud Function
@@ -72,10 +71,3 @@ go build main.go
     Validate this step by confirming that the
     [`prophet-test`](https://pantheon.corp.google.com/bigtable/instances/prophet-test/overview?project=google.com:datcom-store-dev)
     BT instance now has 1 node.
-
-
-# `airflow_trigger.py`
-
-This is part of an older deprecated flow.
-
-TODO(pradh): Remove this when we have fully switched over to improved flow.
