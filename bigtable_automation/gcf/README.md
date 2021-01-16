@@ -77,3 +77,11 @@ go build main.go
     Validate this step by confirming that the
     [`prophet-test`](https://pantheon.corp.google.com/bigtable/instances/prophet-test/overview?project=google.com:datcom-store-dev)
     BT instance now has 1 node.
+
+## Deployment
+
+After validating the change in test environment, deploy to PROD by manually
+copying over the cloud function to
+[prophet-cache-trigger](https://pantheon.corp.google.com/functions/details/us-central1/prophet-cache-trigger?organizationId=433637338589&project=google.com:datcom-store-dev&tab=source).
+
+TODO: Improve deployment process.
