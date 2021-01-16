@@ -43,9 +43,15 @@ mvn compile
 If you have a one-off CSV file that you want to load into the test environment,
 run the following command:
 
-```
-./test.sh run-csv mixer_test_bt gs://datcom-store-test/mixer_test_cache.csv
-```
+  ```
+  ./test.sh run-csv <BT_TABLE_NAME> <GCS_CSV_FILE>
+  ```
+
+For example:
+
+  ```
+  ./test.sh run-csv mixer_test_bt gs://datcom-store-test/mixer_test_cache.csv
+  ```
 
 Where, `mixer_test_bt` is the BT table that will be created from
 `gs://datcom-store-test/mixer_test_cache.csv`.
