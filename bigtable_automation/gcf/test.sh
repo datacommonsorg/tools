@@ -9,6 +9,8 @@ if [[ $# != 2 ]]; then
   exit 1
 fi
 
+gcloud config set project google.com:datcom-store-dev
+
 CACHE_NAME=$1
 if [[ "$2" == "init" ]]; then
   curl localhost:8080 \
@@ -71,7 +73,7 @@ elif [[ "$2" == "completed" ]]; then
 elif [[ "$2" == "cleanup" ]]; then
   gsutil rm gs://automation_control_test/base/"$CACHE_NAME"/completed.txt
   gsutil rm gs://automation_control_test/base/"$CACHE_NAME"/launched.txt
-  cbt -instance prophet-cache-test deletetable "$CACHE_NAME"
+  cbt -instance prophet-test deletetable "$CACHE_NAME"
 else
   echo "Usage: $0 <CACHE_NAME> (init|completed)" >&2
   exit 1

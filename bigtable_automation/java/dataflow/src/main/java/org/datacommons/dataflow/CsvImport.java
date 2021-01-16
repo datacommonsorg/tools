@@ -32,12 +32,6 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 public class CsvImport {
-
-  // ValueProvider cannot be used to change pipeline's workflow graph, so we use a static global.
-  // https://cloud.google.com/dataflow/docs/guides/templates/creating-templates#runtime-parameters-and-the-valueprovider-interface
-  // TODO: Deprecate old flow and delete this.
-  private static boolean USE_IMPROVED_FLOW = true;
-
   private static final String FAMILY = "csv";
   private static final Logger LOG = LoggerFactory.getLogger(CsvImport.class);
 
@@ -108,6 +102,7 @@ public class CsvImport {
    * instructions.
    * --project=[dataflow project] --stagingLocation=gs://[your google storage bucket]
    * --inputFile=gs://[your google storage object]
+   * --completionFile=gs://[signal file that Cloud Function listens on]
    * --bigtableProject=[bigtable project] --bigtableInstanceId=[bigtable instance id]
    * --bigtableTableId=[bigtable tableName]
    *
@@ -130,32 +125,28 @@ public class CsvImport {
         .withProjectId(options.getBigtableProjectId())
         .withInstanceId(options.getBigtableInstanceId())
         .withTableId(options.getBigtableTableId());
-    if (USE_IMPROVED_FLOW) {
-      // Write with results.
-      PCollection<BigtableWriteResult> writeResults = cacheData
-          .apply("WriteToBigtable", write.withWriteResults());
+    // Write with results.
+    PCollection<BigtableWriteResult> writeResults = cacheData
+        .apply("WriteToBigtable", write.withWriteResults());
 
-      // Create a global window since we will wait on it to be fully complete.
-      PCollection<BigtableWriteResult> batchedResults = writeResults
-          .apply(Window.<BigtableWriteResult>into(new GlobalWindows()));
+    // Create a global window since we will wait on it to be fully complete.
+    PCollection<BigtableWriteResult> batchedResults = writeResults
+        .apply(Window.<BigtableWriteResult>into(new GlobalWindows()));
 
-      // NOTE: Java generics seems very finicky.
-      // (1) completion.apply(Wait.on(batchedResults)):
-      //     This is what the docs suggest, but the compiler is unable to detect the outputT of
-      //     PTransform<inputT, outputT>.
-      // (2) completion.apply(Wait.OnSignal<String>(batchedResults)):
-      //     In this case, it errors out saying PCollection<BigtableWriteResult> doesn't match
-      //     PCollection<?>.
-      Wait.OnSignal<String> waiter = Wait.on(batchedResults);
+    // NOTE: Java generics seems very finicky.
+    // (1) completion.apply(Wait.on(batchedResults)):
+    //     This is what the docs suggest, but the compiler is unable to detect the outputT of
+    //     PTransform<inputT, outputT>.
+    // (2) completion.apply(Wait.OnSignal<String>(batchedResults)):
+    //     In this case, it errors out saying PCollection<BigtableWriteResult> doesn't match
+    //     PCollection<?>.
+    Wait.OnSignal<String> waiter = Wait.on(batchedResults);
 
-      // Prepare to write input filepath to completion-file after waiting for batchedResults.
-      pipeline
-          .apply(Create.ofProvider(options.getInputFile(), StringUtf8Coder.of()))
-          .apply("WaitOnWrites", waiter)
-          .apply("WriteCompletionToFile", TextIO.write().to(options.getCompletionFile()).withoutSharding());
-    } else {
-      cacheData.apply("WriteToBigtable", write);
-    }
+    // Prepare to write input filepath to completion-file after waiting for batchedResults.
+    pipeline
+        .apply(Create.ofProvider(options.getInputFile(), StringUtf8Coder.of()))
+        .apply("WaitOnWrites", waiter)
+        .apply("WriteCompletionToFile", TextIO.write().to(options.getCompletionFile()).withoutSharding());
 
     PipelineResult result = pipeline.run();
     // Wait for pipeline to finish only if it is not constructing a template.

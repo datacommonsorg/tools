@@ -3,54 +3,67 @@
 The CSVImport dataflow template creates dataflow jobs to ingest CSV data from
 GCS to Cloud Bigtable.
 
-The template is stored at  gs://datcom-dataflow-templates/templates
+The template is stored at [gs://datcom-dataflow-templates/templates](https://pantheon.corp.google.com/storage/browser/datcom-dataflow-templates/templates).
 
-To deploy changes to the template run the following commands.
-
-## Improved Flow
-
-In this mode, the dataflow pipeline writes a completion file after writes to BT
-are complete.
+## Build
 
 ```
-  mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/improved_staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt_improved --region=us-central1"
-
+# In bigtable_automation/java/dataflow
+mvn compile
 ```
 
-To perform a trial run of the Improved flow, run:
+## Validation
+
+1.  Deploy change to the test template for validation.
+
+    ```
+    ./test.sh deploy
+    ```
+
+2.  Pick a recent branch cache build to use for the test---any `branch_` prefix
+    directory from [`prophet-cache`
+    bucket](https://pantheon.corp.google.com/storage/browser/prophet_cache;tab=objects)
+    will do.
+
+3.  Run the Dataflow job in the test BT environment against the test template.
+
+    ```
+    ./test.sh run-cache branch_2021_01_08_13_25_48
+    ```
+
+4.  A dataflow job, prefixed by `test-csv2bt-` should have started
+    [here](https://pantheon.corp.google.com/dataflow/jobs?project=google.com:datcom-store-dev).
+    It will run for ~5 minutes. Confirm it succeeeds.
+
+5.  A file prefixed by `finished-` should have been updated in
+    [`gs://automation_control_test/`](https://pantheon.corp.google.com/storage/browser/automation_control_test?project=google.com:datcom-store-dev).
+
+### One-off test with CSV file
+
+If you have a one-off CSV file that you want to load into the test environment,
+run the following command:
+
+  ```
+  ./test.sh run-csv <BT_TABLE_NAME> <GCS_CSV_FILE>
+  ```
+
+For example:
+
+  ```
+  ./test.sh run-csv mixer_test_bt gs://datcom-store-test/mixer_test_cache.csv
+  ```
+
+Where, `mixer_test_bt` is the BT table that will be created from
+`gs://datcom-store-test/mixer_test_cache.csv`.
+
+## Production Deployment
+
+After validating the change in test environment, deploy it to PROD template by
+running the following command.
 
 ```
-TABLE=branch_2021_01_08_13_25_48
-cbt createtable $TABLE
-cbt createfamily $TABLE csv
-
-gcloud dataflow jobs run job-${TABLE}-1 \
-  --gcs-location gs://datcom-dataflow-templates/templates/csv_to_bt_improved \
-  --parameters inputFile=gs://prophet_cache/${TABLE}/cache.csv*,completionFile=gs://automation_control/completed-${TABLE}.txt,bigtableInstanceId=prophet-cache,bigtableTableId=${TABLE},bigtableProjectId=google.com:datcom-store-dev
+mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/improved_staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt_improved --region=us-central1"
 ```
 
-
-## Legacy Flow
-
-In this mode, the dataflow pipeline just writes to BT.
-
-IMPORTANT: Set the `USE_IMPROVED_FLOW` bool in CsvImport.java to false before
-running the command below.
-
-```
-  mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt --region=us-central1"
-
-```
-
-To perform a trial run of the legacy flow, run:
-
-```
-TABLE=borgcron_2021_01_11_01_01_38
-cbt createtable $TABLE
-cbt createfamily $TABLE csv
-
-gcloud dataflow jobs run job-${TABLE}-1 \
-  --gcs-location gs://datcom-dataflow-templates/templates/csv_to_bt \
-  --parameters inputFile=gs://prophet_cache/${TABLE}/cache.csv*,bigtableInstanceId=prophet-cache,bigtableTableId=${TABLE},bigtableProjectId=google.com:datcom-store-dev
-```
-
+NOTE: Running this may throw an exception, but as long as it says `BUILD
+SUCCESS` the template has been updated.
