@@ -67,7 +67,7 @@ with open('result.csv', mode='w') as csv_file:
             logging.info(c)
             place = c[1]
             parts = c[0].split(" ")
-            # This is the similarity checkfor name , can expand this to handle more cases.
+            # This is the similarity check for name , can expand this to handle more cases.
             if parts[0] == token:
                 if first:
                     row = current
