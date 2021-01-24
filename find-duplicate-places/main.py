@@ -16,6 +16,13 @@
 import collections
 import csv
 import requests
+import time
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
+API_ROOT = 'http://mixer.endpoints.datcom-mixer-staging.cloud.goog'
 
 
 sparql = '''
@@ -31,8 +38,7 @@ WHERE {
 '''
 
 
-response = requests.post(
-  'https://api.datacommons.org/query', json={'sparql': sparql})
+response = requests.post(API_ROOT + '/query', json={'sparql': sparql})
 res_json = response.json()
 
 
@@ -43,8 +49,10 @@ for row in  res_json['rows']:
 		if ptype == "CensusTract":
 			continue
 		parent = row['cells'][2].get('value', '')
-		tree[parent].append(
-      [row['cells'][1].get('value',''), row['cells'][0].get('value', '')])
+		tree[parent].append([
+            row['cells'][1].get('value','').encode('utf-8'),
+            row['cells'][0].get('value', '')]
+        )
 
 
 with open('result.csv', mode='w') as csv_file:
@@ -56,12 +64,28 @@ with open('result.csv', mode='w') as csv_file:
         token = "."
         first = True
         for c in children:
+            logging.info(c)
+            place = c[1]
             parts = c[0].split(" ")
-            # This is the similarity check, can expand this to handle more cases.
+            # This is the similarity check for name , can expand this to handle more cases.
             if parts[0] == token:
                 if first:
-                    csv_writer.writerow(current)
-                csv_writer.writerow(c)
+                    row = current
+                else:
+                    row = c
+                try:
+                    # Get the Unemployment rate and Household count stat.
+                    # A duplicate place pattern involves one place with "Count_Household" and the other having "UnemploymentRate_Person".
+                    # Two such places with same/similar names are likely one place that was not resolved correctly.
+                    req = API_ROOT + '/v1/stat/set/series?places={}&stat_vars=UnemploymentRate_Person&stat_vars=Count_Household'.format(place)
+                    resp = requests.get(req).json()
+                    ur = resp["data"][place]["data"]["UnemploymentRate_Person"].get("val", {}).get("2018-01", "n/a")
+                    ch = resp["data"][place]["data"]["Count_Household"].get("val", {}).get("2018", "n/a")
+                    row.extend([ur, ch])
+                    time.sleep(0.1)
+                except:
+                    logging.error("connection error: %s", place)
+                csv_writer.writerow(row)
                 first = False
             else:
                 current = c
