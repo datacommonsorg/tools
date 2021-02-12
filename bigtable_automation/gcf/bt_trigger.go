@@ -26,13 +26,12 @@ import (
 const (
 	// TEST represents the test environment, and exported for use in cmd/main.go.
 	TEST = "test"
-	// Prod environment.
-	prod = "prod"
+	// Old Prod environment.
+	prodOld = "prod_popobs"
+	// New Prod environment.
+	prodNew = "prod_sv"
 
-	btProjectID        = "google.com:datcom-store-dev"
-	dataBucket         = "prophet_cache"
 	dataFilePattern    = "cache.csv*"
-	dataflowTemplate   = "gs://datcom-dataflow-templates/templates/csv_to_bt_improved"
 	createTableRetries = 3
 	columnFamily       = "csv"
 	baseCacheType      = "base"
@@ -52,6 +51,10 @@ const (
 )
 
 type environment struct {
+	// Project ID.
+	btProjectID string
+	// Dataflow template path
+	dataflowTemplate string
 	// BT instance holding base caches.
 	baseBTInstance string
 	// Clusters in base BT instance. There can be >1 for replicated instances.
@@ -62,29 +65,49 @@ type environment struct {
 	baseBTNodesLow  int32
 	// BT instance holding branch caches.
 	branchBTInstance string
+	// GCS Bucket used for data files.
+	dataBucket string
 	// GCS Bucket used for control files.
 	controlBucket string
 }
 
 var (
-	// CurrentEnv defaults to prod, and exported for overriding in `cmd/main.go`.
-	CurrentEnv = prod
+	// CurrentEnv defaults to prodOld, and exported for overriding in
+	// `cmd/main.go`.
+	CurrentEnv = prodOld
 
 	envs = map[string]*environment{
-		prod: &environment{
+		prodOld: &environment{
+			btProjectID:			"google.com:datcom-store-dev",
+			dataflowTemplate: "gs://datcom-dataflow-templates/templates/csv_to_bt_improved",
 			baseBTInstance:   "prophet-cache",
 			baseBTClusters:   []string{"prophet-cache-c1"},
 			baseBTNodesHigh:  300,
 			baseBTNodesLow:   20,
 			branchBTInstance: "prophet-branch-cache",
+			dataBucket:       "prophet_cache",
 			controlBucket:    "automation_control",
 		},
+		prodNew: &environment{
+			btProjectID:			"datcom-store",
+			dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt",
+			baseBTInstance:   "prophet-cache",
+			baseBTClusters:   []string{"prophet-cache-c1"},
+			baseBTNodesHigh:  300,
+			baseBTNodesLow:   5,
+			branchBTInstance: "prophet-branch-cache",
+			dataBucket:       "datcom-store",
+			controlBucket:    "datcom-control",
+		},
 		TEST: &environment{
+			btProjectID:      "google.com:datcom-store-dev",
+			dataflowTemplate: "gs://datcom-dataflow-templates/templates/csv_to_bt_improved",
 			baseBTInstance:   "prophet-test",
 			baseBTClusters:   []string{"prophet-test-c1"},
 			baseBTNodesHigh:  3,
 			baseBTNodesLow:   1,
 			branchBTInstance: "prophet-test",
+			dataBucket:       "prophet_cache",
 			controlBucket:    "automation_control_test",
 		},
 	}
@@ -131,14 +154,14 @@ func writeToGCS(ctx context.Context, bucketName, fileName, data string) error {
 	return w.Close()
 }
 
-func launchDataflowJob(ctx context.Context, btInstance, controlBucket, cacheType, tableID string) error {
+func launchDataflowJob(ctx context.Context, env* environment, btInstance, cacheType, tableID string) error {
 	dataflowService, err := dataflow.NewService(ctx)
 	if err != nil {
 		log.Printf("Unable to create dataflow service: %v\n", err)
 		return status.Errorf(codes.Internal, "Unable to create dataflow service: %v", err)
 	}
-	inFile := fmt.Sprintf("gs://%s/%s/%s", dataBucket, tableID, dataFilePattern)
-	outFile := fmt.Sprintf("gs://%s/%s/%s/%s", controlBucket, cacheType, tableID, completedFile)
+	inFile := fmt.Sprintf("gs://%s/%s/%s", env.dataBucket, tableID, dataFilePattern)
+	outFile := fmt.Sprintf("gs://%s/%s/%s/%s", env.controlBucket, cacheType, tableID, completedFile)
 	params := &dataflow.LaunchTemplateParameters{
 		JobName: fmt.Sprintf("%s-csv2bt-%s", CurrentEnv, tableID),
 		Parameters: map[string]string{
@@ -146,13 +169,13 @@ func launchDataflowJob(ctx context.Context, btInstance, controlBucket, cacheType
 			"completionFile":     outFile,
 			"bigtableInstanceId": btInstance,
 			"bigtableTableId":    tableID,
-			"bigtableProjectId":  btProjectID,
+			"bigtableProjectId":  env.btProjectID,
 		},
 	}
 
 	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", btInstance, tableID, inFile, outFile)
-	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(btProjectID, params)
-	_, err = launchCall.GcsPath(dataflowTemplate).Do()
+	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(env.btProjectID, params)
+	_, err = launchCall.GcsPath(env.dataflowTemplate).Do()
 	if err != nil {
 		log.Printf("Unable to launch dataflow job (%s, %s): %v\n", inFile, outFile, err)
 		return status.Errorf(codes.Internal, "Unable to launch dataflow job (%s, %s): %v\n", inFile, outFile, err)
@@ -160,7 +183,7 @@ func launchDataflowJob(ctx context.Context, btInstance, controlBucket, cacheType
 	return nil
 }
 
-func setupBTTable(ctx context.Context, btInstance, tableID string) error {
+func setupBTTable(ctx context.Context, btProjectID, btInstance, tableID string) error {
 	adminClient, err := bigtable.NewAdminClient(ctx, btProjectID, btInstance)
 	if err != nil {
 		log.Printf("Unable to create a table admin client. %v", err)
@@ -193,7 +216,7 @@ func setupBTTable(ctx context.Context, btInstance, tableID string) error {
 	return nil
 }
 
-func scaleBT(ctx context.Context, btInstance string, btClusters []string, numNodes int32) error {
+func scaleBT(ctx context.Context, btProjectID, btInstance string, btClusters []string, numNodes int32) error {
 	// Scale up bigtable cluster. This helps speed up the dataflow job.
 	// We scale down again once dataflow job completes.
 	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, btProjectID)
@@ -251,16 +274,16 @@ func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 		if _, err := readFromGCS(ctx, e.Bucket, launchedPath); err == nil {
 			return status.Errorf(codes.Internal, "Cache was already built for %s/%s: %v", cacheType, tableID, err)
 		}
-		if err := setupBTTable(ctx, btInstance, tableID); err != nil {
+		if err := setupBTTable(ctx, env.btProjectID, btInstance, tableID); err != nil {
 			return err
 		}
 		if cacheType == baseCacheType {
 			// Scale up only for base cache.
-			if err := scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesHigh); err != nil {
+			if err := scaleBT(ctx, env.btProjectID, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesHigh); err != nil {
 				return err
 			}
 		}
-		err = launchDataflowJob(ctx, btInstance, env.controlBucket, cacheType, tableID)
+		err = launchDataflowJob(ctx, env, btInstance, cacheType, tableID)
 		if err != nil {
 			return err
 		}
@@ -280,7 +303,7 @@ func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 		if cacheType == baseCacheType {
-			if err := scaleBT(ctx, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesLow); err != nil {
+			if err := scaleBT(ctx, env.btProjectID, env.baseBTInstance, env.baseBTClusters, env.baseBTNodesLow); err != nil {
 				return err
 			}
 		}
