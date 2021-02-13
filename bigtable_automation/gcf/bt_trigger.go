@@ -78,7 +78,7 @@ var (
 
 	envs = map[string]*environment{
 		prodOld: &environment{
-			btProjectID:			"google.com:datcom-store-dev",
+			btProjectID:      "google.com:datcom-store-dev",
 			dataflowTemplate: "gs://datcom-dataflow-templates/templates/csv_to_bt_improved",
 			baseBTInstance:   "prophet-cache",
 			baseBTClusters:   []string{"prophet-cache-c1"},
@@ -89,7 +89,7 @@ var (
 			controlBucket:    "automation_control",
 		},
 		prodNew: &environment{
-			btProjectID:			"datcom-store",
+			btProjectID:      "datcom-store",
 			dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt",
 			baseBTInstance:   "prophet-cache",
 			baseBTClusters:   []string{"prophet-cache-c1"},
@@ -154,7 +154,7 @@ func writeToGCS(ctx context.Context, bucketName, fileName, data string) error {
 	return w.Close()
 }
 
-func launchDataflowJob(ctx context.Context, env* environment, btInstance, cacheType, tableID string) error {
+func launchDataflowJob(ctx context.Context, env *environment, btInstance, cacheType, tableID string) error {
 	dataflowService, err := dataflow.NewService(ctx)
 	if err != nil {
 		log.Printf("Unable to create dataflow service: %v\n", err)
