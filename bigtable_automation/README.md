@@ -22,6 +22,9 @@ BT automation works as follows:
     *   Branch cache:
         [/bigstore/automation_control/branch/{BT_Table}/...](https://pantheon.corp.google.com/storage/browser/automation_control/branch)
 
+    TODO: The above bucket will change with StatVar migration, update when that
+    appens.
+
     Borg job sets `init`, then GCF on launching the Dataflow job sets `launched`
     and Dataflow job on completion sets `completed`.
 

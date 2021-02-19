@@ -19,6 +19,8 @@ The Cloud Function supports two environments: Prod and Test (refer to
 `environments` global in the source file). The default is Prod, while Test env
 is only used for local testing of the function via `cmd/main.go`.
 
+TODO: Some of the links below need to change after StatVar migration.
+
 ## Build
 
 To build the cloud function locally:

@@ -5,6 +5,8 @@ GCS to Cloud Bigtable.
 
 The template is stored at [gs://datcom-dataflow-templates/templates](https://pantheon.corp.google.com/storage/browser/datcom-dataflow-templates/templates).
 
+TODO: Some links below need to change after StatVar migration.
+
 ## Build
 
 ```
@@ -67,3 +69,9 @@ mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec
 
 NOTE: Running this may throw an exception, but as long as it says `BUILD
 SUCCESS` the template has been updated.
+
+### Stat Var Mode Environment
+
+```
+mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt --region=us-central1"
+```
