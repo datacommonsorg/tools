@@ -83,7 +83,7 @@ import stat_var_renaming_functions as svrf
 _MAX_CONSTRAINTS = 3
 _MAX_CONSTRAINTS_WITH_DPV = 6
 # If true, no new statistical variables will be introduced.
-ONLY_REGENERATE_OUTPUT = False
+_ONLY_REGENERATE_EXISTING = False
 
 
 def authenticate_bq_client():
@@ -124,7 +124,7 @@ def download_stat_vars(client):
     # Dynamically create query for constraints in SQL query.
     constraint_string = ""
     pop_string = ""
-    for num in range(1, _MAX_CONSTRAINTS + 1):
+    for num in range(1, _MAX_CONSTRAINTS_WITH_DPV + 1):
         constraint_string += f"SP.v{num} as v{num},\n"
         pop_string += f"SP.p{num} as p{num},\n"
 
@@ -148,6 +148,7 @@ def download_stat_vars(client):
     for c in range(1, _MAX_CONSTRAINTS_WITH_DPV + 1):
         stat_vars[f"orig_p{c}"] = stat_vars[f"p{c}"]
         stat_vars[f"orig_v{c}"] = stat_vars[f"v{c}"]
+    stat_vars["orig_populationType"] = stat_vars['populationType']
     return stat_vars
 
 
@@ -173,7 +174,7 @@ def remap_constraint_from_prop(row, prop_remap):
     row: Pandas row to apply function to.
     prop_remap: Dictionary of renaming functions for each property.
   """
-    for constraint in range(1, 1 + row['numConstraints']):
+    for constraint in range(1, min(_MAX_CONSTRAINTS_WITH_DPV, 1 + row['numConstraints'])):
         prop = row[f"p{constraint}"]
         if prop in prop_remap:
             # May need to apply multiple functions for a single property.
@@ -256,7 +257,7 @@ def remove_dependent_constraints(stat_vars):
 
     # Merge across common columns shared with dependent variable list.
     common_cols = (['measuredProp', 'populationType', 'statType'] +
-                   ["orig_p" + x for x in range(_MAX_CONSTRAINTS_WITH_DPV)])
+                   [f"orig_p{x}" for x in range(1, 1 + _MAX_CONSTRAINTS_WITH_DPV)])
     stat_vars = pd.merge(stat_vars, dpvs, on=common_cols, how='left')
 
     # Replace any dependent variables and their value with nan.
@@ -271,8 +272,8 @@ def remove_dependent_constraints(stat_vars):
             stat_vars.loc[dpv_match.index, "numConstraints"] = (
                 stat_vars.loc[dpv_match.index,
                               "numConstraints"].apply(lambda x: x - 1))
-        # Left shift all imputed columns to remove holes.
-        stat_vars = stat_vars.apply(left_fill_columns, axis=1)
+        # TODO(REMOVE): Left shift all imputed columns to remove holes.
+        # stat_vars = stat_vars.apply(left_fill_columns, axis=1)
 
         # Rename constraints from merge.
         for c in range(1, _MAX_CONSTRAINTS + 1):
@@ -399,9 +400,9 @@ def ensure_no_overlapping_stat_vars(stat_vars):
     # Print out error if there are real collisions.
     bad_overlaps = bad_overlaps.sort_values(['v1', 'v2', 'v3'])
     bad_overlaps_str = ""
-    for index, row in bad_overlaps.iterrows():
+    for _, row in bad_overlaps.iterrows():
         bad_overlaps_str += row_to_stat_var_mcf(row) + ","
-    assert bad_overlaps.shape[0] == 0, "Duplicate StatVars!: " + bad_overlaps
+    assert bad_overlaps.shape[0] == 0, f"Duplicate StatVars!: {list(bad_overlaps['HumanReadableName'])}"
 
     # No issues so remove these duplicate names.
     return stat_vars.drop_duplicates("HumanReadableName")
@@ -507,20 +508,23 @@ def create_human_readable_names(stat_vars, client):
     svrf.prepend_and_append_text(prop_remap)
     svrf.misc_mappings(prop_remap)
 
-    # Drop erroneous constraints.
-    for c in range(1, _MAX_CONSTRAINTS + 1):
-        stat_vars = stat_vars.query(f"v{c} != 'NAICSUnknown'")
-
     # Apply constraint renamings.
     stat_vars = stat_vars.apply(
         lambda row: remap_constraint_from_prop(row, prop_remap), axis=1)
 
+    # Drop erroneous constraints.
+    for c in range(1, _MAX_CONSTRAINTS + 1):
+        stat_vars = stat_vars.query(f"v{c} != 'NAICSUnknown'")
+
+    # Remap population
+    stat_vars = svrf.rename_populations(stat_vars)
+
     # Remove dependent constraints.
     stat_vars = remove_dependent_constraints(stat_vars)
-    stat_vars = left_fill_columns(stat_vars)
+    stat_vars = stat_vars.apply(left_fill_columns)
 
     # Generate human readable names.
-    stat_vars['HumanReadableName'] = stat_vars.apply(row_to_human_readable)
+    stat_vars['HumanReadableName'] = stat_vars.apply(row_to_human_readable, axis=1)
 
     # Manually rename special case.
     stat_vars.loc[stat_vars['HumanReadableName'] == 'Count_Death_Medicare',
@@ -548,7 +552,7 @@ def output_stat_var_documentation(stat_vars):
     # (False, True) -> Only group disaster StatVar by populationType
     # if there are more than 1 statistical variables for that group.
     svrc.STAT_VAR_POPULATION_GROUPINGS.append(
-        svrc.SVPopGroup(("Disasters", natural_disasters, False, True)))
+        svrc.SVPopGroup("Disasters", natural_disasters, False, True))
 
     # Assert that all population types belong to a category.
     used = []
@@ -619,7 +623,7 @@ def main(argv):
     stat_vars = create_human_readable_names(stat_vars, client)
 
     # Limit to only existing statistical variables if chosen.
-    if ONLY_REGENERATE_OUTPUT:
+    if _ONLY_REGENERATE_EXISTING:
         stat_vars = remove_new_stat_vars(stat_vars, client)
     stat_vars = stat_vars.query("statType != 'Unknown'")
 
