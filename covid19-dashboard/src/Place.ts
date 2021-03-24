@@ -1,4 +1,4 @@
-import {KeyToTimeSeriesType, PlaceInfoType} from "./Types";
+import {KeyToTimeSeriesType, PlaceInfoType} from './Types';
 
 /**
  * Class that represents a given place in the World.
@@ -21,23 +21,25 @@ export default class Place {
   // An object where stat_var->date->value.
   // Can contains multiple stat_vars.
   keyToTimeSeries: KeyToTimeSeriesType;
-  constructor (geoId: string,
-               placeInfo: PlaceInfoType,
-               keyToTimeSeries: KeyToTimeSeriesType) {
-    this.geoId = geoId
-    this.name = placeInfo.name
-    this.containedIn = placeInfo.containedIn
+  constructor(
+    geoId: string,
+    placeInfo: PlaceInfoType,
+    keyToTimeSeries: KeyToTimeSeriesType
+  ) {
+    this.geoId = geoId;
+    this.name = placeInfo.name;
+    this.containedIn = placeInfo.containedIn;
     this.parentPlace = null;
-    this.placeType = placeInfo.placeType
-    this.keyToTimeSeries = keyToTimeSeries
+    this.placeType = placeInfo.placeType;
+    this.keyToTimeSeries = keyToTimeSeries;
   }
 
   /**
    * Returns a boolean representing whether the place holds any subregions.
    */
   private hasSubregions = (): boolean => {
-    return this.placeType === 'State' || this.geoId === 'country/USA'
-  }
+    return this.placeType === 'State' || this.geoId === 'country/USA';
+  };
 
   /**
    * Returns what placeType this place holds as a subregion.
@@ -46,12 +48,12 @@ export default class Place {
    * Example: if Place is a County, return "".
    */
   getSubregionType = (): string => {
-    const hasSubregions = this.hasSubregions()
+    const hasSubregions = this.hasSubregions();
     const subregions: {[region: string]: string} = {
-      "World": "Country",
-      "Country": "State",
-      "State": "County"
-    }
+      World: 'Country',
+      Country: 'State',
+      State: 'County',
+    };
 
     // If the place has subregions, then return the type of subregion.
     // Example: "Country" has "State" subregion.
@@ -59,9 +61,9 @@ export default class Place {
     if (hasSubregions) {
       return subregions[this.placeType];
     } else {
-      return ""
+      return '';
     }
-  }
+  };
 
   /**
    * Sets the pointer to the object of the parent place.
@@ -70,6 +72,6 @@ export default class Place {
    * @param parentPlace
    */
   setParentPlace = (parentPlace: Place): void => {
-    this.parentPlace = parentPlace
-  }
+    this.parentPlace = parentPlace;
+  };
 }

@@ -14,21 +14,20 @@
  limitations under the License.
  */
 
-
-import {TimeSeriesType} from "./Types";
-import LineGraph from "./LineGraph";
-import React from "react";
-import {Colors} from './Utils'
-import numeral from 'numeral'
+import {TimeSeriesType} from './Types';
+import LineGraph from './LineGraph';
+import React from 'react';
+import {Colors} from './Utils';
+import numeral from 'numeral';
 
 type ThPropsType = {
-  timeSeries: TimeSeriesType,
-  typeOf: string,
-  className?: string,
-  graphTitle?: string,
-  graphSubtitle?: string
-  color?: string
-}
+  timeSeries: TimeSeriesType;
+  typeOf: string;
+  className?: string;
+  graphTitle?: string;
+  graphSubtitle?: string;
+  color?: string;
+};
 
 /**
  * Displays a value in the Table.
@@ -40,12 +39,12 @@ type ThPropsType = {
  * @param props.color: what should the color be? grey by default.
  */
 export default (props: ThPropsType) => {
-  const timeSeries = props.timeSeries // the timeSeries being observed.
-  const dates = Object.keys(timeSeries)
-  const latestDate = dates[dates.length - 1]
-  const value = timeSeries[latestDate]
-  const valueString = numeral(value).format('0.0a')
-  const color = props.color ? Colors(props.color) : Colors('grey')
+  const timeSeries = props.timeSeries; // the timeSeries being observed.
+  const dates = Object.keys(timeSeries);
+  const latestDate = dates[dates.length - 1];
+  const value = timeSeries[latestDate];
+  const valueString = numeral(value).format('0.0a');
+  const color = props.color ? Colors(props.color) : Colors('grey');
 
   // Depending on the type of Th, display different th.
   // Numbers should be rounded, but not strings.
@@ -58,14 +57,15 @@ export default (props: ThPropsType) => {
           title={props.graphTitle}
           subtitle={props.graphSubtitle}
           color={color}
-          value={valueString}/>
+          value={valueString}
+        />
       </th>
-    )
+    );
   } else if (props.typeOf === 'number' && value) {
-    return <th>{valueString}</th>
+    return <th>{valueString}</th>;
   } else if (props.typeOf === 'percent' && value) {
-    return <th>{valueString + "%"}</th>
+    return <th>{valueString + '%'}</th>;
   } else {
-    return <th>{'-'}</th>
+    return <th>{'-'}</th>;
   }
-}
+};

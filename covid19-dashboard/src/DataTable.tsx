@@ -16,13 +16,17 @@
 
 import React, {useState} from 'react';
 import chunk from 'lodash/chunk';
-import Place from "./Place";
+import Place from './Place';
 import Th from './Th';
-import MultiButtonGroup from "./MultiButtonGroup";
-import {getLatestDate} from "./Utils";
+import MultiButtonGroup from './MultiButtonGroup';
+import {
+  DashboardConfigType,
+  DashboardContentType,
+  CategoryType,
+  getLatestDate,
+} from './Utils';
 import Table from 'react-bootstrap/Table';
 
-type CategoryType = {title: string,id: string, typeOf: string, color: string, graphSubtitle: string, enabled: boolean}
 type OrientationType = 'desc' | 'asc';
 
 type TableStateType = {
@@ -35,8 +39,8 @@ type TableStateType = {
 type TablePropsType = {
   goToPlace: (geoId?: string, placeType?: string) => void;
   data: Place[];
-  configuration: any;
-  content: any;
+  configuration: DashboardConfigType;
+  content: DashboardContentType;
 };
 
 /**
@@ -49,12 +53,14 @@ type TablePropsType = {
  * The table is divided into pages.
  */
 export default class DataTable extends React.Component<
-  TablePropsType, TableStateType> {
+  TablePropsType,
+  TableStateType
+> {
   state = {
     sortBy: this.props.configuration.tableDefaultSortBy as string,
     order: 'desc' as OrientationType,
     chunkIndex: 0 as number,
-    categories: this.props.content.table as CategoryType[]
+    categories: this.props.content.table as CategoryType[],
   };
 
   chunkSize = 30;
@@ -66,8 +72,8 @@ export default class DataTable extends React.Component<
     // of the headers will be untouched.
     this.state.categories.forEach(header => {
       if (localStorage[header.id])
-        header.enabled = localStorage[header.id] === 'true'
-    })
+        header.enabled = localStorage[header.id] === 'true';
+    });
   }
 
   /**
@@ -139,25 +145,23 @@ export default class DataTable extends React.Component<
   render() {
     // Sort the data based on the last date in the timeSeries.
     const sortedData = this.props.data.sort((a, b) => {
-      const timeSeriesA = a.keyToTimeSeries[this.state.sortBy] || {}
-      const timeSeriesB = b.keyToTimeSeries[this.state.sortBy] || {}
+      const timeSeriesA = a.keyToTimeSeries[this.state.sortBy] || {};
+      const timeSeriesB = b.keyToTimeSeries[this.state.sortBy] || {};
 
-      const latestDateA = getLatestDate(Object.keys(timeSeriesA))
-      const latestDateB = getLatestDate(Object.keys(timeSeriesB))
+      const latestDateA = getLatestDate(Object.keys(timeSeriesA));
+      const latestDateB = getLatestDate(Object.keys(timeSeriesB));
 
-      const valueA = timeSeriesA[latestDateA] || 0
-      const valueB = timeSeriesB[latestDateB] || 0
+      const valueA = timeSeriesA[latestDateA] || 0;
+      const valueB = timeSeriesB[latestDateB] || 0;
 
       // Descending order
       if (this.state.order === 'desc') {
-        return valueB - valueA
-      // Ascending order
+        return valueB - valueA;
+        // Ascending order
       } else {
-        return valueA - valueB
+        return valueA - valueB;
       }
-    })
-
-
+    });
 
     // Chunk the dataset by groups of this.chunkSize.
     // Each element in the chunk represents a row.
@@ -170,14 +174,15 @@ export default class DataTable extends React.Component<
 
     // Get the header names from Content.
     // When the header is clicked, change the sorting.
-    const enabledHeaders = this.state.categories.filter(header => header.enabled)
+    const enabledHeaders = this.state.categories.filter(
+      header => header.enabled
+    );
 
     const tableHeaders = enabledHeaders.map((obj, index) => {
       // Should the title have an arrow?
       const title = this.sortArrow(obj.id) + obj.title;
       return (
-        <th onClick={() => this.sortBy(obj.id)}
-            key={index}>
+        <th onClick={() => this.sortBy(obj.id)} key={index}>
           {title}
         </th>
       );
@@ -192,32 +197,38 @@ export default class DataTable extends React.Component<
         // Get the timeSeries for our current column's id.
         const timeSeries = place.keyToTimeSeries[category.id] || {};
         return (
-          <Th timeSeries={timeSeries}
+          <Th
+            timeSeries={timeSeries}
             typeOf={category.typeOf}
             key={index}
             graphTitle={place.name}
             graphSubtitle={category.graphSubtitle}
-            color={category.color}/>
+            color={category.color}
+          />
         );
       });
 
-      const subregionType = place.getSubregionType()
-      console.log(subregionType)
-      const isClickable = this.props.configuration['placeTypes'].indexOf(subregionType) !== -1
-      console.log(this.props.configuration['placeTypes'])
+      const subregionType = place.getSubregionType();
+      console.log(subregionType);
+      const isClickable =
+        this.props.configuration['placeTypes'].indexOf(subregionType) !== -1;
+      console.log(this.props.configuration['placeTypes']);
 
       // Place's name in the form of "subregion, region".
       // Example: Miami, Florida.
-      let placeFullName = place.name
+      let placeFullName = place.name;
       if (place.placeType !== 'Country') {
         placeFullName += `, ${place.parentPlace?.name}`;
       }
 
       return (
         <tbody key={index}>
-          <tr className={isClickable ? 'clickable' : ''}
-              {...(isClickable && {
-                onClick: () => this.props.goToPlace(place.geoId, subregionType)})}>
+          <tr
+            className={isClickable ? 'clickable' : ''}
+            {...(isClickable && {
+              onClick: () => this.props.goToPlace(place.geoId, subregionType),
+            })}
+          >
             <th>{tableRanking}</th>
             <th>{placeFullName}</th>
             {thValues}
@@ -227,41 +238,46 @@ export default class DataTable extends React.Component<
     });
 
     const content = this.state.categories.map(obj => {
-      return {id: obj.id, title: obj.title, enabled: obj.enabled}
-    })
+      return {id: obj.id, title: obj.title, enabled: obj.enabled};
+    });
 
     return (
       <>
-        <div style={{textAlign: "left"}}>
-          <TableOptions content={content} triggered={(id: string) => {
-            // We will store this in State, so make a deep copy.
-            const deepCopyCategories = [...this.state.categories]
-            // Find the header that matches the id.
-            const header = deepCopyCategories.find(header => header.id === id)
-            if (header) {
-              // Store it in localStorage so that we can move around pages.
-              // Every time the user changes the header, update the localStorage.
+        <div style={{textAlign: 'left'}}>
+          <TableOptions
+            content={content}
+            triggered={(id: string) => {
+              // We will store this in State, so make a deep copy.
+              const deepCopyCategories = [...this.state.categories];
+              // Find the header that matches the id.
+              const header = deepCopyCategories.find(
+                header => header.id === id
+              );
+              if (header) {
+                // Store it in localStorage so that we can move around pages.
+                // Every time the user changes the header, update the localStorage.
 
-              // Current enabled status.
-              const enabled = localStorage[header.id] === 'true'
+                // Current enabled status.
+                const enabled = localStorage[header.id] === 'true';
 
-              // Negate the enabled status.
-              // When onClick -> ON or OFF.
-              header.enabled = !enabled
-              localStorage[header.id] = !enabled
+                // Negate the enabled status.
+                // When onClick -> ON or OFF.
+                header.enabled = !enabled;
+                localStorage[header.id] = !enabled;
 
-              // Update the header selection in State.
-              this.setState({categories: deepCopyCategories})
-            }
-          }}/>
+                // Update the header selection in State.
+                this.setState({categories: deepCopyCategories});
+              }
+            }}
+          />
         </div>
         <Table responsive="l">
           <thead>
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            {tableHeaders}
-          </tr>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              {tableHeaders}
+            </tr>
           </thead>
           {rows}
         </Table>
@@ -275,13 +291,11 @@ export default class DataTable extends React.Component<
   }
 }
 
-
 type TableIndexPaginationPropsType = {
   index: number;
   totalIndexCount: number;
   onIndexChange: (index: number) => void;
 };
-
 
 /**
  * Component that displays pagination buttons below the Table.
@@ -335,45 +349,53 @@ const TableIndexPagination = (props: TableIndexPaginationPropsType) => {
   return <MultiButtonGroup items={allButtons} />;
 };
 
-type HeaderType = {title: string, id: string, enabled: boolean}
+type HeaderType = {title: string; id: string; enabled: boolean};
 type TableOptionsPropsType = {
-  content: HeaderType[],
-  triggered: (id: string) => void
-}
+  content: HeaderType[];
+  triggered: (id: string) => void;
+};
 
 const TableOptions = (props: TableOptionsPropsType) => {
   // if "show" class, the menu will be displayed.
   // if "" class, no menu will be shown.
-  const [showOptionsClass, setShowOptionsClass] = useState("");
+  const [showOptionsClass, setShowOptionsClass] = useState('');
 
   return (
     <div className="btn-group-vertical">
-      <label className={"btn btn-secondary options"} onClick={() => {
-        // Logic for displaying options panel.
-        setShowOptionsClass(showOptionsClass ? "" : "show")}
-      }>
-        <img src={require("./options_icon_18dp.png")}
-             alt={"Statistical Variables"}
-             className={"icon-in-button"}/>
-        {showOptionsClass ? "Close" : "Statistical Variables"}
+      <label
+        className={'btn btn-secondary options'}
+        onClick={() => {
+          // Logic for displaying options panel.
+          setShowOptionsClass(showOptionsClass ? '' : 'show');
+        }}
+      >
+        <img
+          src={require('./options_icon_18dp.png')}
+          alt={'Statistical Variables'}
+          className={'icon-in-button'}
+        />
+        {showOptionsClass ? 'Close' : 'Statistical Variables'}
       </label>
-      <div className={`dropdown-menu shadow ${showOptionsClass}`}
-           style={{width: 300, marginTop: -10, marginLeft: -1}}>
-        {
-          props.content.map(({title, id, enabled}: HeaderType) => {
-            return (
-              <div style={{textAlign: "left"}} key={id}>
-                <label className={'btn'}>
-                  <input type="checkbox"
-                         onChange={() => props.triggered(id)}
-                         style={{marginRight: 5}}
-                         checked={enabled}/>
-                  {title}
-                </label>
-              </div>
-            )})
-        }
+      <div
+        className={`dropdown-menu shadow ${showOptionsClass}`}
+        style={{width: 300, marginTop: -10, marginLeft: -1}}
+      >
+        {props.content.map(({title, id, enabled}: HeaderType) => {
+          return (
+            <div style={{textAlign: 'left'}} key={id}>
+              <label className={'btn'}>
+                <input
+                  type="checkbox"
+                  onChange={() => props.triggered(id)}
+                  style={{marginRight: 5}}
+                  checked={enabled}
+                />
+                {title}
+              </label>
+            </div>
+          );
+        })}
       </div>
     </div>
-  )
-}
+  );
+};
