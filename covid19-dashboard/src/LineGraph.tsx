@@ -14,23 +14,23 @@
  limitations under the License.
  */
 
-import React from "react";
+import React from 'react';
 import {Tooltip, XAxis, YAxis, AreaChart, Area} from 'recharts';
-import sortBy from 'lodash/sortBy'
-import {Colors} from "./Utils";
-import dayjs from "dayjs";
+import sortBy from 'lodash/sortBy';
+import {Colors} from './Utils';
+import dayjs from 'dayjs';
 
 type LineGraphPropsType = {
-  data: {[date: string]: number},
-  value: string,
-  width?: number,
-  height?: number,
-  color?: string,
-  title?: string,
-  subtitle?: string,
-  showAxis?: boolean,
-  className?: string
-}
+  data: {[date: string]: number};
+  value: string;
+  width?: number;
+  height?: number;
+  color?: string;
+  title?: string;
+  subtitle?: string;
+  showAxis?: boolean;
+  className?: string;
+};
 
 /**
  * @param props.data: the timeSeries to display
@@ -51,94 +51,98 @@ export default function LineGraph(props: LineGraphPropsType) {
     // Make sure that the current bar is actively being hovered on.
     if (active) {
       return (
-        <div className={"pop-up shadow"}>
-          <h6 className={"title"}>
-            {props.title}
-          </h6>
-          <h6 className={"title"}
-              style={{color: Colors('grey')}}>
+        <div className={'pop-up shadow'}>
+          <h6 className={'title'}>{props.title}</h6>
+          <h6 className={'title'} style={{color: Colors('grey')}}>
             {props.subtitle}
           </h6>
-          <LineGraph data={props.data}
-                     className={props.className}
-                     width={400}
-                     height={200}
-                     color={props.color}
-                     showAxis={true}
-                     value={props.value}/>
+          <LineGraph
+            data={props.data}
+            className={props.className}
+            width={400}
+            height={200}
+            color={props.color}
+            showAxis={true}
+            value={props.value}
+          />
         </div>
-      )
+      );
     }
     return null;
   };
 
-  const inputData = props.data || {}
+  const inputData = props.data || {};
 
   // Convert the data to a list of objects that the graph can understand.
-  const data = Object.entries(inputData).map(([date, value ]) => {
+  const data = Object.entries(inputData).map(([date, value]) => {
     // Prettify the date.
-    const prettyDate = dayjs(date).format("MMM D 'YY")
+    const prettyDate = dayjs(date).format("MMM D 'YY");
     return {
       // The label to display on graph.
       xAxisLabel: prettyDate,
       // Real iso formatted date.
       date: date,
       // The number for that given date.
-      value: value
-    }
-  })
+      value: value,
+    };
+  });
 
   // If every value in timeSeries are 0, don't return anything.
   if (data.every(item => item.value === 0)) {
-    return <></>
+    return <></>;
   }
 
   // Sort the data by date.
-  const sortedData = sortBy(data, ['date'])
+  const sortedData = sortBy(data, ['date']);
 
   // Color of the graph.
-  const color = Colors(props.color || "--dc-red-strong")
+  const color = Colors(props.color || '--dc-red-strong');
   // Width of the graph.
-  const width = props.width || 125
+  const width = props.width || 125;
   // Height of the graph.
-  const height = props.height || 60
+  const height = props.height || 60;
   // Should the Y and X axis be shown?
-  const showAxis = props.showAxis
+  const showAxis = props.showAxis;
   // Only show axis every n-"interval" dates.
   // Looks cleaner.
-  const interval = Math.round(sortedData.length / 5)
+  const interval = Math.round(sortedData.length / 5);
   // The style of the X-Axis and Y-Axis.
-  const axisStyle = {ill: color, fontSize: 12}
+  const axisStyle = {ill: color, fontSize: 12};
 
   return (
-    <div className={"line-graph"}
-         style={{width: width}}>
-      {props.value &&
-      <h6 className={"value"}
-          style={{color: color}}>
-        {props.value}
-      </h6>}
-      <AreaChart className={"graph " + props.className}
-                 width={width}
-                 height={height}
-                 data={sortedData}>
-        <Area type="monotone"
-              dataKey="value"
-              stroke={color}
-              fillOpacity={0.4}
-              isAnimationActive={false}
-              fill={color}/>
-        <Tooltip position={{y: -170, x: -170}}
-                 wrapperStyle={{zIndex: 1000}}
-                 content={customTooltip}/>
-        <XAxis tick={axisStyle}
-               dataKey={"xAxisLabel"}
-               interval={interval}
-               hide={!showAxis}/>
-        <YAxis type={"number"}
-               tick={axisStyle}
-               hide={!showAxis}/>
+    <div className={'line-graph'} style={{width: width}}>
+      {props.value && (
+        <h6 className={'value'} style={{color: color}}>
+          {props.value}
+        </h6>
+      )}
+      <AreaChart
+        className={'graph ' + props.className}
+        width={width}
+        height={height}
+        data={sortedData}
+      >
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          fillOpacity={0.4}
+          isAnimationActive={false}
+          fill={color}
+        />
+        <Tooltip
+          position={{y: -170, x: -170}}
+          wrapperStyle={{zIndex: 1000}}
+          content={customTooltip}
+        />
+        <XAxis
+          tick={axisStyle}
+          dataKey={'xAxisLabel'}
+          interval={interval}
+          hide={!showAxis}
+        />
+        <YAxis type={'number'} tick={axisStyle} hide={!showAxis} />
       </AreaChart>
     </div>
-  )
+  );
 }
