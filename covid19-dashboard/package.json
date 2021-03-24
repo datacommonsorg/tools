@@ -7,6 +7,7 @@
     "bootstrap": "^4.5.1",
     "dayjs": "^1.8.34",
     "lodash": "^4.17.19",
+    "history": "^5.0.0",
     "numeral": "^2.0.6",
     "react": "^16.13.1",
     "react-bootstrap": "^1.3.0",
@@ -27,6 +28,9 @@
     "prepare": "npm run compile",
     "pretest": "npm run compile",
     "posttest": "npm run lint"
+  },
+  "engines": {
+    "node": ">=14.11.2"
   },
   "eslintConfig": {
     "extends": "react-app"
