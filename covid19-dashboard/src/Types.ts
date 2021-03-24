@@ -14,28 +14,27 @@
  limitations under the License.
  */
 
-
 // These are commonly-used types.
 export type ValueType = {
-  name: string,
-  placeType: string,
-  containedIn: string,
-  keyToTimeSeries: KeyToTimeSeriesType,
-  onClick?: () => void
+  name: string;
+  placeType: string;
+  containedIn: string;
+  keyToTimeSeries: KeyToTimeSeriesType;
+  onClick?: () => void;
 };
 
 export type GeoIdToPlaceInfoType = {
-  [geoId: string]: PlaceInfoType
-}
+  [geoId: string]: PlaceInfoType;
+};
 
 export type PlaceInfoType = {
-  name: string,
-  containedIn: string,
-  placeType: string
-}
+  name: string;
+  containedIn: string;
+  placeType: string;
+};
 
-export type TimeSeriesType = {[date: string]: number}
+export type TimeSeriesType = {[date: string]: number};
 
-export type KeyToTimeSeriesType = {[dataKey: string]: TimeSeriesType}
+export type KeyToTimeSeriesType = {[dataKey: string]: TimeSeriesType};
 
-export type GeoIdToDataType = {[geoId: string]: KeyToTimeSeriesType}
+export type GeoIdToDataType = {[geoId: string]: KeyToTimeSeriesType};

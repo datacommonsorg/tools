@@ -19,24 +19,34 @@ import DataTable from './DataTable';
 import MultiButtonGroup from './MultiButtonGroup';
 import CumulativePanel from './CumulativePanel';
 import NavigationBar from './NavigationBar';
-import {getConfiguration, getContent, getLatestDate, goToPlace} from './Utils';
+import {
+  DashboardConfigType,
+  DashboardContentType,
+  getConfiguration,
+  getContent,
+  getLatestDate,
+  goToPlace,
+} from './Utils';
 import './index.css';
 import '../node_modules/bootstrap/dist/css/bootstrap.min.css';
-import {GeoIdToDataType, GeoIdToPlaceInfoType, KeyToTimeSeriesType} from './Types';
+import {
+  GeoIdToDataType,
+  GeoIdToPlaceInfoType,
+  KeyToTimeSeriesType,
+} from './Types';
 import debounce from 'lodash/debounce';
 import Breadcrumb from 'react-bootstrap/cjs/Breadcrumb';
 import Place from './Place';
 import dayjs from 'dayjs';
 
 type AppPropsType = {
-  location: any;
+  location: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
 type AppStateType = {
   // When searching, this value gets updated.
   searchQuery: string;
 };
-
 
 class App extends React.Component<AppPropsType, AppStateType> {
   // The geoId we are currently observing. Default is World.
@@ -53,9 +63,9 @@ class App extends React.Component<AppPropsType, AppStateType> {
   dashboardId: string;
 
   // JSON containing the charts.
-  Content: any;
+  Content: DashboardContentType;
   // JSON containing the site's configuration.
-  Configuration: any;
+  Configuration: DashboardConfigType;
 
   state = {
     searchQuery: '',
@@ -68,9 +78,9 @@ class App extends React.Component<AppPropsType, AppStateType> {
     this.placeTypeToShow = urlParams.get('placeType') || 'Country';
     this.places = {};
 
-    this.dashboardId = urlParams.get('dashboardId') || 'covid19'
-    this.Content = getContent(this.dashboardId)
-    this.Configuration = getConfiguration(this.dashboardId)
+    this.dashboardId = urlParams.get('dashboardId') || 'covid19';
+    this.Content = getContent(this.dashboardId);
+    this.Configuration = getConfiguration(this.dashboardId);
   }
 
   /**
@@ -151,11 +161,11 @@ class App extends React.Component<AppPropsType, AppStateType> {
           Object.entries(json).forEach(([geoId, value]) => {
             if (geoId in this.places) {
               // Store the timeSeries data for the geoId.
-              this.places[geoId].keyToTimeSeries = value as KeyToTimeSeriesType
+              this.places[geoId].keyToTimeSeries = value as KeyToTimeSeriesType;
             }
-          })
-        })
-      })
+          });
+        });
+      });
     });
   };
 
@@ -209,8 +219,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
     const selectedPlace = this.places[this.geoId];
 
     // Convert the object of geoId->Place to a list of Places.
-    const places: Place[] = Object.values(this.places)
-      .filter(place => {
+    const places: Place[] = Object.values(this.places).filter(place => {
       return place.keyToTimeSeries;
     });
 
@@ -230,10 +239,10 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Generate the cumulativePanel columns from Content.
     const cumulativePanelColumns = this.Content.cumulativePanel.map(
       ({
-         dataKey,
-         title,
-         color,
-       }: {
+        dataKey,
+        title,
+        color,
+      }: {
         dataKey: string;
         title: string;
         color: string;
@@ -280,7 +289,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Get the latest date for all places.
     const dates = places
       .map(place => {
-        const keyToTimeSeries = place.keyToTimeSeries[this.Configuration.tableDefaultSortBy] || {};
+        const keyToTimeSeries =
+          place.keyToTimeSeries[this.Configuration.tableDefaultSortBy] || {};
         // Config.defaultKey contains our reference key for dates.
         // AKA, what is our most complete dataset? We want to get the date
         // from that dataset.
@@ -304,7 +314,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
 
     // Text describing the types of places viewing viewed.
     // "Countries in", "States in", "Counties in".
-    const pluralPlaceTypes: {[key: string]: string} = this.Configuration.pluralPlaceTypes;
+    const pluralPlaceTypes: {[key: string]: string} = this.Configuration
+      .pluralPlaceTypes;
     let subtitle = '';
 
     // If placeName is "" or undefined, don't display a subtitle.
@@ -334,8 +345,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
     // Subregion button that is displayed when viewing country/USA.
     // "Compare States" and "Compare Counties".
 
-    const subregionSelectionButton: {id: string, text: string}[]
-      = this.Configuration.subregionSelectionButton
+    const subregionSelectionButton: {id: string; text: string}[] = this
+      .Configuration.subregionSelectionButton;
 
     const subregionButtons = subregionSelectionButton.map(button => {
       const placeType = button.id;
@@ -364,7 +375,7 @@ class App extends React.Component<AppPropsType, AppStateType> {
         />
         <div className={'site-container fadeIn'}>
           <div className={'header'}>
-            <h6>{"Latest data from " + formattedDate}</h6>
+            <h6>{'Latest data from ' + formattedDate}</h6>
             {
               // Only display the breadcrumb if not in World view.
               this.geoId !== 'World' && (
@@ -375,7 +386,8 @@ class App extends React.Component<AppPropsType, AppStateType> {
                         href="#"
                         key={i}
                         active={item.active}
-                        onClick={item.onClick}>
+                        onClick={item.onClick}
+                      >
                         {item.text}
                       </Breadcrumb.Item>
                     );
@@ -393,11 +405,14 @@ class App extends React.Component<AppPropsType, AppStateType> {
           </div>
           <CumulativePanel textToValue={cumulativePanelColumns} />
           <div className={'content'}>
-            <DataTable goToPlace={(geoId?: string, placeType?: string) => {
-                                  goToPlace(this.dashboardId, geoId, placeType)}}
-                       data={filteredPlaces}
-                       configuration={this.Configuration}
-                       content={this.Content}/>
+            <DataTable
+              goToPlace={(geoId?: string, placeType?: string) => {
+                goToPlace(this.dashboardId, geoId, placeType);
+              }}
+              data={filteredPlaces}
+              configuration={this.Configuration}
+              content={this.Content}
+            />
           </div>
           <footer>{this.Configuration.footer}</footer>
         </div>

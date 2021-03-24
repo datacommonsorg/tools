@@ -14,14 +14,14 @@
  limitations under the License.
  */
 
-import './navigationbar.scss'
-import React, {ChangeEvent} from "react";
+import './navigationbar.scss';
+import React, {ChangeEvent} from 'react';
 
 type HeaderPropsType = {
-  title: string,
-  subtitle: string,
-  onType: (event: ChangeEvent) => void
-}
+  title: string;
+  subtitle: string;
+  onType: (event: ChangeEvent) => void;
+};
 
 /**
  * The navigation header shown on top of the page.
@@ -31,29 +31,36 @@ type HeaderPropsType = {
  */
 export default (props: HeaderPropsType) => (
   <header id="main-header">
-    <nav className="navbar navbar-dark navbar-expand-lg col"
-         id="main-nav">
+    <nav className="navbar navbar-dark navbar-expand-lg col" id="main-nav">
       <div className="container-fluid">
         <div className="navbar-brand">
-          <a href={"https://datacommons.org/"}>
-            {props.title}
-          </a>
+          <a href={'https://datacommons.org/'}>{props.title}</a>
           <span> {props.subtitle}</span>
         </div>
         <form className="form-inline">
-          <a className="nav-link" href={"/dashboard/?dashboardId=covid19"}>COVID-19</a>
-          <a className="nav-link" href={"/dashboard/?dashboardId=socialWellness"}>Social Wellness</a>
-          <input className="form-control mr-sm ml-4"
-                 type="text"
-                 onKeyDown={
-                   // Prevents re-load of page when on-enter.
-                   (e) => {
-                   if (e.keyCode === 13) e.preventDefault()
-                 }}
-                 onChange={props.onType}
-                 placeholder={"Search for Place"}/>
+          <a className="nav-link" href={'/dashboard/?dashboardId=covid19'}>
+            COVID-19
+          </a>
+          <a
+            className="nav-link"
+            href={'/dashboard/?dashboardId=socialWellness'}
+          >
+            Social Wellness
+          </a>
+          <input
+            className="form-control mr-sm ml-4"
+            type="text"
+            onKeyDown={
+              // Prevents re-load of page when on-enter.
+              e => {
+                if (e.keyCode === 13) e.preventDefault();
+              }
+            }
+            onChange={props.onType}
+            placeholder={'Search for Place'}
+          />
         </form>
       </div>
     </nav>
   </header>
-)
+);
