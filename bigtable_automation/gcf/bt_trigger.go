@@ -93,7 +93,7 @@ var (
 			dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt",
 			baseBTInstance:   "prophet-cache",
 			baseBTClusters:   []string{"prophet-cache-c1"},
-			baseBTNodesHigh:  300,
+			baseBTNodesHigh:  298,
 			baseBTNodesLow:   5,
 			branchBTInstance: "prophet-branch-cache",
 			dataBucket:       "datcom-store",

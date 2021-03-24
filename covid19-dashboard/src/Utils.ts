@@ -14,6 +14,53 @@
  limitations under the License.
  */
 
+import covidConfig from './covid19.json';
+import socialConfig from './socialWellness.json';
+
+export type DashboardConfigType = {
+  subtitle: string;
+  footer: string;
+  placeTypes: string[];
+  subregionSelectionButton: {
+    id: string;
+    text: string;
+  }[];
+  pluralPlaceTypes: {
+    Country: string;
+    State: string;
+    County: string;
+  };
+  tableDefaultSortBy: string;
+};
+
+export type CategoryType = {
+  title: string;
+  id: string;
+  typeOf: string;
+  color: string;
+  graphSubtitle: string;
+  enabled: boolean;
+};
+
+export type DashboardContentType = {
+  cumulativePanel: {
+    title: string;
+    dataKey: string;
+    color: string;
+  }[];
+  table: CategoryType[];
+};
+
+type DashboardConfigJsonType = {
+  configuration: DashboardConfigType;
+  content: DashboardContentType;
+};
+
+const VALID_CONFIG: {[key: string]: DashboardConfigJsonType} = {
+  covid19: covidConfig,
+  socialWellness: socialConfig,
+};
+
 /**
  * Converts a number to a string including commas for readability.
  * For example, int(10000) would get converted to str(10,000)
@@ -54,7 +101,11 @@ export const Colors = (color: string): string => {
  * Example: geoId=country/USA and placeType=County
  * would display all counties in the USA.
  */
-export const goToPlace = (dashboardId: string, geoId?: string, placeType?: string): void => {
+export const goToPlace = (
+  dashboardId: string,
+  geoId?: string,
+  placeType?: string
+): void => {
   let newUrl = `/dashboard/?dashboardId=${dashboardId}`;
 
   // Redirect to a specific geoId.
@@ -71,7 +122,7 @@ export const goToPlace = (dashboardId: string, geoId?: string, placeType?: strin
     newUrl += `&placeType=${placeType}`;
   } else if (!placeType && geoId) {
     // Otherwise, State is defaulted.
-    newUrl += `&placeType=State`;
+    newUrl += '&placeType=State';
   }
 
   // Redirect to new url.
@@ -79,9 +130,17 @@ export const goToPlace = (dashboardId: string, geoId?: string, placeType?: strin
 };
 
 export const getContent = (dashboardId: string) => {
-  return require(`./${dashboardId}.json`)?.['content'] || {}
-}
+  if (dashboardId in VALID_CONFIG) {
+    const config = VALID_CONFIG[dashboardId];
+    return config.content;
+  }
+  throw new Error('Invalid config specified');
+};
 
 export const getConfiguration = (dashboardId: string) => {
-  return require(`./${dashboardId}.json`)?.['configuration'] || {}
-}
+  if (dashboardId in VALID_CONFIG) {
+    const config = VALID_CONFIG[dashboardId];
+    return config.configuration;
+  }
+  throw new Error('Invalid config specified');
+};
