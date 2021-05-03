@@ -40,8 +40,8 @@ go build main.go
     ```
 
 1. Pick a recent branch cache build to use for the test---any `branch_` prefix
-   directory from [`prophet-cache`
-   bucket](https://pantheon.corp.google.com/storage/browser/prophet_cache;tab=objects)
+   directory from [`datcom-store`
+   bucket](https://pantheon.corp.google.com/storage/browser/datcom-store;tab=objects)
    will do.
 
    Just in case a test was run with that cache before, clean-up first:
@@ -84,6 +84,6 @@ go build main.go
 
 After validating the change in test environment, deploy to PROD by manually
 copying over the cloud function to
-[prophet-cache-trigger](https://pantheon.corp.google.com/functions/details/us-central1/prophet-cache-trigger?organizationId=433637338589&project=google.com:datcom-store-dev&tab=source).
+[prophet-cache-trigger](https://pantheon.corp.google.com/functions/details/us-central1/prophet-cache-trigger?organizationId=433637338589&project=datcom-store&tab=source).
 
 TODO: Improve deployment process.

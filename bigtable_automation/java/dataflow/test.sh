@@ -21,7 +21,7 @@ elif [[ "$1" == "run-cache" ]]; then
 
   gcloud dataflow jobs run test-csv2bt-${TABLE} \
     --gcs-location gs://datcom-dataflow-templates/templates/csv_to_bt_test \
-    --parameters inputFile=gs://prophet_cache/${TABLE}/cache.csv*,completionFile=gs://automation_control_test/finished-${TABLE}.txt,bigtableInstanceId=prophet-test,bigtableTableId=${TABLE},bigtableProjectId=google.com:datcom-store-dev
+    --parameters inputFile=gs://datcom-store/${TABLE}/cache.csv*,completionFile=gs://automation_control_test/finished-${TABLE}.txt,bigtableInstanceId=prophet-test,bigtableTableId=${TABLE},bigtableProjectId=google.com:datcom-store-dev
 
 elif [[ "$1" == "run-csv" ]]; then
 

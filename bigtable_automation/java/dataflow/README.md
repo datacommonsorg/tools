@@ -3,9 +3,7 @@
 The CSVImport dataflow template creates dataflow jobs to ingest CSV data from
 GCS to Cloud Bigtable.
 
-The template is stored at [gs://datcom-dataflow-templates/templates](https://pantheon.corp.google.com/storage/browser/datcom-dataflow-templates/templates).
-
-TODO: Some links below need to change after StatVar migration.
+The template is stored at [gs://datcom-templates/templates](https://pantheon.corp.google.com/storage/browser/datcom-templates/templates).
 
 ## Build
 
@@ -23,8 +21,8 @@ mvn compile
     ```
 
 2.  Pick a recent branch cache build to use for the test---any `branch_` prefix
-    directory from [`prophet-cache`
-    bucket](https://pantheon.corp.google.com/storage/browser/prophet_cache;tab=objects)
+    directory from [`datcom-store`
+    bucket](https://pantheon.corp.google.com/storage/browser/datcom-store;tab=objects)
     will do.
 
 3.  Run the Dataflow job in the test BT environment against the test template.
@@ -64,14 +62,8 @@ After validating the change in test environment, deploy it to PROD template by
 running the following command.
 
 ```
-mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/improved_staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt_improved --region=us-central1"
+mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt --region=us-central1"
 ```
 
 NOTE: Running this may throw an exception, but as long as it says `BUILD
 SUCCESS` the template has been updated.
-
-### Stat Var Mode Environment
-
-```
-mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt --region=us-central1"
-```
