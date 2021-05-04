@@ -74,7 +74,7 @@ type environment struct {
 var (
 	// CurrentEnv defaults to prodOld, and exported for overriding in
 	// `cmd/main.go`.
-	CurrentEnv = prodOld
+	CurrentEnv = prodNew
 
 	envs = map[string]*environment{
 		prodOld: &environment{
@@ -94,7 +94,7 @@ var (
 			baseBTInstance:   "prophet-cache",
 			baseBTClusters:   []string{"prophet-cache-c1"},
 			baseBTNodesHigh:  298,
-			baseBTNodesLow:   5,
+			baseBTNodesLow:   20,
 			branchBTInstance: "prophet-branch-cache",
 			dataBucket:       "datcom-store",
 			controlBucket:    "datcom-control",
