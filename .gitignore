@@ -1,4 +1,4 @@
-*.class
+.env
 .vscode
-**__pycache__**
-**node_modules**
+dpv.textproto
+pop_obs_spec_common.textproto
