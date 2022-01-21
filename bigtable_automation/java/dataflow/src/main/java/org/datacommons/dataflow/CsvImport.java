@@ -42,7 +42,8 @@ public class CsvImport {
       try {
         // TODO: Pass header as congfiguration.
         String[] headers = new String[] {"value"};
-        String[] values = c.element().split(",");
+        // Include trailing empty strings (to handle empty values).
+        String[] values = c.element().split(",", -1);
         Preconditions.checkArgument(headers.length == (values.length-1)); // first element of values is key for BT row.
 
         byte[] rowkey = Bytes.toBytes(values[0]);
