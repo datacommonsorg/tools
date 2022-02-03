@@ -62,7 +62,7 @@ After validating the change in test environment, deploy it to PROD template by
 running the following command.
 
 ```
-mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt --region=us-central1"
+mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt --region=us-central1 --usePublicIps=false"
 ```
 
 NOTE: Running this may throw an exception, but as long as it says `BUILD
