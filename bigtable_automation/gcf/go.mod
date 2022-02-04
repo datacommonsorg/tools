@@ -1,6 +1,6 @@
-module btcachegeneration
+module example.com/btcachegeneration
 
-go 1.15
+go 1.13
 
 require (
 	cloud.google.com/go/bigtable v1.6.0

@@ -48,6 +48,9 @@ const (
 	launchedFile = "launched.txt"
 	// Completed: written by dataflow to mark completion of BT import.
 	completedFile = "completed.txt"
+
+	// Default region
+	region = "us-central1"
 )
 
 type environment struct {
@@ -170,6 +173,7 @@ func launchDataflowJob(ctx context.Context, env *environment, btInstance, cacheT
 			"bigtableInstanceId": btInstance,
 			"bigtableTableId":    tableID,
 			"bigtableProjectId":  env.btProjectID,
+			"region": region,
 		},
 	}
 
