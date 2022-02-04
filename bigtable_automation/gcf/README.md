@@ -82,8 +82,12 @@ go build main.go
 
 ## Deployment
 
-After validating the change in test environment, deploy to PROD by manually
-copying over the cloud function to
-[prophet-cache-trigger](https://pantheon.corp.google.com/functions/details/us-central1/prophet-cache-trigger?organizationId=433637338589&project=datcom-store&tab=source).
+After validating the change in test environment, deploy to PROD by running:
 
-TODO: Improve deployment process.
+```
+./deploy.sh
+```
+
+When this completes, look at the
+[prophet-cache-trigger](https://pantheon.corp.google.com/functions/details/us-central1/prophet-cache-trigger?organizationId=433637338589&project=datcom-store&tab=source)
+on GCP console to version.
