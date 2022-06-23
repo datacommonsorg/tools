@@ -18,14 +18,13 @@ to make public data accessible to everyone.
 To see the extent of data we have today, browse the graph using our
 [browser](https://browser.datacommons.org/).
 
-
 ## License
 
 Apache 2.0
 
 ### GitHub Development Process
 
-In https://github.com/datacommonsorg/tools, click on "Fork" button to fork the repo.
+In [Github Repo](https://github.com/datacommonsorg/tools), click on "Fork" button to fork the repo.
 
 Clone your forked repo to your desktop.
 
@@ -60,4 +59,3 @@ on our [issues](https://github.com/datacommonsorg/tools/issues) page. For all
 other questions, please send an email to `support@datacommons.org`.
 
 **Note** - This is not an officially supported Google product.
-

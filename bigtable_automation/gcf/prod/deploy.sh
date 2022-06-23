@@ -9,5 +9,5 @@ gcloud config set project datcom-store
 gcloud functions deploy prophet-cache-trigger \
   --region 'us-central1' \
   --entry-point BTImportController \
-  --runtime go113 \
+  --runtime go116 \
   --trigger-bucket datcom-control
