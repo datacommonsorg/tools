@@ -15,7 +15,7 @@
 
 
 if [[ $# != 1 ]]; then
-  echo "Usage: $0 (base|branch)" >&2
+  echo "Usage: $0 (base|branch|private)" >&2
   exit 1
 fi
 
