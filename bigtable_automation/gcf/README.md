@@ -74,7 +74,8 @@ is only used for local testing of the function via `cmd/main.go`.
 After validating the change in test environment, deploy to PROD by running:
 
 ```bash
-./prod/deploy.sh
+./prod/deploy.sh base
+./prod/deploy.sh branch
 ```
 
 When this completes, look at the
