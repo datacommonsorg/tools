@@ -1,8 +1,8 @@
 projectID: "datcom-store"
 instance: "prophet-cache"
 cluster: "prophet-cache-c1"
-nodesHigh: 298
-nodesLow: 20
+nodesHigh: "298"
+nodesLow: "20"
 dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt"
 dataPath: "gs://datcom-store"
 controlPath: "gs://datcom-control/base"

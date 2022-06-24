@@ -146,17 +146,20 @@ func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error
 	if err != nil {
 		return errors.Wrap(err, "Unable to create a table admin client")
 	}
-	// Create table. We retry 3 times in 1 minute intervals.
+	// Create table. We retry 3 times in 10 seconds intervals.
 	dctx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Minute))
 	defer cancel()
 	var ok bool
 	for ii := 0; ii < createTableRetries; ii++ {
 		log.Printf("Creating new bigtable table (%d): %s/%s", ii, btInstance, tableID)
-		if err = adminClient.CreateTable(dctx, tableID); err == nil {
+		err = adminClient.CreateTable(dctx, tableID)
+		if err != nil {
+			log.Printf("Error creating table %s, retry...", err)
+		} else {
 			ok = true
 			break
 		}
-		time.Sleep(1 * time.Minute)
+		time.Sleep(10 * time.Second)
 	}
 	if !ok {
 		return errors.Errorf("Unable to create table: %s, got error: %v", tableID, err)

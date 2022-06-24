@@ -21,16 +21,19 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT="$(dirname "$DIR")"
+
+cd $DIR
+PROJECT_ID=$(yq eval '.projectID' $1.yaml)
+BUCKET=$(yq eval '.controlPath' $1.yaml | cut -f3 -d'/')
+
 cd $ROOT
-
-# Prepare directory
-mkdir -p /tmp/deploy_bt_gcf
-cp bt_trigger.go go.mod /tmp/deploy_bt_gcf
-cd /tmp/deploy_bt_gcf
-
-gcloud config set project datcom-store
+gcloud config set project $PROJECT_ID
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable dataflow.googleapis.com
 gcloud functions deploy prophet-cache-trigger-$1 \
   --region 'us-central1' \
   --entry-point BTImportController \
   --runtime go116 \
-  --trigger-bucket datcom-control
+  --trigger-bucket $BUCKET \
+  --env-vars-file prod/$1.yaml \
+  --timeout 300
