@@ -26,10 +26,18 @@ cd $DIR
 PROJECT_ID=$(yq eval '.projectID' $1.yaml)
 BUCKET=$(yq eval '.controlPath' $1.yaml | cut -f3 -d'/')
 
+## TODO: move all of these as one-time setup
 cd $ROOT
 gcloud config set project $PROJECT_ID
+
 gcloud services enable cloudbuild.googleapis.com
+
 gcloud services enable dataflow.googleapis.com
+
+gcloud compute networks subnets update default \
+--region=us-central1 \
+--enable-private-ip-google-access
+
 gcloud functions deploy prophet-cache-trigger-$1 \
   --region 'us-central1' \
   --entry-point BTImportController \
