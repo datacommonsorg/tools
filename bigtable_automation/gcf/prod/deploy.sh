@@ -19,6 +19,11 @@ if [[ $# != 1 ]]; then
   exit 1
 fi
 
+if [[ $1 != "base" && $1 != "branch" && $1 != "private" ]]; then
+  echo "Usage: $0 (base|branch|private)" >&2
+  exit 1
+fi
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT="$(dirname "$DIR")"
 
