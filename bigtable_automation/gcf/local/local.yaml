@@ -1,0 +1,8 @@
+projectID: "google.com:datcom-store-dev"
+instance: "prophet-test"
+cluster: "prophet-test-c1"
+nodesHigh: "3"
+nodesLow: "1"
+dataflowTemplate: "gs://datcom-dataflow-templates/templates/csv_to_bt_improved"
+dataPath: "gs://prophet_cache"
+controlPath: "gs://automation_control_test"

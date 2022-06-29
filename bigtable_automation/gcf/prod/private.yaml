@@ -1,0 +1,8 @@
+projectID: "datcom-website-private"
+instance: "dc-graph"
+cluster: "dc-graph-c1"
+nodesHigh: "2"
+nodesLow: "1"
+dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt"
+dataPath: "gs://datcom-website-private-resources/cache"
+controlPath: "gs://datcom-website-private-resources/control"

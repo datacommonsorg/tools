@@ -1,0 +1,8 @@
+projectID: "datcom-store"
+instance: "prophet-branch-cache"
+cluster: "prophet-cache-c1"
+nodesHigh: "3"
+nodesLow: "1"
+dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt"
+dataPath: "gs://datcom-store"
+controlPath: "gs://datcom-control/branch"
