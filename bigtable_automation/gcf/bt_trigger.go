@@ -243,16 +243,22 @@ func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 		return errors.Wrap(err, "Unable to parse 'nodesLow' as an integer")
 	}
 	// Get control bucket and object
-	controlBucket, _, err := parsePath(controlPath)
+	controlBucket, controlFolder, err := parsePath(controlPath)
 	if err != nil {
 		return err
 	}
 	if e.Bucket != controlBucket {
-		return errors.Errorf("Unexpected bucket %s", e.Bucket)
+		log.Printf("Unexpected bucket: %s, skip processing", e.Bucket)
+		return nil
 	}
 	// Get table ID.
 	parts := strings.Split(e.Name, "/")
 	tableID := parts[len(parts)-2]
+	triggerFolder := strings.Join(parts[0:len(parts)-2], "/")
+	if triggerFolder != controlFolder {
+		log.Printf("Unexpected control folder: %s, skip processing", triggerFolder)
+		return nil
+	}
 
 	numNodes, err := getBTNodes(ctx, projectID, instance, cluster)
 	if err != nil {
