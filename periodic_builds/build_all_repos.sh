@@ -1,3 +1,16 @@
+# Returns the first folder in a path-like string that doesn't start with /
+#
+# Examples:
+# foo/bar/test.txt -> foo
+# foo/bar -> foo
+# foo -> foo
+#
+# Parameters
+# $1 is the pathlike string
+function get_root_folder_of_path_like {
+	echo $1 | cut -d'/' -f1
+}
+
 # Submits a cloud build job and pipes output to a file
 # Moves the output file to folder `success` if return code is 0
 # Otherwise, moves it to folder `failed`
@@ -5,9 +18,12 @@
 # Parameters
 # $1 is the path to the config file
 # $2 is the path to the code folder
-# $3 is the name of the file to pipe output to
 function submit_cloud_build {
-	gcloud builds submit --config $1 $2 &> $3
+	outfile="$1.out"
+	repo_folder=$(get_root_folder_of_path_like $1)
+	echo $repo_folder
+	return 0
+	gcloud builds submit --config $1 $repo_folder &> $outfile
 	if [ $? -ne 0 ]; then
 		mv $3 $FAILED_FOLDER
 	else
@@ -28,36 +44,36 @@ function clone_git {
 
 function build_import {
 	clone_git datacommonsorg/import
-	submit_cloud_build import/build/cloudbuild.java.yaml import import_java.out.txt
-	submit_cloud_build import/build/cloudbuild.npm.yaml import import_npm.out.txt
+	submit_cloud_build import/build/cloudbuild.java.yaml
+	submit_cloud_build import/build/cloudbuild.npm.yaml
 }
 
 function build_data {
 	clone_git datacommonsorg/data
-	submit_cloud_build data/cloudbuild.go.yaml data data_go.out.txt
-	submit_cloud_build data/cloudbuild.py.yaml data data_py.out.txt
+	submit_cloud_build data/cloudbuild.go.yaml
+	submit_cloud_build data/cloudbuild.py.yaml
 }
 
 function build_mixer {
 	clone_git datacommonsorg/mixer
-	submit_cloud_build mixer/build/ci/cloudbuild.test.yaml mixer mixer.out.txt
+	submit_cloud_build mixer/build/ci/cloudbuild.test.yaml
 }
 
 function build_recon {
 	clone_git datacommonsorg/reconciliation
-	submit_cloud_build reconciliation/build/ci/cloudbuild.test.yaml reconciliation reconciliation.out.txt
+	submit_cloud_build reconciliation/build/ci/cloudbuild.test.yaml
 }
 
 function build_website {
 	clone_git datacommonsorg/website
-	submit_cloud_build website/build/ci/cloudbuild.npm.yaml website website_npm.out.txt
-	submit_cloud_build website/build/ci/cloudbuild.py.yaml website website_py.out.txt
-	submit_cloud_build website/build/ci/cloudbuild.webdriver.yaml website website_webdriver.out.txt
+	submit_cloud_build website/build/ci/cloudbuild.npm.yaml
+	submit_cloud_build website/build/ci/cloudbuild.py.yaml
+	submit_cloud_build website/build/ci/cloudbuild.webdriver.yaml
 }
 
 function build_api_python {
 	clone_git datacommonsorg/api-python
-	submit_cloud_build api-python/cloudbuild.yaml api-python api-python.out.txt
+	submit_cloud_build api-python/cloudbuild.yaml
 }
 
 cd $TMP_FOLDER
