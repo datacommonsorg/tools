@@ -65,11 +65,6 @@ function build_mixer {
 	submit_cloud_build mixer/build/ci/cloudbuild.test.yaml
 }
 
-function build_recon {
-	clone_dc reconciliation
-	submit_cloud_build reconciliation/build/ci/cloudbuild.test.yaml
-}
-
 function build_website {
 	clone_dc website
 	submit_cloud_build website/build/ci/cloudbuild.npm.yaml
