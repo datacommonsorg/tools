@@ -36,7 +36,13 @@ where `<dc_repo_name>` is the name of the repository under the `datacommonsorg`
 GitHub account where the build file can be found.
 
 To add a new build to the periodic builds suite, add a line `builds.txt`
-according to the syntax above.
+according to the syntax above. For example, if we wanted to add a build called
+`cloudbuild.goldens.yaml` in the path `build/ci` in a `datacommonsorg`
+repository named `myshinyrepo`, you would add the following line to `builds.txt`:
+
+```
+myshinyrepo/build/ci/cloudbuild.goldens.yaml
+```
 
 ## Launching this Build Manually
 
