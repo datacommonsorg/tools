@@ -11,13 +11,13 @@ function get_root_folder_of_path_like {
 	echo $1 | cut -d'/' -f1
 }
 
-# Submits a cloud build job and pipes output to a file
-# Moves the output file to folder `success` if return code is 0
-# Otherwise, moves it to folder `failed`
+# Submits a cloud build job and pipes output to a file that is in the format
+# <cloudbuild_path_name>.out
+# Moves the output to $SUCCESS_FOLDER if the build job completes
+# successfully, or to $FAILED_FOLDER otherwise.
 #
 # Parameters
 # $1 is the path to the config file
-# $2 is the path to the code folder
 function submit_cloud_build {
 	outfile="$1.out"
 	repo_folder=$(get_root_folder_of_path_like $1)
@@ -38,7 +38,7 @@ function submit_cloud_build {
 # necessary
 #
 # Example:
-	# `clone_dc import` will clone `https://github.com/datacommonsorg/import`
+	# `clone_dc import` will clone `https://github.com/datacommonsorg/import.git`
 #
 # Parameters
 # $1 is the name of the repo, e.g. "import" to clone datacommonsorg/import
@@ -48,52 +48,34 @@ function clone_dc {
 	git clone $url
 }
 
-function build_import {
-	clone_dc import
-	submit_cloud_build import/build/cloudbuild.java.yaml
-	submit_cloud_build import/build/cloudbuild.npm.yaml
+function main {
+	$BUILDS_FILE="builds.txt"
+
+	# Move to the $TMP_FOLDER defined from the environment and
+	# create SUCCESS and FAILED folders
+	cd $TMP_FOLDER
+	mkdir $SUCCESS_FOLDER
+	mkdir $FAILED_FOLDER
+
+	# Synchronously clone git repositories
+	while read -r cloudbuild_path; do
+		clone_dc $(get_root_folder_of_path_like $cloudbuild_path)
+	done < $BUILDS_FILE
+
+	# Launch the build jobs in parallel, accumulating process IDs
+	# in $pids. reference: https://stackoverflow.com/a/26240420
+	pids=""
+	while read -r cloudbuild_path; do
+		echo "running cloudbuild: $cloudbuild_path"
+		submit_cloud_build $cloudbuild_path &
+		pid=$! # $! is the process ID of the last command ran
+		pids="$pids $!"
+	done < $BUILDS_FILE
+
+	# Wait for all jobs to return before returning
+	echo "all jobs launched, waiting for them to complete to return"
+	wait $pids
+	echo "all processes returned, returning."
 }
 
-function build_data {
-	clone_dc data
-	submit_cloud_build data/cloudbuild.go.yaml
-	submit_cloud_build data/cloudbuild.py.yaml
-}
-
-function build_mixer {
-	clone_dc mixer
-	submit_cloud_build mixer/build/ci/cloudbuild.test.yaml
-}
-
-function build_website {
-	clone_dc website
-	submit_cloud_build website/build/ci/cloudbuild.npm.yaml
-	submit_cloud_build website/build/ci/cloudbuild.py.yaml
-	submit_cloud_build website/build/ci/cloudbuild.webdriver.yaml
-}
-
-function build_api_python {
-	clone_dc api-python
-	submit_cloud_build api-python/cloudbuild.yaml
-}
-
-cd $TMP_FOLDER
-
-mkdir $SUCCESS_FOLDER
-mkdir $FAILED_FOLDER
-
-
-# Parallelize the build functions, reference: https://stackoverflow.com/a/26240420
-pids=""
-build_cmds_to_run=('build_import' 'build_data' 'build_mixer' 'build_recon'
-	'build_website' 'build_api_python')
-for build_cmd in ${build_cmds_to_run[*]}; do
-	echo "running build function: $build_cmd"
-	$build_cmd &
-	pid=$!
-	pids="$pids $pid"
-done
-
-echo "all jobs launched, waiting for them to complete to return"
-wait $pids
-echo "all processes returned, returning."
+main
