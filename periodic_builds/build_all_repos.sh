@@ -26,8 +26,10 @@ function submit_cloud_build {
 	# this job is running.
 	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
 	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
+	echo "$cloudbuild_link"
 	echo "Link to this cloudbuild:\n$cloudbuild_link\n\n\n" > $outfile
 
+	return 0
 	# ">> $outfile" redirects stdout to append to $outfile
 	# "2>&1" redirects "stderr" to where "stdout" is going
 	# The result is that both stdout and stderr are appended to $outfile
@@ -58,7 +60,7 @@ function clone_dc {
 }
 
 function main {
-	$BUILDS_FILE="builds.txt"
+	BUILDS_FILE="$PWD/builds.txt"
 
 	# Move to the $TMP_FOLDER defined from the environment and
 	# create SUCCESS and FAILED folders
@@ -69,7 +71,7 @@ function main {
 	# Synchronously clone git repositories
 	while read -r cloudbuild_path; do
 		clone_dc $(get_root_folder_of_path_like $cloudbuild_path)
-	done < $BUILDS_FILE
+	done < "$BUILDS_FILE"
 
 	# Launch the build jobs in parallel, accumulating process IDs
 	# in $pids. reference: https://stackoverflow.com/a/26240420
@@ -79,7 +81,7 @@ function main {
 		submit_cloud_build $cloudbuild_path &
 		pid=$! # $! is the process ID of the last command ran
 		pids="$pids $!"
-	done < $BUILDS_FILE
+	done < "$BUILDS_FILE"
 
 	# Wait for all jobs to return before returning
 	echo "all jobs launched, waiting for them to complete to return"
