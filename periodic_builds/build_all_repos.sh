@@ -21,58 +21,64 @@ function get_root_folder_of_path_like {
 function submit_cloud_build {
 	outfile="$1.out"
 	repo_folder=$(get_root_folder_of_path_like $1)
-	echo $repo_folder
-	return 0
+
 	gcloud builds submit --config $1 $repo_folder &> $outfile
-	if [ $? -ne 0 ]; then
+
+	return_code=$?
+	if [ $return_code -ne 0 ]; then # if return code is not 0
 		mv $3 $FAILED_FOLDER
 	else
 		mv $3 $SUCCESS_FOLDER
 	fi
 }
 
-# Clones the GitHub repository given by the username/repo string only
+# Clones the GitHub Data Commons repository given by the repo string only
+# git will exit without any writes if the repository already exists,
+# so we can call this function multiple times with the same repo if
+# necessary
+#
+# Example:
+	# `clone_dc import` will clone `https://github.com/datacommonsorg/import`
 #
 # Parameters
-# $1 is the "<user>/<repo>" string, e.g. "datacommonsorg/import"
-function clone_git {
-	url="https://github.com/$1.git"
+# $1 is the name of the repo, e.g. "import" to clone datacommonsorg/import
+function clone_dc {
+	url="https://github.com/datacommons/$1.git"
 	echo "Cloning into $1 : url is [[$url]]"
 	git clone $url
-	echo "Clone complete for $1 : url was [[$url]]"
 }
 
 function build_import {
-	clone_git datacommonsorg/import
+	clone_dc import
 	submit_cloud_build import/build/cloudbuild.java.yaml
 	submit_cloud_build import/build/cloudbuild.npm.yaml
 }
 
 function build_data {
-	clone_git datacommonsorg/data
+	clone_dc data
 	submit_cloud_build data/cloudbuild.go.yaml
 	submit_cloud_build data/cloudbuild.py.yaml
 }
 
 function build_mixer {
-	clone_git datacommonsorg/mixer
+	clone_dc mixer
 	submit_cloud_build mixer/build/ci/cloudbuild.test.yaml
 }
 
 function build_recon {
-	clone_git datacommonsorg/reconciliation
+	clone_dc reconciliation
 	submit_cloud_build reconciliation/build/ci/cloudbuild.test.yaml
 }
 
 function build_website {
-	clone_git datacommonsorg/website
+	clone_dc website
 	submit_cloud_build website/build/ci/cloudbuild.npm.yaml
 	submit_cloud_build website/build/ci/cloudbuild.py.yaml
 	submit_cloud_build website/build/ci/cloudbuild.webdriver.yaml
 }
 
 function build_api_python {
-	clone_git datacommonsorg/api-python
+	clone_dc api-python
 	submit_cloud_build api-python/cloudbuild.yaml
 }
 
@@ -90,10 +96,9 @@ for build_cmd in ${build_cmds_to_run[*]}; do
 	echo "running build function: $build_cmd"
 	$build_cmd &
 	pid=$!
-	echo "$build_cmd pid is $pid"
 	pids="$pids $pid"
 done
 
-echo "waiting on pids: ${pids[*]}"
+echo "all jobs launched, waiting for them to complete to return"
 wait $pids
 echo "all processes returned, returning."
