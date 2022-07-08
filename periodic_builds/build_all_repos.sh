@@ -9,9 +9,9 @@
 function submit_cloud_build {
 	gcloud builds submit --config $1 $2 &> $3
 	if [ $? -ne 0 ]; then
-		mv $3 /workspace/failed/
+		mv $3 $FAILED_FOLDER
 	else
-		mv $3 /workspace/success/
+		mv $3 $SUCCESS_FOLDER
 	fi
 }
 
@@ -70,11 +70,10 @@ function build_wrapper {
 	printf "$1 returned\n"
 }
 
-mkdir allrepos_tmp
-cd allrepos_tmp
+cd $TMP_FOLDER
 
-mkdir /workspace/failed
-mkdir /workspace/success
+mkdir $SUCCESS_FOLDER
+mkdir $FAILED_FOLDER
 
 
 # Parallelize the build functions, reference: https://stackoverflow.com/a/26240420

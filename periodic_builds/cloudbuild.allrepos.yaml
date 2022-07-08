@@ -23,5 +23,15 @@ steps:
     entrypoint: bash
     args: ["./notify_results.sh"]
 
+options:
+  env:
+  - "TMP_FOLDER=/tmp"
+  - "SUCCESS_FOLDER=/tmp/success"
+  - "FAILED_FOLDER=/tmp/failed"
+  volumes:
+  - name : "step_persistent_tmp"
+    path: "/tmp"
+
+
 # long timeout because we are building all repos (albeit in parallel)
 timeout: 3600s
