@@ -1,4 +1,4 @@
-for f in $FAILED_FOLDER
+for f in $FAILED_FOLDER/*
 do
 	printf "Sending email for failed file; $(basename $f)\n"
 	go run main.go \

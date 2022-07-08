@@ -26,20 +26,19 @@ function submit_cloud_build {
 	# this job is running.
 	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
 	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
-	echo "$cloudbuild_link"
-	echo "Link to this cloudbuild:\n$cloudbuild_link\n\n\n" > $outfile
+	echo "Link to this cloudbuild:" > $outfile
+	echo "$cloudbuild_link" >> $outfile
 
-	return 0
 	# ">> $outfile" redirects stdout to append to $outfile
 	# "2>&1" redirects "stderr" to where "stdout" is going
 	# The result is that both stdout and stderr are appended to $outfile
-	gcloud builds submit --config &1 $repo >> $outfile 2>&1
+	gcloud builds submit --config $1 $repo >> $outfile 2>&1
 
 	return_code=$?
 	if [ $return_code -ne 0 ]; then # if return code is not 0
-		mv $3 $FAILED_FOLDER
+		mv $outfile $FAILED_FOLDER
 	else
-		mv $3 $SUCCESS_FOLDER
+		mv $outfile $SUCCESS_FOLDER
 	fi
 }
 
@@ -54,7 +53,7 @@ function submit_cloud_build {
 # Parameters
 # $1 is the name of the repo, e.g. "import" to clone datacommonsorg/import
 function clone_dc {
-	url="https://github.com/datacommons/$1.git"
+	url="https://github.com/datacommonsorg/$1.git"
 	echo "Cloning into $1 : url is [[$url]]"
 	git clone $url
 }
