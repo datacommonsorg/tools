@@ -12,15 +12,15 @@ function get_root_folder_of_path_like {
 }
 
 # Submits a cloud build job and pipes output to a file that is in the format
-# <cloudbuild_path_name>.out
+# <repo>.<cloudbuild_path_name>.out
 # Moves the output to $SUCCESS_FOLDER if the build job completes
 # successfully, or to $FAILED_FOLDER otherwise.
 #
 # Parameters
 # $1 is the path to the config file from builds.txt
 function submit_cloud_build {
-	outfile="$1.out"
 	repo=$(get_root_folder_of_path_like $1)
+	outfile="$repo.$1.out"
 
 	# Start the output file with a live GitHub link to the cloudbuild file that
 	# this job is running.
