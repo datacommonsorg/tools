@@ -17,12 +17,21 @@ function get_root_folder_of_path_like {
 # successfully, or to $FAILED_FOLDER otherwise.
 #
 # Parameters
-# $1 is the path to the config file
+# $1 is the path to the config file from builds.txt
 function submit_cloud_build {
 	outfile="$1.out"
-	repo_folder=$(get_root_folder_of_path_like $1)
+	repo=$(get_root_folder_of_path_like $1)
 
-	gcloud builds submit --config $1 $repo_folder &> $outfile
+	# Start the output file with a live GitHub link to the cloudbuild file that
+	# this job is running.
+	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
+	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
+	echo "Link to this cloudbuild:\n$cloudbuild_link\n\n\n" > $outfile
+
+	# ">> $outfile" redirects stdout to append to $outfile
+	# "2>&1" redirects "stderr" to where "stdout" is going
+	# The result is that both stdout and stderr are appended to $outfile
+	gcloud builds submit --config &1 $repo >> $outfile 2>&1
 
 	return_code=$?
 	if [ $return_code -ne 0 ]; then # if return code is not 0
