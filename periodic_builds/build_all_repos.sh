@@ -60,16 +60,6 @@ function build_api_python {
 	submit_cloud_build api-python/cloudbuild.yaml api-python api-python.out.txt
 }
 
-# Given a command to run, runs it with printfs right before and after it
-#
-# Parameters
-# $1 is the name of the command to run
-function build_wrapper {
-	printf "Starting function $1\n"
-	$1
-	printf "$1 returned\n"
-}
-
 cd $TMP_FOLDER
 
 mkdir $SUCCESS_FOLDER
@@ -82,7 +72,7 @@ build_cmds_to_run=('build_import' 'build_data' 'build_mixer' 'build_recon'
 	'build_website' 'build_api_python')
 for build_cmd in ${build_cmds_to_run[*]}; do
 	echo "running build function: $build_cmd"
-	build_wrapper $build_cmd &
+	$build_cmd &
 	pid=$!
 	echo "$build_cmd pid is $pid"
 	pids="$pids $pid"
