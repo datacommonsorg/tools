@@ -1,0 +1,9 @@
+import/build/cloudbuild.java.yaml
+import/build/cloudbuild.npm.yaml
+data/cloudbuild.go.yaml
+data/cloudbuild.py.yaml
+mixer/build/ci/cloudbuild.test.yaml
+website/build/ci/cloudbuild.npm.yaml
+website/build/ci/cloudbuild.py.yaml
+website/build/ci/cloudbuild.webdriver.yaml
+api-python/cloudbuild.yaml
