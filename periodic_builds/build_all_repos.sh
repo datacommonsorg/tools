@@ -1,3 +1,5 @@
+BUILDS_FILE="$PWD/builds.txt"
+
 # Returns the first folder in a path-like string that doesn't start with /
 #
 # Examples:
@@ -59,8 +61,6 @@ function clone_dc {
 }
 
 function main {
-	BUILDS_FILE="$PWD/builds.txt"
-
 	# Move to the $TMP_FOLDER defined from the environment and
 	# create SUCCESS and FAILED folders
 	cd $TMP_FOLDER
