@@ -3,7 +3,7 @@ do
 	printf "Sending email for failed file; $(basename $f)\n"
 	go run main.go \
 	  --subject="[Periodic Build Notification] $(basename $f)" \
-	  --receiver="snny@google.com" \
+	  --receiver="datacommons-alerts@google.com" \
 	  --body_file="$f" \
 	  --mime_type="text/plain"
 done
