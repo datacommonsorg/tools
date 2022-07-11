@@ -248,7 +248,7 @@ func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 		return err
 	}
 	if e.Bucket != controlBucket {
-		log.Printf("Unexpected bucket: %s, skip processing", e.Bucket)
+		log.Printf("Trigger bucket '%s' != '%s', skip processing", e.Bucket, controlBucket)
 		return nil
 	}
 	// Get table ID.
@@ -256,7 +256,7 @@ func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 	tableID := parts[len(parts)-2]
 	triggerFolder := strings.Join(parts[0:len(parts)-2], "/")
 	if triggerFolder != controlFolder {
-		log.Printf("Unexpected control folder: %s, skip processing", triggerFolder)
+		log.Printf("Control folder '%s' != '%s', skip processing", triggerFolder, controlFolder)
 		return nil
 	}
 
