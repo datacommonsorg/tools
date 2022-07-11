@@ -16,12 +16,12 @@ steps:
   - id: "build all repos"
     name: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
     entrypoint: "bash"
-    args: ["./build_all_repos.sh"]
+    args: ["./periodic_builds/build_all_repos.sh"]
 
   - id: "send emails for failed builds"
     name: golang
     entrypoint: bash
-    args: ["./notify_results.sh"]
+    args: ["./periodic_builds/notify_results.sh"]
 
 options:
   env:
