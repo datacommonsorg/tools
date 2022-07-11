@@ -1,4 +1,4 @@
-BUILDS_FILE="$PWD/builds.txt"
+BUILDS_FILE="$PWD/periodic_builds/builds.txt"
 
 # Returns the first folder in a path-like string that doesn't start with /
 #
