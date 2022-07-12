@@ -91,3 +91,13 @@ missing.
   files required for the build to pass should not be in `.gitignore`. If files
   are `.gitignore`'d but exists in the repo nevertheless, periodic builds will
   fail but automated CI/CD pipelines that pull from GitHub won't.
+
+## Manual Steps
+
+To get this to work automatically, Cloud Scheduler can be used to trigger a
+Cloud Build trigger at a regular schedule; for example, we want to do every day
+at 6am PST.
+
+Code to create this Cloud Scheduler job is in `create_cloud_scheduler.sh`. Note
+that you must create a Cloud Build Trigger that will run on the PubSub topic
+`trigger-periodic-build` for this to work.
