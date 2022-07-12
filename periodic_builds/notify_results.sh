@@ -1,8 +1,9 @@
 for f in $FAILED_FOLDER/*
 do
 	printf "Sending email for failed file; $(basename $f)\n"
+	subject=$(head $f -n 1)
 	go run main.go \
-	  --subject="[Periodic Builds] Error in $(basename $f)" \
+	  --subject="$subject" \
 	  --receiver="datacommons-alerts@google.com" \
 	  --body_file="$f" \
 	  --mime_type="text/plain"

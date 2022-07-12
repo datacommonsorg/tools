@@ -21,21 +21,43 @@ function get_root_folder_of_path_like {
 # Parameters
 # $1 is the path to the config file from builds.txt
 function submit_cloud_build {
+	# extract information from $1 to use later
 	repo=$(get_root_folder_of_path_like $1)
-	outfile="$1.out.$repo"
-
-	# Start the output file with a live GitHub link to the cloudbuild file that
-	# this job is running.
 	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
 	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
-	echo "Link to this cloudbuild: $cloudbuild_link" > $outfile
 
-	# ">> $outfile" redirects stdout to append to $outfile
+	# appending $1 to the beginning of the filenames makes sure that the
+	# filenames are unique so that the concurrent processes don't write over
+	# each other.
+	buildlog_file="$1.command_out.txt" # output of the command gets stored here
+	header_file="$1.tmp_header.txt" # quick-access information get added to the top
+	tmp_file="$1.tmp.txt" # used temporarily when merging header and command
+	# outfile gets moved to $SUCCESS_FOLDER or $FAILED_FOLDER and gets emailed
+	# if $FAILED_FOLDER
+	outfile="$1.out.$repo" # header_file + buildlog_file gets written to outfile
+
+	# "> $buildlog_file" redirects stdout to write to $buildlog_file
 	# "2>&1" redirects "stderr" to where "stdout" is going
-	# The result is that both stdout and stderr are appended to $outfile
-	gcloud builds submit --config $1 $repo >> $outfile 2>&1
+	# The result is that both stdout and stderr are written to $buildlog_file
+	gcloud builds submit --config $1 $repo > $buildlog_file 2>&1
+	return_code=$? # store the return code of the gcloud command
 
-	return_code=$?
+	# create a header file that will include the first few lines of the email
+	# to make it easier to parse quickly.
+	# first line; email subject w (used by notify_results.sh)
+	echo "[Periodic Builds] Error building datacommonsorg/$1" > $header_file
+	# second line; link to cloud build log page
+	cat $buildlog_file | sed -n "s/Logs are available at/Cloud Build Logs:/p" >> $header_file
+	# third line; link to the cloudbuild yaml file that this was ran with
+	echo "Link to the failing cloudbuild.yaml file: $cloudbuild_link" >> $header_file
+	# fourth line; divider between links and build output
+	# we use printf instead of echo here because it handles \n properly
+	printf "\n\n----FULL BUILD OUTPUT----\n\n" >> $header_file
+
+	# create the final output file by appending $header_file to the top of
+	# $output_file
+	cat $header_file $buildlog_file > $tmp_file && mv $tmp_file $outfile
+
 	if [ $return_code -ne 0 ]; then # if return code is not 0
 		mv $outfile $FAILED_FOLDER
 	else
