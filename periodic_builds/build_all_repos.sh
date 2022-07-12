@@ -28,8 +28,7 @@ function submit_cloud_build {
 	# this job is running.
 	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
 	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
-	echo "Link to this cloudbuild:" > $outfile
-	echo "$cloudbuild_link" >> $outfile
+	echo "Link to this cloudbuild: $cloudbuild_link" > $outfile
 
 	# ">> $outfile" redirects stdout to append to $outfile
 	# "2>&1" redirects "stderr" to where "stdout" is going
