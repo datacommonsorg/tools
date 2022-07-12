@@ -50,15 +50,9 @@ This build can be launched manually if you have `gcloud` installed. Note that
 you should set your project to `datcom-ci` (or another cloud project with the
 necessary requisities installed, such as the secrets used my `main.go`)
 
-Then, make sure you in this folder;
-
+Then, make sure you are at the base of the tools repository and run;
 ```
-cd tools/periodic_builds
-```
-
-And launch the build job using;
-```
-gcloud builds submit --config cloudbuild.allrepos.yaml .
+gcloud builds submit --config periodic_builds/cloudbuild.allrepos.yaml .
 ```
 
 ## Design Choices
