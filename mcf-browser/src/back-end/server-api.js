@@ -58,10 +58,10 @@ async function readFileList(fileList) {
         if(tmcfOut['errMsgs'].length !== 0) {
 
           finalReturn['errMsgs'] =
-          finalReturn['errMsgs'].concat({
-            'file':tmcf.name,
-            'errs': tmcfOut['errMsgs'],
-          });
+            finalReturn['errMsgs'].concat({
+              'file':tmcf.name,
+              'errs': tmcfOut['errMsgs'],
+            });
         }
         finalReturn['localNodes'] =
           finalReturn['localNodes'].concat(tmcfOut['localNodes']);
