@@ -55,7 +55,7 @@ async function readFileList(fileList) {
             return mcfParser.parseMcfStr(mcf);
           });
 
-        if(tmcfOut['errMsgs'] && tmcfOut['errMsgs'].length !== 0) {
+        if(tmcfOut['errMsgs'].length !== 0) {
 
           finalReturn['errMsgs'] =
           finalReturn['errMsgs'].concat({
