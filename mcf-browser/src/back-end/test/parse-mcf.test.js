@@ -222,6 +222,18 @@ test('testing ParseMcfStr: ', () => {
   const mcfParser = new ParseMcf(fileName);
   const errs = mcfParser.parseMcfStr(mcfStr);
 
+  const expectedErrs = {
+    localNodes: [
+      'l:localNoNameSpaceId',
+      'dcid:remoteNamespaceId',
+      'l:localSubjId',
+      'l:LocalObsNode',
+      'l:LocalIndiaNode',
+    ],
+    errMsgs: [],
+  };
+  expect(errs).toStrictEqual(expectedErrs);
+
   const obsNode = ParseMcf.localNodeHash['l:LocalObsNode'];
   expect(obsNode.localId).toStrictEqual('l:LocalObsNode');
   expect(obsNode.dcid).toStrictEqual(null);
