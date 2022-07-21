@@ -15,6 +15,9 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
+
+import Node from './back-end/graph.js';
 
 const ENTER_KEY = 13;
 
@@ -70,4 +73,11 @@ class Header extends Component {
     );
   }
 }
+
+Header.propTypes = {
+  searchId: PropTypes.func,
+  onHomeClick: PropTypes.func,
+  subjIds: PropTypes.arrayOf(PropTypes.instanceOf(Node)),
+};
+
 export {Header};

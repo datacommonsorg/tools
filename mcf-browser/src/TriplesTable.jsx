@@ -15,7 +15,9 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
 
+import Assertion from './back-end/graph.js';
 import * as API from './back-end/server-api.js';
 import * as utils from './utils.js';
 
@@ -199,3 +201,9 @@ export class TriplesTable extends Component {
     );
   }
 }
+
+TriplesTable.propTypes = {
+  triples: PropTypes.arrayOf(PropTypes.instanceOf(Assertion)),
+  inverse: PropTypes.bool,
+  goToId: PropTypes.func,
+};
