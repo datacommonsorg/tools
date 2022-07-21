@@ -51,7 +51,10 @@ interface TriplesTableStateType{
 
 /** Displays all given assertions as a table of triples. */
 export class TriplesTable extends Component {
-  /** Creates TriplesTable component. */
+  /** Constructor for class, sets initial state
+   *
+   * @param {Object} props the props passed in by parent component
+   */
   constructor(props) {
     super(props);
 
@@ -190,7 +193,9 @@ export class TriplesTable extends Component {
     return tripleRows;
   }
 
-  /** Renders TriplesTable component.   */
+  /** Renders TriplesTable component.
+   * @return {Object} component using JSX code
+   */
   render() {
     if (this.state.loading) {
       // return null when loading to prevent error in rendering Promise objects

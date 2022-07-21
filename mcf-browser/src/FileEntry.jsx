@@ -16,42 +16,11 @@
 
 import React, {Component} from 'react';
 
-interface FileEntryPropType {
-  /**
-   * Passes a file list to be submitted to the back-end for parsing.
-   */
-  upload: func;
-  /**
-   * Passes a list of urls to be retrieved, then passed to the back-end for
-   * parsing.
-   */
-  loadFiles: func;
-  /**
-   * Return to the home page/reset to current hash stored in App state.
-   */
-  goToHome: func;
-  /**
-   * Sets whether the dropdown on the home page for additonal file entries
-   * should be displayed.
-   */
-  toggle: func;
-}
-
-interface FileEntryStateType{
-  /**
-   * Stores user's text entry in the first url entry box. This should be a url
-   * to either a MCF or TMCF file.
-   */
-  mcfTmcfUrl: string;
-  /**
-   * Stores user's text entry in the second url entry box. This should be a url
-   * to a CSV file.
-   */
-  csvUrl: string;
- }
-
 /** Component to display options user has for uploading files. */
 class FileEntry extends Component {
+  /** Constructor for class, sets initial state
+   * @param {Object} props the props passed in by parent component
+   */
   constructor(props) {
     super(props);
     this.state = {
@@ -64,7 +33,7 @@ class FileEntry extends Component {
    * Submits the urls currently in the text input boxes to be retreived and
    * loaded when the enter key is preessed.
    *
-   * @@param {Event Obj} event The keyUp event that triggers the function call.
+   * @param {Event} event The keyUp event that triggers the function call.
    */
   async handleUrlKeyUp(event) {
     if (event.keyCode === 13) {
@@ -85,6 +54,12 @@ class FileEntry extends Component {
       }
     }
   }
+
+  /**
+   * Renders the component by building the JSX.
+   *
+   * @return {Object} the component using JSX code
+   */
   render() {
     return (
       <div className="row" >
