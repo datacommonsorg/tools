@@ -236,7 +236,11 @@ class App extends Component<{}, AppStateType> {
   /**
    * Renders the browser by displaying a specific node or the homepage.
    *
+<<<<<<< HEAD:mcf-browser/src/App.tsx
    * @return {Object} the webpage using TSX code
+=======
+   * @return {Object} the webpage using JSX code
+>>>>>>> f65afe7 (Remove unused vars and add JSDoc):mcf-browser/src/App.jsx
    */
   render() {
     return (
