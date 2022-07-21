@@ -15,6 +15,9 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
+
+import Node from './back-end/graph.js';
 
 const ENTER_KEY = 13;
 

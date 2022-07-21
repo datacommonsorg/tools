@@ -15,6 +15,7 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
 
 interface FileEntryPropType {
   /**
@@ -154,6 +155,13 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
     );
   }
 }
+
+FileEntry.propTypes = {
+  upload: PropTypes.func,
+  loadFiles: PropTypes.func,
+  goToHome: PropTypes.func,
+  toggle: PropTypes.func,
+};
 
 
 export {FileEntry};

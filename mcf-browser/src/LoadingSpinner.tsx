@@ -15,6 +15,7 @@
  */
 
 import React from 'react';
+import PropTypes from 'prop-types';
 
 
 interface LoadingSpinnerPropType {
@@ -40,6 +41,11 @@ const LoadingSpinner = (props: LoadingSpinnerPropType) => {
       <h2>{props.msg}</h2>
     </div>
   );
+};
+
+LoadingSpinner.propTypes = {
+  loading: PropTypes.bool,
+  msg: PropTypes.string,
 };
 
 export {LoadingSpinner};
