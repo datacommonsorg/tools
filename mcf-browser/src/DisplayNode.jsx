@@ -15,8 +15,10 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
 
 import * as API from './back-end/server-api.js';
+import {Node} from './back-end/graph.js';
 import {TriplesTable} from './TriplesTable.jsx';
 import {LoadingSpinner} from './LoadingSpinner.jsx';
 import {colorLegend} from './utils.js';
@@ -109,4 +111,10 @@ class DisplayNode extends Component {
     );
   }
 }
+
+DisplayNode.propTypes = {
+  node: PropTypes.instanceOf(Node),
+  goToId: PropTypes.func,
+};
+
 export {DisplayNode};
