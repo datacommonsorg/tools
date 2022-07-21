@@ -15,6 +15,7 @@
  */
 
 import React from 'react';
+import PropTypes from 'prop-types';
 
 // spinning animation to demonstrate loading, used in DisplayNode and Home
 const LoadingSpinner = (props) => {
@@ -28,6 +29,11 @@ const LoadingSpinner = (props) => {
       <h2>{props.msg}</h2>
     </div>
   );
+};
+
+LoadingSpinner.propTypes = {
+  loading: PropTypes.bool,
+  msg: PropTypes.string,
 };
 
 export {LoadingSpinner};

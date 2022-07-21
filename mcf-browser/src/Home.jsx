@@ -15,6 +15,9 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
+
+import {Node} from './back-end/graph.js';
 import {openFile} from './utils.js';
 import {LoadingSpinner} from './LoadingSpinner.jsx';
 import {ParsingErrorsTable} from './ParsingErrorsTable.jsx';
@@ -134,5 +137,17 @@ class Home extends Component {
     );
   }
 }
+
+Home.propTypes = {
+  fileList: PropTypes.arrayOf(PropTypes.instanceOf(Blob)),
+  upload: PropTypes.func,
+  loadFiles: PropTypes.func,
+  goToHome: PropTypes.func,
+  clear: PropTypes.func,
+  errs: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)),
+  loading: PropTypes.bool,
+  subjNodes: PropTypes.arrayOf(PropTypes.instanceOf(Node)),
+  goToId: PropTypes.func,
+};
 
 export {Home};

@@ -15,6 +15,7 @@
  */
 
 import React, {Component} from 'react';
+import PropTypes from 'prop-types';
 
 /** Component to display options user has for uploading files. */
 class FileEntry extends Component {
@@ -120,6 +121,13 @@ class FileEntry extends Component {
     );
   }
 }
+
+FileEntry.propTypes = {
+  upload: PropTypes.func,
+  loadFiles: PropTypes.func,
+  goToHome: PropTypes.func,
+  toggle: PropTypes.func,
+};
 
 
 export {FileEntry};

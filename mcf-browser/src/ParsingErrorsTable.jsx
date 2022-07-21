@@ -15,6 +15,7 @@
  */
 
 import React from 'react';
+import PropTypes from 'prop-types';
 
 /* Simple component to render the parsing errors table. */
 const ParsingErrorsTable = (props) => {
@@ -45,6 +46,10 @@ const ParsingErrorsTable = (props) => {
       </table>
     </div>
   );
+};
+
+ParsingErrorsTable.propTypes = {
+  errsList: PropTypes.arrayOf(PropTypes.object),
 };
 
 export {ParsingErrorsTable};
