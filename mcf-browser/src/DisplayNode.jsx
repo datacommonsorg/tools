@@ -21,45 +21,11 @@ import {TriplesTable} from './TriplesTable.jsx';
 import {LoadingSpinner} from './LoadingSpinner.jsx';
 import {colorLegend} from './utils.js';
 
-interface DisplayNodePropType {
-  /**
-   * Node object to be displayed to user
-   */
-  node: Node;
-  /**
-   * Set id parameter in url to the given id.
-   */
-  goToId: func;
-}
-
-interface DisplayNodeStateType {
-  /**
-   * The reference of the node to be displayed to the user.
-   * ex: 'country/IND [l:LocalIndiaNode]'.
-   */
-  ref: string;
-  /**
-   * Indicates if triples are currently being fetched from the Data Commons
-   * Knowledge Graph.
-   */
-  fetching: boolean;
-  /**
-   * The triples that the current node is the subject (or source) of.
-   */
-  asserts: Assertion[];
-  /**
-   * The triples that the current node is the target of.
-   */
-  invAsserts: Assertion[];
-  /**
-   * The class of the element containing the reference of the node should be.
-   */
-  elemClass: string;
- }
-
 /** Displays node data for a given node passed in through props. */
 class DisplayNode extends Component {
-  /** Creates DisplayNode component. */
+  /** Creates DisplayNode component.
+   * @param {Object} props the props passed in by parent component
+  */
   constructor(props) {
     super(props);
     this.state = {
@@ -101,7 +67,7 @@ class DisplayNode extends Component {
     });
 
     API.getElemClass(curNode).then((elemClass) => {
-      this.setState({elemClass: elemClass})
+      this.setState({elemClass: elemClass});
     });
 
     curNode.fetchRemoteData().then(() => {
@@ -113,7 +79,9 @@ class DisplayNode extends Component {
     });
   }
 
-  /** Renders the DisplayNode component. */
+  /** Renders the DisplayNode component.
+   * @return {Object} the webpage using JSX code
+   * */
   render() {
     return (
       <div>

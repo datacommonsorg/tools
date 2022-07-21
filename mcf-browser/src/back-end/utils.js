@@ -109,7 +109,10 @@ async function doesExistsInKG(dcid) {
   // code below checks that the list returned is non-empty
   return fetch(url)
       .then((res) => res.json())
-      .then((data) => (JSON.parse(data.payload)[dcid] && JSON.parse(data.payload)[dcid].length > 0) ? true : false);
+      .then((data) => (
+        JSON.parse(data.payload)[dcid] &&
+        JSON.parse(data.payload)[dcid].length > 0
+        ) ? true : false);
 }
 
 /**

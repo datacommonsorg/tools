@@ -38,7 +38,7 @@ async function readFileList(fileList) {
       const mcfOut = await ParseMcf.readFile(file);
       console.log(mcfOut);
       finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
-        'file':file.name,
+        'file': file.name,
         'errs': mcfOut['errMsgs'],
       });
       finalReturn['localNodes'] =
@@ -55,11 +55,10 @@ async function readFileList(fileList) {
             return mcfParser.parseMcfStr(mcf);
           });
 
-        if(tmcfOut['errMsgs'].length !== 0) {
-
+        if (tmcfOut['errMsgs'].length !== 0) {
           finalReturn['errMsgs'] =
             finalReturn['errMsgs'].concat({
-              'file':tmcf.name,
+              'file': tmcf.name,
               'errs': tmcfOut['errMsgs'],
             });
         }

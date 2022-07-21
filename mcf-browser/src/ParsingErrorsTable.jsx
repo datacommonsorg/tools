@@ -43,13 +43,13 @@ const ParsingErrorsTable = (props) => {
         <tbody>
           {props.errsList.map((errObj) => (
             errObj['errs'].map((msg) =>
-            <tr key={msg[0]}>
-              <td>{errObj['file']}</td>
-              <td>{msg[0]}</td>
-              <td>{msg[1]}</td>
-              <td>{msg[2]}</td>
-            </tr>
-          )))}
+              <tr key={msg[0]}>
+                <td>{errObj['file']}</td>
+                <td>{msg[0]}</td>
+                <td>{msg[1]}</td>
+                <td>{msg[2]}</td>
+              </tr>,
+            )))}
         </tbody>
       </table>
     </div>
