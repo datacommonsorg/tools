@@ -26,48 +26,12 @@ import {Home} from './Home.jsx';
 import * as utils from './utils.js';
 import * as API from './back-end/server-api.js';
 
-interface AppStateType{
-  /**
-   * Subject nodes of the triples from files uploaded by user.
-   */
-  subjNodes: Node[];
-  /**
-   * Node that should be displayed.
-   */
-  curNode: Node;
-  /**
-   * Files that have been uploaded by user.The locality of the csv files in
-   * relation to the tmcf files is very important! The csv will be paired with
-   * the closest tmcf file that comes before it whenever we are loading/parsing
-   * the files in the backend.
-   */
-  files: Blob[];
-  /**
-   * Indicates if any files are currently being parsed by back-end.
-   */
-  loading: boolean;
-  /**
-   * Indicates if url needs to be parsed on component mount. True when the
-   * application first loads and when files are cleared by user.
-   */
-  firstLoad: boolean;
-  /**
-   * Array of error message objects, one object per parsed file with errors. The
-   * property 'errs' is in each object is an array of String arrays, one String
-   * array per error within the given file which specifies line number, line,
-   * and helpful message indicating the error. The 'file' property provides the
-   * file name from which the error came.
-   */
-  parsingErrs: Object[];
-  /**
-   * Contains the remote files specified by user in url format to be used as a
-   * home base in the hash portion of the url while using those files.
-   */
-  fileHash: string;
-
-}
 /** Drives the entire app and holds the state of the files and current node. */
 class App extends Component {
+  /** Constructor for class, sets initial state
+   *
+   * @param {Object} props the props passed in by parent component
+   */
   constructor(props) {
     super(props);
     this.state = {
@@ -205,7 +169,7 @@ class App extends Component {
     this.setState({loading: true});
 
     API.readFileList(fileList).then((res) => {
-      this.setState(prevState => ({
+      this.setState((prevState) => ({
         parsingErrs: prevState['parsingErrs'].concat(res['errMsgs']),
         subjNodes: res['localNodes'],
         loading: false,
@@ -224,6 +188,8 @@ class App extends Component {
 
   /**
    * Renders the browser by displaying a specific node or the homepage.
+   *
+   * @return {Object} the webpage using JSX code
    */
   render() {
     return (

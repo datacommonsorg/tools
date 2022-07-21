@@ -20,58 +20,14 @@ import {LoadingSpinner} from './LoadingSpinner.jsx';
 import {ParsingErrorsTable} from './ParsingErrorsTable.jsx';
 import {FileEntry} from './FileEntry.jsx';
 
-interface HomePropType {
-  /**
-   * List of the files that have been uploaded by user.
-   */
-  fileList: Blob[];
-  /**
-   * Passes a file list to be submitted to the back-end for parsing.
-   */
-  upload: func;
-  /**
-   * Passes a list of urls to be retrieved, then passed to the back-end for parsing.
-   */
-  loadFiles: func;
-  /**
-   * Return to the home page.
-   */
-  goToHome: func;
-  /**
-   * Clears the loaded data from all files and resets App to its initial state.
-   */
-  clear: func;
-  /**
-   * Error messages from parsing files specifying line number, line, and helpful
-   * message indicating the error.
-   */
-  errs: string[][];
-  /**
-   * Indicates if uploaded files are currently being parsed.
-   */
-  loading: boolean;
-  /**
-   * Nodes stored in App's state which are the subject nodes of triples from
-   * any parsed files.
-   */
-  subjNodes: Node[];
-  /**
-   * Set id parameter in url to the given id. Used when user clicks a subject node to explore.
-   */
-  goToId: func;
-}
-
-interface HomeStateType{
-  /**
-   * Determines if the file entry dropdown option should be displayed.
-   */
-  dropdown: boolean;
- }
-
 /** Displays the currently loaded files, clear button, parsing errors, and
   * subject nodes.
   */
 class Home extends Component {
+  /** Constructor for class, sets initial state
+   *
+   * @param {Object} props the props passed in by parent component
+   */
   constructor(props) {
     super(props);
     this.state = {
@@ -79,10 +35,19 @@ class Home extends Component {
     };
   }
 
+  /**
+   * Toggles the boolean value of this.state.dropdown
+   * whenever user expands or collapses the dropdown
+   */
   toggleDropdown() {
     this.setState({dropdown: !this.state.dropdown});
   }
 
+  /**
+   * Renders the component
+   *
+   * @return {Object} the webpage using JSX code
+   */
   render() {
     if (this.props.fileList.length === 0) {
       // show file entry options, but do not toggle dropdown on file submission
@@ -101,12 +66,12 @@ class Home extends Component {
     let addFileButtonClass;
     let addFileButtonText;
 
-    if(this.state.dropdown){
+    if (this.state.dropdown) {
       addFileButtonClass = 'button expanded';
       addFileButtonText = 'Add File (-)';
     } else {
-        addFileButtonClass = 'button';
-        addFileButtonText = 'Add File (+)';
+      addFileButtonClass = 'button';
+      addFileButtonText = 'Add File (+)';
     }
 
     // show current files and subject nodes
@@ -151,7 +116,7 @@ class Home extends Component {
         <br/>
 
         <div className = "box">
-          
+
           {/* display loading animation while waiting*/}
           <LoadingSpinner loading={this.props.loading}
             msg='...loading mcf...'/>
