@@ -16,17 +16,6 @@
 
 import React from 'react';
 
-interface LoadingSpinnerPropType {
-  /**
-   * Indicates if spinner should be displayed.
-   */
-  loading: boolean;
-  /**
-   * The message to be displayed while page is loading
-   */
-  msg: string;
-}
-
 // spinning animation to demonstrate loading, used in DisplayNode and Home
 const LoadingSpinner = (props) => {
   if (!props.loading) {

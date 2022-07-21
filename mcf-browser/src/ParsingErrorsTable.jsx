@@ -16,15 +16,6 @@
 
 import React from 'react';
 
-interface ParsingErrorsTablePropType {
-   /**
-   * The App state's parsingErrs list of error message Objects from parsing
-   * files. Each object in the array contains one file name and one list of
-   * errors found in that file.
-   */
-  errsList: Object[];
-}
-
 /* Simple component to render the parsing errors table. */
 const ParsingErrorsTable = (props) => {
   if (!props.errsList.length) {

@@ -21,34 +21,6 @@ import * as utils from './utils.js';
 
 const NON_BREAKING_SPACE = '\u00a0';
 
-interface TriplesTablePropType {
-  /**
-   * List of triples to display as a table
-   */
-  triples: Assertion[];
-  /**
-   * Indicates if the given triples should be displayed as outgoing(False) or
-   * incoming(True).
-   */
-  inverse: boolean;
-  /**
-   * Set id parameter in url to the given id.
-   */
-  goToId: func;
-}
-
-interface TriplesTableStateType{
-  /**
-   * List of table row elements, each row representing one triple
-   */
-  tableRows: element[];
-  /**
-   * Indicates if triples are currently being fetched from the Data Commons
-   * Knowledge Graph.
-   */
-  fetching: boolean;
- }
-
 /** Displays all given assertions as a table of triples. */
 export class TriplesTable extends Component {
   /** Constructor for class, sets initial state
@@ -81,8 +53,8 @@ export class TriplesTable extends Component {
     }
   }
   /**
-  * Returns an html element containing the styled source if the triple is inverse
-  * and the styled target otherwise.
+  * Returns an html element containing the styled source if the triple is
+  * inverse and the styled target otherwise.
   * @param {Node|string} target The source of an inverse assertion or the target
   *     of a direct assertion.
   * @return {HtmlElement} A single cell of an html row representing a triple.
