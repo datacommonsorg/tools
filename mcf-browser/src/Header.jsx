@@ -17,8 +17,6 @@
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 
-import Node from './back-end/graph.js';
-
 const ENTER_KEY = 13;
 
 /** Header component contains the id search bar, upload files, and return home
@@ -77,7 +75,7 @@ class Header extends Component {
 Header.propTypes = {
   searchId: PropTypes.func,
   onHomeClick: PropTypes.func,
-  subjIds: PropTypes.arrayOf(PropTypes.instanceOf(Node)),
+  subjIds: PropTypes.arrayOf(PropTypes.string),
 };
 
 export {Header};

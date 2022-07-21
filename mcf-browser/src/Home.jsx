@@ -17,7 +17,6 @@
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 
-import {Node} from './back-end/graph.js';
 import {openFile} from './utils.js';
 import {LoadingSpinner} from './LoadingSpinner.jsx';
 import {ParsingErrorsTable} from './ParsingErrorsTable.jsx';
@@ -146,7 +145,7 @@ Home.propTypes = {
   clear: PropTypes.func,
   errs: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)),
   loading: PropTypes.bool,
-  subjNodes: PropTypes.arrayOf(PropTypes.instanceOf(Node)),
+  subjNodes: PropTypes.arrayOf(PropTypes.string),
   goToId: PropTypes.func,
 };
 
