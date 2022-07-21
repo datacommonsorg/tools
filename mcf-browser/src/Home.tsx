@@ -195,7 +195,7 @@ Home.propTypes = {
   clear: PropTypes.func,
   errs: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)),
   loading: PropTypes.bool,
-  subjNodes: PropTypes.arrayOf(PropTypes.instanceOf(Node)),
+  subjNodes: PropTypes.arrayOf(PropTypes.string),
   goToId: PropTypes.func,
 };
 
