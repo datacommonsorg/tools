@@ -178,6 +178,10 @@ class Node {
    *     the calling Node is the source of the triple.
    */
   async createAssertionsFromLabels(propLabels, isInverse) {
+    if (!propLabels || propLabels.length === 0){
+      return;
+    }
+
     for (const label of propLabels) {
       await getRemotePropertyValues(this.dcid, label, isInverse)
           .then((valueList) => {

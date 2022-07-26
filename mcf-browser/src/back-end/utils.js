@@ -104,9 +104,12 @@ function getValueFromValueObj(valueObj) {
  */
 async function doesExistsInKG(dcid) {
   const url = API_ROOT + '/node/triples?dcids=' + dcid + '&limit=1';
+
+  // expected response if dcid does not exist is {"payload":"{\"dcid\":[]}"}
+  // code below checks that the list returned is non-empty
   return fetch(url)
       .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid] ? true : false);
+      .then((data) => (JSON.parse(data.payload)[dcid] && JSON.parse(data.payload)[dcid].length > 0) ? true : false);
 }
 
 /**

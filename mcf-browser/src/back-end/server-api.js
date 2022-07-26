@@ -54,11 +54,14 @@ async function readFileList(fileList) {
             const mcfParser = new ParseMcf(tmcf.name + '&' + file.name);
             return mcfParser.parseMcfStr(mcf);
           });
-        finalReturn['errMsgs'] =
-          finalReturn['errMsgs'].concat({
-            'file':tmcf.name,
-            'errs': tmcfOut['errMsgs'],
-          });
+
+        if (tmcfOut['errMsgs'].length !== 0) {
+          finalReturn['errMsgs'] =
+            finalReturn['errMsgs'].concat({
+              'file':tmcf.name,
+              'errs': tmcfOut['errMsgs'],
+            });
+        }
         finalReturn['localNodes'] =
           finalReturn['localNodes'].concat(tmcfOut['localNodes']);
       }

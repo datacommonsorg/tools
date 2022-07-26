@@ -34,7 +34,7 @@ test('testing getRemotePropertyLabels', async () => {
     'typeOf',
   ];
   expect(labels.outLabels).toStrictEqual(expectOut);
-  expect(labels.inLabels).toStrictEqual([]);
+  expect(labels.inLabels).toStrictEqual(undefined);
 });
 test('testing getRemotePropertyValues', async () => {
   const vals = await getRemotePropertyValues('bio/CTD_CHEMBL2_DOID_2055',
