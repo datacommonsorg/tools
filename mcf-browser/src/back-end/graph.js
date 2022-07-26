@@ -178,7 +178,7 @@ class Node {
    *     the calling Node is the source of the triple.
    */
   async createAssertionsFromLabels(propLabels, isInverse) {
-    if(!propLabels || propLabels.length === 0){
+    if (!propLabels || propLabels.length === 0){
       return;
     }
 
