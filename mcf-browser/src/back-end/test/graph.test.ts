@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Assertion, Node} from '../graph.js';
+import {Assertion, Node} from '../graph';
 
 test('testing setDCID w/ merge', async () => {
   Node.nodeHash = {};
