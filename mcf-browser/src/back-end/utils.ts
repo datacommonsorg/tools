@@ -103,10 +103,10 @@ export type DCPropertyValueResponse = {
 
 export type DCPropertyValueResponse = {
   /** the dcid being queried */
-  dcid: string;
+  dcid?: string;
 
   /** the value of the property being queried */
-  value: string;
+  value?: string;
 
   provenanceId: string;
 }
