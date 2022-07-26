@@ -48,14 +48,16 @@ async function readFileList(fileList: Blob[]) {
     if (fileExt === 'mcf') {
       const mcfOut = await ParseMcf.readFile(file);
       console.log(mcfOut);
-      if (mcfOut instanceof Error) {
+
+      if (mcfOut['errMsgs'].length !== 0) {
         finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
           'file': fileName,
           'errs': mcfOut['errMsgs'],
         }]);
-        finalReturn['localNodes'] =
-          finalReturn['localNodes'].concat(mcfOut['localNodes']);
       }
+      
+      finalReturn['localNodes'] =
+        finalReturn['localNodes'].concat(mcfOut['localNodes']);
     } else if (fileExt === 'tmcf') {
       curTmcf = file;
     } else {
