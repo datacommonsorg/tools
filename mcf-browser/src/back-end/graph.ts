@@ -32,7 +32,7 @@ class Node {
    * The local id used in a parsed mcf file.
    * @type {string}
    */
-  localId;
+  localId: string | null;
 
   /**
    * Whether triples from the remote Data Commons Knowledge Graph have already
@@ -40,13 +40,13 @@ class Node {
    * @type {boolean}
    */
 
-  alreadyFetched;
+  alreadyFetched: boolean;
 
   /**
    * Whether the node exists in the Data Commons Knowledge Graph.
    * @type {boolean}
    */
-  existsInKG;
+  existsInKG: boolean;
 
   /**
    * Dcid of the node. Set only if a remote id is referred to in a local file or
@@ -258,22 +258,22 @@ class Assertion {
    * The source or subject of the triple.
    * @type {Node}
    */
-  src;
+  src: Node;
   /**
    * The property label or predicate of the triple.
    * @type {string}
    */
-  property;
+  property: string;
   /**
    * The provenance of the triple.
    * @type {string}
    */
-  provenance;
+  provenance: string;
   /**
    * The target or object of the triple.
    * @type {string|Node}
    */
-  target;
+  target: string | Node;
 
   /**
    * Create a triple, setting the source's assertion prop to be the new object.

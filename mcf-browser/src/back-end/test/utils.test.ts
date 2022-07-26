@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-import {Node} from '../graph.js';
+import {Node} from '../graph';
 import {
   doesExistsInKG,
   getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
-} from '../utils.js';
+} from '../utils';
 
 test('testing getRemotePropertyLabels', async () => {
   const labels = await getRemotePropertyLabels('bio/CTD_CHEMBL2_DOID_2055');
@@ -66,7 +66,7 @@ test('testing getValueFromValueObj', async () => {
   };
 
   const node = getValueFromValueObj(valueObj);
-  const expectNode = new Node('bio/CHEMBL2', true);
+  const expectNode = new Node('bio/CHEMBL2');
   expectNode.existsInKG = true;
   expectNode.setDCID('bio/CHEMBL2');
   expect(node).toStrictEqual(expectNode);

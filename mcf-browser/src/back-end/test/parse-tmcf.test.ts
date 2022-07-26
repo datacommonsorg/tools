@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {ParseTmcf} from '../parse-tmcf.js';
-import * as TestStr from './test-strs.js';
+import {ParseTmcf} from '../parse-tmcf';
+import * as TestStr from './test-strs';
 
 test('testing getLocalIDFromEntityID', () => {
   const parser = new ParseTmcf();
