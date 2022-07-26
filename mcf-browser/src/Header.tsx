@@ -15,19 +15,42 @@
  */
 
 import React, {Component} from 'react';
-import PropTypes from 'prop-types';
 
 const ENTER_KEY = 13;
+
+
+interface HeaderPropType {
+  /**
+   * Set a 'search' parameter in url to the specified id.
+   */
+  searchId: Function;
+  /**
+   * Return to the home page.
+   */
+  onHomeClick: React.MouseEventHandler<HTMLButtonElement>;
+  /**
+   * Ids stored in App's state for the subject nodes of triples from
+   * any parsed files.
+   */
+  subjIds: string[];
+}
+
+interface HeaderStateType {
+  /**
+   * Text input from user via search bar.
+   */
+  searchVal: string;
+}
 
 /** Header component contains the id search bar, upload files, and return home
   * button.
   */
-class Header extends Component {
+class Header extends Component<HeaderPropType, HeaderStateType> {
   /** Constructor for class, sets initial state
    *
    * @param {Object} props the props passed in by parent component
    */
-  constructor(props) {
+  constructor(props: HeaderPropType) {
     super(props);
     this.state = {
       searchVal: '',
@@ -38,7 +61,7 @@ class Header extends Component {
   * Calls props method to search for an id when the user presses enter.
   * @param {Event} event OnKeyUp event from html search input element.
   */
-  handleSearch(event) {
+  handleSearch(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.keyCode === ENTER_KEY) {
       this.props.searchId(event.target.value);
       this.setState({searchVal: ''});
@@ -71,11 +94,5 @@ class Header extends Component {
     );
   }
 }
-
-Header.propTypes = {
-  searchId: PropTypes.func,
-  onHomeClick: PropTypes.func,
-  subjIds: PropTypes.arrayOf(PropTypes.string),
-};
 
 export {Header};
