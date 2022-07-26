@@ -1,5 +1,4 @@
 import/build/cloudbuild.java.yaml
-import/build/cloudbuild.npm.yaml
 data/cloudbuild.go.yaml
 data/cloudbuild.py.yaml
 mixer/build/ci/cloudbuild.test.yaml
