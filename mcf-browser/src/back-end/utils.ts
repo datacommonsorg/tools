@@ -133,13 +133,8 @@ function getValueFromValueObj(valueObj: DCPropertyValueResponse) {
  * @return {Promise<boolean>} Returns true if given dcid is in any triples in
  *     Data Commons Knowledge Graph.
  */
-<<<<<<< HEAD:mcf-browser/src/back-end/utils.js
-async function doesExistsInKG(dcid) {
-  const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
-=======
 async function doesExistsInKG(dcid: string) {
-  const url = API_ROOT + '/node/triples?dcids=' + dcid + '&limit=1';
->>>>>>> 1063e75 (Change source code over to typescript):mcf-browser/src/back-end/utils.ts
+  const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
 
   // expected response if dcid exists is {"values":"[...]}
   // expected response if dcid does not exist is {}
