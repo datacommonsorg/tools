@@ -15,7 +15,6 @@
  */
 
 import React, {Component} from 'react';
-import PropTypes from 'prop-types';
 
 import {Assertion, Node} from './back-end/graph';
 import * as API from './back-end/server-api';
@@ -231,9 +230,3 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
     );
   }
 }
-
-TriplesTable.propTypes = {
-  triples: PropTypes.arrayOf(PropTypes.instanceOf(Assertion)),
-  inverse: PropTypes.bool,
-  goToId: PropTypes.func,
-};

@@ -15,7 +15,17 @@
  */
 
 import React from 'react';
-import PropTypes from 'prop-types';
+
+import {ParsingError} from './back-end/utils';
+
+interface ParsingErrorsTablePropType {
+  /**
+  * The App state's parsingErrs list of error message Objects from parsing
+  * files. Each object in the array contains one file name and one list of
+  * errors found in that file.
+  */
+ errsList: ParsingError[];
+}
 
 import {ParsingError} from './back-end/utils';
 
@@ -57,10 +67,6 @@ const ParsingErrorsTable = (props: ParsingErrorsTablePropType) => {
       </table>
     </div>
   );
-};
-
-ParsingErrorsTable.propTypes = {
-  errsList: PropTypes.arrayOf(PropTypes.object),
 };
 
 export {ParsingErrorsTable};

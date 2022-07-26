@@ -15,7 +15,18 @@
  */
 
 import React from 'react';
-import PropTypes from 'prop-types';
+
+
+interface LoadingSpinnerPropType {
+  /**
+   * Indicates if spinner should be displayed.
+   */
+  loading: boolean;
+  /**
+   * The message to be displayed while page is loading
+   */
+  msg: string;
+}
 
 
 interface LoadingSpinnerPropType {
@@ -41,11 +52,6 @@ const LoadingSpinner = (props: LoadingSpinnerPropType) => {
       <h2>{props.msg}</h2>
     </div>
   );
-};
-
-LoadingSpinner.propTypes = {
-  loading: PropTypes.bool,
-  msg: PropTypes.string,
 };
 
 export {LoadingSpinner};

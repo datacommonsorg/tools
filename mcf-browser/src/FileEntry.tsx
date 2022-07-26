@@ -15,7 +15,40 @@
  */
 
 import React, {Component} from 'react';
-import PropTypes from 'prop-types';
+
+interface FileEntryPropType {
+  /**
+   * Passes a file list to be submitted to the back-end for parsing.
+   */
+  upload: Function;
+  /**
+   * Passes a list of urls to be retrieved, then passed to the back-end for
+   * parsing.
+   */
+  loadFiles: Function;
+  /**
+   * Return to the home page/reset to current hash stored in App state.
+   */
+  goToHome: Function;
+  /**
+   * Sets whether the dropdown on the home page for additonal file entries
+   * should be displayed.
+   */
+  toggle: Function;
+}
+
+interface FileEntryStateType{
+  /**
+   * Stores user's text entry in the first url entry box. This should be a url
+   * to either a MCF or TMCF file.
+   */
+  mcfTmcfUrl: string;
+  /**
+   * Stores user's text entry in the second url entry box. This should be a url
+   * to a CSV file.
+   */
+  csvUrl: string;
+}
 
 interface FileEntryPropType {
   /**
@@ -155,13 +188,6 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
     );
   }
 }
-
-FileEntry.propTypes = {
-  upload: PropTypes.func,
-  loadFiles: PropTypes.func,
-  goToHome: PropTypes.func,
-  toggle: PropTypes.func,
-};
 
 
 export {FileEntry};

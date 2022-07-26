@@ -187,16 +187,4 @@ class Home extends Component<HomePropType, HomeStateType> {
   }
 }
 
-Home.propTypes = {
-  fileList: PropTypes.arrayOf(PropTypes.instanceOf(Blob)),
-  upload: PropTypes.func,
-  loadFiles: PropTypes.func,
-  goToHome: PropTypes.func,
-  clear: PropTypes.func,
-  errs: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)),
-  loading: PropTypes.bool,
-  subjNodes: PropTypes.arrayOf(PropTypes.string),
-  goToId: PropTypes.func,
-};
-
 export {Home};

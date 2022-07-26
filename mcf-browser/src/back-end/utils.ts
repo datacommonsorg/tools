@@ -101,6 +101,16 @@ export type DCPropertyValueResponse = {
   provenanceId: string;
 }
 
+export type DCPropertyValueResponse = {
+  /** the dcid being queried */
+  dcid: string;
+
+  /** the value of the property being queried */
+  value: string;
+
+  provenanceId: string;
+}
+
 /**
  * Parses an Object returned from the DC REST get_values API to create a Node
  * object from the value's dcid or to return the string value that the object
