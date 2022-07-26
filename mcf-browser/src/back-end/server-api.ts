@@ -16,33 +16,46 @@
 
 /* Functions to relay information from the back-end to the front-end. */
 
-import {Node} from './graph.js';
-import {ParseMcf} from './parse-mcf.js';
-import {ParseTmcf} from './parse-tmcf.js';
+import {Node} from './graph';
+import {ParseMcf} from './parse-mcf';
+import {ParseTmcf} from './parse-tmcf';
+import {ParsingError} from './utils';
 
+type ParseFileResponse = {
+  /** A list of errors that occurred while parsing
+   * the files
+   */
+  errMsgs: ParsingError[];
+
+  /** A list of the ids of the subject nodes */
+  localNodes: string[];
+}
 /**
  * Parses App state's files list.
  * @param {Array<Blob>} fileList The list of blobs to be parsed.
  * @return {Object} An object containing the ids of the subject nodes and any
  *     parsing error message objects.
  */
-async function readFileList(fileList) {
+async function readFileList(fileList: Blob[]) {
   console.log(fileList);
   let curTmcf = null;
-  const finalReturn = {'errMsgs': [], 'localNodes': []};
+  const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
 
   for (const file of fileList) {
-    const fileExt = file.name.split('.').pop();
+    const fileName = (file as File).name;
+    const fileExt = fileName.split('.').pop();
 
     if (fileExt === 'mcf') {
       const mcfOut = await ParseMcf.readFile(file);
       console.log(mcfOut);
-      finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
-        'file': file.name,
-        'errs': mcfOut['errMsgs'],
-      });
-      finalReturn['localNodes'] =
-        finalReturn['localNodes'].concat(mcfOut['localNodes']);
+      if (mcfOut instanceof Error) {
+        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
+          'file': fileName,
+          'errs': mcfOut['errMsgs'],
+        }]);
+        finalReturn['localNodes'] =
+          finalReturn['localNodes'].concat(mcfOut['localNodes']);
+      }
     } else if (fileExt === 'tmcf') {
       curTmcf = file;
     } else {
@@ -51,14 +64,14 @@ async function readFileList(fileList) {
         const tmcfOut =
           await ParseTmcf.generateMcf(curTmcf, file).then((mcf) => {
             console.log(mcf);
-            const mcfParser = new ParseMcf(tmcf.name + '&' + file.name);
-            return mcfParser.parseMcfStr(mcf);
+            const mcfParser = new ParseMcf((tmcf as File).name + '&' + fileName);
+            return mcfParser.parseMcfStr(mcf as string);
           });
 
         if (tmcfOut['errMsgs'].length !== 0) {
           finalReturn['errMsgs'] =
             finalReturn['errMsgs'].concat({
-              'file': tmcf.name,
+              'file': (tmcf as File).name,
               'errs': tmcfOut['errMsgs'],
             });
         }
@@ -92,7 +105,7 @@ function clearFiles() {
   *     node should be set to id.
   * @return {Node} The retreived node with the given id.
   */
-function retrieveNode(id, shouldCreateRemote) {
+function retrieveNode(id: string, shouldCreateRemote: boolean) {
   const retrieved = Node.getNode(id);
   if (shouldCreateRemote) {
     retrieved.setDCID(id.replace('dcid:', ''));
@@ -107,7 +120,7 @@ function retrieveNode(id, shouldCreateRemote) {
   * @param {Object} obj The object to determine if it is of Node type.
   * @return {boolean} True if obj is of Node type and false otherwise.
   */
-function isNodeObj(obj) {
+function isNodeObj(obj: Object) {
   return Node.isNode(obj);
 }
 
@@ -118,7 +131,7 @@ function isNodeObj(obj) {
   * @param {Node} target The node object whose element color needs to be found.
   * @return {String} The appropriate css class for the node.
   */
-async function getElemClass(target) {
+async function getElemClass(target: Node) {
   if (!target) {
     return null;
   }
@@ -136,7 +149,7 @@ async function getElemClass(target) {
       return 'exist-in-local';
     }
 
-    if (!target.dcid && !(target.localId in ParseMcf.localNodeHash)) {
+    if (!target.dcid && !((target.localId as string) in ParseMcf.localNodeHash)) {
       return 'not-in-local';
     }
     return 'not-in-kg';

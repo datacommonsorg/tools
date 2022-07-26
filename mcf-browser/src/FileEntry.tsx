@@ -15,14 +15,47 @@
  */
 
 import React, {Component} from 'react';
-import PropTypes from 'prop-types';
+
+interface FileEntryPropType {
+  /**
+   * Passes a file list to be submitted to the back-end for parsing.
+   */
+  upload: Function;
+  /**
+   * Passes a list of urls to be retrieved, then passed to the back-end for
+   * parsing.
+   */
+  loadFiles: Function;
+  /**
+   * Return to the home page/reset to current hash stored in App state.
+   */
+  goToHome: Function;
+  /**
+   * Sets whether the dropdown on the home page for additonal file entries
+   * should be displayed.
+   */
+  toggle: Function;
+}
+
+interface FileEntryStateType{
+  /**
+   * Stores user's text entry in the first url entry box. This should be a url
+   * to either a MCF or TMCF file.
+   */
+  mcfTmcfUrl: string;
+  /**
+   * Stores user's text entry in the second url entry box. This should be a url
+   * to a CSV file.
+   */
+  csvUrl: string;
+}
 
 /** Component to display options user has for uploading files. */
-class FileEntry extends Component {
+class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
   /** Constructor for class, sets initial state
    * @param {Object} props the props passed in by parent component
    */
-  constructor(props) {
+  constructor(props: FileEntryPropType) {
     super(props);
     this.state = {
       mcfTmcfUrl: '',
@@ -36,7 +69,7 @@ class FileEntry extends Component {
    *
    * @param {Event} event The keyUp event that triggers the function call.
    */
-  async handleUrlKeyUp(event) {
+  async handleUrlKeyUp(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.keyCode === 13) {
       if (this.state.mcfTmcfUrl.split('.').pop() === 'mcf') {
         // set the base file hash with the given file names
@@ -72,7 +105,7 @@ class FileEntry extends Component {
           <label className='button'>
             <input type="file" required multiple
               accept=".mcf" onChange={(event) => {
-                this.props.upload(Array.from(event.target.files));
+                this.props.upload(Array.from(event.target.files as FileList));
                 this.props.toggle();
               }}/>
               Upload MCF
@@ -82,7 +115,7 @@ class FileEntry extends Component {
           <label className='button'>
             <input type="file" required multiple
               accept=".tmcf,.csv" onChange={(event) => {
-                this.props.upload(Array.from(event.target.files));
+                this.props.upload(Array.from(event.target.files as FileList));
                 this.props.toggle();
               }}/>
               Upload TMCF + CSV
@@ -121,13 +154,6 @@ class FileEntry extends Component {
     );
   }
 }
-
-FileEntry.propTypes = {
-  upload: PropTypes.func,
-  loadFiles: PropTypes.func,
-  goToHome: PropTypes.func,
-  toggle: PropTypes.func,
-};
 
 
 export {FileEntry};

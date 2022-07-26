@@ -18,7 +18,7 @@
  * helper functions for parsing file to create local knowledge graph.
  */
 
-import {Node} from './graph.js';
+import {Node} from './graph';
 const API_ROOT = 'https://api.datacommons.org';
 
 const ERROR_MESSAGES =
@@ -35,13 +35,22 @@ const ERROR_MESSAGES =
       'parse-noLabel': 'missing property label',
     };
 
+/** A type to represent the format of the errors in the errList prop */
+export interface ParsingError {
+  /** A list of errors generated when parsing a file */
+  errs: string[][];
+
+  /** The file that created the errors */
+  file: string;
+}
+
 /**
  * Gets all property labels of the given dcid that are in the DC KG.
  *
  * @param {string} dcid The dcid of the node to find property labels for.
  * @return {Object} An object containing both 'in' and 'out' property labels.
  */
-async function getRemotePropertyLabels(dcid) {
+async function getRemotePropertyLabels(dcid: string) {
   // Get inward and outward property labels
   const outTargetUrl = `${API_ROOT}/v1/properties/out/${dcid}`;
   const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
@@ -70,7 +79,9 @@ async function getRemotePropertyLabels(dcid) {
  *     an outgoing label, true is an incoming label.
  * @return {Object} An object containing all found values matching the query.
  */
-async function getRemotePropertyValues(dcid, label, isInverse) {
+async function getRemotePropertyValues(
+    dcid: string, label: string, isInverse: boolean,
+) {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
       `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
@@ -78,6 +89,16 @@ async function getRemotePropertyValues(dcid, label, isInverse) {
   return fetch(targetUrl)
       .then((res) => res.json())
       .then((data) => data.values);
+}
+
+export type DCPropertyValueResponse = {
+  /** the dcid being queried */
+  dcid: string;
+
+  /** the value of the property being queried */
+  value: string;
+
+  provenanceId: string;
 }
 
 /**
@@ -89,7 +110,7 @@ async function getRemotePropertyValues(dcid, label, isInverse) {
  * @return {Node | string} The created Node if the value object has a dcid,
  *     otherwise the string of the value.
  */
-function getValueFromValueObj(valueObj) {
+function getValueFromValueObj(valueObj: DCPropertyValueResponse) {
   if (!('dcid' in valueObj || 'value' in valueObj)) {
     throw new Error(
         'ERROR: DC API returned an object with no "dcid" or "value" field: ' +
@@ -112,8 +133,13 @@ function getValueFromValueObj(valueObj) {
  * @return {Promise<boolean>} Returns true if given dcid is in any triples in
  *     Data Commons Knowledge Graph.
  */
+<<<<<<< HEAD:mcf-browser/src/back-end/utils.js
 async function doesExistsInKG(dcid) {
   const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
+=======
+async function doesExistsInKG(dcid: string) {
+  const url = API_ROOT + '/node/triples?dcids=' + dcid + '&limit=1';
+>>>>>>> 1063e75 (Change source code over to typescript):mcf-browser/src/back-end/utils.ts
 
   // expected response if dcid exists is {"values":"[...]}
   // expected response if dcid does not exist is {}
@@ -128,7 +154,7 @@ async function doesExistsInKG(dcid) {
  * @return {boolean} False if the line is a comment or empty, otherwise
  *     true.
  */
-function shouldReadLine(line) {
+function shouldReadLine(line: string) {
   if (line.startsWith('//') || line.length === 0 || line.startsWith('#')) {
     return false;
   }
@@ -136,8 +162,7 @@ function shouldReadLine(line) {
 }
 
 export {
-  ERROR_MESSAGES,
-  getRemotePropertyLabels,
+  ERROR_MESSAGES, getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
   doesExistsInKG,
