@@ -15,10 +15,21 @@
  */
 
 import React from 'react';
-import PropTypes from 'prop-types';
+
+
+interface LoadingSpinnerPropType {
+  /**
+   * Indicates if spinner should be displayed.
+   */
+  loading: boolean;
+  /**
+   * The message to be displayed while page is loading
+   */
+  msg: string;
+}
 
 // spinning animation to demonstrate loading, used in DisplayNode and Home
-const LoadingSpinner = (props) => {
+const LoadingSpinner = (props: LoadingSpinnerPropType) => {
   if (!props.loading) {
     return null;
   }
@@ -29,11 +40,6 @@ const LoadingSpinner = (props) => {
       <h2>{props.msg}</h2>
     </div>
   );
-};
-
-LoadingSpinner.propTypes = {
-  loading: PropTypes.bool,
-  msg: PropTypes.string,
 };
 
 export {LoadingSpinner};

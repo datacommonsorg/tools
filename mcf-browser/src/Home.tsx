@@ -15,22 +15,71 @@
  */
 
 import React, {Component} from 'react';
-import PropTypes from 'prop-types';
 
-import {openFile} from './utils.js';
-import {LoadingSpinner} from './LoadingSpinner.jsx';
-import {ParsingErrorsTable} from './ParsingErrorsTable.jsx';
-import {FileEntry} from './FileEntry.jsx';
+import {ParsingError} from './back-end/utils';
+import {openFile} from './utils';
+import {LoadingSpinner} from './LoadingSpinner';
+import {ParsingErrorsTable} from './ParsingErrorsTable';
+import {FileEntry} from './FileEntry';
+
+
+interface HomePropType {
+  /**
+   * List of the files that have been uploaded by user.
+   */
+  fileList: Blob[];
+  /**
+   * Passes a file list to be submitted to the back-end for parsing.
+   */
+  upload: Function;
+  /**
+   * Passes a list of urls to be retrieved, then passed to the back-end for parsing.
+   */
+  loadFiles: Function;
+  /**
+   * Return to the home page.
+   */
+  goToHome: Function;
+  /**
+   * Clears the loaded data from all files and resets App to its initial state.
+   */
+  clear: React.MouseEventHandler<HTMLButtonElement>;
+  /**
+   * Error messages from parsing files specifying line number, line, and helpful
+   * message indicating the error.
+   */
+  errs: ParsingError[];
+  /**
+   * Indicates if uploaded files are currently being parsed.
+   */
+  loading: boolean;
+  /**
+   * IDs for nodes stored in App's state which are the subject nodes of triples from
+   * any parsed files.
+   */
+  subjNodes: string[];
+  /**
+   * Set id parameter in url to the given id. Used when user clicks a subject node to explore.
+   */
+  goToId: Function;
+}
+
+interface HomeStateType{
+  /**
+   * Determines if the file entry dropdown option should be displayed.
+   */
+  dropdown: boolean;
+}
 
 /** Displays the currently loaded files, clear button, parsing errors, and
   * subject nodes.
   */
-class Home extends Component {
+class Home extends Component<HomePropType, HomeStateType> {
   /** Constructor for class, sets initial state
    *
    * @param {Object} props the props passed in by parent component
    */
-  constructor(props) {
+  constructor(props: HomePropType) {
     super(props);
     this.state = {
       dropdown: false,
@@ -85,13 +134,14 @@ class Home extends Component {
           <h3>Current Files</h3>
           <ul>
             {this.props.fileList.map((file, index) => {
-              const className = file.name.startsWith('https:') ?
+              const fileName = (file as File).name;
+              const className = fileName.startsWith('https:') ?
                 'clickable' : '';
               return (
                 <li onClick={() => {
-                  if (className) openFile(file.name);
+                  if (className) openFile(fileName);
                 }}
-                className={className} key={file.name+index}>{file.name}</li>
+                className={className} key={fileName+index}>{fileName}</li>
               );
             })}
           </ul>
@@ -136,17 +186,5 @@ class Home extends Component {
     );
   }
 }
-
-Home.propTypes = {
-  fileList: PropTypes.arrayOf(PropTypes.instanceOf(Blob)),
-  upload: PropTypes.func,
-  loadFiles: PropTypes.func,
-  goToHome: PropTypes.func,
-  clear: PropTypes.func,
-  errs: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.string)),
-  loading: PropTypes.bool,
-  subjNodes: PropTypes.arrayOf(PropTypes.string),
-  goToId: PropTypes.func,
-};
 
 export {Home};

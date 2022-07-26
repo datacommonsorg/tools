@@ -20,19 +20,64 @@ import React, {Component} from 'react';
 
 import axios from 'axios';
 
-import {DisplayNode} from './DisplayNode.jsx';
-import {Header} from './Header.jsx';
-import {Home} from './Home.jsx';
-import * as utils from './utils.js';
-import * as API from './back-end/server-api.js';
+import {Node} from './back-end/graph';
+import {DisplayNode} from './DisplayNode';
+import {Header} from './Header';
+import {Home} from './Home';
+import * as utils from './utils';
+import * as API from './back-end/server-api';
+import {ParsingError} from './back-end/utils';
+
+/** Interface for the App component's state */
+interface AppStateType{
+  /**
+   * Subject node IDs of the triples from files uploaded by user.
+   */
+  subjNodes: string[];
+  /**
+   * Node that should be displayed.
+   */
+  curNode: Node | null;
+  /**
+   * Files that have been uploaded by user.The locality of the csv files in
+   * relation to the tmcf files is very important! The csv will be paired with
+   * the closest tmcf file that comes before it whenever we are loading/parsing
+   * the files in the backend.
+   */
+  files: Blob[];
+  /**
+   * Indicates if any files are currently being parsed by back-end.
+   */
+  loading: boolean;
+  /**
+   * Indicates if url needs to be parsed on component mount. True when the
+   * application first loads and when files are cleared by user.
+   */
+  firstLoad: boolean;
+  /**
+   * Array of error message objects, one object per parsed file with errors. The
+   * property 'errs' is in each object is an array of String arrays, one String
+   * array per error within the given file which specifies line number, line,
+   * and helpful message indicating the error. The 'file' property provides the
+   * file name from which the error came.
+   */
+  parsingErrs: ParsingError[];
+  /**
+   * Contains the remote files specified by user in url format to be used as a
+   * home base in the hash portion of the url while using those files.
+   */
+  fileHash: string;
+
+}
 
 /** Drives the entire app and holds the state of the files and current node. */
-class App extends Component {
+class App extends Component<{}, AppStateType> {
+  initialState: Readonly<AppStateType>;
   /** Constructor for class, sets initial state
    *
    * @param {Object} props the props passed in by parent component
    */
-  constructor(props) {
+  constructor(props: Object) {
     super(props);
     this.state = {
       subjNodes: [],
@@ -91,7 +136,8 @@ class App extends Component {
    * param.
    */
   parseUrl() {
-    const params = new URLSearchParams(window.location.hash.trim('#'));
+    console.log('hash: ' + window.location.hash);
+    const params = new URLSearchParams(window.location.hash.trim());
     const fileUrls = params.getAll('file');
 
     if (fileUrls.length) {
@@ -111,7 +157,7 @@ class App extends Component {
    * the hash of the url when navigating between nodes.
    * @param {Array<String>} fileUrlList File url list to be saved in the hash.
    */
-  appendfileHash(fileUrlList) {
+  appendfileHash(fileUrlList: string[]) {
     let hash = this.state.fileHash;
     for (const fileUrl of fileUrlList) {
       hash += '&file=' + fileUrl;
@@ -125,8 +171,9 @@ class App extends Component {
    * @param {Array<string>} fileUrls The array of file urls to load and append
    *     to App state's files object.
    */
-  async loadRemoteFiles(fileUrls) {
+  async loadRemoteFiles(fileUrls: string[]) {
     this.appendfileHash(fileUrls);
+
 
     const newFiles = [];
     for (const fileUrl of fileUrls) {
@@ -151,7 +198,7 @@ class App extends Component {
    * them to be parsed.
    * @param {Array<Blob>} fileList File blobs selcted by user via file picker.
    */
-  async uploadFiles(fileList) {
+  async uploadFiles(fileList: Blob[]) {
     for (const file of fileList) {
       await this.setState((prevState) => ({
         files: [...prevState.files, file],
@@ -165,7 +212,7 @@ class App extends Component {
    * into memory.
    * @param {Array<Blob>} fileList File blobs to be parsed by back-end.
    */
-  submitFileList(fileList) {
+  submitFileList(fileList: Blob[]) {
     this.setState({loading: true});
 
     API.readFileList(fileList).then((res) => {
@@ -189,19 +236,19 @@ class App extends Component {
   /**
    * Renders the browser by displaying a specific node or the homepage.
    *
-   * @return {Object} the webpage using JSX code
+   * @return {Object} the webpage using TSX code
    */
   render() {
     return (
       <div id="app" >
         <Header subjIds={this.state.subjNodes}
           onHomeClick={() => utils.goTo(this.state.fileHash)}
-          searchId={(id) => utils.searchId(this.state.fileHash, id)}/>
+          searchId={(id: string) => utils.searchId(this.state.fileHash, id)}/>
 
         {this.state.curNode ?
             // if curNode is set, then display it
             <DisplayNode node={this.state.curNode}
-              goToId={(id) => utils.goToId(this.state.fileHash, id)}/> :
+              goToId={(id: string) => utils.goToId(this.state.fileHash, id)}/> :
             // otherwise display home
             <Home
               fileList={this.state.files}
@@ -209,9 +256,11 @@ class App extends Component {
               errs={this.state.parsingErrs}
               loading={this.state.loading}
               subjNodes={this.state.subjNodes}
-              upload={(files) => this.uploadFiles(files)}
-              goToId={(id) => utils.goToId(this.state.fileHash, id)}
-              loadFiles={(filesList) => this.loadRemoteFiles(filesList)}
+              upload={(files: Blob[]) => this.uploadFiles(files)}
+              goToId={(id: string) => utils.goToId(this.state.fileHash, id)}
+              loadFiles={
+                (filesList: string[]) => this.loadRemoteFiles(filesList)
+              }
               goToHome={() => utils.goTo(this.state.fileHash)}/>
         }
       </div>

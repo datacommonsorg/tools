@@ -13,8 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as csv from 'csvtojson';
-import {shouldReadLine} from './utils.js';
+import {shouldReadLine} from './utils';
 
 /**
  * Returns the string following '->' in  a given string. Used for getting csv
@@ -23,7 +22,7 @@ import {shouldReadLine} from './utils.js';
  * @param {string} propValue The string to look for a column name in.
  * @return {string|null} The column name that comes after '->'.
  */
-function getColumnId(propValue) {
+function getColumnId(propValue: string) {
   const colIdMatch = propValue.match('C:(.*)->(.*)');
   if (colIdMatch) {
     return colIdMatch[0];
@@ -36,7 +35,7 @@ function getColumnId(propValue) {
  * @param {string} line The string to look for a match in.
  * @return {string|null} The entity id that matches the specified format.
  */
-function getEntityID(line) {
+function getEntityID(line: string) {
   const localIdMatch = line.match('E:(.*)->(.*)');
   if (localIdMatch) {
     return localIdMatch[0];
@@ -69,7 +68,7 @@ class ParseTmcf {
    * @param {string} entityID The entity id used in tmcf file.
    * @return {string|null} The local id for the node of the specific csv row.
    */
-  getLocalIdFromEntityId(entityID) {
+  getLocalIdFromEntityId(entityID: string) {
     if (entityID) {
       return entityID.replace('->', '_').replace('E:', '') + '_R' +
              this.csvIndex;
@@ -90,7 +89,7 @@ class ParseTmcf {
    *     ids in lieu of entity ids and csv column references replaces with csv
    *     values.
    */
-  fillPropertyValues(propValues, csvRow) {
+  fillPropertyValues(propValues: string, csvRow: Object) {
     const filledValues = [];
 
     for (const propValue of propValues.split(',')) {
@@ -107,7 +106,7 @@ class ParseTmcf {
       } else if (colId) {
         // Replace csv column placeholder with the value
         const colName = colId.split('->')[1];
-        filledValue = propValue.replace(colId, csvRow[colName]);
+        filledValue = propValue.replace(colId, (csvRow as any)[colName]);
       } else {
         filledValue = propValue;
       }
@@ -125,7 +124,7 @@ class ParseTmcf {
    *     entries of the csv for the specfic row/column.
    * @return {string} The constructed mcf for the single row from csv file.
    */
-  fillTemplateFromRow(template, csvRow) {
+  fillTemplateFromRow(template: string, csvRow: Object) {
     const filledTemplate = [];
 
     for (const line of template.split('\n')) {
@@ -165,7 +164,7 @@ class ParseTmcf {
    *     Each Object element of the array represents one row of the csv.
    * @return {string} The generated mcf as a string.
    */
-  csvToMcf(template, csvRows) {
+  csvToMcf(template: string, csvRows: Object[]) {
     this.csvIndex = 1;
     const mcfLines = [];
     for (const row of csvRows) {
@@ -181,17 +180,18 @@ class ParseTmcf {
    * header names and the values of the object are the csv entries in that
    * column of the given row the object represents.
    * @param {string} template The string representation of a tmcf file.
-   * @param {FileObject} csvFile THe csv file from html file-input element.
+   * @param {FileObject} csvFile The csv file from html file-input element.
    * @return {Array<Object>} The json representation of the csv file.
    */
-  async readCsvFile(template, csvFile) {
+  async readCsvFile(template: string, csvFile: Blob) {
     const fileReader = new FileReader();
     fileReader.readAsText(csvFile);
     return new Promise((res, rej) => {
       fileReader.addEventListener('loadend', (result) => {
+        const csv = require('csvtojson');
         csv()
             .fromString(fileReader.result)
-            .then((csvRows) => {
+            .then((csvRows: Object[]) => {
               res(this.csvToMcf(template, csvRows));
             });
       });
@@ -204,7 +204,7 @@ class ParseTmcf {
    * @param {FileObject} tmcfFile The tmcf file from html file-input element.
    * @return {string} The string representation of the tmcf file.
    */
-  static async readTmcfFile(tmcfFile) {
+  static async readTmcfFile(tmcfFile: Blob): Promise<string | ArrayBuffer | null> {
     const fileReader = new FileReader();
     fileReader.readAsText(tmcfFile);
     return new Promise((res, rej) => {
@@ -222,10 +222,10 @@ class ParseTmcf {
    * @param {FileObject} csvFile THe csv file from html file-input element.
    * @return {string} The translated mcf as a string.
    */
-  static async generateMcf(tmcfFile, csvFile) {
-    return ParseTmcf.readTmcfFile(tmcfFile).then((template) => {
+  static async generateMcf(tmcfFile: Blob, csvFile: Blob) {
+    return ParseTmcf.readTmcfFile(tmcfFile).then((template: string | ArrayBuffer | null) => {
       const tmcfParser = new ParseTmcf();
-      return tmcfParser.readCsvFile(template, csvFile);
+      return tmcfParser.readCsvFile(template as string, csvFile);
     });
   }
 }
