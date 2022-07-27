@@ -34,10 +34,10 @@ test('testing setDCID w/ merge', async () => {
   localNode.setDCID('remoteId');
 
   const expectedHash = {
-    'dcid:remoteId' : localNode,
-    'l:localId' : localNode,
-    'l:targetId' : targetNode,
-    'l:srcId' : srcNode,
+    'dcid:remoteId': localNode,
+    'l:localId': localNode,
+    'l:targetId': targetNode,
+    'l:srcId': srcNode,
   };
 
   expect(Node.nodeHash).toStrictEqual(expectedHash);
@@ -76,9 +76,9 @@ test('testing merge duplicate assertions', async () => {
 
   localValNode.setDCID('remoteId');
   const expectedHash = {
-    'dcid:remoteId' : localValNode,
-    'l:localId' : localValNode,
-    'l:localNode' : localNode,
+    'dcid:remoteId': localValNode,
+    'l:localId': localValNode,
+    'l:localNode': localNode,
   };
   expect(Node.nodeHash).toStrictEqual(expectedHash);
 

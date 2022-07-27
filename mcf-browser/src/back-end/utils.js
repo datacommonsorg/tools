@@ -42,10 +42,22 @@ const ERROR_MESSAGES =
  * @return {Object} An object containing both 'in' and 'out' property labels.
  */
 async function getRemotePropertyLabels(dcid) {
-  const targetUrl = API_ROOT + '/node/property-labels?dcids=' + dcid;
-  return fetch(targetUrl)
-      .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid]);
+  // Get inward and outward property labels
+  const outTargetUrl = `${API_ROOT}/v1/properties/out/${dcid}`;
+  const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
+
+  const [inPropertyLabels, outPropertyLabels] = await Promise.all([
+    fetch(inTargetUrl)
+        .then((response) => response.json()
+            .then((data) => data.properties),
+        ),
+    fetch(outTargetUrl)
+        .then((response) => response.json()
+            .then((data) => data.properties),
+        ),
+  ]);
+
+  return {outLabels: outPropertyLabels, inLabels: inPropertyLabels};
 }
 
 /**
@@ -61,13 +73,11 @@ async function getRemotePropertyLabels(dcid) {
 async function getRemotePropertyValues(dcid, label, isInverse) {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
-      (API_ROOT + '/node/property-values?limit=500&dcids=' + dcid +
-       '&property=' + label + '&direction=' + direction);
+      `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
 
   return fetch(targetUrl)
       .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid])
-      .then((triples) => isInverse ? triples.in : triples.out);
+      .then((data) => data.values);
 }
 
 /**
@@ -103,13 +113,13 @@ function getValueFromValueObj(valueObj) {
  *     Data Commons Knowledge Graph.
  */
 async function doesExistsInKG(dcid) {
-  const url = API_ROOT + '/node/triples?dcids=' + dcid + '&limit=1';
+  const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
 
-  // expected response if dcid does not exist is {"payload":"{\"dcid\":[]}"}
-  // code below checks that the list returned is non-empty
+  // expected response if dcid exists is {"values":"[...]}
+  // expected response if dcid does not exist is {}
   return fetch(url)
       .then((res) => res.json())
-      .then((data) => (JSON.parse(data.payload)[dcid] && JSON.parse(data.payload)[dcid].length > 0) ? true : false);
+      .then((data) => (data.values) ? true : false);
 }
 
 /**

@@ -205,7 +205,7 @@ class App extends Component {
     this.setState({loading: true});
 
     API.readFileList(fileList).then((res) => {
-      this.setState(prevState => ({
+      this.setState((prevState) => ({
         parsingErrs: prevState['parsingErrs'].concat(res['errMsgs']),
         subjNodes: res['localNodes'],
         loading: false,
