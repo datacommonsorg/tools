@@ -43,8 +43,8 @@ const ERROR_MESSAGES =
  */
 async function getRemotePropertyLabels(dcid) {
   // Get inward and outward property labels
-  const outTargetUrl = API_ROOT + '/v1/properties/out/' + dcid;
-  const inTargetUrl = API_ROOT + '/v1/properties/in/' + dcid;
+  const outTargetUrl = `${API_ROOT}/v1/properties/out/${dcid}`;
+  const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
 
   const [inPropertyLabels, outPropertyLabels] = await Promise.all([
     fetch(inTargetUrl)
@@ -73,8 +73,7 @@ async function getRemotePropertyLabels(dcid) {
 async function getRemotePropertyValues(dcid, label, isInverse) {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
-      (API_ROOT + '/v1/property/values/' + direction + '/' + dcid +
-      '/' + label);
+      `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
 
   return fetch(targetUrl)
       .then((res) => res.json())
@@ -114,7 +113,7 @@ function getValueFromValueObj(valueObj) {
  *     Data Commons Knowledge Graph.
  */
 async function doesExistsInKG(dcid) {
-  const url = API_ROOT + '/v1/property/values/out/' + dcid + '/typeOf';
+  const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
 
   // expected response if dcid exists is {"values":"[...]}
   // expected response if dcid does not exist is {}
