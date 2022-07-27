@@ -70,8 +70,8 @@ async function getRemotePropertyLabels(dcid) {
 async function getRemotePropertyValues(dcid, label, isInverse) {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
-      (API_ROOT + '/v1/property/' + direction + '/' + label +
-      '/values/' + dcid);
+      (API_ROOT + '/v1/property/values/' + direction + '/' + dcid +
+      '/' + label);
 
   return fetch(targetUrl)
       .then((res) => res.json())
@@ -111,7 +111,7 @@ function getValueFromValueObj(valueObj) {
  *     Data Commons Knowledge Graph.
  */
 async function doesExistsInKG(dcid) {
-  const url = API_ROOT + '/v1/property/out/typeOf/values/' + dcid;
+  const url = API_ROOT + '/v1/property/values/out/' + dcid + "/typeOf";
 
   // expected response if dcid exists is {"values":"[...]}
   // expected response if dcid does not exist is {}
