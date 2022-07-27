@@ -42,17 +42,20 @@ const ERROR_MESSAGES =
  * @return {Object} An object containing both 'in' and 'out' property labels.
  */
 async function getRemotePropertyLabels(dcid) {
-  // Get outward property labels
+  // Get inward and outward property labels
   const outTargetUrl = API_ROOT + '/v1/properties/out/' + dcid;
-  const outPropertyLabels = await fetch(outTargetUrl)
-      .then((res) => res.json())
-      .then((data) => data.properties);
-
-  // Get inward property labels
   const inTargetUrl = API_ROOT + '/v1/properties/in/' + dcid;
-  const inPropertyLabels = await fetch(inTargetUrl)
-      .then((res) => res.json())
-      .then((data) => data.properties);
+
+  const [inPropertyLabels, outPropertyLabels] = await Promise.all([
+    fetch(inTargetUrl)
+        .then((response) => response.json()
+            .then((data) => data.properties),
+        ),
+    fetch(outTargetUrl)
+        .then((response) => response.json()
+            .then((data) => data.properties),
+        ),
+  ]);
 
   return {outLabels: outPropertyLabels, inLabels: inPropertyLabels};
 }
@@ -111,7 +114,7 @@ function getValueFromValueObj(valueObj) {
  *     Data Commons Knowledge Graph.
  */
 async function doesExistsInKG(dcid) {
-  const url = API_ROOT + '/v1/property/values/out/' + dcid + "/typeOf";
+  const url = API_ROOT + '/v1/property/values/out/' + dcid + '/typeOf';
 
   // expected response if dcid exists is {"values":"[...]}
   // expected response if dcid does not exist is {}

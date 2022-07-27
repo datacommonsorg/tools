@@ -101,7 +101,7 @@ class DisplayNode extends Component {
     });
 
     API.getElemClass(curNode).then((elemClass) => {
-      this.setState({elemClass: elemClass})
+      this.setState({elemClass: elemClass});
     });
 
     curNode.fetchRemoteData().then(() => {

@@ -101,12 +101,12 @@ class Home extends Component {
     let addFileButtonClass;
     let addFileButtonText;
 
-    if(this.state.dropdown){
+    if (this.state.dropdown) {
       addFileButtonClass = 'button expanded';
       addFileButtonText = 'Add File (-)';
     } else {
-        addFileButtonClass = 'button';
-        addFileButtonText = 'Add File (+)';
+      addFileButtonClass = 'button';
+      addFileButtonText = 'Add File (+)';
     }
 
     // show current files and subject nodes
@@ -151,7 +151,7 @@ class Home extends Component {
         <br/>
 
         <div className = "box">
-          
+
           {/* display loading animation while waiting*/}
           <LoadingSpinner loading={this.props.loading}
             msg='...loading mcf...'/>

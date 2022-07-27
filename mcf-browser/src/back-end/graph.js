@@ -89,7 +89,7 @@ class Node {
    * Node object to be returned.If the node does not exist already, then it
    * should be created. If the created node with the requested id does not exist
    * in the local file or in the Data Commons Knowledge Graph, then the
-   * front-end will demonstrate this to the user. 
+   * front-end will demonstrate this to the user.
    *
    * @param {string} id The id of the node to find, including the namespace.
    * @return {Node} The found node if it exists or is created.
@@ -178,7 +178,7 @@ class Node {
    *     the calling Node is the source of the triple.
    */
   async createAssertionsFromLabels(propLabels, isInverse) {
-    if (!propLabels || propLabels.length === 0){
+    if (!propLabels || propLabels.length === 0) {
       return;
     }
 
