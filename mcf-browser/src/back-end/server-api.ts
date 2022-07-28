@@ -19,7 +19,7 @@
 import {Node} from './graph';
 import {ParseMcf} from './parse-mcf';
 import {ParseTmcf} from './parse-tmcf';
-import {ParsingError} from './utils';
+import {ParsingError, ERROR_MESSAGES} from './utils';
 
 type ParseFileResponse = {
   /** A list of errors that occurred while parsing
@@ -40,6 +40,8 @@ async function readFileList(fileList: Blob[]) {
   // Clear previously stored files
   clearFiles();
 
+  const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
+
   // Find TMCF file, if it exists
   let tmcfFile = null;
   for (const file of fileList) {
@@ -47,13 +49,19 @@ async function readFileList(fileList: Blob[]) {
     const fileExt = fileName.split('.').pop();
 
     if(fileExt === "tmcf"){
-      // TODO: confirmed that expected behavior for several 
-      // TMCF files is to use the last one
+      if (tmcfFile) {
+        // If another TMCF file was found, throw an error
+        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
+          'file': fileName,
+          'errs': [
+            ["-1", "", ERROR_MESSAGES['multiple-tmcf']]
+          ]
+        }]);
+      }
+
       tmcfFile = file;
     }
   }
-
-  const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
 
   for (const file of fileList) {
     const fileName = (file as File).name;

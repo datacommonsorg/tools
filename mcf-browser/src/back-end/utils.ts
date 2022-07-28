@@ -33,6 +33,7 @@ const ERROR_MESSAGES =
       'assert-noCur': 'current node must be set before declaring properties',
       'parse-noColon': 'missing \':\', incorrect mcf triple format',
       'parse-noLabel': 'missing property label',
+      'multiple-tmcf': 'multiple TMCF files were uploaded, only the last one was used',
     };
 
 /** A type to represent the format of the errors in the errList prop */
