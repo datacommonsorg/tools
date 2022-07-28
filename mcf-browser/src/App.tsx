@@ -136,7 +136,6 @@ class App extends Component<{}, AppStateType> {
    * param.
    */
   parseUrl() {
-    console.log('hash: ' + window.location.hash);
     const params = new URLSearchParams(window.location.hash.trim());
     const fileUrls = params.getAll('file');
 

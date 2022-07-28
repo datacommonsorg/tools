@@ -37,7 +37,6 @@ type ParseFileResponse = {
  *     parsing error message objects.
  */
 async function readFileList(fileList: Blob[]) {
-  console.log(fileList);
   let curTmcf = null;
   const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
 
@@ -47,7 +46,6 @@ async function readFileList(fileList: Blob[]) {
 
     if (fileExt === 'mcf') {
       const mcfOut = await ParseMcf.readFile(file);
-      console.log(mcfOut);
 
       if (mcfOut['errMsgs'].length !== 0) {
         finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
@@ -65,7 +63,6 @@ async function readFileList(fileList: Blob[]) {
         const tmcf = curTmcf;
         const tmcfOut =
           await ParseTmcf.generateMcf(curTmcf, file).then((mcf) => {
-            console.log(mcf);
             const mcfParser = new ParseMcf((tmcf as File).name + '&' + fileName);
             return mcfParser.parseMcfStr(mcf as string);
           });
