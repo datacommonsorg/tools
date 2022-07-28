@@ -37,7 +37,22 @@ type ParseFileResponse = {
  *     parsing error message objects.
  */
 async function readFileList(fileList: Blob[]) {
-  let curTmcf = null;
+  // Clear previously stored files
+  clearFiles();
+
+  // Find TMCF file, if it exists
+  let tmcfFile = null;
+  for (const file of fileList) {
+    const fileName = (file as File).name;
+    const fileExt = fileName.split('.').pop();
+
+    if(fileExt === "tmcf"){
+      // TODO: confirmed that expected behavior for several 
+      // TMCF files is to use the last one
+      tmcfFile = file;
+    }
+  }
+
   const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
 
   for (const file of fileList) {
@@ -54,30 +69,25 @@ async function readFileList(fileList: Blob[]) {
         }]);
       }
       
-      finalReturn['localNodes'] =
-        finalReturn['localNodes'].concat(mcfOut['localNodes']);
-    } else if (fileExt === 'tmcf') {
-      curTmcf = file;
-    } else {
-      if (curTmcf) {
-        const tmcf = curTmcf;
+      finalReturn['localNodes'] = mcfOut['localNodes'];
+    } else if (fileExt === 'csv') {
+      if (tmcfFile) {
+        const tmcfFileName = (tmcfFile as File).name;
         const tmcfOut =
-          await ParseTmcf.generateMcf(curTmcf, file).then((mcf) => {
-            const mcfParser = new ParseMcf((tmcf as File).name + '&' + fileName);
-            return mcfParser.parseMcfStr(mcf as string);
-          });
+        await ParseTmcf.generateMcf(tmcfFile, file).then((mcf) => {
+          const mcfParser = new ParseMcf(tmcfFileName + '&' + fileName);
+          return mcfParser.parseMcfStr(mcf as string);
+        });
 
         if (tmcfOut['errMsgs'].length !== 0) {
           finalReturn['errMsgs'] =
             finalReturn['errMsgs'].concat({
-              'file': (tmcf as File).name,
+              'file': tmcfFileName,
               'errs': tmcfOut['errMsgs'],
             });
         }
-        finalReturn['localNodes'] =
-          finalReturn['localNodes'].concat(tmcfOut['localNodes']);
+        finalReturn['localNodes'] = tmcfOut['localNodes'];
       }
-      curTmcf = null;
     }
   }
   return finalReturn;
@@ -85,7 +95,7 @@ async function readFileList(fileList: Blob[]) {
 
 /**
   * Clears the backend data. Called when a user presses the 'Clear Files'
-  * button.
+  * button or uploads new files.
   */
 function clearFiles() {
   Node.nodeHash = {};
