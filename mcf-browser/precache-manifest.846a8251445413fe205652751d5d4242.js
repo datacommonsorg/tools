@@ -1,10 +1,10 @@
 self.__precacheManifest = (self.__precacheManifest || []).concat([
   {
-    "revision": "28d58611a3641475d667cd99e98ba3f3",
+    "revision": "df3f16645a187a3c9b343930a0a01ab1",
     "url": "/tools/mcf-browser/index.html"
   },
   {
-    "revision": "e25125d2a3fd87c008bf",
+    "revision": "846dd71ba40c35a5df1e",
     "url": "/tools/mcf-browser/static/css/main.8e56ca34.chunk.css"
   },
   {
@@ -16,12 +16,12 @@ self.__precacheManifest = (self.__precacheManifest || []).concat([
     "url": "/tools/mcf-browser/static/js/2.ccb6cfeb.chunk.js.LICENSE.txt"
   },
   {
-    "revision": "e25125d2a3fd87c008bf",
-    "url": "/tools/mcf-browser/static/js/main.4a8647b2.chunk.js"
+    "revision": "846dd71ba40c35a5df1e",
+    "url": "/tools/mcf-browser/static/js/main.0e2dd906.chunk.js"
   },
   {
     "revision": "4e0e34f265fae8f33b01b27ae29d9d6f",
-    "url": "/tools/mcf-browser/static/js/main.4a8647b2.chunk.js.LICENSE.txt"
+    "url": "/tools/mcf-browser/static/js/main.0e2dd906.chunk.js.LICENSE.txt"
   },
   {
     "revision": "fdd34cf60d15903d8ab0",
