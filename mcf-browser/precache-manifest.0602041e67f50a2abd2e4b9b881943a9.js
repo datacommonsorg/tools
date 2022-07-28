@@ -1,27 +1,27 @@
 self.__precacheManifest = (self.__precacheManifest || []).concat([
   {
-    "revision": "56a317662736d8ed7f463c46080d1f80",
+    "revision": "28d58611a3641475d667cd99e98ba3f3",
     "url": "/tools/mcf-browser/index.html"
   },
   {
-    "revision": "15cd8ad337ab67a6fba7",
+    "revision": "e25125d2a3fd87c008bf",
     "url": "/tools/mcf-browser/static/css/main.8e56ca34.chunk.css"
   },
   {
-    "revision": "dc3e83cf56c5cbf34f09",
-    "url": "/tools/mcf-browser/static/js/2.1ea3d4e8.chunk.js"
+    "revision": "b1895e98a57e33a25a7a",
+    "url": "/tools/mcf-browser/static/js/2.ccb6cfeb.chunk.js"
   },
   {
     "revision": "6ed3f9fd9080801a1bb6ad5632fc9ff2",
-    "url": "/tools/mcf-browser/static/js/2.1ea3d4e8.chunk.js.LICENSE.txt"
+    "url": "/tools/mcf-browser/static/js/2.ccb6cfeb.chunk.js.LICENSE.txt"
   },
   {
-    "revision": "15cd8ad337ab67a6fba7",
-    "url": "/tools/mcf-browser/static/js/main.08c834d1.chunk.js"
+    "revision": "e25125d2a3fd87c008bf",
+    "url": "/tools/mcf-browser/static/js/main.4a8647b2.chunk.js"
   },
   {
     "revision": "4e0e34f265fae8f33b01b27ae29d9d6f",
-    "url": "/tools/mcf-browser/static/js/main.08c834d1.chunk.js.LICENSE.txt"
+    "url": "/tools/mcf-browser/static/js/main.4a8647b2.chunk.js.LICENSE.txt"
   },
   {
     "revision": "fdd34cf60d15903d8ab0",

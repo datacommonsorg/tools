@@ -16,19 +16,6 @@
 
 import React from 'react';
 
-
-interface LoadingSpinnerPropType {
-  /**
-   * Indicates if spinner should be displayed.
-   */
-  loading: boolean;
-  /**
-   * The message to be displayed while page is loading
-   */
-  msg: string;
-}
-
-
 interface LoadingSpinnerPropType {
   /**
    * Indicates if spinner should be displayed.
