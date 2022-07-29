@@ -151,8 +151,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: 22082,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 1033,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 1073,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        2961,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 2961,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: 858,
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: '',
@@ -168,8 +167,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: 17834,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 292,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 369,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        1604,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 1604,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: '',
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: 81,
@@ -201,8 +199,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: 12260,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 1927,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 3356,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        5272,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 5272,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: 869,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: '',
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: 544,
@@ -234,8 +231,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: 4636,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 1542,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 327,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        5591,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 5591,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: '',
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: '',
@@ -251,8 +247,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: 8210,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 4338,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 83,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        10411,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 10411,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: '',
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: '',
@@ -300,8 +295,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 3943,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: '',
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        16733,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 16733,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: '',
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: '',
@@ -317,8 +311,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 2899,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 2096,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        12226,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 12226,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: '',
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: 2471,
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: '',
@@ -414,8 +407,7 @@ export const testCSV2 = [
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientRecovered: 36999,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientDeceased: 2717,
     Count_MedicalConditionIncident_COVID_19_PatientHospitalized: 655,
-    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized:
-        7333,
+    CumulativeCount_MedicalConditionIncident_COVID_19_PatientHospitalized: 7333,
     Count_MedicalConditionIncident_COVID_19_PatientInICU: 213,
     CumulativeCount_MedicalConditionIncident_COVID_19_PatientInICU: 1540,
     Count_MedicalConditionIncident_COVID_19_PatientOnVentilator: 76,

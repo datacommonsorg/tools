@@ -15,42 +15,33 @@
  */
 
 import React, {Component} from 'react';
+// import {Line} from 'react-chartjs-2';
+
 import {Series} from './back-end/data';
 
 interface TimeGraphPropType {
-    /** 
-     * Passes the data to be plotted
-     */
-    data: Series[];
+  /**
+   * Passes the data to be plotted
+   */
+  data: Series[];
 }
-
-interface TimeGraphStateType {
-
-}
-
 
 /** Component to display a single graph */
-class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
-    /** Constructor for class, sets initial state
-    * @param {Object} props the props passed in by parent component
-    */
-    constructor(props: TimeGraphPropType) {
-        super(props);
-        this.state = {
-        
-        };
-    }
+class TimeGraph extends Component<TimeGraphPropType, {}> {
+  /** Constructor for class, sets initial state
+   * @param {Object} props the props passed in by parent component
+   */
+  constructor(props: TimeGraphPropType) {
+    super(props);
+    this.state = {};
+  }
 
-    /** Renders the TimeGraph component.
-     * @return {Object} the component using TSX code
-     */
-    render() {
-        return (
-            <div>hello</div>
-        );
-    }
-
+  /** Renders the TimeGraph component.
+   * @return {Object} the component using TSX code
+   */
+  render() {
+    return <div>{this.props.data[0].id}</div>;
+  }
 }
-
 
 export {TimeGraph};

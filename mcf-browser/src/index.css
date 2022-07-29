@@ -127,7 +127,7 @@ input[type='text'],input[type='search'] {
 /* style for parsing errors table */
 
 .box {
-  padding: 10px;
+  padding: 20px;
   border-radius: 10px;
   border: 1px solid var(--dc-gray-lite);
   box-shadow:  2px 2px 2px 1px var(--dc-gray-lite);

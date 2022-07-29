@@ -33,9 +33,9 @@ const LoadingSpinner = (props: LoadingSpinnerPropType) => {
     return null;
   }
   return (
-    <div className='centered col'>
-      <br/>
-      <div className='loadingSpinner'></div>
+    <div className="centered col">
+      <br />
+      <div className="loadingSpinner"></div>
       <h2>{props.msg}</h2>
     </div>
   );

@@ -21,19 +21,17 @@
 import {Node} from './graph';
 const API_ROOT = 'https://api.datacommons.org';
 
-const ERROR_MESSAGES =
-    {
-      'curNode-length': 'error in declaring node',
-      'curNode-ns': 'invalid namespace in node declaration',
-      'setDCID-noCur': 'current node must be set before setting dcid',
-      'setDCID-multiple': 'a node can only have one dcid',
-      'setDCID-ref': 'dcid property must be a string, not a node reference',
-      'setDCID':
-          'cannot set dcid for current node; check if dcid is already set',
-      'assert-noCur': 'current node must be set before declaring properties',
-      'parse-noColon': 'missing \':\', incorrect mcf triple format',
-      'parse-noLabel': 'missing property label',
-    };
+const ERROR_MESSAGES = {
+  'curNode-length': 'error in declaring node',
+  'curNode-ns': 'invalid namespace in node declaration',
+  'setDCID-noCur': 'current node must be set before setting dcid',
+  'setDCID-multiple': 'a node can only have one dcid',
+  'setDCID-ref': 'dcid property must be a string, not a node reference',
+  'setDCID': 'cannot set dcid for current node; check if dcid is already set',
+  'assert-noCur': 'current node must be set before declaring properties',
+  'parse-noColon': 'missing \':\', incorrect mcf triple format',
+  'parse-noLabel': 'missing property label',
+};
 
 /** A type to represent the format of the errors in the errList prop */
 export interface ParsingError {
@@ -56,14 +54,12 @@ async function getRemotePropertyLabels(dcid: string) {
   const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
 
   const [inPropertyLabels, outPropertyLabels] = await Promise.all([
-    fetch(inTargetUrl)
-        .then((response) => response.json()
-            .then((data) => data.properties),
-        ),
-    fetch(outTargetUrl)
-        .then((response) => response.json()
-            .then((data) => data.properties),
-        ),
+    fetch(inTargetUrl).then((response) =>
+      response.json().then((data) => data.properties),
+    ),
+    fetch(outTargetUrl).then((response) =>
+      response.json().then((data) => data.properties),
+    ),
   ]);
 
   return {outLabels: outPropertyLabels, inLabels: inPropertyLabels};
@@ -80,11 +76,13 @@ async function getRemotePropertyLabels(dcid: string) {
  * @return {Object} An object containing all found values matching the query.
  */
 async function getRemotePropertyValues(
-    dcid: string, label: string, isInverse: boolean,
+    dcid: string,
+    label: string,
+    isInverse: boolean,
 ) {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
-      `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
+    `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
 
   return fetch(targetUrl)
       .then((res) => res.json())
@@ -99,7 +97,7 @@ export type DCPropertyValueResponse = {
   value?: string;
 
   provenanceId: string;
-}
+};
 
 /**
  * Parses an Object returned from the DC REST get_values API to create a Node
@@ -114,7 +112,8 @@ function getValueFromValueObj(valueObj: DCPropertyValueResponse) {
   if (!('dcid' in valueObj || 'value' in valueObj)) {
     throw new Error(
         'ERROR: DC API returned an object with no "dcid" or "value" field: ' +
-        valueObj);
+        valueObj,
+    );
   }
 
   if (valueObj.dcid) {
@@ -140,7 +139,7 @@ async function doesExistsInKG(dcid: string) {
   // expected response if dcid does not exist is {}
   return fetch(url)
       .then((res) => res.json())
-      .then((data) => (data.values) ? true : false);
+      .then((data) => (data.values ? true : false));
 }
 
 /**
@@ -157,9 +156,10 @@ function shouldReadLine(line: string) {
 }
 
 export {
-  ERROR_MESSAGES, getRemotePropertyLabels,
+  doesExistsInKG,
+  ERROR_MESSAGES,
+  getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
-  doesExistsInKG,
   shouldReadLine,
 };

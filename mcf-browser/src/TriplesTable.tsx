@@ -22,7 +22,6 @@ import * as utils from './utils';
 
 const NON_BREAKING_SPACE = '\u00a0';
 
-
 interface TriplesTablePropType {
   /**
    * List of triples to display as a table
@@ -39,7 +38,7 @@ interface TriplesTablePropType {
   goToId: Function;
 }
 
-interface TriplesTableStateType{
+interface TriplesTableStateType {
   /**
    * List of table row elements, each row representing one triple
    */
@@ -52,7 +51,10 @@ interface TriplesTableStateType{
 }
 
 /** Displays all given assertions as a table of triples. */
-export class TriplesTable extends Component<TriplesTablePropType, TriplesTableStateType> {
+export class TriplesTable extends Component<
+  TriplesTablePropType,
+  TriplesTableStateType
+> {
   /** Constructor for class, sets initial state
    *
    * @param {Object} props the props passed in by parent component
@@ -67,10 +69,10 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
   }
 
   /**
-  * Gets rows of triples when the array of Assertions from props is updated.
-  * @param {Object} prevProps The previous props before the component
-  *     updated, used to compare if the passed in triples have been modified.
-  */
+   * Gets rows of triples when the array of Assertions from props is updated.
+   * @param {Object} prevProps The previous props before the component
+   *     updated, used to compare if the passed in triples have been modified.
+   */
   componentDidUpdate(prevProps: TriplesTablePropType) {
     if (prevProps.triples !== this.props.triples) {
       this.setState({loading: true});
@@ -83,62 +85,77 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
     }
   }
   /**
-  * Returns an html element containing the styled source if the triple is
-  * inverse and the styled target otherwise.
-  * @param {Node|string} target The source of an inverse assertion or the target
-  *     of a direct assertion.
-  * @return {HtmlElement} A single cell of an html row representing a triple.
-  *     Either the source or target of the triple depending if the triple is
-  *     inverse or not.
-  */
+   * Returns an html element containing the styled source if the triple is
+   * inverse and the styled target otherwise.
+   * @param {Node|string} target The source of an inverse assertion or the
+   * target of a direct assertion.
+   * @return {HtmlElement} A single cell of an html row representing a triple.
+   *     Either the source or target of the triple depending if the triple is
+   *     inverse or not.
+   */
   async getTargetCell(target: Node | string) {
     if (API.isNodeObj(target)) {
-      const elemClass: utils.ColorIndex = (await API.getElemClass(target as Node)) as utils.ColorIndex;
+      const elemClass: utils.ColorIndex = (await API.getElemClass(
+        target as Node,
+      )) as utils.ColorIndex;
       const nodeTarget = target as Node;
       return (
         <div>
           <span title={utils.colorLegend[elemClass]}>
-            <p className ={'clickable ' + elemClass} onClick ={() =>
-              this.props.goToId(nodeTarget.localId || nodeTarget.dcid)}>
+            <p
+              className={'clickable ' + elemClass}
+              onClick={() =>
+                this.props.goToId(nodeTarget.localId || nodeTarget.dcid)
+              }
+            >
               {nodeTarget.getRef()}
             </p>
           </span>
         </div>
       );
     }
-    return (<p>{(target as string)}</p>);
+    return <p>{target as string}</p>;
   }
 
   /**
-  * Returns an html element containing the styled provenance of the triple. The
-  * provenance if of one of the following formats:
-  *     dc/<dcid>
-  *     <local mcf file>
-  *     <local tmcf file>&<local csv file>
-  *     https://<mcf file path>
-  *     https://<tmcf path>&https://<csv path>
-  *
-  * @param {string} prov The provenance of the triple.
-  * @return {HtmlElement} A single cell of an html row representing a triple.
-  *     Either the source or target of the triple depending if the triple is
-  *     inverse or not.
-  */
+   * Returns an html element containing the styled provenance of the triple. The
+   * provenance if of one of the following formats:
+   *     dc/<dcid>
+   *     <local mcf file>
+   *     <local tmcf file>&<local csv file>
+   *     https://<mcf file path>
+   *     https://<tmcf path>&https://<csv path>
+   *
+   * @param {string} prov The provenance of the triple.
+   * @return {HtmlElement} A single cell of an html row representing a triple.
+   *     Either the source or target of the triple depending if the triple is
+   *     inverse or not.
+   */
   getProvenanceCell(prov: string) {
     if (prov.startsWith('dc/')) {
       // data commons provenance id
-      return (<p className='clickable dc-provenance'onClick={() =>
-        this.props.goToId(prov)}>{prov}</p>);
+      return (
+        <p
+          className="clickable dc-provenance"
+          onClick={() => this.props.goToId(prov)}
+        >
+          {prov}
+        </p>
+      );
     }
 
     if (!prov.startsWith('https')) {
       // local file(s) as provenance
-      return (<p>{prov.replace('&', ', ')}</p>);
+      return <p>{prov.replace('&', ', ')}</p>;
     }
 
     if (!prov.includes('&')) {
       // single mcf file as provenance
-      return (<p className='clickable' onClick={() =>
-        utils.openFile(prov)}>{prov.split('/').pop()}</p>);
+      return (
+        <p className="clickable" onClick={() => utils.openFile(prov)}>
+          {prov.split('/').pop()}
+        </p>
+      );
     }
 
     // provenance is one tmcf and one csv
@@ -152,22 +169,24 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
 
     return (
       <div>
-        <p className='clickable' onClick={() =>
-          utils.openFile(fileNames[0])}>{provNames[0]}</p>
+        <p className="clickable" onClick={() => utils.openFile(fileNames[0])}>
+          {provNames[0]}
+        </p>
         <p>,{NON_BREAKING_SPACE}</p>
-        <p className='clickable' onClick={() =>
-          utils.openFile(fileNames[1])}>{provNames[1]}</p>
+        <p className="clickable" onClick={() => utils.openFile(fileNames[1])}>
+          {provNames[1]}
+        </p>
       </div>
     );
   }
 
   /**
-  * Converts a list of Assertion objects to an array of HTML row elements that
-  * is displyed in the TriplesTable.
-  *
-  * @return {Array<HtmlElement>} The array of HTML row elements representing
-  *     each triple.
-  */
+   * Converts a list of Assertion objects to an array of HTML row elements that
+   * is displyed in the TriplesTable.
+   *
+   * @return {Array<HtmlElement>} The array of HTML row elements representing
+   *     each triple.
+   */
   async getTripleRows() {
     const tripleRows = [];
     let index = 0; // used to create a unique key for each row element
@@ -205,12 +224,12 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
       return null;
     }
     const tableHeaders = this.props.inverse ? (
-        <tr>
-          <th>Property</th>
-          <th>Source</th>
-          <th>Provenance</th>
-        </tr>
-      ) : (
+      <tr>
+        <th>Property</th>
+        <th>Source</th>
+        <th>Provenance</th>
+      </tr>
+    ) : (
       <tr>
         <th>Property</th>
         <th>Target</th>
@@ -220,12 +239,8 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
 
     return (
       <table>
-        <thead>
-          {tableHeaders}
-        </thead>
-        <tbody>
-          {this.state.tableRows}
-        </tbody>
+        <thead>{tableHeaders}</thead>
+        <tbody>{this.state.tableRows}</tbody>
       </table>
     );
   }

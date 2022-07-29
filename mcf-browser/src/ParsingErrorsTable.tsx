@@ -20,11 +20,11 @@ import {ParsingError} from './back-end/utils';
 
 interface ParsingErrorsTablePropType {
   /**
-  * The App state's parsingErrs list of error message Objects from parsing
-  * files. Each object in the array contains one file name and one list of
-  * errors found in that file.
-  */
- errsList: ParsingError[];
+   * The App state's parsingErrs list of error message Objects from parsing
+   * files. Each object in the array contains one file name and one list of
+   * errors found in that file.
+   */
+  errsList: ParsingError[];
 }
 
 /* Simple component to render the parsing errors table. */
@@ -33,28 +33,31 @@ const ParsingErrorsTable = (props: ParsingErrorsTablePropType) => {
     return null;
   }
   return (
-    <div className = 'box'>
+    <div className="box">
       <h3>Parsing Errors</h3>
       <table>
-        <thead><tr>
-          <th>File Name</th>
-          <th>Line Num</th>
-          <th>Line</th>
-          <th>Error Message</th>
-        </tr></thead>
+        <thead>
+          <tr>
+            <th>File Name</th>
+            <th>Line Num</th>
+            <th>Line</th>
+            <th>Error Message</th>
+          </tr>
+        </thead>
         <tbody>
-          {props.errsList.map((errObj) => (
-            errObj['errs'].map((msg) =>
+          {props.errsList.map((errObj) =>
+            errObj['errs'].map((msg) => (
               <tr key={msg[0]}>
                 <td>{errObj['file']}</td>
                 <td>{msg[0]}</td>
                 <td>{msg[1]}</td>
                 <td>{msg[2]}</td>
-              </tr>,
-            )))}
+              </tr>
+            )),
+          )}
         </tbody>
       </table>
-      <br/>
+      <br />
     </div>
   );
 };

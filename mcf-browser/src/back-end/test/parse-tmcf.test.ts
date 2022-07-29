@@ -27,8 +27,8 @@ test('testing fillPropertyValues', () => {
   const parser = new ParseTmcf();
   parser.csvIndex = 8;
   const row = {
-    'Col1': 'dcid:propVal1',
-    'Col2': 'dcid:propVal2',
+    Col1: 'dcid:propVal1',
+    Col2: 'dcid:propVal2',
   };
 
   const templatePropVals1 = 'C:TestSet->Col1, C:TestSet->Col2';
@@ -45,19 +45,21 @@ test('testing fillPropertyValues', () => {
 test('testing fillTemplateFromRow', () => {
   const parser = new ParseTmcf();
   parser.csvIndex = 8;
-  const filledTemp =
-      parser.fillTemplateFromRow(TestStr.testTMCF2, TestStr.testCSV2[0]);
+  const filledTemp = parser.fillTemplateFromRow(
+      TestStr.testTMCF2,
+      TestStr.testCSV2[0],
+  );
   expect(filledTemp).toBe(TestStr.expectedFilledTemp0);
 
   // testing multiple propValues that are comma separated
   const template =
-      'Node: dcid:test1\npropLabel1: C:TestSet->Col1, C:TestSet->Col2';
+    'Node: dcid:test1\npropLabel1: C:TestSet->Col1, C:TestSet->Col2';
   const row = {
-    'Col1': 'dcid:propVal1',
-    'Col2': 'dcid:propVal2',
+    Col1: 'dcid:propVal1',
+    Col2: 'dcid:propVal2',
   };
   const expectedMCF =
-      'Node: dcid:test1\npropLabel1: dcid:propVal1, dcid:propVal2';
+    'Node: dcid:test1\npropLabel1: dcid:propVal1, dcid:propVal2';
   const filledTemp2 = parser.fillTemplateFromRow(template, row);
   expect(filledTemp2).toBe(expectedMCF);
 });

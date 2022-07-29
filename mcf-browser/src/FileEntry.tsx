@@ -34,10 +34,10 @@ interface FileEntryPropType {
    * Sets whether the dropdown on the home page for additonal file entries
    * should be displayed.
    */
-  toggle: Function;
+  toggle?: Function;
 }
 
-interface FileEntryStateType{
+interface FileEntryStateType {
   /**
    * Stores user's text entry in the first url entry box. This should be a url
    * to either a MCF or TMCF file.
@@ -77,14 +77,20 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
         this.props.goToHome();
-        this.props.toggle();
-      } else if (this.state.mcfTmcfUrl.split('.').pop() === 'tmcf' &&
-          (this.state.csvUrl.split('.').pop() === 'csv') ) {
+        if (this.props.toggle) {
+          this.props.toggle();
+        }
+      } else if (
+        this.state.mcfTmcfUrl.split('.').pop() === 'tmcf' &&
+        this.state.csvUrl.split('.').pop() === 'csv'
+      ) {
         await this.props.loadFiles([this.state.mcfTmcfUrl, this.state.csvUrl]);
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
         this.props.goToHome();
-        this.props.toggle();
+        if (this.props.toggle) {
+          this.props.toggle();
+        }
       }
     }
   }
@@ -96,29 +102,43 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
    */
   render() {
     return (
-      <div className="row" >
+      <div className="row">
         {/* Options to directly upload a file via file selector. */}
-        <div className="centered col" >
+        <div className="centered col">
           <h4>Choose file(s) to upload:</h4>
 
           {/* upload MCF file(s) */}
-          <label className='button'>
-            <input type="file" required multiple
-              accept=".mcf" onChange={(event) => {
+          <label className="button">
+            <input
+              type="file"
+              required
+              multiple
+              accept=".mcf"
+              onChange={(event) => {
                 this.props.upload(Array.from(event.target.files as FileList));
-                this.props.toggle();
-              }}/>
-              Upload MCF
+                if (this.props.toggle) {
+                  this.props.toggle();
+                }
+              }}
+            />
+            Upload MCF
           </label>
 
           {/* upload one pair of TMCF CSV files */}
-          <label className='button'>
-            <input type="file" required multiple
-              accept=".tmcf,.csv" onChange={(event) => {
+          <label className="button">
+            <input
+              type="file"
+              required
+              multiple
+              accept=".tmcf,.csv"
+              onChange={(event) => {
                 this.props.upload(Array.from(event.target.files as FileList));
-                this.props.toggle();
-              }}/>
-              Upload TMCF + CSV
+                if (this.props.toggle) {
+                  this.props.toggle();
+                }
+              }}
+            />
+            Upload TMCF + CSV
           </label>
         </div>
 
@@ -127,26 +147,34 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
         </div>
 
         {/* Options to specify url(s) to file(s). */}
-        <div className="centered col" >
+        <div className="centered col">
           <h4>Enter URL(s):</h4>
-          <div className="col url-entry" >
-
+          <div className="col url-entry">
             {/* TMCF/MCF url input */}
-            <label>MCF / TMCF:
-              <input type="text"
+            <label>
+              MCF / TMCF:
+              <input
+                type="text"
                 value={this.state.mcfTmcfUrl}
                 onChange={(event) =>
-                  this.setState({mcfTmcfUrl: event.target.value})}
-                onKeyUp={(event) => this.handleUrlKeyUp(event)}/>
+                  this.setState({mcfTmcfUrl: event.target.value})
+                }
+                onKeyUp={(event) => this.handleUrlKeyUp(event)}
+              />
             </label>
 
             {/* CSV url input */}
-            <label>CSV:
-              <input type="text" placeholder="leave blank for mcf files"
+            <label>
+              CSV:
+              <input
+                type="text"
+                placeholder="leave blank for mcf files"
                 value={this.state.csvUrl}
                 onChange={(event) =>
-                  this.setState({csvUrl: event.target.value})}
-                onKeyUp={(event) => this.handleUrlKeyUp(event)}/>
+                  this.setState({csvUrl: event.target.value})
+                }
+                onKeyUp={(event) => this.handleUrlKeyUp(event)}
+              />
             </label>
           </div>
         </div>
@@ -154,6 +182,5 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
     );
   }
 }
-
 
 export {FileEntry};

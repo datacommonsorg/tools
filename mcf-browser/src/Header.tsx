@@ -18,7 +18,6 @@ import React, {Component} from 'react';
 
 const ENTER_KEY = 13;
 
-
 interface HeaderPropType {
   /**
    * Set a 'search' parameter in url to the specified id.
@@ -43,8 +42,8 @@ interface HeaderStateType {
 }
 
 /** Header component contains the id search bar, upload files, and return home
-  * button.
-  */
+ * button.
+ */
 class Header extends Component<HeaderPropType, HeaderStateType> {
   /** Constructor for class, sets initial state
    *
@@ -58,9 +57,9 @@ class Header extends Component<HeaderPropType, HeaderStateType> {
   }
 
   /**
-  * Calls props method to search for an id when the user presses enter.
-  * @param {Event} event OnKeyUp event from html search input element.
-  */
+   * Calls props method to search for an id when the user presses enter.
+   * @param {Event} event OnKeyUp event from html search input element.
+   */
   handleSearch(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.keyCode === ENTER_KEY) {
       this.props.searchId(event.target.value);
@@ -70,25 +69,30 @@ class Header extends Component<HeaderPropType, HeaderStateType> {
 
   /** Renders header element
    * @return {Object} the webpage using JSX code
-  */
+   */
   render() {
     return (
-      <div className='Header'>
+      <div className="Header">
         {/* return home button*/}
-        <button className='button' onClick={this.props.onHomeClick}>
+        <button className="button" onClick={this.props.onHomeClick}>
           Return Home
         </button>
 
         {/* search for id w/dropdown of suggestions of the subject nodes*/}
-        <input type="search" list="subjIds" placeholder="Search by id"
+        <input
+          type="search"
+          list="subjIds"
+          placeholder="Search by id"
           value={this.state.searchVal}
           onChange={(event) => this.setState({searchVal: event.target.value})}
           onKeyUp={(event) => {
             this.handleSearch(event);
-          }}/>
+          }}
+        />
         <datalist id="subjIds">
-          {this.props.subjIds.map((subjId) => <option value={subjId}
-            key={subjId}/>)}
+          {this.props.subjIds.map((subjId) => (
+            <option value={subjId} key={subjId} />
+          ))}
         </datalist>
       </div>
     );

@@ -14,67 +14,64 @@
  * limitations under the License.
  */
 
-import React, { Component } from 'react';
+import React, {Component} from 'react';
 
-import { LoadingSpinner } from './LoadingSpinner';
+import {LoadingSpinner} from './LoadingSpinner';
 
 interface GraphExplorerPropType {
-    /**
-     * Indicates if uploaded files are currently being parsed.
-     */
-    loading: boolean;
+  /**
+   * Indicates if uploaded files are currently being parsed.
+   */
+  loading: boolean;
 
-    /**
-     * IDs for nodes stored in App's state which are the subject nodes of triples from
-     * any parsed files.
-     */
-    subjNodes: string[];
+  /**
+   * IDs for nodes stored in App's state which are the subject nodes of
+   * triples from any parsed files.
+   */
+  subjNodes: string[];
 
-    /**
-     * Set id parameter in url to the given id. Used when user clicks a subject node to explore.
-     */
-    goToId: Function;
+  /**
+   * Set id parameter in url to the given id. Used when user clicks a
+   * subject node to explore.
+   */
+  goToId: Function;
 }
-
-interface GraphExplorerStateType {
-
-}
-
 
 /** Component to display the Graph explorer */
-class GraphExplorer extends Component<GraphExplorerPropType, GraphExplorerStateType> {
-    /** Constructor for class, sets initial state
-    * @param {Object} props the props passed in by parent component
-    */
-    constructor(props: GraphExplorerPropType) {
-        super(props);
-        this.state = {
+class GraphExplorer extends Component<GraphExplorerPropType> {
+  /** Constructor for class, sets initial state
+   * @param {Object} props the props passed in by parent component
+   */
+  constructor(props: GraphExplorerPropType) {
+    super(props);
+    this.state = {};
+  }
 
-        };
-    }
+  /** Renders the GraphExplorer component.
+   * @return {Object} the component using TSX code
+   */
+  render() {
+    return (
+      <div className="box">
+        {/* display loading animation while waiting*/}
+        <LoadingSpinner loading={this.props.loading} msg="...loading mcf..." />
 
-    /** Renders the GraphExplorer component.
-     * @return {Object} the component using TSX code
-     */
-    render() {
-        return (
-            <div className = "box">
-
-          {/* display loading animation while waiting*/}
-          <LoadingSpinner loading={this.props.loading}
-            msg='...loading mcf...'/>
-
-          {/* display list of subject node ids*/}
-          <h3>Subject Nodes</h3>
-          <ul>
-            {this.props.subjNodes.map((dcid) =>
-              <li className='clickable' key={dcid}
-                onClick={() => this.props.goToId(dcid)}>{dcid}</li>)}
-          </ul>
-        </div>
-        );
-    }
+        {/* display list of subject node ids*/}
+        <h3>Subject Nodes</h3>
+        <ul>
+          {this.props.subjNodes.map((dcid) => (
+            <li
+              className="clickable"
+              key={dcid}
+              onClick={() => this.props.goToId(dcid)}
+            >
+              {dcid}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 }
 
-
-export { GraphExplorer };
+export {GraphExplorer};

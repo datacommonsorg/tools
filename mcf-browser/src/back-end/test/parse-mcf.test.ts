@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Node, Assertion} from '../graph';
+import {Assertion, Node} from '../graph';
 import {ParseMcf} from '../parse-mcf';
 import {ERROR_MESSAGES} from '../utils';
 
@@ -26,13 +26,13 @@ test('testing constructor. prov property', () => {
 
 test('testing parsePropValues: should output property values', () => {
   const rawVals =
-      'val1, l:localNodeId, "GO:BioIdTextVal",schema:remoteNodeId,' +
-      ' "A, B", "B, C,D"';
+    'val1, l:localNodeId, "GO:BioIdTextVal",schema:remoteNodeId,' +
+    ' "A, B", "B, C,D"';
   const expectedParsedVals = [
     'val1',
-    {'ns': 'l', 'ref': 'localNodeId'},
+    {ns: 'l', ref: 'localNodeId'},
     'GO:BioIdTextVal',
-    {'ns': 'schema', 'ref': 'remoteNodeId'},
+    {ns: 'schema', ref: 'remoteNodeId'},
     'A, B',
     'B, C,D',
   ];
@@ -52,11 +52,11 @@ test('testing setCurNode', () => {
   mcfParser.setCurNode(noNameSpaceParsedVal);
   expect(mcfParser.curNode).toStrictEqual(noNameSpaceExpectedNode);
 
-  const remoteNameSpaceParsedVal =
-      [{'ns': 'dcid', 'ref': 'remoteNamespaceId'}];
+  const remoteNameSpaceParsedVal = [{ns: 'dcid', ref: 'remoteNamespaceId'}];
 
-  const remoteNameSpaceExpectedNode =
-      new Node('l:dcid:' + remoteNameSpaceParsedVal[0]['ref']);
+  const remoteNameSpaceExpectedNode = new Node(
+      'l:dcid:' + remoteNameSpaceParsedVal[0]['ref'],
+  );
   remoteNameSpaceExpectedNode.setDCID(remoteNameSpaceParsedVal[0]['ref']);
   mcfParser.setCurNode(remoteNameSpaceParsedVal);
   expect(mcfParser.curNode).toStrictEqual(remoteNameSpaceExpectedNode);
@@ -95,8 +95,8 @@ test('testing string values with createAssertionsFromParsedValues', () => {
   const assertionToJSON = (assertion: Assertion) => {
     const {property, target, provenance} = assertion;
     return {
-      'srclocalId': assertion.src.localId,
-      'srcDCID': assertion.src.dcid,
+      srclocalId: assertion.src.localId,
+      srcDCID: assertion.src.dcid,
       property,
       target,
       provenance,
@@ -106,11 +106,11 @@ test('testing string values with createAssertionsFromParsedValues', () => {
   // note assertions are returned backwards due to nature of linked list
   const assertion1 = assertionToJSON(assertions[0]);
   const expectedAssertion = {
-    'srcDCID': remoteId,
-    'srclocalId': localId,
-    'property': propLabel,
-    'target': 'val1',
-    'provenance': fileName,
+    srcDCID: remoteId,
+    srclocalId: localId,
+    property: propLabel,
+    target: 'val1',
+    provenance: fileName,
   };
   expect(assertion1).toEqual(expectedAssertion);
   const assertion2 = assertionToJSON(assertions[1]);
@@ -126,28 +126,28 @@ test('testing node values with createAssertionsFromParsedValues', () => {
 
   const propLabel = 'nodeVal';
   const parsedValues = [
-    {'ns': 'l', 'ref': 'localId'},
-    {'ns': 'dcs', 'ref': 'remoteId'},
+    {ns: 'l', ref: 'localId'},
+    {ns: 'dcs', ref: 'remoteId'},
   ];
 
   mcfParser.createAssertionsFromParsedValues(propLabel, parsedValues);
   const assertions = mcfParser.curNode.assertions;
 
   type AssertionJSON = {
-    srclocalId: string | null,
-    srcDCID: string | null,
-    targetlocalId: string | null,
-    targetDCID: string | null,
-    property: string,
-    provenance: string 
+    srclocalId: string | null;
+    srcDCID: string | null;
+    targetlocalId: string | null;
+    targetDCID: string | null;
+    property: string;
+    provenance: string;
   };
   const assertionToJSON = (assertion: Assertion) => {
     const {property, provenance} = assertion;
     return {
-      'srclocalId': assertion.src.localId,
-      'srcDCID': assertion.src.dcid,
-      'targetlocalId': (assertion.target as Node).localId,
-      'targetDCID': (assertion.target as Node).dcid,
+      srclocalId: assertion.src.localId,
+      srcDCID: assertion.src.dcid,
+      targetlocalId: (assertion.target as Node).localId,
+      targetDCID: (assertion.target as Node).dcid,
       property,
       provenance,
     };
@@ -156,12 +156,12 @@ test('testing node values with createAssertionsFromParsedValues', () => {
   // note assertions are returned backwards due to nature of linked list
   const assertion1 = assertionToJSON(assertions[0]);
   const expectedAssertion: AssertionJSON = {
-    'srclocalId': localId,
-    'srcDCID': null,
-    'targetlocalId': 'l:localId',
-    'targetDCID': null,
-    'property': propLabel,
-    'provenance': fileName,
+    srclocalId: localId,
+    srcDCID: null,
+    targetlocalId: 'l:localId',
+    targetDCID: null,
+    property: propLabel,
+    provenance: fileName,
   };
   expect(assertion1).toEqual(expectedAssertion);
   const target1 = assertions[0]['target'] as Node;
@@ -208,21 +208,21 @@ dcid: "country/IND"
 `;
 
 type AssertionJSON = {
-  srclocalId: string | null,
-  srcDCID: string | null,
-  targetlocalId?: string | null,
-  targetDCID?: string | null,
-  target?: string | null,
-  property: string,
-  provenance: string 
+  srclocalId: string | null;
+  srcDCID: string | null;
+  targetlocalId?: string | null;
+  targetDCID?: string | null;
+  target?: string | null;
+  property: string;
+  provenance: string;
 };
 
 test('testing ParseMcfStr: ', () => {
   const assertionToJSON = (assertion: Assertion) => {
     const {property, provenance} = assertion;
     const json = {
-      'srclocalId': assertion.src.localId,
-      'srcDCID': assertion.src.dcid,
+      srclocalId: assertion.src.localId,
+      srcDCID: assertion.src.dcid,
       property,
       provenance,
     };
@@ -230,12 +230,12 @@ test('testing ParseMcfStr: ', () => {
       return {
         ...json,
         targetlocalId: assertion.target.localId,
-        targetDCID: assertion.target.dcid
+        targetDCID: assertion.target.dcid,
       };
     } else {
       return {
         ...json,
-        target: assertion.target
+        target: assertion.target,
       };
     }
     return json;
@@ -267,9 +267,9 @@ test('testing ParseMcfStr: ', () => {
 
   for (const assert of obsAsserts) {
     const expectedJSONStart = {
-      'srclocalId': obsNode.localId,
-      'srcDCID': obsNode.dcid,
-      'provenance': fileName
+      srclocalId: obsNode.localId,
+      srcDCID: obsNode.dcid,
+      provenance: fileName,
     };
 
     const assertJSON = assertionToJSON(assert);
@@ -280,7 +280,7 @@ test('testing ParseMcfStr: ', () => {
           ...expectedJSONStart,
           property: 'remoteNodeProp',
           targetlocalId: null,
-          targetDCID: 'StatVarObservation'
+          targetDCID: 'StatVarObservation',
         };
 
         expect(assert.target.invAssertions[0]).toStrictEqual(assert);
@@ -292,7 +292,7 @@ test('testing ParseMcfStr: ', () => {
           ...expectedJSONStart,
           property: 'localNodeProp',
           targetlocalId: 'l:LocalIndiaNode',
-          targetDCID: 'country/IND'
+          targetDCID: 'country/IND',
         };
 
         expect(assert.target.invAssertions[0]).toStrictEqual(assert);
@@ -303,7 +303,7 @@ test('testing ParseMcfStr: ', () => {
         expectedJSON = {
           ...expectedJSONStart,
           property: 'stringProp',
-          target: '2020-08-01'
+          target: '2020-08-01',
         };
 
         expect(assertJSON).toStrictEqual(expectedJSON);
@@ -313,7 +313,7 @@ test('testing ParseMcfStr: ', () => {
         expectedJSON = {
           ...expectedJSONStart,
           property: 'numProp',
-          target: '10000'
+          target: '10000',
         };
 
         expect(assertJSON).toStrictEqual(expectedJSON);
@@ -322,7 +322,7 @@ test('testing ParseMcfStr: ', () => {
         expectedJSON = {
           ...expectedJSONStart,
           property: 'bioID',
-          target: 'GO:bioTextId'
+          target: 'GO:bioTextId',
         };
 
         expect(assertJSON).toStrictEqual(expectedJSON);
@@ -343,16 +343,16 @@ test('testing ParseMcfStr: ', () => {
   expect(indiaInvAsserts.length).toStrictEqual(1);
 
   const invAssertJSON = {
-    'src': indiaInvAsserts[0].src,
-    'prop': indiaInvAsserts[0].property,
-    'prov': indiaInvAsserts[0].provenance,
-    'target': indiaInvAsserts[0].target,
+    src: indiaInvAsserts[0].src,
+    prop: indiaInvAsserts[0].property,
+    prov: indiaInvAsserts[0].provenance,
+    target: indiaInvAsserts[0].target,
   };
   const expectedInvAssert = {
-    'src': obsNode,
-    'prop': 'localNodeProp',
-    'prov': fileName,
-    'target': indiaNode,
+    src: obsNode,
+    prop: 'localNodeProp',
+    prov: fileName,
+    target: indiaNode,
   };
   expect(invAssertJSON).toStrictEqual(expectedInvAssert);
 });
@@ -362,12 +362,12 @@ test('testing errors: ', () => {
   const mcfParser = new ParseMcf(fileName);
 
   mcfParser.setCurNode(['localId1', 'localId2']); // #1
-  mcfParser.setCurNode([{'ns': 'invalid', 'ref': 'localId1'}]); // #2
+  mcfParser.setCurNode([{ns: 'invalid', ref: 'localId1'}]); // #2
   mcfParser.createAssertionsFromParsedValues('', ['val']); // #3
 
   mcfParser.setCurNode(['localId1']);
   mcfParser.setCurNodeDCID(['dcid1', 'dcid2']); // #4
-  mcfParser.setCurNodeDCID([{'ns': 'dcid', 'ref': 'remote'}]); // #5
+  mcfParser.setCurNodeDCID([{ns: 'dcid', ref: 'remote'}]); // #5
 
   mcfParser.setCurNodeDCID(['dcid1']);
   mcfParser.setCurNodeDCID(['dcid2']); // #6
@@ -377,13 +377,13 @@ test('testing errors: ', () => {
   mcfParser.parseLine('val:'); // #9
 
   expect(mcfParser.errors).toEqual([
-    ["-1", null, ERROR_MESSAGES['curNode-length']], // #1
-    ["-1", null, ERROR_MESSAGES['curNode-ns']], // #2
-    ["-1", null, ERROR_MESSAGES['assert-noCur']], // #3
-    ["-1", null, ERROR_MESSAGES['setDCID-multiple']], // #4
-    ["-1", null, ERROR_MESSAGES['setDCID-ref']], // #5
-    ["-1", null, ERROR_MESSAGES['setDCID']], // #6
-    ["-1", null, ERROR_MESSAGES['parse-noColon']], // #7
-    ["-1", null, ERROR_MESSAGES['parse-noLabel']], // #8
+    ['-1', null, ERROR_MESSAGES['curNode-length']], // #1
+    ['-1', null, ERROR_MESSAGES['curNode-ns']], // #2
+    ['-1', null, ERROR_MESSAGES['assert-noCur']], // #3
+    ['-1', null, ERROR_MESSAGES['setDCID-multiple']], // #4
+    ['-1', null, ERROR_MESSAGES['setDCID-ref']], // #5
+    ['-1', null, ERROR_MESSAGES['setDCID']], // #6
+    ['-1', null, ERROR_MESSAGES['parse-noColon']], // #7
+    ['-1', null, ERROR_MESSAGES['parse-noLabel']], // #8
   ]);
 });

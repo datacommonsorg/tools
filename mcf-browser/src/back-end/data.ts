@@ -14,109 +14,132 @@
  * limitations under the License.
  */
 
+/** Class representation of a single series */
 class Series {
-    /** A unique identifier made using the facets */
-    id: string;
+  /** A unique identifier made using the facets
+  */
+  id: string;
 
-    /** An ordered list of x-values for the data */
-    x: string[];
+  /** An ordered list of x-values for the data */
+  x: string[];
 
-    /** An ordered list of y-values for the data */
-    y: number[];
+  /** An ordered list of y-values for the data */
+  y: number[];
 
-    /** The variable being measured */
-    variableMeasured?: string;
+  /** The variable being measured */
+  variableMeasured?: string;
 
-    /** The provenance of the data */
-    provenance?: string;
+  /** The provenance of the data */
+  provenance?: string;
 
-    /** The measurement method of the data */
-    measurementMethod?: string;
+  /** The measurement method of the data */
+  measurementMethod?: string;
 
-    /** The length of time over which the data point was collected */
-    observationPeriod?: string;
+  /** The length of time over which the data point was collected */
+  observationPeriod?: string;
 
-    /** The unit for the data */
-    unit?: string;
+  /** The unit for the data */
+  unit?: string;
 
-    /** The scaling factor for the data */
-    scalingFactor?: number;
+  /** The scaling factor for the data */
+  scalingFactor?: number;
 
-    /** The constructor for the Series class
-     */
-    constructor(
-        x: string[],
-        y: number[],
-        variableMeasured?: string,
-        provenance?: string,
-        measurementMethod?: string,
-        observationPeriod?: string,
-        unit?: string,
-        scalingFactor?: number
-    ) {
-        this.x = x;
-        this.y = y;
-        this.variableMeasured = variableMeasured;
-        this.provenance = provenance;
-        this.measurementMethod = measurementMethod;
-        this.observationPeriod = observationPeriod;
-        this.unit = unit;
-        this.scalingFactor = scalingFactor ? scalingFactor : 1;
+  /**
+   * Constructor for the series class, creates the object
+   * and instantiates all of the properties
+   * @param {string[]} x the x values for the series
+   * @param {number[]} y the y values for the series
+   * @param {string} variableMeasured the variableMeasured of a series
+   * @param {string} provenance the provenance of a series
+   * @param {string} measurementMethod the measurementMethod of a series
+   * @param {string} observationPeriod the observationPeriod of a series
+   * @param {string} unit the unit of a series
+   * @param {number} scalingFactor the scalingFactor of a series
+   */
+  constructor(
+      x: string[],
+      y: number[],
+      variableMeasured?: string,
+      provenance?: string,
+      measurementMethod?: string,
+      observationPeriod?: string,
+      unit?: string,
+      scalingFactor?: number,
+  ) {
+    this.x = x;
+    this.y = y;
+    this.variableMeasured = variableMeasured;
+    this.provenance = provenance;
+    this.measurementMethod = measurementMethod;
+    this.observationPeriod = observationPeriod;
+    this.unit = unit;
+    this.scalingFactor = scalingFactor ? scalingFactor : 1;
 
-        this.id = Series.toID(
-            variableMeasured,
-            provenance,
-            measurementMethod,
-            observationPeriod,
-            unit,
-            scalingFactor
-        );
-    }
+    this.id = Series.toID(
+        variableMeasured,
+        provenance,
+        measurementMethod,
+        observationPeriod,
+        unit,
+        scalingFactor,
+    );
+  }
 
-    /** Generates an ID given the facet variables
-     */
-    static toID(
-        variableMeasured?: string,
-        provenance?: string,
-        measurementMethod?: string,
-        observationPeriod?: string,
-        unit?: string,
-        scalingFactor?: number
-    ){
-        const facetList = [
-            variableMeasured ? variableMeasured : "",
-            provenance ? provenance : "",
-            measurementMethod ? measurementMethod : "",
-            observationPeriod ? observationPeriod : "",
-            unit ? unit : "",
-            scalingFactor ? scalingFactor.toString() : "1"
-        ]
+  /**
+   * Generates a unique ID for a series given the values of
+   * the properties of a Series object
+   * @param {string} variableMeasured the variableMeasured of a series
+   * @param {string} provenance the provenance of a series
+   * @param {string} measurementMethod the measurementMethod of a series
+   * @param {string} observationPeriod the observationPeriod of a series
+   * @param {string} unit the unit of a series
+   * @param {number} scalingFactor the scalingFactor of a series
+   * @return {string} the id
+   */
+  static toID(
+      variableMeasured?: string,
+      provenance?: string,
+      measurementMethod?: string,
+      observationPeriod?: string,
+      unit?: string,
+      scalingFactor?: number,
+  ) {
+    const facetList = [
+      variableMeasured ? variableMeasured : '',
+      provenance ? provenance : '',
+      measurementMethod ? measurementMethod : '',
+      observationPeriod ? observationPeriod : '',
+      unit ? unit : '',
+      scalingFactor ? scalingFactor.toString() : '1',
+    ];
 
-        return facetList.join(",");
-    }
+    return facetList.join(',');
+  }
 
-    /** Takes in an ID string and returns the corresponding
-     * values in an object
-     */
-    static fromID(id: string) {
-        const [
-            variableMeasured,
-            provenance,
-            measurementMethod,
-            observationPeriod,
-            unit,
-            scalingFactor
-        ] = id.split(",");
+  /** Takes in an ID string and returns the corresponding
+   * values in an object
+   * @param {string} id the id of a Series generated by Series.toID
+   * @return {(string | number)[]} the properties of a series parsed from id
+   */
+  static fromID(id: string) {
+    const [
+      variableMeasured,
+      provenance,
+      measurementMethod,
+      observationPeriod,
+      unit,
+      scalingFactor,
+    ] = id.split(',');
 
-        return {
-            variableMeasured,
-            provenance,
-            measurementMethod,
-            observationPeriod,
-            unit,
-            scalingFactor: parseFloat(scalingFactor)
-        };
+    return {
+      variableMeasured,
+      provenance,
+      measurementMethod,
+      observationPeriod,
+      unit,
+      scalingFactor: parseFloat(scalingFactor),
     };
-};
+  }
+}
 
 export {Series};

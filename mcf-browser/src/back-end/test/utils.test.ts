@@ -37,23 +37,30 @@ test('testing getRemotePropertyLabels', async () => {
   expect(labels.inLabels).toStrictEqual(undefined);
 });
 test('testing getRemotePropertyValues', async () => {
-  const vals = await getRemotePropertyValues('bio/CTD_CHEMBL2_DOID_2055',
-      'compoundID', false);
-  const expectVals = [{
-    dcid: 'bio/CHEMBL2',
-    name: 'CHEMBL2',
-    provenanceId: 'dc/x8m41b1',
-    types: ['ChemicalCompound'],
-  }];
+  const vals = await getRemotePropertyValues(
+      'bio/CTD_CHEMBL2_DOID_2055',
+      'compoundID',
+      false,
+  );
+  const expectVals = [
+    {
+      dcid: 'bio/CHEMBL2',
+      name: 'CHEMBL2',
+      provenanceId: 'dc/x8m41b1',
+      types: ['ChemicalCompound'],
+    },
+  ];
   expect(vals).toStrictEqual(expectVals);
 
   const vals2 = await getRemotePropertyValues('bio/138C10', 'subClassOf', true);
-  const expectVals2 = [{
-    dcid: 'bio/antigen_138C10',
-    name: 'antigen_138C10',
-    provenanceId: 'dc/qec1g11',
-    types: ['Antigen'],
-  }];
+  const expectVals2 = [
+    {
+      dcid: 'bio/antigen_138C10',
+      name: 'antigen_138C10',
+      provenanceId: 'dc/qec1g11',
+      types: ['Antigen'],
+    },
+  ];
   expect(vals2).toStrictEqual(expectVals2);
 });
 

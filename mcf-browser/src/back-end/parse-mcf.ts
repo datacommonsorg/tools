@@ -22,15 +22,15 @@ import {Assertion, Node} from './graph';
 import {ERROR_MESSAGES, shouldReadLine} from './utils';
 
 const NAMESPACES = {
-  'l': 'l',
-  'schema': 'dcid',
-  'dcs': 'dcid',
-  'dcid': 'dcid',
+  l: 'l',
+  schema: 'dcid',
+  dcs: 'dcid',
+  dcid: 'dcid',
 };
 
 type ParsedValue = {
-  ns: 'l' | 'schema' | 'dcs' | 'dcid',
-  ref: string
+  ns: 'l' | 'schema' | 'dcs' | 'dcid';
+  ref: string;
 };
 
 type ParseFileResponse = {
@@ -41,7 +41,7 @@ type ParseFileResponse = {
 
   /** A list of the ids of the subject nodes */
   localNodes: string[];
-}
+};
 
 /** Class responsible for parsing an mcf file. */
 class ParseMcf {
@@ -109,12 +109,18 @@ class ParseMcf {
       const namespace = propValue.split(':')[0].trim();
       if (namespace in NAMESPACES) {
         values.push({
-          'ns': namespace,
-          'ref': propValue.substring(propValue.indexOf(':') + 1).trim(),
+          ns: namespace,
+          ref: propValue.substring(propValue.indexOf(':') + 1).trim(),
         });
-      } else if (propValue.split(':').length > 1 &&
-                 !namespace.startsWith('"')) {
-        this.errors.push([this.lineNum.toString(), this.line as string, 'unrecognized namespace']);
+      } else if (
+        propValue.split(':').length > 1 &&
+        !namespace.startsWith('"')
+      ) {
+        this.errors.push([
+          this.lineNum.toString(),
+          this.line as string,
+          'unrecognized namespace',
+        ]);
         return [];
       } else {
         // push property value with surrounding double quotes trimmed
@@ -137,8 +143,11 @@ class ParseMcf {
    */
   setCurNode(parsedValues: Object[]) {
     if (parsedValues.length !== 1) {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['curNode-length']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['curNode-length'],
+      ]);
       return;
     }
 
@@ -148,14 +157,17 @@ class ParseMcf {
     if (parsedValues[0] instanceof Object) {
       // handle case: Node: dcid:remoteRef, which means that
       // parsedValues[0] === {'ns':'dcid', 'ref':'remoteRef' }
-      const firstValue = (parsedValues[0]) as ParsedValue;
+      const firstValue = parsedValues[0] as ParsedValue;
       ns = firstValue['ns'];
       if (ns === 'dcid') {
         ns = ns + ':';
         nodeRef = firstValue['ref'];
       } else {
-        this.errors.push(
-            [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['curNode-ns']]);
+        this.errors.push([
+          this.lineNum.toString(),
+          this.line as string,
+          ERROR_MESSAGES['curNode-ns'],
+        ]);
         return;
       }
     } else {
@@ -169,7 +181,11 @@ class ParseMcf {
 
     if (ns === 'dcid:') {
       if (this.curNode && !this.curNode.setDCID(nodeRef)) {
-        this.errors.push([this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID']]);
+        this.errors.push([
+          this.lineNum.toString(),
+          this.line as string,
+          ERROR_MESSAGES['setDCID'],
+        ]);
         return;
       }
       ParseMcf.localNodeHash[ns + nodeRef] = this.curNode;
@@ -186,23 +202,36 @@ class ParseMcf {
    */
   setCurNodeDCID(parsedValues: (string | Object)[]) {
     if (!this.curNode) {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID-noCur']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['setDCID-noCur'],
+      ]);
       return;
     }
     if (parsedValues.length !== 1) {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID-multiple']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['setDCID-multiple'],
+      ]);
       return;
     }
     if (typeof parsedValues[0] !== 'string') {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID-ref']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['setDCID-ref'],
+      ]);
       return;
     }
 
     if (!this.curNode.setDCID(parsedValues[0])) {
-      this.errors.push([this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['setDCID'],
+      ]);
     }
   }
 
@@ -216,21 +245,32 @@ class ParseMcf {
    * @param {Array<string|Object>} parsedValues The parsed values from a line of
    *     mcf, used to create the target for each created triple.
    */
-  createAssertionsFromParsedValues(propLabel: string, parsedValues: (string | Object)[]) {
+  createAssertionsFromParsedValues(
+      propLabel: string,
+      parsedValues: (string | Object)[],
+  ) {
     if (!this.curNode) {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['assert-noCur']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['assert-noCur'],
+      ]);
       return;
     }
     for (const val of parsedValues) {
       let target;
       if (val instanceof Object) {
         const parsedVal = val as ParsedValue;
-        target = Node.getNode(NAMESPACES[parsedVal['ns']] + ':' + parsedVal['ref']);
+        target = Node.getNode(
+            NAMESPACES[parsedVal['ns']] + ':' + parsedVal['ref'],
+        );
         if (NAMESPACES[parsedVal['ns']] === 'dcid') {
           if (!target.setDCID(parsedVal['ref'])) {
-            this.errors.push(
-                [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID']]);
+            this.errors.push([
+              this.lineNum.toString(),
+              this.line as string,
+              ERROR_MESSAGES['setDCID'],
+            ]);
           }
         }
       } else {
@@ -257,8 +297,11 @@ class ParseMcf {
     }
 
     if (!line.includes(':')) {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['parse-noColon']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['parse-noColon'],
+      ]);
       return;
     }
 
@@ -266,8 +309,11 @@ class ParseMcf {
     const propValues = line.substring(line.indexOf(':') + 1).trim();
 
     if (!propLabel) {
-      this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['parse-noLabel']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES['parse-noLabel'],
+      ]);
       return;
     }
     if (!propValues) {
@@ -325,7 +371,7 @@ class ParseMcf {
     fileReader.readAsText(file);
 
     return new Promise((res, rej) => {
-      fileReader.addEventListener('loadend', (result) => {
+      fileReader.addEventListener('loadend', () => {
         const mcfParser = new ParseMcf((file as File).name);
         res(mcfParser.parseMcfStr(fileReader.result as string));
       });

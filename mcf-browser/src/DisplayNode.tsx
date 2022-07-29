@@ -16,10 +16,10 @@
 
 import React, {Component} from 'react';
 
+import {Assertion, Node} from './back-end/graph';
 import * as API from './back-end/server-api';
-import {Node, Assertion} from './back-end/graph';
-import {TriplesTable} from './TriplesTable';
 import {LoadingSpinner} from './LoadingSpinner';
+import {TriplesTable} from './TriplesTable';
 import {ColorIndex, colorLegend} from './utils';
 
 interface DisplayNodePropType {
@@ -62,7 +62,7 @@ interface DisplayNodeStateType {
 class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
   /** Creates DisplayNode component.
    * @param {Object} props the props passed in by parent component
-  */
+   */
   constructor(props: DisplayNodePropType) {
     super(props);
     this.state = {
@@ -123,26 +123,34 @@ class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
   render() {
     return (
       <div>
-        <br/>
-        <h1 className='inline'>Currently Viewing: </h1>
+        <br />
+        <h1 className="inline">Currently Viewing: </h1>
         <span title={colorLegend[this.state.elemClass as ColorIndex]}>
           <h1 className={'inline ' + this.state.elemClass}>{this.state.ref}</h1>
         </span>
-        <br/>
-        <LoadingSpinner loading={this.state.fetching}
-          msg='...fetching triples...'/>
-        <br/>
-        <h3 className='inline padded'>Node Properties</h3>
-        <p className='inline'> - current node is source</p>
-        <br/>
-        <TriplesTable triples={this.state.asserts} inverse={false}
-          goToId={this.props.goToId}/>
-        <br/>
-        <h3 className='inline padded'>Incoming Properties from Other Nodes</h3>
-        <p className='inline'> - current node is target</p>
-        <br/>
-        <TriplesTable triples={this.state.invAsserts} inverse={true}
-          goToId={this.props.goToId}/>
+        <br />
+        <LoadingSpinner
+          loading={this.state.fetching}
+          msg="...fetching triples..."
+        />
+        <br />
+        <h3 className="inline padded">Node Properties</h3>
+        <p className="inline"> - current node is source</p>
+        <br />
+        <TriplesTable
+          triples={this.state.asserts}
+          inverse={false}
+          goToId={this.props.goToId}
+        />
+        <br />
+        <h3 className="inline padded">Incoming Properties from Other Nodes</h3>
+        <p className="inline"> - current node is target</p>
+        <br />
+        <TriplesTable
+          triples={this.state.invAsserts}
+          inverse={true}
+          goToId={this.props.goToId}
+        />
       </div>
     );
   }

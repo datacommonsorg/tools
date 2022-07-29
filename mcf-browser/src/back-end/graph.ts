@@ -186,11 +186,12 @@ class Node {
     }
 
     for (const label of propLabels) {
-      await getRemotePropertyValues(this.dcid, label, isInverse)
-          .then((valueList) => {
+      await getRemotePropertyValues(this.dcid, label, isInverse).then(
+          (valueList) => {
             if (!valueList) {
-              throw new Error('No property values for dcid: ' + this.dcid +
-                              ' label: ' + label);
+              throw new Error(
+                  `No property values for dcid: ${this.dcid} label: ${label}`,
+              );
             }
 
             valueList.forEach((valueObj: DCPropertyValueResponse) => {
@@ -198,7 +199,8 @@ class Node {
 
               if (isInverse && !Node.isNode(val)) {
                 throw new Error(
-                    'Error creating assertion with non Node source');
+                    'Error creating assertion with non Node source',
+                );
               }
 
               const source = isInverse ? val : this;
@@ -210,7 +212,8 @@ class Node {
                 new Assertion(source, label, target, valueObj.provenanceId);
               }
             });
-          });
+          },
+      );
     }
   }
 
@@ -224,10 +227,14 @@ class Node {
     }
 
     await getRemotePropertyLabels(this.dcid).then(async (allLabels) => {
-      await this.createAssertionsFromLabels(allLabels.outLabels,
-          /* isInverse */ false);
-      await this.createAssertionsFromLabels(allLabels.inLabels,
-          /* isInverse */ true);
+      await this.createAssertionsFromLabels(
+          allLabels.outLabels,
+          /* isInverse */ false,
+      );
+      await this.createAssertionsFromLabels(
+          allLabels.inLabels,
+          /* isInverse */ true,
+      );
     });
     this.alreadyFetched = true;
   }
@@ -284,7 +291,10 @@ class Assertion {
    * @param {string} provenance The provenance of the triple.
    */
   constructor(
-      src: Node, property: string, target: Node | string, provenance: string,
+      src: Node,
+      property: string,
+      target: Node | string,
+      provenance: string,
   ) {
     this.src = src;
     this.property = property;
@@ -299,4 +309,4 @@ class Assertion {
   }
 }
 
-export {Node, Assertion};
+export {Assertion, Node};
