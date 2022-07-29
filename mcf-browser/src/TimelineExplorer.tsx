@@ -46,12 +46,15 @@ class TimelineExplorer extends Component<TimelineExplorerPropType, TimelineExplo
      * @return {Object} the component using TSX code
      */
     render() {
+        if(this.props.data.length === 0) {
+            return null;
+        }
         return (
             <div className="box">
                 <h3>Timeline Explorer</h3>
                 <ul>
                     {this.props.data.map((series) =>
-                    <li className='clickable' key={series.id}>{series.id}</li>)}
+                    <li key={series.id}>{series.id}</li>)}
                 </ul>
             </div>
         );

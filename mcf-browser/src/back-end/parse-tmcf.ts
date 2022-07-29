@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import {shouldReadLine} from './utils';
+import { Series } from './data';
 
 /**
  * Returns the string following '->' in  a given string. Used for getting csv
@@ -210,18 +211,20 @@ class ParseTmcf {
       }
     }
 
-    // Generate facet
-    const obsAbout = properties.observationAbout ? properties.observationAbout : "";
-    const varMeasured = properties.variableMeasured ? properties.variableMeasured : "";
-    const provenance = properties.provenance ? properties.provenance : "";
-    const measureMethod = properties.measurementMethod ? properties.measurementMethod : "";
-    const obsPeriod = properties.observationPeriod ? properties.observationPeriod : "";
-    const unit = properties.unit ? properties.unit : "";
-    const scalingFactor = properties.scalingFactor ? properties.scalingFactor : "";
+    // Ignore non-StatVarObservations
+    if (!properties.typeOf || properties.typeOf !== "dcs:StatVarObservation") {
+      return {facets: null, date: null, value: null};
+    }
 
-    const facetList = [obsAbout, varMeasured, provenance, measureMethod, obsPeriod, unit, scalingFactor]
-
-    const facets = facetList.join(",");
+    // Generate output
+    const facets = Series.toID(
+      properties.variableMeasured,
+      properties.provenance,
+      properties.measurementMethod,
+      properties.observationPeriod,
+      properties.unit,
+      properties.scalingFactor,
+    );
     const date = properties.observationDate;
     const value = properties.value;
     return {facets, date, value};
@@ -241,8 +244,10 @@ class ParseTmcf {
     const datapoints: any = {};
     for (const row of csvRows) {
       let {facets, date, value} = this.getFacetAndValueFromRow(template, row);
-      datapoints[facets] = (datapoints[facets])? datapoints[facets] : {};
-      datapoints[facets][date] = value;
+      if(facets && date && value) {
+        datapoints[facets] = (datapoints[facets])? datapoints[facets] : {};
+        datapoints[facets][date] = value;
+      }
       this.csvIndex += 1;
     }
     return datapoints;
