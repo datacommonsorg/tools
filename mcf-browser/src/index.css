@@ -73,6 +73,7 @@ ul {
   margin-left: auto;
   margin-right: auto;
   text-align: left;
+  margin-top: 0;
 }
 input {
   margin: 10px;
@@ -131,6 +132,7 @@ input[type='text'],input[type='search'] {
   border: 1px solid var(--dc-gray-lite);
   box-shadow:  2px 2px 2px 1px var(--dc-gray-lite);
   width: 70%;
+  margin-bottom: 20px;
 }
 
 .home{

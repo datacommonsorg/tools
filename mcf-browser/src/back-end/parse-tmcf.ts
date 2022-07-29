@@ -52,7 +52,7 @@ class ParseTmcf {
    * Current row number of the csv file that is being parsed.
    * @type {number}
    */
-  csvIndex;
+  csvIndex: number;
 
   /**
   * Create a ParseTmcf object which keeps tracks of the current csv row
@@ -175,6 +175,103 @@ class ParseTmcf {
   }
 
   /**
+   * Convert a single row to a string representing facets
+   * and its corresponding value and date
+   * @param {string} template The string representation of a tmcf file.
+   * @param {Object} csvRows The json representation of the csv row.
+   *     Each Object element of the array represents one row of the csv.
+   * @return {Object} an object containing the facets, date, and value
+   */
+  getFacetAndValueFromRow(template: string, row: Object) {
+    const properties: any = {};
+
+    // Parse row
+    for (const line of template.split('\n')) {
+      if (!line.trim() || !shouldReadLine(line)) {
+        continue;
+      }
+
+      const propLabel = line.split(':')[0].trim();
+      const propValues = line.substring(line.indexOf(':') + 1).trim();
+
+      if (propLabel === 'Node') {
+        if (propValues.includes(',')) {
+          throw new Error('cannot have multiple ids for Node declaration');
+        }
+        const entityID = getEntityID(propValues);
+        if (entityID) {
+          properties[propLabel] = this.getLocalIdFromEntityId(entityID); 
+        } else {
+          properties[propLabel] = propValues;
+        }
+      } else {
+        const filledValues = this.fillPropertyValues(propValues, row);
+        properties[propLabel] = filledValues;
+      }
+    }
+
+    // Generate facet
+    const obsAbout = properties.observationAbout ? properties.observationAbout : "";
+    const varMeasured = properties.variableMeasured ? properties.variableMeasured : "";
+    const provenance = properties.provenance ? properties.provenance : "";
+    const measureMethod = properties.measurementMethod ? properties.measurementMethod : "";
+    const obsPeriod = properties.observationPeriod ? properties.observationPeriod : "";
+    const unit = properties.unit ? properties.unit : "";
+    const scalingFactor = properties.scalingFactor ? properties.scalingFactor : "";
+
+    const facetList = [obsAbout, varMeasured, provenance, measureMethod, obsPeriod, unit, scalingFactor]
+
+    const facets = facetList.join(",");
+    const date = properties.observationDate;
+    const value = properties.value;
+    return {facets, date, value};
+  }
+
+  /**
+   * Creates a mapping from facets to values from a string representation of 
+   * TMCF file and the json representation of a CSV file. The whole 
+   * template from the tmcf is populated with values for each row of the csv.
+   * @param {string} template The string representation of a tmcf file.
+   * @param {Array<Object>} csvRows The json representation of the csv file.
+   *     Each Object element of the array represents one row of the csv.
+   * @return {Object} The generated mcf as an Object.
+   */
+   csvToDataPoint(template: string, csvRows: Object[]) {
+    this.csvIndex = 1;
+    const datapoints: any = {};
+    for (const row of csvRows) {
+      let {facets, date, value} = this.getFacetAndValueFromRow(template, row);
+      datapoints[facets] = (datapoints[facets])? datapoints[facets] : {};
+      datapoints[facets][date] = value;
+      this.csvIndex += 1;
+    }
+    return datapoints;
+  }
+
+  /**
+   * Converts CSV file to a JS object where the keys are facets and the 
+   * values are the datapoints
+   * @param {string} template The string representation of a tmcf file.
+   * @param {FileObject} csvFile The csv file from html file-input element.
+   * @return {Object} The json representation of the csv file.
+   */
+   async getDataPointsFromFile(template: string, csvFile: Blob) {
+    const fileReader = new FileReader();
+    fileReader.readAsText(csvFile);
+    return new Promise((res, rej) => {
+      fileReader.addEventListener('loadend', (result) => {
+        const csv = require('csvtojson');
+        csv()
+            .fromString(fileReader.result)
+            .then((csvRows: Object[]) => {
+              res(this.csvToDataPoint(template, csvRows));
+            });
+      });
+      fileReader.addEventListener('error', rej);
+    });
+  }
+
+  /**
    * Converts CSV file to an array of JS Object where each JS Object in the
    * array represents one row of the csv. The keys of the object are the column
    * header names and the values of the object are the csv entries in that
@@ -226,6 +323,19 @@ class ParseTmcf {
     return ParseTmcf.readTmcfFile(tmcfFile).then((template: string | ArrayBuffer | null) => {
       const tmcfParser = new ParseTmcf();
       return tmcfParser.readCsvFile(template as string, csvFile);
+    });
+  }
+
+  /**
+   * Converts a TMCF file and CSV file to a list of data points
+   * @param {FileObject} tmcfFile The tmcf file from html file-input element.
+   * @param {FileObject} csvFile THe csv file from html file-input element.
+   * @return {string} A list of data points
+   */
+  static async generateDataPoints(tmcfFile: Blob, csvFile: Blob) {
+    return ParseTmcf.readTmcfFile(tmcfFile).then((template: string | ArrayBuffer | null) => {
+      const tmcfParser = new ParseTmcf();
+      return tmcfParser.getDataPointsFromFile(template as string, csvFile);
     });
   }
 }

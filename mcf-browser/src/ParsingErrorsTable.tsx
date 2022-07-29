@@ -54,6 +54,7 @@ const ParsingErrorsTable = (props: ParsingErrorsTablePropType) => {
             )))}
         </tbody>
       </table>
+      <br/>
     </div>
   );
 };

@@ -18,9 +18,11 @@ import React, {Component} from 'react';
 
 import {ParsingError} from './back-end/utils';
 import {openFile} from './utils';
-import {LoadingSpinner} from './LoadingSpinner';
 import {ParsingErrorsTable} from './ParsingErrorsTable';
 import {FileEntry} from './FileEntry';
+import { TimelineExplorer } from './TimelineExplorer';
+import { GraphExplorer } from './GraphExplorer';
+import { Series } from './back-end/data';
 
 
 interface HomePropType {
@@ -62,6 +64,10 @@ interface HomePropType {
    * Set id parameter in url to the given id. Used when user clicks a subject node to explore.
    */
   goToId: Function;
+  /**
+   * Time series data uploaded by the user
+   */
+  timeData: Series[];
 }
 
 interface HomeStateType{
@@ -161,26 +167,17 @@ class Home extends Component<HomePropType, HomeStateType> {
               toggle={() => this.toggleDropdown()}/> : null }
 
         </div>
-        <br/>
 
         {/* display parsing errors, if any*/}
         <ParsingErrorsTable errsList={this.props.errs}/>
-        <br/>
+        
+        <TimelineExplorer data={this.props.timeData}/>
 
-        <div className = "box">
-
-          {/* display loading animation while waiting*/}
-          <LoadingSpinner loading={this.props.loading}
-            msg='...loading mcf...'/>
-
-          {/* display list of subject noode ids*/}
-          <h3>Subject Nodes</h3>
-          <ul>
-            {this.props.subjNodes.map((dcid) =>
-              <li className='clickable' key={dcid}
-                onClick={() => this.props.goToId(dcid)}>{dcid}</li>)}
-          </ul>
-        </div>
+        <GraphExplorer
+          loading={this.props.loading}
+          subjNodes={this.props.subjNodes}
+          goToId={this.props.goToId} 
+        />
 
       </div>
     );

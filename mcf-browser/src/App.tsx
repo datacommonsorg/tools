@@ -27,6 +27,7 @@ import {Home} from './Home';
 import * as utils from './utils';
 import * as API from './back-end/server-api';
 import {ParsingError} from './back-end/utils';
+import { Series } from './back-end/data';
 
 /** Interface for the App component's state */
 interface AppStateType{
@@ -67,7 +68,10 @@ interface AppStateType{
    * home base in the hash portion of the url while using those files.
    */
   fileHash: string;
-
+  /**
+   * Time series data uploaded by the user
+   */
+   timeData: Series[];
 }
 
 /** Drives the entire app and holds the state of the files and current node. */
@@ -87,6 +91,7 @@ class App extends Component<{}, AppStateType> {
       firstLoad: true,
       parsingErrs: [],
       fileHash: '#',
+      timeData: []
     };
     // save state for easy reset when user 'clears' files
     this.initialState = this.state;
@@ -218,6 +223,7 @@ class App extends Component<{}, AppStateType> {
       this.setState((prevState) => ({
         parsingErrs: prevState['parsingErrs'].concat(res['errMsgs']),
         subjNodes: res['localNodes'],
+        timeData: res['timeData'],
         loading: false,
       }), () => this.handleHashChange());
     });
@@ -260,7 +266,8 @@ class App extends Component<{}, AppStateType> {
               loadFiles={
                 (filesList: string[]) => this.loadRemoteFiles(filesList)
               }
-              goToHome={() => utils.goTo(this.state.fileHash)}/>
+              goToHome={() => utils.goTo(this.state.fileHash)}
+              timeData={this.state.timeData}/>
         }
       </div>
     );
