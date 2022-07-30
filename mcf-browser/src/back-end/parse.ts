@@ -150,9 +150,6 @@ function parseSeries(facets: string, values: Object) {
     y.push(parseFloat((values as any)[date]));
   }
 
-  x.sort();
-  y.sort();
-
   return new Series(
       x,
       y,
@@ -165,4 +162,4 @@ function parseSeries(facets: string, values: Object) {
   );
 }
 
-export {getNodes, getTimeData};
+export {getNodes, getTimeData, parseSeries};
