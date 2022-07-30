@@ -15,6 +15,7 @@
  */
 
 import React, {Component} from 'react';
+import Select from 'react-select';
 
 import {Series} from './back-end/data';
 import {TimeGraph} from './TimeGraph';
@@ -26,16 +27,42 @@ interface TimelineExplorerPropType {
   data: Series[];
 }
 
+interface TimelineExplorerStateType {
+    /** The currently selected locations to filter by */
+    locations: string[];
+}
+
 /** Component to display the timeline explorer */
 class TimelineExplorer extends Component<
-  TimelineExplorerPropType
+  TimelineExplorerPropType,
+  TimelineExplorerStateType
 > {
   /** Constructor for class, sets initial state
    * @param {Object} props the props passed in by parent component
    */
   constructor(props: TimelineExplorerPropType) {
     super(props);
-    this.state = {};
+    this.state = {
+      locations: [],
+    };
+  }
+
+  /** Returns the series objects which match the current locations filter
+   * @return {Series[]} series that match the filter
+  */
+  filterLocations() {
+    if (this.state.locations.length == 0) {
+      // If there's no filter, show all data
+      return this.props.data;
+    }
+
+    const locations = new Set(
+        this.state.locations.map((location) =>
+        (location === 'undefined') ? undefined: location,
+        ),
+    );
+
+    return this.props.data.filter((series) => locations.has(series.provenance));
   }
 
   /** Processes the data passed in by props and returns the
@@ -45,7 +72,10 @@ class TimelineExplorer extends Component<
    */
   groupByVariableMeasured() {
     const output: any = {};
-    for (const series of this.props.data) {
+    // Filter by location
+    const data = this.filterLocations();
+
+    for (const series of data) {
       const varMeasured = series.variableMeasured ?
         series.variableMeasured :
         '';
@@ -65,13 +95,31 @@ class TimelineExplorer extends Component<
   renderSeriesGroup(seriesList: Series[]) {
     const varMeasured = seriesList[0].variableMeasured;
     return (
-      <details>
+      <details key={varMeasured}>
         <summary>{varMeasured}</summary>
         {seriesList.map((series) => (
-          <TimeGraph data={[series]} key={varMeasured}/>
+          <TimeGraph data={[series.copy()]} key={series.id} />
         ))}
       </details>
     );
+  }
+
+  /** Get all locations using the provenance property
+   * @return {Object[]} a list of unique location objects
+   */
+  private getAllLocations() {
+    const locationSet = new Set(
+        this.props.data.map((series) =>
+        series.provenance ? series.provenance : 'undefined'),
+    );
+
+    const locations = [...locationSet];
+    return locations.map((location) => {
+      return {
+        value: location,
+        label: location,
+      };
+    });
   }
 
   /** Renders the TimelineExplorer component.
@@ -84,6 +132,21 @@ class TimelineExplorer extends Component<
     return (
       <div className="box">
         <h3>Timeline Explorer</h3>
+        <div id="locationSelect">
+          <p>Select a location:</p>
+          <Select
+            isMulti
+            name="colors"
+            options={
+              this.getAllLocations()
+            }
+            onChange={(values) => this.setState(
+                {
+                  locations: values.map((value) => value.value),
+                },
+            )}
+          />
+        </div>
         {(Object.values(this.groupByVariableMeasured()) as Series[][]).map(
             this.renderSeriesGroup,
         )}

@@ -127,7 +127,7 @@ input[type='text'],input[type='search'] {
 /* style for parsing errors table */
 
 .box {
-  padding: 20px;
+  padding: 20px 40px;
   border-radius: 10px;
   border: 1px solid var(--dc-gray-lite);
   box-shadow:  2px 2px 2px 1px var(--dc-gray-lite);
@@ -252,4 +252,31 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Styling for TimeGraph component */
+.graph {
+  padding: 20px;
+}
+
+#locationSelect {
+  margin: 20px 0;
+}
+
+details {
+  margin: 10px 0;
+}
+
+details[open] {
+  border: solid 1px #AFAFAF;
+  border-radius: 5px;
+}
+
+summary {
+  padding: 20px 20px;
+}
+
+summary:hover {
+  border: solid 1px #AFAFAF;
+  border-radius: 5px;
 }

@@ -15,9 +15,45 @@
  */
 
 import React, {Component} from 'react';
-// import {Line} from 'react-chartjs-2';
+import {Line} from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 
 import {Series} from './back-end/data';
+
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
+);
+
+const LINE_OPTIONS = {
+  interaction: {
+    intersect: false,
+  },
+  plugins: {
+    legend: {
+      display: true,
+      labels: {
+        font: {
+          size: 12,
+        },
+      },
+    },
+  },
+};
 
 interface TimeGraphPropType {
   /**
@@ -36,11 +72,85 @@ class TimeGraph extends Component<TimeGraphPropType, {}> {
     this.state = {};
   }
 
+  /** Returns a new set of data where each series
+   * has the same x-values (the union of all x-values)
+   * @return {Series[]} an array of the data where missing values
+   * are filled with undefined
+   */
+  getUnionData() {
+    const data = [];
+
+    // Get union of x-values
+    const allXSet: Set<string> = new Set();
+    for (const series of this.props.data) {
+      for (const x of series.x) {
+        allXSet.add(x);
+      }
+    }
+
+    // Get sorted x-values
+    const allX = [...allXSet].map(
+        (value) => {
+          return {xString: value, x: Date.parse(value)};
+        },
+    );
+    allX.sort((a, b) => a.x < b.x ? -1 : a.x > b.x ? 1 : 0);
+    const newX = allX.map((xObj) => xObj.xString);
+
+    // Fill in missing values for each Series
+    for (const series of this.props.data) {
+      const seriesData: any = {};
+      for (let i = 0; i < series.x.length; i++) {
+        seriesData[series.x[i]] = series.y[i];
+      }
+
+      // Make a copy to use
+      const newSeries = series.copy();
+
+      // Update with new x,y values
+      const newY = newX.map((x) => seriesData[x]);
+      newSeries.x = [...newX];
+      newSeries.y = newY;
+
+      data.push(newSeries);
+    }
+
+    return data;
+  }
+
+  /**
+   * Generates the data object necessary for the Line component
+   * @return {Object} the data object to be used a prop for Line
+   */
+  getLineData() {
+    // Change series to have union of all x-values
+    // Also sorts the data in the process
+    const data = this.getUnionData();
+
+    // Get object per series
+    const labels = data[0].x;
+    const datasets = data.map((series) => {
+      return {
+        label: series.id,
+        fill: false,
+        data: series.y,
+        borderColor: 'rgba(75,192,192,1)',
+      };
+    });
+
+    return {labels, datasets};
+  }
+
   /** Renders the TimeGraph component.
    * @return {Object} the component using TSX code
    */
   render() {
-    return <div>{this.props.data[0].id}</div>;
+    return (
+      <div className='graph'>
+        <Line data={this.getLineData()}
+          options = {LINE_OPTIONS}/>
+      </div>
+    );
   }
 }
 

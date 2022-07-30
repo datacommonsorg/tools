@@ -124,8 +124,6 @@ function getTimeData(datapoints: Object[]) {
     output.push(parseSeries(series, allData[series]));
   }
 
-  console.log(output);
-
   return output;
 }
 
@@ -137,14 +135,14 @@ function getTimeData(datapoints: Object[]) {
  * @return {Series} the datapoint as a Series object
  */
 function parseSeries(facets: string, values: Object) {
-  const [
+  const {
     variableMeasured,
     provenance,
     measurementMethod,
     observationPeriod,
     unit,
     scalingFactor,
-  ] = facets.split(',');
+  } = Series.fromID(facets);
   const x = [];
   const y = [];
   for (const date of Object.keys(values)) {
@@ -163,7 +161,7 @@ function parseSeries(facets: string, values: Object) {
       measurementMethod,
       observationPeriod,
       unit,
-      parseFloat(scalingFactor),
+      scalingFactor,
   );
 }
 

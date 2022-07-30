@@ -131,14 +131,49 @@ class Series {
       scalingFactor,
     ] = id.split(',');
 
+    const parseString = (str: string) => (str === '') ? undefined : str;
+
     return {
-      variableMeasured,
-      provenance,
-      measurementMethod,
-      observationPeriod,
-      unit,
+      variableMeasured: parseString(variableMeasured),
+      provenance: parseString(provenance),
+      measurementMethod: parseString(measurementMethod),
+      observationPeriod: parseString(observationPeriod),
+      unit: parseString(unit),
       scalingFactor: parseFloat(scalingFactor),
     };
+  }
+
+  /** Sorts the datapoints and rewrites this.x and this.y
+   * to the sorted version
+   */
+  sortData() {
+    const yValues = this.y;
+    const data = this.x.map(function(xValue, index) {
+      const x = Date.parse(xValue);
+      const y = yValues[index];
+      return {xValue, x, y};
+    });
+
+    data.sort((a, b) => a.x < b.x ? -1 : a.x > b.x ? 1 : 0);
+
+    this.x = data.map((point) => point.xValue);
+    this.y = data.map((point) => point.y);
+  }
+
+  /** Returns a copy of the object
+   * @return {Series} a deep copy of the instance
+   */
+  copy() {
+    return new Series(
+        [...this.x],
+        [...this.y],
+        this.variableMeasured,
+        this.provenance,
+        this.measurementMethod,
+        this.observationPeriod,
+        this.unit,
+        this.scalingFactor,
+    );
   }
 }
 
