@@ -221,6 +221,7 @@ class ParseTmcf {
     // Generate output
     const facets = Series.toID(
         properties.variableMeasured,
+        properties.observationAbout,
         properties.provenance,
         properties.measurementMethod,
         properties.observationPeriod,

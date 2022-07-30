@@ -26,6 +26,9 @@ class Series {
   /** An ordered list of y-values for the data */
   y: number[];
 
+  /** The observationAbout of the data */
+  observationAbout?: string;
+
   /** The variable being measured */
   variableMeasured?: string;
 
@@ -50,6 +53,7 @@ class Series {
    * @param {string[]} x the x values for the series
    * @param {number[]} y the y values for the series
    * @param {string} variableMeasured the variableMeasured of a series
+   * @param {string} observationAbout the observationAbout of a series
    * @param {string} provenance the provenance of a series
    * @param {string} measurementMethod the measurementMethod of a series
    * @param {string} observationPeriod the observationPeriod of a series
@@ -60,6 +64,7 @@ class Series {
       x: string[],
       y: number[],
       variableMeasured?: string,
+      observationAbout?: string,
       provenance?: string,
       measurementMethod?: string,
       observationPeriod?: string,
@@ -69,6 +74,7 @@ class Series {
     this.x = x;
     this.y = y;
     this.variableMeasured = variableMeasured;
+    this.observationAbout = observationAbout;
     this.provenance = provenance;
     this.measurementMethod = measurementMethod;
     this.observationPeriod = observationPeriod;
@@ -77,6 +83,7 @@ class Series {
 
     this.id = Series.toID(
         variableMeasured,
+        observationAbout,
         provenance,
         measurementMethod,
         observationPeriod,
@@ -89,6 +96,7 @@ class Series {
    * Generates a unique ID for a series given the values of
    * the properties of a Series object
    * @param {string} variableMeasured the variableMeasured of a series
+   * @param {string} observationAbout the observationAbout of a series
    * @param {string} provenance the provenance of a series
    * @param {string} measurementMethod the measurementMethod of a series
    * @param {string} observationPeriod the observationPeriod of a series
@@ -98,6 +106,7 @@ class Series {
    */
   static toID(
       variableMeasured?: string,
+      observationAbout?: string,
       provenance?: string,
       measurementMethod?: string,
       observationPeriod?: string,
@@ -106,6 +115,7 @@ class Series {
   ) {
     const facetList = [
       variableMeasured ? variableMeasured : '',
+      observationAbout ? observationAbout : '',
       provenance ? provenance : '',
       measurementMethod ? measurementMethod : '',
       observationPeriod ? observationPeriod : '',
@@ -124,6 +134,7 @@ class Series {
   static fromID(id: string) {
     const [
       variableMeasured,
+      observationAbout,
       provenance,
       measurementMethod,
       observationPeriod,
@@ -135,6 +146,7 @@ class Series {
 
     return {
       variableMeasured: parseString(variableMeasured),
+      observationAbout: parseString(observationAbout),
       provenance: parseString(provenance),
       measurementMethod: parseString(measurementMethod),
       observationPeriod: parseString(observationPeriod),
@@ -168,6 +180,7 @@ class Series {
         [...this.x],
         [...this.y],
         this.variableMeasured,
+        this.observationAbout,
         this.provenance,
         this.measurementMethod,
         this.observationPeriod,

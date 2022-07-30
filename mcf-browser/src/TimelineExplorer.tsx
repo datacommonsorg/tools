@@ -62,7 +62,9 @@ class TimelineExplorer extends Component<
         ),
     );
 
-    return this.props.data.filter((series) => locations.has(series.provenance));
+    return this.props.data.filter(
+        (series) => locations.has(series.observationAbout),
+    );
   }
 
   /** Processes the data passed in by props and returns the
@@ -104,13 +106,13 @@ class TimelineExplorer extends Component<
     );
   }
 
-  /** Get all locations using the provenance property
+  /** Get all locations using the observationAbout property
    * @return {Object[]} a list of unique location objects
    */
   private getAllLocations() {
     const locationSet = new Set(
         this.props.data.map((series) =>
-        series.provenance ? series.provenance : 'undefined'),
+        series.observationAbout ? series.observationAbout : 'undefined'),
     );
 
     const locations = [...locationSet];

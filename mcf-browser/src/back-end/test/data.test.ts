@@ -20,7 +20,8 @@ import * as TestStr from './test-strs';
 
 test('testing Series.toID', () => {
   const variableMeasured = 'dcs:CumulativeCount_MedicalTest_COVID_19';
-  const provenance = 'geoID/12345';
+  const observationAbout = 'geoId/12345';
+  const provenance = 'geoId/12345';
   const measurementMethod = 'dcs:CovidTrackingProject';
   const observationPeriod = 'P1Y';
   const unit = 'Percent';
@@ -28,6 +29,7 @@ test('testing Series.toID', () => {
 
   const id = Series.toID(
       variableMeasured,
+      observationAbout,
       provenance,
       measurementMethod,
       observationPeriod,

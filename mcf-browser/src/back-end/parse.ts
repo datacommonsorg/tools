@@ -137,6 +137,7 @@ function getTimeData(datapoints: Object[]) {
 function parseSeries(facets: string, values: Object) {
   const {
     variableMeasured,
+    observationAbout,
     provenance,
     measurementMethod,
     observationPeriod,
@@ -154,6 +155,7 @@ function parseSeries(facets: string, values: Object) {
       x,
       y,
       variableMeasured,
+      observationAbout,
       provenance,
       measurementMethod,
       observationPeriod,

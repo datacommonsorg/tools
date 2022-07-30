@@ -20,7 +20,7 @@ import * as TestStr from './test-strs';
 
 test('testing parseSeries', () => {
   const facets =
-  'dcs:CumulativeCount_MedicalTest_COVID_19,,dcs:CovidTrackingProject,,,100';
+  'dcs:CumulativeCount_MedicalTest_COVID_19,,,dcs:CovidTrackingProject,,,100';
   const values = {
     '2018': 5,
     '2019': 100,
@@ -33,6 +33,7 @@ test('testing parseSeries', () => {
       ['2018', '2019', '2020', '2021'],
       [5, 100, 5.5, 63],
       'dcs:CumulativeCount_MedicalTest_COVID_19',
+      undefined,
       undefined,
       'dcs:CovidTrackingProject',
       undefined,
