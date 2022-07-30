@@ -440,3 +440,19 @@ observationAbout: dcid:geoId/02
 observationDate: 2020-07-07
 value: 130236
 `;
+
+export const expectedFacetandValue0 = {
+  facets: 'dcs:CumulativeCount_MedicalTest_COVID_19_Negative,,dcs:CovidTrackingProject,,,1',
+  date: '2020-07-07',
+  value: '130236'
+};
+
+export const expectedFacetandValue1 = {
+  facets: null,
+  date: null,
+  value: null
+};
+
+export const expectedDatapoints = {
+  "dcs:CumulativeCount_MedicalTest_COVID_19,,dcs:CovidTrackingProject,,,1": {"row1_date": "row1_test_count", "row2_date": "row2_test_count"}
+}
