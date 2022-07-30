@@ -5,7 +5,7 @@
   "main": "index.tsx",
   "author": "@calinc",
   "license": "Apache-2.0",
-  "homepage": "https://datacommonsorg.github.io/tools/mcf-browser/",
+  "homepage": "https://cwcrystal8.github.io/tools/mcf-browser/",
   "dependencies": {
     "@testing-library/jest-dom": "^4.2.4",
     "@testing-library/react": "^9.5.0",
