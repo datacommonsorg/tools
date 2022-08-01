@@ -182,6 +182,13 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
         intersect: false,
       },
       plugins: {
+        scales: {
+          x: {
+            grid: {
+              display: false,
+            },
+          },
+        },
         legend: {
           display: true,
           labels: {
