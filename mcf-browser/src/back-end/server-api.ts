@@ -48,13 +48,13 @@ async function readFileList(fileList: Blob[]) {
     const fileName = (file as File).name;
     const fileExt = fileName.split('.').pop();
 
-    if(fileExt === "tmcf"){
+    if (fileExt === "tmcf"){
       if (tmcfFile) {
         // If another TMCF file was found, throw an error
         finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
-          'file': fileName,
+          'file': (tmcfFile as File).name,
           'errs': [
-            ["-1", "", ERROR_MESSAGES['multiple-tmcf']]
+            ["-1", "", ERROR_MESSAGES.MULTIPLE_TMCF]
           ]
         }]);
       }

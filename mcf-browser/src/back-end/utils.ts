@@ -23,17 +23,17 @@ const API_ROOT = 'https://api.datacommons.org';
 
 const ERROR_MESSAGES =
     {
-      'curNode-length': 'error in declaring node',
-      'curNode-ns': 'invalid namespace in node declaration',
-      'setDCID-noCur': 'current node must be set before setting dcid',
-      'setDCID-multiple': 'a node can only have one dcid',
-      'setDCID-ref': 'dcid property must be a string, not a node reference',
-      'setDCID':
+      CUR_NODE_LENGTH: 'error in declaring node',
+      CUR_NODE_NS: 'invalid namespace in node declaration',
+      SET_DCID_NO_CUR: 'current node must be set before setting dcid',
+      SET_DCID_MULTIPLE: 'a node can only have one dcid',
+      SET_DCID_REF: 'dcid property must be a string, not a node reference',
+      SET_DCID:
           'cannot set dcid for current node; check if dcid is already set',
-      'assert-noCur': 'current node must be set before declaring properties',
-      'parse-noColon': 'missing \':\', incorrect mcf triple format',
-      'parse-noLabel': 'missing property label',
-      'multiple-tmcf': 'multiple TMCF files were uploaded, only the last one was used',
+      ASSERT_NO_CUR: 'current node must be set before declaring properties',
+      PARSE_NO_COLON: 'missing \':\', incorrect mcf triple format',
+      PARSE_NO_LABEL: 'missing property label',
+      MULTIPLE_TMCF: 'multiple TMCF files were uploaded, only the last one was used',
     };
 
 /** A type to represent the format of the errors in the errList prop */
