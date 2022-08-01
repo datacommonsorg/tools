@@ -28,6 +28,7 @@ import {
 } from 'chart.js';
 
 import {Series} from './back-end/data';
+import {getName} from './back-end/utils';
 
 const COLORS = [
   '#4bc0c0',
@@ -59,14 +60,38 @@ interface TimeGraphPropType {
   title: string;
 }
 
+interface TimeGraphStateType {
+  /** The lineData for the Line graph component */
+  lineData: any;
+
+  /** The lineOptions for the Line graph component */
+  lineOptions: Object;
+}
+
 /** Component to display a single graph */
-class TimeGraph extends Component<TimeGraphPropType, {}> {
+class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   /** Constructor for class, sets initial state
    * @param {Object} props the props passed in by parent component
    */
   constructor(props: TimeGraphPropType) {
     super(props);
-    this.state = {};
+    this.state = {
+      lineData: {},
+      lineOptions: {},
+    };
+  }
+
+  /** Sets lineData and lineOptions when rendering */
+  componentDidMount() {
+    const lineOptions = this.getOptions();
+    this.getLineData().then(
+        (lineData) => this.setState(
+            {
+              lineData,
+              lineOptions,
+            },
+        ),
+    );
   }
 
   /** Returns a new set of data where each series
@@ -119,21 +144,30 @@ class TimeGraph extends Component<TimeGraphPropType, {}> {
    * Generates the data object necessary for the Line component
    * @return {Object} the data object to be used a prop for Line
    */
-  getLineData() {
+  async getLineData() {
     // Change series to have union of all x-values
     // Also sorts the data in the process
     const data = this.getUnionData();
 
     // Get object per series
     const labels = data[0].x;
-    const datasets = data.map((series, i) => {
+    const datasets = await Promise.all(data.map(async (series, i) => {
+      const labelID =
+        series.observationAbout ? series.observationAbout : 'undefined';
+      const label =
+        (labelID.startsWith('dcid:') ?
+          await getName(labelID.slice(5)) :
+          labelID
+        );
       return {
-        label: series.observationAbout,
+        label: label,
         fill: false,
         data: series.y,
         borderColor: COLORS[i % COLORS.length],
       };
-    });
+    }));
+
+    console.log(datasets);
 
     return {labels, datasets};
   }
@@ -168,10 +202,13 @@ class TimeGraph extends Component<TimeGraphPropType, {}> {
    * @return {Object} the component using TSX code
    */
   render() {
+    if (Object.keys(this.state.lineData).length == 0) {
+      return null;
+    }
     return (
       <div className='graph'>
-        <Line data={this.getLineData()}
-          options = {this.getOptions()}/>
+        <Line data={this.state.lineData}
+          options = {this.state.lineOptions}/>
       </div>
     );
   }
