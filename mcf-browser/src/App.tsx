@@ -206,7 +206,7 @@ class App extends Component<{}, AppStateType> {
         files: [...prevState.files, file],
       }));
     }
-    this.submitFileList(fileList);
+    this.submitFileList(this.state.files);
   }
 
   /**
@@ -218,15 +218,11 @@ class App extends Component<{}, AppStateType> {
     this.setState({loading: true});
 
     API.readFileList(fileList).then((res) => {
-      this.setState(
-          (prevState) => ({
-            parsingErrs: prevState['parsingErrs'].concat(res['errMsgs']),
-            subjNodes: res['localNodes'],
-            timeData: res['timeData'],
-            loading: false,
-          }),
-          () => this.handleHashChange(),
-      );
+      this.setState(() => ({
+        parsingErrs: res['errMsgs'],
+        subjNodes: res['localNodes'],
+        loading: false,
+      }), () => this.handleHashChange());
     });
   }
 

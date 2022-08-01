@@ -146,7 +146,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['curNode-length'],
+        ERROR_MESSAGES.CUR_NODE_LENGTH,
       ]);
       return;
     }
@@ -166,7 +166,7 @@ class ParseMcf {
         this.errors.push([
           this.lineNum.toString(),
           this.line as string,
-          ERROR_MESSAGES['curNode-ns'],
+          ERROR_MESSAGES.CUR_NODE_NS,
         ]);
         return;
       }
@@ -184,7 +184,7 @@ class ParseMcf {
         this.errors.push([
           this.lineNum.toString(),
           this.line as string,
-          ERROR_MESSAGES['setDCID'],
+          ERROR_MESSAGES.SET_DCID,
         ]);
         return;
       }
@@ -205,7 +205,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['setDCID-noCur'],
+        ERROR_MESSAGES.SET_DCID_NO_CUR,
       ]);
       return;
     }
@@ -213,7 +213,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['setDCID-multiple'],
+        ERROR_MESSAGES.SET_DCID_MULTIPLE,
       ]);
       return;
     }
@@ -221,7 +221,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['setDCID-ref'],
+        ERROR_MESSAGES.SET_DCID_REF,
       ]);
       return;
     }
@@ -230,7 +230,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['setDCID'],
+        ERROR_MESSAGES.SET_DCID,
       ]);
     }
   }
@@ -253,7 +253,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['assert-noCur'],
+        ERROR_MESSAGES.ASSERT_NO_CUR,
       ]);
       return;
     }
@@ -269,7 +269,7 @@ class ParseMcf {
             this.errors.push([
               this.lineNum.toString(),
               this.line as string,
-              ERROR_MESSAGES['setDCID'],
+              ERROR_MESSAGES.SET_DCID,
             ]);
           }
         }
@@ -300,7 +300,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['parse-noColon'],
+        ERROR_MESSAGES.PARSE_NO_COLON,
       ]);
       return;
     }
@@ -312,7 +312,7 @@ class ParseMcf {
       this.errors.push([
         this.lineNum.toString(),
         this.line as string,
-        ERROR_MESSAGES['parse-noLabel'],
+        ERROR_MESSAGES.PARSE_NO_LABEL,
       ]);
       return;
     }
