@@ -19,6 +19,7 @@ import Select from 'react-select';
 
 import {Series} from './back-end/data';
 import {TimeGraph} from './TimeGraph';
+import {groupLocations} from './utils';
 
 interface TimelineExplorerPropType {
   /**
@@ -99,8 +100,12 @@ class TimelineExplorer extends Component<
     return (
       <details key={varMeasured}>
         <summary>{varMeasured}</summary>
-        {seriesList.map((series) => (
-          <TimeGraph data={[series.copy()]} key={series.id} />
+        {groupLocations(seriesList).map((seriesObj: any) => (
+          <TimeGraph
+            data={seriesObj.subGroup}
+            title={seriesObj.title}
+            key={seriesObj.title}
+          />
         ))}
       </details>
     );

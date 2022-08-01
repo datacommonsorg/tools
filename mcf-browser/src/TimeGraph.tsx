@@ -29,6 +29,14 @@ import {
 
 import {Series} from './back-end/data';
 
+const COLORS = [
+  '#4bc0c0',
+  '#442288',
+  '#B5D33D',
+  '#FED23F',
+  '#EB7D5B',
+];
+
 ChartJS.register(
     CategoryScale,
     LinearScale,
@@ -39,27 +47,16 @@ ChartJS.register(
     Legend,
 );
 
-const LINE_OPTIONS = {
-  interaction: {
-    intersect: false,
-  },
-  plugins: {
-    legend: {
-      display: true,
-      labels: {
-        font: {
-          size: 12,
-        },
-      },
-    },
-  },
-};
-
 interface TimeGraphPropType {
   /**
    * Passes the data to be plotted
    */
   data: Series[];
+
+  /**
+   * The title of the graph
+   */
+  title: string;
 }
 
 /** Component to display a single graph */
@@ -129,16 +126,42 @@ class TimeGraph extends Component<TimeGraphPropType, {}> {
 
     // Get object per series
     const labels = data[0].x;
-    const datasets = data.map((series) => {
+    const datasets = data.map((series, i) => {
       return {
-        label: series.id,
+        label: series.observationAbout,
         fill: false,
         data: series.y,
-        borderColor: 'rgba(75,192,192,1)',
+        borderColor: COLORS[i % COLORS.length],
       };
     });
 
     return {labels, datasets};
+  }
+
+  /**
+   * Generate the graph's options
+   * @return {Object} the options for the graph
+   */
+  getOptions() {
+    return {
+      interaction: {
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            font: {
+              size: 12,
+            },
+          },
+        },
+        title: {
+          display: true,
+          text: this.props.title,
+        },
+      },
+    };
   }
 
   /** Renders the TimeGraph component.
@@ -148,7 +171,7 @@ class TimeGraph extends Component<TimeGraphPropType, {}> {
     return (
       <div className='graph'>
         <Line data={this.getLineData()}
-          options = {LINE_OPTIONS}/>
+          options = {this.getOptions()}/>
       </div>
     );
   }

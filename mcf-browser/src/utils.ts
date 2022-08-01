@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import {Series} from './back-end/data';
+
 /* Simple component to render the colors legend. */
 const colorLegend = {
   'exist-in-kg': 'Node has dcid that exists in DC KG',
@@ -78,4 +80,44 @@ function openFile(fileUrl: string) {
   }
 }
 
-export {colorLegend, goTo, goToId, openFile, searchId};
+/** Groups data with equal values for everything except for their
+   * locations into groups of 5 to be plotted together
+   * @param {Series[]} seriesList the data to group
+   * @return {Object[]} an array where each element is a group of data
+   * that contains the actual series list and the title of the graph
+   */
+function groupLocations(seriesList: Series[]) {
+  // Group similar series
+  const groups: any = {};
+  const exclude = ['observationAbout'];
+  for (const series of seriesList) {
+    const group = series.getHash(exclude);
+
+    if (!groups[group]) {
+      groups[group] = [];
+    }
+
+    groups[group] = groups[group].concat([series]);
+  }
+
+  // Separate groups into groups of 5
+  const finalGroups = [];
+
+  const groupNumber = 5; // The maximum number of
+  const groupNames = Object.keys(groups);
+  for (const groupName of groupNames) {
+    const group = groups[groupName];
+    const numberOfSubgroups = Math.ceil(group.length / groupNumber);
+
+    for (let i = 0; i < group.length; i += groupNumber) {
+      const subGroup = group.slice(i, i + groupNumber);
+      const title = `${groupName} (${i + 1} of ${numberOfSubgroups}) `;
+      finalGroups.push({subGroup, title});
+    }
+  }
+
+  return finalGroups;
+}
+
+
+export {colorLegend, goTo, goToId, openFile, searchId, groupLocations};

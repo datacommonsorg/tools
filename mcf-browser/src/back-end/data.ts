@@ -188,6 +188,41 @@ class Series {
         this.scalingFactor,
     );
   }
+
+  /**
+   * Returns a unique string representing the object and its
+   * metadata properties (excluding some user-defined properties)
+   * @param {string[]} exclude a list of properties to ignore
+   * @return {string} the string hash
+   */
+  getHash(exclude: string[]) {
+    const toString = (property: any) => property ? property.toString() : '';
+
+    const properties: any = {
+      variableMeasured: toString(this.variableMeasured),
+      observationAbout: toString(this.observationAbout),
+      provenance: toString(this.provenance),
+      measurementMethod: toString(this.measurementMethod),
+      observationPeriod: toString(this.observationPeriod),
+      unit: toString(this.unit),
+      scalingFactor: toString(this.scalingFactor),
+    };
+
+    const propertyNames = Object.keys(properties);
+    const propertyValues = propertyNames.map(
+        (property) => properties[property],
+    );
+
+    for (const property of exclude) {
+      const index = propertyNames.indexOf(property);
+      if (index >= 0) {
+        propertyNames.splice(index, 1);
+        propertyValues.splice(index, 1);
+      }
+    }
+
+    return propertyValues.join(',');
+  }
 }
 
 export {Series};
