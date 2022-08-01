@@ -377,13 +377,13 @@ test('testing errors: ', () => {
   mcfParser.parseLine('val:'); // #9
 
   expect(mcfParser.errors).toEqual([
-    ["-1", null, ERROR_MESSAGES['curNode-length']], // #1
-    ["-1", null, ERROR_MESSAGES['curNode-ns']], // #2
-    ["-1", null, ERROR_MESSAGES['assert-noCur']], // #3
-    ["-1", null, ERROR_MESSAGES['setDCID-multiple']], // #4
-    ["-1", null, ERROR_MESSAGES['setDCID-ref']], // #5
-    ["-1", null, ERROR_MESSAGES['setDCID']], // #6
-    ["-1", null, ERROR_MESSAGES['parse-noColon']], // #7
-    ["-1", null, ERROR_MESSAGES['parse-noLabel']], // #8
+    ["-1", null, ERROR_MESSAGES.CUR_NODE_LENGTH], // #1
+    ["-1", null, ERROR_MESSAGES.CUR_NODE_NS], // #2
+    ["-1", null, ERROR_MESSAGES.ASSERT_NO_CUR], // #3
+    ["-1", null, ERROR_MESSAGES.SET_DCID_MULTIPLE], // #4
+    ["-1", null, ERROR_MESSAGES.SET_DCID_REF], // #5
+    ["-1", null, ERROR_MESSAGES.SET_DCID], // #6
+    ["-1", null, ERROR_MESSAGES.PARSE_NO_COLON], // #7
+    ["-1", null, ERROR_MESSAGES.PARSE_NO_LABEL], // #8
   ]);
 });

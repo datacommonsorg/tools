@@ -138,7 +138,7 @@ class ParseMcf {
   setCurNode(parsedValues: Object[]) {
     if (parsedValues.length !== 1) {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['curNode-length']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.CUR_NODE_LENGTH]);
       return;
     }
 
@@ -155,7 +155,7 @@ class ParseMcf {
         nodeRef = firstValue['ref'];
       } else {
         this.errors.push(
-            [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['curNode-ns']]);
+            [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.CUR_NODE_NS]);
         return;
       }
     } else {
@@ -169,7 +169,7 @@ class ParseMcf {
 
     if (ns === 'dcid:') {
       if (this.curNode && !this.curNode.setDCID(nodeRef)) {
-        this.errors.push([this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID']]);
+        this.errors.push([this.lineNum.toString(), this.line as string, ERROR_MESSAGES.SET_DCID]);
         return;
       }
       ParseMcf.localNodeHash[ns + nodeRef] = this.curNode;
@@ -187,22 +187,22 @@ class ParseMcf {
   setCurNodeDCID(parsedValues: (string | Object)[]) {
     if (!this.curNode) {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID-noCur']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.SET_DCID_NO_CUR]);
       return;
     }
     if (parsedValues.length !== 1) {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID-multiple']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.SET_DCID_MULTIPLE]);
       return;
     }
     if (typeof parsedValues[0] !== 'string') {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID-ref']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.SET_DCID_REF]);
       return;
     }
 
     if (!this.curNode.setDCID(parsedValues[0])) {
-      this.errors.push([this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID']]);
+      this.errors.push([this.lineNum.toString(), this.line as string, ERROR_MESSAGES.SET_DCID]);
     }
   }
 
@@ -219,7 +219,7 @@ class ParseMcf {
   createAssertionsFromParsedValues(propLabel: string, parsedValues: (string | Object)[]) {
     if (!this.curNode) {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['assert-noCur']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.ASSERT_NO_CUR]);
       return;
     }
     for (const val of parsedValues) {
@@ -230,7 +230,7 @@ class ParseMcf {
         if (NAMESPACES[parsedVal['ns']] === 'dcid') {
           if (!target.setDCID(parsedVal['ref'])) {
             this.errors.push(
-                [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['setDCID']]);
+                [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.SET_DCID]);
           }
         }
       } else {
@@ -258,7 +258,7 @@ class ParseMcf {
 
     if (!line.includes(':')) {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['parse-noColon']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.PARSE_NO_COLON]);
       return;
     }
 
@@ -267,7 +267,7 @@ class ParseMcf {
 
     if (!propLabel) {
       this.errors.push(
-          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES['parse-noLabel']]);
+          [this.lineNum.toString(), this.line as string, ERROR_MESSAGES.PARSE_NO_LABEL]);
       return;
     }
     if (!propValues) {
