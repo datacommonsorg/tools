@@ -184,7 +184,10 @@ class Home extends Component<HomePropType, HomeStateType> {
         {/* display parsing errors, if any*/}
         <ParsingErrorsTable errsList={this.props.errs} />
 
-        <TimelineExplorer data={this.props.timeData} />
+        <TimelineExplorer
+          data={this.props.timeData}
+          loading={this.props.loading}
+        />
 
         <GraphExplorer
           loading={this.props.loading}

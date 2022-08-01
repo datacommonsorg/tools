@@ -20,8 +20,6 @@ import {Series} from './data';
 import {Node} from './graph';
 import {getNodes, getTimeData} from './parse';
 import {ParseMcf} from './parse-mcf';
-import {ParseTmcf} from './parse-tmcf';
-import {ParsingError, ERROR_MESSAGES} from './utils';
 
 /**
  * Parses App state's files list.

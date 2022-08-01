@@ -221,6 +221,7 @@ class App extends Component<{}, AppStateType> {
       this.setState(() => ({
         parsingErrs: res['errMsgs'],
         subjNodes: res['localNodes'],
+        timeData: res['timeData'],
         loading: false,
       }), () => this.handleHashChange());
     });

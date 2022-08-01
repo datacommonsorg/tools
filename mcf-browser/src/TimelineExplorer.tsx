@@ -20,12 +20,18 @@ import Select from 'react-select';
 import {Series} from './back-end/data';
 import {TimeGraph} from './TimeGraph';
 import {groupLocations} from './utils';
+import {LoadingSpinner} from './LoadingSpinner';
 
 interface TimelineExplorerPropType {
   /**
    * Passes the data to be plotted
    */
   data: Series[];
+
+  /**
+   * Indicates if uploaded files are currently being parsed.
+   */
+   loading: boolean;
 }
 
 interface TimelineExplorerStateType {
@@ -138,6 +144,9 @@ class TimelineExplorer extends Component<
     }
     return (
       <div className="box">
+        {/* display loading animation while waiting*/}
+        <LoadingSpinner loading={this.props.loading} msg="...loading mcf..." />
+
         <h3>Timeline Explorer</h3>
         <div id="locationSelect">
           <p>Select a location:</p>

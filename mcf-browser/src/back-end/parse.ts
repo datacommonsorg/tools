@@ -17,7 +17,7 @@
 import {Series} from './data';
 import {ParseMcf} from './parse-mcf';
 import {ParseTmcf} from './parse-tmcf';
-import {ParsingError} from './utils';
+import {ParsingError, ERROR_MESSAGES} from './utils';
 
 type ParseFileResponse = {
   /** A list of errors that occurred while parsing
@@ -40,12 +40,33 @@ type ParseFileResponse = {
  *    subject nodes and the error messages
  */
 async function getNodes(fileList: Blob[]) {
-  let curTmcf = null;
   const finalReturn: ParseFileResponse = {
     errMsgs: [],
     localNodes: [],
     datapoints: [],
   };
+
+  // Find TMCF file, if it exists
+  let tmcfFile = null;
+  for (const file of fileList) {
+    const fileName = (file as File).name;
+    const fileExt = fileName.split('.').pop();
+
+    if (fileExt === 'tmcf') {
+      if (tmcfFile) {
+        // If another TMCF file was found, throw an error
+        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
+          'file': (tmcfFile as File).name,
+          'errs': [
+            ['-1', '', ERROR_MESSAGES.MULTIPLE_TMCF],
+          ],
+        }]);
+      }
+
+      tmcfFile = file;
+    }
+  }
+
 
   for (const file of fileList) {
     const fileName = (file as File).name;
@@ -66,28 +87,26 @@ async function getNodes(fileList: Blob[]) {
       finalReturn['localNodes'] = finalReturn['localNodes'].concat(
           mcfOut['localNodes'],
       );
-    } else if (fileExt === 'tmcf') {
-      curTmcf = file;
-    } else {
-      if (curTmcf) {
-        const tmcf = curTmcf;
-        const tmcfOut = await ParseTmcf.generateMcf(curTmcf, file).then(
+    } else if (fileExt === 'csv') {
+      if (tmcfFile) {
+        const tmcfFileName = (tmcfFile as File).name;
+        const tmcfOut = await ParseTmcf.generateMcf(tmcfFile, file).then(
             (mcf) => {
               const mcfParser = new ParseMcf(
-                  (tmcf as File).name + '&' + fileName,
+                  tmcfFileName + '&' + fileName,
               );
               return mcfParser.parseMcfStr(mcf as string);
             },
         );
 
-        const datapoints = await ParseTmcf.generateDataPoints(curTmcf, file);
+        const datapoints = await ParseTmcf.generateDataPoints(tmcfFile, file);
         finalReturn['datapoints'] = finalReturn['datapoints'].concat([
           datapoints,
         ]);
 
         if (tmcfOut['errMsgs'].length !== 0) {
           finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
-            file: (tmcf as File).name,
+            file: tmcfFileName,
             errs: tmcfOut['errMsgs'],
           });
         }
@@ -95,7 +114,6 @@ async function getNodes(fileList: Blob[]) {
             tmcfOut['localNodes'],
         );
       }
-      curTmcf = null;
     }
   }
   return finalReturn;
