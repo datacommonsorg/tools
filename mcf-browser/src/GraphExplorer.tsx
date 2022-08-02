@@ -17,6 +17,9 @@
 import React, {Component} from 'react';
 
 import {LoadingSpinner} from './LoadingSpinner';
+import {PageBar} from './PageBar';
+
+const NODES_PER_PAGE = 25;
 
 interface GraphExplorerPropType {
   /**
@@ -37,20 +40,51 @@ interface GraphExplorerPropType {
   goToId: Function;
 }
 
+interface GraphExplorerStateType {
+  /** Tracks which page the user is currently viewing (0-indexed) */
+  page: number;
+}
+
 /** Component to display the Graph explorer */
-class GraphExplorer extends Component<GraphExplorerPropType> {
+class GraphExplorer extends Component<
+  GraphExplorerPropType,
+  GraphExplorerStateType
+> {
   /** Constructor for class, sets initial state
    * @param {Object} props the props passed in by parent component
    */
   constructor(props: GraphExplorerPropType) {
     super(props);
-    this.state = {};
+    this.state = {
+      page: 0,
+    };
+  }
+
+  /** Returns previous page
+   * @param {number} currPage the current page the user is on
+   * @return {number} the previous page
+   */
+  getPrevPage(currPage: number) {
+    const newPage = (currPage === 0) ? 0 : currPage - 1;
+    return newPage;
+  }
+
+  /** Return next page
+   * @param {number} currPage the current page the user is on
+   * @param {number} maxPage the maximum number of pages
+   * @return {number} the next page
+   */
+  getNextPage(currPage: number, maxPage: number) {
+    const newPage = (currPage === maxPage - 1) ? maxPage - 1 : currPage + 1;
+    return newPage;
   }
 
   /** Renders the GraphExplorer component.
    * @return {Object} the component using TSX code
    */
   render() {
+    const maxPage = Math.ceil(this.props.subjNodes.length / NODES_PER_PAGE);
+    const switchPage = (page: number) => this.setState({page});
     return (
       <div className="box">
         {/* display loading animation while waiting*/}
@@ -59,7 +93,10 @@ class GraphExplorer extends Component<GraphExplorerPropType> {
         {/* display list of subject node ids*/}
         <h3>Subject Nodes</h3>
         <ul>
-          {this.props.subjNodes.map((dcid) => (
+          {this.props.subjNodes.slice(
+              this.state.page * NODES_PER_PAGE,
+              (this.state.page + 1) * NODES_PER_PAGE,
+          ).map((dcid) => (
             <li
               className="clickable"
               key={dcid}
@@ -69,6 +106,25 @@ class GraphExplorer extends Component<GraphExplorerPropType> {
             </li>
           ))}
         </ul>
+        <PageBar
+          page={this.state.page}
+          maxPage={maxPage}
+          goToNextPage={
+            (currPage: number, maxPage: number) => {
+              switchPage(this.getNextPage(currPage, maxPage));
+            }
+          }
+          goToPrevPage={
+            (currPage: number) => {
+              switchPage(this.getPrevPage(currPage));
+            }
+          }
+          goToPage={
+            (newPage: number) => {
+              switchPage(newPage - 1);
+            }
+          }
+        />
       </div>
     );
   }
