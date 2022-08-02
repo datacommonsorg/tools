@@ -69,9 +69,11 @@ class TimelineExplorer extends Component<
         ),
     );
 
-    return this.props.data.filter(
+    const filteredData = this.props.data.filter(
         (series) => locations.has(series.observationAbout),
     );
+
+    return filteredData;
   }
 
   /** Processes the data passed in by props and returns the
@@ -93,6 +95,7 @@ class TimelineExplorer extends Component<
       }
       output[varMeasured] = output[varMeasured].concat([series]);
     }
+
     return output;
   }
 
@@ -110,7 +113,9 @@ class TimelineExplorer extends Component<
           <TimeGraph
             data={seriesObj.subGroup}
             title={seriesObj.title}
-            key={seriesObj.title}
+            key={seriesObj.title + '\n' + seriesObj.subGroup.map(
+                (series: Series) => series.id,
+            ).join(',')}
           />
         ))}
       </details>
@@ -148,6 +153,7 @@ class TimelineExplorer extends Component<
         <LoadingSpinner loading={this.props.loading} msg="...loading mcf..." />
 
         <h3>Timeline Explorer</h3>
+
         <div id="locationSelect">
           <p>Select a location:</p>
           <Select
@@ -163,6 +169,7 @@ class TimelineExplorer extends Component<
             )}
           />
         </div>
+
         {(Object.values(this.groupByVariableMeasured()) as Series[][]).map(
             this.renderSeriesGroup,
         )}

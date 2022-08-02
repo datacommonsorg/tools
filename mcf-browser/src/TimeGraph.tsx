@@ -167,8 +167,6 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
       };
     }));
 
-    console.log(datasets);
-
     return {labels, datasets};
   }
 
