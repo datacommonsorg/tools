@@ -85,7 +85,8 @@ function openFile(fileUrl: string) {
 /** Groups data with equal values for everything except for their
    * locations into groups of groupNumber to be plotted together
    * @param {Series[]} seriesList the data to group
-   * @return {Object[]} an array where each element is a group of data
+   * @return {Object} an object where the keys are the group names
+   * and the values are arrays where each element is a group of data
    * that contains the actual series list and the title of the graph
    */
 function groupLocations(seriesList: Series[]) {
@@ -103,19 +104,22 @@ function groupLocations(seriesList: Series[]) {
   }
 
   // Separate groups into groups of size groupNumber
-  const finalGroups = [];
+  const finalGroups: any = {};
 
   const groupNames = Object.keys(groups);
   for (const groupName of groupNames) {
     const group = groups[groupName];
     const numberOfSubgroups = Math.ceil(group.length / GROUP_NUMBER);
 
+    finalGroups[groupName] = [];
+
     for (let i = 0; i < group.length; i += GROUP_NUMBER) {
       const subGroup = group.slice(i, i + GROUP_NUMBER);
       const title = (numberOfSubgroups > 1) ?
         `${groupName} (${i + 1} of ${numberOfSubgroups}) ` :
         `${groupName}`;
-      finalGroups.push({subGroup, title});
+
+      finalGroups[groupName].push({subGroup, title});
     }
   }
 

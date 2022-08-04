@@ -259,8 +259,8 @@ code {
   padding: 20px;
 }
 
-#locationSelect {
-  margin: 20px 0;
+#location-select {
+  margin: 20px 0 40px 0;
 }
 
 details {
@@ -270,6 +270,7 @@ details {
 details[open] {
   border: solid 1px #AFAFAF;
   border-radius: 5px;
+  padding: 5px;
 }
 
 summary {
@@ -315,4 +316,26 @@ summary:hover {
 
 .curr-page-box {
   border: solid 1px #AFAFAF;
+}
+
+/* Styling for facets */
+.facet {
+  padding: 0 40px;
+  font-size: 12px;
+  color: grey;
+}
+
+.stat-var-buttons {
+  background-color: white;
+  border: solid 1px #8F8F8F;
+  padding: 10px 20px;
+  border-radius: 5px;
+  margin-right: 10px;
+  font-family: "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.stat-var-buttons:hover {
+  background-color: #8F8F8F;
+  color: white;
+
 }

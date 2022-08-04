@@ -73,7 +73,9 @@ class Series {
   ) {
     this.x = x;
     this.y = y;
-    this.variableMeasured = variableMeasured;
+    this.variableMeasured =
+      variableMeasured?.startsWith('dcs:') ?
+      variableMeasured.slice(4) : variableMeasured;
     this.observationAbout = observationAbout;
     this.provenance = provenance;
     this.measurementMethod = measurementMethod;

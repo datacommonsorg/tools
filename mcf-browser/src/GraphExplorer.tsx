@@ -91,7 +91,7 @@ class GraphExplorer extends Component<
         <LoadingSpinner loading={this.props.loading} msg="...loading mcf..." />
 
         {/* display list of subject node ids*/}
-        <h3>Subject Nodes</h3>
+        <h3>Graph Explorer</h3>
         <ul>
           {this.props.subjNodes.slice(
               this.state.page * NODES_PER_PAGE,

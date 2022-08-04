@@ -135,18 +135,43 @@ class TimelineExplorer extends Component<
   */
   renderSeriesGroup(seriesList: Series[]) {
     const varMeasured = seriesList[0].variableMeasured;
+    const groups = groupLocations(seriesList);
+    const groupNames = Object.keys(groups);
+
+    const plotSeriesObj = (seriesObj: any) => {
+      return (<TimeGraph
+        data={seriesObj.subGroup}
+        title={seriesObj.title}
+        key={seriesObj.title + '\n' + seriesObj.subGroup.map(
+            (series: Series) => series.id,
+        ).join(',')}
+      />);
+    };
+    const renderTimeGraph = (groupName: string, keepOpen: boolean) => {
+      const facets: any = Series.fromID(groupName);
+      return (
+        <details key={groupName} open={keepOpen}>
+          <summary>{groupName}</summary>
+          {Object.keys(facets).map((facet) => {
+            return (
+              facets[facet] ?
+              <p className='facet'>{facet}: {facets[facet]}</p> :
+              null
+            );
+          })}
+          {groups[groupName].map(plotSeriesObj)}
+        </details>
+      );
+    };
     return (
-      <details key={varMeasured}>
+      <details className="stat-var-section" key={varMeasured}>
         <summary>{varMeasured}</summary>
-        {groupLocations(seriesList).map((seriesObj: any) => (
-          <TimeGraph
-            data={seriesObj.subGroup}
-            title={seriesObj.title}
-            key={seriesObj.title + '\n' + seriesObj.subGroup.map(
-                (series: Series) => series.id,
-            ).join(',')}
-          />
-        ))}
+        {
+          groupNames.map(
+              (groupName) =>
+                renderTimeGraph(groupName, groupNames.length === 1),
+          )
+        }
       </details>
     );
   }
@@ -200,8 +225,15 @@ class TimelineExplorer extends Component<
 
         <h3>Timeline Explorer</h3>
 
-        <div id="locationSelect">
-          <p>Select a location:</p>
+        <div id="location-select">
+          <div>
+            <span>Select location(s): </span>
+            {/* <div id="locationButtons">
+              <button>Select All</button>
+              <button>Clear All</button>
+            </div> */}
+          </div>
+
           <Select
             isMulti
             name="colors"
@@ -217,6 +249,27 @@ class TimelineExplorer extends Component<
               )}
             key={this.state.selectKey}
           />
+        </div>
+
+        <div>
+          <button
+            className="stat-var-buttons"
+            onClick={
+              () => {
+                document.querySelectorAll('details.stat-var-section')
+                    .forEach((section) => section.setAttribute('open', ''));
+              }
+            }
+          >Expand All</button>
+          <button
+            className="stat-var-buttons"
+            onClick={
+              () => {
+                document.querySelectorAll('details.stat-var-section')
+                    .forEach((section) => section.removeAttribute('open'));
+              }
+            }
+          >Collapse All</button>
         </div>
 
         {(Object.values(this.groupByVariableMeasured()) as Series[][]).map(
