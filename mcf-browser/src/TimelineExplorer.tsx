@@ -65,26 +65,31 @@ class TimelineExplorer extends Component<
     };
   }
 
+  /** Tracks when component is mounted */
+  componentDidMount() {
+    this.getAllLocations().then(
+        (locationOptions) => {
+          this.setState(() => {
+            const locations = locationOptions.slice(0, 5).map(
+                (option) => option.value,
+            );
+            const selectKey = locations.join(',');
+            return {
+              locations,
+              locationOptions,
+              selectKey,
+            };
+          });
+        },
+    );
+  }
+
   /** Set the location options
    * @param {TimelineExplorerPropType} prevProps the previous props
   */
   componentDidUpdate(prevProps: TimelineExplorerPropType) {
     if (prevProps.data !== this.props.data) {
-      this.getAllLocations().then(
-          (locationOptions) => {
-            this.setState(() => {
-              const locations = locationOptions.slice(0, 5).map(
-                  (option) => option.value,
-              );
-              const selectKey = locations.join(',');
-              return {
-                locations,
-                locationOptions,
-                selectKey,
-              };
-            });
-          },
-      );
+      this.componentDidMount();
     }
   }
 
@@ -155,7 +160,7 @@ class TimelineExplorer extends Component<
           {Object.keys(facets).map((facet) => {
             return (
               facets[facet] ?
-              <p className='facet'>{facet}: {facets[facet]}</p> :
+              <p className='facet' key={facet}>{facet}: {facets[facet]}</p> :
               null
             );
           })}
@@ -197,7 +202,6 @@ class TimelineExplorer extends Component<
           return label;
         }),
     );
-    console.log(locations);
     return locations.map((location, i) => {
       return {
         value: location,
@@ -213,8 +217,6 @@ class TimelineExplorer extends Component<
     if (this.props.data.length === 0) {
       return null;
     }
-    console.log(this.props.data);
-    console.log(this.state.locationOptions);
     const defaultValue = this.state.locationOptions.filter(
         (option: any) => this.state.locations.includes(option.value),
     );
