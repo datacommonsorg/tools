@@ -192,7 +192,7 @@ class App extends Component<{}, AppStateType> {
         files: [...prevState.files, res.data],
       }));
     }
-    this.submitFileList(newFiles);
+    await this.submitFileList(newFiles);
   }
 
   /**
@@ -206,7 +206,7 @@ class App extends Component<{}, AppStateType> {
         files: [...prevState.files, file],
       }));
     }
-    this.submitFileList(this.state.files);
+    await this.submitFileList(this.state.files);
   }
 
   /**

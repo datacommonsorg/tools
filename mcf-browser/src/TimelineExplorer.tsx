@@ -15,12 +15,13 @@
  */
 
 import React, {Component} from 'react';
-import Select from 'react-select';
+import Select, {MultiValue} from 'react-select';
 
 import {Series} from './back-end/data';
 import {TimeGraph} from './TimeGraph';
 import {groupLocations} from './utils';
 import {LoadingSpinner} from './LoadingSpinner';
+import {getName} from './back-end/utils';
 
 interface TimelineExplorerPropType {
   /**
@@ -37,6 +38,14 @@ interface TimelineExplorerPropType {
 interface TimelineExplorerStateType {
     /** The currently selected locations to filter by */
     locations: string[];
+
+    /** A list of objects for the select component */
+    locationOptions: Object[]
+
+    /** The key for the select component to tell it
+     * to re-render when the locations are loaded in
+     */
+    selectKey: string;
 }
 
 /** Component to display the timeline explorer */
@@ -51,18 +60,38 @@ class TimelineExplorer extends Component<
     super(props);
     this.state = {
       locations: [],
+      locationOptions: [],
+      selectKey: 'unloaded',
     };
+  }
+
+  /** Set the location options
+   * @param {TimelineExplorerPropType} prevProps the previous props
+  */
+  componentDidUpdate(prevProps: TimelineExplorerPropType) {
+    if (prevProps.data !== this.props.data) {
+      this.getAllLocations().then(
+          (locationOptions) => {
+            this.setState(() => {
+              const locations = locationOptions.slice(0, 5).map(
+                  (option) => option.value,
+              );
+              const selectKey = locations.join(',');
+              return {
+                locations,
+                locationOptions,
+                selectKey,
+              };
+            });
+          },
+      );
+    }
   }
 
   /** Returns the series objects which match the current locations filter
    * @return {Series[]} series that match the filter
   */
   filterLocations() {
-    if (this.state.locations.length == 0) {
-      // If there's no filter, show all data
-      return this.props.data;
-    }
-
     const locations = new Set(
         this.state.locations.map((location) =>
         (location === 'undefined') ? undefined: location,
@@ -125,17 +154,29 @@ class TimelineExplorer extends Component<
   /** Get all locations using the observationAbout property
    * @return {Object[]} a list of unique location objects
    */
-  private getAllLocations() {
+  private async getAllLocations() {
     const locationSet = new Set(
         this.props.data.map((series) =>
         series.observationAbout ? series.observationAbout : 'undefined'),
     );
 
     const locations = [...locationSet];
-    return locations.map((location) => {
+    const labels = await Promise.all(
+        locations.map(async (location) => {
+          const label =
+        (location.startsWith('dcid:') ?
+          await getName(location.slice(5)) :
+          location
+        );
+
+          return label;
+        }),
+    );
+    console.log(locations);
+    return locations.map((location, i) => {
       return {
         value: location,
-        label: location,
+        label: labels[i],
       };
     });
   }
@@ -147,6 +188,11 @@ class TimelineExplorer extends Component<
     if (this.props.data.length === 0) {
       return null;
     }
+    console.log(this.props.data);
+    console.log(this.state.locationOptions);
+    const defaultValue = this.state.locationOptions.filter(
+        (option: any) => this.state.locations.includes(option.value),
+    );
     return (
       <div className="box">
         {/* display loading animation while waiting*/}
@@ -159,14 +205,17 @@ class TimelineExplorer extends Component<
           <Select
             isMulti
             name="colors"
-            options={
-              this.getAllLocations()
-            }
-            onChange={(values) => this.setState(
-                {
-                  locations: values.map((value) => value.value),
-                },
-            )}
+            options={this.state.locationOptions}
+            defaultValue={defaultValue}
+            onChange={(values: MultiValue<Object>) =>
+              this.setState( (prevState) => {
+                return {
+                  ...prevState,
+                  locations: values.map((value) => (value as any).value),
+                };
+              },
+              )}
+            key={this.state.selectKey}
           />
         </div>
 

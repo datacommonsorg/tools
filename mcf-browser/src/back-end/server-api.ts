@@ -33,7 +33,6 @@ async function readFileList(fileList: Blob[]) {
 
   // Get timeData
   const timeData: Series[] = getTimeData(nodes.datapoints);
-
   return {...nodes, timeData};
 }
 
