@@ -134,21 +134,12 @@ test('testing node values with createAssertionsFromParsedValues', () => {
   const assertions = mcfParser.curNode.assertions;
 
   type AssertionJSON = {
-<<<<<<< HEAD
     srclocalId: string | null;
     srcDCID: string | null;
     targetlocalId: string | null;
     targetDCID: string | null;
     property: string;
     provenance: string;
-=======
-    srclocalId: string | null,
-    srcDCID: string | null,
-    targetlocalId: string | null,
-    targetDCID: string | null,
-    property: string,
-    provenance: string
->>>>>>> dc/master
   };
   const assertionToJSON = (assertion: Assertion) => {
     const {property, provenance} = assertion;
@@ -217,7 +208,6 @@ dcid: "country/IND"
 `;
 
 type AssertionJSON = {
-<<<<<<< HEAD
   srclocalId: string | null;
   srcDCID: string | null;
   targetlocalId?: string | null;
@@ -225,15 +215,6 @@ type AssertionJSON = {
   target?: string | null;
   property: string;
   provenance: string;
-=======
-  srclocalId: string | null,
-  srcDCID: string | null,
-  targetlocalId?: string | null,
-  targetDCID?: string | null,
-  target?: string | null,
-  property: string,
-  provenance: string
->>>>>>> dc/master
 };
 
 test('testing ParseMcfStr: ', () => {
@@ -286,15 +267,9 @@ test('testing ParseMcfStr: ', () => {
 
   for (const assert of obsAsserts) {
     const expectedJSONStart = {
-<<<<<<< HEAD
       srclocalId: obsNode.localId,
       srcDCID: obsNode.dcid,
       provenance: fileName,
-=======
-      'srclocalId': obsNode.localId,
-      'srcDCID': obsNode.dcid,
-      'provenance': fileName,
->>>>>>> dc/master
     };
 
     const assertJSON = assertionToJSON(assert);
