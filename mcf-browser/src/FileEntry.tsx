@@ -80,10 +80,8 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
         if (this.props.toggle) {
           this.props.toggle();
         }
-      } else if (
-        this.state.mcfTmcfUrl.split('.').pop() === 'tmcf' &&
-        this.state.csvUrl.split('.').pop() === 'csv'
-      ) {
+      } else if (this.state.mcfTmcfUrl.split('.').pop() === 'tmcf' &&
+          (this.state.csvUrl.split('.').pop() === 'csv') ) {
         await this.props.loadFiles([this.state.mcfTmcfUrl, this.state.csvUrl]);
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
@@ -136,9 +134,8 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
                 if (this.props.toggle) {
                   this.props.toggle();
                 }
-              }}
-            />
-            Upload TMCF + CSV
+              }}/>
+              Upload TMCF + CSV
           </label>
         </div>
 
