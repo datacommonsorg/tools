@@ -18,10 +18,9 @@ import React, {Component} from 'react';
 
 import {ParsingError} from './back-end/utils';
 import {openFile} from './utils';
-import {LoadingSpinner} from './LoadingSpinner';
 import {ParsingErrorsTable} from './ParsingErrorsTable';
 import {FileEntry} from './FileEntry';
-import { GraphExplorer } from './GraphExplorer';
+import {GraphExplorer} from './GraphExplorer';
 
 
 interface HomePropType {

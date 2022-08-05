@@ -168,6 +168,7 @@ class ParseMcf {
           this.line as string,
           ERROR_MESSAGES.CUR_NODE_NS,
         ]);
+        return;
       }
     } else {
       // handle case: Node: localRef, which means parsedValues[0]==='localRef'
