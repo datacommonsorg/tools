@@ -71,16 +71,27 @@ class Series {
       unit?: string,
       scalingFactor?: number,
   ) {
+    const cleanVariable = (variable: string | undefined) => {
+      if (!variable) {
+        return variable;
+      } else if (variable.startsWith('dcs:')) {
+        return variable.slice(4);
+      } else if (variable.startsWith('dcid:')) {
+        return variable.slice(5);
+      } else if (variable.startsWith('schema:')) {
+        return variable.slice(7);
+      }
+      return variable;
+    };
+
     this.x = x;
     this.y = y;
-    this.variableMeasured =
-      variableMeasured?.startsWith('dcs:') ?
-      variableMeasured.slice(4) : variableMeasured;
-    this.observationAbout = observationAbout;
-    this.provenance = provenance;
-    this.measurementMethod = measurementMethod;
-    this.observationPeriod = observationPeriod;
-    this.unit = unit;
+    this.variableMeasured = cleanVariable(variableMeasured);
+    this.observationAbout = cleanVariable(observationAbout);
+    this.provenance = cleanVariable(provenance);
+    this.measurementMethod = cleanVariable(measurementMethod);
+    this.observationPeriod = cleanVariable(observationPeriod);
+    this.unit = cleanVariable(unit);
     this.scalingFactor = scalingFactor ? scalingFactor : 1;
 
     this.id = Series.toID(

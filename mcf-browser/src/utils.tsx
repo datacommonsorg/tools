@@ -15,6 +15,9 @@
  */
 
 import {Series} from './back-end/data';
+import React from 'react';
+
+import {TimeGraph} from './TimeGraph';
 
 /* Simple component to render the colors legend. */
 const colorLegend = {
@@ -126,5 +129,56 @@ function groupLocations(seriesList: Series[]) {
   return finalGroups;
 }
 
+/**
+   * Plot a TimeGraph component given all of the data and metadata
+   * @param {Object} seriesObj an object containing all the series to plot
+   *                  and metadata for the plot
+   * @return {Object} the TimeGraph component in TSX code
+   */
+function plotSeriesObj(seriesObj: any) {
+  return (<TimeGraph
+    data={seriesObj.subGroup}
+    title={seriesObj.title}
+    key={seriesObj.title + '\n' + seriesObj.subGroup.map(
+        (series: Series) => series.id,
+    ).join(',')}
+  />);
+}
 
-export {colorLegend, goTo, goToId, openFile, searchId, groupLocations};
+/**
+ * Renders a section containing all of the graphs for a group
+ * of related series
+ * @param {Object[]} group an array of objects where each object contains the
+ *              data for a graph
+ * @param {string} groupName the name of the group for the summary
+ * @param {boolean} keepOpen whether or not to render the details open
+ * @return {Object} the details section in TSX code
+ */
+function renderTimeGraph(
+    group: Object[], groupName: string, keepOpen: boolean,
+) {
+  const facets: any = Series.fromID(groupName);
+  return (
+    <details key={groupName} open={keepOpen}>
+      <summary>{groupName}</summary>
+      {Object.keys(facets).map((facet) => {
+        return (
+          (facets[facet] && facet !== 'variableMeasured') ?
+          <p className='facet' key={facet}>{facet}: {facets[facet]}</p> :
+          null
+        );
+      })}
+      {group.map(plotSeriesObj)}
+    </details>
+  );
+}
+
+export {
+  colorLegend,
+  goTo,
+  goToId,
+  openFile,
+  searchId,
+  groupLocations,
+  renderTimeGraph,
+};

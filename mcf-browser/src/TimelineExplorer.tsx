@@ -18,8 +18,7 @@ import React, {Component} from 'react';
 import Select, {MultiValue} from 'react-select';
 
 import {Series} from './back-end/data';
-import {TimeGraph} from './TimeGraph';
-import {groupLocations} from './utils';
+import {groupLocations, renderTimeGraph} from './utils';
 import {LoadingSpinner} from './LoadingSpinner';
 import {getName} from './back-end/utils';
 
@@ -133,6 +132,7 @@ class TimelineExplorer extends Component<
     return output;
   }
 
+
   /** Returns the JSX to render a group of related series
    * @param {Series[]} seriesList a list of series objects with
    *                              the same varMeasured
@@ -143,38 +143,15 @@ class TimelineExplorer extends Component<
     const groups = groupLocations(seriesList);
     const groupNames = Object.keys(groups);
 
-    const plotSeriesObj = (seriesObj: any) => {
-      return (<TimeGraph
-        data={seriesObj.subGroup}
-        title={seriesObj.title}
-        key={seriesObj.title + '\n' + seriesObj.subGroup.map(
-            (series: Series) => series.id,
-        ).join(',')}
-      />);
-    };
-    const renderTimeGraph = (groupName: string, keepOpen: boolean) => {
-      const facets: any = Series.fromID(groupName);
-      return (
-        <details key={groupName} open={keepOpen}>
-          <summary>{groupName}</summary>
-          {Object.keys(facets).map((facet) => {
-            return (
-              facets[facet] ?
-              <p className='facet' key={facet}>{facet}: {facets[facet]}</p> :
-              null
-            );
-          })}
-          {groups[groupName].map(plotSeriesObj)}
-        </details>
-      );
-    };
     return (
       <details className="stat-var-section" key={varMeasured}>
         <summary>{varMeasured}</summary>
         {
           groupNames.map(
               (groupName) =>
-                renderTimeGraph(groupName, groupNames.length === 1),
+                renderTimeGraph(
+                    groups[groupName], groupName, groupNames.length === 1,
+                ),
           )
         }
       </details>
@@ -194,11 +171,10 @@ class TimelineExplorer extends Component<
     const labels = await Promise.all(
         locations.map(async (location) => {
           const label =
-        (location.startsWith('dcid:') ?
-          await getName(location.slice(5)) :
-          location
-        );
-
+            (location.startsWith('dcid:') ?
+              await getName(location.slice(5)) :
+              await getName(location)
+            );
           return label;
         }),
     );
@@ -227,13 +203,39 @@ class TimelineExplorer extends Component<
 
         <h3>Timeline Explorer</h3>
 
-        <div id="location-select">
-          <div>
+        <div id="location-select-box">
+          <div id="location-select-row">
             <span>Select location(s): </span>
-            {/* <div id="locationButtons">
-              <button>Select All</button>
-              <button>Clear All</button>
-            </div> */}
+            <div id="location-buttons">
+              <button
+                className="button"
+                onClick={() => {
+                  this.setState((prevState) => {
+                    const locations = prevState.locationOptions.map(
+                        (option: any) => option.value,
+                    );
+                    const selectKey = locations.join(',');
+                    return {
+                      ...prevState,
+                      locations,
+                      selectKey,
+                    };
+                  });
+                }}
+              >Select All</button>
+              <button
+                className="button"
+                onClick={() => {
+                  this.setState((prevState) => {
+                    return {
+                      ...prevState,
+                      locations: [],
+                      selectKey: '',
+                    };
+                  });
+                }}
+              >Clear All</button>
+            </div>
           </div>
 
           <Select
@@ -241,6 +243,7 @@ class TimelineExplorer extends Component<
             name="colors"
             options={this.state.locationOptions}
             defaultValue={defaultValue}
+            value={defaultValue}
             onChange={(values: MultiValue<Object>) =>
               this.setState( (prevState) => {
                 return {
@@ -253,9 +256,9 @@ class TimelineExplorer extends Component<
           />
         </div>
 
-        <div>
+        <div id="stat-var-row">
           <button
-            className="stat-var-buttons"
+            className="button"
             onClick={
               () => {
                 document.querySelectorAll('details.stat-var-section')
@@ -264,7 +267,7 @@ class TimelineExplorer extends Component<
             }
           >Expand All</button>
           <button
-            className="stat-var-buttons"
+            className="button"
             onClick={
               () => {
                 document.querySelectorAll('details.stat-var-section')

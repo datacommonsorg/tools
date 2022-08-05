@@ -259,12 +259,8 @@ code {
   padding: 20px;
 }
 
-#location-select {
-  margin: 20px 0 40px 0;
-}
-
 details {
-  margin: 10px 0;
+  margin: 0 0 10px 0;
 }
 
 details[open] {
@@ -325,6 +321,13 @@ summary:hover {
   color: grey;
 }
 
+/* Styling for stat var section buttons */
+
+#stat-var-row {
+  display: flex;
+  justify-content: right;
+}
+
 .stat-var-buttons {
   background-color: white;
   border: solid 1px #8F8F8F;
@@ -338,4 +341,19 @@ summary:hover {
   background-color: #8F8F8F;
   color: white;
 
+}
+/* Styling for location buttons */
+#location-select-box {
+  margin: 20px 0 40px 0;
+}
+
+#location-select-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#location-buttons {
+  display: flex;
+  justify-content: right;
 }
