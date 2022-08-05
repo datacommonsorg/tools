@@ -24,7 +24,7 @@ const colorLegend = {
 
 /* Simple type to represent index of colorLegend */
 export type ColorIndex =
-  "exist-in-kg" | "exist-in-local" | "not-in-local" | "not-in-kg";
+  'exist-in-kg' | 'exist-in-local' | 'not-in-local' | 'not-in-kg';
 
 /**
  * Sets the window hash value to query a given id.

@@ -34,41 +34,7 @@ interface FileEntryPropType {
    * Sets whether the dropdown on the home page for additonal file entries
    * should be displayed.
    */
-  toggle: Function;
-}
-
-interface FileEntryStateType{
-  /**
-   * Stores user's text entry in the first url entry box. This should be a url
-   * to either a MCF or TMCF file.
-   */
-  mcfTmcfUrl: string;
-  /**
-   * Stores user's text entry in the second url entry box. This should be a url
-   * to a CSV file.
-   */
-  csvUrl: string;
-}
-
-interface FileEntryPropType {
-  /**
-   * Passes a file list to be submitted to the back-end for parsing.
-   */
-  upload: Function;
-  /**
-   * Passes a list of urls to be retrieved, then passed to the back-end for
-   * parsing.
-   */
-  loadFiles: Function;
-  /**
-   * Return to the home page/reset to current hash stored in App state.
-   */
-  goToHome: Function;
-  /**
-   * Sets whether the dropdown on the home page for additonal file entries
-   * should be displayed.
-   */
-  toggle: Function;
+  toggle?: Function;
 }
 
 interface FileEntryStateType{
@@ -111,14 +77,18 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
         this.props.goToHome();
-        this.props.toggle();
+        if (this.props.toggle) {
+          this.props.toggle();
+        }
       } else if (this.state.mcfTmcfUrl.split('.').pop() === 'tmcf' &&
           (this.state.csvUrl.split('.').pop() === 'csv') ) {
         await this.props.loadFiles([this.state.mcfTmcfUrl, this.state.csvUrl]);
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
         this.props.goToHome();
-        this.props.toggle();
+        if (this.props.toggle) {
+          this.props.toggle();
+        }
       }
     }
   }
@@ -140,7 +110,9 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
             <input type="file" required multiple
               accept=".mcf" onChange={(event) => {
                 this.props.upload(Array.from(event.target.files as FileList));
-                this.props.toggle();
+                if (this.props.toggle) {
+                  this.props.toggle();
+                }
               }}/>
               Upload MCF
           </label>
@@ -150,7 +122,9 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
             <input type="file" required multiple
               accept=".tmcf,.csv" onChange={(event) => {
                 this.props.upload(Array.from(event.target.files as FileList));
-                this.props.toggle();
+                if (this.props.toggle) {
+                  this.props.toggle();
+                }
               }}/>
               Upload TMCF + CSV
           </label>
