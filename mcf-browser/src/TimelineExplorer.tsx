@@ -257,24 +257,27 @@ class TimelineExplorer extends Component<
         </div>
 
         <div id="stat-var-row">
-          <button
-            className="button"
-            onClick={
-              () => {
-                document.querySelectorAll('details.stat-var-section')
-                    .forEach((section) => section.setAttribute('open', ''));
+          <span>Variables</span>
+          <div id="stat-var-buttons">
+            <button
+              className="button"
+              onClick={
+                () => {
+                  document.querySelectorAll('details.stat-var-section')
+                      .forEach((section) => section.setAttribute('open', ''));
+                }
               }
-            }
-          >Expand All</button>
-          <button
-            className="button"
-            onClick={
-              () => {
-                document.querySelectorAll('details.stat-var-section')
-                    .forEach((section) => section.removeAttribute('open'));
+            >Expand All</button>
+            <button
+              className="button"
+              onClick={
+                () => {
+                  document.querySelectorAll('details.stat-var-section')
+                      .forEach((section) => section.removeAttribute('open'));
+                }
               }
-            }
-          >Collapse All</button>
+            >Collapse All</button>
+          </div>
         </div>
 
         {(Object.values(this.groupByVariableMeasured()) as Series[][]).map(
