@@ -52,7 +52,7 @@ class ParseTmcf {
    * Current row number of the csv file that is being parsed.
    * @type {number}
    */
-  csvIndex;
+  csvIndex: number;
 
   /**
   * Create a ParseTmcf object which keeps tracks of the current csv row
@@ -187,7 +187,7 @@ class ParseTmcf {
     const fileReader = new FileReader();
     fileReader.readAsText(csvFile);
     return new Promise((res, rej) => {
-      fileReader.addEventListener('loadend', (result) => {
+      fileReader.addEventListener('loadend', () => {
         const csv = require('csvtojson');
         csv()
             .fromString(fileReader.result)
@@ -204,12 +204,14 @@ class ParseTmcf {
    * @param {FileObject} tmcfFile The tmcf file from html file-input element.
    * @return {string} The string representation of the tmcf file.
    */
-  static async readTmcfFile(tmcfFile: Blob): Promise<string | ArrayBuffer | null> {
+  static async readTmcfFile(
+      tmcfFile: Blob,
+  ): Promise<string | ArrayBuffer | null> {
     const fileReader = new FileReader();
     fileReader.readAsText(tmcfFile);
     return new Promise((res, rej) => {
       fileReader.addEventListener('loadend',
-          (result) => {
+          () => {
             res(fileReader.result);
           });
       fileReader.addEventListener('error', rej);
@@ -223,10 +225,12 @@ class ParseTmcf {
    * @return {string} The translated mcf as a string.
    */
   static async generateMcf(tmcfFile: Blob, csvFile: Blob) {
-    return ParseTmcf.readTmcfFile(tmcfFile).then((template: string | ArrayBuffer | null) => {
-      const tmcfParser = new ParseTmcf();
-      return tmcfParser.readCsvFile(template as string, csvFile);
-    });
+    return ParseTmcf.readTmcfFile(tmcfFile).then(
+        (template: string | ArrayBuffer | null) => {
+          const tmcfParser = new ParseTmcf();
+          return tmcfParser.readCsvFile(template as string, csvFile);
+        },
+    );
   }
 }
 

@@ -33,7 +33,8 @@ interface HomePropType {
    */
   upload: Function;
   /**
-   * Passes a list of urls to be retrieved, then passed to the back-end for parsing.
+   * Passes a list of urls to be retrieved, then passed to the back-end
+   * for parsing.
    */
   loadFiles: Function;
   /**
@@ -54,12 +55,13 @@ interface HomePropType {
    */
   loading: boolean;
   /**
-   * IDs for nodes stored in App's state which are the subject nodes of triples from
-   * any parsed files.
+   * IDs for nodes stored in App's state which are the subject nodes of
+   * triples from any parsed files.
    */
   subjNodes: string[];
   /**
-   * Set id parameter in url to the given id. Used when user clicks a subject node to explore.
+   * Set id parameter in url to the given id. Used when user clicks a
+   * subject node to explore.
    */
   goToId: Function;
 }
@@ -108,7 +110,7 @@ class Home extends Component<HomePropType, HomeStateType> {
             <FileEntry upload={this.props.upload}
               loadFiles={this.props.loadFiles}
               goToHome={this.props.goToHome}
-              toggle={() => {}}/>
+            />
           </div>
         </div>
       );

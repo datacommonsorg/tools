@@ -48,14 +48,14 @@ async function readFileList(fileList: Blob[]) {
     const fileName = (file as File).name;
     const fileExt = fileName.split('.').pop();
 
-    if (fileExt === "tmcf"){
+    if (fileExt === 'tmcf') {
       if (tmcfFile) {
         // If another TMCF file was found, throw an error
         finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
           'file': (tmcfFile as File).name,
           'errs': [
-            ["-1", "", ERROR_MESSAGES.MULTIPLE_TMCF]
-          ]
+            ['-1', '', ERROR_MESSAGES.MULTIPLE_TMCF],
+          ],
         }]);
       }
 
@@ -76,7 +76,7 @@ async function readFileList(fileList: Blob[]) {
           'errs': mcfOut['errMsgs'],
         }]);
       }
-      
+
       finalReturn['localNodes'] = mcfOut['localNodes'];
     } else if (fileExt === 'csv') {
       if (tmcfFile) {
@@ -166,7 +166,10 @@ async function getElemClass(target: Node) {
       return 'exist-in-local';
     }
 
-    if (!target.dcid && !((target.localId as string) in ParseMcf.localNodeHash)) {
+    if (
+      !target.dcid &&
+      !((target.localId as string) in ParseMcf.localNodeHash)
+    ) {
       return 'not-in-local';
     }
     return 'not-in-kg';

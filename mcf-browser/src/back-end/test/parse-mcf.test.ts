@@ -139,7 +139,7 @@ test('testing node values with createAssertionsFromParsedValues', () => {
     targetlocalId: string | null,
     targetDCID: string | null,
     property: string,
-    provenance: string 
+    provenance: string
   };
   const assertionToJSON = (assertion: Assertion) => {
     const {property, provenance} = assertion;
@@ -214,7 +214,7 @@ type AssertionJSON = {
   targetDCID?: string | null,
   target?: string | null,
   property: string,
-  provenance: string 
+  provenance: string
 };
 
 test('testing ParseMcfStr: ', () => {
@@ -230,12 +230,12 @@ test('testing ParseMcfStr: ', () => {
       return {
         ...json,
         targetlocalId: assertion.target.localId,
-        targetDCID: assertion.target.dcid
+        targetDCID: assertion.target.dcid,
       };
     } else {
       return {
         ...json,
-        target: assertion.target
+        target: assertion.target,
       };
     }
     return json;
@@ -269,7 +269,7 @@ test('testing ParseMcfStr: ', () => {
     const expectedJSONStart = {
       'srclocalId': obsNode.localId,
       'srcDCID': obsNode.dcid,
-      'provenance': fileName
+      'provenance': fileName,
     };
 
     const assertJSON = assertionToJSON(assert);
@@ -280,7 +280,7 @@ test('testing ParseMcfStr: ', () => {
           ...expectedJSONStart,
           property: 'remoteNodeProp',
           targetlocalId: null,
-          targetDCID: 'StatVarObservation'
+          targetDCID: 'StatVarObservation',
         };
 
         expect(assert.target.invAssertions[0]).toStrictEqual(assert);
@@ -292,7 +292,7 @@ test('testing ParseMcfStr: ', () => {
           ...expectedJSONStart,
           property: 'localNodeProp',
           targetlocalId: 'l:LocalIndiaNode',
-          targetDCID: 'country/IND'
+          targetDCID: 'country/IND',
         };
 
         expect(assert.target.invAssertions[0]).toStrictEqual(assert);
@@ -303,7 +303,7 @@ test('testing ParseMcfStr: ', () => {
         expectedJSON = {
           ...expectedJSONStart,
           property: 'stringProp',
-          target: '2020-08-01'
+          target: '2020-08-01',
         };
 
         expect(assertJSON).toStrictEqual(expectedJSON);
@@ -313,7 +313,7 @@ test('testing ParseMcfStr: ', () => {
         expectedJSON = {
           ...expectedJSONStart,
           property: 'numProp',
-          target: '10000'
+          target: '10000',
         };
 
         expect(assertJSON).toStrictEqual(expectedJSON);
@@ -322,7 +322,7 @@ test('testing ParseMcfStr: ', () => {
         expectedJSON = {
           ...expectedJSONStart,
           property: 'bioID',
-          target: 'GO:bioTextId'
+          target: 'GO:bioTextId',
         };
 
         expect(assertJSON).toStrictEqual(expectedJSON);
@@ -377,13 +377,13 @@ test('testing errors: ', () => {
   mcfParser.parseLine('val:'); // #9
 
   expect(mcfParser.errors).toEqual([
-    ["-1", null, ERROR_MESSAGES.CUR_NODE_LENGTH], // #1
-    ["-1", null, ERROR_MESSAGES.CUR_NODE_NS], // #2
-    ["-1", null, ERROR_MESSAGES.ASSERT_NO_CUR], // #3
-    ["-1", null, ERROR_MESSAGES.SET_DCID_MULTIPLE], // #4
-    ["-1", null, ERROR_MESSAGES.SET_DCID_REF], // #5
-    ["-1", null, ERROR_MESSAGES.SET_DCID], // #6
-    ["-1", null, ERROR_MESSAGES.PARSE_NO_COLON], // #7
-    ["-1", null, ERROR_MESSAGES.PARSE_NO_LABEL], // #8
+    ['-1', null, ERROR_MESSAGES.CUR_NODE_LENGTH], // #1
+    ['-1', null, ERROR_MESSAGES.CUR_NODE_NS], // #2
+    ['-1', null, ERROR_MESSAGES.ASSERT_NO_CUR], // #3
+    ['-1', null, ERROR_MESSAGES.SET_DCID_MULTIPLE], // #4
+    ['-1', null, ERROR_MESSAGES.SET_DCID_REF], // #5
+    ['-1', null, ERROR_MESSAGES.SET_DCID], // #6
+    ['-1', null, ERROR_MESSAGES.PARSE_NO_COLON], // #7
+    ['-1', null, ERROR_MESSAGES.PARSE_NO_LABEL], // #8
   ]);
 });

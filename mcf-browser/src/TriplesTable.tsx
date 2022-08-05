@@ -52,7 +52,10 @@ interface TriplesTableStateType{
 }
 
 /** Displays all given assertions as a table of triples. */
-export class TriplesTable extends Component<TriplesTablePropType, TriplesTableStateType> {
+export class TriplesTable extends Component<
+  TriplesTablePropType,
+  TriplesTableStateType
+> {
   /** Constructor for class, sets initial state
    *
    * @param {Object} props the props passed in by parent component
@@ -93,7 +96,9 @@ export class TriplesTable extends Component<TriplesTablePropType, TriplesTableSt
   */
   async getTargetCell(target: Node | string) {
     if (API.isNodeObj(target)) {
-      const elemClass: utils.ColorIndex = (await API.getElemClass(target as Node)) as utils.ColorIndex;
+      const elemClass: utils.ColorIndex = (await API.getElemClass(
+        target as Node,
+      )) as utils.ColorIndex;
       const nodeTarget = target as Node;
       return (
         <div>
