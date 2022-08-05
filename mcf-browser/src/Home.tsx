@@ -21,6 +21,7 @@ import {openFile} from './utils';
 import {LoadingSpinner} from './LoadingSpinner';
 import {ParsingErrorsTable} from './ParsingErrorsTable';
 import {FileEntry} from './FileEntry';
+import { GraphExplorer } from './GraphExplorer';
 
 
 interface HomePropType {
@@ -169,20 +170,11 @@ class Home extends Component<HomePropType, HomeStateType> {
         <ParsingErrorsTable errsList={this.props.errs}/>
         <br/>
 
-        <div className = "box">
-
-          {/* display loading animation while waiting*/}
-          <LoadingSpinner loading={this.props.loading}
-            msg='...loading mcf...'/>
-
-          {/* display list of subject noode ids*/}
-          <h3>Subject Nodes</h3>
-          <ul>
-            {this.props.subjNodes.map((dcid) =>
-              <li className='clickable' key={dcid}
-                onClick={() => this.props.goToId(dcid)}>{dcid}</li>)}
-          </ul>
-        </div>
+        <GraphExplorer
+          loading={this.props.loading}
+          subjNodes={this.props.subjNodes}
+          goToId={this.props.goToId}
+        />
 
       </div>
     );
