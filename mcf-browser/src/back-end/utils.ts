@@ -18,22 +18,33 @@
  * helper functions for parsing file to create local knowledge graph.
  */
 
-import {Node} from './graph.js';
+import {Node} from './graph';
 const API_ROOT = 'https://api.datacommons.org';
 
 const ERROR_MESSAGES =
     {
-      'curNode-length': 'error in declaring node',
-      'curNode-ns': 'invalid namespace in node declaration',
-      'setDCID-noCur': 'current node must be set before setting dcid',
-      'setDCID-multiple': 'a node can only have one dcid',
-      'setDCID-ref': 'dcid property must be a string, not a node reference',
-      'setDCID':
+      CUR_NODE_LENGTH: 'error in declaring node',
+      CUR_NODE_NS: 'invalid namespace in node declaration',
+      SET_DCID_NO_CUR: 'current node must be set before setting dcid',
+      SET_DCID_MULTIPLE: 'a node can only have one dcid',
+      SET_DCID_REF: 'dcid property must be a string, not a node reference',
+      SET_DCID:
           'cannot set dcid for current node; check if dcid is already set',
-      'assert-noCur': 'current node must be set before declaring properties',
-      'parse-noColon': 'missing \':\', incorrect mcf triple format',
-      'parse-noLabel': 'missing property label',
+      ASSERT_NO_CUR: 'current node must be set before declaring properties',
+      PARSE_NO_COLON: 'missing \':\', incorrect mcf triple format',
+      PARSE_NO_LABEL: 'missing property label',
+      MULTIPLE_TMCF:
+          'multiple TMCF files were uploaded, only the last one was used',
     };
+
+/** A type to represent the format of the errors in the errList prop */
+export interface ParsingError {
+  /** A list of errors generated when parsing a file */
+  errs: string[][];
+
+  /** The file that created the errors */
+  file: string;
+}
 
 /**
  * Gets all property labels of the given dcid that are in the DC KG.
@@ -41,11 +52,23 @@ const ERROR_MESSAGES =
  * @param {string} dcid The dcid of the node to find property labels for.
  * @return {Object} An object containing both 'in' and 'out' property labels.
  */
-async function getRemotePropertyLabels(dcid) {
-  const targetUrl = API_ROOT + '/node/property-labels?dcids=' + dcid;
-  return fetch(targetUrl)
-      .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid]);
+async function getRemotePropertyLabels(dcid: string) {
+  // Get inward and outward property labels
+  const outTargetUrl = `${API_ROOT}/v1/properties/out/${dcid}`;
+  const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
+
+  const [inPropertyLabels, outPropertyLabels] = await Promise.all([
+    fetch(inTargetUrl)
+        .then((response) => response.json()
+            .then((data) => data.properties),
+        ),
+    fetch(outTargetUrl)
+        .then((response) => response.json()
+            .then((data) => data.properties),
+        ),
+  ]);
+
+  return {outLabels: outPropertyLabels, inLabels: inPropertyLabels};
 }
 
 /**
@@ -58,16 +81,26 @@ async function getRemotePropertyLabels(dcid) {
  *     an outgoing label, true is an incoming label.
  * @return {Object} An object containing all found values matching the query.
  */
-async function getRemotePropertyValues(dcid, label, isInverse) {
+async function getRemotePropertyValues(
+    dcid: string, label: string, isInverse: boolean,
+) {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
-      (API_ROOT + '/node/property-values?limit=500&dcids=' + dcid +
-       '&property=' + label + '&direction=' + direction);
+      `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
 
   return fetch(targetUrl)
       .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid])
-      .then((triples) => isInverse ? triples.in : triples.out);
+      .then((data) => data.values);
+}
+
+export type DCPropertyValueResponse = {
+  /** the dcid being queried */
+  dcid?: string;
+
+  /** the value of the property being queried */
+  value?: string;
+
+  provenanceId: string;
 }
 
 /**
@@ -79,14 +112,14 @@ async function getRemotePropertyValues(dcid, label, isInverse) {
  * @return {Node | string} The created Node if the value object has a dcid,
  *     otherwise the string of the value.
  */
-function getValueFromValueObj(valueObj) {
+function getValueFromValueObj(valueObj: DCPropertyValueResponse) {
   if (!('dcid' in valueObj || 'value' in valueObj)) {
     throw new Error(
         'ERROR: DC API returned an object with no "dcid" or "value" field: ' +
         valueObj);
   }
 
-  if ('dcid' in valueObj) {
+  if (valueObj.dcid) {
     const value = Node.getNode('dcid:' + valueObj.dcid);
     value.setDCID(valueObj.dcid);
     value.existsInKG = true;
@@ -102,11 +135,14 @@ function getValueFromValueObj(valueObj) {
  * @return {Promise<boolean>} Returns true if given dcid is in any triples in
  *     Data Commons Knowledge Graph.
  */
-async function doesExistsInKG(dcid) {
-  const url = API_ROOT + '/node/triples?dcids=' + dcid + '&limit=1';
+async function doesExistsInKG(dcid: string) {
+  const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
+
+  // expected response if dcid exists is {"values":"[...]}
+  // expected response if dcid does not exist is {}
   return fetch(url)
       .then((res) => res.json())
-      .then((data) => JSON.parse(data.payload)[dcid] ? true : false);
+      .then((data) => (data.values) ? true : false);
 }
 
 /**
@@ -115,7 +151,7 @@ async function doesExistsInKG(dcid) {
  * @return {boolean} False if the line is a comment or empty, otherwise
  *     true.
  */
-function shouldReadLine(line) {
+function shouldReadLine(line: string) {
   if (line.startsWith('//') || line.length === 0 || line.startsWith('#')) {
     return false;
   }
@@ -123,8 +159,7 @@ function shouldReadLine(line) {
 }
 
 export {
-  ERROR_MESSAGES,
-  getRemotePropertyLabels,
+  ERROR_MESSAGES, getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
   doesExistsInKG,

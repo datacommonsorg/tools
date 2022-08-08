@@ -50,15 +50,9 @@ This build can be launched manually if you have `gcloud` installed. Note that
 you should set your project to `datcom-ci` (or another cloud project with the
 necessary requisities installed, such as the secrets used my `main.go`)
 
-Then, make sure you in this folder;
-
+Then, make sure you are at the base of the tools repository and run;
 ```
-cd tools/periodic_builds
-```
-
-And launch the build job using;
-```
-gcloud builds submit --config cloudbuild.allrepos.yaml .
+gcloud builds submit --config periodic_builds/cloudbuild.allrepos.yaml .
 ```
 
 ## Design Choices
@@ -82,12 +76,13 @@ libraries.
 ## Debugging Pointers
 
 If periodic builds are failing but you are unable to reproduce the issue, you
-can do the following to get the exact code that the build used from Google Cloud
-Storage. The link to the tar archive will be in the Cloud Build logs page in the
-upper-right. You can download this archive, and run tests to see what is
-missing.
-- One gotcha for the zipping of these files; the `gcloud` CLI has a default
-  ignore behavior. See `gcloud topic gcloudignore`. Short answer is that any
+can get the exact code that the build used. This code will be stored in Google
+Cloud Storage. The link to the tar archive will be in the Cloud Build logs
+page in the upper-right. You can download this archive, decompress it, and run
+commands in it to debug the issue.
+
+- One gotcha for the zipping of these files is that the `gcloud` CLI has default
+  ignore behavior. See `gcloud topic gcloudignore`. TL;DR is that any
   files required for the build to pass should not be in `.gitignore`. If files
   are `.gitignore`'d but exists in the repo nevertheless, periodic builds will
   fail but automated CI/CD pipelines that pull from GitHub won't.

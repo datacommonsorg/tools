@@ -16,53 +16,86 @@
 
 /* Functions to relay information from the back-end to the front-end. */
 
-import {Node} from './graph.js';
-import {ParseMcf} from './parse-mcf.js';
-import {ParseTmcf} from './parse-tmcf.js';
+import {Node} from './graph';
+import {ParseMcf} from './parse-mcf';
+import {ParseTmcf} from './parse-tmcf';
+import {ParsingError, ERROR_MESSAGES} from './utils';
 
+type ParseFileResponse = {
+  /** A list of errors that occurred while parsing
+   * the files
+   */
+  errMsgs: ParsingError[];
+
+  /** A list of the ids of the subject nodes */
+  localNodes: string[];
+}
 /**
  * Parses App state's files list.
  * @param {Array<Blob>} fileList The list of blobs to be parsed.
  * @return {Object} An object containing the ids of the subject nodes and any
  *     parsing error message objects.
  */
-async function readFileList(fileList) {
-  console.log(fileList);
-  let curTmcf = null;
-  const finalReturn = {'errMsgs': [], 'localNodes': []};
+async function readFileList(fileList: Blob[]) {
+  // Clear previously stored files
+  clearFiles();
+
+  const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
+
+  // Find TMCF file, if it exists
+  let tmcfFile = null;
+  for (const file of fileList) {
+    const fileName = (file as File).name;
+    const fileExt = fileName.split('.').pop();
+
+    if (fileExt === 'tmcf') {
+      if (tmcfFile) {
+        // If another TMCF file was found, throw an error
+        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
+          'file': (tmcfFile as File).name,
+          'errs': [
+            ['-1', '', ERROR_MESSAGES.MULTIPLE_TMCF],
+          ],
+        }]);
+      }
+
+      tmcfFile = file;
+    }
+  }
 
   for (const file of fileList) {
-    const fileExt = file.name.split('.').pop();
+    const fileName = (file as File).name;
+    const fileExt = fileName.split('.').pop();
 
     if (fileExt === 'mcf') {
       const mcfOut = await ParseMcf.readFile(file);
-      console.log(mcfOut);
-      finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
-        'file':file.name,
-        'errs': mcfOut['errMsgs'],
-      });
-      finalReturn['localNodes'] =
-        finalReturn['localNodes'].concat(mcfOut['localNodes']);
-    } else if (fileExt === 'tmcf') {
-      curTmcf = file;
-    } else {
-      if (curTmcf) {
-        const tmcf = curTmcf;
-        const tmcfOut =
-          await ParseTmcf.generateMcf(curTmcf, file).then((mcf) => {
-            console.log(mcf);
-            const mcfParser = new ParseMcf(tmcf.name + '&' + file.name);
-            return mcfParser.parseMcfStr(mcf);
-          });
-        finalReturn['errMsgs'] =
-          finalReturn['errMsgs'].concat({
-            'file':tmcf.name,
-            'errs': tmcfOut['errMsgs'],
-          });
-        finalReturn['localNodes'] =
-          finalReturn['localNodes'].concat(tmcfOut['localNodes']);
+
+      if (mcfOut['errMsgs'].length !== 0) {
+        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
+          'file': fileName,
+          'errs': mcfOut['errMsgs'],
+        }]);
       }
-      curTmcf = null;
+
+      finalReturn['localNodes'] = mcfOut['localNodes'];
+    } else if (fileExt === 'csv') {
+      if (tmcfFile) {
+        const tmcfFileName = (tmcfFile as File).name;
+        const tmcfOut =
+        await ParseTmcf.generateMcf(tmcfFile, file).then((mcf) => {
+          const mcfParser = new ParseMcf(tmcfFileName + '&' + fileName);
+          return mcfParser.parseMcfStr(mcf as string);
+        });
+
+        if (tmcfOut['errMsgs'].length !== 0) {
+          finalReturn['errMsgs'] =
+            finalReturn['errMsgs'].concat({
+              'file': tmcfFileName,
+              'errs': tmcfOut['errMsgs'],
+            });
+        }
+        finalReturn['localNodes'] = tmcfOut['localNodes'];
+      }
     }
   }
   return finalReturn;
@@ -70,7 +103,7 @@ async function readFileList(fileList) {
 
 /**
   * Clears the backend data. Called when a user presses the 'Clear Files'
-  * button.
+  * button or uploads new files.
   */
 function clearFiles() {
   Node.nodeHash = {};
@@ -89,7 +122,7 @@ function clearFiles() {
   *     node should be set to id.
   * @return {Node} The retreived node with the given id.
   */
-function retrieveNode(id, shouldCreateRemote) {
+function retrieveNode(id: string, shouldCreateRemote: boolean) {
   const retrieved = Node.getNode(id);
   if (shouldCreateRemote) {
     retrieved.setDCID(id.replace('dcid:', ''));
@@ -104,7 +137,7 @@ function retrieveNode(id, shouldCreateRemote) {
   * @param {Object} obj The object to determine if it is of Node type.
   * @return {boolean} True if obj is of Node type and false otherwise.
   */
-function isNodeObj(obj) {
+function isNodeObj(obj: Object) {
   return Node.isNode(obj);
 }
 
@@ -115,7 +148,7 @@ function isNodeObj(obj) {
   * @param {Node} target The node object whose element color needs to be found.
   * @return {String} The appropriate css class for the node.
   */
-async function getElemClass(target) {
+async function getElemClass(target: Node) {
   if (!target) {
     return null;
   }
@@ -133,7 +166,10 @@ async function getElemClass(target) {
       return 'exist-in-local';
     }
 
-    if (!target.dcid && !(target.localId in ParseMcf.localNodeHash)) {
+    if (
+      !target.dcid &&
+      !((target.localId as string) in ParseMcf.localNodeHash)
+    ) {
       return 'not-in-local';
     }
     return 'not-in-kg';

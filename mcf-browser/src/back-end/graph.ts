@@ -19,11 +19,12 @@
  */
 
 import {
+  DCPropertyValueResponse,
   doesExistsInKG,
   getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
-} from './utils.js';
+} from './utils';
 
 /** Class representation of a single Node in the KG. */
 class Node {
@@ -31,7 +32,7 @@ class Node {
    * The local id used in a parsed mcf file.
    * @type {string}
    */
-  localId;
+  localId: string | null;
 
   /**
    * Whether triples from the remote Data Commons Knowledge Graph have already
@@ -39,13 +40,13 @@ class Node {
    * @type {boolean}
    */
 
-  alreadyFetched;
+  alreadyFetched: boolean;
 
   /**
    * Whether the node exists in the Data Commons Knowledge Graph.
    * @type {boolean}
    */
-  existsInKG;
+  existsInKG: boolean;
 
   /**
    * Dcid of the node. Set only if a remote id is referred to in a local file or
@@ -53,25 +54,27 @@ class Node {
    * @type {string}
    */
 
-  dcid;
+  dcid: string | null;
   /**
    * Array of Assertion objects representing the outgoing triples of the Node
    * object.
    * @type {Array<Assertion>}
    */
-  assertions;
+  assertions: Assertion[];
   /**
    * Array of Assertion objects representing the incoming triples of the Node
    * object.
    * @type {Array<Assertion>}
    */
-  invAssertions;
+  invAssertions: Assertion[];
+
+  static nodeHash: any;
 
   /**
    * Create a Node based on a given id.
    * @param {string} id The id of the node to create, including the namespace.
    */
-  constructor(id) {
+  constructor(id: string) {
     this.localId = id.startsWith('l:') ? id : null;
     this.dcid = null;
 
@@ -89,12 +92,12 @@ class Node {
    * Node object to be returned.If the node does not exist already, then it
    * should be created. If the created node with the requested id does not exist
    * in the local file or in the Data Commons Knowledge Graph, then the
-   * front-end will demonstrate this to the user. 
+   * front-end will demonstrate this to the user.
    *
    * @param {string} id The id of the node to find, including the namespace.
    * @return {Node} The found node if it exists or is created.
    */
-  static getNode(id) {
+  static getNode(id: string) {
     const existing = Node.nodeHash[id];
     return existing ? existing : new Node(id);
   }
@@ -104,7 +107,7 @@ class Node {
    * @param {Object} obj The object to check.
    * @return {boolean} True if the object is an instance of Node.
    */
-  static isNode(obj) {
+  static isNode(obj: Object) {
     return obj instanceof Node;
   }
 
@@ -118,7 +121,7 @@ class Node {
    * @return {boolean} False if the node already has a different dcid, true
    *     otherwise.
    */
-  setDCID(dcid) {
+  setDCID(dcid: string) {
     if (this.dcid && this.dcid !== dcid) {
       return false;
     }
@@ -139,7 +142,7 @@ class Node {
    *
    * @param {Node} absorbedNode The node object whose triples should be copied.
    */
-  mergeNode(absorbedNode) {
+  mergeNode(absorbedNode: Node) {
     if (this.localId === absorbedNode.localId) {
       return;
     }
@@ -177,7 +180,11 @@ class Node {
    *     meaning the calling Node object is the target of the triple. False if
    *     the calling Node is the source of the triple.
    */
-  async createAssertionsFromLabels(propLabels, isInverse) {
+  async createAssertionsFromLabels(propLabels: string[], isInverse: boolean) {
+    if (!propLabels || propLabels.length === 0 || !this.dcid) {
+      return;
+    }
+
     for (const label of propLabels) {
       await getRemotePropertyValues(this.dcid, label, isInverse)
           .then((valueList) => {
@@ -186,7 +193,7 @@ class Node {
                               ' label: ' + label);
             }
 
-            valueList.forEach((valueObj) => {
+            valueList.forEach((valueObj: DCPropertyValueResponse) => {
               const val = getValueFromValueObj(valueObj);
 
               if (isInverse && !Node.isNode(val)) {
@@ -251,22 +258,22 @@ class Assertion {
    * The source or subject of the triple.
    * @type {Node}
    */
-  src;
+  src: Node;
   /**
    * The property label or predicate of the triple.
    * @type {string}
    */
-  property;
+  property: string;
   /**
    * The provenance of the triple.
    * @type {string}
    */
-  provenance;
+  provenance: string;
   /**
    * The target or object of the triple.
    * @type {string|Node}
    */
-  target;
+  target: string | Node;
 
   /**
    * Create a triple, setting the source's assertion prop to be the new object.
@@ -276,7 +283,9 @@ class Assertion {
    * @param {Node|string} target The predicate or target of the triple.
    * @param {string} provenance The provenance of the triple.
    */
-  constructor(src, property, target, provenance) {
+  constructor(
+      src: Node, property: string, target: Node | string, provenance: string,
+  ) {
     this.src = src;
     this.property = property;
     this.provenance = provenance;

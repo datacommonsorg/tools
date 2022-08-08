@@ -20,21 +20,21 @@ interface FileEntryPropType {
   /**
    * Passes a file list to be submitted to the back-end for parsing.
    */
-  upload: func;
+  upload: Function;
   /**
    * Passes a list of urls to be retrieved, then passed to the back-end for
    * parsing.
    */
-  loadFiles: func;
+  loadFiles: Function;
   /**
    * Return to the home page/reset to current hash stored in App state.
    */
-  goToHome: func;
+  goToHome: Function;
   /**
    * Sets whether the dropdown on the home page for additonal file entries
    * should be displayed.
    */
-  toggle: func;
+  toggle?: Function;
 }
 
 interface FileEntryStateType{
@@ -48,11 +48,14 @@ interface FileEntryStateType{
    * to a CSV file.
    */
   csvUrl: string;
- }
+}
 
 /** Component to display options user has for uploading files. */
-class FileEntry extends Component {
-  constructor(props) {
+class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
+  /** Constructor for class, sets initial state
+   * @param {Object} props the props passed in by parent component
+   */
+  constructor(props: FileEntryPropType) {
     super(props);
     this.state = {
       mcfTmcfUrl: '',
@@ -64,9 +67,9 @@ class FileEntry extends Component {
    * Submits the urls currently in the text input boxes to be retreived and
    * loaded when the enter key is preessed.
    *
-   * @@param {Event Obj} event The keyUp event that triggers the function call.
+   * @param {Event} event The keyUp event that triggers the function call.
    */
-  async handleUrlKeyUp(event) {
+  async handleUrlKeyUp(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.keyCode === 13) {
       if (this.state.mcfTmcfUrl.split('.').pop() === 'mcf') {
         // set the base file hash with the given file names
@@ -74,17 +77,27 @@ class FileEntry extends Component {
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
         this.props.goToHome();
-        this.props.toggle();
+        if (this.props.toggle) {
+          this.props.toggle();
+        }
       } else if (this.state.mcfTmcfUrl.split('.').pop() === 'tmcf' &&
           (this.state.csvUrl.split('.').pop() === 'csv') ) {
         await this.props.loadFiles([this.state.mcfTmcfUrl, this.state.csvUrl]);
         this.setState({csvUrl: '', mcfTmcfUrl: ''});
         // trigger hash to be set to fileHash
         this.props.goToHome();
-        this.props.toggle();
+        if (this.props.toggle) {
+          this.props.toggle();
+        }
       }
     }
   }
+
+  /**
+   * Renders the component by building the JSX.
+   *
+   * @return {Object} the component using JSX code
+   */
   render() {
     return (
       <div className="row" >
@@ -96,8 +109,10 @@ class FileEntry extends Component {
           <label className='button'>
             <input type="file" required multiple
               accept=".mcf" onChange={(event) => {
-                this.props.upload(Array.from(event.target.files));
-                this.props.toggle();
+                this.props.upload(Array.from(event.target.files as FileList));
+                if (this.props.toggle) {
+                  this.props.toggle();
+                }
               }}/>
               Upload MCF
           </label>
@@ -106,8 +121,10 @@ class FileEntry extends Component {
           <label className='button'>
             <input type="file" required multiple
               accept=".tmcf,.csv" onChange={(event) => {
-                this.props.upload(Array.from(event.target.files));
-                this.props.toggle();
+                this.props.upload(Array.from(event.target.files as FileList));
+                if (this.props.toggle) {
+                  this.props.toggle();
+                }
               }}/>
               Upload TMCF + CSV
           </label>

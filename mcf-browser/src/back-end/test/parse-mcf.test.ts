@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import {Node} from '../graph.js';
-import {ParseMcf} from '../parse-mcf.js';
-import {ERROR_MESSAGES} from '../utils.js';
+import {Node, Assertion} from '../graph';
+import {ParseMcf} from '../parse-mcf';
+import {ERROR_MESSAGES} from '../utils';
 
 test('testing constructor. prov property', () => {
   const fileName = 'fileName.mcf';
@@ -39,7 +39,7 @@ test('testing parsePropValues: should output property values', () => {
   const fileName = 'fileName';
   const mcfParser = new ParseMcf(fileName);
   mcfParser.lineNum = 0;
-  const parsedVals = mcfParser.parsePropValues(rawVals, 0);
+  const parsedVals = mcfParser.parsePropValues(rawVals);
   expect(parsedVals).toStrictEqual(expectedParsedVals);
 });
 
@@ -92,7 +92,7 @@ test('testing string values with createAssertionsFromParsedValues', () => {
   mcfParser.createAssertionsFromParsedValues(propLabel, parsedValues);
   const assertions = mcfParser.curNode.assertions;
 
-  const assertionToJSON = (assertion) => {
+  const assertionToJSON = (assertion: Assertion) => {
     const {property, target, provenance} = assertion;
     return {
       'srclocalId': assertion.src.localId,
@@ -133,13 +133,21 @@ test('testing node values with createAssertionsFromParsedValues', () => {
   mcfParser.createAssertionsFromParsedValues(propLabel, parsedValues);
   const assertions = mcfParser.curNode.assertions;
 
-  const assertionToJSON = (assertion) => {
+  type AssertionJSON = {
+    srclocalId: string | null,
+    srcDCID: string | null,
+    targetlocalId: string | null,
+    targetDCID: string | null,
+    property: string,
+    provenance: string
+  };
+  const assertionToJSON = (assertion: Assertion) => {
     const {property, provenance} = assertion;
     return {
       'srclocalId': assertion.src.localId,
       'srcDCID': assertion.src.dcid,
-      'targetlocalId': assertion.target.localId,
-      'targetDCID': assertion.target.dcid,
+      'targetlocalId': (assertion.target as Node).localId,
+      'targetDCID': (assertion.target as Node).dcid,
       property,
       provenance,
     };
@@ -147,7 +155,7 @@ test('testing node values with createAssertionsFromParsedValues', () => {
 
   // note assertions are returned backwards due to nature of linked list
   const assertion1 = assertionToJSON(assertions[0]);
-  const expectedAssertion = {
+  const expectedAssertion: AssertionJSON = {
     'srclocalId': localId,
     'srcDCID': null,
     'targetlocalId': 'l:localId',
@@ -156,14 +164,14 @@ test('testing node values with createAssertionsFromParsedValues', () => {
     'provenance': fileName,
   };
   expect(assertion1).toEqual(expectedAssertion);
-  const target1 = assertions[0]['target'];
+  const target1 = assertions[0]['target'] as Node;
   expect(target1.invAssertions[0]).toEqual(assertions[0]);
 
   const assertion2 = assertionToJSON(assertions[1]);
   expectedAssertion['targetDCID'] = 'remoteId';
   expectedAssertion['targetlocalId'] = null;
   expect(assertion2).toEqual(expectedAssertion);
-  const target2 = assertions[1]['target'];
+  const target2 = assertions[1]['target'] as Node;
   expect(target2.invAssertions[0]).toEqual(assertions[1]);
 });
 
@@ -177,13 +185,13 @@ test('testing parseLine: ', () => {
 
   const testStr2 = 'Node: localSubjId';
   mcfParser.parseLine(testStr2);
-  expect(mcfParser.curNode.localId).toBe('l:localSubjId');
-  expect(mcfParser.curNode.dcid).toBe(null);
+  expect((mcfParser.curNode as Node).localId).toBe('l:localSubjId');
+  expect((mcfParser.curNode as Node).dcid).toBe(null);
 
   const testStr3 = 'dcid: remoteId';
   mcfParser.parseLine(testStr3);
-  expect(mcfParser.curNode.localId).toBe('l:localSubjId');
-  expect(mcfParser.curNode.dcid).toBe('remoteId');
+  expect((mcfParser.curNode as Node).localId).toBe('l:localSubjId');
+  expect((mcfParser.curNode as Node).dcid).toBe('remoteId');
 });
 
 const mcfStr = `
@@ -198,9 +206,19 @@ bioID: "GO:bioTextId"
 Node: LocalIndiaNode
 dcid: "country/IND"
 `;
-// TODO finish test
+
+type AssertionJSON = {
+  srclocalId: string | null,
+  srcDCID: string | null,
+  targetlocalId?: string | null,
+  targetDCID?: string | null,
+  target?: string | null,
+  property: string,
+  provenance: string
+};
+
 test('testing ParseMcfStr: ', () => {
-  const assertionToJSON = (assertion) => {
+  const assertionToJSON = (assertion: Assertion) => {
     const {property, provenance} = assertion;
     const json = {
       'srclocalId': assertion.src.localId,
@@ -209,10 +227,16 @@ test('testing ParseMcfStr: ', () => {
       provenance,
     };
     if (assertion.target instanceof Node) {
-      json['targetlocalId'] = assertion.target.localId;
-      json['targetDCID'] = assertion.target.dcid;
+      return {
+        ...json,
+        targetlocalId: assertion.target.localId,
+        targetDCID: assertion.target.dcid,
+      };
     } else {
-      json['target'] = assertion.target;
+      return {
+        ...json,
+        target: assertion.target,
+      };
     }
     return json;
   };
@@ -222,6 +246,18 @@ test('testing ParseMcfStr: ', () => {
   const mcfParser = new ParseMcf(fileName);
   const errs = mcfParser.parseMcfStr(mcfStr);
 
+  const expectedErrs = {
+    localNodes: [
+      'l:localNoNameSpaceId',
+      'dcid:remoteNamespaceId',
+      'l:localSubjId',
+      'l:LocalObsNode',
+      'l:LocalIndiaNode',
+    ],
+    errMsgs: [],
+  };
+  expect(errs).toStrictEqual(expectedErrs);
+
   const obsNode = ParseMcf.localNodeHash['l:LocalObsNode'];
   expect(obsNode.localId).toStrictEqual('l:LocalObsNode');
   expect(obsNode.dcid).toStrictEqual(null);
@@ -230,46 +266,65 @@ test('testing ParseMcfStr: ', () => {
   expect(obsAsserts.length).toStrictEqual(5);
 
   for (const assert of obsAsserts) {
-    const expectedJSON = {
+    const expectedJSONStart = {
       'srclocalId': obsNode.localId,
       'srcDCID': obsNode.dcid,
       'provenance': fileName,
     };
 
     const assertJSON = assertionToJSON(assert);
+    let expectedJSON: AssertionJSON;
     switch (assert.property) {
       case 'remoteNodeProp':
-        expectedJSON['property'] = 'remoteNodeProp';
-        expectedJSON['targetlocalId'] = null;
-        expectedJSON['targetDCID'] = 'StatVarObservation';
+        expectedJSON = {
+          ...expectedJSONStart,
+          property: 'remoteNodeProp',
+          targetlocalId: null,
+          targetDCID: 'StatVarObservation',
+        };
+
         expect(assert.target.invAssertions[0]).toStrictEqual(assert);
         expect(assertJSON).toStrictEqual(expectedJSON);
         break;
-      case 'localNodeProp':
-        expectedJSON['property'] = 'localNodeProp';
 
-        expectedJSON['targetlocalId'] = 'l:LocalIndiaNode';
-        expectedJSON['targetDCID'] = 'country/IND';
+      case 'localNodeProp':
+        expectedJSON = {
+          ...expectedJSONStart,
+          property: 'localNodeProp',
+          targetlocalId: 'l:LocalIndiaNode',
+          targetDCID: 'country/IND',
+        };
+
         expect(assert.target.invAssertions[0]).toStrictEqual(assert);
         expect(assertJSON).toStrictEqual(expectedJSON);
         break;
 
       case 'stringProp':
-        expectedJSON['property'] = 'stringProp';
+        expectedJSON = {
+          ...expectedJSONStart,
+          property: 'stringProp',
+          target: '2020-08-01',
+        };
 
-        expectedJSON['target'] = '2020-08-01';
         expect(assertJSON).toStrictEqual(expectedJSON);
         break;
 
       case 'numProp':
-        expectedJSON['property'] = 'numProp';
+        expectedJSON = {
+          ...expectedJSONStart,
+          property: 'numProp',
+          target: '10000',
+        };
 
-        expectedJSON['target'] = '10000';
         expect(assertJSON).toStrictEqual(expectedJSON);
         break;
       case 'bioID':
-        expectedJSON['property'] = 'bioID';
-        expectedJSON['target'] = 'GO:bioTextId';
+        expectedJSON = {
+          ...expectedJSONStart,
+          property: 'bioID',
+          target: 'GO:bioTextId',
+        };
+
         expect(assertJSON).toStrictEqual(expectedJSON);
         break;
       default:
@@ -308,7 +363,7 @@ test('testing errors: ', () => {
 
   mcfParser.setCurNode(['localId1', 'localId2']); // #1
   mcfParser.setCurNode([{'ns': 'invalid', 'ref': 'localId1'}]); // #2
-  mcfParser.createAssertionsFromParsedValues(['val']); // #3
+  mcfParser.createAssertionsFromParsedValues('', ['val']); // #3
 
   mcfParser.setCurNode(['localId1']);
   mcfParser.setCurNodeDCID(['dcid1', 'dcid2']); // #4
@@ -322,13 +377,13 @@ test('testing errors: ', () => {
   mcfParser.parseLine('val:'); // #9
 
   expect(mcfParser.errors).toEqual([
-    [-1, undefined, ERROR_MESSAGES['curNode-length']], // #1
-    [-1, undefined, ERROR_MESSAGES['curNode-ns']], // #2
-    [-1, undefined, ERROR_MESSAGES['assert-noCur']], // #3
-    [-1, undefined, ERROR_MESSAGES['setDCID-multiple']], // #4
-    [-1, undefined, ERROR_MESSAGES['setDCID-ref']], // #5
-    [-1, undefined, ERROR_MESSAGES['setDCID']], // #6
-    [-1, undefined, ERROR_MESSAGES['parse-noColon']], // #7
-    [-1, undefined, ERROR_MESSAGES['parse-noLabel']], // #8
+    ['-1', null, ERROR_MESSAGES.CUR_NODE_LENGTH], // #1
+    ['-1', null, ERROR_MESSAGES.CUR_NODE_NS], // #2
+    ['-1', null, ERROR_MESSAGES.ASSERT_NO_CUR], // #3
+    ['-1', null, ERROR_MESSAGES.SET_DCID_MULTIPLE], // #4
+    ['-1', null, ERROR_MESSAGES.SET_DCID_REF], // #5
+    ['-1', null, ERROR_MESSAGES.SET_DCID], // #6
+    ['-1', null, ERROR_MESSAGES.PARSE_NO_COLON], // #7
+    ['-1', null, ERROR_MESSAGES.PARSE_NO_LABEL], // #8
   ]);
 });

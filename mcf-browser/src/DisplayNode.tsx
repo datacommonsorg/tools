@@ -16,10 +16,11 @@
 
 import React, {Component} from 'react';
 
-import * as API from './back-end/server-api.js';
-import {TriplesTable} from './TriplesTable.jsx';
-import {LoadingSpinner} from './LoadingSpinner.jsx';
-import {colorLegend} from './utils.js';
+import * as API from './back-end/server-api';
+import {Node, Assertion} from './back-end/graph';
+import {TriplesTable} from './TriplesTable';
+import {LoadingSpinner} from './LoadingSpinner';
+import {ColorIndex, colorLegend} from './utils';
 
 interface DisplayNodePropType {
   /**
@@ -29,7 +30,7 @@ interface DisplayNodePropType {
   /**
    * Set id parameter in url to the given id.
    */
-  goToId: func;
+  goToId: Function;
 }
 
 interface DisplayNodeStateType {
@@ -37,7 +38,7 @@ interface DisplayNodeStateType {
    * The reference of the node to be displayed to the user.
    * ex: 'country/IND [l:LocalIndiaNode]'.
    */
-  ref: string;
+  ref: string | null;
   /**
    * Indicates if triples are currently being fetched from the Data Commons
    * Knowledge Graph.
@@ -54,19 +55,22 @@ interface DisplayNodeStateType {
   /**
    * The class of the element containing the reference of the node should be.
    */
-  elemClass: string;
- }
+  elemClass: string | null;
+}
 
 /** Displays node data for a given node passed in through props. */
-class DisplayNode extends Component {
-  /** Creates DisplayNode component. */
-  constructor(props) {
+class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
+  /** Creates DisplayNode component.
+   * @param {Object} props the props passed in by parent component
+  */
+  constructor(props: DisplayNodePropType) {
     super(props);
     this.state = {
       ref: null,
       asserts: [],
       invAsserts: [],
       fetching: true,
+      elemClass: null,
     };
   }
 
@@ -80,7 +84,7 @@ class DisplayNode extends Component {
    * @param {Object} prevProps The previous props before the component updated,
    *     used to compare if the passed in node has changed.
    */
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prevProps: DisplayNodePropType) {
     if (prevProps.node !== this.props.node) {
       this.setNodeData();
     }
@@ -101,7 +105,7 @@ class DisplayNode extends Component {
     });
 
     API.getElemClass(curNode).then((elemClass) => {
-      this.setState({elemClass: elemClass})
+      this.setState({elemClass: elemClass});
     });
 
     curNode.fetchRemoteData().then(() => {
@@ -113,13 +117,15 @@ class DisplayNode extends Component {
     });
   }
 
-  /** Renders the DisplayNode component. */
+  /** Renders the DisplayNode component.
+   * @return {Object} the webpage using JSX code
+   * */
   render() {
     return (
       <div>
         <br/>
         <h1 className='inline'>Currently Viewing: </h1>
-        <span title={colorLegend[this.state.elemClass]}>
+        <span title={colorLegend[this.state.elemClass as ColorIndex]}>
           <h1 className={'inline ' + this.state.elemClass}>{this.state.ref}</h1>
         </span>
         <br/>
@@ -141,4 +147,5 @@ class DisplayNode extends Component {
     );
   }
 }
+
 export {DisplayNode};
