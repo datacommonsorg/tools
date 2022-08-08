@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 import React from 'react';
 
 interface LoadingSpinnerPropType {
@@ -28,7 +28,7 @@ interface LoadingSpinnerPropType {
 }
 
 // spinning animation to demonstrate loading, used in DisplayNode and Home
-const LoadingSpinner = (props) => {
+const LoadingSpinner = (props: LoadingSpinnerPropType) => {
   if (!props.loading) {
     return null;
   }

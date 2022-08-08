@@ -18,14 +18,29 @@
  * using Node and Assertion Class objects.
  */
 
-import {Assertion, Node} from './graph.js';
-import {ERROR_MESSAGES, shouldReadLine} from './utils.js';
+import {Assertion, Node} from './graph';
+import {ERROR_MESSAGES, shouldReadLine} from './utils';
 
 const NAMESPACES = {
   'l': 'l',
   'schema': 'dcid',
   'dcs': 'dcid',
   'dcid': 'dcid',
+};
+
+type ParsedValue = {
+  ns: 'l' | 'schema' | 'dcs' | 'dcid',
+  ref: string
+};
+
+type ParseFileResponse = {
+  /** A list of errors that occurred while parsing
+   * the files
+   */
+  errMsgs: string[][];
+
+  /** A list of the ids of the subject nodes */
+  localNodes: string[];
 };
 
 /** Class responsible for parsing an mcf file. */
@@ -35,20 +50,20 @@ class ParseMcf {
    * based off of the mcf file name.
    * @type {string}
    */
-  prov;
+  prov: string;
   /**
    * Current subject Node for any Assertion created. Set when a 'Node:' property
    * label is parsed.
    * @type {Node}
    */
-  curNode;
+  curNode: Node | null;
   /**
    * Current line number of the line being parsed, used for identifying location
    * of syntax error in the mcf file.
    * @type {number}
    */
 
-  lineNum;
+  lineNum: number;
 
   /**
    * List of error messages regarding mcf syntax that are to be displayed to
@@ -56,17 +71,24 @@ class ParseMcf {
    * [line number, line, error message]
    * @type {Array<Array<String>>}
    */
-  errors;
+  errors: string[][];
+
+  /** Current line being parsed */
+  line: string | null;
+
+  static localNodeHash: any;
+
   /**
    * Create a ParseMcf object which keeps tracks of the current source node of
    * each triple in the mcf and the provenance, which is the mcf file name.
    * @param {string} fileName Name of the file to be parsed.
    */
-  constructor(fileName) {
+  constructor(fileName: string) {
     this.prov = fileName;
     this.curNode = null;
     this.lineNum = -1;
     this.errors = [];
+    this.line = null;
   }
 
   /**
@@ -78,7 +100,7 @@ class ParseMcf {
    * @return {Array<(string|Object)>} Array of
    *     parsed values.
    */
-  parsePropValues(propValues) {
+  parsePropValues(propValues: string) {
     const values = [];
     // split propValues on commas which are not enclosed by double quotes
     // split string at each comma followed by even number of double quotes
@@ -87,12 +109,18 @@ class ParseMcf {
       const namespace = propValue.split(':')[0].trim();
       if (namespace in NAMESPACES) {
         values.push({
-          'ns': namespace,
-          'ref': propValue.substring(propValue.indexOf(':') + 1).trim(),
+          ns: namespace,
+          ref: propValue.substring(propValue.indexOf(':') + 1).trim(),
         });
-      } else if (propValue.split(':').length > 1 &&
-                 !namespace.startsWith('"')) {
-        this.errors.push([this.lineNum, this.line, 'unrecognized namespace']);
+      } else if (
+        propValue.split(':').length > 1 &&
+        !namespace.startsWith('"')
+      ) {
+        this.errors.push([
+          this.lineNum.toString(),
+          this.line as string,
+          'unrecognized namespace',
+        ]);
         return [];
       } else {
         // push property value with surrounding double quotes trimmed
@@ -113,10 +141,13 @@ class ParseMcf {
    * @param {Array<string|Object>} parsedValues The array of parsed values from
    *     a line of mcf with property label of 'Node'.
    */
-  setCurNode(parsedValues) {
+  setCurNode(parsedValues: Object[]) {
     if (parsedValues.length !== 1) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['curNode-length']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.CUR_NODE_LENGTH,
+      ]);
       return;
     }
 
@@ -126,14 +157,17 @@ class ParseMcf {
     if (parsedValues[0] instanceof Object) {
       // handle case: Node: dcid:remoteRef, which means that
       // parsedValues[0] === {'ns':'dcid', 'ref':'remoteRef' }
-      ns = parsedValues[0]['ns'];
+      const firstValue = (parsedValues[0]) as ParsedValue;
+      ns = firstValue['ns'];
       if (ns === 'dcid') {
         ns = ns + ':';
-        nodeRef = parsedValues[0]['ref'];
+        nodeRef = firstValue['ref'];
       } else {
-        this.errors.push(
-            [this.lineNum, this.line, ERROR_MESSAGES['curNode-ns']]);
-        return;
+        this.errors.push([
+          this.lineNum.toString(),
+          this.line as string,
+          ERROR_MESSAGES.CUR_NODE_NS,
+        ]);
       }
     } else {
       // handle case: Node: localRef, which means parsedValues[0]==='localRef'
@@ -145,8 +179,12 @@ class ParseMcf {
     this.curNode = Node.getNode(nodeId);
 
     if (ns === 'dcid:') {
-      if (!this.curNode.setDCID(nodeRef)) {
-        this.errors.push([this.lineNum, this.line, ERROR_MESSAGES['setDCID']]);
+      if (this.curNode && !this.curNode.setDCID(nodeRef)) {
+        this.errors.push([
+          this.lineNum.toString(),
+          this.line as string,
+          ERROR_MESSAGES.SET_DCID,
+        ]);
         return;
       }
       ParseMcf.localNodeHash[ns + nodeRef] = this.curNode;
@@ -161,25 +199,38 @@ class ParseMcf {
    * @param {Array<string|Object>} parsedValues The array of parsed values from
    *     a line of mcf with property label of 'dcid'.
    */
-  setCurNodeDCID(parsedValues) {
+  setCurNodeDCID(parsedValues: (string | Object)[]) {
     if (!this.curNode) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['setDCID-noCur']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.SET_DCID_NO_CUR,
+      ]);
       return;
     }
     if (parsedValues.length !== 1) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['setDCID-multiple']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.SET_DCID_MULTIPLE,
+      ]);
       return;
     }
     if (typeof parsedValues[0] !== 'string') {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['setDCID-ref']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.SET_DCID_REF,
+      ]);
       return;
     }
 
     if (!this.curNode.setDCID(parsedValues[0])) {
-      this.errors.push([this.lineNum, this.line, ERROR_MESSAGES['setDCID']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.SET_DCID,
+      ]);
     }
   }
 
@@ -193,22 +244,36 @@ class ParseMcf {
    * @param {Array<string|Object>} parsedValues The parsed values from a line of
    *     mcf, used to create the target for each created triple.
    */
-  createAssertionsFromParsedValues(propLabel, parsedValues) {
+  createAssertionsFromParsedValues(
+      propLabel: string,
+      parsedValues: (string | Object)[],
+  ) {
     if (!this.curNode) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['assert-noCur']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.ASSERT_NO_CUR,
+      ]);
       return;
     }
     for (const val of parsedValues) {
-      let target = val;
+      let target;
       if (val instanceof Object) {
-        target = Node.getNode(NAMESPACES[val['ns']] + ':' + val['ref']);
-        if (NAMESPACES[val['ns']] === 'dcid') {
-          if (!target.setDCID(val['ref'])) {
-            this.errors.push(
-                [this.lineNum, this.line, ERROR_MESSAGES['setDCID']]);
+        const parsedVal = val as ParsedValue;
+        target = Node.getNode(
+            NAMESPACES[parsedVal['ns']] + ':' + parsedVal['ref'],
+        );
+        if (NAMESPACES[parsedVal['ns']] === 'dcid') {
+          if (!target.setDCID(parsedVal['ref'])) {
+            this.errors.push([
+              this.lineNum.toString(),
+              this.line as string,
+              ERROR_MESSAGES.SET_DCID,
+            ]);
           }
         }
+      } else {
+        target = val;
       }
       new Assertion(this.curNode, propLabel, target, this.prov);
     }
@@ -223,7 +288,7 @@ class ParseMcf {
    *
    * @param {string} line The line of mcf to be parsed.
    */
-  parseLine(line) {
+  parseLine(line: string) {
     line = line.trim();
 
     if (!shouldReadLine(line)) {
@@ -231,8 +296,11 @@ class ParseMcf {
     }
 
     if (!line.includes(':')) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['parse-noColon']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.PARSE_NO_COLON,
+      ]);
       return;
     }
 
@@ -240,8 +308,11 @@ class ParseMcf {
     const propValues = line.substring(line.indexOf(':') + 1).trim();
 
     if (!propLabel) {
-      this.errors.push(
-          [this.lineNum, this.line, ERROR_MESSAGES['parse-noLabel']]);
+      this.errors.push([
+        this.lineNum.toString(),
+        this.line as string,
+        ERROR_MESSAGES.PARSE_NO_LABEL,
+      ]);
       return;
     }
     if (!propValues) {
@@ -272,7 +343,7 @@ class ParseMcf {
    * @return {Object} A list of the local node ids and the list of error
    * messages which should be empty if no mcf syntax errors were found.
    */
-  parseMcfStr(mcf) {
+  parseMcfStr(mcf: string) {
     const lines = mcf.split('\n');
     this.lineNum = 1;
 
@@ -294,14 +365,14 @@ class ParseMcf {
    * @param {FileObject} file An mcf file from the html file-input element.
    * @return {Promise} Promise returns the result of parseMcfStr.
    */
-  static readFile(file) {
+  static readFile(file: Blob): Promise<ParseFileResponse> {
     const fileReader = new FileReader();
     fileReader.readAsText(file);
 
     return new Promise((res, rej) => {
-      fileReader.addEventListener('loadend', (result) => {
-        const mcfParser = new ParseMcf(file.name);
-        res(mcfParser.parseMcfStr(fileReader.result));
+      fileReader.addEventListener('loadend', () => {
+        const mcfParser = new ParseMcf((file as File).name);
+        res(mcfParser.parseMcfStr(fileReader.result as string));
       });
       fileReader.addEventListener('error', rej);
     });

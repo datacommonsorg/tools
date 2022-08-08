@@ -16,10 +16,12 @@
 
 import React, {Component} from 'react';
 
-import * as API from './back-end/server-api.js';
-import * as utils from './utils.js';
+import {Assertion, Node} from './back-end/graph';
+import * as API from './back-end/server-api';
+import * as utils from './utils';
 
 const NON_BREAKING_SPACE = '\u00a0';
+
 
 interface TriplesTablePropType {
   /**
@@ -34,25 +36,31 @@ interface TriplesTablePropType {
   /**
    * Set id parameter in url to the given id.
    */
-  goToId: func;
+  goToId: Function;
 }
 
 interface TriplesTableStateType{
   /**
    * List of table row elements, each row representing one triple
    */
-  tableRows: element[];
+  tableRows: JSX.Element[] | null;
   /**
    * Indicates if triples are currently being fetched from the Data Commons
    * Knowledge Graph.
    */
-  fetching: boolean;
- }
+  loading: boolean;
+}
 
 /** Displays all given assertions as a table of triples. */
-export class TriplesTable extends Component {
-  /** Creates TriplesTable component. */
-  constructor(props) {
+export class TriplesTable extends Component<
+  TriplesTablePropType,
+  TriplesTableStateType
+> {
+  /** Constructor for class, sets initial state
+   *
+   * @param {Object} props the props passed in by parent component
+   */
+  constructor(props: TriplesTablePropType) {
     super(props);
 
     this.state = {
@@ -66,7 +74,7 @@ export class TriplesTable extends Component {
   * @param {Object} prevProps The previous props before the component
   *     updated, used to compare if the passed in triples have been modified.
   */
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prevProps: TriplesTablePropType) {
     if (prevProps.triples !== this.props.triples) {
       this.setState({loading: true});
       this.getTripleRows().then((rows) => {
@@ -78,29 +86,32 @@ export class TriplesTable extends Component {
     }
   }
   /**
-  * Returns an html element containing the styled source if the triple is inverse
-  * and the styled target otherwise.
+  * Returns an html element containing the styled source if the triple is
+  * inverse and the styled target otherwise.
   * @param {Node|string} target The source of an inverse assertion or the target
   *     of a direct assertion.
   * @return {HtmlElement} A single cell of an html row representing a triple.
   *     Either the source or target of the triple depending if the triple is
   *     inverse or not.
   */
-  async getTargetCell(target) {
+  async getTargetCell(target: Node | string) {
     if (API.isNodeObj(target)) {
-      const elemClass = await API.getElemClass(target);
+      const elemClass: utils.ColorIndex = (await API.getElemClass(
+        target as Node,
+      )) as utils.ColorIndex;
+      const nodeTarget = target as Node;
       return (
         <div>
           <span title={utils.colorLegend[elemClass]}>
             <p className ={'clickable ' + elemClass} onClick ={() =>
-              this.props.goToId(target.localId || target.dcid)}>
-              {target.getRef()}
+              this.props.goToId(nodeTarget.localId || nodeTarget.dcid)}>
+              {nodeTarget.getRef()}
             </p>
           </span>
         </div>
       );
     }
-    return (<p>{target}</p>);
+    return (<p>{(target as string)}</p>);
   }
 
   /**
@@ -117,7 +128,7 @@ export class TriplesTable extends Component {
   *     Either the source or target of the triple depending if the triple is
   *     inverse or not.
   */
-  getProvenanceCell(prov) {
+  getProvenanceCell(prov: string) {
     if (prov.startsWith('dc/')) {
       // data commons provenance id
       return (<p className='clickable dc-provenance'onClick={() =>
@@ -137,7 +148,7 @@ export class TriplesTable extends Component {
 
     // provenance is one tmcf and one csv
 
-    const fileNames = [];
+    const fileNames: string[] = [];
     const provNames = [];
     for (const fileName of prov.split('&')) {
       fileNames.push(fileName);
@@ -190,7 +201,9 @@ export class TriplesTable extends Component {
     return tripleRows;
   }
 
-  /** Renders TriplesTable component.   */
+  /** Renders TriplesTable component.
+   * @return {Object} component using JSX code
+   */
   render() {
     if (this.state.loading) {
       // return null when loading to prevent error in rendering Promise objects

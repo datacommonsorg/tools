@@ -22,6 +22,10 @@ const colorLegend = {
   'not-in-kg': 'Node has dcid which does not exist in DC KG',
 };
 
+/* Simple type to represent index of colorLegend */
+export type ColorIndex =
+  'exist-in-kg' | 'exist-in-local' | 'not-in-local' | 'not-in-kg';
+
 /**
  * Sets the window hash value to query a given id.
  *
@@ -30,7 +34,7 @@ const colorLegend = {
  * @param {string} id The id of the desired node to display. This can be either
  *     a dcid or a local id.
  */
-function goToId(homeHash, id) {
+function goToId(homeHash: string, id: string) {
   if (id.includes(':')) {
     window.location.hash = homeHash + '&id=' + id;
   } else {
@@ -45,7 +49,7 @@ function goToId(homeHash, id) {
  * @param {string} id The id of the desired node to display. This can be either
  *     a dcid or a local id.
  */
-function searchId(homeHash, id) {
+function searchId(homeHash: string, id: string) {
   if (id.includes(':')) {
     window.location.hash = homeHash + '&search=' + id;
   } else {
@@ -57,15 +61,15 @@ function searchId(homeHash, id) {
  * Sets the window hash value to given value.
  * @param {string} hash The value that the window's hash should be set to.
  */
-function goTo(hash) {
+function goTo(hash: string) {
   window.location.hash = hash;
 }
 
 /**
  * Opens the given file url.
- * @param {String} fileUrl Url of the fileee to open.
+ * @param {string} fileUrl Url of the fileee to open.
  */
-function openFile(fileUrl) {
+function openFile(fileUrl: string) {
   if (fileUrl.startsWith('https')) {
     window.open(fileUrl);
   }
@@ -73,3 +77,4 @@ function openFile(fileUrl) {
 
 
 export {colorLegend, goToId, goTo, openFile, searchId};
+

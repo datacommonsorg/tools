@@ -16,17 +16,19 @@
 
 import React from 'react';
 
+import {ParsingError} from './back-end/utils';
+
 interface ParsingErrorsTablePropType {
-   /**
-   * The App state's parsingErrs list of error message Objects from parsing
-   * files. Each object in the array contains one file name and one list of
-   * errors found in that file.
-   */
-  errsList: Object[];
+  /**
+  * The App state's parsingErrs list of error message Objects from parsing
+  * files. Each object in the array contains one file name and one list of
+  * errors found in that file.
+  */
+ errsList: ParsingError[];
 }
 
 /* Simple component to render the parsing errors table. */
-const ParsingErrorsTable = (props) => {
+const ParsingErrorsTable = (props: ParsingErrorsTablePropType) => {
   if (!props.errsList.length) {
     return null;
   }
@@ -43,13 +45,13 @@ const ParsingErrorsTable = (props) => {
         <tbody>
           {props.errsList.map((errObj) => (
             errObj['errs'].map((msg) =>
-            <tr key={msg[0]}>
-              <td>{errObj['file']}</td>
-              <td>{msg[0]}</td>
-              <td>{msg[1]}</td>
-              <td>{msg[2]}</td>
-            </tr>
-          )))}
+              <tr key={msg[0]}>
+                <td>{errObj['file']}</td>
+                <td>{msg[0]}</td>
+                <td>{msg[1]}</td>
+                <td>{msg[2]}</td>
+              </tr>,
+            )))}
         </tbody>
       </table>
     </div>

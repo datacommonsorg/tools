@@ -18,20 +18,21 @@ import React, {Component} from 'react';
 
 const ENTER_KEY = 13;
 
+
 interface HeaderPropType {
   /**
    * Set a 'search' parameter in url to the specified id.
    */
-  searchId: func;
+  searchId: Function;
   /**
    * Return to the home page.
    */
-  onHomeClick: func;
+  onHomeClick: React.MouseEventHandler<HTMLButtonElement>;
   /**
-   * Nodes stored in App's state which are the subject nodes of triples from
+   * Ids stored in App's state for the subject nodes of triples from
    * any parsed files.
    */
-  subjIds: Node[];
+  subjIds: string[];
 }
 
 interface HeaderStateType {
@@ -39,29 +40,37 @@ interface HeaderStateType {
    * Text input from user via search bar.
    */
   searchVal: string;
- }
+}
 
 /** Header component contains the id search bar, upload files, and return home
   * button.
   */
-class Header extends Component {
-  constructor(props) {
+class Header extends Component<HeaderPropType, HeaderStateType> {
+  /** Constructor for class, sets initial state
+   *
+   * @param {Object} props the props passed in by parent component
+   */
+  constructor(props: HeaderPropType) {
     super(props);
     this.state = {
       searchVal: '',
     };
   }
+
   /**
   * Calls props method to search for an id when the user presses enter.
   * @param {Event} event OnKeyUp event from html search input element.
   */
-  handleSearch(event) {
+  handleSearch(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.keyCode === ENTER_KEY) {
       this.props.searchId(event.target.value);
       this.setState({searchVal: ''});
     }
   }
-  /** Renders header element */
+
+  /** Renders header element
+   * @return {Object} the webpage using JSX code
+  */
   render() {
     return (
       <div className='Header'>
@@ -85,4 +94,5 @@ class Header extends Component {
     );
   }
 }
+
 export {Header};
