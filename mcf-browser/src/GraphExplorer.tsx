@@ -60,25 +60,6 @@ class GraphExplorer extends Component<
     };
   }
 
-  /** Returns previous page
-   * @param {number} currPage the current page the user is on
-   * @return {number} the previous page
-   */
-  getPrevPage(currPage: number) {
-    const newPage = (currPage === 0) ? 0 : currPage - 1;
-    return newPage;
-  }
-
-  /** Return next page
-   * @param {number} currPage the current page the user is on
-   * @param {number} maxPage the maximum number of pages
-   * @return {number} the next page
-   */
-  getNextPage(currPage: number, maxPage: number) {
-    const newPage = (currPage === maxPage - 1) ? maxPage - 1 : currPage + 1;
-    return newPage;
-  }
-
   /** Renders the GraphExplorer component.
    * @return {Object} the component using TSX code
    */
@@ -111,12 +92,12 @@ class GraphExplorer extends Component<
           maxPage={maxPage}
           goToNextPage={
             (currPage: number, maxPage: number) => {
-              switchPage(this.getNextPage(currPage, maxPage));
+              switchPage(PageBar.getNextPage(currPage, maxPage));
             }
           }
           goToPrevPage={
             (currPage: number) => {
-              switchPage(this.getPrevPage(currPage));
+              switchPage(PageBar.getPrevPage(currPage));
             }
           }
           goToPage={

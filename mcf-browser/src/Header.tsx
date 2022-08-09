@@ -89,11 +89,11 @@ class Header extends Component<HeaderPropType, HeaderStateType> {
             this.handleSearch(event);
           }}
         />
-        <datalist id="subjIds">
+        {/* <datalist id="subjIds">
           {this.props.subjIds.map((subjId) => (
             <option value={subjId} key={subjId} />
           ))}
-        </datalist>
+        </datalist> */}
       </div>
     );
   }

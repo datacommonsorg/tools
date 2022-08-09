@@ -28,7 +28,6 @@ import {
 } from 'chart.js';
 
 import {Series} from './back-end/data';
-import {getName} from './back-end/utils';
 
 const COLORS = [
   '#bcf60c',
@@ -75,6 +74,9 @@ interface TimeGraphPropType {
    * The title of the graph
    */
   title: string;
+
+  /** A mapping from a location dcid to its name */
+  locationMapping: Object;
 }
 
 interface TimeGraphStateType {
@@ -168,21 +170,17 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
 
     // Get object per series
     const labels = data[0].x;
-    const datasets = await Promise.all(data.map(async (series, i) => {
+    const datasets = data.map((series, i) => {
       const labelID =
         series.observationAbout ? series.observationAbout : 'undefined';
-      const label =
-        (labelID.startsWith('dcid:') ?
-          await getName(labelID.slice(5)) :
-          labelID
-        );
+      const label = (this.props.locationMapping as any)[labelID];
       return {
         label: label,
         fill: false,
         data: series.y,
         borderColor: COLORS[i % COLORS.length],
       };
-    }));
+    });
 
     return {labels, datasets};
   }

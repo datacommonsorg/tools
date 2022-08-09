@@ -21,6 +21,9 @@ import {Series} from './back-end/data';
 import {groupLocations, renderTimeGraph} from './utils';
 import {LoadingSpinner} from './LoadingSpinner';
 import {getName} from './back-end/utils';
+import {PageBar} from './PageBar';
+
+const STAT_VARS_PER_PAGE = 10;
 
 interface TimelineExplorerPropType {
   /**
@@ -45,6 +48,15 @@ interface TimelineExplorerStateType {
      * to re-render when the locations are loaded in
      */
     selectKey: string;
+
+    /** A mapping from a location dcid to its name */
+    locationMapping: Object;
+
+    /** The list of groups to plot, grouped by stat var */
+    statVarGroups: Series[][];
+
+    /** Tracks which page the user is currently viewing (0-indexed) */
+    page: number;
 }
 
 /** Component to display the timeline explorer */
@@ -61,6 +73,9 @@ class TimelineExplorer extends Component<
       locations: [],
       locationOptions: [],
       selectKey: 'unloaded',
+      locationMapping: {},
+      statVarGroups: [],
+      page: 0,
     };
   }
 
@@ -73,10 +88,21 @@ class TimelineExplorer extends Component<
                 (option) => option.value,
             );
             const selectKey = locations.join(',');
+            const locationMapping: any = {};
+            locationOptions.map(
+                (obj) => locationMapping[obj.value] = obj.label,
+            );
+            const page = 0;
+            const statVarGroups = Object.values(
+                this.groupByVariableMeasured(locations),
+            ) as Series[][];
             return {
               locations,
               locationOptions,
               selectKey,
+              locationMapping,
+              statVarGroups,
+              page,
             };
           });
         },
@@ -93,17 +119,18 @@ class TimelineExplorer extends Component<
   }
 
   /** Returns the series objects which match the current locations filter
+   * @param {string[]} locations a list of locations to filter by
    * @return {Series[]} series that match the filter
   */
-  filterLocations() {
-    const locations = new Set(
-        this.state.locations.map((location) =>
+  filterLocations(locations: string[]) {
+    const cleanedLocations = new Set(
+        locations.map((location) =>
         (location === 'undefined') ? undefined: location,
         ),
     );
 
     const filteredData = this.props.data.filter(
-        (series) => locations.has(series.observationAbout),
+        (series) => cleanedLocations.has(series.observationAbout),
     );
 
     return filteredData;
@@ -111,13 +138,14 @@ class TimelineExplorer extends Component<
 
   /** Processes the data passed in by props and returns the
    * data grouped by variableMeasured
+   * @param {string[]} locations a list of locations to filter by
    * @return {Object} an object mapping from variableMeasured to an array
    * of Series with that variableMeasured value
    */
-  groupByVariableMeasured() {
+  groupByVariableMeasured(locations: string[]) {
     const output: any = {};
     // Filter by location
-    const data = this.filterLocations();
+    const data = this.filterLocations(locations);
 
     for (const series of data) {
       const varMeasured = series.variableMeasured ?
@@ -136,9 +164,10 @@ class TimelineExplorer extends Component<
   /** Returns the JSX to render a group of related series
    * @param {Series[]} seriesList a list of series objects with
    *                              the same varMeasured
+   * @param {Object} locationMapping a mapping from location dcid to name
    * @return {Object} a details element plotting all of the series
   */
-  renderSeriesGroup(seriesList: Series[]) {
+  renderSeriesGroup(seriesList: Series[], locationMapping: Object) {
     const varMeasured = seriesList[0].variableMeasured;
     const groups = groupLocations(seriesList);
     const groupNames = Object.keys(groups);
@@ -150,7 +179,10 @@ class TimelineExplorer extends Component<
           groupNames.map(
               (groupName) =>
                 renderTimeGraph(
-                    groups[groupName], groupName, groupNames.length === 1,
+                    groups[groupName],
+                    groupName,
+                    groupNames.length === 1,
+                    locationMapping,
                 ),
           )
         }
@@ -196,6 +228,14 @@ class TimelineExplorer extends Component<
     const defaultValue = this.state.locationOptions.filter(
         (option: any) => this.state.locations.includes(option.value),
     );
+    const maxPage = Math.ceil(
+        this.state.statVarGroups.length / STAT_VARS_PER_PAGE,
+    );
+    const switchPage = (page: number) => this.setState(
+        (prevState) => {
+          return {...prevState, page};
+        },
+    );
     return (
       <div className="box">
         {/* display loading animation while waiting*/}
@@ -215,10 +255,12 @@ class TimelineExplorer extends Component<
                         (option: any) => option.value,
                     );
                     const selectKey = locations.join(',');
+                    const page = 0;
                     return {
                       ...prevState,
                       locations,
                       selectKey,
+                      page,
                     };
                   });
                 }}
@@ -231,6 +273,7 @@ class TimelineExplorer extends Component<
                       ...prevState,
                       locations: [],
                       selectKey: '',
+                      page: 0,
                     };
                   });
                 }}
@@ -246,9 +289,14 @@ class TimelineExplorer extends Component<
             value={defaultValue}
             onChange={(values: MultiValue<Object>) =>
               this.setState( (prevState) => {
+                const locations = values.map((value) => (value as any).value);
                 return {
                   ...prevState,
-                  locations: values.map((value) => (value as any).value),
+                  locations,
+                  statVarGroups: Object.values(
+                      this.groupByVariableMeasured(locations),
+                  ) as Series[][],
+                  page: 0,
                 };
               },
               )}
@@ -280,9 +328,34 @@ class TimelineExplorer extends Component<
           </div>
         </div>
 
-        {(Object.values(this.groupByVariableMeasured()) as Series[][]).map(
-            this.renderSeriesGroup,
-        )}
+        {this.state.statVarGroups
+            .slice(
+                this.state.page * STAT_VARS_PER_PAGE,
+                (this.state.page + 1) * STAT_VARS_PER_PAGE,
+            ).map(
+                (seriesList) =>
+                  this.renderSeriesGroup(
+                      seriesList, this.state.locationMapping),
+            )}
+        <PageBar
+          page={this.state.page}
+          maxPage={maxPage}
+          goToNextPage={
+            (currPage: number, maxPage: number) => {
+              switchPage(PageBar.getNextPage(currPage, maxPage));
+            }
+          }
+          goToPrevPage={
+            (currPage: number) => {
+              switchPage(PageBar.getPrevPage(currPage));
+            }
+          }
+          goToPage={
+            (newPage: number) => {
+              switchPage(newPage - 1);
+            }
+          }
+        />
       </div>
     );
   }

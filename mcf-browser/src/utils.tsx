@@ -133,12 +133,14 @@ function groupLocations(seriesList: Series[]) {
    * Plot a TimeGraph component given all of the data and metadata
    * @param {Object} seriesObj an object containing all the series to plot
    *                  and metadata for the plot
+   * @param {Object} locationMapping a mapping from location dcid to name
    * @return {Object} the TimeGraph component in TSX code
    */
-function plotSeriesObj(seriesObj: any) {
+function plotSeriesObj(seriesObj: any, locationMapping: Object) {
   return (<TimeGraph
     data={seriesObj.subGroup}
     title={seriesObj.title}
+    locationMapping={locationMapping}
     key={seriesObj.title + '\n' + seriesObj.subGroup.map(
         (series: Series) => series.id,
     ).join(',')}
@@ -152,10 +154,14 @@ function plotSeriesObj(seriesObj: any) {
  *              data for a graph
  * @param {string} groupName the name of the group for the summary
  * @param {boolean} keepOpen whether or not to render the details open
+ * @param {Object} locationMapping a mapping from location dcid to name
  * @return {Object} the details section in TSX code
  */
 function renderTimeGraph(
-    group: Object[], groupName: string, keepOpen: boolean,
+    group: Object[],
+    groupName: string,
+    keepOpen: boolean,
+    locationMapping: Object,
 ) {
   const facets: any = Series.fromID(groupName);
   return (
@@ -168,7 +174,7 @@ function renderTimeGraph(
           null
         );
       })}
-      {group.map(plotSeriesObj)}
+      {group.map((seriesObj) => plotSeriesObj(seriesObj, locationMapping))}
     </details>
   );
 }

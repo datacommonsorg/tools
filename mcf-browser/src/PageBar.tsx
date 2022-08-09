@@ -108,6 +108,26 @@ class PageBar extends Component<PageBarPropType> {
     return pageStrings;
   }
 
+
+  /** Returns previous page
+   * @param {number} currPage the current page the user is on
+   * @return {number} the previous page
+   */
+  static getPrevPage(currPage: number) {
+    const newPage = (currPage === 0) ? 0 : currPage - 1;
+    return newPage;
+  }
+
+  /** Return next page
+   * @param {number} currPage the current page the user is on
+   * @param {number} maxPage the maximum number of pages
+   * @return {number} the next page
+   */
+  static getNextPage(currPage: number, maxPage: number) {
+    const newPage = (currPage === maxPage - 1) ? maxPage - 1 : currPage + 1;
+    return newPage;
+  }
+
   /**
    * Renders the bar that allows user to control the page
    * @return {Object} the component in TSX code
