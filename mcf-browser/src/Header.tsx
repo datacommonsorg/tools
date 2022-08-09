@@ -81,7 +81,6 @@ class Header extends Component<HeaderPropType, HeaderStateType> {
         {/* search for id w/dropdown of suggestions of the subject nodes*/}
         <input
           type="search"
-          list="subjIds"
           placeholder="Search by id"
           value={this.state.searchVal}
           onChange={(event) => this.setState({searchVal: event.target.value})}
@@ -89,11 +88,6 @@ class Header extends Component<HeaderPropType, HeaderStateType> {
             this.handleSearch(event);
           }}
         />
-        {/* <datalist id="subjIds">
-          {this.props.subjIds.map((subjId) => (
-            <option value={subjId} key={subjId} />
-          ))}
-        </datalist> */}
       </div>
     );
   }
