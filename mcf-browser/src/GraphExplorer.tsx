@@ -37,7 +37,7 @@ const NODES_PER_PAGE = 25;
     * Set id parameter in url to the given id. Used when user clicks a
     * subject node to explore.
     */
-   goToId: Function;
+   onNodeClick: (id: string) => void;
  }
 
  interface GraphExplorerStateType {
@@ -61,9 +61,9 @@ class GraphExplorer extends Component<
   }
 
   /** Renders the GraphExplorer component.
-    * @return {Object} the component using TSX code
+    * @return {JSX.Element} the component using TSX code
     */
-  render() {
+  render() : JSX.Element {
     const maxPage = Math.ceil(this.props.subjNodes.length / NODES_PER_PAGE);
     const switchPage = (page: number) => this.setState({page});
     return (
@@ -81,7 +81,7 @@ class GraphExplorer extends Component<
             <li
               className="clickable"
               key={dcid}
-              onClick={() => this.props.goToId(dcid)}
+              onClick={() => this.props.onNodeClick(dcid)}
             >
               {dcid}
             </li>
@@ -90,17 +90,17 @@ class GraphExplorer extends Component<
         <PageBar
           page={this.state.page}
           maxPage={maxPage}
-          goToNextPage={
+          onNextPageClicked={
             (currPage: number, maxPage: number) => {
               switchPage(PageBar.getNextPage(currPage, maxPage));
             }
           }
-          goToPrevPage={
+          onPrevPageClicked={
             (currPage: number) => {
               switchPage(PageBar.getPrevPage(currPage));
             }
           }
-          goToPage={
+          onPageNumClicked={
             (newPage: number) => {
               switchPage(newPage - 1);
             }

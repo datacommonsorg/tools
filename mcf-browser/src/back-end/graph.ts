@@ -97,17 +97,17 @@ class Node {
    * @param {string} id The id of the node to find, including the namespace.
    * @return {Node} The found node if it exists or is created.
    */
-  static getNode(id: string) {
+  static getNode(id: string) : Node {
     const existing = Node.nodeHash[id];
     return existing ? existing : new Node(id);
   }
 
   /**
    * Indicates if a given object is an instance of Node class.
-   * @param {Object} obj The object to check.
+   * @param {any} obj The object to check.
    * @return {boolean} True if the object is an instance of Node.
    */
-  static isNode(obj: Object) {
+  static isNode(obj: any) : boolean {
     return obj instanceof Node;
   }
 
@@ -121,7 +121,7 @@ class Node {
    * @return {boolean} False if the node already has a different dcid, true
    *     otherwise.
    */
-  setDCID(dcid: string) {
+  setDCID(dcid: string) : boolean {
     if (this.dcid && this.dcid !== dcid) {
       return false;
     }
@@ -201,12 +201,12 @@ class Node {
                     'Error creating assertion with non Node source');
               }
 
-              const source = isInverse ? val : this;
-              const target = isInverse ? this : val;
+              const source = isInverse ? val as Node : this;
+              const target = isInverse ? this : val as Node;
 
               // if val is a node and has already been fetched, then the
               // assertion would already be stored in both nodes
-              if (!Node.isNode(val) || !val.alreadyFetched) {
+              if (!Node.isNode(val) || !(val as Node).alreadyFetched) {
                 new Assertion(source, label, target, valueObj.provenanceId);
               }
             });
@@ -223,7 +223,7 @@ class Node {
       return;
     }
 
-    await getRemotePropertyLabels(this.dcid).then(async (allLabels) => {
+    await getRemotePropertyLabels(this.dcid).then(async (allLabels: any) => {
       await this.createAssertionsFromLabels(allLabels.outLabels,
           /* isInverse */ false);
       await this.createAssertionsFromLabels(allLabels.inLabels,
@@ -239,7 +239,7 @@ class Node {
    * Ex: <dcid> [l:<localId>]
    * @return {string} The reference to the node to be displayed.
    */
-  getRef() {
+  getRef() : string {
     const dcidRef = this.dcid ? this.dcid : '';
     let localRef = '';
 

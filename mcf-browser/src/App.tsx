@@ -214,7 +214,7 @@ class App extends Component<{}, AppStateType> {
   submitFileList(fileList: Blob[]) {
     this.setState({loading: true});
 
-    API.readFileList(fileList).then((res) => {
+    API.readFileList(fileList).then((res: any) => {
       this.setState(() => ({
         parsingErrs: res['errMsgs'],
         subjNodes: res['localNodes'],
@@ -235,9 +235,9 @@ class App extends Component<{}, AppStateType> {
   /**
    * Renders the browser by displaying a specific node or the homepage.
    *
-   * @return {Object} the webpage using TSX code
+   * @return {JSX.Element} the webpage using TSX code
    */
-  render() {
+  render() : JSX.Element {
     return (
       <div id="app" >
         <Header subjIds={this.state.subjNodes}
@@ -247,7 +247,9 @@ class App extends Component<{}, AppStateType> {
         {this.state.curNode ?
             // if curNode is set, then display it
             <DisplayNode node={this.state.curNode}
-              goToId={(id: string) => utils.goToId(this.state.fileHash, id)}/> :
+              onNodeClick={
+                (id: string) => utils.onNodeClick(this.state.fileHash, id)
+              }/> :
             // otherwise display home
             <Home
               fileList={this.state.files}
@@ -256,7 +258,9 @@ class App extends Component<{}, AppStateType> {
               loading={this.state.loading}
               subjNodes={this.state.subjNodes}
               upload={(files: Blob[]) => this.uploadFiles(files)}
-              goToId={(id: string) => utils.goToId(this.state.fileHash, id)}
+              onNodeClick={
+                (id: string) => utils.onNodeClick(this.state.fileHash, id)
+              }
               loadFiles={
                 (filesList: string[]) => this.loadRemoteFiles(filesList)
               }

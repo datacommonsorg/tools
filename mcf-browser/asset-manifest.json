@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/tools/mcf-browser/static/css/main.2b67047c.css",
-    "main.js": "/tools/mcf-browser/static/js/main.dc99dbdc.js",
+    "main.js": "/tools/mcf-browser/static/js/main.4d34eb1b.js",
     "index.html": "/tools/mcf-browser/index.html",
     "main.2b67047c.css.map": "/tools/mcf-browser/static/css/main.2b67047c.css.map",
-    "main.dc99dbdc.js.map": "/tools/mcf-browser/static/js/main.dc99dbdc.js.map"
+    "main.4d34eb1b.js.map": "/tools/mcf-browser/static/js/main.4d34eb1b.js.map"
   },
   "entrypoints": [
     "static/css/main.2b67047c.css",
-    "static/js/main.dc99dbdc.js"
+    "static/js/main.4d34eb1b.js"
   ]
 }
