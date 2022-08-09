@@ -18,9 +18,9 @@ import React, {Component} from 'react';
 
 import {ParsingError} from './back-end/utils';
 import {openFile} from './utils';
-import {LoadingSpinner} from './LoadingSpinner';
 import {ParsingErrorsTable} from './ParsingErrorsTable';
 import {FileEntry} from './FileEntry';
+import {GraphExplorer} from './GraphExplorer';
 
 
 interface HomePropType {
@@ -63,7 +63,7 @@ interface HomePropType {
    * Set id parameter in url to the given id. Used when user clicks a
    * subject node to explore.
    */
-  goToId: Function;
+  onNodeClick: (id: string) => void;
 }
 
 interface HomeStateType{
@@ -99,9 +99,9 @@ class Home extends Component<HomePropType, HomeStateType> {
   /**
    * Renders the component
    *
-   * @return {Object} the webpage using JSX code
+   * @return {JSX.Element} the webpage using JSX code
    */
-  render() {
+  render() : JSX.Element {
     if (this.props.fileList.length === 0) {
       // show file entry options, but do not toggle dropdown on file submission
       return (
@@ -169,20 +169,11 @@ class Home extends Component<HomePropType, HomeStateType> {
         <ParsingErrorsTable errsList={this.props.errs}/>
         <br/>
 
-        <div className = "box">
-
-          {/* display loading animation while waiting*/}
-          <LoadingSpinner loading={this.props.loading}
-            msg='...loading mcf...'/>
-
-          {/* display list of subject noode ids*/}
-          <h3>Subject Nodes</h3>
-          <ul>
-            {this.props.subjNodes.map((dcid) =>
-              <li className='clickable' key={dcid}
-                onClick={() => this.props.goToId(dcid)}>{dcid}</li>)}
-          </ul>
-        </div>
+        <GraphExplorer
+          loading={this.props.loading}
+          subjNodes={this.props.subjNodes}
+          onNodeClick={this.props.onNodeClick}
+        />
 
       </div>
     );

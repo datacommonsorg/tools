@@ -36,7 +36,7 @@ interface TriplesTablePropType {
   /**
    * Set id parameter in url to the given id.
    */
-  goToId: Function;
+  onNodeClick: (id: string) => void;
 }
 
 interface TriplesTableStateType{
@@ -90,11 +90,11 @@ export class TriplesTable extends Component<
   * inverse and the styled target otherwise.
   * @param {Node|string} target The source of an inverse assertion or the target
   *     of a direct assertion.
-  * @return {HtmlElement} A single cell of an html row representing a triple.
-  *     Either the source or target of the triple depending if the triple is
-  *     inverse or not.
+  * @return {Promise<JSX.Element>} A single cell of an html row representing
+  *     a triple. Either the source or target of the triple depending if the
+  *     triple is inverse or not.
   */
-  async getTargetCell(target: Node | string) {
+  async getTargetCell(target: Node | string) : Promise<JSX.Element> {
     if (API.isNodeObj(target)) {
       const elemClass: utils.ColorIndex = (await API.getElemClass(
         target as Node,
@@ -104,7 +104,9 @@ export class TriplesTable extends Component<
         <div>
           <span title={utils.colorLegend[elemClass]}>
             <p className ={'clickable ' + elemClass} onClick ={() =>
-              this.props.goToId(nodeTarget.localId || nodeTarget.dcid)}>
+              this.props.onNodeClick(
+                  (nodeTarget.localId || nodeTarget.dcid) as string,
+              )}>
               {nodeTarget.getRef()}
             </p>
           </span>
@@ -124,15 +126,15 @@ export class TriplesTable extends Component<
   *     https://<tmcf path>&https://<csv path>
   *
   * @param {string} prov The provenance of the triple.
-  * @return {HtmlElement} A single cell of an html row representing a triple.
+  * @return {JSX.Element} A single cell of an html row representing a triple.
   *     Either the source or target of the triple depending if the triple is
   *     inverse or not.
   */
-  getProvenanceCell(prov: string) {
+  getProvenanceCell(prov: string) : JSX.Element {
     if (prov.startsWith('dc/')) {
       // data commons provenance id
       return (<p className='clickable dc-provenance'onClick={() =>
-        this.props.goToId(prov)}>{prov}</p>);
+        this.props.onNodeClick(prov)}>{prov}</p>);
     }
 
     if (!prov.startsWith('https')) {
@@ -170,10 +172,10 @@ export class TriplesTable extends Component<
   * Converts a list of Assertion objects to an array of HTML row elements that
   * is displyed in the TriplesTable.
   *
-  * @return {Array<HtmlElement>} The array of HTML row elements representing
+  * @return {Promise<JSX.Element[]>} The array of HTML row elements representing
   *     each triple.
   */
-  async getTripleRows() {
+  async getTripleRows() : Promise<JSX.Element[]> {
     const tripleRows = [];
     let index = 0; // used to create a unique key for each row element
 
@@ -202,9 +204,9 @@ export class TriplesTable extends Component<
   }
 
   /** Renders TriplesTable component.
-   * @return {Object} component using JSX code
+   * @return {JSX.Element} component using JSX code
    */
-  render() {
+  render() : JSX.Element | null {
     if (this.state.loading) {
       // return null when loading to prevent error in rendering Promise objects
       return null;

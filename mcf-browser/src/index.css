@@ -251,3 +251,38 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+.page-bar {
+  display: flex;
+  flex-flow: row;
+  justify-content: space-evenly;
+}
+
+.ellipses-box {
+  border: solid 1px #ffffff;
+  border-radius: 10px;
+  padding: 5px;
+  height: 50px;
+  width: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-box {
+  border: solid 1px #ffffff;
+  border-radius: 10px;
+  height: 50px;
+  padding: 5px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-box:hover {
+  border: solid 1px #AFAFAF;
+}
+
+.curr-page-box {
+  border: solid 1px #AFAFAF;
+}

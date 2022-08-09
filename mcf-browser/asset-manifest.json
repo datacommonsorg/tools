@@ -1,23 +1,13 @@
 {
   "files": {
-    "main.css": "/tools/mcf-browser/static/css/main.8e56ca34.chunk.css",
-    "main.js": "/tools/mcf-browser/static/js/main.ca1f202a.chunk.js",
-    "main.js.map": "/tools/mcf-browser/static/js/main.ca1f202a.chunk.js.map",
-    "runtime-main.js": "/tools/mcf-browser/static/js/runtime-main.bf0254a6.js",
-    "runtime-main.js.map": "/tools/mcf-browser/static/js/runtime-main.bf0254a6.js.map",
-    "static/js/2.ccb6cfeb.chunk.js": "/tools/mcf-browser/static/js/2.ccb6cfeb.chunk.js",
-    "static/js/2.ccb6cfeb.chunk.js.map": "/tools/mcf-browser/static/js/2.ccb6cfeb.chunk.js.map",
+    "main.css": "/tools/mcf-browser/static/css/main.2b67047c.css",
+    "main.js": "/tools/mcf-browser/static/js/main.4d34eb1b.js",
     "index.html": "/tools/mcf-browser/index.html",
-    "precache-manifest.04736f074d6497bb8ed9cafff8f6920b.js": "/tools/mcf-browser/precache-manifest.04736f074d6497bb8ed9cafff8f6920b.js",
-    "service-worker.js": "/tools/mcf-browser/service-worker.js",
-    "static/css/main.8e56ca34.chunk.css.map": "/tools/mcf-browser/static/css/main.8e56ca34.chunk.css.map",
-    "static/js/2.ccb6cfeb.chunk.js.LICENSE.txt": "/tools/mcf-browser/static/js/2.ccb6cfeb.chunk.js.LICENSE.txt",
-    "static/js/main.ca1f202a.chunk.js.LICENSE.txt": "/tools/mcf-browser/static/js/main.ca1f202a.chunk.js.LICENSE.txt"
+    "main.2b67047c.css.map": "/tools/mcf-browser/static/css/main.2b67047c.css.map",
+    "main.4d34eb1b.js.map": "/tools/mcf-browser/static/js/main.4d34eb1b.js.map"
   },
   "entrypoints": [
-    "static/js/runtime-main.bf0254a6.js",
-    "static/js/2.ccb6cfeb.chunk.js",
-    "static/css/main.8e56ca34.chunk.css",
-    "static/js/main.ca1f202a.chunk.js"
+    "static/css/main.2b67047c.css",
+    "static/js/main.4d34eb1b.js"
   ]
 }

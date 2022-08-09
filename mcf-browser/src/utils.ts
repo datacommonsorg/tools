@@ -34,7 +34,7 @@ export type ColorIndex =
  * @param {string} id The id of the desired node to display. This can be either
  *     a dcid or a local id.
  */
-function goToId(homeHash: string, id: string) {
+function onNodeClick(homeHash: string, id: string) {
   if (id.includes(':')) {
     window.location.hash = homeHash + '&id=' + id;
   } else {
@@ -76,5 +76,5 @@ function openFile(fileUrl: string) {
 }
 
 
-export {colorLegend, goToId, goTo, openFile, searchId};
+export {colorLegend, onNodeClick, goTo, openFile, searchId};
 

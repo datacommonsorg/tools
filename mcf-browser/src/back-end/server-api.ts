@@ -36,7 +36,7 @@ type ParseFileResponse = {
  * @return {Object} An object containing the ids of the subject nodes and any
  *     parsing error message objects.
  */
-async function readFileList(fileList: Blob[]) {
+async function readFileList(fileList: Blob[]) : Promise<Object> {
   // Clear previously stored files
   clearFiles();
 
@@ -122,7 +122,7 @@ function clearFiles() {
   *     node should be set to id.
   * @return {Node} The retreived node with the given id.
   */
-function retrieveNode(id: string, shouldCreateRemote: boolean) {
+function retrieveNode(id: string, shouldCreateRemote: boolean) : Node {
   const retrieved = Node.getNode(id);
   if (shouldCreateRemote) {
     retrieved.setDCID(id.replace('dcid:', ''));
@@ -137,7 +137,7 @@ function retrieveNode(id: string, shouldCreateRemote: boolean) {
   * @param {Object} obj The object to determine if it is of Node type.
   * @return {boolean} True if obj is of Node type and false otherwise.
   */
-function isNodeObj(obj: Object) {
+function isNodeObj(obj: Object) : boolean {
   return Node.isNode(obj);
 }
 
@@ -148,7 +148,7 @@ function isNodeObj(obj: Object) {
   * @param {Node} target The node object whose element color needs to be found.
   * @return {String} The appropriate css class for the node.
   */
-async function getElemClass(target: Node) {
+async function getElemClass(target: Node) : Promise<string | null> {
   if (!target) {
     return null;
   }
