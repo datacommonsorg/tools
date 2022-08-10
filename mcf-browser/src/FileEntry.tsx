@@ -96,9 +96,9 @@ class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
   /**
    * Renders the component by building the JSX.
    *
-   * @return {Object} the component using JSX code
+   * @return {JSX.Element} the component using JSX code
    */
-  render() {
+  render() : JSX.Element {
     return (
       <div className="row">
         {/* Options to directly upload a file via file selector. */}

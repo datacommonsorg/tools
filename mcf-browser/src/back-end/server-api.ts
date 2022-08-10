@@ -27,7 +27,7 @@ import {ParseMcf} from './parse-mcf';
  * @return {Object} An object containing the ids of the subject nodes and any
  *     parsing error message objects.
  */
-async function readFileList(fileList: Blob[]) {
+async function readFileList(fileList: Blob[]) : Promise<Object> {
   // Get parsing errors and nodes
   const nodes = await getNodes(fileList);
 
@@ -46,18 +46,18 @@ function clearFiles() {
 }
 
 /**
- * Retreives a node specified by the id. If shouldCreateRemote is true, then
- * the dcid of the retreieved node will attempt to be set. The
- * shouldCreateRemote param is true when the user uses the search bar in the UI
- * so that a node is always found. The node properties will display as blank
- * and the node id will be colored red if the node does not exist in the KG.
- *
- * @param {String} id The id (including namespace) of the node to be retreived.
- * @param {boolean} shouldCreateRemote Indicates is the dcid of the retreieved
- *     node should be set to id.
- * @return {Node} The retreived node with the given id.
- */
-function retrieveNode(id: string, shouldCreateRemote: boolean) {
+  * Retreives a node specified by the id. If shouldCreateRemote is true, then
+  * the dcid of the retreieved node will attempt to be set. The
+  * shouldCreateRemote param is true when the user uses the search bar in the UI
+  * so that a node is always found. The node properties will display as blank
+  * and the node id will be colored red if the node does not exist in the KG.
+  *
+  * @param {String} id The id (including namespace) of the node to be retreived.
+  * @param {boolean} shouldCreateRemote Indicates is the dcid of the retreieved
+  *     node should be set to id.
+  * @return {Node} The retreived node with the given id.
+  */
+function retrieveNode(id: string, shouldCreateRemote: boolean) : Node {
   const retrieved = Node.getNode(id);
   if (shouldCreateRemote) {
     retrieved.setDCID(id.replace('dcid:', ''));
@@ -66,24 +66,24 @@ function retrieveNode(id: string, shouldCreateRemote: boolean) {
 }
 
 /**
- * Determines if passed in object is a Node object by calling the static Node
- * class function.
- *
- * @param {Object} obj The object to determine if it is of Node type.
- * @return {boolean} True if obj is of Node type and false otherwise.
- */
-function isNodeObj(obj: Object) {
+  * Determines if passed in object is a Node object by calling the static Node
+  * class function.
+  *
+  * @param {Object} obj The object to determine if it is of Node type.
+  * @return {boolean} True if obj is of Node type and false otherwise.
+  */
+function isNodeObj(obj: Object) : boolean {
   return Node.isNode(obj);
 }
 
 /**
- * Returns the class that a node should be contained in based on how it is
- * resolved locally and remotely.
- *
- * @param {Node} target The node object whose element color needs to be found.
- * @return {String} The appropriate css class for the node.
- */
-async function getElemClass(target: Node) {
+  * Returns the class that a node should be contained in based on how it is
+  * resolved locally and remotely.
+  *
+  * @param {Node} target The node object whose element color needs to be found.
+  * @return {String} The appropriate css class for the node.
+  */
+async function getElemClass(target: Node) : Promise<string | null> {
   if (!target) {
     return null;
   }

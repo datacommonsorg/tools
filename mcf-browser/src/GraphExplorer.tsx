@@ -21,38 +21,38 @@ import {PageBar} from './PageBar';
 
 const NODES_PER_PAGE = 25;
 
-interface GraphExplorerPropType {
-  /**
-   * Indicates if uploaded files are currently being parsed.
-   */
-  loading: boolean;
+ interface GraphExplorerPropType {
+   /**
+    * Indicates if uploaded files are currently being parsed.
+    */
+   loading: boolean;
 
-  /**
-   * IDs for nodes stored in App's state which are the subject nodes of
-   * triples from any parsed files.
-   */
-  subjNodes: string[];
+   /**
+    * IDs for nodes stored in App's state which are the subject nodes of
+    * triples from any parsed files.
+    */
+   subjNodes: string[];
 
-  /**
-   * Set id parameter in url to the given id. Used when user clicks a
-   * subject node to explore.
-   */
-  goToId: Function;
-}
+   /**
+    * Set id parameter in url to the given id. Used when user clicks a
+    * subject node to explore.
+    */
+   onNodeClick: (id: string) => void;
+ }
 
-interface GraphExplorerStateType {
-  /** Tracks which page the user is currently viewing (0-indexed) */
-  page: number;
-}
+ interface GraphExplorerStateType {
+   /** Tracks which page the user is currently viewing (0-indexed) */
+   page: number;
+ }
 
 /** Component to display the Graph explorer */
 class GraphExplorer extends Component<
-  GraphExplorerPropType,
-  GraphExplorerStateType
-> {
+   GraphExplorerPropType,
+   GraphExplorerStateType
+ > {
   /** Constructor for class, sets initial state
-   * @param {Object} props the props passed in by parent component
-   */
+    * @param {Object} props the props passed in by parent component
+    */
   constructor(props: GraphExplorerPropType) {
     super(props);
     this.state = {
@@ -61,9 +61,9 @@ class GraphExplorer extends Component<
   }
 
   /** Renders the GraphExplorer component.
-   * @return {Object} the component using TSX code
-   */
-  render() {
+    * @return {JSX.Element} the component using TSX code
+    */
+  render() : JSX.Element {
     const maxPage = Math.ceil(this.props.subjNodes.length / NODES_PER_PAGE);
     const switchPage = (page: number) => this.setState({page});
     return (
@@ -81,7 +81,7 @@ class GraphExplorer extends Component<
             <li
               className="clickable"
               key={dcid}
-              onClick={() => this.props.goToId(dcid)}
+              onClick={() => this.props.onNodeClick(dcid)}
             >
               {dcid}
             </li>
@@ -90,17 +90,17 @@ class GraphExplorer extends Component<
         <PageBar
           page={this.state.page}
           maxPage={maxPage}
-          goToNextPage={
+          onNextPageClicked={
             (currPage: number, maxPage: number) => {
               switchPage(PageBar.getNextPage(currPage, maxPage));
             }
           }
-          goToPrevPage={
+          onPrevPageClicked={
             (currPage: number) => {
               switchPage(PageBar.getPrevPage(currPage));
             }
           }
-          goToPage={
+          onPageNumClicked={
             (newPage: number) => {
               switchPage(newPage - 1);
             }

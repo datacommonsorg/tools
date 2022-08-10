@@ -52,7 +52,7 @@ export interface ParsingError {
  * @param {string} dcid The dcid of the node to find property labels for.
  * @return {Object} An object containing both 'in' and 'out' property labels.
  */
-async function getRemotePropertyLabels(dcid: string) {
+async function getRemotePropertyLabels(dcid: string) : Promise<Object> {
   // Get inward and outward property labels
   const outTargetUrl = `${API_ROOT}/v1/properties/out/${dcid}`;
   const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
@@ -77,13 +77,12 @@ async function getRemotePropertyLabels(dcid: string) {
  * @param {string} label The property label to query for.
  * @param {boolean} isInverse Direction of property label, false indicates
  *     an outgoing label, true is an incoming label.
- * @return {Object} An object containing all found values matching the query.
+ * @return {DCPropertyValueResponse[]} An object containing all found values
+ *    matching the query.
  */
 async function getRemotePropertyValues(
-    dcid: string,
-    label: string,
-    isInverse: boolean,
-) {
+    dcid: string, label: string, isInverse: boolean,
+) : Promise<DCPropertyValueResponse[]> {
   const direction = isInverse ? 'in' : 'out';
   const targetUrl =
     `${API_ROOT}/v1/property/values/${direction}/${dcid}/${label}`;
@@ -112,7 +111,8 @@ export type DCPropertyValueResponse = {
  * @return {Node | string} The created Node if the value object has a dcid,
  *     otherwise the string of the value.
  */
-function getValueFromValueObj(valueObj: DCPropertyValueResponse) {
+function getValueFromValueObj(valueObj: DCPropertyValueResponse)
+  : Node | string | undefined {
   if (!('dcid' in valueObj || 'value' in valueObj)) {
     throw new Error(
         'ERROR: DC API returned an object with no "dcid" or "value" field: ' +
@@ -136,7 +136,7 @@ function getValueFromValueObj(valueObj: DCPropertyValueResponse) {
  * @return {Promise<boolean>} Returns true if given dcid is in any triples in
  *     Data Commons Knowledge Graph.
  */
-async function doesExistsInKG(dcid: string) {
+async function doesExistsInKG(dcid: string) : Promise<boolean> {
   const url = `${API_ROOT}/v1/property/values/out/${dcid}/typeOf`;
 
   // expected response if dcid exists is {"values":"[...]}
@@ -152,7 +152,7 @@ async function doesExistsInKG(dcid: string) {
  * @return {boolean} False if the line is a comment or empty, otherwise
  *     true.
  */
-function shouldReadLine(line: string) {
+function shouldReadLine(line: string) : boolean {
   if (line.startsWith('//') || line.length === 0 || line.startsWith('#')) {
     return false;
   }

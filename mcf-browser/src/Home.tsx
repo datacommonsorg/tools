@@ -64,7 +64,7 @@ interface HomePropType {
    * Set id parameter in url to the given id. Used when user clicks a
    * subject node to explore.
    */
-  goToId: Function;
+  onNodeClick: (id: string) => void;
   /**
    * Time series data uploaded by the user
    */
@@ -104,9 +104,9 @@ class Home extends Component<HomePropType, HomeStateType> {
   /**
    * Renders the component
    *
-   * @return {Object} the webpage using JSX code
+   * @return {JSX.Element} the webpage using JSX code
    */
-  render() {
+  render() : JSX.Element {
     if (this.props.fileList.length === 0) {
       // show file entry options, but do not toggle dropdown on file submission
       return (
@@ -188,11 +188,10 @@ class Home extends Component<HomePropType, HomeStateType> {
           data={this.props.timeData}
           loading={this.props.loading}
         />
-
         <GraphExplorer
           loading={this.props.loading}
           subjNodes={this.props.subjNodes}
-          goToId={this.props.goToId}
+          onNodeClick={this.props.onNodeClick}
         />
       </div>
     );

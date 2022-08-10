@@ -16,40 +16,36 @@
 
 import React, {Component} from 'react';
 
-interface PageBarPropType {
-    /** Tracks which page the user is currently viewing (0-indexed) */
-    page: number;
+// the number of pages to display from the start and end initially
+// 1, 2, ... NUM_PAGES_TO_DISPLAY
+const NUM_PAGES_TO_DISPLAY = 3;
 
-    /** Stores the maximum number of pages */
-    maxPage: number;
+ interface PageBarPropType {
+     /** Tracks which page the user is currently viewing (0-indexed) */
+     page: number;
 
-    /** The function to go to the next page */
-    goToNextPage: Function
+     /** Stores the maximum number of pages */
+     maxPage: number;
 
-    /** The function to go to the previous page */
-    goToPrevPage: Function;
+     /** The function to go to the next page */
+     onNextPageClicked: (page: number, maxPage: number) => void;
 
-    /** The function to go to a certain page */
-    goToPage: Function;
-}
+     /** The function to go to the previous page */
+     onPrevPageClicked: (page: number) => void;
+
+     /** The function to go to a certain page */
+     onPageNumClicked: (page: number) => void;
+ }
 
 /** Component for rendering the pagination bar */
 class PageBar extends Component<PageBarPropType> {
-  /** Constructor for the component
-       * @param {PageBarPropType} props the props passed in
-      */
-  constructor(props: PageBarPropType) {
-    super(props);
-  }
-
-
   /**
-   * Returns the span to be used for a given page string
-   * @param {string} pageString the string to display
-   * @param {number} i the index of the page string
-   * @return {Object} the span element in TSX code
-   */
-  renderPageBox(pageString: string, i: number) {
+    * Returns the span to be used for a given page string
+    * @param {string} pageString the string to display
+    * @param {number} i the index of the page string
+    * @return {JSX.Element} the span element in TSX code
+    */
+  renderPageBox(pageString: string, i: number) : JSX.Element {
     if (pageString === '...') {
       // return non-clickable span
       return <span className="ellipses-box" key={i}>{pageString}</span>;
@@ -57,12 +53,12 @@ class PageBar extends Component<PageBarPropType> {
       return (
         <span
           className={
-            (this.props.page + 1).toString() === pageString ?
-            'page-box curr-page-box':
-            'page-box'
+             (this.props.page + 1).toString() === pageString ?
+             'page-box curr-page-box':
+             'page-box'
           }
           key={i}
-          onClick={() => this.props.goToPage(parseFloat(pageString))}
+          onClick={() => this.props.onPageNumClicked(parseFloat(pageString))}
         >
           {pageString}
         </span>
@@ -71,24 +67,35 @@ class PageBar extends Component<PageBarPropType> {
   }
 
   /** Get page strings given the current page
-   * @param {number} page the current page that the user is on
-   * @return {string[]} the strings to render in the pagination bar
-   */
-  getPageStrings(page: number) {
+    * @param {number} page the current page that the user is on
+    * @return {string[]} the strings to render in the pagination bar
+    */
+  getPageStrings(page: number) : string[] {
     // Get all page strings
     const actualPage = page + 1; // Switch from 0-indexed to 1-indexed
     const maxPage = this.props.maxPage;
-    let pagesToDisplay;
+    let pagesToDisplay: Set<number>;
 
     // Check if page is on the boundary
-    if (actualPage < 3 || actualPage > maxPage - 2) {
-      const pagesList = [1, 2, 3, maxPage - 2, maxPage - 1, maxPage];
+    if (
+      actualPage < NUM_PAGES_TO_DISPLAY ||
+        actualPage > maxPage - NUM_PAGES_TO_DISPLAY + 1
+    ) {
+      // Generate pages to display
+      const pagesList = [];
+
+      for (let i = 0; i < NUM_PAGES_TO_DISPLAY; i++) {
+        pagesList.push(i + 1);
+        pagesList.push(maxPage - i);
+      }
+
+      // Filter out duplicates and out of bounds
       pagesToDisplay = new Set(
           pagesList.filter((i) => i > 0 && i <= maxPage),
       );
     } else {
       const pagesList =
-        [1, actualPage - 1, actualPage, actualPage + 1, maxPage];
+         [1, actualPage - 1, actualPage, actualPage + 1, maxPage];
       pagesToDisplay = new Set(pagesList);
     }
 
@@ -108,31 +115,29 @@ class PageBar extends Component<PageBarPropType> {
     return pageStrings;
   }
 
-
   /** Returns previous page
-   * @param {number} currPage the current page the user is on
-   * @return {number} the previous page
-   */
-  static getPrevPage(currPage: number) {
-    const newPage = (currPage === 0) ? 0 : currPage - 1;
-    return newPage;
+    * @param {number} currPage the current page the user is on
+    * @return {number} the previous page
+    */
+  static getPrevPage(currPage: number) : number {
+    return (currPage === 0) ? 0 : currPage - 1;
   }
 
   /** Return next page
-   * @param {number} currPage the current page the user is on
-   * @param {number} maxPage the maximum number of pages
-   * @return {number} the next page
-   */
-  static getNextPage(currPage: number, maxPage: number) {
-    const newPage = (currPage === maxPage - 1) ? maxPage - 1 : currPage + 1;
-    return newPage;
+    * @param {number} currPage the current page the user is on
+    * @param {number} maxPage the maximum number of pages
+    * @return {number} the next page
+    */
+  static getNextPage(currPage: number, maxPage: number) : number {
+    return (currPage === maxPage - 1) ? maxPage - 1 : currPage + 1;
   }
 
+
   /**
-   * Renders the bar that allows user to control the page
-   * @return {Object} the component in TSX code
-   */
-  render() {
+    * Renders the bar that allows user to control the page
+    * @return {JSX.Element} the component in TSX code
+    */
+  render() : JSX.Element {
     // Get all page strings
     const pageStrings = this.getPageStrings(this.props.page);
 
@@ -141,14 +146,14 @@ class PageBar extends Component<PageBarPropType> {
       <div className="page-bar">
         <span
           className="page-box"
-          onClick={() => this.props.goToPrevPage(this.props.page)}
+          onClick={() => this.props.onPrevPageClicked(this.props.page)}
         >← prev</span>
         {
           pageStrings.map((page, i) => this.renderPageBox(page, i))
         }
         <span
           className={'page-box'}
-          onClick={() => this.props.goToNextPage(
+          onClick={() => this.props.onNextPageClicked(
               this.props.page,
               this.props.maxPage,
           )}

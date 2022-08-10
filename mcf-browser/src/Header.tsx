@@ -68,9 +68,9 @@ class Header extends Component<HeaderPropType, HeaderStateType> {
   }
 
   /** Renders header element
-   * @return {Object} the webpage using JSX code
-   */
-  render() {
+   * @return {JSX.Element} the webpage using JSX code
+  */
+  render() : JSX.Element {
     return (
       <div className="Header">
         {/* return home button*/}

@@ -100,7 +100,7 @@ class ParseMcf {
    * @return {Array<(string|Object)>} Array of
    *     parsed values.
    */
-  parsePropValues(propValues: string) {
+  parsePropValues(propValues: string) : (string | Object)[] {
     const values = [];
     // split propValues on commas which are not enclosed by double quotes
     // split string at each comma followed by even number of double quotes
@@ -341,10 +341,10 @@ class ParseMcf {
    * Parses each line of the given string of an mcf file after setting the prov
    * property of the calling ParseMcf object.
    * @param {string} mcf The string representation of an mcf file to parse.
-   * @return {Object} A list of the local node ids and the list of error
-   * messages which should be empty if no mcf syntax errors were found.
+   * @return {ParseFileResponse} A list of the local node ids and the list of
+   * error messages which should be empty if no mcf syntax errors were found.
    */
-  parseMcfStr(mcf: string) {
+  parseMcfStr(mcf: string) : ParseFileResponse {
     const lines = mcf.split('\n');
     this.lineNum = 1;
 
@@ -364,7 +364,7 @@ class ParseMcf {
    * Reads an mcf file into a string, then creates ParseMcf object to parse the
    * string.
    * @param {FileObject} file An mcf file from the html file-input element.
-   * @return {Promise} Promise returns the result of parseMcfStr.
+   * @return {Promise<ParseFileResponse>} the result of parseMcfStr.
    */
   static readFile(file: Blob): Promise<ParseFileResponse> {
     const fileReader = new FileReader();

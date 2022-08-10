@@ -30,7 +30,7 @@ interface DisplayNodePropType {
   /**
    * Set id parameter in url to the given id.
    */
-  goToId: Function;
+  onNodeClick: (id: string) => void;
 }
 
 interface DisplayNodeStateType {
@@ -118,9 +118,9 @@ class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
   }
 
   /** Renders the DisplayNode component.
-   * @return {Object} the webpage using JSX code
+   * @return {JSX.Element} the webpage using JSX code
    * */
-  render() {
+  render() : JSX.Element {
     return (
       <div>
         <br />
@@ -128,29 +128,21 @@ class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
         <span title={colorLegend[this.state.elemClass as ColorIndex]}>
           <h1 className={'inline ' + this.state.elemClass}>{this.state.ref}</h1>
         </span>
-        <br />
-        <LoadingSpinner
-          loading={this.state.fetching}
-          msg="...fetching triples..."
-        />
-        <br />
-        <h3 className="inline padded">Node Properties</h3>
-        <p className="inline"> - current node is source</p>
-        <br />
-        <TriplesTable
-          triples={this.state.asserts}
-          inverse={false}
-          goToId={this.props.goToId}
-        />
-        <br />
-        <h3 className="inline padded">Incoming Properties from Other Nodes</h3>
-        <p className="inline"> - current node is target</p>
-        <br />
-        <TriplesTable
-          triples={this.state.invAsserts}
-          inverse={true}
-          goToId={this.props.goToId}
-        />
+        <br/>
+        <LoadingSpinner loading={this.state.fetching}
+          msg='...fetching triples...'/>
+        <br/>
+        <h3 className='inline padded'>Node Properties</h3>
+        <p className='inline'> - current node is source</p>
+        <br/>
+        <TriplesTable triples={this.state.asserts} inverse={false}
+          onNodeClick={this.props.onNodeClick}/>
+        <br/>
+        <h3 className='inline padded'>Incoming Properties from Other Nodes</h3>
+        <p className='inline'> - current node is target</p>
+        <br/>
+        <TriplesTable triples={this.state.invAsserts} inverse={true}
+          onNodeClick={this.props.onNodeClick}/>
       </div>
     );
   }
