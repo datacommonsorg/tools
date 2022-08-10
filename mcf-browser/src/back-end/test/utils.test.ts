@@ -23,7 +23,9 @@ import {
 } from '../utils';
 
 test('testing getRemotePropertyLabels', async () => {
-  const labels: any = await getRemotePropertyLabels('bio/CTD_CHEMBL2_DOID_2055');
+  const labels: any = await getRemotePropertyLabels(
+      'bio/CTD_CHEMBL2_DOID_2055',
+  );
 
   const expectOut = [
     'compoundID',

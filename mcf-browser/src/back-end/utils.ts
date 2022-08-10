@@ -160,10 +160,30 @@ function shouldReadLine(line: string) : boolean {
   return true;
 }
 
+/**
+ * Queries Data Commons to get the name for a location
+ * @param {string} dcid The dcid to get the location for
+ * @return {Promise<string>} Returns the location
+ */
+async function getName(dcid: string) {
+  const url = `${API_ROOT}/v1/property/values/out/${dcid}/name`;
+
+  // expected response if dcid exists is {"values":"[...]}
+  // expected response if dcid does not exist is {}
+  return fetch(url)
+      .then((res) => res.json())
+      .then((data) =>
+        (data.values && data.values.length > 0) ?
+        (data.values[0].value) :
+        `dcid:${dcid}`,
+      );
+}
+
 export {
   ERROR_MESSAGES, getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
   doesExistsInKG,
   shouldReadLine,
+  getName,
 };

@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+ import { Series } from "../data";
+
 /** File contains strings used in parse-tmcf.test.js */
 export const testTMCF1 = `
 Node: E:SomeDataset->E1
@@ -448,3 +451,69 @@ observationAbout: dcid:geoId/02
 observationDate: 2020-07-07
 value: 130236
 `;
+
+export const expectedFacetandValue0 = {
+  facets: 'dcs:CumulativeCount_MedicalTest_COVID_19_Negative,dcid:geoId/02,,dcs:CovidTrackingProject,,,1',
+  date: '2020-07-07',
+  value: '130236'
+};
+
+export const expectedFacetandValue1 = {
+  facets: null,
+  date: null,
+  value: null
+};
+
+export const expectedDatapoints = {
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,1": {"row1_date": "row1_test_count"}, 
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row2_geoid,,dcs:CovidTrackingProject,,,1": {"row2_date": "row2_test_count"}
+}
+
+export const datapoints = [
+  {
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
+      "row1_date": "1", "row2_date": "2"
+    }
+  },
+  {
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
+      "row3_date": "5", "row4_date": "8"
+    },
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
+      "row3_date": "9", "row4_date": "22"
+    }
+  },
+  {
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
+      "row1_date": "111", "row2_date": "2"
+    }
+  }
+];
+
+export const expectedSeries = [
+  new Series(
+    ["row1_date", "row2_date", "row3_date", "row4_date"],
+    [1, 2, 5, 8],
+    "dcs:CumulativeCount_MedicalTest_COVID_19",
+    'dcid:geoId/02',
+    undefined,
+    "dcs:CovidTrackingProject",
+    undefined,
+    undefined,
+    1
+  ),
+  new Series(
+   ["row3_date", "row4_date", "row1_date", "row2_date"],
+   [9, 22, 111, 2],
+   "dcs:CumulativeCount_MedicalTest_COVID_19",
+   'dcid:geoId/02',
+   undefined,
+   "dcs:CovidTrackingProject",
+   undefined,
+   undefined,
+   100
+ ),
+];
+
+export const expectedID =
+`dcs:CumulativeCount_MedicalTest_COVID_19,geoId/12345,geoId/12345,dcs:CovidTrackingProject,P1Y,Percent,100`;

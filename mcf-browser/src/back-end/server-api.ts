@@ -16,20 +16,11 @@
 
 /* Functions to relay information from the back-end to the front-end. */
 
+import {Series} from './data';
 import {Node} from './graph';
+import {getNodes, getTimeData} from './parse';
 import {ParseMcf} from './parse-mcf';
-import {ParseTmcf} from './parse-tmcf';
-import {ParsingError, ERROR_MESSAGES} from './utils';
 
-type ParseFileResponse = {
-  /** A list of errors that occurred while parsing
-   * the files
-   */
-  errMsgs: ParsingError[];
-
-  /** A list of the ids of the subject nodes */
-  localNodes: string[];
-}
 /**
  * Parses App state's files list.
  * @param {Array<Blob>} fileList The list of blobs to be parsed.
@@ -37,73 +28,17 @@ type ParseFileResponse = {
  *     parsing error message objects.
  */
 async function readFileList(fileList: Blob[]) : Promise<Object> {
-  // Clear previously stored files
-  clearFiles();
+  // Get parsing errors and nodes
+  const nodes = await getNodes(fileList);
 
-  const finalReturn: ParseFileResponse = {'errMsgs': [], 'localNodes': []};
-
-  // Find TMCF file, if it exists
-  let tmcfFile = null;
-  for (const file of fileList) {
-    const fileName = (file as File).name;
-    const fileExt = fileName.split('.').pop();
-
-    if (fileExt === 'tmcf') {
-      if (tmcfFile) {
-        // If another TMCF file was found, throw an error
-        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
-          'file': (tmcfFile as File).name,
-          'errs': [
-            ['-1', '', ERROR_MESSAGES.MULTIPLE_TMCF],
-          ],
-        }]);
-      }
-
-      tmcfFile = file;
-    }
-  }
-
-  for (const file of fileList) {
-    const fileName = (file as File).name;
-    const fileExt = fileName.split('.').pop();
-
-    if (fileExt === 'mcf') {
-      const mcfOut = await ParseMcf.readFile(file);
-
-      if (mcfOut['errMsgs'].length !== 0) {
-        finalReturn['errMsgs'] = finalReturn['errMsgs'].concat([{
-          'file': fileName,
-          'errs': mcfOut['errMsgs'],
-        }]);
-      }
-
-      finalReturn['localNodes'] = mcfOut['localNodes'];
-    } else if (fileExt === 'csv') {
-      if (tmcfFile) {
-        const tmcfFileName = (tmcfFile as File).name;
-        const tmcfOut =
-        await ParseTmcf.generateMcf(tmcfFile, file).then((mcf) => {
-          const mcfParser = new ParseMcf(tmcfFileName + '&' + fileName);
-          return mcfParser.parseMcfStr(mcf as string);
-        });
-
-        if (tmcfOut['errMsgs'].length !== 0) {
-          finalReturn['errMsgs'] =
-            finalReturn['errMsgs'].concat({
-              'file': tmcfFileName,
-              'errs': tmcfOut['errMsgs'],
-            });
-        }
-        finalReturn['localNodes'] = tmcfOut['localNodes'];
-      }
-    }
-  }
-  return finalReturn;
+  // Get timeData
+  const timeData: Series[] = getTimeData(nodes.datapoints);
+  return {...nodes, timeData};
 }
 
 /**
   * Clears the backend data. Called when a user presses the 'Clear Files'
-  * button or uploads new files.
+  * button.
   */
 function clearFiles() {
   Node.nodeHash = {};
