@@ -14,7 +14,7 @@
 
 steps:
   - id: "build all repos"
-    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:397.0.0
     entrypoint: "bash"
     dir: "periodic_builds"
     args: ["./build_all_repos.sh"]
