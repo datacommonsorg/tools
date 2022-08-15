@@ -30,6 +30,7 @@ options:
   - "TMP_FOLDER=/tmp"
   - "SUCCESS_FOLDER=/tmp/success"
   - "FAILED_FOLDER=/tmp/failed"
+  - "CLOUDSDK_CORE_PROJECT=datcom-ci"
   volumes:
   - name : "step_persistent_tmp"
     path: "/tmp"
