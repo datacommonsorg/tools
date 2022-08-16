@@ -175,7 +175,7 @@ async function getName(dcid: string) {
       .then((data) =>
         (data.values && data.values.length > 0) ?
         (data.values[0].value) :
-        `dcid:${dcid}`,
+        `${dcid}`,
       );
 }
 

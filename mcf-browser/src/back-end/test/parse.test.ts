@@ -19,7 +19,7 @@ import {Series} from '../data';
 import * as TestStr from './test-strs';
 
 test('testing parseSeries', () => {
-  const facets =
+  const facet =
    'dcs:CumulativeCount_MedicalTest_COVID_19,,,dcs:CovidTrackingProject,,,100';
   const values = {
     '2018': 5,
@@ -27,11 +27,15 @@ test('testing parseSeries', () => {
     '2020': 5.5,
     '2021': 63,
   };
-  const series = parseSeries(facets, values);
+  const series = parseSeries(facet, values);
 
+  const x = ['2018', '2019', '2020', '2021'];
+  const y = [5, 100, 5.5, 63];
+  const data = x.map((xValue, index) => {
+    return {x: xValue, y: y[index]};
+  });
   const expectedSeries = new Series(
-      ['2018', '2019', '2020', '2021'],
-      [5, 100, 5.5, 63],
+      data,
       'dcs:CumulativeCount_MedicalTest_COVID_19',
       undefined,
       undefined,

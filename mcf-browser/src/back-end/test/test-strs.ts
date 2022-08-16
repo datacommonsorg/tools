@@ -453,20 +453,20 @@ value: 130236
 `;
 
 export const expectedFacetandValue0 = {
-  facets: 'dcs:CumulativeCount_MedicalTest_COVID_19_Negative,dcid:geoId/02,,dcs:CovidTrackingProject,,,1',
+  facet: 'dcs:CumulativeCount_MedicalTest_COVID_19_Negative,dcid:geoId/02,,dcs:CovidTrackingProject,,,',
   date: '2020-07-07',
   value: '130236'
 };
 
 export const expectedFacetandValue1 = {
-  facets: null,
+  facet: null,
   date: null,
   value: null
 };
 
 export const expectedDatapoints = {
-  "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,1": {"row1_date": "row1_test_count"}, 
-  "dcs:CumulativeCount_MedicalTest_COVID_19,row2_geoid,,dcs:CovidTrackingProject,,,1": {"row2_date": "row2_test_count"}
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,": {"row1_date": "row1_test_count"}, 
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row2_geoid,,dcs:CovidTrackingProject,,,": {"row2_date": "row2_test_count"}
 }
 
 export const datapoints = [
@@ -490,10 +490,17 @@ export const datapoints = [
   }
 ];
 
+const x1 = ["row1_date", "row2_date", "row3_date", "row4_date"];
+const y1 = [1, 2, 5, 8];
+const data1 = x1.map((x, index) => {return {x, y: y1[index]}});
+
+const x2 = ["row3_date", "row4_date", "row1_date", "row2_date"];
+const y2 = [9, 22, 111, 2];
+const data2 = x2.map((x, index) => {return {x, y: y2[index]}})
+
 export const expectedSeries = [
   new Series(
-    ["row1_date", "row2_date", "row3_date", "row4_date"],
-    [1, 2, 5, 8],
+    data1,
     "dcs:CumulativeCount_MedicalTest_COVID_19",
     'dcid:geoId/02',
     undefined,
@@ -503,8 +510,7 @@ export const expectedSeries = [
     1
   ),
   new Series(
-   ["row3_date", "row4_date", "row1_date", "row2_date"],
-   [9, 22, 111, 2],
+   data2,
    "dcs:CumulativeCount_MedicalTest_COVID_19",
    'dcid:geoId/02',
    undefined,
@@ -515,5 +521,8 @@ export const expectedSeries = [
  ),
 ];
 
-export const expectedID =
+export const expectedID1 =
 `dcs:CumulativeCount_MedicalTest_COVID_19,geoId/12345,geoId/12345,dcs:CovidTrackingProject,P1Y,Percent,100`;
+
+export const expectedID2 =
+`dcs:CumulativeCount_MedicalTest_COVID_19,geoId/12345,,dcs:CovidTrackingProject,P1Y,,100`;

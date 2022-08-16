@@ -19,23 +19,43 @@ import * as TestStr from './test-strs';
 
 
 test('testing Series.toID', () => {
-  const variableMeasured = 'dcs:CumulativeCount_MedicalTest_COVID_19';
-  const observationAbout = 'geoId/12345';
-  const provenance = 'geoId/12345';
-  const measurementMethod = 'dcs:CovidTrackingProject';
-  const observationPeriod = 'P1Y';
-  const unit = 'Percent';
-  const scalingFactor = 100;
+  const variableMeasured1 = 'dcs:CumulativeCount_MedicalTest_COVID_19';
+  const observationAbout1 = 'geoId/12345';
+  const provenance1 = 'geoId/12345';
+  const measurementMethod1 = 'dcs:CovidTrackingProject';
+  const observationPeriod1 = 'P1Y';
+  const unit1 = 'Percent';
+  const scalingFactor1 = 100;
 
-  const id = Series.toID(
-      variableMeasured,
-      observationAbout,
-      provenance,
-      measurementMethod,
-      observationPeriod,
-      unit,
-      scalingFactor,
+  const id1 = Series.toID(
+      variableMeasured1,
+      observationAbout1,
+      provenance1,
+      measurementMethod1,
+      observationPeriod1,
+      unit1,
+      scalingFactor1,
   );
 
-  expect(id).toStrictEqual(TestStr.expectedID);
+  expect(id1).toStrictEqual(TestStr.expectedID1);
+
+  const variableMeasured2 = 'dcs:CumulativeCount_MedicalTest_COVID_19';
+  const observationAbout2 = 'geoId/12345';
+  const provenance2 = undefined;
+  const measurementMethod2 = 'dcs:CovidTrackingProject';
+  const observationPeriod2 = 'P1Y';
+  const unit2 = undefined;
+  const scalingFactor2 = 100;
+
+  const id2 = Series.toID(
+      variableMeasured2,
+      observationAbout2,
+      provenance2,
+      measurementMethod2,
+      observationPeriod2,
+      unit2,
+      scalingFactor2,
+  );
+
+  expect(id2).toStrictEqual(TestStr.expectedID2);
 });

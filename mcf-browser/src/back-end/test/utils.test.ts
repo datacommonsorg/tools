@@ -17,6 +17,7 @@
 import {Node} from '../graph';
 import {
   doesExistsInKG,
+  getName,
   getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
@@ -80,4 +81,12 @@ test('testing doesExistsInKG', async () => {
 
   const inKg = await doesExistsInKG('bio/CHEMBL2');
   expect(inKg).toStrictEqual(true);
+});
+
+test('testing getName', async () => {
+  const nameExists = await getName('geoId/06');
+  expect(nameExists).toStrictEqual('California');
+
+  const nameDoesNotExist = await getName('test');
+  expect(nameDoesNotExist).toStrictEqual('test');
 });

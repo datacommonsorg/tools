@@ -36,10 +36,10 @@ import {ParsingError, ERROR_MESSAGES} from './utils';
 
 /** Parse files and get the local nodes
   * @param {Array<Blob>} fileList the list of blobs to be parsed
-  * @return {Object} an object containing all of the ids of the
+  * @return {ParseFileResponse} an object containing all of the ids of the
   *    subject nodes and the error messages
   */
-async function getNodes(fileList: Blob[]) {
+async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
   const finalReturn: ParseFileResponse = {
     errMsgs: [],
     localNodes: [],
@@ -123,9 +123,8 @@ async function getNodes(fileList: Blob[]) {
   * @param {Object[]} datapoints the time series data
   * @return {Series[]} an array of time series in the data
   */
-function getTimeData(datapoints: Object[]) {
+function getTimeData(datapoints: Object[]) : Series[] {
   // Turn from array of objects (one per file) to one big object
-
   const allData: any = {};
   for (const data of datapoints) {
     const allSeries = Object.keys(data);
@@ -148,11 +147,11 @@ function getTimeData(datapoints: Object[]) {
 /**
   * Takes in the facet string generated when parsing the file
   * and return an object of type Series
-  * @param {string} facets the facets defining the series
+  * @param {string} facet the facet defining the series
   * @param {Object} values the values for the series
   * @return {Series} the datapoint as a Series object
   */
-function parseSeries(facets: string, values: Object) {
+function parseSeries(facet: string, values: Object) : Series {
   const {
     variableMeasured,
     observationAbout,
@@ -161,17 +160,17 @@ function parseSeries(facets: string, values: Object) {
     observationPeriod,
     unit,
     scalingFactor,
-  } = Series.fromID(facets);
-  const x = [];
-  const y = [];
+  } = Series.fromID(facet);
+  const data = [];
   for (const date of Object.keys(values)) {
-    x.push(date);
-    y.push(parseFloat((values as any)[date]));
+    data.push({
+      x: date,
+      y: parseFloat((values as any)[date]),
+    });
   }
 
   return new Series(
-      x,
-      y,
+      data,
       variableMeasured,
       observationAbout,
       provenance,
