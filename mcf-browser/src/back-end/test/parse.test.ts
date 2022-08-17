@@ -15,7 +15,7 @@
  */
 
 import {getTimeData, mergeDataPoints, parseSeries} from '../parse';
-import {Series} from '../time-series';
+import {Series, TimeDataObject} from '../time-series';
 import * as TestStr from './test-strs';
 
 test('testing parseSeries', () => {
@@ -49,7 +49,7 @@ test('testing parseSeries', () => {
 });
 
 test('testing mergeDataPoints', () => {
-  let datapoints: any = TestStr.datapoints[0];
+  let datapoints: TimeDataObject = TestStr.datapoints[0];
   for (const data of TestStr.datapoints) {
     datapoints = mergeDataPoints(datapoints, data);
   }
@@ -58,7 +58,7 @@ test('testing mergeDataPoints', () => {
 });
 
 test('testing getTimeData', () => {
-  let datapoints: any = TestStr.datapoints[0];
+  let datapoints: TimeDataObject = TestStr.datapoints[0];
   for (const data of TestStr.datapoints) {
     datapoints = mergeDataPoints(datapoints, data);
   }
