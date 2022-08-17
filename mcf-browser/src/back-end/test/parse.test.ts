@@ -28,7 +28,7 @@ test('testing parseSeries', () => {
     '2020': 5.5,
     '2021': 63,
   };
-  const series = parseSeries(facet, values);
+  const seriesOutput = parseSeries(facet, values);
 
   const x = ['2018', '2019', '2020', '2021'];
   const y = [5, 100, 5.5, 63];
@@ -45,7 +45,11 @@ test('testing parseSeries', () => {
       undefined,
       100,
   );
-  expect(series).toStrictEqual(expectedSeries);
+  const expectedOutput = {
+    series: expectedSeries,
+    errMsgs: [],
+  }
+  expect(seriesOutput).toStrictEqual(expectedOutput);
 });
 
 test('testing mergeDataPoints', () => {
@@ -62,6 +66,7 @@ test('testing getTimeData', () => {
   for (const data of TestStr.datapoints) {
     datapoints = mergeDataPoints(datapoints, data);
   }
-  const series = getTimeData(datapoints);
-  expect(series).toStrictEqual(TestStr.expectedSeries);
+  const timeData = getTimeData(datapoints);
+  expect(timeData.timeData).toStrictEqual(TestStr.expectedSeries);
+  expect(timeData.errMsgs).toStrictEqual([]);
 });
