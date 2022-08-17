@@ -16,7 +16,6 @@
 
 /* Functions to relay information from the back-end to the front-end. */
 
-import {Series} from './time-series';
 import {Node} from './graph';
 import {getNodes, getTimeData} from './parse';
 import {ParseMcf} from './parse-mcf';
@@ -32,8 +31,13 @@ async function readFileList(fileList: Blob[]) : Promise<Object> {
   const nodes = await getNodes(fileList);
 
   // Get timeData
-  const timeData: Series[] = getTimeData(nodes.datapoints);
-  return {...nodes, timeData};
+  const timeData = getTimeData(nodes.datapoints);
+  return {
+    localNodes: nodes.localNodes,
+    datapoints: nodes.datapoints,
+    timeData: timeData.timeData,
+    errMsgs: nodes.errMsgs.concat(timeData.errMsgs),
+  };
 }
 
 /**

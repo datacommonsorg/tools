@@ -34,6 +34,22 @@ import {ParsingError, ERROR_MESSAGES} from './utils';
    datapoints: TimeDataObject;
  };
 
+ type TimeDataOutput = {
+   /** A list of time series data */
+   timeData: Series[];
+
+   /** Error messages that occurred while parsing */
+   errMsgs: ParsingError[];
+ }
+
+ type ParseSeriesOutput = {
+  /** A parsed series object */
+  series: Series | null;
+
+  /** Error messages that occurred while parsing */
+  errMsgs: ParsingError[];
+ }
+
 /**
   * Combines two TimeDataObjects into one
   * @param {TimeDataObject} datapoints the current set of all data points
@@ -145,15 +161,26 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
   * @param {TimeDataObject} datapoints the time series data
   * @return {Series[]} an array of time series in the data
   */
-function getTimeData(datapoints: TimeDataObject) : Series[] {
+function getTimeData(datapoints: TimeDataObject) : TimeDataOutput {
   // Turn from object to a list of series
-  const output = [];
+  const output: TimeDataOutput = {
+    timeData: [],
+    errMsgs: [],
+  };
 
   const allSeries = Object.keys(datapoints);
   for (const series of allSeries) {
     const seriesObject = datapoints[series];
     if (seriesObject) {
-      output.push(parseSeries(series, seriesObject));
+      const parsedSeriesObject = parseSeries(series, seriesObject);
+      if (parsedSeriesObject.errMsgs.length > 0) {
+        // If there was an error, add it
+        output.errMsgs =
+            output.errMsgs.concat(parsedSeriesObject.errMsgs);
+      } else if (parsedSeriesObject.series) {
+        // If there is a successfully created Series object, add it
+        output.timeData.push(parsedSeriesObject.series);
+      }
     }
   }
 
@@ -165,9 +192,9 @@ function getTimeData(datapoints: TimeDataObject) : Series[] {
   * and return an object of type Series
   * @param {string} facet the facet defining the series
   * @param {SeriesObject} values the values for the series
-  * @return {Series} the datapoint as a Series object
+  * @return {TimeDataOutput} a series object or an error message
   */
-function parseSeries(facet: string, values: SeriesObject) : Series {
+function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
   const {
     variableMeasured,
     observationAbout,
@@ -185,16 +212,28 @@ function parseSeries(facet: string, values: SeriesObject) : Series {
     });
   }
 
-  return new Series(
-      data,
-      variableMeasured,
-      observationAbout,
-      provenance,
-      measurementMethod,
-      observationPeriod,
-      unit,
-      scalingFactor,
-  );
+  if (variableMeasured === '' || observationAbout === '') {
+    return {
+      errMsgs: [],
+      series: null,
+    };
+  } else {
+    const series = new Series(
+        data,
+        variableMeasured,
+        observationAbout,
+        provenance,
+        measurementMethod,
+        observationPeriod,
+        unit,
+        scalingFactor,
+    );
+
+    return {
+      errMsgs: [],
+      series,
+    };
+  }
 }
 
 export {getNodes, getTimeData, parseSeries, mergeDataPoints};
