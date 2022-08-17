@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Series} from '../data';
+import {Series} from '../time-series';
 import * as TestStr from './test-strs';
 
 

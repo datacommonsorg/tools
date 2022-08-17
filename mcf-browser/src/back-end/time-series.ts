@@ -15,6 +15,7 @@
  */
 
 const ID_DELIMITER = ',';
+const NAMESPACE_PREFIXES = ['dcs:', 'dcid:', 'schema:'];
 
 const ID_PROPERTIES = [
   'variableMeasured',
@@ -33,20 +34,28 @@ type DataPoint = {
   y: number;
 };
 
+type SeriesObject = {
+  [date: string]: number | undefined;
+}
+
+type TimeDataObject = {
+  [facet: string]: SeriesObject | undefined;
+}
+
 /** Class representation of a single series */
 class Series {
   /** A unique identifier made using the facet
   */
   id: string;
 
-  /** An ordered list of datapoints */
+  /** A list of datapoints */
   data: DataPoint[];
 
   /** The observationAbout of the data */
-  observationAbout?: string;
+  observationAbout: string;
 
   /** The variable being measured */
-  variableMeasured?: string;
+  variableMeasured: string;
 
   /** The provenance of the data */
   provenance?: string;
@@ -77,8 +86,8 @@ class Series {
    */
   constructor(
       data: DataPoint[],
-      variableMeasured?: string,
-      observationAbout?: string,
+      variableMeasured: string,
+      observationAbout: string,
       provenance?: string,
       measurementMethod?: string,
       observationPeriod?: string,
@@ -88,19 +97,18 @@ class Series {
     const cleanVariable = (variable: string | undefined) => {
       if (!variable) {
         return variable;
-      } else if (variable.startsWith('dcs:')) {
-        return variable.slice(4);
-      } else if (variable.startsWith('dcid:')) {
-        return variable.slice(5);
-      } else if (variable.startsWith('schema:')) {
-        return variable.slice(7);
+      }
+      for (const prefix of NAMESPACE_PREFIXES) {
+        if (variable.startsWith(prefix)) {
+          return variable.slice(prefix.length);
+        }
       }
       return variable;
     };
 
     this.data = data;
-    this.variableMeasured = cleanVariable(variableMeasured);
-    this.observationAbout = cleanVariable(observationAbout);
+    this.variableMeasured = cleanVariable(variableMeasured) as string;
+    this.observationAbout = cleanVariable(observationAbout) as string;
     this.provenance = cleanVariable(provenance);
     this.measurementMethod = cleanVariable(measurementMethod);
     this.observationPeriod = cleanVariable(observationPeriod);
@@ -140,12 +148,12 @@ class Series {
       scalingFactor?: number,
   ) : string {
     const facetList = [
-      variableMeasured ? variableMeasured : '',
-      observationAbout ? observationAbout : '',
-      provenance ? provenance : '',
-      measurementMethod ? measurementMethod : '',
-      observationPeriod ? observationPeriod : '',
-      unit ? unit : '',
+      variableMeasured,
+      observationAbout,
+      provenance,
+      measurementMethod,
+      observationPeriod,
+      unit,
       scalingFactor ? scalingFactor.toString() : '',
     ];
 
@@ -171,8 +179,8 @@ class Series {
     const parseString = (str: string) => (str === '') ? undefined : str;
 
     return {
-      variableMeasured: parseString(variableMeasured),
-      observationAbout: parseString(observationAbout),
+      variableMeasured: variableMeasured,
+      observationAbout: observationAbout,
       provenance: parseString(provenance),
       measurementMethod: parseString(measurementMethod),
       observationPeriod: parseString(observationPeriod),
@@ -185,23 +193,9 @@ class Series {
    * to the sorted version
    */
   sortData() {
-    const data = this.data.map((dataPoint) => {
-      return {
-        ...dataPoint,
-        xNum: Date.parse(dataPoint.x),
-      };
-    });
-
-    data.sort(
-        (a, b) => a.xNum < b.xNum ? -1 : a.xNum > b.xNum ? 1 : 0,
+    this.data.sort(
+        (a, b) => a.x < b.x ? -1 : a.x > b.x ? 1 : 0,
     );
-
-    this.data = data.map((dataPoint) => {
-      return {
-        x: dataPoint.x,
-        y: dataPoint.y,
-      };
-    });
   }
 
   /** Returns a copy of the object
@@ -248,3 +242,5 @@ class Series {
 }
 
 export {ID_DELIMITER, Series};
+
+export type {SeriesObject, TimeDataObject};

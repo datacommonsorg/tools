@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Series} from './data';
+import {Series, SeriesObject, TimeDataObject} from './time-series';
 import {ParseMcf} from './parse-mcf';
 import {ParseTmcf} from './parse-tmcf';
 import {ParsingError, ERROR_MESSAGES} from './utils';
@@ -31,8 +31,29 @@ import {ParsingError, ERROR_MESSAGES} from './utils';
    /** A list of the generated mcf string for
     * each CSV row
     */
-   datapoints: Object[];
+   datapoints: TimeDataObject;
  };
+
+/**
+  * Combines two TimeDataObjects into one
+  * @param {TimeDataObject} datapoints the current set of all data points
+  * @param {TimeDataObject} newData the new set of data points
+  * @return {TimeDataObject} a merged set of all data points
+  */
+function mergeDataPoints(
+    datapoints: TimeDataObject,
+    newData: TimeDataObject,
+) : TimeDataObject {
+  // Go through all series and add their data
+  const allSeries = Object.keys(newData);
+
+  for (const series of allSeries) {
+    datapoints[series] = datapoints[series] ? datapoints[series] : {};
+    datapoints[series] = {...datapoints[series], ...newData[series]};
+  }
+
+  return datapoints;
+}
 
 /** Parse files and get the local nodes
   * @param {Array<Blob>} fileList the list of blobs to be parsed
@@ -43,7 +64,7 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
   const finalReturn: ParseFileResponse = {
     errMsgs: [],
     localNodes: [],
-    datapoints: [],
+    datapoints: {},
   };
 
   // Find TMCF file, if it exists
@@ -100,9 +121,10 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
         );
 
         const datapoints = await ParseTmcf.generateDataPoints(tmcfFile, file);
-        finalReturn['datapoints'] = finalReturn['datapoints'].concat([
-          datapoints,
-        ]);
+        finalReturn['datapoints'] = mergeDataPoints(
+            finalReturn['datapoints'],
+            datapoints,
+        );
 
         if (tmcfOut['errMsgs'].length !== 0) {
           finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
@@ -120,25 +142,19 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
 }
 
 /** Group nodes and find all time series
-  * @param {Object[]} datapoints the time series data
+  * @param {TimeDataObject} datapoints the time series data
   * @return {Series[]} an array of time series in the data
   */
-function getTimeData(datapoints: Object[]) : Series[] {
-  // Turn from array of objects (one per file) to one big object
-  const allData: any = {};
-  for (const data of datapoints) {
-    const allSeries = Object.keys(data);
-    for (const series of allSeries) {
-      allData[series] = allData[series] ? allData[series] : {};
-      allData[series] = {...allData[series], ...(data as any)[series]};
-    }
-  }
-
-  // Turn from object to series
+function getTimeData(datapoints: TimeDataObject) : Series[] {
+  // Turn from object to a list of series
   const output = [];
-  const allSeries = Object.keys(allData);
+
+  const allSeries = Object.keys(datapoints);
   for (const series of allSeries) {
-    output.push(parseSeries(series, allData[series]));
+    const seriesObject = datapoints[series];
+    if (seriesObject) {
+      output.push(parseSeries(series, seriesObject));
+    }
   }
 
   return output;
@@ -148,10 +164,10 @@ function getTimeData(datapoints: Object[]) : Series[] {
   * Takes in the facet string generated when parsing the file
   * and return an object of type Series
   * @param {string} facet the facet defining the series
-  * @param {Object} values the values for the series
+  * @param {SeriesObject} values the values for the series
   * @return {Series} the datapoint as a Series object
   */
-function parseSeries(facet: string, values: Object) : Series {
+function parseSeries(facet: string, values: SeriesObject) : Series {
   const {
     variableMeasured,
     observationAbout,
@@ -181,4 +197,4 @@ function parseSeries(facet: string, values: Object) : Series {
   );
 }
 
-export {getNodes, getTimeData, parseSeries};
+export {getNodes, getTimeData, parseSeries, mergeDataPoints};

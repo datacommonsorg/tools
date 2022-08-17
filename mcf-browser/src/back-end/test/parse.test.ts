@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-import {getTimeData, parseSeries} from '../parse';
-import {Series} from '../data';
+import {getTimeData, mergeDataPoints, parseSeries} from '../parse';
+import {Series} from '../time-series';
 import * as TestStr from './test-strs';
 
 test('testing parseSeries', () => {
   const facet =
-   'dcs:CumulativeCount_MedicalTest_COVID_19,,,dcs:CovidTrackingProject,,,100';
+   'dcs:CumulativeCount_MedicalTest_COVID_19' +
+   ',Covid,,dcs:CovidTrackingProject,,,100';
   const values = {
     '2018': 5,
     '2019': 100,
@@ -37,7 +38,7 @@ test('testing parseSeries', () => {
   const expectedSeries = new Series(
       data,
       'dcs:CumulativeCount_MedicalTest_COVID_19',
-      undefined,
+      'Covid',
       undefined,
       'dcs:CovidTrackingProject',
       undefined,
@@ -47,7 +48,20 @@ test('testing parseSeries', () => {
   expect(series).toStrictEqual(expectedSeries);
 });
 
+test('testing mergeDataPoints', () => {
+  let datapoints: any = TestStr.datapoints[0];
+  for (const data of TestStr.datapoints) {
+    datapoints = mergeDataPoints(datapoints, data);
+  }
+
+  expect(datapoints).toStrictEqual(TestStr.expectedTimeData);
+});
+
 test('testing getTimeData', () => {
-  const series = getTimeData(TestStr.datapoints);
+  let datapoints: any = TestStr.datapoints[0];
+  for (const data of TestStr.datapoints) {
+    datapoints = mergeDataPoints(datapoints, data);
+  }
+  const series = getTimeData(datapoints);
   expect(series).toStrictEqual(TestStr.expectedSeries);
 });

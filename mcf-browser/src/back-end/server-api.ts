@@ -16,7 +16,7 @@
 
 /* Functions to relay information from the back-end to the front-end. */
 
-import {Series} from './data';
+import {Series} from './time-series';
 import {Node} from './graph';
 import {getNodes, getTimeData} from './parse';
 import {ParseMcf} from './parse-mcf';

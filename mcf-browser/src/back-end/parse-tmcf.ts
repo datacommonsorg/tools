@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Series} from './data';
+import {Series, SeriesObject, TimeDataObject} from './time-series';
 import {shouldReadLine} from './utils';
 
 /**
@@ -239,9 +239,9 @@ class ParseTmcf {
    * @param {string} template The string representation of a tmcf file.
    * @param {Array<Object>} csvRows The json representation of the csv file.
    *     Each Object element of the array represents one row of the csv.
-   * @return {Object} The generated mcf as an Object.
+   * @return {TimeDataObject} The generated mcf as an Object.
    */
-  csvToDataPoint(template: string, csvRows: Object[]) : Object {
+  csvToDataPoint(template: string, csvRows: Object[]) : TimeDataObject {
     this.csvIndex = 1;
     const datapoints: any = {};
     for (const row of csvRows) {
@@ -251,7 +251,7 @@ class ParseTmcf {
       );
       if (facet && date && value) {
         datapoints[facet] = datapoints[facet] ? datapoints[facet] : {};
-        datapoints[facet][date] = value;
+        datapoints[facet][date] = parseFloat(value);
       }
       this.csvIndex += 1;
     }
@@ -263,11 +263,11 @@ class ParseTmcf {
    * values are the datapoints
    * @param {string} template The string representation of a tmcf file.
    * @param {FileObject} csvFile The csv file from html file-input element.
-   * @return {Object} The json representation of the csv file.
+   * @return {TimeDataObject} The json representation of the csv file.
    */
   async getDataPointsFromFile(
       template: string, csvFile: Blob,
-  ) : Promise<Object> {
+  ) : Promise<TimeDataObject> {
     const fileReader = new FileReader();
     fileReader.readAsText(csvFile);
     return new Promise((res, rej) => {
@@ -346,10 +346,10 @@ class ParseTmcf {
    * Converts a TMCF file and CSV file to a list of data points
    * @param {FileObject} tmcfFile The tmcf file from html file-input element.
    * @param {FileObject} csvFile THe csv file from html file-input element.
-   * @return {string} A list of data points
+   * @return {TimeDataObject} A list of data points
    */
   static async generateDataPoints(tmcfFile: Blob, csvFile: Blob)
-  : Promise<string | Object> {
+  : Promise<TimeDataObject> {
     return ParseTmcf.readTmcfFile(tmcfFile).then(
         (template: string | ArrayBuffer | null) => {
           const tmcfParser = new ParseTmcf();
