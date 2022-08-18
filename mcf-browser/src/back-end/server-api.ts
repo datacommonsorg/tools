@@ -19,14 +19,23 @@
 import {Node} from './graph';
 import {getNodes, getTimeData} from './parse';
 import {ParseMcf} from './parse-mcf';
+import {Series, TimeDataObject} from './time-series';
+import {ParsingError} from './utils';
+
+type ReadFileListResponse = {
+  localNodes: string[],
+  datapoints: TimeDataObject,
+  timeData: Series[],
+  errMsgs: ParsingError[]
+}
 
 /**
  * Parses App state's files list.
  * @param {Array<Blob>} fileList The list of blobs to be parsed.
- * @return {Object} An object containing the ids of the subject nodes and any
- *     parsing error message objects.
+ * @return {ReadFileListResponse} An object containing the ids of the subject
+ *  nodes and any parsing error message objects.
  */
-async function readFileList(fileList: Blob[]) : Promise<Object> {
+async function readFileList(fileList: Blob[]) : Promise<ReadFileListResponse> {
   // Get parsing errors and nodes
   const nodes = await getNodes(fileList);
 

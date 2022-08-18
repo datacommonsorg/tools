@@ -64,8 +64,9 @@ function mergeDataPoints(
   const allSeries = Object.keys(newData);
 
   for (const series of allSeries) {
-    datapoints[series] = datapoints[series] ? datapoints[series] : {};
-    datapoints[series] = {...datapoints[series], ...newData[series]};
+    datapoints[series] = series in datapoints ?
+        {...datapoints[series], ...newData[series]} :
+        newData[series];
   }
 
   return datapoints;
@@ -159,7 +160,8 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
 
 /** Group nodes and find all time series
   * @param {TimeDataObject} datapoints the time series data
-  * @return {Series[]} an array of time series in the data
+  * @return {TimeDataOutput} an object containing an array of
+  * time series in the data and any error messages
   */
 function getTimeData(datapoints: TimeDataObject) : TimeDataOutput {
   // Turn from object to a list of series
@@ -192,7 +194,7 @@ function getTimeData(datapoints: TimeDataObject) : TimeDataOutput {
   * and return an object of type Series
   * @param {string} facet the facet defining the series
   * @param {SeriesObject} values the values for the series
-  * @return {TimeDataOutput} a series object or an error message
+  * @return {ParseSeriesOutput} a series object or an error message
   */
 function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
   const {
@@ -204,36 +206,52 @@ function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
     unit,
     scalingFactor,
   } = Series.fromID(facet);
+
+  // If it's missing variableMeasured or observationAbout, return an error
+  if (variableMeasured === '' || observationAbout === '') {
+    let errorMessage: string;
+    if (variableMeasured === '' && observationAbout === '') {
+      errorMessage = 'data point is missing variableMeasured and observationAbout';
+    }
+    else if (variableMeasured === '') {
+      errorMessage = 'data point is missing variableMeasured';
+    }
+    else {
+      errorMessage = 'data point is missing observationAbout';
+    }
+    const error: ParsingError = {
+      file: '',
+      errs: [['', facet, errorMessage]]
+    }
+    return {
+      errMsgs: [error],
+      series: null,
+    };
+  }
+
   const data = [];
   for (const date of Object.keys(values)) {
     data.push({
       x: date,
-      y: parseFloat((values as any)[date]),
+      y: values[date] as number,
     });
   }
 
-  if (variableMeasured === '' || observationAbout === '') {
-    return {
-      errMsgs: [],
-      series: null,
-    };
-  } else {
-    const series = new Series(
-        data,
-        variableMeasured,
-        observationAbout,
-        provenance,
-        measurementMethod,
-        observationPeriod,
-        unit,
-        scalingFactor,
-    );
+  const series = new Series(
+      data,
+      variableMeasured,
+      observationAbout,
+      provenance,
+      measurementMethod,
+      observationPeriod,
+      unit,
+      scalingFactor,
+  );
 
-    return {
-      errMsgs: [],
-      series,
-    };
-  }
+  return {
+    errMsgs: [],
+    series,
+  };
 }
 
 export {getNodes, getTimeData, parseSeries, mergeDataPoints};

@@ -48,8 +48,57 @@ test('testing parseSeries', () => {
   const expectedOutput = {
     series: expectedSeries,
     errMsgs: [],
-  }
+  };
   expect(seriesOutput).toStrictEqual(expectedOutput);
+
+  // Check error messages when facet string is invalid
+  const missingVarMeasuredFacet = ',Covid,,dcs:CovidTrackingProject,,,100';
+  const missingVarMeasuredOutput = parseSeries(missingVarMeasuredFacet, values);
+  const expectedMissingVarMeasured = {
+    series: null,
+    errMsgs: [{
+      file: '',
+      errs: [[
+        '', 
+        missingVarMeasuredFacet, 
+        'data point is missing variableMeasured'
+      ]]
+    }]
+  };
+  expect(missingVarMeasuredOutput).toStrictEqual(expectedMissingVarMeasured);
+  
+  const missingObsAboutFacet = 
+  'dcs:CumulativeCount_MedicalTest_COVID_19,,,dcs:CovidTrackingProject,,,100';
+  const missingObsAboutOutput = parseSeries(missingObsAboutFacet, values);
+  const expectedMissingObsAbout = {
+    series: null,
+    errMsgs: [{
+      file: '',
+      errs: [[
+        '', 
+        missingObsAboutFacet, 
+        'data point is missing observationAbout'
+      ]]
+    }]
+  };
+  expect(missingObsAboutOutput).toStrictEqual(expectedMissingObsAbout);
+
+  const missingBothFacet = ',,,dcs:CovidTrackingProject,,,100';
+  const missingBothOutput = parseSeries(missingBothFacet, values);
+  const expectedMissingBoth = {
+    series: null,
+    errMsgs: [{
+      file: '',
+      errs: [[
+        '', 
+        missingBothFacet, 
+        'data point is missing variableMeasured and observationAbout'
+      ]]
+    }]
+  };
+  expect(missingBothOutput).toStrictEqual(expectedMissingBoth);
+  
+
 });
 
 test('testing mergeDataPoints', () => {

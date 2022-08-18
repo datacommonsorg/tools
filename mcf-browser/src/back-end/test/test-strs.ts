@@ -458,11 +458,7 @@ export const expectedFacetandValue0 = {
   value: '130236'
 };
 
-export const expectedFacetandValue1 = {
-  facet: null,
-  date: null,
-  value: null
-};
+export const expectedFacetandValue1 = null;
 
 export const expectedDatapoints = {
   "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,": {"row1_date": 5}, 
