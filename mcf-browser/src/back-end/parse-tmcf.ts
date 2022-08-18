@@ -259,7 +259,8 @@ class ParseTmcf {
    */
   csvToDataPoint(template: string, csvRows: CsvRow[]) : TimeDataObject {
     this.csvIndex = 1;
-    const datapoints: any = {};
+
+    const datapoints: TimeDataObject = {};
     for (const row of csvRows) {
       const parsedCsvRow = this.getFacetAndValueFromRow(
           template,
@@ -268,8 +269,13 @@ class ParseTmcf {
 
       if (parsedCsvRow) {
         const {facet, date, value} = parsedCsvRow;
-        datapoints[facet] = datapoints[facet] ? datapoints[facet] : {};
-        datapoints[facet][date] = parseFloat(value);
+        const parsedValue = value !== '' ? parseFloat(value) : undefined;
+        datapoints[facet] = datapoints[facet] ?
+            {
+              ...datapoints[facet],
+              [date]: parsedValue,
+            } :
+            {[date]: parsedValue};
       }
       this.csvIndex += 1;
     }
