@@ -208,6 +208,7 @@ function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
   } = Series.fromID(facet);
 
   // If it's missing variableMeasured or observationAbout, return an error
+  // TODO: change this error throwing to happen in generateDataPoints
   if (variableMeasured === '' || observationAbout === '') {
     let errorMessage: string;
     if (variableMeasured === '' && observationAbout === '') {
