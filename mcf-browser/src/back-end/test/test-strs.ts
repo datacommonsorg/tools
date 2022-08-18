@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+ import { Series } from '../time-series';
+
 /** File contains strings used in parse-tmcf.test.js */
 export const testTMCF1 = `
 Node: E:SomeDataset->E1
@@ -44,7 +47,7 @@ export const testCSV1 = [
     SurveyItem_Dcid: 'row1_survey_dcid',
     GeoId: 'row1_geoid',
     Date: 'row1_date',
-    CumulativeCount_MedicalTest_COVID_19: 'row1_test_count',
+    CumulativeCount_MedicalTest_COVID_19: 5,
   },
   {
     ResponseOption_Dcid: 'row2_resop_dcid',
@@ -54,7 +57,7 @@ export const testCSV1 = [
     SurveyItem_Dcid: 'row2_survey_dcid',
     GeoId: 'row2_geoid',
     Date: 'row2_date',
-    CumulativeCount_MedicalTest_COVID_19: 'row2_test_count',
+    CumulativeCount_MedicalTest_COVID_19: 6,
   },
 ];
 export const expectedMCF1 = `
@@ -76,7 +79,7 @@ variableMeasured: dcs:CumulativeCount_MedicalTest_COVID_19
 measurementMethod: dcs:CovidTrackingProject
 observationAbout: row1_geoid
 observationDate: row1_date
-value: row1_test_count
+value: 5
 
 
 Node: SomeDataset_E1_R2
@@ -97,7 +100,7 @@ variableMeasured: dcs:CumulativeCount_MedicalTest_COVID_19
 measurementMethod: dcs:CovidTrackingProject
 observationAbout: row2_geoid
 observationDate: row2_date
-value: row2_test_count
+value: 6
 `;
 export const testTMCF2 = `
 Node: E:COVIDTracking_States->E0
@@ -448,3 +451,83 @@ observationAbout: dcid:geoId/02
 observationDate: 2020-07-07
 value: 130236
 `;
+
+export const expectedFacetandValue0 = {
+  facet: 'dcs:CumulativeCount_MedicalTest_COVID_19_Negative,dcid:geoId/02,,dcs:CovidTrackingProject,,,',
+  date: '2020-07-07',
+  value: '130236'
+};
+
+export const expectedFacetandValue1 = null;
+
+export const expectedDatapoints = {
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,": {"row1_date": 5}, 
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row2_geoid,,dcs:CovidTrackingProject,,,": {"row2_date": 6}
+}
+
+export const datapoints = [
+  {
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
+      "row1_date": 1, "row2_date": 2
+    },
+  },
+  {
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
+      "row3_date": 5, "row4_date": 8
+    },
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
+      "row3_date": 9, "row4_date": 22
+    }
+  },
+  {
+    "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
+      "row1_date": 111, "row2_date": 2
+    }
+  }
+];
+
+export const expectedTimeData = {
+  "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
+    "row1_date": 1, "row2_date": 2, "row3_date": 5, "row4_date": 8
+  },
+  "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
+    "row1_date": 111, "row2_date": 2, "row3_date": 9, "row4_date": 22
+  }
+};
+
+const x1 = ["row1_date", "row2_date", "row3_date", "row4_date"];
+const y1 = [1, 2, 5, 8];
+const data1 = x1.map((x, index) => {return {x, y: y1[index]}});
+
+const x2 = ["row3_date", "row4_date", "row1_date", "row2_date"];
+const y2 = [9, 22, 111, 2];
+const data2 = x2.map((x, index) => {return {x, y: y2[index]}})
+
+export const expectedSeries = [
+  new Series(
+    data1,
+    "dcs:CumulativeCount_MedicalTest_COVID_19",
+    'dcid:geoId/02',
+    undefined,
+    "dcs:CovidTrackingProject",
+    undefined,
+    undefined,
+    1
+  ),
+  new Series(
+   data2,
+   "dcs:CumulativeCount_MedicalTest_COVID_19",
+   'dcid:geoId/02',
+   undefined,
+   "dcs:CovidTrackingProject",
+   undefined,
+   undefined,
+   100
+ ),
+];
+
+export const expectedID1 =
+`dcs:CumulativeCount_MedicalTest_COVID_19,geoId/12345,geoId/12345,dcs:CovidTrackingProject,P1Y,Percent,100`;
+
+export const expectedID2 =
+`dcs:CumulativeCount_MedicalTest_COVID_19,geoId/12345,,dcs:CovidTrackingProject,P1Y,,100`;

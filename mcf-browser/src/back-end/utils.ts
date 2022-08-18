@@ -46,13 +46,20 @@ export interface ParsingError {
   file: string;
 }
 
+interface PropertyLabelResponse {
+  inLabels: string[];
+  outLabels: string[];
+}
+
 /**
  * Gets all property labels of the given dcid that are in the DC KG.
  *
  * @param {string} dcid The dcid of the node to find property labels for.
- * @return {Object} An object containing both 'in' and 'out' property labels.
+ * @return {PropertyLabelResponse} An object containing both 'in' and 'out'
+ * property labels.
  */
-async function getRemotePropertyLabels(dcid: string) : Promise<Object> {
+async function getRemotePropertyLabels(dcid: string)
+  : Promise<PropertyLabelResponse> {
   // Get inward and outward property labels
   const outTargetUrl = `${API_ROOT}/v1/properties/out/${dcid}`;
   const inTargetUrl = `${API_ROOT}/v1/properties/in/${dcid}`;
@@ -109,7 +116,8 @@ export type DCPropertyValueResponse = {
  * object from the value's dcid or to return the string value that the object
  * holds.
  *
- * @param {Object} valueObj An object returned from DC REST get_values API.
+ * @param {DCPropertyValueResponse} valueObj An object returned from DC REST
+ *     get_values API.
  * @return {Node | string} The created Node if the value object has a dcid,
  *     otherwise the string of the value.
  */
@@ -160,10 +168,30 @@ function shouldReadLine(line: string) : boolean {
   return true;
 }
 
+/**
+ * Queries Data Commons to get the name for a location
+ * @param {string} dcid The dcid to get the location for
+ * @return {Promise<string>} Returns the location
+ */
+async function getName(dcid: string) {
+  const url = `${API_ROOT}/v1/property/values/out/${dcid}/name`;
+
+  // expected response if dcid exists is {"values":"[...]}
+  // expected response if dcid does not exist is {}
+  return fetch(url)
+      .then((res) => res.json())
+      .then((data) =>
+        (data.values && data.values.length > 0) ?
+        (data.values[0].value) :
+        `${dcid}`,
+      );
+}
+
 export {
   ERROR_MESSAGES, getRemotePropertyLabels,
   getRemotePropertyValues,
   getValueFromValueObj,
   doesExistsInKG,
   shouldReadLine,
+  getName,
 };

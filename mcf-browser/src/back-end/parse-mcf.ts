@@ -28,8 +28,10 @@ const NAMESPACES = {
   'dcid': 'dcid',
 };
 
+type Namespace = 'l' | 'schema' | 'dcs' | 'dcid';
+
 type ParsedValue = {
-  ns: 'l' | 'schema' | 'dcs' | 'dcid',
+  ns: Namespace,
   ref: string
 };
 
@@ -97,10 +99,10 @@ class ParseMcf {
    * <namespace, reference> pair.
    *
    * @param {string} propValues A comma separated list of property values.
-   * @return {Array<(string|Object)>} Array of
+   * @return {Array<(string|ParsedValue)>} Array of
    *     parsed values.
    */
-  parsePropValues(propValues: string) : (string | Object)[] {
+  parsePropValues(propValues: string) : (string | ParsedValue)[] {
     const values = [];
     // split propValues on commas which are not enclosed by double quotes
     // split string at each comma followed by even number of double quotes
@@ -109,7 +111,7 @@ class ParseMcf {
       const namespace = propValue.split(':')[0].trim();
       if (namespace in NAMESPACES) {
         values.push({
-          ns: namespace,
+          ns: namespace as Namespace,
           ref: propValue.substring(propValue.indexOf(':') + 1).trim(),
         });
       } else if (
@@ -138,10 +140,10 @@ class ParseMcf {
    * then the dcid for curNode is set. Updates localNodeHash mapping to store
    * the subject nodes to be displayed in home screen of browser.
    *
-   * @param {Array<string|Object>} parsedValues The array of parsed values from
-   *     a line of mcf with property label of 'Node'.
+   * @param {Array<string|ParsedValue>} parsedValues The array of parsed values
+   * from a line of mcf with property label of 'Node'.
    */
-  setCurNode(parsedValues: Object[]) {
+  setCurNode(parsedValues: (ParsedValue | string)[]) {
     if (parsedValues.length !== 1) {
       this.errors.push([
         this.lineNum.toString(),
@@ -197,10 +199,10 @@ class ParseMcf {
   /**
    * Sets the dcid of the curNode variable of the calling ParseMcf object given
    * the property label of the line being parsed is 'dcid'.
-   * @param {Array<string|Object>} parsedValues The array of parsed values from
-   *     a line of mcf with property label of 'dcid'.
+   * @param {Array<string|ParsedValue>} parsedValues The array of parsed values
+   * from a line of mcf with property label of 'dcid'.
    */
-  setCurNodeDCID(parsedValues: (string | Object)[]) {
+  setCurNodeDCID(parsedValues: (string | ParsedValue)[]) {
     if (!this.curNode) {
       this.errors.push([
         this.lineNum.toString(),
@@ -242,12 +244,12 @@ class ParseMcf {
    * parsed value given in the array parsedValues.
    *
    * @param {string} propLabel The property label of the triple to be created.
-   * @param {Array<string|Object>} parsedValues The parsed values from a line of
-   *     mcf, used to create the target for each created triple.
+   * @param {Array<string|ParsedValue>} parsedValues The parsed values from a
+   * line of mcf, used to create the target for each created triple.
    */
   createAssertionsFromParsedValues(
       propLabel: string,
-      parsedValues: (string | Object)[],
+      parsedValues: (string | ParsedValue)[],
   ) {
     if (!this.curNode) {
       this.errors.push([
@@ -383,3 +385,5 @@ class ParseMcf {
 ParseMcf.localNodeHash = {}; // stores mapping of mcf subject IDs to the Node
 
 export {ParseMcf};
+
+export type {ParsedValue};

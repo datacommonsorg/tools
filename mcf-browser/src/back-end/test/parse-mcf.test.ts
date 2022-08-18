@@ -15,7 +15,7 @@
  */
 
 import {Node, Assertion} from '../graph';
-import {ParseMcf} from '../parse-mcf';
+import {ParsedValue, ParseMcf} from '../parse-mcf';
 import {ERROR_MESSAGES} from '../utils';
 
 test('testing constructor. prov property', () => {
@@ -52,7 +52,7 @@ test('testing setCurNode', () => {
   mcfParser.setCurNode(noNameSpaceParsedVal);
   expect(mcfParser.curNode).toStrictEqual(noNameSpaceExpectedNode);
 
-  const remoteNameSpaceParsedVal =
+  const remoteNameSpaceParsedVal: ParsedValue[] =
       [{'ns': 'dcid', 'ref': 'remoteNamespaceId'}];
 
   const remoteNameSpaceExpectedNode =
@@ -125,7 +125,7 @@ test('testing node values with createAssertionsFromParsedValues', () => {
   mcfParser.curNode = new Node(localId);
 
   const propLabel = 'nodeVal';
-  const parsedValues = [
+  const parsedValues: ParsedValue[] = [
     {'ns': 'l', 'ref': 'localId'},
     {'ns': 'dcs', 'ref': 'remoteId'},
   ];
@@ -362,28 +362,26 @@ test('testing errors: ', () => {
   const mcfParser = new ParseMcf(fileName);
 
   mcfParser.setCurNode(['localId1', 'localId2']); // #1
-  mcfParser.setCurNode([{'ns': 'invalid', 'ref': 'localId1'}]); // #2
-  mcfParser.createAssertionsFromParsedValues('', ['val']); // #3
+  mcfParser.createAssertionsFromParsedValues('', ['val']); // #2
 
   mcfParser.setCurNode(['localId1']);
-  mcfParser.setCurNodeDCID(['dcid1', 'dcid2']); // #4
-  mcfParser.setCurNodeDCID([{'ns': 'dcid', 'ref': 'remote'}]); // #5
+  mcfParser.setCurNodeDCID(['dcid1', 'dcid2']); // #3
+  mcfParser.setCurNodeDCID([{'ns': 'dcid', 'ref': 'remote'}]); // #4
 
   mcfParser.setCurNodeDCID(['dcid1']);
-  mcfParser.setCurNodeDCID(['dcid2']); // #6
+  mcfParser.setCurNodeDCID(['dcid2']); // #5
 
-  mcfParser.parseLine('prop'); // #7
-  mcfParser.parseLine(':val'); // #8
-  mcfParser.parseLine('val:'); // #9
+  mcfParser.parseLine('prop'); // #6
+  mcfParser.parseLine(':val'); // #7
+  mcfParser.parseLine('val:'); // #8
 
   expect(mcfParser.errors).toEqual([
     ['-1', null, ERROR_MESSAGES.CUR_NODE_LENGTH], // #1
-    ['-1', null, ERROR_MESSAGES.CUR_NODE_NS], // #2
-    ['-1', null, ERROR_MESSAGES.ASSERT_NO_CUR], // #3
-    ['-1', null, ERROR_MESSAGES.SET_DCID_MULTIPLE], // #4
-    ['-1', null, ERROR_MESSAGES.SET_DCID_REF], // #5
-    ['-1', null, ERROR_MESSAGES.SET_DCID], // #6
-    ['-1', null, ERROR_MESSAGES.PARSE_NO_COLON], // #7
-    ['-1', null, ERROR_MESSAGES.PARSE_NO_LABEL], // #8
+    ['-1', null, ERROR_MESSAGES.ASSERT_NO_CUR], // #2
+    ['-1', null, ERROR_MESSAGES.SET_DCID_MULTIPLE], // #3
+    ['-1', null, ERROR_MESSAGES.SET_DCID_REF], // #4
+    ['-1', null, ERROR_MESSAGES.SET_DCID], // #5
+    ['-1', null, ERROR_MESSAGES.PARSE_NO_COLON], // #6
+    ['-1', null, ERROR_MESSAGES.PARSE_NO_LABEL], // #7
   ]);
 });

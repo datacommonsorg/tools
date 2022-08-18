@@ -1,0 +1,246 @@
+/**
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+const ID_DELIMITER = ',';
+const NAMESPACE_PREFIXES = ['dcs:', 'dcid:', 'schema:'];
+
+const ID_PROPERTIES = [
+  'variableMeasured',
+  'observationAbout',
+  'provenance',
+  'measurementMethod',
+  'observationPeriod',
+  'unit',
+  'scalingFactor',
+] as const;
+type IdProperties = typeof ID_PROPERTIES[number];
+type SeriesIdObject = Pick<Series, IdProperties>;
+
+type DataPoint = {
+  x: string;
+  y: number;
+};
+
+type SeriesObject = {
+  [date: string]: number | undefined;
+}
+
+type TimeDataObject = {
+  [facet: string]: SeriesObject | undefined;
+}
+
+/** Class representation of a single series */
+class Series {
+  /** A unique identifier made using the facet
+  */
+  id: string;
+
+  /** A list of datapoints */
+  data: DataPoint[];
+
+  /** The observationAbout of the data */
+  observationAbout: string;
+
+  /** The variable being measured */
+  variableMeasured: string;
+
+  /** The provenance of the data */
+  provenance?: string;
+
+  /** The measurement method of the data */
+  measurementMethod?: string;
+
+  /** The length of time over which the data point was collected */
+  observationPeriod?: string;
+
+  /** The unit for the data */
+  unit?: string;
+
+  /** The scaling factor for the data */
+  scalingFactor?: number;
+
+  /**
+   * Constructor for the series class, creates the object
+   * and instantiates all of the properties
+   * @param {DataPoint[]} data the datapoints for the series
+   * @param {string} variableMeasured the variableMeasured of a series
+   * @param {string} observationAbout the observationAbout of a series
+   * @param {string} provenance the provenance of a series
+   * @param {string} measurementMethod the measurementMethod of a series
+   * @param {string} observationPeriod the observationPeriod of a series
+   * @param {string} unit the unit of a series
+   * @param {number} scalingFactor the scalingFactor of a series
+   */
+  constructor(
+      data: DataPoint[],
+      variableMeasured: string,
+      observationAbout: string,
+      provenance?: string,
+      measurementMethod?: string,
+      observationPeriod?: string,
+      unit?: string,
+      scalingFactor?: number,
+  ) {
+    const cleanVariable = (variable: string | undefined) => {
+      if (!variable) {
+        return variable;
+      }
+      for (const prefix of NAMESPACE_PREFIXES) {
+        if (variable.startsWith(prefix)) {
+          return variable.slice(prefix.length);
+        }
+      }
+      return variable;
+    };
+
+    this.data = data;
+    this.variableMeasured = cleanVariable(variableMeasured) as string;
+    this.observationAbout = cleanVariable(observationAbout) as string;
+    this.provenance = cleanVariable(provenance);
+    this.measurementMethod = cleanVariable(measurementMethod);
+    this.observationPeriod = cleanVariable(observationPeriod);
+    this.unit = cleanVariable(unit);
+    this.scalingFactor = scalingFactor;
+
+    this.id = Series.toID(
+        variableMeasured,
+        observationAbout,
+        provenance,
+        measurementMethod,
+        observationPeriod,
+        unit,
+        scalingFactor,
+    );
+  }
+
+  /**
+   * Generates a unique ID for a series given the values of
+   * the properties of a Series object
+   * @param {string} variableMeasured the variableMeasured of a series
+   * @param {string} observationAbout the observationAbout of a series
+   * @param {string} provenance the provenance of a series
+   * @param {string} measurementMethod the measurementMethod of a series
+   * @param {string} observationPeriod the observationPeriod of a series
+   * @param {string} unit the unit of a series
+   * @param {number} scalingFactor the scalingFactor of a series
+   * @return {string} the id
+   */
+  static toID(
+      variableMeasured?: string,
+      observationAbout?: string,
+      provenance?: string,
+      measurementMethod?: string,
+      observationPeriod?: string,
+      unit?: string,
+      scalingFactor?: number,
+  ) : string {
+    const facetList = [
+      variableMeasured,
+      observationAbout,
+      provenance,
+      measurementMethod,
+      observationPeriod,
+      unit,
+      scalingFactor ? scalingFactor.toString() : '',
+    ];
+
+    return facetList.join(ID_DELIMITER);
+  }
+
+  /** Takes in an ID string and returns the corresponding values in an object
+   * @param {string} id the id of a Series generated by Series.toID
+   * @return {Object<string, string | number>} the properties of a
+   *  series parsed from id
+   */
+  static fromID(id: string) : SeriesIdObject {
+    const [
+      variableMeasured,
+      observationAbout,
+      provenance,
+      measurementMethod,
+      observationPeriod,
+      unit,
+      scalingFactor,
+    ] = id.split(ID_DELIMITER);
+
+    const parseString = (str: string) => (str === '') ? undefined : str;
+
+    return {
+      variableMeasured: variableMeasured,
+      observationAbout: observationAbout,
+      provenance: parseString(provenance),
+      measurementMethod: parseString(measurementMethod),
+      observationPeriod: parseString(observationPeriod),
+      unit: parseString(unit),
+      scalingFactor: parseFloat(scalingFactor),
+    };
+  }
+
+  /** Sorts the datapoints and rewrites this.data
+   * to the sorted version
+   */
+  sortData() {
+    this.data.sort(
+        (a, b) => a.x < b.x ? -1 : a.x > b.x ? 1 : 0,
+    );
+  }
+
+  /** Returns a copy of the object
+   * @return {Series} a deep copy of the instance
+   */
+  copy() {
+    return new Series(
+        this.data.map((dataPoint) => {
+          return {...dataPoint};
+        }),
+        this.variableMeasured,
+        this.observationAbout,
+        this.provenance,
+        this.measurementMethod,
+        this.observationPeriod,
+        this.unit,
+        this.scalingFactor,
+    );
+  }
+
+  /**
+   * Returns a unique string representing the object and its
+   * metadata properties (excluding some user-defined properties)
+   * @param {string[]} exclude a list of properties to ignore
+   * @return {string} the string hash
+   */
+  getHash(exclude: string[]) {
+    const properties: SeriesIdObject = {
+      variableMeasured: this.variableMeasured,
+      observationAbout: this.observationAbout,
+      provenance: this.provenance,
+      measurementMethod: this.measurementMethod,
+      observationPeriod: this.observationPeriod,
+      unit: this.unit,
+      scalingFactor: this.scalingFactor,
+    };
+
+    for (const property of exclude) {
+      delete properties[property as IdProperties];
+    }
+
+    return Object.values(properties).join(ID_DELIMITER);
+  }
+}
+
+export {ID_DELIMITER, Series};
+
+export type {SeriesObject, TimeDataObject};

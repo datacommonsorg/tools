@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import {ParseTmcf} from '../parse-tmcf';
 import * as TestStr from './test-strs';
 
@@ -66,4 +67,30 @@ test('testing csvToMCF', () => {
   const parser = new ParseTmcf();
   const mcf = parser.csvToMcf(TestStr.testTMCF1, TestStr.testCSV1);
   expect(mcf).toBe(TestStr.expectedMCF1);
+});
+
+test('testing getFacetAndValueFromRow', () => {
+  const parser = new ParseTmcf();
+  parser.csvIndex = 8;
+  const filledTemp = parser.getFacetAndValueFromRow(
+      TestStr.testTMCF2,
+      TestStr.testCSV2[0],
+  );
+  expect(filledTemp).toStrictEqual(TestStr.expectedFacetandValue0);
+
+  // testing multiple propValues that are comma separated
+  const template =
+    'Node: dcid:test1\npropLabel1: C:TestSet->Col1, C:TestSet->Col2';
+  const row = {
+    Col1: 'dcid:propVal1',
+    Col2: 'dcid:propVal2',
+  };
+  const filledTemp2 = parser.getFacetAndValueFromRow(template, row);
+  expect(filledTemp2).toStrictEqual(TestStr.expectedFacetandValue1);
+});
+
+test('testing csvToDataPoint', () => {
+  const parser = new ParseTmcf();
+  const mcf = parser.csvToDataPoint(TestStr.testTMCF1, TestStr.testCSV1);
+  expect(mcf).toStrictEqual(TestStr.expectedDatapoints);
 });
