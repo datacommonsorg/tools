@@ -196,7 +196,10 @@ class ParseTmcf {
    */
   getFacetAndValueFromRow(template: string, row: CsvRow)
   : ParsedCsvRow | null {
-    const properties: any = {};
+    type Properties = {
+      [propertyLabel: string]: string | undefined
+    }
+    const properties: Properties = {};
 
     // Parse row
     for (const line of template.split('\n')) {
@@ -213,7 +216,8 @@ class ParseTmcf {
         }
         const entityID = getEntityID(propValues);
         if (entityID) {
-          properties[propLabel] = this.getLocalIdFromEntityId(entityID);
+          properties[propLabel] =
+              this.getLocalIdFromEntityId(entityID) as string;
         } else {
           properties[propLabel] = propValues;
         }
@@ -236,10 +240,11 @@ class ParseTmcf {
         properties.measurementMethod,
         properties.observationPeriod,
         properties.unit,
-        properties.scalingFactor,
+        properties.scalingFactor ?
+          parseFloat(properties.scalingFactor) : undefined,
     );
-    const date = properties.observationDate;
-    const value = properties.value;
+    const date = properties.observationDate ? properties.observationDate : '';
+    const value = properties.value ? properties.value : '';
     return {facet, date, value};
   }
 

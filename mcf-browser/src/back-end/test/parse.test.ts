@@ -59,15 +59,15 @@ test('testing parseSeries', () => {
     errMsgs: [{
       file: '',
       errs: [[
-        '', 
-        missingVarMeasuredFacet, 
-        'data point is missing variableMeasured'
-      ]]
-    }]
+        '',
+        missingVarMeasuredFacet,
+        'data point is missing variableMeasured',
+      ]],
+    }],
   };
   expect(missingVarMeasuredOutput).toStrictEqual(expectedMissingVarMeasured);
-  
-  const missingObsAboutFacet = 
+
+  const missingObsAboutFacet =
   'dcs:CumulativeCount_MedicalTest_COVID_19,,,dcs:CovidTrackingProject,,,100';
   const missingObsAboutOutput = parseSeries(missingObsAboutFacet, values);
   const expectedMissingObsAbout = {
@@ -75,11 +75,11 @@ test('testing parseSeries', () => {
     errMsgs: [{
       file: '',
       errs: [[
-        '', 
-        missingObsAboutFacet, 
-        'data point is missing observationAbout'
-      ]]
-    }]
+        '',
+        missingObsAboutFacet,
+        'data point is missing observationAbout',
+      ]],
+    }],
   };
   expect(missingObsAboutOutput).toStrictEqual(expectedMissingObsAbout);
 
@@ -90,15 +90,13 @@ test('testing parseSeries', () => {
     errMsgs: [{
       file: '',
       errs: [[
-        '', 
-        missingBothFacet, 
-        'data point is missing variableMeasured and observationAbout'
-      ]]
-    }]
+        '',
+        missingBothFacet,
+        'data point is missing variableMeasured and observationAbout',
+      ]],
+    }],
   };
   expect(missingBothOutput).toStrictEqual(expectedMissingBoth);
-  
-
 });
 
 test('testing mergeDataPoints', () => {

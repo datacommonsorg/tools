@@ -211,18 +211,17 @@ function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
   if (variableMeasured === '' || observationAbout === '') {
     let errorMessage: string;
     if (variableMeasured === '' && observationAbout === '') {
-      errorMessage = 'data point is missing variableMeasured and observationAbout';
-    }
-    else if (variableMeasured === '') {
+      errorMessage =
+          'data point is missing variableMeasured and observationAbout';
+    } else if (variableMeasured === '') {
       errorMessage = 'data point is missing variableMeasured';
-    }
-    else {
+    } else {
       errorMessage = 'data point is missing observationAbout';
     }
     const error: ParsingError = {
       file: '',
-      errs: [['', facet, errorMessage]]
-    }
+      errs: [['', facet, errorMessage]],
+    };
     return {
       errMsgs: [error],
       series: null,
