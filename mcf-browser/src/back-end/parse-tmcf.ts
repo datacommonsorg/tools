@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+import splitLines from 'split-lines';
+
 import {Series, TimeDataObject} from './time-series';
 import {shouldReadLine} from './utils';
 
@@ -200,7 +203,6 @@ class ParseTmcf {
       [propertyLabel: string]: string | undefined
     }
     const properties: Properties = {};
-
     // Parse row
     for (const line of template.split('\n')) {
       if (!line.trim() || !shouldReadLine(line)) {
@@ -249,6 +251,36 @@ class ParseTmcf {
   }
 
   /**
+   * Splits a tmcf file string into an array of entity strings
+   * @param {string} template the string representation of a tmcf file
+   * @return {string[]} an array of strings representing each entity in
+   * the tmcf file
+   */
+  getEntityTemplates(template: string): string[] {
+    const entityTemplates: string[] = [];
+    const lines = splitLines(template);
+
+    let current ='';
+    for (let line of lines) {
+      line = line.trim();
+      if (line.startsWith('Node')) {
+        if (current !== '') {
+          entityTemplates.push(current);
+        }
+        current = '';
+      }
+
+      current += line + '\n';
+    }
+
+    if (current !== '') {
+      entityTemplates.push(current);
+    }
+
+    return entityTemplates;
+  }
+
+  /**
    * Creates a mapping from facet to values from a string representation of
    * TMCF file and the json representation of a CSV file. The whole
    * template from the tmcf is populated with values for each row of the csv.
@@ -261,21 +293,24 @@ class ParseTmcf {
     this.csvIndex = 1;
 
     const datapoints: TimeDataObject = {};
+    const entityTemplates = this.getEntityTemplates(template);
     for (const row of csvRows) {
-      const parsedCsvRow = this.getFacetAndValueFromRow(
-          template,
-          row,
-      );
+      for (const entityTemplate of entityTemplates) {
+        const parsedCsvRow = this.getFacetAndValueFromRow(
+            entityTemplate,
+            row,
+        );
 
-      if (parsedCsvRow) {
-        const {facet, date, value} = parsedCsvRow;
-        const parsedValue = value !== '' ? parseFloat(value) : undefined;
-        datapoints[facet] = datapoints[facet] ?
-            {
-              ...datapoints[facet],
-              [date]: parsedValue,
-            } :
-            {[date]: parsedValue};
+        if (parsedCsvRow) {
+          const {facet, date, value} = parsedCsvRow;
+          const parsedValue = value !== '' ? parseFloat(value) : undefined;
+          datapoints[facet] = datapoints[facet] ?
+              {
+                ...datapoints[facet],
+                [date]: parsedValue,
+              } :
+              {[date]: parsedValue};
+        }
       }
       this.csvIndex += 1;
     }
