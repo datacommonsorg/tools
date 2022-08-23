@@ -84,7 +84,7 @@ import {openFile} from './utils';
 class Home extends Component<HomePropType, HomeStateType> {
   /** Constructor for class, sets initial state
     *
-    * @param {Object} props the props passed in by parent component
+    * @param {HomePropType} props the props passed in by parent component
     */
   constructor(props: HomePropType) {
     super(props);

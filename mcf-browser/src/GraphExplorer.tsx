@@ -51,7 +51,8 @@ class GraphExplorer extends Component<
    GraphExplorerStateType
  > {
   /** Constructor for class, sets initial state
-    * @param {Object} props the props passed in by parent component
+    * @param {GraphExplorerPropType} props the props passed in by parent 
+    * component
     */
   constructor(props: GraphExplorerPropType) {
     super(props);

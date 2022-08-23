@@ -53,7 +53,7 @@ interface FileEntryStateType{
 /** Component to display options user has for uploading files. */
 class FileEntry extends Component<FileEntryPropType, FileEntryStateType> {
   /** Constructor for class, sets initial state
-   * @param {Object} props the props passed in by parent component
+   * @param {DisplayNodePropType} props the props passed in by parent component
    */
   constructor(props: FileEntryPropType) {
     super(props);

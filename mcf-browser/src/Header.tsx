@@ -48,7 +48,7 @@ interface HeaderStateType {
 class Header extends Component<HeaderPropType, HeaderStateType> {
   /** Constructor for class, sets initial state
    *
-   * @param {Object} props the props passed in by parent component
+   * @param {HeaderPropType} props the props passed in by parent component
    */
   constructor(props: HeaderPropType) {
     super(props);

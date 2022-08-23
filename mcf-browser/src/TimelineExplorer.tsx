@@ -25,38 +25,51 @@ import {PageBar} from './PageBar';
 
 const STAT_VARS_PER_PAGE = 10;
 
- interface TimelineExplorerPropType {
-   /**
-    * Passes the data to be plotted
+interface LocationMapping {
+  [dcid: string]: string;
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+interface Grouping {
+  [group: string]: Series[];
+}
+
+interface TimelineExplorerPropType {
+  /**
+  * Passes the data to be plotted
+  */
+  data: Series[];
+
+  /**
+  * Indicates if uploaded files are currently being parsed.
+  */
+  loading: boolean;
+}
+
+interface TimelineExplorerStateType {
+    /** The currently selected locations to filter by */
+    locations: string[];
+
+    /** A list of objects for the select component */
+    locationOptions: SelectOption[]
+
+    /** The key for the select component to tell it
+    * to re-render when the locations are loaded in
     */
-   data: Series[];
+    selectKey: string;
 
-   /**
-    * Indicates if uploaded files are currently being parsed.
-    */
-    loading: boolean;
- }
+    /** A mapping from a location dcid to its name */
+    locationMapping: LocationMapping;
 
- interface TimelineExplorerStateType {
-     /** The currently selected locations to filter by */
-     locations: string[];
+    /** The list of groups to plot, grouped by stat var */
+    statVarGroups: Series[][];
 
-     /** A list of objects for the select component */
-     locationOptions: Object[]
-
-     /** The key for the select component to tell it
-      * to re-render when the locations are loaded in
-      */
-     selectKey: string;
-
-     /** A mapping from a location dcid to its name */
-     locationMapping: Object;
-
-     /** The list of groups to plot, grouped by stat var */
-     statVarGroups: Series[][];
-
-     /** Tracks which page the user is currently viewing (0-indexed) */
-     page: number;
+    /** Tracks which page the user is currently viewing (0-indexed) */
+    page: number;
  }
 
 /** Component to display the timeline explorer */
@@ -65,7 +78,8 @@ class TimelineExplorer extends Component<
    TimelineExplorerStateType
  > {
   /** Constructor for class, sets initial state
-    * @param {Object} props the props passed in by parent component
+    * @param {TimelineExplorerPropType} props the props passed in by parent 
+    * component
     */
   constructor(props: TimelineExplorerPropType) {
     super(props);
@@ -139,7 +153,7 @@ class TimelineExplorer extends Component<
   /** Processes the data passed in by props and returns the
     * data grouped by variableMeasured
     * @param {string[]} locations a list of locations to filter by
-    * @return {Object} an object mapping from variableMeasured to an array
+    * @return {Grouping} an object mapping from variableMeasured to an array
     * of Series with that variableMeasured value
     */
   groupByVariableMeasured(locations: string[]) {
@@ -164,10 +178,10 @@ class TimelineExplorer extends Component<
   /** Returns the JSX to render a group of related series
     * @param {Series[]} seriesList a list of series objects with
     *                              the same varMeasured
-    * @param {Object} locationMapping a mapping from location dcid to name
-    * @return {Object} a details element plotting all of the series
+    * @param {LocationMapping} locationMapping a mapping from location dcid to name
+    * @return {JSX.Element} a details element plotting all of the series
    */
-  renderSeriesGroup(seriesList: Series[], locationMapping: Object) {
+  renderSeriesGroup(seriesList: Series[], locationMapping: LocationMapping) {
     const varMeasured = seriesList[0].variableMeasured;
     const groups = groupLocations(seriesList);
     const groupNames = Object.keys(groups);
@@ -191,7 +205,7 @@ class TimelineExplorer extends Component<
   }
 
   /** Get all locations using the observationAbout property
-    * @return {Object[]} a list of unique location objects
+    * @return {SelectOption[]} a list of unique location objects
     */
   private async getAllLocations() {
     const locationSet = new Set(
@@ -219,7 +233,7 @@ class TimelineExplorer extends Component<
   }
 
   /** Renders the TimelineExplorer component.
-    * @return {Object} the component using TSX code
+    * @return {JSX.Element} the component using TSX code
     */
   render() {
     if (this.props.data.length === 0) {
@@ -362,3 +376,5 @@ class TimelineExplorer extends Component<
 }
 
 export {TimelineExplorer};
+
+export type {LocationMapping};

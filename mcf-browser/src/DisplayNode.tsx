@@ -61,7 +61,7 @@ interface DisplayNodeStateType {
 /** Displays node data for a given node passed in through props. */
 class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
   /** Creates DisplayNode component.
-   * @param {Object} props the props passed in by parent component
+   * @param {DisplayNodePropType} props the props passed in by parent component
   */
   constructor(props: DisplayNodePropType) {
     super(props);
@@ -81,8 +81,8 @@ class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
 
   /**
    * Sets node data when the node to display changes.
-   * @param {Object} prevProps The previous props before the component updated,
-   *     used to compare if the passed in node has changed.
+   * @param {DisplayNodePropType} prevProps The previous props before the 
+   * component updated, used to compare if the passed in node has changed.
    */
   componentDidUpdate(prevProps: DisplayNodePropType) {
     if (prevProps.node !== this.props.node) {

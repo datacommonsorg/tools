@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import React, {Component} from 'react';
-import {Line} from 'react-chartjs-2';
+import React, { Component } from 'react';
+import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,7 +27,8 @@ import {
   Legend,
 } from 'chart.js';
 
-import {Series} from './back-end/time-series';
+import { Series } from './back-end/time-series';
+import { LocationMapping } from './TimelineExplorer';
 
 const COLORS = [
   '#bcf60c',
@@ -55,42 +56,56 @@ const COLORS = [
 ];
 
 ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
 );
 
- interface TimeGraphPropType {
-   /**
-    * Passes the data to be plotted
-    */
-   data: Series[];
+interface LineOptions {
+  [element: string]: Object
+}
 
-   /**
-    * The title of the graph
-    */
-   title: string;
+interface DataSet {
+  data: number[],
+  [property: string]: string | number[]
+}
 
-   /** A mapping from a location dcid to its name */
-   locationMapping: Object;
- }
+interface LineData {
+  labels: string[],
+  datasets: DataSet[]
+}
 
- interface TimeGraphStateType {
-   /** The lineData for the Line graph component */
-   lineData: any;
+interface TimeGraphPropType {
+  /**
+  * Passes the data to be plotted
+  */
+  data: Series[];
 
-   /** The lineOptions for the Line graph component */
-   lineOptions: Object;
- }
+  /**
+  * The title of the graph
+  */
+  title: string;
+
+  /** A mapping from a location dcid to its name */
+  locationMapping: LocationMapping;
+}
+
+interface TimeGraphStateType {
+  /** The lineData for the Line graph component */
+  lineData: any;
+
+  /** The lineOptions for the Line graph component */
+  lineOptions: LineOptions;
+}
 
 /** Component to display a single graph */
 class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   /** Constructor for class, sets initial state
-    * @param {Object} props the props passed in by parent component
+    * @param {TimeGraphPropType} props the props passed in by parent component
     */
   constructor(props: TimeGraphPropType) {
     super(props);
@@ -104,12 +119,12 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   componentDidMount() {
     const lineOptions = this.getOptions();
     this.getLineData().then(
-        (lineData) => this.setState(
-            {
-              lineData,
-              lineOptions,
-            },
-        ),
+      (lineData) => this.setState(
+        {
+          lineData,
+          lineOptions,
+        },
+      ),
     );
   }
 
@@ -160,7 +175,7 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
 
   /**
     * Generates the data object necessary for the Line component
-    * @return {Object} the data object to be used a prop for Line
+    * @return {LineData} the data object to be used a prop for Line
     */
   async getLineData() {
     // Change series to have union of all x-values
@@ -171,7 +186,7 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
     const labels = data[0].data.map((datapoint) => datapoint.x);
     const datasets = data.map((series, i) => {
       const labelID =
-         series.observationAbout ? series.observationAbout : 'undefined';
+        series.observationAbout ? series.observationAbout : 'undefined';
       const label = (this.props.locationMapping as any)[labelID];
       return {
         label: label,
@@ -181,12 +196,12 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
       };
     });
 
-    return {labels, datasets};
+    return { labels, datasets };
   }
 
   /**
     * Generate the graph's options
-    * @return {Object} the options for the graph
+    * @return {LineOptions} the options for the graph
     */
   getOptions() {
     return {
@@ -218,9 +233,9 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 
   /** Renders the TimeGraph component.
-    * @return {Object} the component using TSX code
+    * @return {JSX.Element} the component using TSX code
     */
-  render() {
+  render() : JSX.Element | null {
     if (Object.keys(this.state.lineData).length == 0) {
       return null;
     }
@@ -233,4 +248,4 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 }
 
-export {TimeGraph};
+export { TimeGraph };

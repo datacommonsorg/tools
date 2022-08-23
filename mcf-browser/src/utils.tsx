@@ -18,9 +18,10 @@ import {Series} from './back-end/time-series';
 import React from 'react';
 
 import {TimeGraph} from './TimeGraph';
+import { LocationMapping } from './TimelineExplorer';
 
 /* Simple component to render the colors legend. */
-const colorLegend = {
+const COLOR_LEGEND = {
   'exist-in-kg': 'Node has dcid that exists in DC KG',
   'exist-in-local': 'Node has resolved local reference and no dcid',
   'not-in-local': 'Node has unresolved local reference and no dcid',
@@ -35,6 +36,14 @@ export type ColorIndex =
    | 'exist-in-local'
    | 'not-in-local'
    | 'not-in-kg';
+
+interface SubGroup {
+  subGroup: Series[];
+  title: string;
+}
+interface LocationGroupings {
+  [group: string]: SubGroup[];
+}
 
 /**
   * Sets the window hash value to query a given id.
@@ -88,7 +97,7 @@ function openFile(fileUrl: string) {
 /** Groups data with equal values for everything except for their
     * locations into groups of groupNumber to be plotted together
     * @param {Series[]} seriesList the data to group
-    * @return {Object} an object where the keys are the group names
+    * @return {LocationGroupings} an object where the keys are the group names
     * and the values are arrays where each element is a group of data
     * that contains the actual series list and the title of the graph
     */
@@ -131,12 +140,13 @@ function groupLocations(seriesList: Series[]) {
 
 /**
     * Plot a TimeGraph component given all of the data and metadata
-    * @param {Object} seriesObj an object containing all the series to plot
+    * @param {SubGroup} seriesObj an object containing all the series to plot
     *                  and metadata for the plot
-    * @param {Object} locationMapping a mapping from location dcid to name
-    * @return {Object} the TimeGraph component in TSX code
+    * @param {LocationMapping} locationMapping a mapping from location dcid to 
+    * name
+    * @return {JSX.Element} the TimeGraph component in TSX code
     */
-function plotSeriesObj(seriesObj: any, locationMapping: Object) {
+function plotSeriesObj(seriesObj: SubGroup, locationMapping: LocationMapping) {
   return (<TimeGraph
     data={seriesObj.subGroup}
     title={seriesObj.title}
@@ -150,18 +160,19 @@ function plotSeriesObj(seriesObj: any, locationMapping: Object) {
 /**
   * Renders a section containing all of the graphs for a group
   * of related series
-  * @param {Object[]} group an array of objects where each object contains the
+  * @param {SubGroup[]} group an array of objects where each object contains the
   *              data for a graph
   * @param {string} groupName the name of the group for the summary
   * @param {boolean} keepOpen whether or not to render the details open
-  * @param {Object} locationMapping a mapping from location dcid to name
-  * @return {Object} the details section in TSX code
+  * @param {LocationMapping} locationMapping a mapping from location dcid to 
+  * name
+  * @return {JSX.Element} the details section in TSX code
   */
 function renderTimeGraph(
-    group: Object[],
+    group: SubGroup[],
     groupName: string,
     keepOpen: boolean,
-    locationMapping: Object,
+    locationMapping: LocationMapping,
 ) {
   const facets: any = Series.fromID(groupName);
   return (
@@ -180,7 +191,7 @@ function renderTimeGraph(
 }
 
 export {
-  colorLegend,
+  COLOR_LEGEND as colorLegend,
   goTo,
   onNodeClick,
   openFile,

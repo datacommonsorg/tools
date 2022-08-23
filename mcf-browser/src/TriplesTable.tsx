@@ -58,7 +58,7 @@ export class TriplesTable extends Component<
 > {
   /** Constructor for class, sets initial state
    *
-   * @param {Object} props the props passed in by parent component
+   * @param {TriplesTablePropType} props the props passed in by parent component
    */
   constructor(props: TriplesTablePropType) {
     super(props);
@@ -71,8 +71,9 @@ export class TriplesTable extends Component<
 
   /**
   * Gets rows of triples when the array of Assertions from props is updated.
-  * @param {Object} prevProps The previous props before the component
-  *     updated, used to compare if the passed in triples have been modified.
+  * @param {TriplesTablePropType} prevProps The previous props before the 
+  *     component updated, used to compare if the passed in triples have 
+  *     been modified.
   */
   componentDidUpdate(prevProps: TriplesTablePropType) {
     if (prevProps.triples !== this.props.triples) {
