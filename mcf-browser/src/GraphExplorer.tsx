@@ -74,6 +74,11 @@ class GraphExplorer extends Component<
 
         {/* display list of subject node ids*/}
         <h3>Graph Explorer</h3>
+        {
+          this.props.subjNodes.length === 0 ?
+          <p id='graph-no-nodes-msg'>No nodes to explore</p> :
+          null
+        }
         <ul>
           {this.props.subjNodes.slice(
               this.state.page * NODES_PER_PAGE,

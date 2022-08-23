@@ -374,3 +374,9 @@ summary:hover {
   display: flex;
   justify-content: right;
 }
+
+/* Styling for the Graph Explorer */
+#graph-no-nodes-msg {
+  width: 100%;
+  text-align: center;
+}
