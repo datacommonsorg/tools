@@ -228,6 +228,7 @@ class TimelineExplorer extends Component<
       const location = series.observationAbout;
       if (!seenLocations.has(location)) {
         locations.push(location);
+        seenLocations.add(location);
       }
     }
 
