@@ -71,8 +71,8 @@ export class TriplesTable extends Component<
 
   /**
   * Gets rows of triples when the array of Assertions from props is updated.
-  * @param {TriplesTablePropType} prevProps The previous props before the 
-  *     component updated, used to compare if the passed in triples have 
+  * @param {TriplesTablePropType} prevProps The previous props before the
+  *     component updated, used to compare if the passed in triples have
   *     been modified.
   */
   componentDidUpdate(prevProps: TriplesTablePropType) {

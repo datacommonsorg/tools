@@ -221,7 +221,8 @@ class App extends Component<{}, AppStateType> {
   submitFileList(fileList: Blob[]) {
     this.setState({loading: true});
 
-    API.readFileList(fileList).then((res: any) => {
+    const res = API.readFileList(fileList);
+    res.then((res: API.ReadFileListResponse) => {
       this.setState(() => ({
         parsingErrs: res['errMsgs'],
         subjNodes: res['localNodes'],
@@ -229,6 +230,15 @@ class App extends Component<{}, AppStateType> {
         loading: false,
       }), () => this.handleHashChange());
     });
+    res.catch(
+        () => this.setState((prevState) => {
+          return {
+            ...prevState,
+            loading: false,
+          };
+        },
+        ),
+    );
   }
 
   /**

@@ -81,7 +81,7 @@ class DisplayNode extends Component<DisplayNodePropType, DisplayNodeStateType> {
 
   /**
    * Sets node data when the node to display changes.
-   * @param {DisplayNodePropType} prevProps The previous props before the 
+   * @param {DisplayNodePropType} prevProps The previous props before the
    * component updated, used to compare if the passed in node has changed.
    */
   componentDidUpdate(prevProps: DisplayNodePropType) {

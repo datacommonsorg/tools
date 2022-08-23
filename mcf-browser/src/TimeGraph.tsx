@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import React, { Component } from 'react';
-import { Line } from 'react-chartjs-2';
+import React, {Component} from 'react';
+import {Line} from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,8 +27,8 @@ import {
   Legend,
 } from 'chart.js';
 
-import { Series } from './back-end/time-series';
-import { LocationMapping } from './TimelineExplorer';
+import {Series} from './back-end/time-series';
+import {LocationMapping} from './TimelineExplorer';
 
 const COLORS = [
   '#bcf60c',
@@ -55,28 +55,56 @@ const COLORS = [
   '#000000',
 ];
 
+const LINE_OPTIONS = {
+  interaction: {
+    intersect: false,
+  },
+  scales: {
+    x: {
+      grid: {
+        display: false,
+      },
+    },
+  },
+  plugins: {
+    legend: {
+      display: true,
+      labels: {
+        font: {
+          size: 12,
+        },
+      },
+    },
+  },
+  title: {},
+};
+
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
 );
 
 interface LineOptions {
-  [element: string]: Object
+  [element: string]: Object;
 }
 
 interface DataSet {
-  data: number[],
-  [property: string]: string | number[]
+  data: number[];
+  [property: string]: string | boolean | number[];
 }
 
 interface LineData {
-  labels: string[],
-  datasets: DataSet[]
+  labels: string[];
+  datasets: DataSet[];
+}
+
+interface SeriesData {
+  [x: string]: number;
 }
 
 interface TimeGraphPropType {
@@ -96,7 +124,7 @@ interface TimeGraphPropType {
 
 interface TimeGraphStateType {
   /** The lineData for the Line graph component */
-  lineData: any;
+  lineData: LineData;
 
   /** The lineOptions for the Line graph component */
   lineOptions: LineOptions;
@@ -110,7 +138,10 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   constructor(props: TimeGraphPropType) {
     super(props);
     this.state = {
-      lineData: {},
+      lineData: {
+        labels: [],
+        datasets: [],
+      },
       lineOptions: {},
     };
   }
@@ -118,13 +149,12 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   /** Sets lineData and lineOptions when rendering */
   componentDidMount() {
     const lineOptions = this.getOptions();
-    this.getLineData().then(
-      (lineData) => this.setState(
+    const lineData = this.getLineData();
+    this.setState(
         {
           lineData,
           lineOptions,
         },
-      ),
     );
   }
 
@@ -133,7 +163,7 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
     * @return {Series[]} an array of the data where missing values
     * are filled with undefined
     */
-  getUnionData() {
+  getUnionData(): Series[] {
     const data = [];
 
     // Get union of x-values
@@ -150,7 +180,7 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
 
     // Fill in missing values for each Series
     for (const series of this.props.data) {
-      const seriesData: any = {};
+      const seriesData: SeriesData = {};
       for (const datapoint of series.data) {
         seriesData[datapoint.x] = datapoint.y;
       }
@@ -177,17 +207,23 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
     * Generates the data object necessary for the Line component
     * @return {LineData} the data object to be used a prop for Line
     */
-  async getLineData() {
+  getLineData(): LineData {
     // Change series to have union of all x-values
     // Also sorts the data in the process
     const data = this.getUnionData();
 
+    if (data.length === 0) {
+      return {
+        labels: [],
+        datasets: [],
+      };
+    }
+
     // Get object per series
     const labels = data[0].data.map((datapoint) => datapoint.x);
     const datasets = data.map((series, i) => {
-      const labelID =
-        series.observationAbout ? series.observationAbout : 'undefined';
-      const label = (this.props.locationMapping as any)[labelID];
+      const labelID = series.observationAbout;
+      const label = this.props.locationMapping[labelID];
       return {
         label: label,
         fill: false,
@@ -196,40 +232,20 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
       };
     });
 
-    return { labels, datasets };
+    return {labels, datasets};
   }
 
   /**
     * Generate the graph's options
     * @return {LineOptions} the options for the graph
     */
-  getOptions() {
-    return {
-      interaction: {
-        intersect: false,
-      },
-      scales: {
-        x: {
-          grid: {
-            display: false,
-          },
-        },
-      },
-      plugins: {
-        legend: {
-          display: true,
-          labels: {
-            font: {
-              size: 12,
-            },
-          },
-        },
-        title: {
-          display: true,
-          text: this.props.title,
-        },
-      },
+  getOptions(): LineOptions {
+    const options = {...LINE_OPTIONS};
+    options.title = {
+      display: true,
+      text: this.props.title,
     };
+    return options;
   }
 
   /** Renders the TimeGraph component.
@@ -248,4 +264,4 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 }
 
-export { TimeGraph };
+export {TimeGraph};

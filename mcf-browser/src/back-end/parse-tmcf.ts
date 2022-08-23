@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-import splitLines from 'split-lines';
-
 import {Series, TimeDataObject} from './time-series';
 import {shouldReadLine} from './utils';
 
@@ -258,7 +256,7 @@ class ParseTmcf {
    */
   getEntityTemplates(template: string): string[] {
     const entityTemplates: string[] = [];
-    const lines = splitLines(template);
+    const lines = template.split(/\r?\n/);
 
     let current ='';
     for (let line of lines) {

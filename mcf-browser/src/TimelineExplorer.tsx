@@ -18,12 +18,13 @@ import React, {Component} from 'react';
 import Select, {MultiValue} from 'react-select';
 
 import {Series} from './back-end/time-series';
-import {groupLocations, renderTimeGraph} from './utils';
+import {Grouping, groupSeriesByLocations, renderTimeGraph} from './utils';
 import {LoadingSpinner} from './LoadingSpinner';
 import {getName} from './back-end/utils';
 import {PageBar} from './PageBar';
 
 const STAT_VARS_PER_PAGE = 10;
+const INITIAL_NUM_LOCATIONS = 5;
 
 interface LocationMapping {
   [dcid: string]: string;
@@ -32,10 +33,6 @@ interface LocationMapping {
 interface SelectOption {
   value: string;
   label: string;
-}
-
-interface Grouping {
-  [group: string]: Series[];
 }
 
 interface TimelineExplorerPropType {
@@ -51,34 +48,34 @@ interface TimelineExplorerPropType {
 }
 
 interface TimelineExplorerStateType {
-    /** The currently selected locations to filter by */
-    locations: string[];
+  /** The currently selected locations to filter by */
+  locations: string[];
 
-    /** A list of objects for the select component */
-    locationOptions: SelectOption[]
+  /** A list of possible locations to select from */
+  locationOptions: SelectOption[]
 
-    /** The key for the select component to tell it
-    * to re-render when the locations are loaded in
-    */
-    selectKey: string;
+  /** The key for the select component to tell it
+  * to re-render when the locations are loaded in
+  */
+  selectKey: string;
 
-    /** A mapping from a location dcid to its name */
-    locationMapping: LocationMapping;
+  /** A mapping from a location dcid to its name */
+  locationMapping: LocationMapping;
 
-    /** The list of groups to plot, grouped by stat var */
-    statVarGroups: Series[][];
+  /** The list of groups to plot, grouped by stat var */
+  statVarGroups: Series[][];
 
-    /** Tracks which page the user is currently viewing (0-indexed) */
-    page: number;
- }
+  /** Tracks which page the user is currently viewing (0-indexed) */
+  page: number;
+}
 
 /** Component to display the timeline explorer */
 class TimelineExplorer extends Component<
-   TimelineExplorerPropType,
-   TimelineExplorerStateType
- > {
+  TimelineExplorerPropType,
+  TimelineExplorerStateType
+> {
   /** Constructor for class, sets initial state
-    * @param {TimelineExplorerPropType} props the props passed in by parent 
+    * @param {TimelineExplorerPropType} props the props passed in by parent
     * component
     */
   constructor(props: TimelineExplorerPropType) {
@@ -93,23 +90,36 @@ class TimelineExplorer extends Component<
     };
   }
 
-  /** Tracks when component is mounted */
-  componentDidMount() {
-    this.getAllLocations().then(
+  /**
+   * Update the state variables whenever necessary given
+   * the current value of this.props
+   */
+  updateState() {
+    const locationsPromise = this.getAllLocations();
+    locationsPromise.catch(
+        () => {
+          console.log(
+              'Error getting locations for data:',
+          );
+          console.log(this.props.data);
+        },
+    );
+    locationsPromise.then(
         (locationOptions) => {
+          const locations = locationOptions.slice(0, INITIAL_NUM_LOCATIONS)
+              .map(
+                  (option) => option.value,
+              );
+          const selectKey = locations.join(',');
+          const locationMapping: LocationMapping = {};
+          locationOptions.map(
+              (obj) => locationMapping[obj.value] = obj.label,
+          );
+          const page = 0;
+          const statVarGroups = Object.values(
+              this.getVariableToSeries(locations),
+          ) as Series[][];
           this.setState(() => {
-            const locations = locationOptions.slice(0, 5).map(
-                (option) => option.value,
-            );
-            const selectKey = locations.join(',');
-            const locationMapping: any = {};
-            locationOptions.map(
-                (obj) => locationMapping[obj.value] = obj.label,
-            );
-            const page = 0;
-            const statVarGroups = Object.values(
-                this.groupByVariableMeasured(locations),
-            ) as Series[][];
             return {
               locations,
               locationOptions,
@@ -123,12 +133,17 @@ class TimelineExplorer extends Component<
     );
   }
 
+  /** Tracks when component is mounted */
+  componentDidMount() {
+    this.updateState();
+  }
+
   /** Set the location options
     * @param {TimelineExplorerPropType} prevProps the previous props
    */
   componentDidUpdate(prevProps: TimelineExplorerPropType) {
     if (prevProps.data !== this.props.data) {
-      this.componentDidMount();
+      this.updateState();
     }
   }
 
@@ -136,12 +151,8 @@ class TimelineExplorer extends Component<
     * @param {string[]} locations a list of locations to filter by
     * @return {Series[]} series that match the filter
    */
-  filterLocations(locations: string[]) {
-    const cleanedLocations = new Set(
-        locations.map((location) =>
-         (location === 'undefined') ? undefined: location,
-        ),
-    );
+  getFilteredData(locations: string[]): Series[] {
+    const cleanedLocations = new Set(locations);
 
     const filteredData = this.props.data.filter(
         (series) => cleanedLocations.has(series.observationAbout),
@@ -156,19 +167,19 @@ class TimelineExplorer extends Component<
     * @return {Grouping} an object mapping from variableMeasured to an array
     * of Series with that variableMeasured value
     */
-  groupByVariableMeasured(locations: string[]) {
-    const output: any = {};
+  getVariableToSeries(locations: string[]): Grouping {
+    const output: Grouping = {};
     // Filter by location
-    const data = this.filterLocations(locations);
+    const data = this.getFilteredData(locations);
 
     for (const series of data) {
       const varMeasured = series.variableMeasured ?
-         series.variableMeasured :
-         '';
+        series.variableMeasured :
+        '';
       if (!output[varMeasured]) {
         output[varMeasured] = [];
       }
-      output[varMeasured] = output[varMeasured].concat([series]);
+      output[varMeasured].push(series);
     }
 
     return output;
@@ -178,12 +189,14 @@ class TimelineExplorer extends Component<
   /** Returns the JSX to render a group of related series
     * @param {Series[]} seriesList a list of series objects with
     *                              the same varMeasured
-    * @param {LocationMapping} locationMapping a mapping from location dcid to name
+    * @param {LocationMapping} locationMapping a mapping from location dcid to
+    * name
     * @return {JSX.Element} a details element plotting all of the series
    */
-  renderSeriesGroup(seriesList: Series[], locationMapping: LocationMapping) {
+  renderSeriesGroup(seriesList: Series[], locationMapping: LocationMapping)
+    : JSX.Element {
     const varMeasured = seriesList[0].variableMeasured;
-    const groups = groupLocations(seriesList);
+    const groups = groupSeriesByLocations(seriesList);
     const groupNames = Object.keys(groups);
 
     return (
@@ -207,56 +220,57 @@ class TimelineExplorer extends Component<
   /** Get all locations using the observationAbout property
     * @return {SelectOption[]} a list of unique location objects
     */
-  private async getAllLocations() {
-    const locationSet = new Set(
-        this.props.data.map((series) =>
-         series.observationAbout ? series.observationAbout : 'undefined'),
-    );
+  private async getAllLocations(): Promise<SelectOption[]> {
+    // Get an array of unique locations
+    const seenLocations = new Set<string>();
+    const locations: string[] = [];
+    for (const series of this.props.data) {
+      const location = series.observationAbout;
+      if (!seenLocations.has(location)) {
+        locations.push(location);
+      }
+    }
 
-    const locations = [...locationSet];
-    const labels = await Promise.all(
-        locations.map(async (location) => {
-          const label =
-             (location.startsWith('dcid:') ?
-               await getName(location.slice(5)) :
-               await getName(location)
-             );
-          return label;
-        }),
-    );
-    return locations.map((location, i) => {
-      return {
-        value: location,
-        label: labels[i],
-      };
+    const labelPromises = locations.map(async (location) => {
+      const label =
+      (location.startsWith('dcid:') ?
+        await getName(location.slice(5)) :
+        await getName(location)
+      );
+      return label;
     });
+
+    return Promise.all(labelPromises).then(
+        (labels) => {
+          return locations.map((location, i) => {
+            return {
+              value: location,
+              label: labels[i],
+            };
+          });
+        },
+    );
   }
 
   /** Renders the TimelineExplorer component.
     * @return {JSX.Element} the component using TSX code
     */
-  render() {
+  render(): JSX.Element | null {
     if (this.props.data.length === 0) {
       return null;
     }
     const defaultValue = this.state.locationOptions.filter(
-        (option: any) => this.state.locations.includes(option.value),
+        (option: SelectOption) => this.state.locations.includes(option.value),
     );
     const maxPage = Math.ceil(
         this.state.statVarGroups.length / STAT_VARS_PER_PAGE,
     );
-    const switchPage = (page: number) => this.setState(
-        (prevState) => {
-          return {...prevState, page};
-        },
-    );
+    const switchPage = (page: number) => this.setState({page});
     return (
       <div className="box">
         {/* display loading animation while waiting*/}
         <LoadingSpinner loading={this.props.loading} msg="...loading mcf..." />
-
         <h3>Timeline Explorer</h3>
-
         <div id="location-select-box">
           <div id="location-select-row">
             <span>Select location(s): </span>
@@ -264,14 +278,13 @@ class TimelineExplorer extends Component<
               <button
                 className="button"
                 onClick={() => {
-                  this.setState((prevState) => {
-                    const locations = prevState.locationOptions.map(
-                        (option: any) => option.value,
+                  this.setState(() => {
+                    const locations = this.state.locationOptions.map(
+                        (option: SelectOption) => option.value,
                     );
                     const selectKey = locations.join(',');
                     const page = 0;
                     return {
-                      ...prevState,
                       locations,
                       selectKey,
                       page,
@@ -282,13 +295,10 @@ class TimelineExplorer extends Component<
               <button
                 className="button"
                 onClick={() => {
-                  this.setState((prevState) => {
-                    return {
-                      ...prevState,
-                      locations: [],
-                      selectKey: '',
-                      page: 0,
-                    };
+                  this.setState({
+                    locations: [],
+                    selectKey: '',
+                    page: 0,
                   });
                 }}
               >Clear All</button>
@@ -301,19 +311,19 @@ class TimelineExplorer extends Component<
             options={this.state.locationOptions}
             defaultValue={defaultValue}
             value={defaultValue}
-            onChange={(values: MultiValue<Object>) =>
-              this.setState( (prevState) => {
-                const locations = values.map((value) => (value as any).value);
-                return {
-                  ...prevState,
-                  locations,
-                  statVarGroups: Object.values(
-                      this.groupByVariableMeasured(locations),
-                  ) as Series[][],
-                  page: 0,
-                };
-              },
-              )}
+            onChange={(values: MultiValue<SelectOption>) => {
+              const locations = values.map((value) => value.value);
+              this.setState(
+                  {
+                    locations,
+                    statVarGroups: Object.values(
+                        this.getVariableToSeries(locations),
+                    ) as Series[][],
+                    page: 0,
+                  },
+              );
+            }
+            }
             key={this.state.selectKey}
           />
         </div>
@@ -341,7 +351,6 @@ class TimelineExplorer extends Component<
             >Collapse All</button>
           </div>
         </div>
-
         {this.state.statVarGroups
             .slice(
                 this.state.page * STAT_VARS_PER_PAGE,
