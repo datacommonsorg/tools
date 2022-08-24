@@ -231,13 +231,7 @@ class App extends Component<{}, AppStateType> {
       }), () => this.handleHashChange());
     });
     res.catch(
-        () => this.setState((prevState) => {
-          return {
-            ...prevState,
-            loading: false,
-          };
-        },
-        ),
+        () => this.setState({loading: false}),
     );
   }
 

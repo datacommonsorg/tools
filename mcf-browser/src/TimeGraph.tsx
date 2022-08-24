@@ -95,16 +95,14 @@ interface LineOptions {
 
 interface DataSet {
   data: number[];
-  [property: string]: string | boolean | number[];
+  label: string;
+  fill: boolean;
+  borderColor: string;
 }
 
 interface LineData {
   labels: string[];
   datasets: DataSet[];
-}
-
-interface SeriesData {
-  [x: string]: number;
 }
 
 interface TimeGraphPropType {
@@ -180,7 +178,7 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
 
     // Fill in missing values for each Series
     for (const series of this.props.data) {
-      const seriesData: SeriesData = {};
+      const seriesData: {[x: string]: number} = {};
       for (const datapoint of series.data) {
         seriesData[datapoint.x] = datapoint.y;
       }

@@ -24,59 +24,59 @@ import {ParsingErrorsTable} from './ParsingErrorsTable';
 import {TimelineExplorer} from './TimelineExplorer';
 import {openFile} from './utils';
 
- interface HomePropType {
-   /**
-    * List of the files that have been uploaded by user.
-    */
-   fileList: Blob[];
-   /**
-    * Passes a file list to be submitted to the back-end for parsing.
-    */
-   upload: Function;
-   /**
-    * Passes a list of urls to be retrieved, then passed to the back-end
-    * for parsing.
-    */
-   loadFiles: Function;
-   /**
-    * Return to the home page.
-    */
-   goToHome: Function;
-   /**
-    * Clears the loaded data from all files and resets App to its initial state.
-    */
-   clear: React.MouseEventHandler<HTMLButtonElement>;
-   /**
-    * Error messages from parsing files specifying line number, line, and
-    * helpful message indicating the error.
-    */
-   errs: ParsingError[];
-   /**
-    * Indicates if uploaded files are currently being parsed.
-    */
-   loading: boolean;
-   /**
-    * IDs for nodes stored in App's state which are the subject nodes of
-    * triples from any parsed files.
-    */
-   subjNodes: string[];
-   /**
-    * Set id parameter in url to the given id. Used when user clicks a
-    * subject node to explore.
-    */
-   onNodeClick: (id: string) => void;
-   /**
-    * Time series data uploaded by the user
-    */
-   timeData: Series[];
- }
+interface HomePropType {
+  /**
+   * List of the files that have been uploaded by user.
+   */
+  fileList: Blob[];
+  /**
+   * Passes a file list to be submitted to the back-end for parsing.
+   */
+  upload: Function;
+  /**
+   * Passes a list of urls to be retrieved, then passed to the back-end
+   * for parsing.
+   */
+  loadFiles: Function;
+  /**
+   * Return to the home page.
+   */
+  goToHome: Function;
+  /**
+   * Clears the loaded data from all files and resets App to its initial state.
+   */
+  clear: React.MouseEventHandler<HTMLButtonElement>;
+  /**
+   * Error messages from parsing files specifying line number, line, and
+   * helpful message indicating the error.
+   */
+  errs: ParsingError[];
+  /**
+   * Indicates if uploaded files are currently being parsed.
+   */
+  loading: boolean;
+  /**
+   * IDs for nodes stored in App's state which are the subject nodes of
+   * triples from any parsed files.
+   */
+  subjNodes: string[];
+  /**
+   * Set id parameter in url to the given id. Used when user clicks a
+   * subject node to explore.
+   */
+  onNodeClick: (id: string) => void;
+  /**
+   * Time series data uploaded by the user
+   */
+  timeData: Series[];
+}
 
- interface HomeStateType {
-   /**
-    * Determines if the file entry dropdown option should be displayed.
-    */
-   dropdown: boolean;
- }
+interface HomeStateType {
+  /**
+   * Determines if the file entry dropdown option should be displayed.
+   */
+  dropdown: boolean;
+}
 
 /** Displays the currently loaded files, clear button, parsing errors, and
   * subject nodes.
@@ -106,7 +106,7 @@ class Home extends Component<HomePropType, HomeStateType> {
     *
     * @return {JSX.Element} the webpage using JSX code
     */
-  render() : JSX.Element {
+  render(): JSX.Element {
     if (this.props.fileList.length === 0) {
       // show file entry options, but do not toggle dropdown on file submission
       return (
@@ -143,7 +143,7 @@ class Home extends Component<HomePropType, HomeStateType> {
             {this.props.fileList.map((file, index) => {
               const fileName = (file as File).name;
               const className =
-                 fileName.startsWith('https:') ? 'clickable' : '';
+                fileName.startsWith('https:') ? 'clickable' : '';
               return (
                 <li
                   onClick={() => {
@@ -161,7 +161,7 @@ class Home extends Component<HomePropType, HomeStateType> {
 
           {/* display clear files button*/}
           <button className="button" onClick={this.props.clear}>
-             Clear
+            Clear
           </button>
 
           <button
@@ -172,13 +172,13 @@ class Home extends Component<HomePropType, HomeStateType> {
           </button>
 
           {this.state.dropdown ? (
-             <FileEntry
-               upload={this.props.upload}
-               loadFiles={this.props.loadFiles}
-               goToHome={this.props.goToHome}
-               toggle={() => this.toggleDropdown()}
-             />
-           ) : null}
+            <FileEntry
+              upload={this.props.upload}
+              loadFiles={this.props.loadFiles}
+              goToHome={this.props.goToHome}
+              toggle={() => this.toggleDropdown()}
+            />
+          ) : null}
         </div>
 
         {/* display parsing errors, if any*/}

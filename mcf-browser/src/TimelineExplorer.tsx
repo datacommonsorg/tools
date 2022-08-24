@@ -17,14 +17,27 @@
 import React, {Component} from 'react';
 import Select, {MultiValue} from 'react-select';
 
-import {Series} from './back-end/time-series';
-import {Grouping, groupSeriesByLocations, renderTimeGraph} from './utils';
+import {Series, SeriesIdObject} from './back-end/time-series';
 import {LoadingSpinner} from './LoadingSpinner';
 import {getName} from './back-end/utils';
 import {PageBar} from './PageBar';
+import {TimeGraph} from './TimeGraph';
 
 const STAT_VARS_PER_PAGE = 10;
 const INITIAL_NUM_LOCATIONS = 5;
+const GROUP_NUMBER = 20; // The maximum number of series per graph
+
+interface SubGroup {
+  subGroup: Series[];
+  title: string;
+}
+interface LocationGroupings {
+  [group: string]: SubGroup[];
+}
+
+interface Grouping {
+  [group: string]: Series[];
+}
 
 interface LocationMapping {
   [dcid: string]: string;
@@ -54,11 +67,6 @@ interface TimelineExplorerStateType {
   /** A list of possible locations to select from */
   locationOptions: SelectOption[]
 
-  /** The key for the select component to tell it
-  * to re-render when the locations are loaded in
-  */
-  selectKey: string;
-
   /** A mapping from a location dcid to its name */
   locationMapping: LocationMapping;
 
@@ -83,7 +91,6 @@ class TimelineExplorer extends Component<
     this.state = {
       locations: [],
       locationOptions: [],
-      selectKey: 'unloaded',
       locationMapping: {},
       statVarGroups: [],
       page: 0,
@@ -98,10 +105,9 @@ class TimelineExplorer extends Component<
     const locationsPromise = this.getAllLocations();
     locationsPromise.catch(
         () => {
-          console.log(
-              'Error getting locations for data:',
+          alert(
+              `Error getting locations for data: ${this.props.data}`,
           );
-          console.log(this.props.data);
         },
     );
     locationsPromise.then(
@@ -110,9 +116,8 @@ class TimelineExplorer extends Component<
               .map(
                   (option) => option.value,
               );
-          const selectKey = locations.join(',');
           const locationMapping: LocationMapping = {};
-          locationOptions.map(
+          locationOptions.forEach(
               (obj) => locationMapping[obj.value] = obj.label,
           );
           const page = 0;
@@ -123,7 +128,6 @@ class TimelineExplorer extends Component<
             return {
               locations,
               locationOptions,
-              selectKey,
               locationMapping,
               statVarGroups,
               page,
@@ -152,10 +156,10 @@ class TimelineExplorer extends Component<
     * @return {Series[]} series that match the filter
    */
   getFilteredData(locations: string[]): Series[] {
-    const cleanedLocations = new Set(locations);
+    const locationSet = new Set(locations);
 
     const filteredData = this.props.data.filter(
-        (series) => cleanedLocations.has(series.observationAbout),
+        (series) => locationSet.has(series.observationAbout),
     );
 
     return filteredData;
@@ -194,9 +198,12 @@ class TimelineExplorer extends Component<
     * @return {JSX.Element} a details element plotting all of the series
    */
   renderSeriesGroup(seriesList: Series[], locationMapping: LocationMapping)
-    : JSX.Element {
+    : JSX.Element | null {
+    if (seriesList.length === 0) {
+      return null;
+    }
     const varMeasured = seriesList[0].variableMeasured;
-    const groups = groupSeriesByLocations(seriesList);
+    const groups = this.groupSeriesByLocations(seriesList);
     const groupNames = Object.keys(groups);
 
     return (
@@ -205,7 +212,7 @@ class TimelineExplorer extends Component<
         {
           groupNames.map(
               (groupName) =>
-                renderTimeGraph(
+                this.renderTimeGraph(
                     groups[groupName],
                     groupName,
                     groupNames.length === 1,
@@ -232,12 +239,12 @@ class TimelineExplorer extends Component<
       }
     }
 
-    const labelPromises = locations.map(async (location) => {
+    const labelPromises = locations.map((location) => {
       const label =
-      (location.startsWith('dcid:') ?
-        await getName(location.slice(5)) :
-        await getName(location)
-      );
+        (location.startsWith('dcid:') ?
+          getName(location.slice(5)) :
+          getName(location)
+        );
       return label;
     });
 
@@ -250,6 +257,106 @@ class TimelineExplorer extends Component<
             };
           });
         },
+    );
+  }
+
+
+  /** Groups data with equal values for everything except for their
+      * locations into groups of groupNumber to be plotted together
+      * @param {Series[]} seriesList the data to group
+      * @return {LocationGroupings} an object where the keys are the group names
+      * and the values are arrays where each element is a group of data
+      * that contains the actual series list and the title of the graph
+      */
+  groupSeriesByLocations(seriesList: Series[]): LocationGroupings {
+    // Group similar series
+    const groups: Grouping = {};
+    const exclude = ['observationAbout'];
+    for (const series of seriesList) {
+      const group = series.getHash(exclude);
+
+      if (!groups[group]) {
+        groups[group] = [];
+      }
+
+      groups[group].push(series);
+    }
+
+    // Separate groups into groups of size groupNumber
+    const finalGroups: LocationGroupings = {};
+
+    const groupNames = Object.keys(groups);
+    for (const groupName of groupNames) {
+      const group = groups[groupName];
+      const numberOfSubgroups = Math.ceil(group.length / GROUP_NUMBER);
+
+      finalGroups[groupName] = [];
+
+      for (let i = 0; i < group.length; i += GROUP_NUMBER) {
+        const subGroup = group.slice(i, i + GROUP_NUMBER);
+        const title = (numberOfSubgroups > 1) ?
+          `${groupName} (${i + 1} of ${numberOfSubgroups}) ` :
+          `${groupName}`;
+
+        finalGroups[groupName].push({subGroup, title});
+      }
+    }
+
+    return finalGroups;
+  }
+
+  /**
+      * Plot a TimeGraph component given all of the data and metadata
+      * @param {SubGroup} seriesObj an object containing all the series to plot
+      *                  and metadata for the plot
+      * @param {LocationMapping} locationMapping a mapping from location dcid to
+      * name
+      * @return {JSX.Element} the TimeGraph component in TSX code
+      */
+  plotSeriesObj(seriesObj: SubGroup, locationMapping: LocationMapping)
+    : JSX.Element {
+    return (<TimeGraph
+      data={seriesObj.subGroup}
+      title={seriesObj.title}
+      locationMapping={locationMapping}
+      key={seriesObj.title + '\n' + seriesObj.subGroup.map(
+          (series: Series) => series.id,
+      ).join(',')}
+    />);
+  }
+
+  /**
+    * Renders a section containing all of the graphs for a group
+    * of related series
+    * @param {SubGroup[]} group an array of objects where each object contains
+    *               the data for a graph
+    * @param {string} groupName the name of the group for the summary
+    * @param {boolean} keepOpen whether or not to render the details open
+    * @param {LocationMapping} locationMapping a mapping from location dcid to
+    * name
+    * @return {JSX.Element} the details section in TSX code
+    */
+  renderTimeGraph(
+      group: SubGroup[],
+      groupName: string,
+      keepOpen: boolean,
+      locationMapping: LocationMapping,
+  ): JSX.Element {
+    const facets: SeriesIdObject = Series.fromID(groupName);
+    const facetKeys = Object.keys(facets) as (keyof typeof facets)[];
+    return (
+      <details key={groupName} open={keepOpen}>
+        <summary>{groupName}</summary>
+        {facetKeys.map((facet) => {
+          return (
+            (facets[facet] && facet !== 'variableMeasured') ?
+              <p className='facet' key={facet}>{facet}: {facets[facet]}</p> :
+              null
+          );
+        })}
+        {group.map((seriesObj) =>
+          this.plotSeriesObj(seriesObj, locationMapping))}
+      </details>
     );
   }
 
@@ -283,11 +390,9 @@ class TimelineExplorer extends Component<
                     const locations = this.state.locationOptions.map(
                         (option: SelectOption) => option.value,
                     );
-                    const selectKey = locations.join(',');
                     const page = 0;
                     return {
                       locations,
-                      selectKey,
                       page,
                     };
                   });
@@ -298,7 +403,6 @@ class TimelineExplorer extends Component<
                 onClick={() => {
                   this.setState({
                     locations: [],
-                    selectKey: '',
                     page: 0,
                   });
                 }}
@@ -310,7 +414,6 @@ class TimelineExplorer extends Component<
             isMulti
             name="colors"
             options={this.state.locationOptions}
-            defaultValue={defaultValue}
             value={defaultValue}
             onChange={(values: MultiValue<SelectOption>) => {
               const locations = values.map((value) => value.value);
@@ -325,7 +428,6 @@ class TimelineExplorer extends Component<
               );
             }
             }
-            key={this.state.selectKey}
           />
         </div>
 
