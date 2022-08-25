@@ -131,3 +131,5 @@ export {
   isNodeObj,
   getElemClass,
 };
+
+export type {ReadFileListResponse};

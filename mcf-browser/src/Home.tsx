@@ -16,12 +16,13 @@
 
 import React, {Component} from 'react';
 
+import {Series} from './back-end/time-series';
 import {ParsingError} from './back-end/utils';
-import {openFile} from './utils';
-import {ParsingErrorsTable} from './ParsingErrorsTable';
 import {FileEntry} from './FileEntry';
 import {GraphExplorer} from './GraphExplorer';
-
+import {ParsingErrorsTable} from './ParsingErrorsTable';
+import {TimelineExplorer} from './TimelineExplorer';
+import {openFile} from './utils';
 
 interface HomePropType {
   /**
@@ -46,8 +47,8 @@ interface HomePropType {
    */
   clear: React.MouseEventHandler<HTMLButtonElement>;
   /**
-   * Error messages from parsing files specifying line number, line, and helpful
-   * message indicating the error.
+   * Error messages from parsing files specifying line number, line, and
+   * helpful message indicating the error.
    */
   errs: ParsingError[];
   /**
@@ -64,9 +65,13 @@ interface HomePropType {
    * subject node to explore.
    */
   onNodeClick: (id: string) => void;
+  /**
+   * Time series data uploaded by the user
+   */
+  timeData: Series[];
 }
 
-interface HomeStateType{
+interface HomeStateType {
   /**
    * Determines if the file entry dropdown option should be displayed.
    */
@@ -79,7 +84,7 @@ interface HomeStateType{
 class Home extends Component<HomePropType, HomeStateType> {
   /** Constructor for class, sets initial state
    *
-   * @param {Object} props the props passed in by parent component
+   * @param {HomePropType} props the props passed in by parent component
    */
   constructor(props: HomePropType) {
     super(props);
@@ -101,13 +106,14 @@ class Home extends Component<HomePropType, HomeStateType> {
    *
    * @return {JSX.Element} the webpage using JSX code
    */
-  render() : JSX.Element {
+  render(): JSX.Element {
     if (this.props.fileList.length === 0) {
       // show file entry options, but do not toggle dropdown on file submission
       return (
         <div className="home centered col">
           <div className="box ">
-            <FileEntry upload={this.props.upload}
+            <FileEntry
+              upload={this.props.upload}
               loadFiles={this.props.loadFiles}
               goToHome={this.props.goToHome}
             />
@@ -130,51 +136,63 @@ class Home extends Component<HomePropType, HomeStateType> {
     // show current files and subject nodes
     return (
       <div className="centered col">
-
         {/* list current file names*/}
-        <div className = "box">
+        <div className="box">
           <h3>Current Files</h3>
           <ul>
             {this.props.fileList.map((file, index) => {
               const fileName = (file as File).name;
-              const className = fileName.startsWith('https:') ?
-                'clickable' : '';
+              const className =
+                fileName.startsWith('https:') ? 'clickable' : '';
               return (
-                <li onClick={() => {
-                  if (className) openFile(fileName);
-                }}
-                className={className} key={fileName+index}>{fileName}</li>
+                <li
+                  onClick={() => {
+                    if (className) openFile(fileName);
+                  }}
+                  className={className}
+                  key={fileName + index}
+                >
+                  {fileName}
+                </li>
               );
             })}
           </ul>
           <br/>
 
           {/* display clear files button*/}
-          <button className='button' onClick={this.props.clear} >Clear</button>
+          <button className="button" onClick={this.props.clear}>
+            Clear
+          </button>
 
-          <button className={addFileButtonClass} onClick={() =>
-            this.toggleDropdown()}>{addFileButtonText}</button>
+          <button
+            className={addFileButtonClass}
+            onClick={() => this.toggleDropdown()}
+          >
+            {addFileButtonText}
+          </button>
 
-          {this.state.dropdown ?
+          {this.state.dropdown ? (
             <FileEntry
               upload={this.props.upload}
               loadFiles={this.props.loadFiles}
               goToHome={this.props.goToHome}
-              toggle={() => this.toggleDropdown()}/> : null }
-
+              toggle={() => this.toggleDropdown()}
+            />
+          ) : null}
         </div>
-        <br/>
 
         {/* display parsing errors, if any*/}
-        <ParsingErrorsTable errsList={this.props.errs}/>
-        <br/>
+        <ParsingErrorsTable errsList={this.props.errs} />
 
+        <TimelineExplorer
+          data={this.props.timeData}
+          loading={this.props.loading}
+        />
         <GraphExplorer
           loading={this.props.loading}
           subjNodes={this.props.subjNodes}
           onNodeClick={this.props.onNodeClick}
         />
-
       </div>
     );
   }

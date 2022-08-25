@@ -16,21 +16,22 @@
 
 import './index.css';
 
+import axios from 'axios';
 import React, {Component} from 'react';
 
-import axios from 'axios';
-
+import {Series} from './back-end/time-series';
 import {Node} from './back-end/graph';
+import * as API from './back-end/server-api';
+import {ParsingError} from './back-end/utils';
 import {DisplayNode} from './DisplayNode';
 import {Header} from './Header';
 import {Home} from './Home';
 import * as utils from './utils';
-import * as API from './back-end/server-api';
-import {ParsingError} from './back-end/utils';
 
 /** Interface for the App component's state */
-interface AppStateType{
+interface AppStateType {
   /**
+   *
    * Subject node IDs of the triples from files uploaded by user.
    */
   subjNodes: string[];
@@ -55,11 +56,11 @@ interface AppStateType{
    */
   firstLoad: boolean;
   /**
-   * Array of error message objects, one object per parsed file with errors. The
-   * property 'errs' is in each object is an array of String arrays, one String
-   * array per error within the given file which specifies line number, line,
-   * and helpful message indicating the error. The 'file' property provides the
-   * file name from which the error came.
+   * Array of error message objects, one object per parsed file with errors.
+   * The property 'errs' is in each object is an array of String arrays, one
+   * String array per error within the given file which specifies line number,
+   * line, and helpful message indicating the error. The 'file' property
+   * provides the file name from which the error came.
    */
   parsingErrs: ParsingError[];
   /**
@@ -67,7 +68,10 @@ interface AppStateType{
    * home base in the hash portion of the url while using those files.
    */
   fileHash: string;
-
+  /**
+   * Time series data uploaded by the user
+   */
+  timeData: Series[];
 }
 
 /** Drives the entire app and holds the state of the files and current node. */
@@ -87,17 +91,22 @@ class App extends Component<{}, AppStateType> {
       firstLoad: true,
       parsingErrs: [],
       fileHash: '#',
+      timeData: [],
     };
     // save state for easy reset when user 'clears' files
     this.initialState = this.state;
   }
 
   /**
-   * Adds an event listener to the window to respond to url hash changes. Calls
-   * the method to parse the url if the mount is the first time loading the app.
+   * Adds an event listener to the window to respond to url hash changes.
+   * Calls the method to parse the url if the mount is the first time
+   * loading the app.
    */
   componentDidMount() {
-    window.addEventListener('hashchange', () => this.handleHashChange(), false);
+    window.addEventListener(
+        'hashchange',
+        () => this.handleHashChange(), false,
+    );
     if (this.state.firstLoad) {
       this.parseUrl();
       this.setState({firstLoad: false});
@@ -173,7 +182,6 @@ class App extends Component<{}, AppStateType> {
   async loadRemoteFiles(fileUrls: string[]) {
     this.appendfileHash(fileUrls);
 
-
     const newFiles = [];
     for (const fileUrl of fileUrls) {
       const res = await axios.request({
@@ -189,7 +197,7 @@ class App extends Component<{}, AppStateType> {
         files: [...prevState.files, res.data],
       }));
     }
-    this.submitFileList(newFiles);
+    await this.submitFileList(newFiles);
   }
 
   /**
@@ -203,7 +211,7 @@ class App extends Component<{}, AppStateType> {
         files: [...prevState.files, file],
       }));
     }
-    this.submitFileList(this.state.files);
+    await this.submitFileList(this.state.files);
   }
 
   /**
@@ -214,13 +222,18 @@ class App extends Component<{}, AppStateType> {
   submitFileList(fileList: Blob[]) {
     this.setState({loading: true});
 
-    API.readFileList(fileList).then((res: any) => {
+    const res = API.readFileList(fileList);
+    res.then((res: API.ReadFileListResponse) => {
       this.setState(() => ({
         parsingErrs: res['errMsgs'],
         subjNodes: res['localNodes'],
+        timeData: res['timeData'],
         loading: false,
       }), () => this.handleHashChange());
     });
+    res.catch(
+        () => this.setState({loading: false}),
+    );
   }
 
   /**
@@ -237,34 +250,37 @@ class App extends Component<{}, AppStateType> {
    *
    * @return {JSX.Element} the webpage using TSX code
    */
-  render() : JSX.Element {
+  render(): JSX.Element {
     return (
-      <div id="app" >
-        <Header subjIds={this.state.subjNodes}
+      <div id="app">
+        <Header
+          subjIds={this.state.subjNodes}
           onHomeClick={() => utils.goTo(this.state.fileHash)}
-          searchId={(id: string) => utils.searchId(this.state.fileHash, id)}/>
+          searchId={(id: string) => utils.searchId(this.state.fileHash, id)}
+        />
 
         {this.state.curNode ?
-            // if curNode is set, then display it
-            <DisplayNode node={this.state.curNode}
-              onNodeClick={
-                (id: string) => utils.onNodeClick(this.state.fileHash, id)
-              }/> :
-            // otherwise display home
-            <Home
-              fileList={this.state.files}
-              clear={() => this.onClearPress()}
-              errs={this.state.parsingErrs}
-              loading={this.state.loading}
-              subjNodes={this.state.subjNodes}
-              upload={(files: Blob[]) => this.uploadFiles(files)}
-              onNodeClick={
-                (id: string) => utils.onNodeClick(this.state.fileHash, id)
-              }
-              loadFiles={
-                (filesList: string[]) => this.loadRemoteFiles(filesList)
-              }
-              goToHome={() => utils.goTo(this.state.fileHash)}/>
+          // if curNode is set, then display it
+          <DisplayNode node={this.state.curNode}
+            onNodeClick={
+              (id: string) => utils.onNodeClick(this.state.fileHash, id)
+            } /> :
+          // otherwise display home
+          <Home
+            fileList={this.state.files}
+            clear={() => this.onClearPress()}
+            errs={this.state.parsingErrs}
+            loading={this.state.loading}
+            subjNodes={this.state.subjNodes}
+            upload={(files: Blob[]) => this.uploadFiles(files)}
+            onNodeClick={
+              (id: string) => utils.onNodeClick(this.state.fileHash, id)
+            }
+            loadFiles={
+              (filesList: string[]) => this.loadRemoteFiles(filesList)
+            }
+            goToHome={() => utils.goTo(this.state.fileHash)}
+            timeData={this.state.timeData} />
         }
       </div>
     );

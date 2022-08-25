@@ -51,7 +51,8 @@ class GraphExplorer extends Component<
    GraphExplorerStateType
  > {
   /** Constructor for class, sets initial state
-    * @param {Object} props the props passed in by parent component
+    * @param {GraphExplorerPropType} props the props passed in by parent
+    * component
     */
   constructor(props: GraphExplorerPropType) {
     super(props);
@@ -73,6 +74,11 @@ class GraphExplorer extends Component<
 
         {/* display list of subject node ids*/}
         <h3>Graph Explorer</h3>
+        {
+          this.props.subjNodes.length === 0 ?
+          <p id='graph-no-nodes-msg'>No nodes to explore</p> :
+          null
+        }
         <ul>
           {this.props.subjNodes.slice(
               this.state.page * NODES_PER_PAGE,

@@ -243,4 +243,4 @@ class Series {
 
 export {ID_DELIMITER, Series};
 
-export type {SeriesObject, TimeDataObject};
+export type {SeriesObject, TimeDataObject, SeriesIdObject, IdProperties};
