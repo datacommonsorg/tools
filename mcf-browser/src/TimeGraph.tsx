@@ -107,13 +107,13 @@ interface LineData {
 
 interface TimeGraphPropType {
   /**
-  * Passes the data to be plotted
-  */
+   * Passes the data to be plotted
+   */
   data: Series[];
 
   /**
-  * The title of the graph
-  */
+   * The title of the graph
+   */
   title: string;
 
   /** A mapping from a location dcid to its name */
@@ -131,8 +131,8 @@ interface TimeGraphStateType {
 /** Component to display a single graph */
 class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   /** Constructor for class, sets initial state
-    * @param {TimeGraphPropType} props the props passed in by parent component
-    */
+   * @param {TimeGraphPropType} props the props passed in by parent component
+   */
   constructor(props: TimeGraphPropType) {
     super(props);
     this.state = {
@@ -157,10 +157,10 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 
   /** Returns a new set of data where each series
-    * has the same x-values (the union of all x-values)
-    * @return {Series[]} an array of the data where missing values
-    * are filled with undefined
-    */
+   * has the same x-values (the union of all x-values)
+   * @return {Series[]} an array of the data where missing values
+   * are filled with undefined
+   */
   getUnionData(): Series[] {
     const data = [];
 
@@ -202,9 +202,9 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 
   /**
-    * Generates the data object necessary for the Line component
-    * @return {LineData} the data object to be used a prop for Line
-    */
+   * Generates the data object necessary for the Line component
+   * @return {LineData} the data object to be used a prop for Line
+   */
   getLineData(): LineData {
     // Change series to have union of all x-values
     // Also sorts the data in the process
@@ -234,9 +234,9 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 
   /**
-    * Generate the graph's options
-    * @return {LineOptions} the options for the graph
-    */
+   * Generate the graph's options
+   * @return {LineOptions} the options for the graph
+   */
   getOptions(): LineOptions {
     const options = {...LINE_OPTIONS};
     options.title = {
@@ -247,8 +247,8 @@ class TimeGraph extends Component<TimeGraphPropType, TimeGraphStateType> {
   }
 
   /** Renders the TimeGraph component.
-    * @return {JSX.Element} the component using TSX code
-    */
+   * @return {JSX.Element} the component using TSX code
+   */
   render() : JSX.Element | null {
     if (Object.keys(this.state.lineData).length == 0) {
       return null;

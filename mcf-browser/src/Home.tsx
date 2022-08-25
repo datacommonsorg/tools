@@ -83,9 +83,9 @@ interface HomeStateType {
   */
 class Home extends Component<HomePropType, HomeStateType> {
   /** Constructor for class, sets initial state
-    *
-    * @param {HomePropType} props the props passed in by parent component
-    */
+   *
+   * @param {HomePropType} props the props passed in by parent component
+   */
   constructor(props: HomePropType) {
     super(props);
     this.state = {
@@ -94,18 +94,18 @@ class Home extends Component<HomePropType, HomeStateType> {
   }
 
   /**
-    * Toggles the boolean value of this.state.dropdown
-    * whenever user expands or collapses the dropdown
-    */
+   * Toggles the boolean value of this.state.dropdown
+   * whenever user expands or collapses the dropdown
+   */
   toggleDropdown() {
     this.setState({dropdown: !this.state.dropdown});
   }
 
   /**
-    * Renders the component
-    *
-    * @return {JSX.Element} the webpage using JSX code
-    */
+   * Renders the component
+   *
+   * @return {JSX.Element} the webpage using JSX code
+   */
   render(): JSX.Element {
     if (this.props.fileList.length === 0) {
       // show file entry options, but do not toggle dropdown on file submission
