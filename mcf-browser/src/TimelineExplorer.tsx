@@ -50,13 +50,13 @@ interface SelectOption {
 
 interface TimelineExplorerPropType {
   /**
-  * Passes the data to be plotted
-  */
+   * Passes the data to be plotted
+   */
   data: Series[];
 
   /**
-  * Indicates if uploaded files are currently being parsed.
-  */
+   * Indicates if uploaded files are currently being parsed.
+   */
   loading: boolean;
 }
 
@@ -83,9 +83,9 @@ class TimelineExplorer extends Component<
   TimelineExplorerStateType
 > {
   /** Constructor for class, sets initial state
-    * @param {TimelineExplorerPropType} props the props passed in by parent
-    * component
-    */
+   * @param {TimelineExplorerPropType} props the props passed in by parent
+   * component
+   */
   constructor(props: TimelineExplorerPropType) {
     super(props);
     this.state = {
@@ -143,7 +143,7 @@ class TimelineExplorer extends Component<
   }
 
   /** Set the location options
-    * @param {TimelineExplorerPropType} prevProps the previous props
+   * @param {TimelineExplorerPropType} prevProps the previous props
    */
   componentDidUpdate(prevProps: TimelineExplorerPropType) {
     if (prevProps.data !== this.props.data) {
@@ -152,8 +152,8 @@ class TimelineExplorer extends Component<
   }
 
   /** Returns the series objects which match the current locations filter
-    * @param {string[]} locations a list of locations to filter by
-    * @return {Series[]} series that match the filter
+   * @param {string[]} locations a list of locations to filter by
+   * @return {Series[]} series that match the filter
    */
   getFilteredData(locations: string[]): Series[] {
     const locationSet = new Set(locations);
@@ -166,11 +166,11 @@ class TimelineExplorer extends Component<
   }
 
   /** Processes the data passed in by props and returns the
-    * data grouped by variableMeasured
-    * @param {string[]} locations a list of locations to filter by
-    * @return {Grouping} an object mapping from variableMeasured to an array
-    * of Series with that variableMeasured value
-    */
+   * data grouped by variableMeasured
+   * @param {string[]} locations a list of locations to filter by
+   * @return {Grouping} an object mapping from variableMeasured to an array
+   * of Series with that variableMeasured value
+   */
   getVariableToSeries(locations: string[]): Grouping {
     const output: Grouping = {};
     // Filter by location
@@ -191,11 +191,11 @@ class TimelineExplorer extends Component<
 
 
   /** Returns the JSX to render a group of related series
-    * @param {Series[]} seriesList a list of series objects with
-    *                              the same varMeasured
-    * @param {LocationMapping} locationMapping a mapping from location dcid to
-    * name
-    * @return {JSX.Element} a details element plotting all of the series
+   * @param {Series[]} seriesList a list of series objects with
+   *                              the same varMeasured
+   * @param {LocationMapping} locationMapping a mapping from location dcid to
+   * name
+   * @return {JSX.Element} a details element plotting all of the series
    */
   renderSeriesGroup(seriesList: Series[], locationMapping: LocationMapping)
     : JSX.Element | null {
@@ -225,8 +225,8 @@ class TimelineExplorer extends Component<
   }
 
   /** Get all locations using the observationAbout property
-    * @return {SelectOption[]} a list of unique location objects
-    */
+   * @return {SelectOption[]} a list of unique location objects
+   */
   private async getAllLocations(): Promise<SelectOption[]> {
     // Get an array of unique locations
     const seenLocations = new Set<string>();
@@ -240,12 +240,10 @@ class TimelineExplorer extends Component<
     }
 
     const labelPromises = locations.map((location) => {
-      const label =
-        (location.startsWith('dcid:') ?
+      return ((location.startsWith('dcid:') ?
           getName(location.slice(5)) :
           getName(location)
-        );
-      return label;
+      ));
     });
 
     return Promise.all(labelPromises).then(
@@ -262,12 +260,12 @@ class TimelineExplorer extends Component<
 
 
   /** Groups data with equal values for everything except for their
-      * locations into groups of groupNumber to be plotted together
-      * @param {Series[]} seriesList the data to group
-      * @return {LocationGroupings} an object where the keys are the group names
-      * and the values are arrays where each element is a group of data
-      * that contains the actual series list and the title of the graph
-      */
+   * locations into groups of groupNumber to be plotted together
+   * @param {Series[]} seriesList the data to group
+   * @return {LocationGroupings} an object where the keys are the group names
+   * and the values are arrays where each element is a group of data
+   * that contains the actual series list and the title of the graph
+   */
   groupSeriesByLocations(seriesList: Series[]): LocationGroupings {
     // Group similar series
     const groups: Grouping = {};
@@ -306,13 +304,13 @@ class TimelineExplorer extends Component<
   }
 
   /**
-      * Plot a TimeGraph component given all of the data and metadata
-      * @param {SubGroup} seriesObj an object containing all the series to plot
-      *                  and metadata for the plot
-      * @param {LocationMapping} locationMapping a mapping from location dcid to
-      * name
-      * @return {JSX.Element} the TimeGraph component in TSX code
-      */
+   * Plot a TimeGraph component given all of the data and metadata
+   * @param {SubGroup} seriesObj an object containing all the series to plot
+   *                  and metadata for the plot
+   * @param {LocationMapping} locationMapping a mapping from location dcid to
+   * name
+   * @return {JSX.Element} the TimeGraph component in TSX code
+   */
   plotSeriesObj(seriesObj: SubGroup, locationMapping: LocationMapping)
     : JSX.Element {
     return (<TimeGraph
@@ -326,16 +324,16 @@ class TimelineExplorer extends Component<
   }
 
   /**
-    * Renders a section containing all of the graphs for a group
-    * of related series
-    * @param {SubGroup[]} group an array of objects where each object contains
-    *               the data for a graph
-    * @param {string} groupName the name of the group for the summary
-    * @param {boolean} keepOpen whether or not to render the details open
-    * @param {LocationMapping} locationMapping a mapping from location dcid to
-    * name
-    * @return {JSX.Element} the details section in TSX code
-    */
+   * Renders a section containing all of the graphs for a group
+   * of related series
+   * @param {SubGroup[]} group an array of objects where each object contains
+   *               the data for a graph
+   * @param {string} groupName the name of the group for the summary
+   * @param {boolean} keepOpen whether or not to render the details open
+   * @param {LocationMapping} locationMapping a mapping from location dcid to
+   * name
+   * @return {JSX.Element} the details section in TSX code
+   */
   renderTimeGraph(
       group: SubGroup[],
       groupName: string,
@@ -361,8 +359,8 @@ class TimelineExplorer extends Component<
   }
 
   /** Renders the TimelineExplorer component.
-    * @return {JSX.Element} the component using TSX code
-    */
+   * @return {JSX.Element} the component using TSX code
+   */
   render(): JSX.Element | null {
     if (this.props.data.length === 0) {
       return null;

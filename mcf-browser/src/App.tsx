@@ -31,45 +31,46 @@ import * as utils from './utils';
 /** Interface for the App component's state */
 interface AppStateType {
   /**
-  * Subject node IDs of the triples from files uploaded by user.
-  */
+   *
+   * Subject node IDs of the triples from files uploaded by user.
+   */
   subjNodes: string[];
   /**
-  * Node that should be displayed.
-  */
+   * Node that should be displayed.
+   */
   curNode: Node | null;
   /**
-  * Files that have been uploaded by user.The locality of the csv files in
-  * relation to the tmcf files is very important! The csv will be paired with
-  * the closest tmcf file that comes before it whenever we are loading/parsing
-  * the files in the backend.
-  */
+   * Files that have been uploaded by user.The locality of the csv files in
+   * relation to the tmcf files is very important! The csv will be paired with
+   * the closest tmcf file that comes before it whenever we are loading/parsing
+   * the files in the backend.
+   */
   files: Blob[];
   /**
-  * Indicates if any files are currently being parsed by back-end.
-  */
+   * Indicates if any files are currently being parsed by back-end.
+   */
   loading: boolean;
   /**
-  * Indicates if url needs to be parsed on component mount. True when the
-  * application first loads and when files are cleared by user.
-  */
+   * Indicates if url needs to be parsed on component mount. True when the
+   * application first loads and when files are cleared by user.
+   */
   firstLoad: boolean;
   /**
-  * Array of error message objects, one object per parsed file with errors.
-  * The property 'errs' is in each object is an array of String arrays, one
-  * String array per error within the given file which specifies line number,
-  * line, and helpful message indicating the error. The 'file' property
-  * provides the file name from which the error came.
-  */
+   * Array of error message objects, one object per parsed file with errors.
+   * The property 'errs' is in each object is an array of String arrays, one
+   * String array per error within the given file which specifies line number,
+   * line, and helpful message indicating the error. The 'file' property
+   * provides the file name from which the error came.
+   */
   parsingErrs: ParsingError[];
   /**
-  * Contains the remote files specified by user in url format to be used as a
-  * home base in the hash portion of the url while using those files.
-  */
+   * Contains the remote files specified by user in url format to be used as a
+   * home base in the hash portion of the url while using those files.
+   */
   fileHash: string;
   /**
-  * Time series data uploaded by the user
-  */
+   * Time series data uploaded by the user
+   */
   timeData: Series[];
 }
 
@@ -77,9 +78,9 @@ interface AppStateType {
 class App extends Component<{}, AppStateType> {
   initialState: Readonly<AppStateType>;
   /** Constructor for class, sets initial state
-  *
-  * @param {Object} props the props passed in by parent component
-  */
+   *
+   * @param {Object} props the props passed in by parent component
+   */
   constructor(props: Object) {
     super(props);
     this.state = {
@@ -97,10 +98,10 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Adds an event listener to the window to respond to url hash changes.
-  * Calls the method to parse the url if the mount is the first time
-  * loading the app.
-  */
+   * Adds an event listener to the window to respond to url hash changes.
+   * Calls the method to parse the url if the mount is the first time
+   * loading the app.
+   */
   componentDidMount() {
     window.addEventListener(
         'hashchange',
@@ -113,14 +114,14 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Sets App state according to url parameters 'id' and 'search'.
-  * The param 'id' is only set when the user clicks to the next node while
-  * navigating the triples tables or the subject nodes list.
-  * The 'search' param is set when the user uses the search bar. This causes
-  * the dcid of the retreived node to try to be set so that a node will always
-  * be displayed when a user seearches for it. If it does not exist in the KG,
-  * then the node id will appear red in the display.
-  */
+   * Sets App state according to url parameters 'id' and 'search'.
+   * The param 'id' is only set when the user clicks to the next node while
+   * navigating the triples tables or the subject nodes list.
+   * The 'search' param is set when the user uses the search bar. This causes
+   * the dcid of the retreived node to try to be set so that a node will always
+   * be displayed when a user seearches for it. If it does not exist in the KG,
+   * then the node id will appear red in the display.
+   */
   handleHashChange() {
     let node = null;
 
@@ -139,10 +140,10 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Parses the URL upon the first load of the app. It loads the files that
-  * are specfied or navigates to a node if an id specified by the search
-  * param.
-  */
+   * Parses the URL upon the first load of the app. It loads the files that
+   * are specfied or navigates to a node if an id specified by the search
+   * param.
+   */
   parseUrl() {
     const params = new URLSearchParams(window.location.hash.trim());
     const fileUrls = params.getAll('file');
@@ -160,10 +161,10 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Saves the file params as part of App's state so that the files remain in
-  * the hash of the url when navigating between nodes.
-  * @param {Array<String>} fileUrlList File url list to be saved in the hash.
-  */
+   * Saves the file params as part of App's state so that the files remain in
+   * the hash of the url when navigating between nodes.
+   * @param {Array<String>} fileUrlList File url list to be saved in the hash.
+   */
   appendfileHash(fileUrlList: string[]) {
     let hash = this.state.fileHash;
     for (const fileUrl of fileUrlList) {
@@ -173,11 +174,11 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Retrieves file Blobs from array of file Urls, submits the new blobs to be
-  * parsed, and appends them to App's state list of files uploaded by user.
-  * @param {Array<string>} fileUrls The array of file urls to load and append
-  *     to App state's files object.
-  */
+   * Retrieves file Blobs from array of file Urls, submits the new blobs to be
+   * parsed, and appends them to App's state list of files uploaded by user.
+   * @param {Array<string>} fileUrls The array of file urls to load and append
+   *     to App state's files object.
+   */
   async loadRemoteFiles(fileUrls: string[]) {
     this.appendfileHash(fileUrls);
 
@@ -200,10 +201,10 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Saves the list of new blob files to App' state list of files and submits
-  * them to be parsed.
-  * @param {Array<Blob>} fileList File blobs selcted by user via file picker.
-  */
+   * Saves the list of new blob files to App' state list of files and submits
+   * them to be parsed.
+   * @param {Array<Blob>} fileList File blobs selcted by user via file picker.
+   */
   async uploadFiles(fileList: Blob[]) {
     for (const file of fileList) {
       await this.setState((prevState) => ({
@@ -214,10 +215,10 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Passes list of file blobs to the 'back-end' API to be parsed and loaded
-  * into memory.
-  * @param {Array<Blob>} fileList File blobs to be parsed by back-end.
-  */
+   * Passes list of file blobs to the 'back-end' API to be parsed and loaded
+   * into memory.
+   * @param {Array<Blob>} fileList File blobs to be parsed by back-end.
+   */
   submitFileList(fileList: Blob[]) {
     this.setState({loading: true});
 
@@ -236,8 +237,8 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Clear App state and calls the 'back-end' API clearFiles method.
-  */
+   * Clear App state and calls the 'back-end' API clearFiles method.
+   */
   onClearPress() {
     this.setState(this.initialState);
     API.clearFiles();
@@ -245,11 +246,11 @@ class App extends Component<{}, AppStateType> {
   }
 
   /**
-  * Renders the browser by displaying a specific node or the homepage.
-  *
-  * @return {JSX.Element} the webpage using TSX code
-  */
-  render() : JSX.Element {
+   * Renders the browser by displaying a specific node or the homepage.
+   *
+   * @return {JSX.Element} the webpage using TSX code
+   */
+  render(): JSX.Element {
     return (
       <div id="app">
         <Header
@@ -259,27 +260,27 @@ class App extends Component<{}, AppStateType> {
         />
 
         {this.state.curNode ?
-            // if curNode is set, then display it
-            <DisplayNode node={this.state.curNode}
-              onNodeClick={
-                (id: string) => utils.onNodeClick(this.state.fileHash, id)
-              }/> :
-            // otherwise display home
-            <Home
-              fileList={this.state.files}
-              clear={() => this.onClearPress()}
-              errs={this.state.parsingErrs}
-              loading={this.state.loading}
-              subjNodes={this.state.subjNodes}
-              upload={(files: Blob[]) => this.uploadFiles(files)}
-              onNodeClick={
-                (id: string) => utils.onNodeClick(this.state.fileHash, id)
-              }
-              loadFiles={
-                (filesList: string[]) => this.loadRemoteFiles(filesList)
-              }
-              goToHome={() => utils.goTo(this.state.fileHash)}
-              timeData={this.state.timeData}/>
+          // if curNode is set, then display it
+          <DisplayNode node={this.state.curNode}
+            onNodeClick={
+              (id: string) => utils.onNodeClick(this.state.fileHash, id)
+            } /> :
+          // otherwise display home
+          <Home
+            fileList={this.state.files}
+            clear={() => this.onClearPress()}
+            errs={this.state.parsingErrs}
+            loading={this.state.loading}
+            subjNodes={this.state.subjNodes}
+            upload={(files: Blob[]) => this.uploadFiles(files)}
+            onNodeClick={
+              (id: string) => utils.onNodeClick(this.state.fileHash, id)
+            }
+            loadFiles={
+              (filesList: string[]) => this.loadRemoteFiles(filesList)
+            }
+            goToHome={() => utils.goTo(this.state.fileHash)}
+            timeData={this.state.timeData} />
         }
       </div>
     );

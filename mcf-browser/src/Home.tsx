@@ -157,7 +157,7 @@ class Home extends Component<HomePropType, HomeStateType> {
               );
             })}
           </ul>
-          <br />
+          <br/>
 
           {/* display clear files button*/}
           <button className="button" onClick={this.props.clear}>
