@@ -23,10 +23,10 @@ test('testing parseSeries', () => {
    'dcs:CumulativeCount_MedicalTest_COVID_19' +
    ',Covid,,dcs:CovidTrackingProject,,,100';
   const values = {
-    '2018': 5,
-    '2019': 100,
-    '2020': 5.5,
-    '2021': 63,
+    '2018': {value: 5, mcf: ''},
+    '2019': {value: 100, mcf: ''},
+    '2020': {value: 5.5, mcf: ''},
+    '2021': {value: 63, mcf: ''},
   };
   const seriesOutput = parseSeries(facet, values);
 

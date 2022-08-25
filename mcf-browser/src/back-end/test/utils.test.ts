@@ -84,9 +84,9 @@ test('testing doesExistsInKG', async () => {
 });
 
 test('testing getName', async () => {
-  const nameExists = await getName('geoId/06');
-  expect(nameExists).toStrictEqual('California');
+  const nameExists = await getName(['geoId/06', 'geoId/01']);
+  expect(nameExists).toStrictEqual(['California', 'Alabama']);
 
-  const nameDoesNotExist = await getName('test');
-  expect(nameDoesNotExist).toStrictEqual('test');
+  const nameDoesNotExist = await getName(['test']);
+  expect(nameDoesNotExist).toStrictEqual(['test']);
 });

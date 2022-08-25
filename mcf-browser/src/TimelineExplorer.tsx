@@ -239,23 +239,13 @@ class TimelineExplorer extends Component<
       }
     }
 
-    const labelPromises = locations.map((location) => {
-      return ((location.startsWith('dcid:') ?
-          getName(location.slice(5)) :
-          getName(location)
-      ));
+    const labels = await getName(locations);
+    return locations.map((location, i) => {
+      return {
+        value: location,
+        label: labels[i],
+      };
     });
-
-    return Promise.all(labelPromises).then(
-        (labels) => {
-          return locations.map((location, i) => {
-            return {
-              value: location,
-              label: labels[i],
-            };
-          });
-        },
-    );
   }
 
 
