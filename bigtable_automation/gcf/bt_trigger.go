@@ -252,7 +252,12 @@ func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
 		return nil
 	}
 	// Get table ID.
+	// e.Name should is like "**/*/branch_2021_01_01_01_01/launched.txt"
 	parts := strings.Split(e.Name, "/")
+	if len(parts) < 3 {
+		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
+		return nil
+	}
 	tableID := parts[len(parts)-2]
 	triggerFolder := strings.Join(parts[0:len(parts)-2], "/")
 	if triggerFolder != controlFolder {
