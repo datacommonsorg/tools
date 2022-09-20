@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package common runs a GCF function that triggers in 2 scenarios:
+// Package gcf runs a GCF function that triggers in 2 scenarios:
 //
 // 1) completion of prophet-flume job in borg. On triggering it sets up new
 //    cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
@@ -46,7 +46,7 @@ const (
 	// NOTE: The following three files represents the state of a BT import. They
 	// get written under:
 	//
-	//		rootFolder/<user>/<import><control>/<TableID>/
+	//		<controlPath>/<TableID>/
 	//
 	// Init: written by borg to start BT import.
 	initFile = "init.txt"
