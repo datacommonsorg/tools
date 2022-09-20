@@ -15,12 +15,12 @@
 
 
 if [[ $# != 1 ]]; then
-  echo "Usage: $0 (base|branch|private)" >&2
+  echo "Usage: $0 (website-dev|mixer-autopush)" >&2
   exit 1
 fi
 
-if [[ $1 != "base" && $1 != "branch" && $1 != "private" ]]; then
-  echo "Usage: $0 (base|branch|private)" >&2
+if [[ $1 != "website-dev" && $1 != "mixer-autopush" ]]; then
+  echo "Usage: $0 (website-dev|mixer-autopush)" >&2
   exit 1
 fi
 
@@ -29,10 +29,10 @@ ROOT="$(dirname "$DIR")"
 
 cd $DIR
 PROJECT_ID=$(yq eval '.projectID' $1.yaml)
-BUCKET=$(yq eval '.controlPath' $1.yaml | cut -f3 -d'/')
+BUCKET=$(yq eval '.bucket' $1.yaml)
 
-## TODO: move all of these as one-time setup
 cd $ROOT
+## TODO: move all of these as one-time setup
 gcloud config set project $PROJECT_ID
 
 gcloud services enable cloudbuild.googleapis.com
@@ -45,8 +45,8 @@ gcloud compute networks subnets update default \
 
 gcloud functions deploy prophet-cache-trigger-$1 \
   --region 'us-central1' \
-  --entry-point ProdBTImportController \
+  --entry-point PrivateBTImportController \
   --runtime go116 \
   --trigger-bucket $BUCKET \
-  --env-vars-file prod/$1.yaml \
+  --env-vars-file private/$1.yaml \
   --timeout 300
