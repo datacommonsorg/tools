@@ -18,8 +18,13 @@
 //    cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
 // 2) completion of BT cache ingestion dataflow job. It scales BT cluster down
 //    (if needed).
-// The trigger function BTImportController requires a set of environment
-// variables to be set. They are stored in prod/*.yaml files for prod.
+//
+// There are two set of trigger functions defined:
+// - ProdBTImportController
+// - PrivateBTImportController
+// which targets on production imports and private imports. The folder structure
+// are different for the two scenarios.
+// The environment variables for deployments are stored in (prod|private)/*.yaml
 package gcf
 
 import (
@@ -109,6 +114,42 @@ func writeToGCS(ctx context.Context, path, data string) error {
 	return errors.WithMessagef(err, "Failed to write data to %s/%s", bucket, object)
 }
 
+func launchDataflowJob(
+	ctx context.Context,
+	projectID string,
+	instance string,
+	tableID string,
+	dataPath string,
+	controlPath string,
+	dataflowTemplate string,
+) error {
+	dataflowService, err := dataflow.NewService(ctx)
+	if err != nil {
+		return errors.Wrap(err, "Unable to create dataflow service")
+	}
+	dataFile := joinURL(dataPath, tableID, dataFilePattern)
+	launchedPath := joinURL(controlPath, tableID, launchedFile)
+	completedPath := joinURL(controlPath, tableID, completedFile)
+	params := &dataflow.LaunchTemplateParameters{
+		JobName: tableID,
+		Parameters: map[string]string{
+			"inputFile":          dataFile,
+			"completionFile":     completedPath,
+			"bigtableInstanceId": instance,
+			"bigtableTableId":    tableID,
+			"bigtableProjectId":  projectID,
+			"region":             region,
+		},
+	}
+	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", instance, tableID, dataFile, launchedPath)
+	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(projectID, params)
+	_, err = launchCall.GcsPath(dataflowTemplate).Do()
+	if err != nil {
+		return errors.WithMessagef(err, "Unable to launch dataflow job (%s, %s): %v\n", dataFile, launchedPath)
+	}
+	return nil
+}
+
 func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error {
 	adminClient, err := bigtable.NewAdminClient(ctx, btProjectID, btInstance)
 	if err != nil {
@@ -166,40 +207,4 @@ func getBTNodes(ctx context.Context, projectID, instance, cluster string) (int, 
 		return 0, errors.Wrap(err, "Unable to get cluster information")
 	}
 	return clusterInfo.ServeNodes, nil
-}
-
-func launchDataflowJob(
-	ctx context.Context,
-	projectID string,
-	instance string,
-	tableID string,
-	dataPath string,
-	controlPath string,
-	dataflowTemplate string,
-) error {
-	dataflowService, err := dataflow.NewService(ctx)
-	if err != nil {
-		return errors.Wrap(err, "Unable to create dataflow service")
-	}
-	dataFile := joinURL(dataPath, tableID, dataFilePattern)
-	launchedPath := joinURL(controlPath, tableID, launchedFile)
-	completedPath := joinURL(controlPath, tableID, completedFile)
-	params := &dataflow.LaunchTemplateParameters{
-		JobName: tableID,
-		Parameters: map[string]string{
-			"inputFile":          dataFile,
-			"completionFile":     completedPath,
-			"bigtableInstanceId": instance,
-			"bigtableTableId":    tableID,
-			"bigtableProjectId":  projectID,
-			"region":             region,
-		},
-	}
-	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", instance, tableID, dataFile, launchedPath)
-	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(projectID, params)
-	_, err = launchCall.GcsPath(dataflowTemplate).Do()
-	if err != nil {
-		return errors.WithMessagef(err, "Unable to launch dataflow job (%s, %s): %v\n", dataFile, launchedPath)
-	}
-	return nil
 }

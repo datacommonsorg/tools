@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package gcf runs a GCF function that triggers in 2 scenarios:
-//
-// 1) completion of prophet-flume job in borg. On triggering it sets up new
-//    cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
-// 2) completion of BT cache ingestion dataflow job. It scales BT cluster down
-//    (if needed).
-// The trigger function BTImportController requires a set of environment
-// variables to be set. They are stored in prod/*.yaml files for prod.
 package gcf
 
 import (
