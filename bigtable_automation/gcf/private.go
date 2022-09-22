@@ -56,12 +56,14 @@ func privateInternal(ctx context.Context, e GCSEvent) error {
 	// Get table ID.
 	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
 	parts := strings.Split(e.Name, "/")
-	if parts[len(parts)-3] != "control" {
+	idxControl := len(parts) - 3
+	idxTable := len(parts) - 2
+	if parts[idxControl] != "control" {
 		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
 		return nil
 	}
-	tableID := parts[len(parts)-2]
-	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:len(parts)-3], "/")
+	tableID := parts[idxTable]
+	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControl], "/")
 
 	numNodes, err := getBTNodes(ctx, projectID, instance, cluster)
 	if err != nil {
