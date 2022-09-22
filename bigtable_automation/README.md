@@ -21,6 +21,8 @@ BT automation works as follows:
      [/bigstore/datcom-control/base/{BT_Table}/...](https://pantheon.corp.google.com/storage/browser/datcom-control/base)
    - Branch cache:
      [/bigstore/datcom-control/branch/{BT_Table}/...](https://pantheon.corp.google.com/storage/browser/datcom-control/branch)
+   - Private cache:
+     [/bigstore/<private-bucket>/.../<import_group>/control/{BT_Table}/](https://pantheon.corp.google.com/storage/browser/datcom-control/branch)
 
    Borg job sets `init`, then GCF on launching the Dataflow job sets `launched`
    and Dataflow job on completion sets `completed`.
