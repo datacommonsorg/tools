@@ -18,17 +18,20 @@
 //    cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
 // 2) completion of BT cache ingestion dataflow job. It scales BT cluster down
 //    (if needed).
-// The trigger function BTImportController requires a set of environment
-// variables to be set. They are stored in prod/*.yaml files for prod.
+//
+// There are two set of trigger functions defined:
+// - ProdBTImportController
+// - PrivateBTImportController
+// which targets on production imports and private imports. The folder structure
+// are different for the two scenarios.
+// The environment variables for deployments are stored in (prod|private)/*.yaml
 package gcf
 
 import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +45,8 @@ const (
 	dataFilePattern    = "cache.csv*"
 	createTableRetries = 3
 	columnFamily       = "csv"
+	// Default region
+	region = "us-central1"
 
 	// NOTE: The following three files represents the state of a BT import. They
 	// get written under:
@@ -54,13 +59,11 @@ const (
 	launchedFile = "launched.txt"
 	// Completed: written by dataflow to mark completion of BT import.
 	completedFile = "completed.txt"
-	// Default region
-	region = "us-central1"
 )
 
 // GCSEvent is the payload of a GCS event.
 type GCSEvent struct {
-	Name   string `json:"name"`
+	Name   string `json:"name"` // File name in the control folder
 	Bucket string `json:"bucket"`
 }
 
@@ -71,7 +74,7 @@ func joinURL(base string, paths ...string) string {
 	return fmt.Sprintf("%s/%s", strings.TrimRight(base, "/"), strings.TrimLeft(p, "/"))
 }
 
-// Return the GCS bucket and object from path in the form of gs://<bucket>/<object>
+// parsePath returns the GCS bucket and object from path in the form of gs://<bucket>/<object>
 func parsePath(path string) (string, string, error) {
 	parts := strings.Split(path, "/")
 	if parts[0] != "gs:" || parts[1] != "" || len(parts) < 3 {
@@ -204,125 +207,4 @@ func getBTNodes(ctx context.Context, projectID, instance, cluster string) (int, 
 		return 0, errors.Wrap(err, "Unable to get cluster information")
 	}
 	return clusterInfo.ServeNodes, nil
-}
-
-func btImportControllerInternal(ctx context.Context, e GCSEvent) error {
-	projectID := os.Getenv("projectID")
-	instance := os.Getenv("instance")
-	cluster := os.Getenv("cluster")
-	nodesHigh := os.Getenv("nodesHigh")
-	nodesLow := os.Getenv("nodesLow")
-	dataflowTemplate := os.Getenv("dataflowTemplate")
-	dataPath := os.Getenv("dataPath")
-	controlPath := os.Getenv("controlPath")
-	if projectID == "" {
-		return errors.New("projectID is not set in environment")
-	}
-	if instance == "" {
-		return errors.New("instance is not set in environment")
-	}
-	if cluster == "" {
-		return errors.New("cluster is not set in environment")
-	}
-	if dataflowTemplate == "" {
-		return errors.New("dataflowTemplate is not set in environment")
-	}
-	if dataPath == "" {
-		return errors.New("dataPath is not set in environment")
-	}
-	if controlPath == "" {
-		return errors.New("controlPath is not set in environment")
-	}
-	// Get low and high nodes number
-	nodesH, err := strconv.Atoi(nodesHigh)
-	if err != nil {
-		return errors.Wrap(err, "Unable to parse 'nodesHigh' as an integer")
-	}
-	nodesL, err := strconv.Atoi(nodesLow)
-	if err != nil {
-		return errors.Wrap(err, "Unable to parse 'nodesLow' as an integer")
-	}
-	// Get control bucket and object
-	controlBucket, controlFolder, err := parsePath(controlPath)
-	if err != nil {
-		return err
-	}
-	if e.Bucket != controlBucket {
-		log.Printf("Trigger bucket '%s' != '%s', skip processing", e.Bucket, controlBucket)
-		return nil
-	}
-	// Get table ID.
-	// e.Name should is like "**/*/branch_2021_01_01_01_01/launched.txt"
-	parts := strings.Split(e.Name, "/")
-	if len(parts) < 3 {
-		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
-		return nil
-	}
-	tableID := parts[len(parts)-2]
-	triggerFolder := strings.Join(parts[0:len(parts)-2], "/")
-	if triggerFolder != controlFolder {
-		log.Printf("Control folder '%s' != '%s', skip processing", triggerFolder, controlFolder)
-		return nil
-	}
-
-	numNodes, err := getBTNodes(ctx, projectID, instance, cluster)
-	if err != nil {
-		return err
-	}
-
-	if strings.HasSuffix(e.Name, initFile) {
-		log.Printf("[%s] State Init", e.Name)
-		// Called when the state-machine is at Init. Logic below moves it to Launched state.
-		launchedPath := joinURL(controlPath, tableID, launchedFile)
-		exist, err := doesObjectExist(ctx, launchedPath)
-		if err != nil {
-			return errors.WithMessagef(err, "Failed to check %s", launchedFile)
-		}
-		if exist {
-			return errors.WithMessagef(err, "Cache was already built for %s", tableID)
-		}
-		if err := setupBT(ctx, projectID, instance, tableID); err != nil {
-			return err
-		}
-		if numNodes < nodesH {
-			if err := scaleBT(ctx, projectID, instance, cluster, int32(nodesH)); err != nil {
-				return err
-			}
-		}
-		err = launchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate)
-		if err != nil {
-			return err
-		}
-		// Save the fact that we've launched the dataflow job.
-		err = writeToGCS(ctx, launchedPath, "")
-		if err != nil {
-			return err
-		}
-		log.Printf("[%s] State Launched", e.Name)
-	} else if strings.HasSuffix(e.Name, completedFile) {
-		log.Printf("[%s] State Completed", e.Name)
-		// Called when the state-machine moves to Completed state from Launched.
-		if numNodes == nodesH {
-			// Only scale down BT nodes when the current high node is set up this config.
-			// This requires different high nodes in different config.
-			if err := scaleBT(ctx, projectID, instance, cluster, int32(nodesL)); err != nil {
-				return err
-			}
-		}
-		// TODO: else, notify Mixer to load the BT table.
-		log.Printf("[%s] Completed work", e.Name)
-	}
-	return nil
-}
-
-// BTImportController consumes a GCS event and runs an import state machine.
-func BTImportController(ctx context.Context, e GCSEvent) error {
-	err := btImportControllerInternal(ctx, e)
-	if err != nil {
-		// Panic gets reported to Cloud Logging Error Reporting that we can then
-		// alert on
-		// (https://cloud.google.com/functions/docs/monitoring/error-reporting#functions-errors-log-go)
-		panic(errors.Wrap(err, "panic"))
-	}
-	return nil
 }

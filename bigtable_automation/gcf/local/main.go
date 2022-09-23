@@ -28,7 +28,7 @@ func main() {
 	if err := funcframework.RegisterEventFunctionContext(
 		ctx,
 		"/",
-		gcf.BTImportController,
+		gcf.ProdBTImportController,
 	); err != nil {
 		log.Fatalf("funcframework.RegisterEventFunctionContext: %v\n", err)
 	}

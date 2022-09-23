@@ -3,12 +3,10 @@
 ## Background
 
 This directory contains the Google Cloud Function involved in BT cache
-generation, with entry point `BTImportController`.
-
-The Cloud Function first gets notified by a Borg pipeline, via `init.txt`, when
-the cache files have been uploaded to GCS. As a result, it creates a new BT
-table, scales-up the node-limit (for faster loads, only on base cache), kicks
-off the [CsvImport Dataflow
+generation. The Cloud Function first gets notified by a Borg pipeline,
+via `init.txt`, when the cache files have been uploaded to GCS. As a result, it
+creates a new BT table, scales-up the node-limit (for faster loads, only on base
+cache), kicks off the [CsvImport Dataflow
 job](https://github.com/datacommonsorg/tools/tree/master/bigtable_automation/java/dataflow)
 and registers `launched.txt`.
 
@@ -19,9 +17,11 @@ base cache). In future, for branch cache, it will notify Mixer.
 All of the above `.txt` files are created in a per-cache directory. So, they
 allow for concurrent cache builds and tracking past state.
 
-The Cloud Function supports two environments: Prod and Test (refer to
-`environments` global in the source file). The default is Prod, while Test env
-is only used for local testing of the function via `cmd/main.go`.
+There are two distince GCF, one used for production imports with
+entry point `ProdBTImportController` and the other used for private imports with
+entry point `PrivateBTImportController`. The two functions has the same workflow
+as described below, except the GCS folder structure are different. The
+production entry point can be tested locally through `local/main.go`
 
 ## Validate BT Import End-to-end using (GCS | BT) Test Environment
 
@@ -81,3 +81,10 @@ After validating the change in test environment, deploy to PROD by running:
 When this completes, look at the
 [prophet-cache-trigger](https://pantheon.corp.google.com/functions/details/us-central1/prophet-cache-trigger?organizationId=433637338589&project=datcom-store&tab=source)
 on GCP console to version.
+
+To deploy private GCF, identify the environment, pick the corresponding yaml
+files in `private/*.yaml` and run
+
+```bash
+./private/deploy.sh <env>.yaml
+```
