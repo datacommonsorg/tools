@@ -86,5 +86,5 @@ To deploy private GCF, identify the environment, pick the corresponding yaml
 files in `private/*.yaml` and run
 
 ```bash
-./private/deploy.sh <env>.yaml
+./private/deploy.sh <env>
 ```
