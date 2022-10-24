@@ -15,12 +15,12 @@
 
 
 if [[ $# != 1 ]]; then
-  echo "Usage: $0 (website-dev|mixer-autopush)" >&2
+  echo "Usage: $0 (website-dev|mixer-autopush|datcom-stanford)" >&2
   exit 1
 fi
 
-if [[ $1 != "website-dev" && $1 != "mixer-autopush" ]]; then
-  echo "Usage: $0 (website-dev|mixer-autopush)" >&2
+if [[ $1 != "website-dev" && $1 != "mixer-autopush" && $1 != "datcom-stanford" ]]; then
+  echo "Usage: $0 (website-dev|mixer-autopush|datcom-stanford)" >&2
   exit 1
 fi
 
