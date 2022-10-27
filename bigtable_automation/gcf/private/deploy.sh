@@ -30,6 +30,10 @@ ROOT="$(dirname "$DIR")"
 cd $DIR
 PROJECT_ID=$(yq eval '.projectID' $1.yaml)
 BUCKET=$(yq eval '.bucket' $1.yaml)
+INSTANCE=$(yq eval '.instance' $1.yaml)
+CLUSTER=$(yq eval '.cluster' $1.yaml)
+NODES_HIGH=$(yq eval '.nodesHigh' $1.yaml)
+NODES_LOW=$(yq eval '.nodesLow' $1.yaml)
 
 cd $ROOT
 ## TODO: move all of these as one-time setup
@@ -50,3 +54,7 @@ gcloud functions deploy prophet-cache-trigger-$1 \
   --trigger-bucket $BUCKET \
   --env-vars-file private/$1.yaml \
   --timeout 300
+
+gcloud bigtable instances create $INSTANCE \
+  --display-name=$INSTANCE, \
+  --cluster-config=id=$CLUSTER,zone=us-central1-c,autoscaling-min-nodes=$NODES_LOW,autoscaling-max-nodes=$NODES_HIGH,autoscaling-cpu-target=75
