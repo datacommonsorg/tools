@@ -1,3 +1,18 @@
+#!/bin/bash
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 BUILDS_FILE="$PWD/builds.txt"
 
 # Returns the first folder in a path-like string that doesn't start with /
@@ -35,6 +50,8 @@ function submit_cloud_build {
 	# outfile gets moved to $SUCCESS_FOLDER or $FAILED_FOLDER and gets emailed
 	# if $FAILED_FOLDER
 	outfile="$1.out.$repo" # header_file + buildlog_file gets written to outfile
+
+	gcloud config set account datcom-ci
 
 	# "> $buildlog_file" redirects stdout to write to $buildlog_file
 	# "2>&1" redirects "stderr" to where "stdout" is going
