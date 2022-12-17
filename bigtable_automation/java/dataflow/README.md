@@ -103,20 +103,20 @@ SUCCESS` the template has been updated.
 
 ### Deploying Flex Template
 
-NOTE: If the version in pom.xml changes, please update TAG field below as well.
+NOTE: If the version in pom.xml changes, please update both the
+value of `--jar` flag and the docker image tag below.
 
 ```sh
 
-TAG="0.0.2-SNAPSHOT"
-
 mvn clean package && gcloud dataflow flex-template build \
     "gs://datcom-dataflow-templates/templates/flex/csv_to_bt.json" \
-     --image-gcr-path "gcr.io/datcom-ci/dataflow-templates/csv2bt:$TAG" \
+     --image-gcr-path \
+        "gcr.io/datcom-ci/dataflow-templates/csv2bt:dataflow-0.0.2-SNAPSHOT" \
      --sdk-language "JAVA" \
      --flex-template-base-image JAVA11 \
      --metadata-file "csv2bt-template-metadata.json" \
-     --jar "target/dataflow-$TAG.jar" \
-     --project=datcom-store \
+     --jar "target/dataflow-0.0.2-SNAPSHOT.jar" \
+     --project=datcom-ci \
      --env FLEX_TEMPLATE_JAVA_MAIN_CLASS="org.datacommons.dataflow.CsvImport"
 
 ```

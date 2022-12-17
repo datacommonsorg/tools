@@ -70,7 +70,8 @@ elif [[ "$1" == "run-cache-flex" ]]; then
     --parameters bigtableTableId=${TABLE} \
     --parameters bigtableProjectId=google.com:datcom-store-dev \
     --parameters tempLocation=gs://datcom-store-dev-resources/tmp \
-    --region "us-central1"
+    --region "us-central1" \
+    --disable-public-ips
 
 elif [[ "$1" == "run-csv" ]]; then
 
@@ -109,7 +110,8 @@ elif [[ "$1" == "run-csv-flex" ]]; then
     --parameters bigtableTableId=${TABLE} \
     --parameters bigtableProjectId=google.com:datcom-store-dev \
     --parameters tempLocation=gs://datcom-store-dev-resources/tmp \
-    --region "us-central1"
+    --region "us-central1" \
+    --disable-public-ips
 
 else
   echo "Classic Templates:" >&2
