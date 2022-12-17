@@ -51,7 +51,7 @@ function submit_cloud_build {
 	# if $FAILED_FOLDER
 	outfile="$1.out.$repo" # header_file + buildlog_file gets written to outfile
 
-	gcloud config set account datcom-ci
+	gcloud config set project datcom-ci
 
 	# "> $buildlog_file" redirects stdout to write to $buildlog_file
 	# "2>&1" redirects "stderr" to where "stdout" is going
