@@ -109,7 +109,7 @@ value of `--jar` flag and the docker image tag below.
 ```sh
 
 mvn clean package && gcloud dataflow flex-template build \
-    "gs://datcom-dataflow-templates/templates/flex/csv_to_bt.json" \
+    "gs://datcom-templates/templates/flex/csv_to_bt.json" \
      --image-gcr-path \
         "gcr.io/datcom-ci/dataflow-templates/csv2bt:dataflow-0.0.2-SNAPSHOT" \
      --sdk-language "JAVA" \
