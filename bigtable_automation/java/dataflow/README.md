@@ -117,7 +117,8 @@ mvn clean package && gcloud dataflow flex-template build \
      --metadata-file "csv2bt-template-metadata.json" \
      --jar "target/dataflow-0.0.2-SNAPSHOT.jar" \
      --project=datcom-ci \
-     --env FLEX_TEMPLATE_JAVA_MAIN_CLASS="org.datacommons.dataflow.CsvImport"
+     --env FLEX_TEMPLATE_JAVA_MAIN_CLASS="org.datacommons.dataflow.CsvImport" \
+     --disable-public-ips
 
 ```
 
