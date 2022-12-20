@@ -1,0 +1,42 @@
+{
+    "name": "CSV to BT cache loader",
+    "description": "A pipeline that loads BT cache from its csv representations.",
+    "parameters": [
+        {
+            "name": "inputFile",
+            "label": "Input file",
+            "helpText": "The Cloud Storage path to the CSV file.",
+            "paramType": "TEXT"
+        },
+        {
+            "name": "completionFile",
+            "label": "Completion file",
+            "helpText": "The GCS completion file (prefixed with gs://).",
+            "paramType": "TEXT"
+        },
+        {
+            "name": "bigtableProjectId",
+            "label": "GCP Bigtable project id",
+            "helpText": "The Google Cloud project ID for the Cloud Bigtable instance.",
+            "paramType": "TEXT"
+        },
+        {
+            "name": "bigtableInstanceId",
+            "label": "Bigtable instance id",
+            "helpText": "The Google Cloud Bigtable instance ID.",
+            "paramType": "TEXT"
+        },
+        {
+            "name": "bigtableTableId",
+            "label": "Bigtable table id",
+            "helpText": "The Cloud Bigtable table ID in the instance.",
+            "paramType": "TEXT"
+        },
+        {
+            "name": "tempLocation",
+            "label": "GCP temp location",
+            "helpText": "A GCS bucket where the running jobs will have access to.",
+            "paramType": "TEXT"
+        }
+    ]
+}
