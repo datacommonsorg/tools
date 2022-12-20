@@ -37,7 +37,7 @@ if [[ "$1" == "init" ]]; then
           "eventType": "google.storage.object.finalize",
           "resource": {
              "service": "storage.googleapis.com",
-             "name": "projects/_/buckets/automation_control_test/'"$CACHE_NAME"'/init.txt",
+             "name": "projects/_/buckets/automation_control_test/branch/'"$CACHE_NAME"'/init.txt",
              "type": "storage#object"
           }
         },
@@ -47,7 +47,7 @@ if [[ "$1" == "init" ]]; then
           "kind": "storage#object",
           "md5Hash": "...",
           "metageneration": "1",
-          "name": "'"$CACHE_NAME"'/init.txt",
+          "name": "branch/'"$CACHE_NAME"'/init.txt",
           "size": "0",
           "storageClass": "MULTI_REGIONAL",
           "timeCreated": "2020-04-23T07:38:57.230Z",
@@ -66,7 +66,7 @@ elif [[ "$1" == "completed" ]]; then
           "eventType": "google.storage.object.finalize",
           "resource": {
              "service": "storage.googleapis.com",
-             "name": "projects/_/buckets/automation_control_test/'"$CACHE_NAME"'/completed.txt",
+             "name": "projects/_/buckets/automation_control_test/branch/'"$CACHE_NAME"'/completed.txt",
              "type": "storage#object"
           }
         },
@@ -76,7 +76,7 @@ elif [[ "$1" == "completed" ]]; then
           "kind": "storage#object",
           "md5Hash": "...",
           "metageneration": "1",
-          "name": "'"$CACHE_NAME"'/completed.txt",
+          "name": "branch/'"$CACHE_NAME"'/completed.txt",
           "size": "0",
           "storageClass": "MULTI_REGIONAL",
           "timeCreated": "2020-04-23T07:38:57.230Z",
