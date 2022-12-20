@@ -65,7 +65,7 @@ resource "google_cloudfunctions_function" "bt_automation" {
   region      = var.region
 
   timeout                      = 300
-  entry_point                  = "PrivateBTImportController"
+  entry_point                  = "CustomBTImportController"
 
   service_account_email        = var.service_account_email
 

@@ -34,9 +34,9 @@ BT automation works as follows:
 
 ## [Dataflow Job](java/dataflow/README.md)
 
-## Private Import
+## Custom DC Import
 
-Private import automation follows similar flow as above but the GCS, GCF,
+Custom DC import automation follows similar flow as above but the GCS, GCF,
 Bigtable and Dataflow are in custom GCP projects. These have to be configured
 before hand and in the yaml files under [private config](gcf/private/).
 
