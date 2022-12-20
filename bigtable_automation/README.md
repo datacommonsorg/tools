@@ -43,7 +43,6 @@ before hand and in the yaml files under [private config](gcf/private/).
 ## Deployment to Custom DC instances using Terraform
 
 BigTable instance and the associated Cloud Function can be deployed into a custom DC GCP project using Terraform. Below are the steps for doing so. Note that it assumes a resource bucket is already created.
-[this subtext](subpro/subtext.md)
 
 1. From terraform diretory, replace placeholder values in [`variables.tfvars`](bigtable_automation/terraform/variables.tfvars). Those are the required variables. For a complete list of what is configurable, please see [`variables.tf`](bigtable_automation/terraform/variables.tf).
 
