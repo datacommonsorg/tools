@@ -10,7 +10,8 @@ Cloud Scheduler and therefore is outside the scope of this script.
 ## Overview of the Job
 
 [`cloudbuild.allrepos.yaml`](cloudbuild.allrepos.yaml) is
-the entry point of the Cloud Build job. It includes two steps;
+the entry point of the Cloud Build job. It includes two steps:
+
 1. `build_all_repos.sh`: In an image where `gcloud` is installed, read
    `builds.txt`, clones repositories, and submits Cloud Build jobs with the
    configuration specificied in `builds.txt` (see below for syntax). Build logs
@@ -28,7 +29,7 @@ configuration file (`cloudbuild.yaml`) that will be run as part of this job.
 
 Each path should be in the form:
 
-```
+```txt
 <dc_repo_name>/path/to/cloudbuild.yaml
 ```
 
@@ -40,7 +41,7 @@ according to the syntax above. For example, if we wanted to add a build called
 `cloudbuild.goldens.yaml` in the path `build/ci` in a `datacommonsorg`
 repository named `myshinyrepo`, you would add the following line to `builds.txt`:
 
-```
+```bash
 myshinyrepo/build/ci/cloudbuild.goldens.yaml
 ```
 
@@ -50,8 +51,9 @@ This build can be launched manually if you have `gcloud` installed. Note that
 you should set your project to `datcom-ci` (or another cloud project with the
 necessary requisities installed, such as the secrets used my `main.go`)
 
-Then, make sure you are at the base of the tools repository and run;
-```
+Then, make sure you are at the base of the tools repository and run:
+
+```bash
 gcloud builds submit --config periodic_builds/cloudbuild.allrepos.yaml .
 ```
 
@@ -78,29 +80,33 @@ libraries.
 All resources live in the `datcom-ci` project.
 
 Google Cloud Scheduler job `build-all-repos` triggers every morning at 6am PST.
+
 - [Cloud Scheduler Dashboard](https://pantheon.corp.google.com/cloudscheduler?referrer=search&mods=-monitoring_api_staging&project=datcom-ci)
 - [`build-all-repos` schedule logs](https://pantheon.corp.google.com/logs/query;query=resource.type%3D%22cloud_scheduler_job%22%20AND%20resource.labels.job_id%3D%22build-all-repos%22%20AND%20resource.labels.location%3D%22us-central1%22;timeRange=P7D;cursorTimestamp=2022-08-08T13:00:00.220726227Z?mods=-monitoring_api_staging&project=datcom-ci)
 
 Google Cloud PubSub Topic `trigger-periodic-build` receives the message from
 Cloud Scheduler.
+
 - [Cloud PubSub Dashboard](https://pantheon.corp.google.com/cloudpubsub/topic/list?mods=-monitoring_api_staging&project=datcom-ci)
 - [Cloud PubSub `trigger-periodic-build` page](https://pantheon.corp.google.com/cloudpubsub/topic/detail/trigger-periodic-build?mods=-monitoring_api_staging&project=datcom-ci)
 
 Google Cloud Build trigger `periodic-build-all-repos` subscribes to
 `trigger-periodic-build` topic and launches a job when messages are sent to it.
+
 - [Cloud Build Dashboard](https://pantheon.corp.google.com/cloud-build/triggers?mods=-monitoring_api_staging&project=datcom-ci)
 - [`trigger-periodic-build` build history](https://pantheon.corp.google.com/cloud-build/builds;region=global?query=trigger_id%3D%22e966047b-5226-4a84-aa5e-23e9387c8265%22&mods=-monitoring_api_staging&project=datcom-ci) will show periodic builds that ran.
 - To see jobs launched by the periodic build job, you'll need to look at [Cloud Build History](https://pantheon.corp.google.com/cloud-build/builds?mods=-monitoring_api_staging&project=datcom-ci&pageState=(%22builds%22:(%22f%22:%22%255B%255D%22))). Jobs launched by periodic builds are unique in that they 1) have a source of "Google Cloud Storage" 2) they are launched close to 6am, and 3) they don't have a ref/commit/trigger name associated with them.
 
 Google Cloud Storage (GCS) is where the builds read the code from. All code is in the
-bucket `datcom-ci_cloudbuild`
+bucket `datcom-ci_cloudbuild`.
+
 - [`datcom-ci_cloudbuild` bucket browser](https://pantheon.corp.google.com/storage/browser/datcom-ci_cloudbuild;tab=objects?forceOnBucketsSortingFiltering=false&mods=-monitoring_api_staging&project=datcom-ci&prefix=&forceOnObjectsSortingFiltering=false)
 - To get the exact source an individual build ran on, go to the build logs of that individiual build and click the "source" link. You can download the tar archive from GCS and look around/run tests to understand failures.
-  - If there are files/folders missing from this archive that are otherwise on
-	GitHub, check if those paths are in `.gitignore`. The `gcloud` CLI used to
-	launch individual jobs has a default ignore behavior where paths in
-	`.gitignore` are not uploaded to GCS. This might cause a discrepancy between
-	build results for periodic builds and builds that use `git clone`.
+- If there are files/folders missing from this archive that are otherwise on
+GitHub, check if those paths are in `.gitignore`. The `gcloud` CLI used to
+launch individual jobs has a default ignore behavior where paths in
+`.gitignore` are not uploaded to GCS. This might cause a discrepancy between
+build results for periodic builds and builds that use `git clone`.
 
 ## Manual Steps
 

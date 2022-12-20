@@ -24,7 +24,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func privateInternal(ctx context.Context, e GCSEvent) error {
+func customInternal(ctx context.Context, e GCSEvent) error {
 	projectID := os.Getenv("projectID")
 	bucket := os.Getenv("bucket")
 	instance := os.Getenv("instance")
@@ -117,9 +117,9 @@ func privateInternal(ctx context.Context, e GCSEvent) error {
 	return nil
 }
 
-// PrivateBTImportController consumes a GCS event and runs an import state machine.
-func PrivateBTImportController(ctx context.Context, e GCSEvent) error {
-	err := privateInternal(ctx, e)
+// CustomBTImportController consumes a GCS event and runs an import state machine.
+func CustomBTImportController(ctx context.Context, e GCSEvent) error {
+	err := customInternal(ctx, e)
 	if err != nil {
 		// Panic gets reported to Cloud Logging Error Reporting that we can then
 		// alert on
