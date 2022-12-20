@@ -38,6 +38,7 @@ variable "dc_resource_bucket" {
 variable "csv2bt_template_path" {
   type        = string
   description = "Full GCS path, including scheme, to the Dataflow template to load BT cache."
+  # For how the Flex Template below is created, please see java/dataflow/README.md.
   default     = "gs://datcom-templates/templates/flex/csv_to_bt.json"
 }
 
