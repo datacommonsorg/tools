@@ -98,6 +98,9 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 		log.Printf("[%s] State Launched", e.Name)
+	} else if strings.HasSuffix(e.Name, completedFile) {
+		// TODO: else, notify Mixer to load the BT table.
+		log.Printf("[%s] Completed work", e.Name)
 	}
 	return nil
 }
