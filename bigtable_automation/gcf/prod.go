@@ -18,7 +18,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -28,8 +27,6 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 	projectID := os.Getenv("projectID")
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
-	nodesHigh := os.Getenv("nodesHigh")
-	nodesLow := os.Getenv("nodesLow")
 	dataflowTemplate := os.Getenv("dataflowTemplate")
 	dataPath := os.Getenv("dataPath")
 	controlPath := os.Getenv("controlPath")
@@ -50,15 +47,6 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 	}
 	if controlPath == "" {
 		return errors.New("controlPath is not set in environment")
-	}
-	// Get low and high nodes number
-	nodesH, err := strconv.Atoi(nodesHigh)
-	if err != nil {
-		return errors.Wrap(err, "Unable to parse 'nodesHigh' as an integer")
-	}
-	nodesL, err := strconv.Atoi(nodesLow)
-	if err != nil {
-		return errors.Wrap(err, "Unable to parse 'nodesLow' as an integer")
 	}
 	// Get control bucket and object
 	controlBucket, controlFolder, err := parsePath(controlPath)
@@ -83,11 +71,6 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 		return nil
 	}
 
-	numNodes, err := getBTNodes(ctx, projectID, instance, cluster)
-	if err != nil {
-		return err
-	}
-
 	if strings.HasSuffix(e.Name, initFile) {
 		log.Printf("[%s] State Init", e.Name)
 		// Called when the state-machine is at Init. Logic below moves it to Launched state.
@@ -99,36 +82,22 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 		if exist {
 			return errors.WithMessagef(err, "Cache was already built for %s", tableID)
 		}
-		if err := setupBT(ctx, projectID, instance, tableID); err != nil {
-			return err
-		}
-		if numNodes < nodesH {
-			if err := scaleBT(ctx, projectID, instance, cluster, int32(nodesH)); err != nil {
-				return err
-			}
-		}
 		err = launchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate)
 		if err != nil {
+			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
+				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)
+			}
 			return err
 		}
 		// Save the fact that we've launched the dataflow job.
 		err = writeToGCS(ctx, launchedPath, "")
 		if err != nil {
+			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
+				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)
+			}
 			return err
 		}
 		log.Printf("[%s] State Launched", e.Name)
-	} else if strings.HasSuffix(e.Name, completedFile) {
-		log.Printf("[%s] State Completed", e.Name)
-		// Called when the state-machine moves to Completed state from Launched.
-		if numNodes == nodesH {
-			// Only scale down BT nodes when the current high node is set up this config.
-			// This requires different high nodes in different config.
-			if err := scaleBT(ctx, projectID, instance, cluster, int32(nodesL)); err != nil {
-				return err
-			}
-		}
-		// TODO: else, notify Mixer to load the BT table.
-		log.Printf("[%s] Completed work", e.Name)
 	}
 	return nil
 }

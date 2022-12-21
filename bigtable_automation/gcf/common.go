@@ -121,30 +121,10 @@ func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error
 	return nil
 }
 
-func scaleBT(ctx context.Context, projectID, instance, cluster string, numNodes int32) error {
-	// Scale up bigtable cluster. This helps speed up the dataflow job.
-	// We scale down again once dataflow job completes.
-	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, projectID)
-	dctx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Minute))
-	defer cancel()
+func deleteBTTable(ctx context.Context, projectID, instance, table string) error {
+	adminClient, err := bigtable.NewAdminClient(ctx, projectID, instance)
 	if err != nil {
-		return errors.Wrap(err, "Unable to create a table instance admin client")
+		return errors.Wrap(err, "Unable to create a table admin client")
 	}
-	log.Printf("Scaling BT %s cluster %s to %d nodes", instance, cluster, numNodes)
-	if err := instanceAdminClient.UpdateCluster(dctx, instance, cluster, numNodes); err != nil {
-		return errors.WithMessagef(err, "Unable to resize bigtable cluster %s to %d: %v", cluster, numNodes)
-	}
-	return nil
-}
-
-func getBTNodes(ctx context.Context, projectID, instance, cluster string) (int, error) {
-	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, projectID)
-	if err != nil {
-		return 0, errors.Wrap(err, "Unable to create a table instance admin client")
-	}
-	clusterInfo, err := instanceAdminClient.GetCluster(ctx, instance, cluster)
-	if err != nil {
-		return 0, errors.Wrap(err, "Unable to get cluster information")
-	}
-	return clusterInfo.ServeNodes, nil
+	return adminClient.DeleteTable(ctx, table)
 }

@@ -47,7 +47,7 @@ data "archive_file" "bt_automation_go_source" {
 # Upload zipped go source. Consumed by gcf.
 resource "google_storage_bucket_object" "bt_automation_archieve" {
     # Relative path in the resource bucket to upload the archieve.
-    name   = "cloud_functions/bt_automation_go_source.zip"
+    name   = "cloud_functions/bt_automation_go_source_${data.archive_file.bt_automation_go_source.output_base64sha256}.zip"
     source = "${path.module}/source/bt_automation_go_source.zip"
     bucket = var.dc_resource_bucket
 
@@ -58,7 +58,7 @@ resource "google_storage_bucket_object" "bt_automation_archieve" {
 
 resource "google_cloudfunctions_function" "bt_automation" {
   name        = format(
-      "prophet-cache-trigger-%s%s", var.project_id, local.resource_suffix)
+      "prophet-cache-trigger%s", local.resource_suffix)
   project        = var.project_id
   description = "For triggering BT cache build on gcs file writes."
   runtime     = "go116"
