@@ -82,6 +82,9 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 		if exist {
 			return errors.WithMessagef(err, "Cache was already built for %s", tableID)
 		}
+		if err := setupBT(ctx, projectID, instance, tableID); err != nil {
+			return err
+		}
 		err = launchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate)
 		if err != nil {
 			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
