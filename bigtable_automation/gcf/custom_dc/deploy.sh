@@ -49,10 +49,10 @@ gcloud compute networks subnets update default \
 
 gcloud functions deploy prophet-cache-trigger-$1 \
   --region 'us-central1' \
-  --entry-point PrivateBTImportController \
+  --entry-point CustomBTImportController \
   --runtime go116 \
   --trigger-bucket $BUCKET \
-  --env-vars-file private/$1.yaml \
+  --env-vars-file custom_dc/$1.yaml \
   --timeout 300
 
 gcloud bigtable instances create $INSTANCE \
