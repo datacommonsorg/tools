@@ -31,47 +31,23 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/storage"
 	"github.com/pkg/errors"
-	dataflow "google.golang.org/api/dataflow/v1b3"
 )
 
 const (
-	dataFilePattern    = "cache.csv*"
 	createTableRetries = 3
 	columnFamily       = "csv"
-	// Default region
-	region = "us-central1"
-
-	// NOTE: The following three files represents the state of a BT import. They
-	// get written under:
-	//
-	//		<controlPath>/<TableID>/
-	//
-	// Init: written by borg to start BT import.
-	initFile = "init.txt"
-	// Launched: written by this cloud function to mark launching of BT import job.
-	launchedFile = "launched.txt"
-	// Completed: written by dataflow to mark completion of BT import.
-	completedFile = "completed.txt"
 )
 
 // GCSEvent is the payload of a GCS event.
 type GCSEvent struct {
 	Name   string `json:"name"` // File name in the control folder
 	Bucket string `json:"bucket"`
-}
-
-// joinURL joins url components.
-// path.Join does work well for url, for example gs:// is changaed to gs:/
-func joinURL(base string, paths ...string) string {
-	p := path.Join(paths...)
-	return fmt.Sprintf("%s/%s", strings.TrimRight(base, "/"), strings.TrimLeft(p, "/"))
 }
 
 // parsePath returns the GCS bucket and object from path in the form of gs://<bucket>/<object>
@@ -114,42 +90,6 @@ func writeToGCS(ctx context.Context, path, data string) error {
 	return errors.WithMessagef(err, "Failed to write data to %s/%s", bucket, object)
 }
 
-func launchDataflowJob(
-	ctx context.Context,
-	projectID string,
-	instance string,
-	tableID string,
-	dataPath string,
-	controlPath string,
-	dataflowTemplate string,
-) error {
-	dataflowService, err := dataflow.NewService(ctx)
-	if err != nil {
-		return errors.Wrap(err, "Unable to create dataflow service")
-	}
-	dataFile := joinURL(dataPath, tableID, dataFilePattern)
-	launchedPath := joinURL(controlPath, tableID, launchedFile)
-	completedPath := joinURL(controlPath, tableID, completedFile)
-	params := &dataflow.LaunchTemplateParameters{
-		JobName: tableID,
-		Parameters: map[string]string{
-			"inputFile":          dataFile,
-			"completionFile":     completedPath,
-			"bigtableInstanceId": instance,
-			"bigtableTableId":    tableID,
-			"bigtableProjectId":  projectID,
-			"region":             region,
-		},
-	}
-	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", instance, tableID, dataFile, launchedPath)
-	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(projectID, params)
-	_, err = launchCall.GcsPath(dataflowTemplate).Do()
-	if err != nil {
-		return errors.WithMessagef(err, "Unable to launch dataflow job (%s, %s): %v\n", dataFile, launchedPath)
-	}
-	return nil
-}
-
 func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error {
 	adminClient, err := bigtable.NewAdminClient(ctx, btProjectID, btInstance)
 	if err != nil {
@@ -181,30 +121,10 @@ func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error
 	return nil
 }
 
-func scaleBT(ctx context.Context, projectID, instance, cluster string, numNodes int32) error {
-	// Scale up bigtable cluster. This helps speed up the dataflow job.
-	// We scale down again once dataflow job completes.
-	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, projectID)
-	dctx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Minute))
-	defer cancel()
+func deleteBTTable(ctx context.Context, projectID, instance, table string) error {
+	adminClient, err := bigtable.NewAdminClient(ctx, projectID, instance)
 	if err != nil {
-		return errors.Wrap(err, "Unable to create a table instance admin client")
+		return errors.Wrap(err, "Unable to create a table admin client")
 	}
-	log.Printf("Scaling BT %s cluster %s to %d nodes", instance, cluster, numNodes)
-	if err := instanceAdminClient.UpdateCluster(dctx, instance, cluster, numNodes); err != nil {
-		return errors.WithMessagef(err, "Unable to resize bigtable cluster %s to %d: %v", cluster, numNodes)
-	}
-	return nil
-}
-
-func getBTNodes(ctx context.Context, projectID, instance, cluster string) (int, error) {
-	instanceAdminClient, err := bigtable.NewInstanceAdminClient(ctx, projectID)
-	if err != nil {
-		return 0, errors.Wrap(err, "Unable to create a table instance admin client")
-	}
-	clusterInfo, err := instanceAdminClient.GetCluster(ctx, instance, cluster)
-	if err != nil {
-		return 0, errors.Wrap(err, "Unable to get cluster information")
-	}
-	return clusterInfo.ServeNodes, nil
+	return adminClient.DeleteTable(ctx, table)
 }

@@ -2,3 +2,11 @@
 .vscode
 **__pycache__**
 **node_modules**
+
+# Terraform related
+**/.terraform/*
+**/.terraform.lock.*
+# .tfstate files
+*.tfstate
+*.tfstate.*
+bigtable_automation/terraform/source/bt_automation_go_source.zip

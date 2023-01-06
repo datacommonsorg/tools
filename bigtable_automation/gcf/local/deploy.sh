@@ -13,15 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -x
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $DIR
 
 # Pick environment config file
 config_file=local.yaml
+if [[ "$1" == "flex" ]]; then
+    config_file=local_flex.yaml
+    # Flex template only variables
+    export tempLocation=$(yq eval .tempLocation $config_file)
+fi
 
 # Good to read the yaml file keys and convert them to bash array
-for var in projectID cluster instance nodesHigh nodesLow dataflowTemplate dataPath controlPath
+for var in projectID cluster instance dataflowTemplate dataPath controlPath
 do
     value=$(yq eval .$var $config_file)
     export $var=$value
