@@ -94,7 +94,7 @@ running the following command.
 
 ```sh
 
-mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt --region=us-central1 --usePublicIps=false"
+mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=datcom-store --stagingLocation=gs://datcom-templates/staging --templateLocation=gs://datcom-templates/templates/csv_to_bt_0.0.3 --region=us-central1 --usePublicIps=false --experiments=enable_prime"
 
 ```
 
@@ -109,16 +109,17 @@ value of `--jar` flag and the docker image tag below.
 ```sh
 
 mvn clean package && gcloud dataflow flex-template build \
-    "gs://datcom-templates/templates/flex/csv_to_bt.json" \
+    "gs://datcom-templates/templates/flex/csv_to_bt_0.0.3.json" \
      --image-gcr-path \
-        "gcr.io/datcom-ci/dataflow-templates/csv2bt:dataflow-0.0.2-SNAPSHOT" \
+        "gcr.io/datcom-ci/dataflow-templates/csv2bt:dataflow-0.0.3-SNAPSHOT" \
      --sdk-language "JAVA" \
      --flex-template-base-image JAVA11 \
      --metadata-file "csv2bt-template-metadata.json" \
-     --jar "target/dataflow-0.0.2-SNAPSHOT.jar" \
+     --jar "target/dataflow-0.0.3-SNAPSHOT.jar" \
      --project=datcom-ci \
      --env FLEX_TEMPLATE_JAVA_MAIN_CLASS="org.datacommons.dataflow.CsvImport" \
-     --disable-public-ips
+     --disable-public-ips \
+     --additional-experiments=enable_prime
 
 ```
 
