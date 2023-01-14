@@ -12,7 +12,7 @@ create_fresh_bt_table_for_testing () {
 
 if [[ "$1" == "deploy" ]]; then
 
-  mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/test_staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt_test --region=us-central1 --usePublicIps=false"
+  mvn compile exec:java -Dexec.mainClass=org.datacommons.dataflow.CsvImport -Dexec.args="--runner=DataflowRunner --project=google.com:datcom-store-dev --stagingLocation=gs://datcom-dataflow-templates/test_staging --templateLocation=gs://datcom-dataflow-templates/templates/csv_to_bt_test --region=us-central1 --usePublicIps=false --experiments=enable_prime"
 
 elif [[ "$1" == "deploy-flex" ]]; then
 
@@ -20,7 +20,7 @@ elif [[ "$1" == "deploy-flex" ]]; then
   mvn clean package
 
   # From pom.xml
-  TAG="0.0.2-SNAPSHOT"
+  TAG="0.0.3-SNAPSHOT"
 
   # Submit a build job to create a Docker image for the flex template.
   gcloud dataflow flex-template build \
@@ -71,7 +71,8 @@ elif [[ "$1" == "run-cache-flex" ]]; then
     --parameters bigtableProjectId=google.com:datcom-store-dev \
     --parameters tempLocation=gs://datcom-store-dev-resources/tmp \
     --region "us-central1" \
-    --disable-public-ips
+    --disable-public-ips \
+    --additional-experiments=enable_prime
 
 elif [[ "$1" == "run-csv" ]]; then
 
@@ -111,7 +112,8 @@ elif [[ "$1" == "run-csv-flex" ]]; then
     --parameters bigtableProjectId=google.com:datcom-store-dev \
     --parameters tempLocation=gs://datcom-store-dev-resources/tmp \
     --region "us-central1" \
-    --disable-public-ips
+    --disable-public-ips \
+    --additional-experiments=enable_prime
 
 else
   echo "Classic Templates:" >&2

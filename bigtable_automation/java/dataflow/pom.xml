@@ -3,11 +3,11 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.datacommons</groupId>
   <artifactId>dataflow</artifactId>
-  <version>0.0.2-SNAPSHOT</version>
+  <version>0.0.3-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <properties>
-    <beam.version>2.23.0</beam.version>
+    <beam.version>2.43.0</beam.version>
     <bigtable.version>1.4.0</bigtable.version>
     <slf4j.version>1.7.21</slf4j.version>
     <maven.compiler.source>1.7</maven.compiler.source>
@@ -45,7 +45,8 @@
 
   <build>
     <!-- The maven shade plugin is used to create an uber-jar with all the
-    dependencies needed to run as a standalone jar.
+    dependencies needed
+    to run as a standalone jar.
     Do not minimize the jar since that removes some of the required
     classes for the runners. -->
     <plugins>
@@ -61,7 +62,8 @@
             </goals>
             <configuration>
               <transformers>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                <transformer
+                  implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
               </transformers>
               <filters>
                 <filter>
