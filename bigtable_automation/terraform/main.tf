@@ -99,3 +99,27 @@ resource "google_cloudfunctions_function" "bt_automation" {
       google_storage_bucket_object.bt_automation_archieve
   ]
 }
+
+resource "google_project_iam_member" "bt_automation_iam" {
+  for_each = toset([
+    "roles/bigtable.admin",
+    "roles/dataflow.admin",
+    "roles/storage.admin",
+    # Web robot is also used for Cloud Function jobs, which launches Dataflow jobs.
+     # It needs permission to impersonate Dataflow worker principal.
+    "roles/iam.serviceAccountUser"
+  ])
+  role    = each.key
+  member  = "serviceAccount:${var.service_account_email}"
+  project = var.project_id
+}
+
+data "google_compute_default_service_account" "default" {
+  project = var.project_id
+}
+
+resource "google_project_iam_member" "dataflow_worker_iam" {
+  role    = "roles/storage.objectAdmin" # For running csv -> BT table jobs.
+  member  = "serviceAccount:${data.google_compute_default_service_account.default.email}"
+  project = var.project_id
+}
