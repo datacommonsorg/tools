@@ -47,7 +47,7 @@ data "archive_file" "bt_automation_go_source" {
 # Upload zipped go source. Consumed by gcf.
 resource "google_storage_bucket_object" "bt_automation_archieve" {
     # Relative path in the resource bucket to upload the archieve.
-    name   = "cloud_functions/bt_automation_go_source_${data.archive_file.bt_automation_go_source.output_base64sha256}.zip"
+    name   = "cloud_functions/bt_automation_go_source_${data.archive_file.bt_automation_go_source.output_md5}.zip"
     source = "${path.module}/source/bt_automation_go_source.zip"
     bucket = var.dc_resource_bucket
 
@@ -121,5 +121,16 @@ data "google_compute_default_service_account" "default" {
 resource "google_project_iam_member" "dataflow_worker_iam" {
   role    = "roles/storage.objectAdmin" # For running csv -> BT table jobs.
   member  = "serviceAccount:${data.google_compute_default_service_account.default.email}"
+  project = var.project_id
+}
+
+# Permissions needed to communicate with graph processor.
+resource "google_project_iam_member" "bt_automation_iam" {
+  for_each = toset([
+    "roles/pubsub.editor",
+    "roles/storage.admin"
+  ])
+  role    = each.key
+  member  = "serviceAccount:datcom@system.gserviceaccount.com"
   project = var.project_id
 }
