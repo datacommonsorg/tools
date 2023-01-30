@@ -18,17 +18,20 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
 )
 
+// TODO(alex): refactor path -> event handler logic.
 func customInternal(ctx context.Context, e GCSEvent) error {
 	projectID := os.Getenv("projectID")
 	bucket := os.Getenv("bucket")
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
 	dataflowTemplate := os.Getenv("dataflowTemplate")
+	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if projectID == "" {
 		return errors.New("projectID is not set in environment")
 	}
@@ -41,6 +44,19 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 	if dataflowTemplate == "" {
 		return errors.New("dataflowTemplate is not set in environment")
 	}
+	if bucket == "" {
+		return errors.New("bucket is not set in environment")
+	}
+
+	// First check if this is a csv file, if it s
+	if strings.HasSuffix(e.Name, csvFileExtension) && controllerTriggerTopic != "" {
+		bigstoreCSVPath := filepath.Join("/bigstore", bucket, e.Name)
+		log.Printf("Detected csv file based on %s extension. Triggering the controller", csvFileExtension)
+		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
+		pcfg := PublishConfig{FullTopicName:controllerTriggerTopic}
+		return TriggerController(ctx, pcfg, bigstoreCSVPath)
+	}
+
 	// Get table ID.
 	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
 	parts := strings.Split(e.Name, "/")
