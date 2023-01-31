@@ -34,7 +34,7 @@ if [[ "$1" == "publish" ]]; then
           "eventType": "google.storage.object.finalize",
           "resource": {
              "service": "storage.googleapis.com",
-             "name": "projects/_/buckets/automation_control_test/user/IEA_PRIVATE/tmcf_csv/test.csv",
+             "name": "projects/_/buckets/automation_control_test/user/IEA_PRIVATE/process/import1/trigger.txt",
              "type": "storage#object"
           }
         },
@@ -44,7 +44,7 @@ if [[ "$1" == "publish" ]]; then
           "kind": "storage#object",
           "md5Hash": "...",
           "metageneration": "1",
-          "name": "user/IEA_PRIVATE/tmcf_csv/test.csv",
+          "name": "user/IEA_PRIVATE/process/import1/trigger.txt",
           "size": "0",
           "storageClass": "MULTI_REGIONAL",
           "timeCreated": "2020-04-23T07:38:57.230Z",

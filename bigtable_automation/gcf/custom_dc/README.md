@@ -6,7 +6,7 @@ Custom DC BT automation also triggers KG builders owned by the DC team on new CS
 
 ## How to test
 
-From custom_dc directory, run `go run main.go` to start custom DC gcf locally.
+From custom_dc directory, run `./deploy_local.sh` to start custom DC gcf locally.
 
 ### Testing csv trigger
 
