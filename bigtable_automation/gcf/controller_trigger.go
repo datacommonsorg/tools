@@ -90,13 +90,10 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 	return nil
 }
 
-func TriggerController(ctx context.Context, p PublishConfig, csvPath string) error {
-	tmcfCSVDir := filepath.Dir(csvPath)
-	if tmcfCSVFolderName := filepath.Base(tmcfCSVDir); tmcfCSVFolderName != "tmcf_csv" {
-		return fmt.Errorf("csv file is not under %s", "tmcf_csv")
-	}
-
-	path := ImportGCSPath{importName: filepath.Dir(tmcfCSVDir)}
+// triggerPath is .../<import_name>/process/<import id>/trigger.txt
+func TriggerController(ctx context.Context, p PublishConfig, triggerPath string) error {
+	imoprtName := filepath.Dir(filepath.Dir(filepath.Dir(triggerPath)))
+	path := ImportGCSPath{importName: imoprtName}
 
 	msg := CustomDCPubSubMsg{
 		importName:               path.ImportName(),
