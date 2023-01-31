@@ -2,7 +2,12 @@
 
 ## Backgroud
 
-Custom DC BT automation also triggers KG builders owned by the DC team on new CSV files in the resource bucket.
+Custom DC BT automation also triggers KG builders owned by the DC team by writing to a blob in the resource bucket.
+
+The blob written to the following path will trigger a cache build.
+```sh
+gs://<resource-bucket>/../<import name>/process/<import id>/trigger.txt
+```
 
 ## How to test
 
