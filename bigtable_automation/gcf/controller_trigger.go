@@ -91,9 +91,10 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 }
 
 // triggerPath is .../<import_name>/process/<import id>/trigger.txt
+// process folder is currently only used for control purposes for 1 process: trigger controller.
 func TriggerController(ctx context.Context, p PublishConfig, triggerPath string) error {
-	imoprtName := filepath.Dir(filepath.Dir(filepath.Dir(triggerPath)))
-	path := ImportGCSPath{importName: imoprtName}
+	importName := filepath.Dir(filepath.Dir(filepath.Dir(triggerPath)))
+	path := ImportGCSPath{importName: importName}
 
 	msg := CustomDCPubSubMsg{
 		importName:               path.ImportName(),
