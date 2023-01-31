@@ -25,7 +25,7 @@ import (
 )
 
 // blobName is assumed to be under the correct path in "control".
-func handleBTCache((ctx context.Context, blobName string) error {
+func handleBTCache(ctx context.Context, blobName string) error {
 	projectID := os.Getenv("projectID")
 	bucket := os.Getenv("bucket")
 	instance := os.Getenv("instance")
@@ -49,9 +49,13 @@ func handleBTCache((ctx context.Context, blobName string) error {
 
 	parts := strings.Split(blobName, "/")
 
+	// Get table ID.
+	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
 	idxTable := len(parts) - 2
 	tableID := parts[idxTable]
-	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControlOrProcess], "/")
+
+	idxControl := len(parts) - 3
+	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControl], "/")
 
 	if strings.HasSuffix(blobName, initFile) {
 		log.Printf("[%s] State Init", blobName)
@@ -92,10 +96,14 @@ func handleBTCache((ctx context.Context, blobName string) error {
 	return nil
 }
 
-func handleControllerTrigger(ctx context.Context, bucket, blobPath string) error {
+func handleControllerTrigger(ctx context.Context, blobPath string) error {
 	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
+	bucket := os.Getenv("bucket")
 	if controllerTriggerTopic == "" {
 		return errors.New("controllerTriggerTopic is not set in environment")
+	}
+	if bucket == "" {
+		return errors.New("bucket is not set in environment")
 	}
 
 	bigstoreCSVPath := filepath.Join("/bigstore", bucket, blobPath)
@@ -106,10 +114,6 @@ func handleControllerTrigger(ctx context.Context, bucket, blobPath string) error
 
 // TODO(alex): refactor path -> event handler logic.
 func customInternal(ctx context.Context, e GCSEvent) error {
-
-
-	// Get table ID.
-	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
 	parts := strings.Split(e.Name, "/")
 	idxControlOrProcess := len(parts) - 3
 	if len(parts) < 3 {
@@ -118,15 +122,10 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 		return nil
 	}
 
-	if parts[idxControlOrProcess] != "control" && parts[idxControlOrProcess] != "process" {
-		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
-		return nil
-	}
-
 	if parts[idxControlOrProcess] == "control" {
 		return handleBTCache(ctx, e.Name)
 	} else if parts[idxControlOrProcess] == "process" && strings.HasSuffix(e.Name, controllerTriggerFile) {
-		return handleControllerTrigger(ctx, bucket, e.Name)
+		return handleControllerTrigger(ctx, e.Name)
 	} else {
 		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
 		return nil
