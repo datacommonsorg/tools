@@ -14,10 +14,10 @@
 
 // Package gcf runs a GCF function that triggers in 2 scenarios:
 //
-// 1) completion of prophet-flume job in borg. On triggering it sets up new
-//    cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
-// 2) completion of BT cache ingestion dataflow job. It scales BT cluster down
-//    (if needed).
+//  1. completion of prophet-flume job in borg. On triggering it sets up new
+//     cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
+//  2. completion of BT cache ingestion dataflow job. It scales BT cluster down
+//     (if needed).
 //
 // There are two set of trigger functions defined:
 // - ProdBTImportController
@@ -44,7 +44,6 @@ const (
 	createTableRetries = 3
 	columnFamily       = "csv"
 	gsScheme           = "gs://"
-	csvFileExtension   = ".csv"
 )
 
 // GCSEvent is the payload of a GCS event.

@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     https://www.apache.org/licenses/LICENSE-2.0
+//	https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,47 +25,48 @@ import (
 )
 
 const (
-	dcManifestPath = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
+	dcManifestPath        = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
+	controllerTriggerFile = "trigger.txt"
 )
 
 type PublishConfig struct {
 	// TopicName is the full PubSub topic name in the following format
 	// projects/<project id>/topics/<topic id>
-	FullTopicName string
+	TopicName string
 }
 
 func (p PublishConfig) ProjectID() string {
-	return strings.Split(p.FullTopicName, "/")[1]
+	return strings.Split(p.TopicName, "/")[1]
 }
 
-func (p PublishConfig) TopicName() string {
-	return strings.Split(p.FullTopicName, "/")[3]
+func (p PublishConfig) TopicID() string {
+	return strings.Split(p.TopicName, "/")[3]
 }
 
 type CustomDCPubSubMsg struct {
-	importName string
-	dcManifestPath string
-	customManifestPath string
-	bigstoreDataDirectory string
-	bigstoreCacheDirectory string
+	importName               string
+	dcManifestPath           string
+	customManifestPath       string
+	bigstoreDataDirectory    string
+	bigstoreCacheDirectory   string
 	bigstoreControlDirectory string
 }
 
 func (s CustomDCPubSubMsg) String() string {
-		return fmt.Sprintf(`import_name=%s,\
+	return fmt.Sprintf(`import_name=%s,\
 dc_manifest_path=%s,\
 custom_manifest_path=%s,\
 bigstore_data_directory=%s,\
 bigstore_cache_directory=%s,\
 bigstore_control_directory=%s,\
 `,
-				s.importName,
-				s.dcManifestPath,
-				s.customManifestPath,
-				s.bigstoreDataDirectory,
-				s.bigstoreCacheDirectory,
-				s.bigstoreControlDirectory,
-		)
+		s.importName,
+		s.dcManifestPath,
+		s.customManifestPath,
+		s.bigstoreDataDirectory,
+		s.bigstoreCacheDirectory,
+		s.bigstoreControlDirectory,
+	)
 }
 
 // Publish publishes the current import config to a topic.
@@ -76,7 +77,7 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 	}
 	defer client.Close()
 
-	t := client.Topic(p.TopicName())
+	t := client.Topic(p.TopicID())
 	res := t.Publish(ctx, &pubsub.Message{
 		Data: []byte(s.String()),
 	})
@@ -98,11 +99,11 @@ func TriggerController(ctx context.Context, p PublishConfig, csvPath string) err
 	path := ImportGCSPath{importName: filepath.Dir(tmcfCSVDir)}
 
 	msg := CustomDCPubSubMsg{
-		importName: path.ImportName(),
-		dcManifestPath: dcManifestPath,
-		customManifestPath: path.ConfigPath(),
-		bigstoreDataDirectory: path.DataDirectory(),
-		bigstoreCacheDirectory: path.CacheDirectory(),
+		importName:               path.ImportName(),
+		dcManifestPath:           dcManifestPath,
+		customManifestPath:       path.ConfigPath(),
+		bigstoreDataDirectory:    path.DataDirectory(),
+		bigstoreCacheDirectory:   path.CacheDirectory(),
 		bigstoreControlDirectory: path.ControlDirectory(),
 	}
 	return msg.Publish(ctx, p)

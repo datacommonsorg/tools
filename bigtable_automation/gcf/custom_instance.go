@@ -24,14 +24,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-// TODO(alex): refactor path -> event handler logic.
-func customInternal(ctx context.Context, e GCSEvent) error {
+// blobName is assumed to be under the correct path in "control".
+func handleBTCache((ctx context.Context, blobName string) error {
 	projectID := os.Getenv("projectID")
 	bucket := os.Getenv("bucket")
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
 	dataflowTemplate := os.Getenv("dataflowTemplate")
-	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if projectID == "" {
 		return errors.New("projectID is not set in environment")
 	}
@@ -48,29 +47,14 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 		return errors.New("bucket is not set in environment")
 	}
 
-	// First check if this is a csv file, if it s
-	if strings.HasSuffix(e.Name, csvFileExtension) && controllerTriggerTopic != "" {
-		bigstoreCSVPath := filepath.Join("/bigstore", bucket, e.Name)
-		log.Printf("Detected csv file based on %s extension. Triggering the controller", csvFileExtension)
-		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
-		pcfg := PublishConfig{FullTopicName:controllerTriggerTopic}
-		return TriggerController(ctx, pcfg, bigstoreCSVPath)
-	}
+	parts := strings.Split(blobName, "/")
 
-	// Get table ID.
-	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
-	parts := strings.Split(e.Name, "/")
-	idxControl := len(parts) - 3
 	idxTable := len(parts) - 2
-	if parts[idxControl] != "control" {
-		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
-		return nil
-	}
 	tableID := parts[idxTable]
-	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControl], "/")
+	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControlOrProcess], "/")
 
-	if strings.HasSuffix(e.Name, initFile) {
-		log.Printf("[%s] State Init", e.Name)
+	if strings.HasSuffix(blobName, initFile) {
+		log.Printf("[%s] State Init", blobName)
 		// Called when the state-machine is at Init. Logic below moves it to Launched state.
 		launchedPath := joinURL(rootFolder, "control", tableID, launchedFile)
 		exist, err := doesObjectExist(ctx, launchedPath)
@@ -100,12 +84,53 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 			}
 			return err
 		}
-		log.Printf("[%s] State Launched", e.Name)
-	} else if strings.HasSuffix(e.Name, completedFile) {
+		log.Printf("[%s] State Launched", blobName)
+	} else if strings.HasSuffix(blobName, completedFile) {
 		// TODO: else, notify Mixer to load the BT table.
-		log.Printf("[%s] Completed work", e.Name)
+		log.Printf("[%s] Completed work", blobName)
 	}
 	return nil
+}
+
+func handleControllerTrigger(ctx context.Context, bucket, blobPath string) error {
+	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
+	if controllerTriggerTopic == "" {
+		return errors.New("controllerTriggerTopic is not set in environment")
+	}
+
+	bigstoreCSVPath := filepath.Join("/bigstore", bucket, blobPath)
+	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
+	pcfg := PublishConfig{TopicName: controllerTriggerTopic}
+	return TriggerController(ctx, pcfg, bigstoreCSVPath)
+}
+
+// TODO(alex): refactor path -> event handler logic.
+func customInternal(ctx context.Context, e GCSEvent) error {
+
+
+	// Get table ID.
+	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
+	parts := strings.Split(e.Name, "/")
+	idxControlOrProcess := len(parts) - 3
+	if len(parts) < 3 {
+		log.Printf("Expected 3+ '/'-separated parts, got %s", e.Name)
+		log.Println("Ignoring as irrelevant file")
+		return nil
+	}
+
+	if parts[idxControlOrProcess] != "control" && parts[idxControlOrProcess] != "process" {
+		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
+		return nil
+	}
+
+	if parts[idxControlOrProcess] == "control" {
+		return handleBTCache(ctx, e.Name)
+	} else if parts[idxControlOrProcess] == "process" && strings.HasSuffix(e.Name, controllerTriggerFile) {
+		return handleControllerTrigger(ctx, bucket, e.Name)
+	} else {
+		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
+		return nil
+	}
 }
 
 // CustomBTImportController consumes a GCS event and runs an import state machine.
