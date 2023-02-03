@@ -14,10 +14,10 @@
 
 // Package gcf runs a GCF function that triggers in 2 scenarios:
 //
-// 1) completion of prophet-flume job in borg. On triggering it sets up new
-//    cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
-// 2) completion of BT cache ingestion dataflow job. It scales BT cluster down
-//    (if needed).
+//  1. completion of prophet-flume job in borg. On triggering it sets up new
+//     cloud BT table, scales up BT cluster (if needed) and starts a dataflow job.
+//  2. completion of BT cache ingestion dataflow job. It scales BT cluster down
+//     (if needed).
 //
 // There are two set of trigger functions defined:
 // - ProdBTImportController
@@ -31,6 +31,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,6 +43,7 @@ import (
 const (
 	createTableRetries = 3
 	columnFamily       = "csv"
+	gsScheme           = "gs://"
 )
 
 // GCSEvent is the payload of a GCS event.
@@ -127,4 +129,44 @@ func deleteBTTable(ctx context.Context, projectID, instance, table string) error
 		return errors.Wrap(err, "Unable to create a table admin client")
 	}
 	return adminClient.DeleteTable(ctx, table)
+}
+
+// ImportGCSPath holds GCS path info for custom dc v1.
+// import name inside the pubsub message to trigger controller must match
+// the import name in config.textproto (specified by customManifestPath).
+// Ideally we should read import name from config.text proto directly, but
+// since manifest protos are not public yet, we will use the folder name instead.
+//
+// Custom DC resource bucket MUST follow the following directory structure.
+// <resource bucket name>/<some path>/<import name>/config/config.textproto
+// <resource bucket name>/<some path>/<import name>/tmcf_csv/*.csv
+// <resource bucket name>/<some path>/<import name>/tmcf_csv/*.tmcf
+// <resource bucket name>/<some path>/<import name>/<other folders like control, cache>
+type ImportGCSPath struct {
+	// GCS base path for a particular import.
+	// This should be under the resource bucket.
+	importName string
+}
+
+func (p ImportGCSPath) ImportName() string {
+	return filepath.Base(p.importName)
+}
+
+// ConfigPath must be <base>/config/config.textproto
+func (p ImportGCSPath) ConfigPath() string {
+	return filepath.Join(p.importName, "config", "config.textproto")
+}
+
+// DataDirectory is the expected location for tmcf and csvs.
+// It is expected that csv files are dropped off in this directory.
+func (p ImportGCSPath) DataDirectory() string {
+	return filepath.Join(p.importName, "tmcf_csv")
+}
+
+func (p ImportGCSPath) CacheDirectory() string {
+	return filepath.Join(p.importName, "cache")
+}
+
+func (p ImportGCSPath) ControlDirectory() string {
+	return filepath.Join(p.importName, "control")
 }
