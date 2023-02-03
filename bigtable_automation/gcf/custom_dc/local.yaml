@@ -1,0 +1,7 @@
+projectID: "google.com:datcom-store-dev"
+instance: "prophet-test"
+cluster: "prophet-test-c1"
+dataflowTemplate: "gs://datcom-dataflow-templates/templates/flex/csv_to_bt.json"
+tempLocation: "gs://datcom-store-dev-resources/dataflow/tmp"
+controllerTriggerTopic: "projects/datcom-204919/topics/custom-import-notification-test"
+bucket: "automation_control_test"
