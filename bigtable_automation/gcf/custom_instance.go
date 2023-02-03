@@ -18,12 +18,14 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
 )
 
-func customInternal(ctx context.Context, e GCSEvent) error {
+// blobName is assumed to be under the correct path in "control".
+func handleBTCache(ctx context.Context, blobName string) error {
 	projectID := os.Getenv("projectID")
 	bucket := os.Getenv("bucket")
 	instance := os.Getenv("instance")
@@ -41,20 +43,22 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 	if dataflowTemplate == "" {
 		return errors.New("dataflowTemplate is not set in environment")
 	}
+	if bucket == "" {
+		return errors.New("bucket is not set in environment")
+	}
+
+	parts := strings.Split(blobName, "/")
+
 	// Get table ID.
 	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
-	parts := strings.Split(e.Name, "/")
-	idxControl := len(parts) - 3
 	idxTable := len(parts) - 2
-	if parts[idxControl] != "control" {
-		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
-		return nil
-	}
 	tableID := parts[idxTable]
+
+	idxControl := len(parts) - 3
 	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControl], "/")
 
-	if strings.HasSuffix(e.Name, initFile) {
-		log.Printf("[%s] State Init", e.Name)
+	if strings.HasSuffix(blobName, initFile) {
+		log.Printf("[%s] State Init", blobName)
 		// Called when the state-machine is at Init. Logic below moves it to Launched state.
 		launchedPath := joinURL(rootFolder, "control", tableID, launchedFile)
 		exist, err := doesObjectExist(ctx, launchedPath)
@@ -84,12 +88,48 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 			}
 			return err
 		}
-		log.Printf("[%s] State Launched", e.Name)
-	} else if strings.HasSuffix(e.Name, completedFile) {
+		log.Printf("[%s] State Launched", blobName)
+	} else if strings.HasSuffix(blobName, completedFile) {
 		// TODO: else, notify Mixer to load the BT table.
-		log.Printf("[%s] Completed work", e.Name)
+		log.Printf("[%s] Completed work", blobName)
 	}
 	return nil
+}
+
+func handleControllerTrigger(ctx context.Context, blobPath string) error {
+	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
+	bucket := os.Getenv("bucket")
+	if controllerTriggerTopic == "" {
+		return errors.New("controllerTriggerTopic is not set in environment")
+	}
+	if bucket == "" {
+		return errors.New("bucket is not set in environment")
+	}
+
+	bigstoreCSVPath := filepath.Join("/bigstore", bucket, blobPath)
+	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
+	pcfg := PublishConfig{TopicName: controllerTriggerTopic}
+	return TriggerController(ctx, pcfg, bigstoreCSVPath)
+}
+
+// TODO(alex): refactor path -> event handler logic.
+func customInternal(ctx context.Context, e GCSEvent) error {
+	parts := strings.Split(e.Name, "/")
+	idxControlOrProcess := len(parts) - 3
+	if len(parts) < 3 {
+		log.Printf("Expected 3+ '/'-separated parts, got %s", e.Name)
+		log.Println("Ignoring as irrelevant file")
+		return nil
+	}
+
+	if parts[idxControlOrProcess] == "control" {
+		return handleBTCache(ctx, e.Name)
+	} else if parts[idxControlOrProcess] == "process" && strings.HasSuffix(e.Name, controllerTriggerFile) {
+		return handleControllerTrigger(ctx, e.Name)
+	} else {
+		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
+		return nil
+	}
 }
 
 // CustomBTImportController consumes a GCS event and runs an import state machine.
