@@ -1,0 +1,162 @@
+// Copyright 2023 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// ****************************** IMPORTANT NOTE ******************************
+// Note: This file is copied from datacommons/proto/dc_manifest.proto
+// Please do not modify this file directly.
+// ****************************************************************************
+
+// To generate dc_manifest.pb.go, run the following command from proto folder.
+// protoc --proto_path=. --go_out=. --go-grpc_out=. dc_manifest.proto
+
+syntax = "proto2";
+package datacommons;
+option go_package = ".";
+
+message ExternalTable {
+  optional string table_name = 1 [deprecated = true];
+  optional string mapping_path = 2;
+  repeated string csv_path = 3;
+  repeated string column_names = 4;
+  optional string field_delim = 5 [default = ","];
+  optional DownloadConfig download_config = 6;
+}
+message ResolutionInfo {
+  optional bool uses_id_resolver = 1;
+  repeated string requires_ids = 2;
+  repeated string provides_ids = 3;
+  message GeoInfo {
+    repeated string dcid_sources = 1;
+  }
+  optional GeoInfo new_geo = 4;
+  enum KGType {
+    KG_NONE = 0;
+    KG_BQ = 1;
+    KG_MCF = 2;
+  }
+  optional KGType kg_for_resolution = 5 [default = KG_NONE];
+  repeated string resolution_helper_mcf_paths = 6;
+  repeated string unresolved_mcf_urls = 7;
+}
+message DownloadConfig {
+  oneof prefix {
+    string src_prefix_dir = 1;
+    string src_latest_version_file = 2;
+  }
+  message PathPair {
+    optional string src_file = 1;
+    optional string dst_file = 2;
+  }
+  message FileOp {
+    oneof op {
+      PathPair cp = 1;
+      string del = 2;
+    }
+  }
+  reserved 3, 4;
+}
+message GoldenTripleSelection {
+  optional int32 svobs_nodes_pick_one_in = 3 [default = 20];
+  reserved 1, 2;
+}
+enum CustomDCScope {
+  CUSTOM_DC_UNSPECIFIED = 0;
+  CUSTOM_DC_BASE = 1;
+  CUSTOM_DC_US_GEOS = 2;
+  CUSTOM_DC_WORLD_GEOS = 3;
+  CUSTOM_DC_POWER_PLANTS = 4;
+  CUSTOM_DC_PARTIAL_GEOS = 5;
+  CUSTOM_DC_WORLD_COUNTRIES = 6;
+  CUSTOM_DC_US_STATES = 7;
+  CUSTOM_DC_US_COUNTIES = 8;
+  CUSTOM_DC_US_ZIP_CODES = 9;
+  CUSTOM_DC_US_OTHER_GEOS = 10;
+}
+message DataCommonsManifest {
+  enum ImportCategory {
+    IMPORT_CATEGORY_UNKNOWN = 0;
+    SCHEMA = 1;
+    PLACE = 2;
+    CURATED_STATVAR = 3;
+    GENERATED_STATVAR = 4;
+    GENERATED_RANKING = 5;
+    GENERATED_STATVARGROUP = 6;
+    AGGREGATED_STATS = 7;
+    STATS = 8;
+    ENTITY = 9;
+    IMPUTED_STATS = 10;
+    INTERMEDIATE_STATS = 11;
+  }
+  message Import {
+    optional string import_name = 1;
+    optional string provenance_url = 2;
+    optional string provenance_description = 6;
+    optional ImportCategory category = 20;
+    repeated string import_groups = 23;
+    repeated string mcf_url = 3;
+    repeated string mcf_proto_url = 25;
+    optional bool is_mcf_replicated_from_piper = 18;
+    repeated ExternalTable table = 4;
+    optional string curator_email = 5 [default = "imports@datacommons.org"];
+    optional ResolutionInfo resolution_info = 9;
+    optional string start_date_in_kg = 10;
+    optional string end_date_in_kg = 11;
+    optional string end_date_in_source = 21;
+    optional string release_frequency = 12;
+    optional string next_release_date = 13;
+    repeated string data_download_url = 15;
+    optional string automated_mcf_generation_by = 24;
+    optional GoldenTripleSelection golden_triple_selection = 14;
+    optional bool is_unresolved_mcf_missing = 22 [default = false];
+    optional DownloadConfig mcf_download_config = 17;
+    optional string dataset_name = 26;
+    optional CustomDCScope custom_dc_scope = 29;
+    reserved 7, 8, 16, 19, 27, 28;
+  }
+  repeated Import import = 1;
+  message ImportGroup {
+    optional string name = 1;
+    optional string description = 2;
+    repeated CustomDCScope custom_dc_scope = 4 [packed = true];
+    reserved 3;
+  }
+  repeated ImportGroup import_groups = 2;
+  message DatasetInfo {
+    optional string name = 1;
+    optional string url = 2;
+    oneof description {
+      string description_md = 3;
+      string description_file = 4;
+    }
+    repeated string verticals = 5;
+  }
+  message DatasetSource {
+    optional string name = 1;
+    optional string url = 2;
+    optional string header_md = 3;
+    optional string footer_md = 4;
+    repeated DatasetInfo datasets = 5;
+  }
+  repeated DatasetSource dataset_source = 4;
+  reserved 3;
+}
+message ImportSnapshot {
+  message FileStat {
+    optional string path = 1;
+    optional int64 length = 2;
+    optional double mtime_secs = 3;
+  }
+  optional string import_name = 1;
+  repeated FileStat stat = 2;
+}
