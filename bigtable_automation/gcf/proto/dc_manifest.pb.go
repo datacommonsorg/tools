@@ -40,32 +40,20 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Indicates which base imports to include in a custom DC.
 type CustomDCScope int32
 
 const (
-	CustomDCScope_CUSTOM_DC_UNSPECIFIED CustomDCScope = 0
-	// Includes schema and stat vars.
-	CustomDCScope_CUSTOM_DC_BASE CustomDCScope = 1
-	// Includes US geos.
-	CustomDCScope_CUSTOM_DC_US_GEOS CustomDCScope = 2
-	// Includes non-US geos.
-	CustomDCScope_CUSTOM_DC_WORLD_GEOS CustomDCScope = 3
-	// Includes power plant entities.
-	CustomDCScope_CUSTOM_DC_POWER_PLANTS CustomDCScope = 4
-	// Include limited set of geos: countries, states, counties
-	CustomDCScope_CUSTOM_DC_PARTIAL_GEOS CustomDCScope = 5
-	// Includes countries around the world.
+	CustomDCScope_CUSTOM_DC_UNSPECIFIED     CustomDCScope = 0
+	CustomDCScope_CUSTOM_DC_BASE            CustomDCScope = 1
+	CustomDCScope_CUSTOM_DC_US_GEOS         CustomDCScope = 2
+	CustomDCScope_CUSTOM_DC_WORLD_GEOS      CustomDCScope = 3
+	CustomDCScope_CUSTOM_DC_POWER_PLANTS    CustomDCScope = 4
+	CustomDCScope_CUSTOM_DC_PARTIAL_GEOS    CustomDCScope = 5
 	CustomDCScope_CUSTOM_DC_WORLD_COUNTRIES CustomDCScope = 6
-	// Includes US states.
-	CustomDCScope_CUSTOM_DC_US_STATES CustomDCScope = 7
-	// Includes US counties.
-	CustomDCScope_CUSTOM_DC_US_COUNTIES CustomDCScope = 8
-	// Includes US zip codes
-	CustomDCScope_CUSTOM_DC_US_ZIP_CODES CustomDCScope = 9
-	// Includes US block groups, Census divisions, congressional districts, county
-	// divisions, commuting zones, metropolitan divisions, and Census tracts.
-	CustomDCScope_CUSTOM_DC_US_OTHER_GEOS CustomDCScope = 10
+	CustomDCScope_CUSTOM_DC_US_STATES       CustomDCScope = 7
+	CustomDCScope_CUSTOM_DC_US_COUNTIES     CustomDCScope = 8
+	CustomDCScope_CUSTOM_DC_US_ZIP_CODES    CustomDCScope = 9
+	CustomDCScope_CUSTOM_DC_US_OTHER_GEOS   CustomDCScope = 10
 )
 
 // Enum value maps for CustomDCScope.
@@ -135,8 +123,6 @@ func (CustomDCScope) EnumDescriptor() ([]byte, []int) {
 	return file_dc_manifest_proto_rawDescGZIP(), []int{0}
 }
 
-// When "uses_id_resolver" is true, this indicates whether the resolution was
-// done against the KG, and if so which type.
 type ResolutionInfo_KGType int32
 
 const (
@@ -196,37 +182,21 @@ func (ResolutionInfo_KGType) EnumDescriptor() ([]byte, []int) {
 	return file_dc_manifest_proto_rawDescGZIP(), []int{1, 0}
 }
 
-// Categories of imports.
 type DataCommonsManifest_ImportCategory int32
 
 const (
 	DataCommonsManifest_IMPORT_CATEGORY_UNKNOWN DataCommonsManifest_ImportCategory = 0
-	// Import with Graph Schema nodes.
-	DataCommonsManifest_SCHEMA DataCommonsManifest_ImportCategory = 1
-	// Import with place nodes.
-	DataCommonsManifest_PLACE DataCommonsManifest_ImportCategory = 2
-	// Import with StatVar nodes having curated DCIDs.
-	DataCommonsManifest_CURATED_STATVAR DataCommonsManifest_ImportCategory = 3
-	// Import with StatVar nodes having auto-generated DCIDs.
-	DataCommonsManifest_GENERATED_STATVAR DataCommonsManifest_ImportCategory = 4
-	// Import with Place ranking information (aka PlaceStatVar nodes).
-	DataCommonsManifest_GENERATED_RANKING DataCommonsManifest_ImportCategory = 5
-	// Import with generated StatVarGroup nodes and StatVar links to such nodes.
-	DataCommonsManifest_GENERATED_STATVARGROUP DataCommonsManifest_ImportCategory = 6
-	// Aggregated stats.
-	DataCommonsManifest_AGGREGATED_STATS DataCommonsManifest_ImportCategory = 7
-	// Stats, which contain observations.
-	DataCommonsManifest_STATS DataCommonsManifest_ImportCategory = 8
-	// Import with entity nodes that are not Schema/StatVars, observations or
-	// places.
-	DataCommonsManifest_ENTITY DataCommonsManifest_ImportCategory = 9
-	// Imputed stats.
-	DataCommonsManifest_IMPUTED_STATS DataCommonsManifest_ImportCategory = 10
-	// Intermediate stats that are used as inputs to derived graph computations,
-	// but are not built into cache.
-	// This could be either a direct import from source, or some kind of
-	// aggregation that doesn't get built into cache.
-	DataCommonsManifest_INTERMEDIATE_STATS DataCommonsManifest_ImportCategory = 11
+	DataCommonsManifest_SCHEMA                  DataCommonsManifest_ImportCategory = 1
+	DataCommonsManifest_PLACE                   DataCommonsManifest_ImportCategory = 2
+	DataCommonsManifest_CURATED_STATVAR         DataCommonsManifest_ImportCategory = 3
+	DataCommonsManifest_GENERATED_STATVAR       DataCommonsManifest_ImportCategory = 4
+	DataCommonsManifest_GENERATED_RANKING       DataCommonsManifest_ImportCategory = 5
+	DataCommonsManifest_GENERATED_STATVARGROUP  DataCommonsManifest_ImportCategory = 6
+	DataCommonsManifest_AGGREGATED_STATS        DataCommonsManifest_ImportCategory = 7
+	DataCommonsManifest_STATS                   DataCommonsManifest_ImportCategory = 8
+	DataCommonsManifest_ENTITY                  DataCommonsManifest_ImportCategory = 9
+	DataCommonsManifest_IMPUTED_STATS           DataCommonsManifest_ImportCategory = 10
+	DataCommonsManifest_INTERMEDIATE_STATS      DataCommonsManifest_ImportCategory = 11
 )
 
 // Enum value maps for DataCommonsManifest_ImportCategory.
@@ -303,26 +273,12 @@ type ExternalTable struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Name of the table.
-	//
 	// Deprecated: Do not use.
-	TableName *string `protobuf:"bytes,1,opt,name=table_name,json=tableName" json:"table_name,omitempty"`
-	// Path to the template MCF (previously called the "schema mapping file").
-	// TODO(shanth): Rename to template_mcf_path.
-	MappingPath *string `protobuf:"bytes,2,opt,name=mapping_path,json=mappingPath" json:"mapping_path,omitempty"`
-	// Path to one or more data CSV file patterns.
-	// NOTE: All files must be present in the same directory if DownloadConfig is
-	// specified.
-	// TODO(shanth): Change to csv_paths after textprotos in CNS have been updated
-	CsvPath []string `protobuf:"bytes,3,rep,name=csv_path,json=csvPath" json:"csv_path,omitempty"`
-	// Ordered list of column names that the schema mapping file will refer to.
-	//
-	// NOTE: This need not match the raw CSV column names.
-	ColumnNames []string `protobuf:"bytes,4,rep,name=column_names,json=columnNames" json:"column_names,omitempty"`
-	// Delimiter for CSV.
-	// NOTE: expected to be a single character.
-	FieldDelim *string `protobuf:"bytes,5,opt,name=field_delim,json=fieldDelim,def=," json:"field_delim,omitempty"`
-	// Download info for TMCF/CSV files.
+	TableName      *string         `protobuf:"bytes,1,opt,name=table_name,json=tableName" json:"table_name,omitempty"`
+	MappingPath    *string         `protobuf:"bytes,2,opt,name=mapping_path,json=mappingPath" json:"mapping_path,omitempty"`
+	CsvPath        []string        `protobuf:"bytes,3,rep,name=csv_path,json=csvPath" json:"csv_path,omitempty"`
+	ColumnNames    []string        `protobuf:"bytes,4,rep,name=column_names,json=columnNames" json:"column_names,omitempty"`
+	FieldDelim     *string         `protobuf:"bytes,5,opt,name=field_delim,json=fieldDelim,def=," json:"field_delim,omitempty"`
 	DownloadConfig *DownloadConfig `protobuf:"bytes,6,opt,name=download_config,json=downloadConfig" json:"download_config,omitempty"`
 }
 
@@ -406,30 +362,18 @@ func (x *ExternalTable) GetDownloadConfig() *DownloadConfig {
 	return nil
 }
 
-// Arguments relevant for the resolution of an import.
 type ResolutionInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Set if we need any DCID generation or resolution.
-	UsesIdResolver *bool `protobuf:"varint,1,opt,name=uses_id_resolver,json=usesIdResolver" json:"uses_id_resolver,omitempty"`
-	// List of ID properties this dataset depends on for resolution.
-	RequiresIds []string `protobuf:"bytes,2,rep,name=requires_ids,json=requiresIds" json:"requires_ids,omitempty"`
-	// List of ID properties this dataset provides for downstream resolution.
-	ProvidesIds []string `protobuf:"bytes,3,rep,name=provides_ids,json=providesIds" json:"provides_ids,omitempty"`
-	// REQUIRED: Must be set if new geos are introduced.
-	NewGeo          *ResolutionInfo_GeoInfo `protobuf:"bytes,4,opt,name=new_geo,json=newGeo" json:"new_geo,omitempty"`
-	KgForResolution *ResolutionInfo_KGType  `protobuf:"varint,5,opt,name=kg_for_resolution,json=kgForResolution,enum=datacommons.ResolutionInfo_KGType,def=0" json:"kg_for_resolution,omitempty"`
-	// There are scenarios where additional MCF nodes are necessary purely for
-	// resolution. Examples include StatVar MCFs for table flow and geo nodes
-	// used to resolve by other IDs (like wikidataId).
-	ResolutionHelperMcfPaths []string `protobuf:"bytes,6,rep,name=resolution_helper_mcf_paths,json=resolutionHelperMcfPaths" json:"resolution_helper_mcf_paths,omitempty"`
-	// This must be present if |automated_mcf_generation_by| is set and |table| is
-	// empty in DataCommonsManifest::Import. One exception is for the "resolved
-	// MCF --> cache" mode in the controller, in that case, this field is not
-	// needed.
-	UnresolvedMcfUrls []string `protobuf:"bytes,7,rep,name=unresolved_mcf_urls,json=unresolvedMcfUrls" json:"unresolved_mcf_urls,omitempty"`
+	UsesIdResolver           *bool                   `protobuf:"varint,1,opt,name=uses_id_resolver,json=usesIdResolver" json:"uses_id_resolver,omitempty"`
+	RequiresIds              []string                `protobuf:"bytes,2,rep,name=requires_ids,json=requiresIds" json:"requires_ids,omitempty"`
+	ProvidesIds              []string                `protobuf:"bytes,3,rep,name=provides_ids,json=providesIds" json:"provides_ids,omitempty"`
+	NewGeo                   *ResolutionInfo_GeoInfo `protobuf:"bytes,4,opt,name=new_geo,json=newGeo" json:"new_geo,omitempty"`
+	KgForResolution          *ResolutionInfo_KGType  `protobuf:"varint,5,opt,name=kg_for_resolution,json=kgForResolution,enum=datacommons.ResolutionInfo_KGType,def=0" json:"kg_for_resolution,omitempty"`
+	ResolutionHelperMcfPaths []string                `protobuf:"bytes,6,rep,name=resolution_helper_mcf_paths,json=resolutionHelperMcfPaths" json:"resolution_helper_mcf_paths,omitempty"`
+	UnresolvedMcfUrls        []string                `protobuf:"bytes,7,rep,name=unresolved_mcf_urls,json=unresolvedMcfUrls" json:"unresolved_mcf_urls,omitempty"`
 }
 
 // Default values for ResolutionInfo fields.
@@ -518,31 +462,11 @@ func (x *ResolutionInfo) GetUnresolvedMcfUrls() []string {
 	return nil
 }
 
-// Configuration used to download files into CNS as the first step.
 type DownloadConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The src directory is expected to contain CSV/TMCF/MCF files with the exact
-	// names as those in DataCommonsManifest::Import.
-	//
-	// If DownloadConfig is specified for a CSV/TMCF import (i.e., in
-	// ExternalTable.download_config), then the CSV file is required and the TMCF
-	// file is optional.  If DownloadConfig is specified for a node MCF import
-	// (i.e., Import.mcf_download_config), then the source directory must contain
-	// all the files equivalent to "mcf_url".
-	//
-	// For example, suppose that the import specifies a TMCF path of
-	// /cns/path/to/file/data.tmcf, CSV path of /cns/path/to/file/data.csv and the
-	// "src_prefix_dir" is /bigstore/bucket/foo.  Then /bigstore/bucket/foo/
-	// should have files named data.csv (required) and data.tmcf (optional).
-	//
-	// As an MCF example, suppose the mcf_url is /cns/path/to/files/*.mcf and
-	// there are three resolved MCF files (1.mcf, 2.mcf, 3.mcf) that match the
-	// pattern. If "src_prefix_dir" is /bigstore/bucket/foo, then it must contain
-	// unresolved MCF files with those same names.
-	//
 	// Types that are assignable to Prefix:
 	//
 	//	*DownloadConfig_SrcPrefixDir
@@ -608,16 +532,10 @@ type isDownloadConfig_Prefix interface {
 }
 
 type DownloadConfig_SrcPrefixDir struct {
-	// Source prefix directory.
 	SrcPrefixDir string `protobuf:"bytes,1,opt,name=src_prefix_dir,json=srcPrefixDir,oneof"`
 }
 
 type DownloadConfig_SrcLatestVersionFile struct {
-	// Path to a file containing the latest version directory name.  If it is an
-	// absolute path, then it is used as the "src_prefix_dir".  If not, then
-	// "src_prefix_dir" is constructed as:
-	//
-	//	join(dirname(src_latest_version_file), <VERSION>)
 	SrcLatestVersionFile string `protobuf:"bytes,2,opt,name=src_latest_version_file,json=srcLatestVersionFile,oneof"`
 }
 
@@ -625,13 +543,11 @@ func (*DownloadConfig_SrcPrefixDir) isDownloadConfig_Prefix() {}
 
 func (*DownloadConfig_SrcLatestVersionFile) isDownloadConfig_Prefix() {}
 
-// Configuration used in selecting nodes for golden triples generation.
 type GoldenTripleSelection struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// For specified number of svObs nodes, pick one into golden triples.
 	SvobsNodesPickOneIn *int32 `protobuf:"varint,3,opt,name=svobs_nodes_pick_one_in,json=svobsNodesPickOneIn,def=20" json:"svobs_nodes_pick_one_in,omitempty"`
 }
 
@@ -679,8 +595,6 @@ func (x *GoldenTripleSelection) GetSvobsNodesPickOneIn() int32 {
 	return Default_GoldenTripleSelection_SvobsNodesPickOneIn
 }
 
-// A manifest is a collection of imports each having a name, provenance URL,
-// provenance description, and list of CNS path patterns or external table info.
 type DataCommonsManifest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -744,9 +658,6 @@ func (x *DataCommonsManifest) GetDatasetSource() []*DataCommonsManifest_DatasetS
 	return nil
 }
 
-// A snapshot of files in a single import. Each file has length and mtime, that
-// act as cheap alternatives to a full content checksum. This snapshot gets
-// programmatically generated and validated.
 type ImportSnapshot struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -802,13 +713,11 @@ func (x *ImportSnapshot) GetStat() []*ImportSnapshot_FileStat {
 	return nil
 }
 
-// Info about new geos introduced by this dataset.
 type ResolutionInfo_GeoInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// List the ID properties that DCIDs are based on.
 	DcidSources []string `protobuf:"bytes,1,rep,name=dcid_sources,json=dcidSources" json:"dcid_sources,omitempty"`
 }
 
@@ -976,12 +885,10 @@ type isDownloadConfig_FileOp_Op interface {
 }
 
 type DownloadConfig_FileOp_Cp struct {
-	// Copy from src_file to dst_file.
 	Cp *DownloadConfig_PathPair `protobuf:"bytes,1,opt,name=cp,oneof"`
 }
 
 type DownloadConfig_FileOp_Del struct {
-	// Delete the given file.
 	Del string `protobuf:"bytes,2,opt,name=del,oneof"`
 }
 
@@ -989,80 +896,34 @@ func (*DownloadConfig_FileOp_Cp) isDownloadConfig_FileOp_Op() {}
 
 func (*DownloadConfig_FileOp_Del) isDownloadConfig_FileOp_Op() {}
 
-// Next ID: 30.
 type DataCommonsManifest_Import struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	ImportName            *string                             `protobuf:"bytes,1,opt,name=import_name,json=importName" json:"import_name,omitempty"`
-	ProvenanceUrl         *string                             `protobuf:"bytes,2,opt,name=provenance_url,json=provenanceUrl" json:"provenance_url,omitempty"`
-	ProvenanceDescription *string                             `protobuf:"bytes,6,opt,name=provenance_description,json=provenanceDescription" json:"provenance_description,omitempty"`
-	Category              *DataCommonsManifest_ImportCategory `protobuf:"varint,20,opt,name=category,enum=datacommons.DataCommonsManifest_ImportCategory" json:"category,omitempty"`
-	// The list of Import Groups that this import is part of. Must refer to a
-	// valid ImportGroup.name. If empty, then this import is part of all groups.
-	ImportGroups []string `protobuf:"bytes,23,rep,name=import_groups,json=importGroups" json:"import_groups,omitempty"`
-	// When input is node MCF, "mcf_url" is set.
-	McfUrl []string `protobuf:"bytes,3,rep,name=mcf_url,json=mcfUrl" json:"mcf_url,omitempty"`
-	// The URL of the optimized MCF in proto (TFRecord) format.
-	McfProtoUrl []string `protobuf:"bytes,25,rep,name=mcf_proto_url,json=mcfProtoUrl" json:"mcf_proto_url,omitempty"`
-	// In cases like Core Geo MCFs, the MCFs are versioned in piper but that
-	// version is not directly accessed by the binary (owing to memory
-	// limitations). Instead, we keep a copy of these files in CNS and provide
-	// that path in "mcf_url". Set this bool to true to mark that situation.
-	//
-	// If set, there exist tests (manifest_checker_test.cc) to ensure the MCFs
-	// are in sync and tooling (sync_replicated_mcfs.cc) to update the CNS copy.
-	IsMcfReplicatedFromPiper *bool `protobuf:"varint,18,opt,name=is_mcf_replicated_from_piper,json=isMcfReplicatedFromPiper" json:"is_mcf_replicated_from_piper,omitempty"`
-	// When input comes from TMCF/CSV, this is set.
-	Table        []*ExternalTable `protobuf:"bytes,4,rep,name=table" json:"table,omitempty"`
-	CuratorEmail *string          `protobuf:"bytes,5,opt,name=curator_email,json=curatorEmail,def=imports@datacommons.org" json:"curator_email,omitempty"`
-	// Information about resolution.
-	ResolutionInfo *ResolutionInfo `protobuf:"bytes,9,opt,name=resolution_info,json=resolutionInfo" json:"resolution_info,omitempty"`
-	// Dates associated with stats.  All dates are in ISO8601 format.
-	//
-	// NOTE: For datasets that are released more frequently than a month, please
-	// skip |end_date_in_kg|, |end_date_in_source| and |next_release_date|.
-	//
-	// Earliest value of observationDate in the KG.
-	StartDateInKg *string `protobuf:"bytes,10,opt,name=start_date_in_kg,json=startDateInKg" json:"start_date_in_kg,omitempty"`
-	// Latest value of observationDate in the KG.
-	EndDateInKg *string `protobuf:"bytes,11,opt,name=end_date_in_kg,json=endDateInKg" json:"end_date_in_kg,omitempty"`
-	// Latest value of observationDate that is available at the source.
-	// If end_date_in_kg < end_date_in_source, the dataset needs refresh.
-	EndDateInSource *string `protobuf:"bytes,21,opt,name=end_date_in_source,json=endDateInSource" json:"end_date_in_source,omitempty"`
-	// Data Release Schedule
-	//
-	// Release frequency of the import source.
-	ReleaseFrequency *string `protobuf:"bytes,12,opt,name=release_frequency,json=releaseFrequency" json:"release_frequency,omitempty"`
-	// Next date when the data source will be released. If this date is in the
-	// past, the dataset needs refresh.
-	NextReleaseDate *string `protobuf:"bytes,13,opt,name=next_release_date,json=nextReleaseDate" json:"next_release_date,omitempty"`
-	// The URLs from where the data can be accessed/downloaded.
-	DataDownloadUrl []string `protobuf:"bytes,15,rep,name=data_download_url,json=dataDownloadUrl" json:"data_download_url,omitempty"`
-	// As part of which import-group do we regenerate the MCFs?
-	//
-	// The branch controllers can convert table to MCF or resolve MCF if this
-	// field is set to the appropriate import group. Not setting this field
-	// disables any such work, instead the resolved MCF (in "mcf_url") is used
-	// as is.
-	AutomatedMcfGenerationBy *string `protobuf:"bytes,24,opt,name=automated_mcf_generation_by,json=automatedMcfGenerationBy" json:"automated_mcf_generation_by,omitempty"`
-	// Configuration for generating golden triples.
-	GoldenTripleSelection *GoldenTripleSelection `protobuf:"bytes,14,opt,name=golden_triple_selection,json=goldenTripleSelection" json:"golden_triple_selection,omitempty"`
-	// Whether unresolved MCFs are missing.
-	// These are all cases that the resolved MCFs are PopObs instead of SVObs.
-	// For SVObs, the Flume pipeline will generate unresolved MCFs from CSV+TMCF
-	// automatically.
-	IsUnresolvedMcfMissing *bool `protobuf:"varint,22,opt,name=is_unresolved_mcf_missing,json=isUnresolvedMcfMissing,def=0" json:"is_unresolved_mcf_missing,omitempty"`
-	// Indicates which MCF files to copy from GCS or other source before
-	// resolving.
-	// REQUIRES: this is an MCF-only import with table being empty.
-	McfDownloadConfig *DownloadConfig `protobuf:"bytes,17,opt,name=mcf_download_config,json=mcfDownloadConfig" json:"mcf_download_config,omitempty"`
-	// DatasetInfo that this import corresponds to. Must refer to a valid
-	// DatasetInfo.name.
-	DatasetName *string `protobuf:"bytes,26,opt,name=dataset_name,json=datasetName" json:"dataset_name,omitempty"`
-	// Indicates which custom DC import groups to add import to.
-	CustomDcScope *CustomDCScope `protobuf:"varint,29,opt,name=custom_dc_scope,json=customDcScope,enum=datacommons.CustomDCScope" json:"custom_dc_scope,omitempty"`
+	ImportName               *string                             `protobuf:"bytes,1,opt,name=import_name,json=importName" json:"import_name,omitempty"`
+	ProvenanceUrl            *string                             `protobuf:"bytes,2,opt,name=provenance_url,json=provenanceUrl" json:"provenance_url,omitempty"`
+	ProvenanceDescription    *string                             `protobuf:"bytes,6,opt,name=provenance_description,json=provenanceDescription" json:"provenance_description,omitempty"`
+	Category                 *DataCommonsManifest_ImportCategory `protobuf:"varint,20,opt,name=category,enum=datacommons.DataCommonsManifest_ImportCategory" json:"category,omitempty"`
+	ImportGroups             []string                            `protobuf:"bytes,23,rep,name=import_groups,json=importGroups" json:"import_groups,omitempty"`
+	McfUrl                   []string                            `protobuf:"bytes,3,rep,name=mcf_url,json=mcfUrl" json:"mcf_url,omitempty"`
+	McfProtoUrl              []string                            `protobuf:"bytes,25,rep,name=mcf_proto_url,json=mcfProtoUrl" json:"mcf_proto_url,omitempty"`
+	IsMcfReplicatedFromPiper *bool                               `protobuf:"varint,18,opt,name=is_mcf_replicated_from_piper,json=isMcfReplicatedFromPiper" json:"is_mcf_replicated_from_piper,omitempty"`
+	Table                    []*ExternalTable                    `protobuf:"bytes,4,rep,name=table" json:"table,omitempty"`
+	CuratorEmail             *string                             `protobuf:"bytes,5,opt,name=curator_email,json=curatorEmail,def=imports@datacommons.org" json:"curator_email,omitempty"`
+	ResolutionInfo           *ResolutionInfo                     `protobuf:"bytes,9,opt,name=resolution_info,json=resolutionInfo" json:"resolution_info,omitempty"`
+	StartDateInKg            *string                             `protobuf:"bytes,10,opt,name=start_date_in_kg,json=startDateInKg" json:"start_date_in_kg,omitempty"`
+	EndDateInKg              *string                             `protobuf:"bytes,11,opt,name=end_date_in_kg,json=endDateInKg" json:"end_date_in_kg,omitempty"`
+	EndDateInSource          *string                             `protobuf:"bytes,21,opt,name=end_date_in_source,json=endDateInSource" json:"end_date_in_source,omitempty"`
+	ReleaseFrequency         *string                             `protobuf:"bytes,12,opt,name=release_frequency,json=releaseFrequency" json:"release_frequency,omitempty"`
+	NextReleaseDate          *string                             `protobuf:"bytes,13,opt,name=next_release_date,json=nextReleaseDate" json:"next_release_date,omitempty"`
+	DataDownloadUrl          []string                            `protobuf:"bytes,15,rep,name=data_download_url,json=dataDownloadUrl" json:"data_download_url,omitempty"`
+	AutomatedMcfGenerationBy *string                             `protobuf:"bytes,24,opt,name=automated_mcf_generation_by,json=automatedMcfGenerationBy" json:"automated_mcf_generation_by,omitempty"`
+	GoldenTripleSelection    *GoldenTripleSelection              `protobuf:"bytes,14,opt,name=golden_triple_selection,json=goldenTripleSelection" json:"golden_triple_selection,omitempty"`
+	IsUnresolvedMcfMissing   *bool                               `protobuf:"varint,22,opt,name=is_unresolved_mcf_missing,json=isUnresolvedMcfMissing,def=0" json:"is_unresolved_mcf_missing,omitempty"`
+	McfDownloadConfig        *DownloadConfig                     `protobuf:"bytes,17,opt,name=mcf_download_config,json=mcfDownloadConfig" json:"mcf_download_config,omitempty"`
+	DatasetName              *string                             `protobuf:"bytes,26,opt,name=dataset_name,json=datasetName" json:"dataset_name,omitempty"`
+	CustomDcScope            *CustomDCScope                      `protobuf:"varint,29,opt,name=custom_dc_scope,json=customDcScope,enum=datacommons.CustomDCScope" json:"custom_dc_scope,omitempty"`
 }
 
 // Default values for DataCommonsManifest_Import fields.
@@ -1264,18 +1125,13 @@ func (x *DataCommonsManifest_Import) GetCustomDcScope() CustomDCScope {
 	return CustomDCScope_CUSTOM_DC_UNSPECIFIED
 }
 
-// Import Group is a collection of imports that are built together into a
-// single cache for serving.
 type DataCommonsManifest_ImportGroup struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Name of the import group.
-	Name *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
-	// Description
-	Description *string `protobuf:"bytes,2,opt,name=description" json:"description,omitempty"`
-	// Indicates which base imports to include in import group.
+	Name          *string         `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Description   *string         `protobuf:"bytes,2,opt,name=description" json:"description,omitempty"`
 	CustomDcScope []CustomDCScope `protobuf:"varint,4,rep,packed,name=custom_dc_scope,json=customDcScope,enum=datacommons.CustomDCScope" json:"custom_dc_scope,omitempty"`
 }
 
@@ -1332,27 +1188,19 @@ func (x *DataCommonsManifest_ImportGroup) GetCustomDcScope() []CustomDCScope {
 	return nil
 }
 
-// Represents a dataset from which one or more imports come from. This is used
-// to display on the Data Sources page
-// (https://docs.datacommons.org/datasets/).
 type DataCommonsManifest_DatasetInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Name of dataset
 	Name *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
-	// Url of dataset to link to
-	Url *string `protobuf:"bytes,2,opt,name=url" json:"url,omitempty"`
-	// Markdown description of data source
-	//
+	Url  *string `protobuf:"bytes,2,opt,name=url" json:"url,omitempty"`
 	// Types that are assignable to Description:
 	//
 	//	*DataCommonsManifest_DatasetInfo_DescriptionMd
 	//	*DataCommonsManifest_DatasetInfo_DescriptionFile
 	Description isDataCommonsManifest_DatasetInfo_Description `protobuf_oneof:"description"`
-	// Verticals that should include this data source
-	Verticals []string `protobuf:"bytes,5,rep,name=verticals" json:"verticals,omitempty"`
+	Verticals   []string                                      `protobuf:"bytes,5,rep,name=verticals" json:"verticals,omitempty"`
 }
 
 func (x *DataCommonsManifest_DatasetInfo) Reset() {
@@ -1434,12 +1282,10 @@ type isDataCommonsManifest_DatasetInfo_Description interface {
 }
 
 type DataCommonsManifest_DatasetInfo_DescriptionMd struct {
-	// Inline markdown string containing description
 	DescriptionMd string `protobuf:"bytes,3,opt,name=description_md,json=descriptionMd,oneof"`
 }
 
 type DataCommonsManifest_DatasetInfo_DescriptionFile struct {
-	// Name of markdown file containing description, if used instead of [3]
 	DescriptionFile string `protobuf:"bytes,4,opt,name=description_file,json=descriptionFile,oneof"`
 }
 
@@ -1449,25 +1295,15 @@ func (*DataCommonsManifest_DatasetInfo_DescriptionMd) isDataCommonsManifest_Data
 func (*DataCommonsManifest_DatasetInfo_DescriptionFile) isDataCommonsManifest_DatasetInfo_Description() {
 }
 
-// Represents a source which contains zero or more datasets. For sources with
-// zero distinct child datasets (i.e. the source directly corresponds to a
-// dataset), the dataset details will be contained in the source. This is used
-// to display on the Data Sources page
-// (https://docs.datacommons.org/datasets/).
 type DataCommonsManifest_DatasetSource struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Name of source
-	Name *string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
-	// Url of source to link to
-	Url *string `protobuf:"bytes,2,opt,name=url" json:"url,omitempty"`
-	// Markdown description of source
-	HeaderMd *string `protobuf:"bytes,3,opt,name=header_md,json=headerMd" json:"header_md,omitempty"`
-	// Markdown description of any terms of service
-	FooterMd *string `protobuf:"bytes,4,opt,name=footer_md,json=footerMd" json:"footer_md,omitempty"`
-	// Datasets associated with this source
+	Name     *string                            `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Url      *string                            `protobuf:"bytes,2,opt,name=url" json:"url,omitempty"`
+	HeaderMd *string                            `protobuf:"bytes,3,opt,name=header_md,json=headerMd" json:"header_md,omitempty"`
+	FooterMd *string                            `protobuf:"bytes,4,opt,name=footer_md,json=footerMd" json:"footer_md,omitempty"`
 	Datasets []*DataCommonsManifest_DatasetInfo `protobuf:"bytes,5,rep,name=datasets" json:"datasets,omitempty"`
 }
 
