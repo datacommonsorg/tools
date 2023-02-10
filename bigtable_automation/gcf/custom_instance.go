@@ -123,8 +123,9 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, dataDirParent)
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, dataDirParent)
 
+		firstImport := manifest.Import[0]
 		msg := CustomDCPubSubMsg{
-			importName:               *manifest.Import[0].ImportName,
+			importName:               *(firstImport.ImportName),
 			dcManifestPath:           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
 			customManifestPath:       bigstoreConfigPath,
 			bigstoreDataDirectory:    bigstoreDataDirectory,
