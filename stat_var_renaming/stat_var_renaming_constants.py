@@ -276,7 +276,8 @@ MANUAL_CAUSE_OF_DEATH_RENAMINGS = {
     'ICD10/D50-D89': 'DiseasesOfBloodAndBloodFormingOrgansAndImmuneDisorders',
     'ICD10/R00-R99': 'AbnormalNotClassfied',
     'ICD10/U00-U99': 'SpecialCases',
-    'ICD10/V01-Y89': 'ExternalCauses'
+    'ICD10/V01-Y89': 'ExternalCauses',
+    'IntentionalSelf-Harm(Suicide)': 'IntentionalSelfHarm'
 }
 
 # List of properties to perform a numerical quantity remap on.
@@ -327,11 +328,14 @@ STAT_VAR_POPULATION_GROUPINGS = [
     True, False),
   SVPopGroup("Employment",
     ['Worker', 'Establishment', 'JobPosting',
-     'UnemploymentInsuranceClaim'],
+     'UnemploymentInsuranceClaim', 'Faculty'],
     True, False),
   SVPopGroup("Economic",
     ['EconomicActivity', 'Consumption', 'Debt', 'TreasuryBill',
-     'TreasuryBond', 'TreasuryNote'],
+     'TreasuryBond', 'TreasuryNote', 'ConsumerGoodsAndServices', 'Stock'],
+    True, False),
+  SVPopGroup("Government",
+    ['Legislation', 'PublicInformationCampaign', 'Remittance', 'School'],
     True, False),
   SVPopGroup("Environment",
   ['Emissions'],
