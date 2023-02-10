@@ -14,47 +14,20 @@
 # limitations under the License.
 
 
-if [[ $# != 1 ]]; then
-  echo "Usage: $0 (website-dev|mixer-autopush|datcom-stanford)" >&2
-  exit 1
-fi
-
-if [[ $1 != "website-dev" && $1 != "mixer-autopush" && $1 != "datcom-stanford" ]]; then
-  echo "Usage: $0 (website-dev|mixer-autopush|datcom-stanford)" >&2
-  exit 1
-fi
-
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT="$(dirname "$DIR")"
 
-cd $DIR
-PROJECT_ID=$(yq eval '.projectID' $1.yaml)
-BUCKET=$(yq eval '.bucket' $1.yaml)
-INSTANCE=$(yq eval '.instance' $1.yaml)
-CLUSTER=$(yq eval '.cluster' $1.yaml)
-NODES_HIGH=$(yq eval '.nodesHigh' $1.yaml)
-NODES_LOW=$(yq eval '.nodesLow' $1.yaml)
+PROJECT_ID=$(yq eval '.projectID' custom_dc/local.yaml)
+BUCKET=$(yq eval '.bucket' custom_dc/local.yaml)
 
-cd $ROOT
 ## TODO: move all of these as one-time setup
 gcloud config set project $PROJECT_ID
 
-gcloud services enable cloudbuild.googleapis.com
-
-gcloud services enable dataflow.googleapis.com
-
-gcloud compute networks subnets update default \
---region=us-central1 \
---enable-private-ip-google-access
-
-gcloud functions deploy prophet-cache-trigger-$1 \
+gcloud functions deploy prophet-cache-trigger \
   --region 'us-central1' \
   --entry-point CustomBTImportController \
   --runtime go116 \
   --trigger-bucket $BUCKET \
-  --env-vars-file custom_dc/$1.yaml \
+  --env-vars-file custom_dc/local.yaml \
   --timeout 300
 
-gcloud bigtable instances create $INSTANCE \
-  --display-name=$INSTANCE, \
-  --cluster-config=id=$CLUSTER,zone=us-central1-c,autoscaling-min-nodes=$NODES_LOW,autoscaling-max-nodes=$NODES_HIGH,autoscaling-cpu-target=75
