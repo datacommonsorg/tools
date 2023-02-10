@@ -9,4 +9,5 @@ require (
 	github.com/GoogleCloudPlatform/functions-framework-go v1.6.1
 	github.com/pkg/errors v0.9.1
 	google.golang.org/api v0.105.0
+	google.golang.org/protobuf v1.28.1
 )

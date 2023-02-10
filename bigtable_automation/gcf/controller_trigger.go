@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 
 	"cloud.google.com/go/pubsub"
@@ -88,21 +87,4 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 	}
 	log.Printf("PubSub import notification published with server generated msg id: %v\n", id)
 	return nil
-}
-
-// triggerPath is .../<import_name>/process/<import id>/trigger.txt
-// process folder is currently only used for control purposes for 1 process: trigger controller.
-func TriggerController(ctx context.Context, p PublishConfig, triggerPath string) error {
-	importName := filepath.Dir(filepath.Dir(filepath.Dir(triggerPath)))
-	path := ImportGCSPath{importName: importName}
-
-	msg := CustomDCPubSubMsg{
-		importName:               path.ImportName(),
-		dcManifestPath:           dcManifestPath,
-		customManifestPath:       path.ConfigPath(),
-		bigstoreDataDirectory:    path.DataDirectory(),
-		bigstoreCacheDirectory:   path.CacheDirectory(),
-		bigstoreControlDirectory: path.ControlDirectory(),
-	}
-	return msg.Publish(ctx, p)
 }

@@ -21,6 +21,7 @@
 // protoc --proto_path=. --go_out=. --go-grpc_out=. dc_manifest.proto
 
 syntax = "proto2";
+
 package datacommons;
 option go_package = ".";
 
@@ -70,19 +71,6 @@ message GoldenTripleSelection {
   optional int32 svobs_nodes_pick_one_in = 3 [default = 20];
   reserved 1, 2;
 }
-enum CustomDCScope {
-  CUSTOM_DC_UNSPECIFIED = 0;
-  CUSTOM_DC_BASE = 1;
-  CUSTOM_DC_US_GEOS = 2;
-  CUSTOM_DC_WORLD_GEOS = 3;
-  CUSTOM_DC_POWER_PLANTS = 4;
-  CUSTOM_DC_PARTIAL_GEOS = 5;
-  CUSTOM_DC_WORLD_COUNTRIES = 6;
-  CUSTOM_DC_US_STATES = 7;
-  CUSTOM_DC_US_COUNTIES = 8;
-  CUSTOM_DC_US_ZIP_CODES = 9;
-  CUSTOM_DC_US_OTHER_GEOS = 10;
-}
 message DataCommonsManifest {
   enum ImportCategory {
     IMPORT_CATEGORY_UNKNOWN = 0;
@@ -121,15 +109,14 @@ message DataCommonsManifest {
     optional bool is_unresolved_mcf_missing = 22 [default = false];
     optional DownloadConfig mcf_download_config = 17;
     optional string dataset_name = 26;
-    optional CustomDCScope custom_dc_scope = 29;
-    reserved 7, 8, 16, 19, 27, 28;
+    reserved 7, 8, 16, 19, 27, 28, 29;
   }
   repeated Import import = 1;
   message ImportGroup {
     optional string name = 1;
     optional string description = 2;
-    repeated CustomDCScope custom_dc_scope = 4 [packed = true];
-    reserved 3;
+    optional bool is_custom_dc = 5 [default = false];
+    reserved 3, 4;
   }
   repeated ImportGroup import_groups = 2;
   message DatasetInfo {
