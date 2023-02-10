@@ -68,6 +68,17 @@ bigstore_control_directory=%s,\
 	)
 }
 
+func (s CustomDCPubSubMsg) Attributes() map[string]string {
+	return map[string]string{
+		"import_name":                s.importName,
+		"dc_manifest_path":           s.dcManifestPath,
+		"custom_manifest_path":       s.customManifestPath,
+		"bigstore_data_directory":    s.bigstoreDataDirectory,
+		"bigstore_cache_directory":   s.bigstoreCacheDirectory,
+		"bigstore_control_directory": s.bigstoreControlDirectory,
+	}
+}
+
 // Publish publishes the current import config to a topic.
 func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 	client, err := pubsub.NewClient(ctx, p.ProjectID())
@@ -81,7 +92,8 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 
 	t := client.Topic(p.TopicID())
 	res := t.Publish(ctx, &pubsub.Message{
-		Data: []byte(msg),
+		Data:       []byte(msg),
+		Attributes: s.Attributes(),
 	})
 
 	id, err := res.Get(ctx)
