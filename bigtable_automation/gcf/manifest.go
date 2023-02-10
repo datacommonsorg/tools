@@ -29,9 +29,9 @@ type ManifestParams struct {
 
 func (ip *ImportParams) ImportProto() *pb.DataCommonsManifest_Import {
 	return &pb.DataCommonsManifest_Import{
-		ImportName: proto.String(ip.ImportName),
-		// Category:                 proto.Int32(pb.DataCommonsManifest_STATS),
-		// ProvenanceUrl:            proto.String(<fill out>),
+		ImportName:               proto.String(ip.ImportName),
+		Category:                 pb.DataCommonsManifest_STATS.Enum(),
+		ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
 		McfProtoUrl:              []string{ip.MCFProtoURL},
 		ImportGroups:             []string{ip.ImportGroupName},
 		ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},

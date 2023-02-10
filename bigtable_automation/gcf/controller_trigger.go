@@ -92,7 +92,6 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 
 	t := client.Topic(p.TopicID())
 	res := t.Publish(ctx, &pubsub.Message{
-		Data:       []byte(msg),
 		Attributes: s.Attributes(),
 	})
 
