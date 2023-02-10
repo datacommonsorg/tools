@@ -76,9 +76,12 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 	}
 	defer client.Close()
 
+	msg := s.String()
+	log.Printf("Publishing the following message: %s", msg)
+
 	t := client.Topic(p.TopicID())
 	res := t.Publish(ctx, &pubsub.Message{
-		Data: []byte(s.String()),
+		Data: []byte(msg),
 	})
 
 	id, err := res.Get(ctx)
