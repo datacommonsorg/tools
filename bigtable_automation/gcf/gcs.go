@@ -104,7 +104,12 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (*pb
 		return nil, err
 	}
 
-	importGroupName := "custom"
+	// IMPORTANT NOTE: importGroupName has a character limit of 21
+	rootFolder := filepath.Base(filepath.Dir(strings.TrimSuffix(pathToDataFolder, "/")))
+	if len(rootFolder) > 20 {
+		rootFolder = rootFolder[:20]
+	}
+	importGroupName := rootFolder
 
 	// Construct a list of Manifest imports and data sources as we
 	// walk through the data folder in GCS.
