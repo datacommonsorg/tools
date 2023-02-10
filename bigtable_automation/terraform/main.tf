@@ -129,12 +129,12 @@ resource "google_project_iam_member" "dataflow_worker_iam" {
 }
 
 # Permissions needed to communicate with graph processor.
-resource "google_project_iam_member" "bt_automation_iam" {
+resource "google_project_iam_member" "bt_automation_controller_iam" {
   for_each = toset([
     "roles/pubsub.editor",
     "roles/storage.admin"
   ])
   role    = each.key
-  member  = "serviceAccount:datcom@system.gserviceaccount.com"
+  member  = "serviceAccount:datacommons-controller-runner-pod@system.gserviceaccount.com"
   project = var.project_id
 }
