@@ -16,21 +16,26 @@ package gcf
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/prototext"
 )
 
-// blobName is assumed to be under the correct path in "control".
-func handleBTCache(ctx context.Context, blobName string) error {
+// TODO(alex): refactor path -> event handler logic.
+func customInternal(ctx context.Context, e GCSEvent) error {
 	projectID := os.Getenv("projectID")
 	bucket := os.Getenv("bucket")
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
 	dataflowTemplate := os.Getenv("dataflowTemplate")
+	// Expects a "/" at the end.
+	dataDirectory := os.Getenv("dataDirectory")
+	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if projectID == "" {
 		return errors.New("projectID is not set in environment")
 	}
@@ -46,8 +51,14 @@ func handleBTCache(ctx context.Context, blobName string) error {
 	if bucket == "" {
 		return errors.New("bucket is not set in environment")
 	}
+	if dataDirectory == "" {
+		return errors.New("dataDirectory is not set in environment")
+	}
+	if controllerTriggerTopic == "" {
+		return errors.New("controllerTriggerTopic is not set in environment")
+	}
 
-	parts := strings.Split(blobName, "/")
+	parts := strings.Split(e.Name, "/")
 
 	// Get table ID.
 	// e.Name should is like "**/<user>/<import>/control/<table_id>/launched.txt"
@@ -57,8 +68,8 @@ func handleBTCache(ctx context.Context, blobName string) error {
 	idxControl := len(parts) - 3
 	rootFolder := "gs://" + bucket + "/" + strings.Join(parts[0:idxControl], "/")
 
-	if strings.HasSuffix(blobName, initFile) {
-		log.Printf("[%s] State Init", blobName)
+	if strings.HasSuffix(e.Name, initFile) {
+		log.Printf("[%s] State Init", e.Name)
 		// Called when the state-machine is at Init. Logic below moves it to Launched state.
 		launchedPath := joinURL(rootFolder, "control", tableID, launchedFile)
 		exist, err := doesObjectExist(ctx, launchedPath)
@@ -81,55 +92,53 @@ func handleBTCache(ctx context.Context, blobName string) error {
 			return err
 		}
 		// Save the fact that we've launched the dataflow job.
-		err = writeToGCS(ctx, launchedPath, "")
+		err = WriteToGCS(ctx, launchedPath, "")
 		if err != nil {
 			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
 				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)
 			}
 			return err
 		}
-		log.Printf("[%s] State Launched", blobName)
-	} else if strings.HasSuffix(blobName, completedFile) {
+		log.Printf("[%s] State Launched", e.Name)
+	} else if strings.HasSuffix(e.Name, completedFile) {
 		// TODO: else, notify Mixer to load the BT table.
-		log.Printf("[%s] Completed work", blobName)
+		log.Printf("[%s] Completed work", e.Name)
+	} else if strings.HasSuffix(e.Name, controllerTriggerFile) {
+		manifest, err := GenerateManifest(ctx, bucket, dataDirectory)
+		if err != nil {
+			log.Fatalf("unable to generate manifest: %v", err)
+		}
+
+		bytes, err := prototext.Marshal(manifest)
+		if err != nil {
+			log.Fatalf("Failed to serialize proto: %v", err)
+		}
+
+		dataDirParent := filepath.Dir(strings.TrimSuffix(dataDirectory, "/"))
+		configPath := fmt.Sprintf("gs://%s/%s/internal/config/config.textproto", bucket, dataDirParent)
+		WriteToGCS(ctx, configPath, string(bytes))
+
+		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, dataDirParent)
+		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s", bucket, strings.TrimSuffix(dataDirectory, "/"))
+		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, dataDirParent)
+		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, dataDirParent)
+
+		msg := CustomDCPubSubMsg{
+			importName:               *manifest.Import[0].ImportName,
+			dcManifestPath:           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
+			customManifestPath:       bigstoreConfigPath,
+			bigstoreDataDirectory:    bigstoreDataDirectory,
+			bigstoreCacheDirectory:   bigstoreCacheDirectory,
+			bigstoreControlDirectory: bigstoreControlDirectory,
+		}
+		cfg := PublishConfig{
+			TopicName: controllerTriggerTopic,
+		}
+		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
+		return msg.Publish(ctx, cfg)
+
 	}
 	return nil
-}
-
-func handleControllerTrigger(ctx context.Context, blobPath string) error {
-	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
-	bucket := os.Getenv("bucket")
-	if controllerTriggerTopic == "" {
-		return errors.New("controllerTriggerTopic is not set in environment")
-	}
-	if bucket == "" {
-		return errors.New("bucket is not set in environment")
-	}
-
-	bigstoreCSVPath := filepath.Join("/bigstore", bucket, blobPath)
-	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
-	pcfg := PublishConfig{TopicName: controllerTriggerTopic}
-	return TriggerController(ctx, pcfg, bigstoreCSVPath)
-}
-
-// TODO(alex): refactor path -> event handler logic.
-func customInternal(ctx context.Context, e GCSEvent) error {
-	parts := strings.Split(e.Name, "/")
-	idxControlOrProcess := len(parts) - 3
-	if len(parts) < 3 {
-		log.Printf("Expected 3+ '/'-separated parts, got %s", e.Name)
-		log.Println("Ignoring as irrelevant file")
-		return nil
-	}
-
-	if parts[idxControlOrProcess] == "control" {
-		return handleBTCache(ctx, e.Name)
-	} else if parts[idxControlOrProcess] == "process" && strings.HasSuffix(e.Name, controllerTriggerFile) {
-		return handleControllerTrigger(ctx, e.Name)
-	} else {
-		log.Printf("Ignore irrelevant trigger from file %s", e.Name)
-		return nil
-	}
 }
 
 // CustomBTImportController consumes a GCS event and runs an import state machine.

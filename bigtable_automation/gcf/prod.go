@@ -93,7 +93,7 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 			return err
 		}
 		// Save the fact that we've launched the dataflow job.
-		err = writeToGCS(ctx, launchedPath, "")
+		err = WriteToGCS(ctx, launchedPath, "")
 		if err != nil {
 			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
 				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)

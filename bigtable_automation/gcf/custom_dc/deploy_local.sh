@@ -22,7 +22,7 @@ cd $DIR
 config_file=local.yaml
 
 # Good to read the yaml file keys and convert them to bash array
-for var in projectID cluster instance dataflowTemplate tempLocation controllerTriggerTopic bucket
+for var in projectID cluster instance dataflowTemplate tempLocation controllerTriggerTopic bucket dataDirectory
 do
     value=$(yq eval .$var $config_file)
     export $var=$value
