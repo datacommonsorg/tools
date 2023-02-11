@@ -33,8 +33,6 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
 	dataflowTemplate := os.Getenv("dataflowTemplate")
-	// Expects a "/" at the end.
-	dataDirectory := os.Getenv("dataDirectory")
 	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if projectID == "" {
 		return errors.New("projectID is not set in environment")
@@ -50,9 +48,6 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 	}
 	if bucket == "" {
 		return errors.New("bucket is not set in environment")
-	}
-	if dataDirectory == "" {
-		return errors.New("dataDirectory is not set in environment")
 	}
 	if controllerTriggerTopic == "" {
 		return errors.New("controllerTriggerTopic is not set in environment")
@@ -104,19 +99,33 @@ func customInternal(ctx context.Context, e GCSEvent) error {
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
 	} else if strings.HasSuffix(e.Name, controllerTriggerFile) {
+		log.Printf("detected trigger file in %s", e.Name)
+
+		importRootDir, err := FindRootImportDirectory(e.Name)
+		if err != nil {
+			log.Fatalf("Trigger file is in the incorrect path: %v", err)
+			return err
+		}
+		dataDirectory := fmt.Sprintf("%s/data/", importRootDir)
+
 		manifest, err := GenerateManifest(ctx, bucket, dataDirectory)
 		if err != nil {
 			log.Fatalf("unable to generate manifest: %v", err)
+			return err
 		}
 
 		bytes, err := prototext.Marshal(manifest)
 		if err != nil {
 			log.Fatalf("Failed to serialize proto: %v", err)
+			return err
 		}
 
 		dataDirParent := filepath.Dir(strings.TrimSuffix(dataDirectory, "/"))
 		configPath := fmt.Sprintf("gs://%s/%s/internal/config/config.textproto", bucket, dataDirParent)
-		WriteToGCS(ctx, configPath, string(bytes))
+		if err = WriteToGCS(ctx, configPath, string(bytes)); err != nil {
+			log.Fatalf("Failed to write config.textproto to gcs: %v", err)
+			return err
+		}
 
 		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, dataDirParent)
 		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s", bucket, strings.TrimSuffix(dataDirectory, "/"))
