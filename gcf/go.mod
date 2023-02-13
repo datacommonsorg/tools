@@ -1,4 +1,4 @@
-module github.com/datacommonsorg/tools/bigtable_automation/gcf
+module github.com/datacommonsorg/tools/gcf
 
 go 1.16
 

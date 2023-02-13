@@ -1,7 +1,7 @@
 package gcf
 
 import (
-	pb "github.com/datacommonsorg/tools/bigtable_automation/gcf/proto"
+	pb "github.com/datacommonsorg/tools/gcf/proto"
 	"google.golang.org/protobuf/proto"
 )
 

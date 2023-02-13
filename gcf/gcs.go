@@ -37,7 +37,7 @@ import (
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 
-	pb "github.com/datacommonsorg/tools/bigtable_automation/gcf/proto"
+	pb "github.com/datacommonsorg/tools/gcf/proto"
 	"github.com/pkg/errors"
 )
 
