@@ -20,7 +20,7 @@ import (
 	"os"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/funcframework"
-	"github.com/datacommonsorg/tools/bigtable_automation/gcf"
+	"github.com/datacommonsorg/tools/gcf"
 )
 
 func main() {
