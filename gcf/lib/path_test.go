@@ -17,8 +17,9 @@
 package lib
 
 import (
-	"github.com/go-test/deep"
 	"testing"
+
+	"github.com/go-test/deep"
 )
 
 func TestCollectImportFiles(t *testing.T) {
@@ -38,15 +39,15 @@ func TestCollectImportFiles(t *testing.T) {
 			},
 			&ImportGroupFiles{
 				Source2Datasets: map[string][]string{
-					"source1": []string{"smokepm"},
-					"source2": []string{"solar"},
+					"source1": {"smokepm"},
+					"source2": {"solar"},
 				},
 				Dataset2DataFiles: map[string]DataFiles{
-					"smokepm": DataFiles{
+					"smokepm": {
 						TMCFPath: "demo/data/source1/smokepm/data.tmcf",
 						CSVPaths: []string{"demo/data/source1/smokepm/output.csv"},
 					},
-					"solar": DataFiles{
+					"solar": {
 						TMCFPath: "demo/data/source2/solar/data.tmcf",
 						CSVPaths: []string{"demo/data/source2/solar/output.csv"},
 					},
@@ -91,10 +92,10 @@ func TestCollectImportFiles(t *testing.T) {
 			},
 			&ImportGroupFiles{
 				Source2Datasets: map[string][]string{
-					"source1": []string{"smokepm"},
+					"source1": {"smokepm"},
 				},
 				Dataset2DataFiles: map[string]DataFiles{
-					"smokepm": DataFiles{
+					"smokepm": {
 						TMCFPath: "demo/data/source1/smokepm/data.tmcf",
 						CSVPaths: []string{"demo/data/source1/smokepm/output.csv"},
 					},
@@ -111,10 +112,10 @@ func TestCollectImportFiles(t *testing.T) {
 			},
 			&ImportGroupFiles{
 				Source2Datasets: map[string][]string{
-					"source1": []string{"smokepm"},
+					"source1": {"smokepm"},
 				},
 				Dataset2DataFiles: map[string]DataFiles{
-					"smokepm": DataFiles{
+					"smokepm": {
 						TMCFPath: "somethingreallyreallylong/data/source1/smokepm/data.tmcf",
 						CSVPaths: []string{"somethingreallyreallylong/data/source1/smokepm/output.csv"},
 					},

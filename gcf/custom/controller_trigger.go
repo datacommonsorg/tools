@@ -23,10 +23,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	ControllerTriggerFile = "trigger.txt"
-)
-
 // topicName is the full PubSub topic name in the following format
 // projects/<project id>/topics/<topic id>
 func getTopicInfo(topicName string) (

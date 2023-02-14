@@ -103,10 +103,10 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	} else if strings.HasSuffix(e.Name, lib.CompletedFile) {
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
-	} else if strings.HasSuffix(e.Name, custom.ControllerTriggerFile) {
+	} else if strings.HasSuffix(e.Name, lib.ControllerTriggerFile) {
 		log.Printf("detected trigger file in %s", e.Name)
 
-		importRootDir, err := custom.FindRootImportDirectory(e.Name)
+		importRootDir, err := lib.FindRootImportDirectory(e.Name)
 		if err != nil {
 			log.Fatalf("Trigger file is in the incorrect path: %v", err)
 			return err
