@@ -7,6 +7,7 @@ require (
 	cloud.google.com/go/pubsub v1.28.0
 	cloud.google.com/go/storage v1.27.0
 	github.com/GoogleCloudPlatform/functions-framework-go v1.6.1
+	github.com/go-test/deep v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1
 	google.golang.org/api v0.105.0
 	google.golang.org/protobuf v1.28.1
