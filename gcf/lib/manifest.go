@@ -1,4 +1,4 @@
-package gcf
+package lib
 
 import (
 	pb "github.com/datacommonsorg/tools/gcf/proto"

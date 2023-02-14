@@ -25,7 +25,7 @@
 // which targets on production imports and private imports. The folder structure
 // are different for the two scenarios.
 // The environment variables for deployments are stored in (prod|private)/*.yaml
-package gcf
+package lib
 
 import (
 	"context"
@@ -52,7 +52,7 @@ type GCSEvent struct {
 }
 
 // parsePath returns the GCS bucket and object from path in the form of gs://<bucket>/<object>
-func parsePath(path string) (string, string, error) {
+func ParsePath(path string) (string, string, error) {
 	parts := strings.Split(path, "/")
 	if parts[0] != "gs:" || parts[1] != "" || len(parts) < 3 {
 		return "", "", errors.Errorf("Unexpected path: %s", path)
@@ -60,8 +60,8 @@ func parsePath(path string) (string, string, error) {
 	return parts[2], strings.Join(parts[3:], "/"), nil
 }
 
-func doesObjectExist(ctx context.Context, path string) (bool, error) {
-	bucket, object, err := parsePath(path)
+func DoesObjectExist(ctx context.Context, path string) (bool, error) {
+	bucket, object, err := ParsePath(path)
 	if err != nil {
 		return false, err
 	}
@@ -77,7 +77,7 @@ func doesObjectExist(ctx context.Context, path string) (bool, error) {
 }
 
 func WriteToGCS(ctx context.Context, path, data string) error {
-	bucket, object, err := parsePath(path)
+	bucket, object, err := ParsePath(path)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func WriteToGCS(ctx context.Context, path, data string) error {
 	return errors.WithMessagef(err, "Failed to write data to %s/%s", bucket, object)
 }
 
-func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error {
+func SetupBT(ctx context.Context, btProjectID, btInstance, tableID string) error {
 	adminClient, err := bigtable.NewAdminClient(ctx, btProjectID, btInstance)
 	if err != nil {
 		return errors.Wrap(err, "Unable to create a table admin client")
@@ -122,7 +122,7 @@ func setupBT(ctx context.Context, btProjectID, btInstance, tableID string) error
 	return nil
 }
 
-func deleteBTTable(ctx context.Context, projectID, instance, table string) error {
+func DeleteBTTable(ctx context.Context, projectID, instance, table string) error {
 	adminClient, err := bigtable.NewAdminClient(ctx, projectID, instance)
 	if err != nil {
 		return errors.Wrap(err, "Unable to create a table admin client")
