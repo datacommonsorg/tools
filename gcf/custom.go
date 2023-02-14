@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 
 	custom "github.com/datacommonsorg/tools/gcf/custom"
@@ -112,9 +111,8 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 			log.Fatalf("Trigger file is in the incorrect path: %v", err)
 			return err
 		}
-		dataDirectory := fmt.Sprintf("%s/data/", importRootDir)
 
-		manifest, err := custom.GenerateManifest(ctx, bucket, dataDirectory)
+		manifest, err := custom.GenerateManifest(ctx, bucket, importRootDir)
 		if err != nil {
 			log.Fatalf("unable to generate manifest: %v", err)
 			return err
@@ -126,17 +124,16 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 			return err
 		}
 
-		dataDirParent := filepath.Dir(strings.TrimSuffix(dataDirectory, "/"))
-		configPath := fmt.Sprintf("gs://%s/%s/internal/config/config.textproto", bucket, dataDirParent)
+		configPath := fmt.Sprintf("gs://%s/%s/internal/config/config.textproto", bucket, importRootDir)
 		if err = lib.WriteToGCS(ctx, configPath, string(bytes)); err != nil {
 			log.Fatalf("Failed to write config.textproto to gcs: %v", err)
 			return err
 		}
 
-		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, dataDirParent)
-		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s", bucket, strings.TrimSuffix(dataDirectory, "/"))
-		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, dataDirParent)
-		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, dataDirParent)
+		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, importRootDir)
+		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s/data", bucket, importRootDir)
+		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, importRootDir)
+		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, importRootDir)
 
 		firstImport := manifest.Import[0]
 		attributes := map[string]string{
