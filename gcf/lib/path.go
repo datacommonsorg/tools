@@ -41,7 +41,11 @@ func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("No path found in import group files")
 	}
+	// IMPORTANT NOTE: importGroupName has a character limit of 21
 	importGroupName := strings.Split(paths[0], "/")[0]
+	if len(importGroupName) > 20 {
+		importGroupName = importGroupName[:20]
+	}
 
 	for _, path := range paths {
 		// Path is expected to be like the following:
