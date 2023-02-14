@@ -127,7 +127,7 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		}
 
 		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, importRootDir)
-		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s", bucket, importRootDir)
+		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s/data", bucket, importRootDir)
 		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, importRootDir)
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, importRootDir)
 

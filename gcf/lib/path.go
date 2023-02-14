@@ -49,11 +49,11 @@ func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 	for _, path := range paths {
 		// Path is expected to be like the following:
 		// 	"demo/data/source2/solar/output.csv"
-		// 	"demo/data/source1/smokepm/subfolder/data.tmcf"
 		folderList := strings.SplitN(path, "/", 5)
 		if folderList[0] != importGroupName {
 			return nil, fmt.Errorf("file for import group %s is not under %s/", importGroupName, importGroupName)
 		}
+
 		if len(folderList) < 5 {
 			log.Printf("[Import group %s] ignoring a file not in the format of <group>/data/<source>/<dataset>/<file>: %s", importGroupName, path)
 			continue
@@ -66,6 +66,9 @@ func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 
 		dataSource := folderList[2]
 		datasetName := folderList[3]
+		if len(folderList) > 5 {
+			log.Printf("[Import group %s] ignoring a file, likely because tmcf/csv is not directly under \"%s/\"%s", importGroupName, datasetName, path)
+		}
 
 		// Add to data source -> dataset name mapping only if the dataset has not been seen before.
 		if _, datasetFound := Dataset2DataFiles[datasetName]; !datasetFound {
