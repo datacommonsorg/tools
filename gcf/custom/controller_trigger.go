@@ -24,7 +24,6 @@ import (
 )
 
 const (
-	dcManifestPath        = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
 	ControllerTriggerFile = "trigger.txt"
 )
 

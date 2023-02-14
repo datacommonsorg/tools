@@ -28,6 +28,10 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
+const (
+	dcManifestPath = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
+)
+
 // TODO(alex): refactor path -> event handler logic.
 func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	projectID := os.Getenv("projectID")
@@ -137,7 +141,7 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		firstImport := manifest.Import[0]
 		attributes := map[string]string{
 			"import_name":                *(firstImport.ImportName),
-			"dc_manifest_path":           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
+			"dc_manifest_path":           dcManifestPath,
 			"custom_manifest_path":       bigstoreConfigPath,
 			"bigstore_data_directory":    bigstoreDataDirectory,
 			"bigstore_cache_directory":   bigstoreCacheDirectory,
