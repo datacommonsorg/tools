@@ -16,13 +16,13 @@
 // launchDataflowJob will either start a Dataflow job
 // using a Flex Template or a Classic Template depending on the template path.
 // Flex templates are json based Dataflow templates and MUST end with ".json".
-package gcf
+package lib
 
 import (
 	"context"
 	"fmt"
 	"log"
-  	"os"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	dataFilePattern    = "cache.csv*"
+	dataFilePattern = "cache.csv*"
 	// Default region
 	region = "us-central1"
 
@@ -42,14 +42,14 @@ const (
 	//		<controlPath>/<TableID>/
 	//
 	// Init: written by borg to start BT import.
-	initFile = "init.txt"
+	InitFile = "init.txt"
 	// Launched: written by this cloud function to mark launching of BT import job.
-	launchedFile = "launched.txt"
+	LaunchedFile = "launched.txt"
 	// Completed: written by dataflow to mark completion of BT import.
-	completedFile = "completed.txt"
+	CompletedFile = "completed.txt"
 )
 
-func launchDataflowJob(
+func LaunchDataflowJob(
 	ctx context.Context,
 	projectID string,
 	instance string,
@@ -72,12 +72,12 @@ func launchDataflowJob(
 	return launchFromClassicTemplate(
 		ctx, projectID, instance, tableID,
 		dataPath, controlPath, dataflowTemplate,
-    )
+	)
 }
 
 // joinURL joins url components.
 // path.Join does work well for url, for example gs:// is changaed to gs:/
-func joinURL(base string, paths ...string) string {
+func JoinURL(base string, paths ...string) string {
 	p := path.Join(paths...)
 	return fmt.Sprintf("%s/%s", strings.TrimRight(base, "/"), strings.TrimLeft(p, "/"))
 }
@@ -90,14 +90,14 @@ func launchFromFlexTemplate(
 	dataPath string,
 	controlPath string,
 	dataflowTemplate string,
- ) error {
+) error {
 	dataflowService, err := dataflow.NewService(ctx)
 	if err != nil {
 		return errors.Wrap(err, "Unable to create dataflow service")
 	}
-	dataFile := joinURL(dataPath, tableID, dataFilePattern)
-	launchedPath := joinURL(controlPath, tableID, launchedFile)
-	completedPath := joinURL(controlPath, tableID, completedFile)
+	dataFile := JoinURL(dataPath, tableID, dataFilePattern)
+	launchedPath := JoinURL(controlPath, tableID, LaunchedFile)
+	completedPath := JoinURL(controlPath, tableID, CompletedFile)
 	// Job names from Flex templates can only contain alphanumerics and "-".
 	jobName := fmt.Sprintf("%s-%s",
 		strings.ReplaceAll(tableID, "_", "-"),
@@ -153,9 +153,9 @@ func launchFromClassicTemplate(
 	if err != nil {
 		return errors.Wrap(err, "Unable to create dataflow service")
 	}
-	dataFile := joinURL(dataPath, tableID, dataFilePattern)
-	launchedPath := joinURL(controlPath, tableID, launchedFile)
-	completedPath := joinURL(controlPath, tableID, completedFile)
+	dataFile := JoinURL(dataPath, tableID, dataFilePattern)
+	launchedPath := JoinURL(controlPath, tableID, LaunchedFile)
+	completedPath := JoinURL(controlPath, tableID, CompletedFile)
 	params := &dataflow.LaunchTemplateParameters{
 		JobName: tableID,
 		Parameters: map[string]string{

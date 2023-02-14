@@ -20,10 +20,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/datacommonsorg/tools/gcf/lib"
 	"github.com/pkg/errors"
 )
 
-func prodInternal(ctx context.Context, e GCSEvent) error {
+func prodInternal(ctx context.Context, e lib.GCSEvent) error {
 	projectID := os.Getenv("projectID")
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
@@ -49,7 +50,7 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 		return errors.New("controlPath is not set in environment")
 	}
 	// Get control bucket and object
-	controlBucket, controlFolder, err := parsePath(controlPath)
+	controlBucket, controlFolder, err := lib.ParsePath(controlPath)
 	if err != nil {
 		return err
 	}
@@ -71,37 +72,37 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 		return nil
 	}
 
-	if strings.HasSuffix(e.Name, initFile) {
+	if strings.HasSuffix(e.Name, lib.InitFile) {
 		log.Printf("[%s] State Init", e.Name)
 		// Called when the state-machine is at Init. Logic below moves it to Launched state.
-		launchedPath := joinURL(controlPath, tableID, launchedFile)
-		exist, err := doesObjectExist(ctx, launchedPath)
+		launchedPath := lib.JoinURL(controlPath, tableID, lib.LaunchedFile)
+		exist, err := lib.DoesObjectExist(ctx, launchedPath)
 		if err != nil {
-			return errors.WithMessagef(err, "Failed to check %s", launchedFile)
+			return errors.WithMessagef(err, "Failed to check %s", lib.LaunchedFile)
 		}
 		if exist {
 			return errors.WithMessagef(err, "Cache was already built for %s", tableID)
 		}
-		if err := setupBT(ctx, projectID, instance, tableID); err != nil {
+		if err := lib.SetupBT(ctx, projectID, instance, tableID); err != nil {
 			return err
 		}
-		err = launchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate)
+		err = lib.LaunchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate)
 		if err != nil {
-			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
+			if errDeleteBT := lib.DeleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
 				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)
 			}
 			return err
 		}
 		// Save the fact that we've launched the dataflow job.
-		err = WriteToGCS(ctx, launchedPath, "")
+		err = lib.WriteToGCS(ctx, launchedPath, "")
 		if err != nil {
-			if errDeleteBT := deleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
+			if errDeleteBT := lib.DeleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
 				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)
 			}
 			return err
 		}
 		log.Printf("[%s] State Launched", e.Name)
-	} else if strings.HasSuffix(e.Name, completedFile) {
+	} else if strings.HasSuffix(e.Name, lib.CompletedFile) {
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
 	}
@@ -109,7 +110,7 @@ func prodInternal(ctx context.Context, e GCSEvent) error {
 }
 
 // ProdBTImportController consumes a GCS event and runs an import state machine.
-func ProdBTImportController(ctx context.Context, e GCSEvent) error {
+func ProdBTImportController(ctx context.Context, e lib.GCSEvent) error {
 	err := prodInternal(ctx, e)
 	if err != nil {
 		// Panic gets reported to Cloud Logging Error Reporting that we can then
