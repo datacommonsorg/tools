@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package custom
+package gcf
 
 import (
 	"context"
@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	custom "github.com/datacommonsorg/tools/gcf/custom"
 	"github.com/datacommonsorg/tools/gcf/lib"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/prototext"
@@ -99,17 +100,17 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	} else if strings.HasSuffix(e.Name, lib.CompletedFile) {
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
-	} else if strings.HasSuffix(e.Name, controllerTriggerFile) {
+	} else if strings.HasSuffix(e.Name, custom.ControllerTriggerFile) {
 		log.Printf("detected trigger file in %s", e.Name)
 
-		importRootDir, err := FindRootImportDirectory(e.Name)
+		importRootDir, err := custom.FindRootImportDirectory(e.Name)
 		if err != nil {
 			log.Fatalf("Trigger file is in the incorrect path: %v", err)
 			return err
 		}
 		dataDirectory := fmt.Sprintf("%s/data/", importRootDir)
 
-		manifest, err := GenerateManifest(ctx, bucket, dataDirectory)
+		manifest, err := custom.GenerateManifest(ctx, bucket, dataDirectory)
 		if err != nil {
 			log.Fatalf("unable to generate manifest: %v", err)
 			return err
@@ -134,15 +135,15 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, dataDirParent)
 
 		firstImport := manifest.Import[0]
-		msg := CustomDCPubSubMsg{
-			importName:               *(firstImport.ImportName),
-			dcManifestPath:           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
-			customManifestPath:       bigstoreConfigPath,
-			bigstoreDataDirectory:    bigstoreDataDirectory,
-			bigstoreCacheDirectory:   bigstoreCacheDirectory,
-			bigstoreControlDirectory: bigstoreControlDirectory,
+		msg := custom.CustomDCPubSubMsg{
+			ImportName:               *(firstImport.ImportName),
+			DcManifestPath:           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
+			CustomManifestPath:       bigstoreConfigPath,
+			BigstoreDataDirectory:    bigstoreDataDirectory,
+			BigstoreCacheDirectory:   bigstoreCacheDirectory,
+			BigstoreControlDirectory: bigstoreControlDirectory,
 		}
-		cfg := PublishConfig{
+		cfg := custom.PublishConfig{
 			TopicName: controllerTriggerTopic,
 		}
 		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
@@ -152,8 +153,8 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	return nil
 }
 
-// CustomBTImportController consumes a GCS event and runs an import state machine.
-func CustomBTImportController(ctx context.Context, e lib.GCSEvent) error {
+// Controller consumes a GCS event and runs an import state machine.
+func CustomController(ctx context.Context, e lib.GCSEvent) error {
 	err := customInternal(ctx, e)
 	if err != nil {
 		// Panic gets reported to Cloud Logging Error Reporting that we can then

@@ -1,6 +1,0 @@
-import_name=IEA_PRIVATE,\
-dc_manifest_path=/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb,\
-custom_manifest_path=/bigstore/automation_control_test/user/IEA_PRIVATE/config/config.textproto,\
-bigstore_data_directory=/bigstore/automation_control_test/user/IEA_PRIVATE/tmcf_csv,\
-bigstore_cache_directory=/bigstore/automation_control_test/user/IEA_PRIVATE/cache,\
-bigstore_control_directory=/bigstore/automation_control_test/user/IEA_PRIVATE/control,\

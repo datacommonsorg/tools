@@ -15,7 +15,7 @@
 
 
 # Test GCF locally.
-set -x
+set -e
 
 if [[ $# != 1 ]]; then
   echo "Usage: $0 (init|completed|cleanup)" >&2
@@ -85,8 +85,8 @@ elif [[ "$1" == "completed" ]]; then
         }
       }'
 elif [[ "$1" == "cleanup" ]]; then
-  gsutil rm gs://automation_control_test/"$CACHE_NAME"/completed.txt
-  gsutil rm gs://automation_control_test/"$CACHE_NAME"/launched.txt
+  gsutil rm gs://automation_control_test/branch/"$CACHE_NAME"/completed.txt
+  gsutil rm gs://automation_control_test/branch/"$CACHE_NAME"/launched.txt
   cbt -instance prophet-test deletetable "$CACHE_NAME"
 else
   echo "Usage: $0 (init|completed)" >&2

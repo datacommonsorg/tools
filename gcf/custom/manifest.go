@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"github.com/datacommonsorg/tools/gcf/lib"
 	pb "github.com/datacommonsorg/tools/gcf/proto"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
@@ -53,7 +52,7 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (
 	imports := []*pb.DataCommonsManifest_Import{}
 
 	// Find all sources
-	sources, err := lib.FindFolders(ctx, client, bucket, pathToDataFolder)
+	sources, err := FindFolders(ctx, client, bucket, pathToDataFolder)
 	for _, source := range sources {
 
 		sourceName := filepath.Base(strings.TrimSuffix(source, "/"))
@@ -61,7 +60,7 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (
 		datasetNames := []string{}
 
 		// Find file groups
-		fileGroups, err := lib.FindFolders(ctx, client, bucket, source)
+		fileGroups, err := FindFolders(ctx, client, bucket, source)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +73,7 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (
 			log.Printf("Found dataset: %s\n", datasetName)
 
 			// all subfolders are tmcf csv files.
-			tmcfCSVs, err := lib.FindFiles(ctx, client, bucket, fileGroup)
+			tmcfCSVs, err := FindFiles(ctx, client, bucket, fileGroup)
 			if err != nil {
 				return nil, err
 			}
@@ -87,12 +86,12 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (
 					if len(tmcfPath) > 0 {
 						return nil, errors.Errorf("more than 1 tmcf file found in %s", fileGroup)
 					}
-					tmcfPath = lib.BigStorePath(bucket, tmcfCSV)
+					tmcfPath = BigStorePath(bucket, tmcfCSV)
 					log.Printf("Found tmcf: %s\n", tmcfPath)
 					continue
 				}
 				if filepath.Ext(tmcfCSV) == ".csv" {
-					csvPath := lib.BigStorePath(bucket, tmcfCSV)
+					csvPath := BigStorePath(bucket, tmcfCSV)
 					csvPaths = append(csvPaths, csvPath)
 					log.Printf("Found csv: %s\n", csvPath)
 					continue
@@ -100,7 +99,7 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (
 				// all other file types are ignored.
 			}
 
-			mcfProtoUrl := lib.BigStorePath(bucket, fmt.Sprintf("%s%s", fileGroup, "graph.tfrecord@*.gz"))
+			mcfProtoUrl := BigStorePath(bucket, fmt.Sprintf("%s%s", fileGroup, "graph.tfrecord@*.gz"))
 
 			imports = append(imports, &pb.DataCommonsManifest_Import{
 				ImportName:               proto.String(datasetName), // Use datasetName for import name.

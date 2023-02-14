@@ -26,7 +26,7 @@ import (
 
 const (
 	dcManifestPath        = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
-	controllerTriggerFile = "trigger.txt"
+	ControllerTriggerFile = "trigger.txt"
 )
 
 type PublishConfig struct {
@@ -44,12 +44,12 @@ func (p PublishConfig) TopicID() string {
 }
 
 type CustomDCPubSubMsg struct {
-	importName               string
-	dcManifestPath           string
-	customManifestPath       string
-	bigstoreDataDirectory    string
-	bigstoreCacheDirectory   string
-	bigstoreControlDirectory string
+	ImportName               string
+	DcManifestPath           string
+	CustomManifestPath       string
+	BigstoreDataDirectory    string
+	BigstoreCacheDirectory   string
+	BigstoreControlDirectory string
 }
 
 func (s CustomDCPubSubMsg) String() string {
@@ -60,23 +60,23 @@ bigstore_data_directory=%s,\
 bigstore_cache_directory=%s,\
 bigstore_control_directory=%s,\
 `,
-		s.importName,
-		s.dcManifestPath,
-		s.customManifestPath,
-		s.bigstoreDataDirectory,
-		s.bigstoreCacheDirectory,
-		s.bigstoreControlDirectory,
+		s.ImportName,
+		s.DcManifestPath,
+		s.CustomManifestPath,
+		s.BigstoreDataDirectory,
+		s.BigstoreCacheDirectory,
+		s.BigstoreControlDirectory,
 	)
 }
 
 func (s CustomDCPubSubMsg) Attributes() map[string]string {
 	return map[string]string{
-		"import_name":                s.importName,
-		"dc_manifest_path":           s.dcManifestPath,
-		"custom_manifest_path":       s.customManifestPath,
-		"bigstore_data_directory":    s.bigstoreDataDirectory,
-		"bigstore_cache_directory":   s.bigstoreCacheDirectory,
-		"bigstore_control_directory": s.bigstoreControlDirectory,
+		"import_name":                s.ImportName,
+		"dc_manifest_path":           s.DcManifestPath,
+		"custom_manifest_path":       s.CustomManifestPath,
+		"bigstore_data_directory":    s.BigstoreDataDirectory,
+		"bigstore_cache_directory":   s.BigstoreCacheDirectory,
+		"bigstore_control_directory": s.BigstoreControlDirectory,
 	}
 }
 
@@ -115,12 +115,12 @@ func (s CustomDCPubSubMsg) Publish(ctx context.Context, p PublishConfig) error {
 //
 // Note manifest generator requires the "/" at the end.
 func FindRootImportDirectory(triggerPath string) (string, error) {
-	if filepath.Base(triggerPath) != controllerTriggerFile {
-		return "", errors.Errorf("Expected trigger file %s, got %s", controllerTriggerFile, filepath.Base(triggerPath))
+	if filepath.Base(triggerPath) != ControllerTriggerFile {
+		return "", errors.Errorf("Expected trigger file %s, got %s", ControllerTriggerFile, filepath.Base(triggerPath))
 	}
 	pathList := strings.Split(triggerPath, "/")
 	if len(pathList) < 4 {
-		return "", errors.Errorf("Expected pattern <folder>/internal/control/%s, got %s", controllerTriggerFile, triggerPath)
+		return "", errors.Errorf("Expected pattern <folder>/internal/control/%s, got %s", ControllerTriggerFile, triggerPath)
 	}
 	if pathList[len(pathList)-2] != "control" {
 		return "", errors.Errorf("Trigger path not under control folder: %s", triggerPath)

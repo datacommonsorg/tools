@@ -16,18 +16,25 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT="$(dirname "$DIR")"
+cd $ROOT
 
-PROJECT_ID=$(yq eval '.projectID' custom_dc/local.yaml)
-BUCKET=$(yq eval '.bucket' custom_dc/local.yaml)
+PROJECT_ID=$(yq eval '.projectID' gcp/config/$1.yaml)
 
-## TODO: move all of these as one-time setup
+# Need to provide project to run script.
+if [[ $1 != $PROJECT_ID]]; then
+  echo "Invalid project $1" >&2
+  exit 1
+fi
+
+BUCKET=$(yq eval '.bucket' gcp/config/$PROJECT_ID.yaml)
+
 gcloud config set project $PROJECT_ID
 
 gcloud functions deploy prophet-cache-trigger \
   --region 'us-central1' \
-  --entry-point CustomBTImportController \
+  --entry-point Controller \
   --runtime go116 \
   --trigger-bucket $BUCKET \
-  --env-vars-file custom_dc/local.yaml \
+  --env-vars-file gcp/config/$PROJECT_ID.yaml \
   --timeout 300
 

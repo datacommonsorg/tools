@@ -15,38 +15,31 @@
 
 
 if [[ $# != 1 ]]; then
-  echo "Usage: $0 (base|branch|private)" >&2
+  echo "Usage: $0 (base|branch)" >&2
   exit 1
 fi
 
-if [[ $1 != "base" && $1 != "branch" && $1 != "private" ]]; then
-  echo "Usage: $0 (base|branch|private)" >&2
+ENV=$1
+
+if [[ $ENV != "base" && $ENV != "branch" ]]; then
+  echo "Usage: $0 (base|branch)" >&2
   exit 1
 fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-ROOT="$(dirname "$DIR")"
 
-cd $DIR
-PROJECT_ID=$(yq eval '.projectID' $1.yaml)
-BUCKET=$(yq eval '.controlPath' $1.yaml | cut -f3 -d'/')
+PROJECT_ID=$(yq eval '.projectID' $DIR/config/$ENV.yaml)
+BUCKET=$(yq eval '.controlPath' $DIR/config/$ENV.yaml | cut -f3 -d'/')
 
-## TODO: move all of these as one-time setup
-cd $ROOT
 gcloud config set project $PROJECT_ID
 
-gcloud services enable cloudbuild.googleapis.com
 
-gcloud services enable dataflow.googleapis.com
-
-gcloud compute networks subnets update default \
---region=us-central1 \
---enable-private-ip-google-access
-
-gcloud functions deploy prophet-cache-trigger-$1 \
+cd $DIR
+cd ../..
+gcloud functions deploy prophet-cache-trigger-$ENV \
   --region 'us-central1' \
-  --entry-point ProdBTImportController \
+  --entry-point BaseController \
   --runtime go116 \
   --trigger-bucket $BUCKET \
-  --env-vars-file prod/$1.yaml \
+  --env-vars-file $DIR/config/$ENV.yaml \
   --timeout 300
