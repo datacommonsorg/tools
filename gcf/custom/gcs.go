@@ -25,7 +25,7 @@
 // which targets on production imports and private imports. The folder structure
 // are different for the two scenarios.
 // The environment variables for deployments are stored in (prod|private)/*.yaml
-package lib
+package custom
 
 import (
 	"context"

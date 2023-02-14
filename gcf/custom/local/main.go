@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,9 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/funcframework"
-	base "github.com/datacommonsorg/tools/gcf/base_import_controller"
+	gcf "github.com/datacommonsorg/tools/gcf"
 )
 
 func main() {
@@ -28,15 +27,11 @@ func main() {
 	if err := funcframework.RegisterEventFunctionContext(
 		ctx,
 		"/",
-		base.ProdBTImportController,
+		gcf.CustomController,
 	); err != nil {
 		log.Fatalf("funcframework.RegisterEventFunctionContext: %v\n", err)
 	}
-	// Use PORT environment variable, or default to 8080.
 	port := "8080"
-	if envPort := os.Getenv("PORT"); envPort != "" {
-		port = envPort
-	}
 	if err := funcframework.Start(port); err != nil {
 		log.Fatalf("funcframework.Start: %v\n", err)
 	}

@@ -14,20 +14,32 @@
 # limitations under the License.
 
 
+if [[ $# != 1 ]]; then
+  echo "Usage: $0 (base|branch)" >&2
+  exit 1
+fi
+
+ENV=$1
+
+if [[ $ENV != "base" && $ENV != "branch" ]]; then
+  echo "Usage: $0 (base|branch)" >&2
+  exit 1
+fi
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-ROOT="$(dirname "$DIR")"
 
-PROJECT_ID=$(yq eval '.projectID' custom_dc/local.yaml)
-BUCKET=$(yq eval '.bucket' custom_dc/local.yaml)
+PROJECT_ID=$(yq eval '.projectID' $DIR/config/$ENV.yaml)
+BUCKET=$(yq eval '.controlPath' $DIR/config/$ENV.yaml | cut -f3 -d'/')
 
-## TODO: move all of these as one-time setup
 gcloud config set project $PROJECT_ID
 
-gcloud functions deploy prophet-cache-trigger \
+
+cd $DIR
+cd ../..
+gcloud functions deploy prophet-cache-trigger-$ENV \
   --region 'us-central1' \
-  --entry-point CustomBTImportController \
+  --entry-point BaseController \
   --runtime go116 \
   --trigger-bucket $BUCKET \
-  --env-vars-file custom_dc/local.yaml \
+  --env-vars-file $DIR/config/$ENV.yaml \
   --timeout 300
-

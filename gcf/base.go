@@ -109,8 +109,8 @@ func prodInternal(ctx context.Context, e lib.GCSEvent) error {
 	return nil
 }
 
-// ProdBTImportController consumes a GCS event and runs an import state machine.
-func ProdBTImportController(ctx context.Context, e lib.GCSEvent) error {
+// BaseController consumes a GCS event and runs an import state machine.
+func BaseController(ctx context.Context, e lib.GCSEvent) error {
 	err := prodInternal(ctx, e)
 	if err != nil {
 		// Panic gets reported to Cloud Logging Error Reporting that we can then
