@@ -109,7 +109,7 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		}
 		dataDirectory := fmt.Sprintf("%s/data/", importRootDir)
 
-		manifest, err := lib.GenerateManifest(ctx, bucket, dataDirectory)
+		manifest, err := GenerateManifest(ctx, bucket, dataDirectory)
 		if err != nil {
 			log.Fatalf("unable to generate manifest: %v", err)
 			return err
