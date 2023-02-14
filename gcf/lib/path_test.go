@@ -37,11 +37,11 @@ func TestCollectImportFiles(t *testing.T) {
 				"demo/data/source2/solar/output.csv",
 			},
 			&ImportGroupFiles{
-				DataSource2DatasetNames: map[string][]string{
+				Source2Datasets: map[string][]string{
 					"source1": []string{"smokepm"},
 					"source2": []string{"solar"},
 				},
-				DatasetName2DataFiles: map[string]DataFiles{
+				Dataset2DataFiles: map[string]DataFiles{
 					"smokepm": DataFiles{
 						TMCFPath: "demo/data/source1/smokepm/data.tmcf",
 						CSVPaths: []string{"demo/data/source1/smokepm/output.csv"},
@@ -87,18 +87,39 @@ func TestCollectImportFiles(t *testing.T) {
 				"demo/data/source1/smokepm/data.tmcf",
 				"demo/data/source1/smokepm/output.csv",
 				"demo/data/source1/random.csv",
+				"demo/not_data/source1/somkepm/other.csv",
 			},
 			&ImportGroupFiles{
-				DataSource2DatasetNames: map[string][]string{
+				Source2Datasets: map[string][]string{
 					"source1": []string{"smokepm"},
 				},
-				DatasetName2DataFiles: map[string]DataFiles{
+				Dataset2DataFiles: map[string]DataFiles{
 					"smokepm": DataFiles{
 						TMCFPath: "demo/data/source1/smokepm/data.tmcf",
 						CSVPaths: []string{"demo/data/source1/smokepm/output.csv"},
 					},
 				},
 				ImportGroupName: "demo",
+			},
+			"",
+		},
+		{
+			"Long imort group names should be truncated",
+			[]string{
+				"somethingreallyreallylong/data/source1/smokepm/data.tmcf",
+				"somethingreallyreallylong/data/source1/smokepm/output.csv",
+			},
+			&ImportGroupFiles{
+				Source2Datasets: map[string][]string{
+					"source1": []string{"smokepm"},
+				},
+				Dataset2DataFiles: map[string]DataFiles{
+					"smokepm": DataFiles{
+						TMCFPath: "somethingreallyreallylong/data/source1/smokepm/data.tmcf",
+						CSVPaths: []string{"somethingreallyreallylong/data/source1/smokepm/output.csv"},
+					},
+				},
+				ImportGroupName: "somethingreallyreall",
 			},
 			"",
 		},

@@ -16,7 +16,6 @@ package custom
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"path/filepath"
 	"strings"
@@ -34,23 +33,24 @@ func importFilesToManifest(importGroupFiles *lib.ImportGroupFiles, bucket string
 	var datasetImports []*pb.DataCommonsManifest_Import
 
 	datasetSources := []*pb.DataCommonsManifest_DatasetSource{}
-	for dataSource, datasetNames := range importGroupFiles.DataSource2DatasetNames {
+	for dataSource, datasetNames := range importGroupFiles.Source2Datasets {
 		ds := &pb.DataCommonsManifest_DatasetSource{
-			Url:      proto.String("https://datacommons.org/"),
-			Name:     proto.String(dataSource),
-			Datasets: []*pb.DataCommonsManifest_DatasetInfo{},
+			Url:  proto.String("https://datacommons.org/"),
+			Name: proto.String(dataSource),
 		}
 
+		ds.Datasets = make([]*pb.DataCommonsManifest_DatasetInfo, len(datasetNames))
 		for i, datasetName := range datasetNames {
-
 			ds.Datasets[i] = &pb.DataCommonsManifest_DatasetInfo{
 				Name: proto.String(datasetName),
 				Url:  ds.Url, // Dummy URL
 			}
 
-			mcfProtoUrl := lib.BigStorePath(bucket, fmt.Sprintf("%s%s", datasetName, "graph.tfrecord@*.gz"))
+			for datasetName, dataFiles := range importGroupFiles.Dataset2DataFiles {
+				// Note: mcf proto url must be under bigstore_data_directory.
+				tmcfDir := filepath.Dir(dataFiles.TMCFPath)
+				mcfProtoUrl := lib.BigStorePath(bucket, filepath.Join(tmcfDir, "graph.tfrecord@*.gz"))
 
-			for datasetName, dataFiles := range importGroupFiles.DatasetName2DataFiles {
 				var tables []*pb.ExternalTable
 				tables = append(tables, &pb.ExternalTable{
 					MappingPath: proto.String(dataFiles.TMCFPath),
@@ -91,13 +91,13 @@ func importFilesToManifest(importGroupFiles *lib.ImportGroupFiles, bucket string
 // pathToDataFolder is the "gs://"-prefixed folder that contains raw data.
 // For the folder structure that is expected, please see,
 // https://docs.datacommons.org/custom_dc/upload_data.html
-func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (*pb.DataCommonsManifest, error) {
+func GenerateManifest(ctx context.Context, bucket, importRootDir string) (*pb.DataCommonsManifest, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: pathToDataFolder})
+	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: importRootDir})
 	paths := []string{}
 	for {
 		attrs, err := it.Next()
@@ -111,15 +111,8 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (*pb
 		if strings.HasSuffix(attrs.Name, "/") {
 			continue
 		}
-		log.Printf("FindFiles in %s got %s", pathToDataFolder, attrs.Name)
+		log.Printf("[Import root %s] Found %s", importRootDir, attrs.Name)
 		paths = append(paths, attrs.Name)
-	}
-
-	// IMPORTANT NOTE: importGroupName has a character limit of 21
-	importGroupName := filepath.Base(
-		filepath.Dir(strings.TrimSuffix(pathToDataFolder, "/")))
-	if len(importGroupName) > 20 {
-		importGroupName = importGroupName[:20]
 	}
 
 	importGroupFiles, err := lib.CollectImportFiles(paths)

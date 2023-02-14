@@ -29,25 +29,22 @@ type DataFiles struct {
 
 // ImportGroupFiles represent the collection of paths for a single import group.
 type ImportGroupFiles struct {
-	DataSource2DatasetNames map[string][]string
-	DatasetName2DataFiles   map[string]DataFiles
-	ImportGroupName         string
+	Source2Datasets   map[string][]string
+	Dataset2DataFiles map[string]DataFiles
+	ImportGroupName   string
 }
 
 // CollectImportFiles takes a list of gcs file paths and construct ImportGroupFiles.
+// Caller is responsible for passing in paths all starting with the same top level path.
 func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 
-	dataSource2DatasetNames := map[string][]string{}
-	datasetName2DataFiles := map[string]DataFiles{}
+	Source2Datasets := map[string][]string{}
+	Dataset2DataFiles := map[string]DataFiles{}
 
 	if len(paths) == 0 {
 		return nil, errors.New("No path found in import group files")
 	}
-	// IMPORTANT NOTE: importGroupName has a character limit of 21
 	importGroupName := strings.Split(paths[0], "/")[0]
-	if len(importGroupName) > 20 {
-		importGroupName = importGroupName[:20]
-	}
 
 	for _, path := range paths {
 		// Path is expected to be like the following:
@@ -71,13 +68,13 @@ func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 		datasetName := folderList[3]
 
 		// Add to data source -> dataset name mapping only if the dataset has not been seen before.
-		if _, datasetFound := datasetName2DataFiles[datasetName]; !datasetFound {
-			dataSource2DatasetNames[dataSource] = append(dataSource2DatasetNames[dataSource], datasetName)
+		if _, datasetFound := Dataset2DataFiles[datasetName]; !datasetFound {
+			Source2Datasets[dataSource] = append(Source2Datasets[dataSource], datasetName)
 		}
 
 		df := DataFiles{}
-		if _, ok := datasetName2DataFiles[datasetName]; ok {
-			df = datasetName2DataFiles[datasetName]
+		if _, ok := Dataset2DataFiles[datasetName]; ok {
+			df = Dataset2DataFiles[datasetName]
 		}
 
 		if filepath.Ext(path) == ".tmcf" {
@@ -91,11 +88,11 @@ func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 		} else {
 			log.Printf("[Import group %s] Found non tmcf/csv file in dataset %s, ignoring %s", importGroupName, datasetName, path)
 		}
-		datasetName2DataFiles[datasetName] = df
+		Dataset2DataFiles[datasetName] = df
 	}
 
 	// Validation.
-	for datasetName, dataFiles := range datasetName2DataFiles {
+	for datasetName, dataFiles := range Dataset2DataFiles {
 		if len(dataFiles.TMCFPath) == 0 {
 			return nil, fmt.Errorf("[Import group %s] TMCF not found in dataset %s", importGroupName, datasetName)
 		}
@@ -104,10 +101,15 @@ func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 		}
 	}
 
+	// IMPORTANT NOTE: importGroupName has a character constraint of 21 due to internal limitations.
+	if len(importGroupName) > 20 {
+		importGroupName = importGroupName[:20]
+	}
+
 	return &ImportGroupFiles{
-		DataSource2DatasetNames: dataSource2DatasetNames,
-		DatasetName2DataFiles:   datasetName2DataFiles,
-		ImportGroupName:         importGroupName,
+		Source2Datasets:   Source2Datasets,
+		Dataset2DataFiles: Dataset2DataFiles,
+		ImportGroupName:   importGroupName,
 	}, nil
 }
 
