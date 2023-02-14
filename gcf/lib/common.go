@@ -112,12 +112,12 @@ func SetupBT(ctx context.Context, btProjectID, btInstance, tableID string) error
 		time.Sleep(1 * time.Minute)
 	}
 	if !ok {
-		return errors.Errorf("Unable to create table: %s, got error: %v", tableID, err)
+		return errors.WithMessagef(err, "Unable to create table: %s", tableID)
 	}
 	// Create table columnFamily.
 	log.Printf("Creating column family %s in table %s/%s", columnFamily, btInstance, tableID)
 	if err := adminClient.CreateColumnFamily(dctx, tableID, columnFamily); err != nil {
-		return errors.WithMessagef(err, "Unable to create column family: csv for table: %s, got error: %v", tableID)
+		return errors.WithMessagef(err, "Unable to create column family: csv for table: %s", tableID)
 	}
 	return nil
 }
