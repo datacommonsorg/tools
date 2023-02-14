@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
 )
 
@@ -89,4 +90,31 @@ func FindFiles(ctx context.Context, c *storage.Client, bucket, pathPrefix string
 
 func BigStorePath(bucket, path string) string {
 	return filepath.Join("/bigstore", bucket, path)
+}
+
+// Find the root directory for data imports on gcs.
+// For data import directory structures, please refer to
+// https://docs.datacommons.org/custom_dc/upload_data.html
+//
+// Root directory in the above example is "gcs_folder"
+// Example:
+// findRootImportDirectory("/somepath/gcs_folder/internal/control/trigger.txt")
+// returns "/somepath/gcs_folder/"
+//
+// Note manifest generator requires the "/" at the end.
+func FindRootImportDirectory(triggerPath string) (string, error) {
+	if filepath.Base(triggerPath) != ControllerTriggerFile {
+		return "", errors.Errorf("Expected trigger file %s, got %s", ControllerTriggerFile, filepath.Base(triggerPath))
+	}
+	pathList := strings.Split(triggerPath, "/")
+	if len(pathList) < 4 {
+		return "", errors.Errorf("Expected pattern <folder>/internal/control/%s, got %s", ControllerTriggerFile, triggerPath)
+	}
+	if pathList[len(pathList)-2] != "control" {
+		return "", errors.Errorf("Trigger path not under control folder: %s", triggerPath)
+	}
+	if pathList[len(pathList)-3] != "internal" {
+		return "", errors.Errorf("control folder not under internal folder: %s", triggerPath)
+	}
+	return strings.Join(pathList[:len(pathList)-3], "/"), nil
 }

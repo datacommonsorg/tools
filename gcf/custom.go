@@ -135,19 +135,16 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, dataDirParent)
 
 		firstImport := manifest.Import[0]
-		msg := custom.CustomDCPubSubMsg{
-			ImportName:               *(firstImport.ImportName),
-			DcManifestPath:           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
-			CustomManifestPath:       bigstoreConfigPath,
-			BigstoreDataDirectory:    bigstoreDataDirectory,
-			BigstoreCacheDirectory:   bigstoreCacheDirectory,
-			BigstoreControlDirectory: bigstoreControlDirectory,
-		}
-		cfg := custom.PublishConfig{
-			TopicName: controllerTriggerTopic,
+		attributes := map[string]string{
+			"import_name":                *(firstImport.ImportName),
+			"dc_manifest_path":           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
+			"custom_manifest_path":       bigstoreConfigPath,
+			"bigstore_data_directory":    bigstoreDataDirectory,
+			"bigstore_cache_directory":   bigstoreCacheDirectory,
+			"bigstore_control_directory": bigstoreControlDirectory,
 		}
 		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
-		return msg.Publish(ctx, cfg)
+		return custom.Publish(ctx, controllerTriggerTopic, attributes)
 
 	}
 	return nil
