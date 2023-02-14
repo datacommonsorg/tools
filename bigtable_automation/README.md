@@ -9,7 +9,7 @@ BT automation works as follows:
    only) and kicks off the
    [CSV-to-BT Dataflow job](https://pantheon.corp.google.com/dataflow/jobs?organizationId=433637338589&project=datcom-store)
    stored in
-   [datcom-dataflow-templates](https://pantheon.corp.google.com/storage/browser/_details/datcom-templates/templates/csv_to_bt).
+   [datcom-dataflow-templates](https://pantheon.corp.google.com/storage/browser/_details/datcom-templates/templates/flex/csv_to_bt_0.0.3.json).
 
 2. When the Dataflow job completes, it notifies the same cloud function to
    scale down BT resources (for base cache builds only).
