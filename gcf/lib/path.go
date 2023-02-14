@@ -21,11 +21,13 @@ import (
 	"strings"
 )
 
+// DataFiles represent a logical unit of files for a single dataset.
 type DataFiles struct {
 	TMCFPath string
 	CSVPaths []string
 }
 
+// ImportGroupFiles represent the collection of paths for a single import group.
 type ImportGroupFiles struct {
 	DataSource2DatasetNames map[string][]string
 	DatasetName2DataFiles   map[string]DataFiles

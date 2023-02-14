@@ -18,14 +18,12 @@ set -x
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $DIR
 
-# Pick environment config file
-config_file=local.yaml
-
-# Good to read the yaml file keys and convert them to bash array
-for var in projectID cluster instance dataflowTemplate tempLocation controllerTriggerTopic bucket
-do
-    value=$(yq eval .$var $config_file)
-    export $var=$value
-done
+export projectID="datcom-mixer-encode"
+export instance="dc-graph"
+export cluster="dc-graph-c1"
+export dataflowTemplate="gs://datcom-templates/templates/flex/csv_to_bt_0.0.3.json"
+export tempLocation="gs://datcom-mixer-encode-resources/dataflow/tmp"
+export controllerTriggerTopic="projects/datcom-204919/topics/private-import-notification-dev"
+export bucket="datcom-mixer-encode-resources"
 
 go run main.go

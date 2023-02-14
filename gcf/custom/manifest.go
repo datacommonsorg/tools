@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"github.com/datacommonsorg/tools/gcf/lib"
 	pb "github.com/datacommonsorg/tools/gcf/proto"
 	"github.com/pkg/errors"
 	"google.golang.org/api/iterator"
