@@ -125,11 +125,11 @@ func GenerateManifest(ctx context.Context, bucket, pathToDataFolder string) (
 			Name:     proto.String(sourceName),
 			Datasets: []*pb.DataCommonsManifest_DatasetInfo{},
 		}
-		for i, datasetName := range datasetNames {
-			ds.Datasets[i] = &pb.DataCommonsManifest_DatasetInfo{
+		for _, datasetName := range datasetNames {
+			ds.Datasets = append(ds.Datasets, &pb.DataCommonsManifest_DatasetInfo{
 				Name: proto.String(datasetName),
 				Url:  ds.Url, // Dummy URL
-			}
+			})
 		}
 		datasetSources = append(datasetSources, ds)
 	}
