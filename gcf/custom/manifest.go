@@ -28,11 +28,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func importFilesToManifest(importGroupFiles *lib.ImportGroupFiles, bucket string) (*pb.DataCommonsManifest, error) {
-
-	var datasetImports []*pb.DataCommonsManifest_Import
-
+func importFilesToManifest(
+	importGroupFiles *lib.ImportGroupFiles,
+	bucket string,
+) (*pb.DataCommonsManifest, error) {
+	datasetImports := []*pb.DataCommonsManifest_Import{}
 	datasetSources := []*pb.DataCommonsManifest_DatasetSource{}
+
 	for dataSource, datasetNames := range importGroupFiles.Source2Datasets {
 		ds := &pb.DataCommonsManifest_DatasetSource{
 			Url:  proto.String("https://datacommons.org/"),
@@ -91,7 +93,10 @@ func importFilesToManifest(importGroupFiles *lib.ImportGroupFiles, bucket string
 // pathToDataFolder is the "gs://"-prefixed folder that contains raw data.
 // For the folder structure that is expected, please see,
 // https://docs.datacommons.org/custom_dc/upload_data.html
-func GenerateManifest(ctx context.Context, bucket, importRootDir string) (*pb.DataCommonsManifest, error) {
+func GenerateManifest(
+	ctx context.Context,
+	bucket, importRootDir string,
+) (*pb.DataCommonsManifest, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err

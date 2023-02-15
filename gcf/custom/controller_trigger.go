@@ -36,7 +36,11 @@ func getTopicInfo(topicName string) (
 }
 
 // Publish publishes the current import config to a topic.
-func Publish(ctx context.Context, topicName string, attributes map[string]string) error {
+func Publish(
+	ctx context.Context,
+	topicName string,
+	attributes map[string]string,
+) error {
 	log.Printf("Publishing to topic: %s, for the following attributes\n: %s", topicName, attributes)
 	projectID, topicID, err := getTopicInfo(topicName)
 	if err != nil {
