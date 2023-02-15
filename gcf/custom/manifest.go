@@ -17,7 +17,6 @@ package custom
 import (
 	"context"
 	"log"
-	"path/filepath"
 	"strings"
 
 	"cloud.google.com/go/storage"
@@ -49,21 +48,17 @@ func importFilesToManifest(
 			}
 
 			for datasetName, dataFiles := range importGroupFiles.Dataset2DataFiles {
-				// Note: mcf proto url must be under bigstore_data_directory.
-				tmcfDir := filepath.Dir(dataFiles.TMCFPath)
-				mcfProtoUrl := lib.BigStorePath(bucket, filepath.Join(tmcfDir, "graph.tfrecord@*.gz"))
-
 				var tables []*pb.ExternalTable
 				tables = append(tables, &pb.ExternalTable{
-					MappingPath: proto.String(dataFiles.TMCFPath),
-					CsvPath:     dataFiles.CSVPaths,
+					MappingPath: proto.String(dataFiles.BigStoreTMCFPath(bucket)),
+					CsvPath:     dataFiles.BigstoreCSVPaths(bucket),
 				})
 
 				datasetImports = append(datasetImports, &pb.DataCommonsManifest_Import{
 					ImportName:               proto.String(datasetName), // Use datasetName for import name.
 					Category:                 pb.DataCommonsManifest_STATS.Enum(),
 					ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
-					McfProtoUrl:              []string{mcfProtoUrl},
+					McfProtoUrl:              []string{dataFiles.BigStoreMCFProtoUrl(bucket)},
 					ImportGroups:             []string{importGroupFiles.ImportGroupName},
 					ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
 					DatasetName:              proto.String(datasetName),
@@ -95,14 +90,14 @@ func importFilesToManifest(
 // https://docs.datacommons.org/custom_dc/upload_data.html
 func GenerateManifest(
 	ctx context.Context,
-	bucket, importRootDir string,
+	bucket, dataDir string,
 ) (*pb.DataCommonsManifest, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: importRootDir})
+	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: dataDir})
 	paths := []string{}
 	for {
 		attrs, err := it.Next()
@@ -116,11 +111,11 @@ func GenerateManifest(
 		if strings.HasSuffix(attrs.Name, "/") {
 			continue
 		}
-		log.Printf("[Import root %s] Found %s", importRootDir, attrs.Name)
+		log.Printf("[Data dir %s] Found %s", dataDir, attrs.Name)
 		paths = append(paths, attrs.Name)
 	}
 
-	importGroupFiles, err := lib.CollectImportFiles(paths)
+	importGroupFiles, err := lib.CollectImportFiles(paths, dataDir)
 	if err != nil {
 		return nil, errors.Wrap(err, "Found errors with files in data folder")
 	}

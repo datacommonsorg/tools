@@ -32,6 +32,23 @@ type DataFiles struct {
 	CSVPaths []string
 }
 
+func (d *DataFiles) BigStoreTMCFPath(bucket string) string {
+	return BigStorePath(bucket, d.TMCFPath)
+}
+
+func (d *DataFiles) BigStoreMCFProtoUrl(bucket string) string {
+	tmcfDir := filepath.Dir(d.TMCFPath)
+	return BigStorePath(bucket, filepath.Join(tmcfDir, "graph.tfrecord@*.gz"))
+}
+
+func (d *DataFiles) BigstoreCSVPaths(bucket string) []string {
+	res := make([]string, len(d.CSVPaths))
+	for i, p := range d.CSVPaths {
+		res[i] = BigStorePath(bucket, p)
+	}
+	return res
+}
+
 // ImportGroupFiles represent the collection of paths for a single import group.
 type ImportGroupFiles struct {
 	Source2Datasets   map[string][]string
@@ -40,38 +57,43 @@ type ImportGroupFiles struct {
 }
 
 // CollectImportFiles takes a list of gcs file paths and construct ImportGroupFiles.
-// Caller is responsible for passing in paths all starting with the same top level path.
-func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
-
+// paths are gcs paths inside the resource bucket (not including bucket name).
+// dataDir is the gcs path relative to the data directory of the import group.
+func CollectImportFiles(paths []string, dataDir string) (*ImportGroupFiles, error) {
 	Source2Datasets := map[string][]string{}
 	Dataset2DataFiles := map[string]DataFiles{}
 
 	if len(paths) == 0 {
 		return nil, errors.New("No path found in import group files")
 	}
-	importGroupName := strings.Split(paths[0], "/")[0]
 
 	for _, path := range paths {
-		// Path is expected to be like the following:
-		// 	"demo/data/source2/solar/output.csv"
-		folderList := strings.SplitN(path, "/", 5)
-		if folderList[0] != importGroupName {
-			return nil, fmt.Errorf("file for import group %s is not under %s/", importGroupName, importGroupName)
+		if !strings.HasPrefix(path, dataDir) {
+			return nil, fmt.Errorf("CollectImportFiles expected all paths to start with %s, got %s", dataDir, path)
 		}
+	}
+	r := strings.Split(dataDir, "/")
+	if len(r) < 2 {
+		return nil, fmt.Errorf("dataDir expected a path like .../<import group>/data, got %s", dataDir)
+	}
+	importGroupName := r[len(r)-2]
 
-		if len(folderList) < 5 {
+	for _, path := range paths {
+		// Ex:
+		// path=="a/b/c/root/data/source/dataset/data.tmcf" and
+		// dataDir=="a/b/c/root/data", then
+		// pathFromImportRootDir=="source/dataset/data.tmcf"
+		pathFromImportRootDir := strings.TrimPrefix(path, dataDir+"/")
+
+		folderList := strings.SplitN(pathFromImportRootDir, "/", 3)
+		if len(folderList) < 3 {
 			log.Printf("[Import group %s] ignoring a file not in the format of <group>/data/<source>/<dataset>/<file>: %s", importGroupName, path)
 			continue
 		}
 
-		if folderList[1] != "data" {
-			log.Printf("[Import group %s] found a file not under 'data/'. Ignoring %s", importGroupName, path)
-			continue
-		}
-
-		dataSource := folderList[2]
-		datasetName := folderList[3]
-		if len(folderList) > 5 {
+		dataSource := folderList[0]
+		datasetName := folderList[1]
+		if len(folderList) > 3 {
 			log.Printf("[Import group %s] ignoring a file, likely because tmcf/csv is not directly under \"%s/\"%s", importGroupName, datasetName, path)
 		}
 

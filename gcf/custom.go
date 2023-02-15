@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	custom "github.com/datacommonsorg/tools/gcf/custom"
@@ -112,7 +113,8 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 			return err
 		}
 
-		manifest, err := custom.GenerateManifest(ctx, bucket, importRootDir)
+		dataDir := filepath.Join(importRootDir, "data")
+		manifest, err := custom.GenerateManifest(ctx, bucket, dataDir)
 		if err != nil {
 			log.Fatalf("unable to generate manifest: %v", err)
 			return err
@@ -131,7 +133,7 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		}
 
 		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, importRootDir)
-		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s/data", bucket, importRootDir)
+		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s", bucket, dataDir)
 		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, importRootDir)
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, importRootDir)
 

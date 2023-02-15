@@ -17,6 +17,7 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 PROJECT_ID=$(yq eval '.projectID' $DIR/config/$1.yaml)
+GCF_SA=$(yq eval '.gcfSA' $DIR/config/$1.yaml)
 
 
 # Need to provide project to run script.
@@ -37,6 +38,7 @@ gcloud functions deploy prophet-cache-trigger \
   --entry-point CustomController \
   --runtime go116 \
   --trigger-bucket $BUCKET \
+  --service-account $GCF_SA \
   --env-vars-file $DIR/config/$PROJECT_ID.yaml \
   --timeout 300
 
