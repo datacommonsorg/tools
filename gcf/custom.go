@@ -136,7 +136,11 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, importRootDir)
 
 		firstImport := manifest.Import[0]
+		// ID used to globally identify an import group under a project.
+		instanceID := fmt.Sprintf("%s_%s", projectID, *manifest.ImportGroups[0].Name)
+
 		attributes := map[string]string{
+			"instance_id":                instanceID,
 			"import_name":                *(firstImport.ImportName),
 			"dc_manifest_path":           dcManifestPath,
 			"custom_manifest_path":       bigstoreConfigPath,
