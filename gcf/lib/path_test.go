@@ -139,3 +139,22 @@ func TestCollectImportFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestStripUntilRootDir(t *testing.T) {
+	for _, c := range []struct {
+		path    string
+		rootDir string
+		want    string
+	}{
+		{
+			"a/b/c/root/data/source1/dataset1/data.tmcf",
+			"a/b/c/root",
+			"root/data/source1/dataset1/data.tmcf",
+		},
+	} {
+		got := StripUntilRootDir(c.path, c.rootDir)
+		if got != c.want {
+			t.Errorf("Expected StripUntilRootDir(%s, %s) = %s, got %s", c.path, c.rootDir, c.want, got)
+		}
+	}
+}

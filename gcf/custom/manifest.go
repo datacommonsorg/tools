@@ -53,10 +53,15 @@ func importFilesToManifest(
 				tmcfDir := filepath.Dir(dataFiles.TMCFPath)
 				mcfProtoUrl := lib.BigStorePath(bucket, filepath.Join(tmcfDir, "graph.tfrecord@*.gz"))
 
+				bigstoreCSVPaths := make([]string, len(dataFiles.CSVPaths))
+				for i, p := range dataFiles.CSVPaths {
+					bigstoreCSVPaths[i] = lib.BigStorePath(bucket, p)
+				}
+
 				var tables []*pb.ExternalTable
 				tables = append(tables, &pb.ExternalTable{
-					MappingPath: proto.String(dataFiles.TMCFPath),
-					CsvPath:     dataFiles.CSVPaths,
+					MappingPath: proto.String(lib.BigStorePath(bucket, dataFiles.TMCFPath)),
+					CsvPath:     bigstoreCSVPaths,
 				})
 
 				datasetImports = append(datasetImports, &pb.DataCommonsManifest_Import{
@@ -117,7 +122,9 @@ func GenerateManifest(
 			continue
 		}
 		log.Printf("[Import root %s] Found %s", importRootDir, attrs.Name)
-		paths = append(paths, attrs.Name)
+		// lib.ImportGroupFiles struct uses path relative to the root import
+		// directory (roto import directory has data and internal dirs).
+		paths = append(paths, lib.StripUntilRootDir(attrs.Name, importRootDir))
 	}
 
 	importGroupFiles, err := lib.CollectImportFiles(paths)

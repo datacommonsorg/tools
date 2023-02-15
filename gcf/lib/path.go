@@ -41,6 +41,11 @@ type ImportGroupFiles struct {
 
 // CollectImportFiles takes a list of gcs file paths and construct ImportGroupFiles.
 // Caller is responsible for passing in paths all starting with the same top level path.
+// The top level path should be relative to the import root
+// Example:
+// Suppose data.tmcf lives here.
+// <bucket>/some/folder/to/root/data/source1/dataset1/data.tmcf
+// Then the corresponding path in args should be "root/data/source1/dataset1/data.tmcf".
 func CollectImportFiles(paths []string) (*ImportGroupFiles, error) {
 
 	Source2Datasets := map[string][]string{}
@@ -150,4 +155,12 @@ func FindRootImportDirectory(triggerPath string) (string, error) {
 		return "", errors.Errorf("control folder not under internal folder: %s", triggerPath)
 	}
 	return strings.Join(pathList[:len(pathList)-3], "/"), nil
+}
+
+// StripUntilRootDir trims one up folder of importRootDir from pathFromBucket.
+// Example:
+// StripUntilRootDir("some/path/to/root/data/source/dataset/a.tmcf", "some/path/to/root")
+// -> "root/data/source/dataset/a.tmcf"
+func StripUntilRootDir(pathFromBucket, importRootDir string) string {
+	return strings.TrimPrefix(pathFromBucket, fmt.Sprintf("%s/", filepath.Dir(importRootDir)))
 }
