@@ -24,10 +24,11 @@ import (
 
 func TestCollectImportFiles(t *testing.T) {
 	for _, c := range []struct {
-		title   string
-		input   []string
-		want    *ImportGroupFiles
-		errWant string
+		title         string
+		input         []string
+		importRootDir string
+		want          *ImportGroupFiles
+		errWant       string
 	}{
 		{
 			"Basic test",
@@ -37,6 +38,7 @@ func TestCollectImportFiles(t *testing.T) {
 				"demo/data/source2/solar/data.tmcf",
 				"demo/data/source2/solar/output.csv",
 			},
+			"demo/data",
 			&ImportGroupFiles{
 				Source2Datasets: map[string][]string{
 					"source1": {"smokepm"},
@@ -63,6 +65,7 @@ func TestCollectImportFiles(t *testing.T) {
 				"demo/data/source1/smokepm/bad.tmcf",
 				"demo/data/source1/smokepm/output.csv",
 			},
+			"demo/data",
 			nil,
 			"[Import group demo] Multiple tmcf found under dataset smokepm",
 		},
@@ -71,6 +74,7 @@ func TestCollectImportFiles(t *testing.T) {
 			[]string{
 				"demo/data/source1/smokepm/output.csv",
 			},
+			"demo/data",
 			nil,
 			"[Import group demo] TMCF not found in dataset smokepm",
 		},
@@ -79,8 +83,18 @@ func TestCollectImportFiles(t *testing.T) {
 			[]string{
 				"demo/data/source1/smokepm/data.tmcf",
 			},
+			"demo/data",
 			nil,
 			"[Import group demo] csv files not found in dataset smokepm",
+		},
+		{
+			"Bad input paths",
+			[]string{
+				"wrongpath/data/source1/smokepm/data.tmcf",
+			},
+			"demo/data",
+			nil,
+			"CollectImportFiles expected all paths to start with demo/data, got wrongpath/data/source1/smokepm/data.tmcf",
 		},
 		{
 			"Extra files should be ignored",
@@ -88,8 +102,8 @@ func TestCollectImportFiles(t *testing.T) {
 				"demo/data/source1/smokepm/data.tmcf",
 				"demo/data/source1/smokepm/output.csv",
 				"demo/data/source1/random.csv",
-				"demo/not_data/source1/somkepm/other.csv",
 			},
+			"demo/data",
 			&ImportGroupFiles{
 				Source2Datasets: map[string][]string{
 					"source1": {"smokepm"},
@@ -110,6 +124,7 @@ func TestCollectImportFiles(t *testing.T) {
 				"somethingreallyreallylong/data/source1/smokepm/data.tmcf",
 				"somethingreallyreallylong/data/source1/smokepm/output.csv",
 			},
+			"somethingreallyreallylong/data",
 			&ImportGroupFiles{
 				Source2Datasets: map[string][]string{
 					"source1": {"smokepm"},
@@ -124,8 +139,29 @@ func TestCollectImportFiles(t *testing.T) {
 			},
 			"",
 		},
+		{
+			"Root import directory is not a top level folder in bucket",
+			[]string{
+				"some/dir/root/data/source1/smokepm/data.tmcf",
+				"some/dir/root/data/source1/smokepm/output.csv",
+			},
+			"some/dir/root/data",
+			&ImportGroupFiles{
+				Source2Datasets: map[string][]string{
+					"source1": {"smokepm"},
+				},
+				Dataset2DataFiles: map[string]DataFiles{
+					"smokepm": {
+						TMCFPath: "some/dir/root/data/source1/smokepm/data.tmcf",
+						CSVPaths: []string{"some/dir/root/data/source1/smokepm/output.csv"},
+					},
+				},
+				ImportGroupName: "root",
+			},
+			"",
+		},
 	} {
-		got, err := CollectImportFiles(c.input)
+		got, err := CollectImportFiles(c.input, c.importRootDir)
 		if len(c.errWant) == 0 && err != nil {
 			t.Errorf("[%s] CollectImportFiles unexpectedly errored out: %v", c.title, err)
 			continue
@@ -136,25 +172,6 @@ func TestCollectImportFiles(t *testing.T) {
 
 		if diff := deep.Equal(got, c.want); diff != nil {
 			t.Errorf("[%s] ImportFiles got diff %v", c.title, diff)
-		}
-	}
-}
-
-func TestStripUntilRootDir(t *testing.T) {
-	for _, c := range []struct {
-		path    string
-		rootDir string
-		want    string
-	}{
-		{
-			"a/b/c/root/data/source1/dataset1/data.tmcf",
-			"a/b/c/root",
-			"root/data/source1/dataset1/data.tmcf",
-		},
-	} {
-		got := StripUntilRootDir(c.path, c.rootDir)
-		if got != c.want {
-			t.Errorf("Expected StripUntilRootDir(%s, %s) = %s, got %s", c.path, c.rootDir, c.want, got)
 		}
 	}
 }

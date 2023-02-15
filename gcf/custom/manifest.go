@@ -100,14 +100,14 @@ func importFilesToManifest(
 // https://docs.datacommons.org/custom_dc/upload_data.html
 func GenerateManifest(
 	ctx context.Context,
-	bucket, importRootDir string,
+	bucket, dataDir string,
 ) (*pb.DataCommonsManifest, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: importRootDir})
+	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: dataDir})
 	paths := []string{}
 	for {
 		attrs, err := it.Next()
@@ -121,13 +121,11 @@ func GenerateManifest(
 		if strings.HasSuffix(attrs.Name, "/") {
 			continue
 		}
-		log.Printf("[Import root %s] Found %s", importRootDir, attrs.Name)
-		// lib.ImportGroupFiles struct uses path relative to the root import
-		// directory (roto import directory has data and internal dirs).
-		paths = append(paths, lib.StripUntilRootDir(attrs.Name, importRootDir))
+		log.Printf("[Data dir %s] Found %s", dataDir, attrs.Name)
+		paths = append(paths, attrs.Name)
 	}
 
-	importGroupFiles, err := lib.CollectImportFiles(paths)
+	importGroupFiles, err := lib.CollectImportFiles(paths, dataDir)
 	if err != nil {
 		return nil, errors.Wrap(err, "Found errors with files in data folder")
 	}
