@@ -25,6 +25,8 @@ mvn clean package
 
 ## Validation
 
+All templates for testing/validation purposes are stored at [gs://datcom-dataflow-templates/templates](https://pantheon.corp.google.com/storage/browser/datcom-dataflow-templates/templates).
+
 ### Classic Templates
 
 1.  Deploy change to the test template for validation.

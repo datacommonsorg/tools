@@ -1,6 +1,6 @@
 projectID: "datcom-store"
 instance: "prophet-cache"
 cluster: "prophet-cache-c1"
-dataflowTemplate: "gs://datcom-templates/templates/csv_to_bt_0.0.3"
+dataflowTemplate: "gs://datcom-templates/templates/flex/csv_to_bt_0.0.3.json"
 dataPath: "gs://datcom-store"
 controlPath: "gs://datcom-control/base"
