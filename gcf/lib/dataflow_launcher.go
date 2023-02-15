@@ -135,7 +135,7 @@ func launchFromFlexTemplate(
 
 	_, err = launchCall.Do()
 	if err != nil {
-		return errors.WithMessagef(err, "Unable to launch dataflow job %s: %v\n", dataFile)
+		return errors.WithMessagef(err, "Unable to launch dataflow job %s", dataFile)
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func launchFromClassicTemplate(
 	launchCall := dataflow.NewProjectsTemplatesService(dataflowService).Launch(projectID, params)
 	_, err = launchCall.GcsPath(dataflowTemplate).Do()
 	if err != nil {
-		return errors.WithMessagef(err, "Unable to launch dataflow job (%s, %s): %v\n", dataFile, launchedPath)
+		return errors.WithMessagef(err, "Unable to launch dataflow job (%s, %s", dataFile, launchedPath)
 	}
 	return nil
 }

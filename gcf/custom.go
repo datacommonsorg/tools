@@ -27,6 +27,10 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
+const (
+	dcManifestPath = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
+)
+
 // TODO(alex): refactor path -> event handler logic.
 func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	projectID := os.Getenv("projectID")
@@ -99,10 +103,10 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	} else if strings.HasSuffix(e.Name, lib.CompletedFile) {
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
-	} else if strings.HasSuffix(e.Name, custom.ControllerTriggerFile) {
+	} else if strings.HasSuffix(e.Name, lib.ControllerTriggerFile) {
 		log.Printf("detected trigger file in %s", e.Name)
 
-		importRootDir, err := custom.FindRootImportDirectory(e.Name)
+		importRootDir, err := lib.FindRootImportDirectory(e.Name)
 		if err != nil {
 			log.Fatalf("Trigger file is in the incorrect path: %v", err)
 			return err
@@ -132,19 +136,16 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, importRootDir)
 
 		firstImport := manifest.Import[0]
-		msg := custom.CustomDCPubSubMsg{
-			ImportName:               *(firstImport.ImportName),
-			DcManifestPath:           "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb",
-			CustomManifestPath:       bigstoreConfigPath,
-			BigstoreDataDirectory:    bigstoreDataDirectory,
-			BigstoreCacheDirectory:   bigstoreCacheDirectory,
-			BigstoreControlDirectory: bigstoreControlDirectory,
-		}
-		cfg := custom.PublishConfig{
-			TopicName: controllerTriggerTopic,
+		attributes := map[string]string{
+			"import_name":                *(firstImport.ImportName),
+			"dc_manifest_path":           dcManifestPath,
+			"custom_manifest_path":       bigstoreConfigPath,
+			"bigstore_data_directory":    bigstoreDataDirectory,
+			"bigstore_cache_directory":   bigstoreCacheDirectory,
+			"bigstore_control_directory": bigstoreControlDirectory,
 		}
 		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
-		return msg.Publish(ctx, cfg)
+		return custom.Publish(ctx, controllerTriggerTopic, attributes)
 
 	}
 	return nil
