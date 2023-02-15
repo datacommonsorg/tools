@@ -17,7 +17,6 @@ package custom
 import (
 	"context"
 	"log"
-	"path/filepath"
 	"strings"
 
 	"cloud.google.com/go/storage"
@@ -49,26 +48,17 @@ func importFilesToManifest(
 			}
 
 			for datasetName, dataFiles := range importGroupFiles.Dataset2DataFiles {
-				// Note: mcf proto url must be under bigstore_data_directory.
-				tmcfDir := filepath.Dir(dataFiles.TMCFPath)
-				mcfProtoUrl := lib.BigStorePath(bucket, filepath.Join(tmcfDir, "graph.tfrecord@*.gz"))
-
-				bigstoreCSVPaths := make([]string, len(dataFiles.CSVPaths))
-				for i, p := range dataFiles.CSVPaths {
-					bigstoreCSVPaths[i] = lib.BigStorePath(bucket, p)
-				}
-
 				var tables []*pb.ExternalTable
 				tables = append(tables, &pb.ExternalTable{
-					MappingPath: proto.String(lib.BigStorePath(bucket, dataFiles.TMCFPath)),
-					CsvPath:     bigstoreCSVPaths,
+					MappingPath: proto.String(dataFiles.BigStoreTMCFPath(bucket)),
+					CsvPath:     dataFiles.BigstoreCSVPaths(bucket),
 				})
 
 				datasetImports = append(datasetImports, &pb.DataCommonsManifest_Import{
 					ImportName:               proto.String(datasetName), // Use datasetName for import name.
 					Category:                 pb.DataCommonsManifest_STATS.Enum(),
 					ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
-					McfProtoUrl:              []string{mcfProtoUrl},
+					McfProtoUrl:              []string{dataFiles.BigStoreMCFProtoUrl(bucket)},
 					ImportGroups:             []string{importGroupFiles.ImportGroupName},
 					ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
 					DatasetName:              proto.String(datasetName),

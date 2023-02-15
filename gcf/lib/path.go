@@ -32,6 +32,23 @@ type DataFiles struct {
 	CSVPaths []string
 }
 
+func (d *DataFiles) BigStoreTMCFPath(bucket string) string {
+	return BigStorePath(bucket, d.TMCFPath)
+}
+
+func (d *DataFiles) BigStoreMCFProtoUrl(bucket string) string {
+	tmcfDir := filepath.Dir(d.TMCFPath)
+	return BigStorePath(bucket, filepath.Join(tmcfDir, "graph.tfrecord@*.gz"))
+}
+
+func (d *DataFiles) BigstoreCSVPaths(bucket string) []string {
+	res := make([]string, len(d.CSVPaths))
+	for i, p := range d.CSVPaths {
+		res[i] = BigStorePath(bucket, p)
+	}
+	return res
+}
+
 // ImportGroupFiles represent the collection of paths for a single import group.
 type ImportGroupFiles struct {
 	Source2Datasets   map[string][]string
