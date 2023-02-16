@@ -35,13 +35,14 @@ func TestLayout(t *testing.T) {
 			[]string{
 				"demo/data/",
 				"demo/data/source1/",
-				"demo/data/source1/empty.mcf",
+				"demo/data/source1/schema.mcf",
 				"demo/data/source1/empty/",
 				"demo/data/source1/smokepm/",
 				"demo/data/source1/smokepm/data.tmcf",
 				"demo/data/source1/smokepm/graph.tfrecord.tz",
 				"demo/data/source1/smokepm/output.csv",
 				"demo/data/source2/",
+				"demo/data/source2/schema.mcf",
 				"demo/data/source2/solar/",
 				"demo/data/source2/solar/data.tmcf",
 				"demo/data/source1/solar/graph.tfrecord.tz",
@@ -51,7 +52,7 @@ func TestLayout(t *testing.T) {
 				root: "demo",
 				imports: map[string]*Import{
 					"source1": {
-						mcf: "empty.mcf",
+						mcf: "schema.mcf",
 						tables: map[string]*Table{
 							"empty": nil,
 							"smokepm": {
@@ -61,6 +62,7 @@ func TestLayout(t *testing.T) {
 						},
 					},
 					"source2": {
+						mcf: "schema.mcf",
 						tables: map[string]*Table{
 							"solar": {
 								tmcf: "data.tmcf",

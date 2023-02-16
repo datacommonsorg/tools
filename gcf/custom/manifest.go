@@ -61,24 +61,48 @@ func ComputeManifest(
 			},
 		},
 	}
+	// Schema import
+	schemaImport := &pb.DataCommonsManifest_Import{
+		ImportName:    proto.String("schema"),
+		Category:      pb.DataCommonsManifest_SCHEMA.Enum(),
+		ProvenanceUrl: proto.String("https://datacommons.org"), // Dummy URL
+		McfUrl:        []string{},
+		ImportGroups:  []string{importGroup},
+		DatasetName:   proto.String(importGroup),
+	}
 	// TODO: update sources data based on provenance.json
-	for im, importFolder := range layout.imports {
+	imList := []string{}
+	for im := range layout.imports {
+		imList = append(imList, im)
+	}
+	sort.Strings(imList)
+	for _, im := range imList {
+		importFolder := layout.imports[im]
 		manifest.DatasetSource = append(
 			manifest.DatasetSource,
 			&pb.DataCommonsManifest_DatasetSource{
-				Url:  proto.String("https://datacommons.org/"),
+				Url:  proto.String("https://datacommons.org"),
 				Name: proto.String(im),
 				Datasets: []*pb.DataCommonsManifest_DatasetInfo{
 					{
 						Name: proto.String(im),
-						Url:  proto.String("https://datacommons.org/"),
+						Url:  proto.String("https://datacommons.org"),
 					},
 				},
 			})
+
+		// Gather all the schema mcf in each imports into a schema import
+		if importFolder.mcf != "" {
+			schemaImport.McfUrl = append(
+				schemaImport.McfUrl,
+				filepath.Join("/bigstore", bucket, root, "data", im, importFolder.mcf),
+			)
+		}
+		// Construct stat import
 		manifestImport := &pb.DataCommonsManifest_Import{
 			ImportName:               proto.String(im), // Use datasetName for import name.
 			Category:                 pb.DataCommonsManifest_STATS.Enum(),
-			ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
+			ProvenanceUrl:            proto.String("https://datacommons.org"), // Dummy URL
 			McfProtoUrl:              []string{},
 			ImportGroups:             []string{importGroup},
 			ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
@@ -100,18 +124,13 @@ func ComputeManifest(
 				manifestImport.Table,
 				computeTable(bucket, root, im, tab, tableFolder),
 			)
-			sort.SliceStable(manifestImport.Table, func(i, j int) bool {
-				return *(manifestImport.Table[i].MappingPath) < *(manifestImport.Table[j].MappingPath)
-			})
 			manifestImport.McfProtoUrl = append(
 				manifestImport.McfProtoUrl,
 				filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
 			)
 		}
 		manifest.Import = append(manifest.Import, manifestImport)
-		sort.SliceStable(manifest.Import, func(i, j int) bool {
-			return *(manifest.Import[i].ImportName) < *(manifest.Import[j].ImportName)
-		})
 	}
+	manifest.Import = append(manifest.Import, schemaImport)
 	return manifest, nil
 }

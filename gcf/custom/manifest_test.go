@@ -38,7 +38,7 @@ func TestComputeManifest(t *testing.T) {
 				root: "demo",
 				imports: map[string]*Import{
 					"import1": {
-						mcf: "empty.mcf",
+						mcf: "schema.mcf",
 						tables: map[string]*Table{
 							"empty": nil,
 							"smokepm": {
@@ -52,6 +52,7 @@ func TestComputeManifest(t *testing.T) {
 						},
 					},
 					"import2": {
+						mcf: "schema.mcf",
 						tables: map[string]*Table{
 							"solar": {
 								tmcf: "data.tmcf",
