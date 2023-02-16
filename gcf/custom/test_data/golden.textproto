@@ -1,6 +1,6 @@
 import: {
   import_name: "import1"
-  provenance_url: "https://datacommons.org/"
+  provenance_url: "https://datacommons.org"
   category: STATS
   import_groups: "demo"
   mcf_proto_url: "/bigstore/test-bucket/demo/data/import1/ocean/graph.tfrecord@*.gz"
@@ -23,7 +23,7 @@ import: {
 }
 import: {
   import_name: "import2"
-  provenance_url: "https://datacommons.org/"
+  provenance_url: "https://datacommons.org"
   category: STATS
   import_groups: "demo"
   mcf_proto_url: "/bigstore/test-bucket/demo/data/import2/solar/graph.tfrecord@*.gz"
@@ -37,6 +37,15 @@ import: {
   automated_mcf_generation_by: "demo"
   dataset_name: "import2"
 }
+import: {
+  import_name: "schema"
+  provenance_url: "https://datacommons.org"
+  category: SCHEMA
+  mcf_url: "/bigstore/test-bucket/demo/data/import1/schema.mcf"
+  mcf_url: "/bigstore/test-bucket/demo/data/import2/schema.mcf"
+  import_groups: "demo"
+  dataset_name: "demo"
+}
 import_groups: {
   name: "demo"
   description: "Custom DC import group"
@@ -44,17 +53,17 @@ import_groups: {
 }
 dataset_source: {
   name: "import1"
-  url: "https://datacommons.org/"
+  url: "https://datacommons.org"
   datasets: {
     name: "import1"
-    url: "https://datacommons.org/"
+    url: "https://datacommons.org"
   }
 }
 dataset_source: {
   name: "import2"
-  url: "https://datacommons.org/"
+  url: "https://datacommons.org"
   datasets: {
     name: "import2"
-    url: "https://datacommons.org/"
+    url: "https://datacommons.org"
   }
 }

@@ -67,7 +67,7 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 		root:    root,
 		imports: map[string]*Import{},
 	}
-	// Build the source and tmcf folders
+	// Build the import and table folders
 	for _, parts := range folders {
 		im := parts[0]
 		// This corresponds to the "data" folder
@@ -82,7 +82,7 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			layout.imports[im].tables[parts[1]] = &Table{}
 		}
 	}
-	// Put file under each folder
+	// Put files under each folder
 	for _, parts := range files {
 		if len(parts) < 2 {
 			logging("Ignore file", parts)
