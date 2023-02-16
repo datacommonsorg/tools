@@ -35,7 +35,7 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 	if controllerTriggerTopic == "" {
 		return errors.New("controllerTriggerTopic is not set in environment")
 	}
-	reader := GCSReader{}
+	reader := &GCSReader{}
 	// Read objects from GCS
 	objects, err := reader.ReadObjects(ctx, bucket, root)
 	if err != nil {

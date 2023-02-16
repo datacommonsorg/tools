@@ -45,7 +45,7 @@ func ComputeManifest(
 	root := layout.root
 	importGroup := path.Base(root)
 	// IMPORTANT NOTE:
-	// importGroup has a character constraint of 21 due to internal limitations.
+	// importGroup has a character constraint of 20 due to internal limitations.
 	if len(importGroup) > 20 {
 		importGroup = importGroup[:20]
 	}

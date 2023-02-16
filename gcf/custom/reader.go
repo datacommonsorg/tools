@@ -29,7 +29,7 @@ type Reader interface {
 
 type GCSReader struct{}
 
-func (g GCSReader) ReadObjects(ctx context.Context, bucket, rootDir string) ([]string, error) {
+func (g *GCSReader) ReadObjects(ctx context.Context, bucket, rootDir string) ([]string, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
