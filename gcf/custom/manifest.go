@@ -24,12 +24,12 @@ import (
 )
 
 func computeTable(bucket, root, im, tab string, table *Table) *pb.ExternalTable {
-	bigstoreTmcf := filepath.Join("/bigstore", bucket, root, im, tab, table.tmcf)
+	bigstoreTmcf := filepath.Join("/bigstore", bucket, root, "data", im, tab, table.tmcf)
 	bigstoreCsv := []string{}
 	for _, csv := range table.csv {
 		bigstoreCsv = append(
 			bigstoreCsv,
-			filepath.Join("/bigstore", bucket, root, im, tab, csv),
+			filepath.Join("/bigstore", bucket, root, "data", im, tab, csv),
 		)
 	}
 	return &pb.ExternalTable{
@@ -79,14 +79,20 @@ func ComputeManifest(
 			ImportName:               proto.String(im), // Use datasetName for import name.
 			Category:                 pb.DataCommonsManifest_STATS.Enum(),
 			ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
-			McfProtoUrl:              []string{filepath.Join("/bigstore", bucket, root, im, "graph.tfrecord@*.gz")},
+			McfProtoUrl:              []string{},
 			ImportGroups:             []string{importGroup},
 			ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
 			DatasetName:              proto.String(im),
 			AutomatedMcfGenerationBy: proto.String(importGroup),
 			Table:                    []*pb.ExternalTable{},
 		}
-		for tab, tableFolder := range importFolder.tables {
+		tabList := []string{}
+		for tab := range importFolder.tables {
+			tabList = append(tabList, tab)
+		}
+		sort.Strings(tabList)
+		for _, tab := range tabList {
+			tableFolder := importFolder.tables[tab]
 			if tableFolder == nil {
 				continue
 			}
@@ -97,6 +103,10 @@ func ComputeManifest(
 			sort.SliceStable(manifestImport.Table, func(i, j int) bool {
 				return *(manifestImport.Table[i].MappingPath) < *(manifestImport.Table[j].MappingPath)
 			})
+			manifestImport.McfProtoUrl = append(
+				manifestImport.McfProtoUrl,
+				filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
+			)
 		}
 		manifest.Import = append(manifest.Import, manifestImport)
 		sort.SliceStable(manifest.Import, func(i, j int) bool {

@@ -3,16 +3,17 @@ import: {
   provenance_url: "https://datacommons.org/"
   category: STATS
   import_groups: "demo"
-  mcf_proto_url: "/bigstore/test-bucket/demo/import1/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/demo/data/import1/ocean/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/demo/data/import1/smokepm/graph.tfrecord@*.gz"
   table: {
-    mapping_path: "/bigstore/test-bucket/demo/import1/ocean/sea.tmcf"
-    csv_path: "/bigstore/test-bucket/demo/import1/ocean/river.csv"
-    csv_path: "/bigstore/test-bucket/demo/import1/ocean/lake.csv"
+    mapping_path: "/bigstore/test-bucket/demo/data/import1/ocean/sea.tmcf"
+    csv_path: "/bigstore/test-bucket/demo/data/import1/ocean/river.csv"
+    csv_path: "/bigstore/test-bucket/demo/data/import1/ocean/lake.csv"
   }
   table: {
-    mapping_path: "/bigstore/test-bucket/demo/import1/smokepm/data.tmcf"
-    csv_path: "/bigstore/test-bucket/demo/import1/smokepm/1.csv"
-    csv_path: "/bigstore/test-bucket/demo/import1/smokepm/2.csv"
+    mapping_path: "/bigstore/test-bucket/demo/data/import1/smokepm/data.tmcf"
+    csv_path: "/bigstore/test-bucket/demo/data/import1/smokepm/1.csv"
+    csv_path: "/bigstore/test-bucket/demo/data/import1/smokepm/2.csv"
   }
   resolution_info: {
     uses_id_resolver: true
@@ -25,10 +26,10 @@ import: {
   provenance_url: "https://datacommons.org/"
   category: STATS
   import_groups: "demo"
-  mcf_proto_url: "/bigstore/test-bucket/demo/import2/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/demo/data/import2/solar/graph.tfrecord@*.gz"
   table: {
-    mapping_path: "/bigstore/test-bucket/demo/import2/solar/data.tmcf"
-    csv_path: "/bigstore/test-bucket/demo/import2/solar/output.csv"
+    mapping_path: "/bigstore/test-bucket/demo/data/import2/solar/data.tmcf"
+    csv_path: "/bigstore/test-bucket/demo/data/import2/solar/output.csv"
   }
   resolution_info: {
     uses_id_resolver: true
