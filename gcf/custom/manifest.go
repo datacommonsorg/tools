@@ -15,109 +15,103 @@
 package custom
 
 import (
-	"context"
-	"log"
-	"strings"
+	"path"
+	"path/filepath"
+	"sort"
 
-	"cloud.google.com/go/storage"
-	"github.com/datacommonsorg/tools/gcf/lib"
 	pb "github.com/datacommonsorg/tools/gcf/proto"
-	"github.com/pkg/errors"
-	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/proto"
 )
 
-func importFilesToManifest(
-	importGroupFiles *lib.ImportGroupFiles,
-	bucket string,
-) (*pb.DataCommonsManifest, error) {
-	datasetImports := []*pb.DataCommonsManifest_Import{}
-	datasetSources := []*pb.DataCommonsManifest_DatasetSource{}
-
-	for dataSource, datasetNames := range importGroupFiles.Source2Datasets {
-		ds := &pb.DataCommonsManifest_DatasetSource{
-			Url:  proto.String("https://datacommons.org/"),
-			Name: proto.String(dataSource),
-		}
-
-		ds.Datasets = make([]*pb.DataCommonsManifest_DatasetInfo, len(datasetNames))
-		for i, datasetName := range datasetNames {
-			ds.Datasets[i] = &pb.DataCommonsManifest_DatasetInfo{
-				Name: proto.String(datasetName),
-				Url:  ds.Url, // Dummy URL
-			}
-
-			for datasetName, dataFiles := range importGroupFiles.Dataset2DataFiles {
-				var tables []*pb.ExternalTable
-				tables = append(tables, &pb.ExternalTable{
-					MappingPath: proto.String(dataFiles.BigStoreTMCFPath(bucket)),
-					CsvPath:     dataFiles.BigstoreCSVPaths(bucket),
-				})
-
-				datasetImports = append(datasetImports, &pb.DataCommonsManifest_Import{
-					ImportName:               proto.String(datasetName), // Use datasetName for import name.
-					Category:                 pb.DataCommonsManifest_STATS.Enum(),
-					ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
-					McfProtoUrl:              []string{dataFiles.BigStoreMCFProtoUrl(bucket)},
-					ImportGroups:             []string{importGroupFiles.ImportGroupName},
-					ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
-					DatasetName:              proto.String(datasetName),
-					AutomatedMcfGenerationBy: proto.String(importGroupFiles.ImportGroupName),
-					Table:                    tables,
-				})
-			}
-		}
-		datasetSources = append(datasetSources, ds)
+func computeTable(bucket, root, im, tab string, table *Table) *pb.ExternalTable {
+	bigstoreTmcf := filepath.Join("/bigstore", bucket, root, "data", im, tab, table.tmcf)
+	bigstoreCsv := []string{}
+	for _, csv := range table.csv {
+		bigstoreCsv = append(
+			bigstoreCsv,
+			filepath.Join("/bigstore", bucket, root, "data", im, tab, csv),
+		)
 	}
-
-	importGroups := []*pb.DataCommonsManifest_ImportGroup{
-		{
-			Name:        proto.String(importGroupFiles.ImportGroupName),
-			IsCustomDc:  proto.Bool(true),
-			Description: proto.String("Custom DC import group"),
-		},
+	return &pb.ExternalTable{
+		MappingPath: proto.String(bigstoreTmcf),
+		CsvPath:     bigstoreCsv,
 	}
-
-	return &pb.DataCommonsManifest{
-		Import:        datasetImports,
-		DatasetSource: datasetSources,
-		ImportGroups:  importGroups,
-	}, nil
 }
 
-// pathToDataFolder is the "gs://"-prefixed folder that contains raw data.
-// For the folder structure that is expected, please see,
-// https://docs.datacommons.org/custom_dc/upload_data.html
-func GenerateManifest(
-	ctx context.Context,
-	bucket, dataDir string,
+func ComputeManifest(
+	bucket string,
+	layout *Layout,
 ) (*pb.DataCommonsManifest, error) {
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		return nil, err
+	root := layout.root
+	importGroup := path.Base(root)
+	// IMPORTANT NOTE:
+	// importGroup has a character constraint of 20 due to internal limitations.
+	if len(importGroup) > 20 {
+		importGroup = importGroup[:20]
 	}
 
-	it := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: dataDir})
-	paths := []string{}
-	for {
-		attrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		// skip folders
-		if strings.HasSuffix(attrs.Name, "/") {
-			continue
-		}
-		log.Printf("[Data dir %s] Found %s", dataDir, attrs.Name)
-		paths = append(paths, attrs.Name)
+	manifest := &pb.DataCommonsManifest{
+		Import:        []*pb.DataCommonsManifest_Import{},
+		DatasetSource: []*pb.DataCommonsManifest_DatasetSource{},
+		ImportGroups: []*pb.DataCommonsManifest_ImportGroup{
+			{
+				Name:        proto.String(importGroup),
+				IsCustomDc:  proto.Bool(true),
+				Description: proto.String("Custom DC import group"),
+			},
+		},
 	}
-
-	importGroupFiles, err := lib.CollectImportFiles(paths, dataDir)
-	if err != nil {
-		return nil, errors.Wrap(err, "Found errors with files in data folder")
+	// TODO: update sources data based on provenance.json
+	for im, importFolder := range layout.imports {
+		manifest.DatasetSource = append(
+			manifest.DatasetSource,
+			&pb.DataCommonsManifest_DatasetSource{
+				Url:  proto.String("https://datacommons.org/"),
+				Name: proto.String(im),
+				Datasets: []*pb.DataCommonsManifest_DatasetInfo{
+					{
+						Name: proto.String(im),
+						Url:  proto.String("https://datacommons.org/"),
+					},
+				},
+			})
+		manifestImport := &pb.DataCommonsManifest_Import{
+			ImportName:               proto.String(im), // Use datasetName for import name.
+			Category:                 pb.DataCommonsManifest_STATS.Enum(),
+			ProvenanceUrl:            proto.String("https://datacommons.org/"), // Dummy URL
+			McfProtoUrl:              []string{},
+			ImportGroups:             []string{importGroup},
+			ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
+			DatasetName:              proto.String(im),
+			AutomatedMcfGenerationBy: proto.String(importGroup),
+			Table:                    []*pb.ExternalTable{},
+		}
+		tabList := []string{}
+		for tab := range importFolder.tables {
+			tabList = append(tabList, tab)
+		}
+		sort.Strings(tabList)
+		for _, tab := range tabList {
+			tableFolder := importFolder.tables[tab]
+			if tableFolder == nil {
+				continue
+			}
+			manifestImport.Table = append(
+				manifestImport.Table,
+				computeTable(bucket, root, im, tab, tableFolder),
+			)
+			sort.SliceStable(manifestImport.Table, func(i, j int) bool {
+				return *(manifestImport.Table[i].MappingPath) < *(manifestImport.Table[j].MappingPath)
+			})
+			manifestImport.McfProtoUrl = append(
+				manifestImport.McfProtoUrl,
+				filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
+			)
+		}
+		manifest.Import = append(manifest.Import, manifestImport)
+		sort.SliceStable(manifest.Import, func(i, j int) bool {
+			return *(manifest.Import[i].ImportName) < *(manifest.Import[j].ImportName)
+		})
 	}
-	return importFilesToManifest(importGroupFiles, bucket)
+	return manifest, nil
 }

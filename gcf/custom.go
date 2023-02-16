@@ -16,20 +16,17 @@ package gcf
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 
 	custom "github.com/datacommonsorg/tools/gcf/custom"
 	"github.com/datacommonsorg/tools/gcf/lib"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/prototext"
 )
 
 const (
-	dcManifestPath = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
+	triggerPathSuffix = "/internal/control/trigger.txt"
 )
 
 // TODO(alex): refactor path -> event handler logic.
@@ -39,7 +36,6 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	instance := os.Getenv("instance")
 	cluster := os.Getenv("cluster")
 	dataflowTemplate := os.Getenv("dataflowTemplate")
-	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if projectID == "" {
 		return errors.New("projectID is not set in environment")
 	}
@@ -54,9 +50,6 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	}
 	if bucket == "" {
 		return errors.New("bucket is not set in environment")
-	}
-	if controllerTriggerTopic == "" {
-		return errors.New("controllerTriggerTopic is not set in environment")
 	}
 
 	parts := strings.Split(e.Name, "/")
@@ -104,54 +97,13 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 	} else if strings.HasSuffix(e.Name, lib.CompletedFile) {
 		// TODO: else, notify Mixer to load the BT table.
 		log.Printf("[%s] Completed work", e.Name)
-	} else if strings.HasSuffix(e.Name, lib.ControllerTriggerFile) {
+	} else if strings.HasSuffix(e.Name, triggerPathSuffix) {
 		log.Printf("detected trigger file in %s", e.Name)
-
-		importRootDir, err := lib.FindRootImportDirectory(e.Name)
+		root := strings.TrimSuffix(e.Name, triggerPathSuffix)
+		err := custom.HandleTriggerFlow(ctx, bucket, root)
 		if err != nil {
-			log.Fatalf("Trigger file is in the incorrect path: %v", err)
-			return err
+			log.Fatalf("Handle trigger flow err: %v", err)
 		}
-
-		dataDir := filepath.Join(importRootDir, "data")
-		manifest, err := custom.GenerateManifest(ctx, bucket, dataDir)
-		if err != nil {
-			log.Fatalf("unable to generate manifest: %v", err)
-			return err
-		}
-
-		bytes, err := prototext.Marshal(manifest)
-		if err != nil {
-			log.Fatalf("Failed to serialize proto: %v", err)
-			return err
-		}
-
-		configPath := fmt.Sprintf("gs://%s/%s/internal/config/config.textproto", bucket, importRootDir)
-		if err = lib.WriteToGCS(ctx, configPath, string(bytes)); err != nil {
-			log.Fatalf("Failed to write config.textproto to gcs: %v", err)
-			return err
-		}
-
-		bigstoreConfigPath := fmt.Sprintf("/bigstore/%s/%s/internal/config/config.textproto", bucket, importRootDir)
-		bigstoreDataDirectory := fmt.Sprintf("/bigstore/%s/%s", bucket, dataDir)
-		bigstoreCacheDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/cache", bucket, importRootDir)
-		bigstoreControlDirectory := fmt.Sprintf("/bigstore/%s/%s/internal/control", bucket, importRootDir)
-
-		firstImport := manifest.Import[0]
-		// ID used to globally identify an import group under a project.
-		instanceID := fmt.Sprintf("%s_%s", projectID, *manifest.ImportGroups[0].Name)
-
-		attributes := map[string]string{
-			"instance_id":                instanceID,
-			"import_name":                *(firstImport.ImportName),
-			"dc_manifest_path":           dcManifestPath,
-			"custom_manifest_path":       bigstoreConfigPath,
-			"bigstore_data_directory":    bigstoreDataDirectory,
-			"bigstore_cache_directory":   bigstoreCacheDirectory,
-			"bigstore_control_directory": bigstoreControlDirectory,
-		}
-		log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
-		return custom.Publish(ctx, controllerTriggerTopic, attributes)
 
 	}
 	return nil
