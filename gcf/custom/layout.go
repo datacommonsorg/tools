@@ -17,7 +17,6 @@ package custom
 import (
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 )
 
@@ -48,47 +47,32 @@ func objectBody(root, object string) []string {
 }
 
 func BuildLayout(root string, objects []string) (*Layout, error) {
-	// object is in the form of "{root}/data/..."
-	// Trim out {root} and "data", then split the remainder (body) part by "/"
-	folders := [][]string{}
-	files := [][]string{}
-	for _, o := range objects {
-		if strings.HasSuffix(o, "/") {
-			folders = append(folders, objectBody(root, o))
-		} else {
-			files = append(files, objectBody(root, o))
-		}
-	}
-	// Sort folders by the number of sub folders
-	sort.SliceStable(folders, func(i, j int) bool {
-		return len(folders[i]) < len(folders[j])
-	})
 	layout := &Layout{
 		root:    root,
 		imports: map[string]*Import{},
 	}
-	// Build the import and table folders
-	for _, parts := range folders {
-		im := parts[0]
-		// This corresponds to the "data" folder
-		if im == "" {
+	// object is in the form of "{root}/data/..."
+	// Trim out {root} and "data", then split the remainder (body) part by "/"
+	files := [][]string{}
+	for _, o := range objects {
+		if strings.HasSuffix(o, "/") {
 			continue
 		}
-		if len(parts) == 1 {
-			layout.imports[im] = &Import{
-				tables: map[string]*Table{},
-			}
-		} else if len(parts) == 2 {
-			layout.imports[im].tables[parts[1]] = &Table{}
-		}
+		files = append(files, objectBody(root, o))
 	}
-	// Put files under each folder
+	// Put files under each Import
 	for _, parts := range files {
 		if len(parts) < 2 {
 			logging("Ignore file", parts)
 			continue
 		}
 		im := parts[0]
+		if _, imExists := layout.imports[im]; !imExists {
+			layout.imports[im] = &Import{
+				tables: map[string]*Table{},
+			}
+		}
+
 		// source1/schema.mcf
 		if len(parts) == 2 {
 			fileName := parts[1]
@@ -105,6 +89,10 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 		// source1/folder1/data.tmcf
 		if len(parts) == 3 {
 			tab := parts[1]
+			if _, tabExists := layout.imports[im].tables[tab]; !tabExists {
+				layout.imports[im].tables[tab] = &Table{}
+			}
+
 			fileName := parts[2]
 			tables := layout.imports[im].tables
 			if strings.HasSuffix(fileName, ".tmcf") {

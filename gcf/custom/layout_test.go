@@ -75,6 +75,29 @@ func TestLayout(t *testing.T) {
 			"",
 		},
 		{
+			"No folders",
+			"imports/root",
+			[]string{
+				"imports/root/data/california_distribution_grid/dataset1/california_distribution_lines.tmcf",
+				"imports/root/data/california_distribution_grid/dataset1/california_distribution_lines.csv",
+			},
+			&Layout{
+				root: "imports/root",
+				imports: map[string]*Import{
+					"california_distribution_grid": {
+						tables: map[string]*Table{
+							"empty": nil,
+							"dataset1": {
+								tmcf: "california_distribution_lines.tmcf",
+								csv:  []string{"california_distribution_lines.csv"},
+							},
+						},
+					},
+				},
+			},
+			"",
+		},
+		{
 			"Multiple tmcf should fail",
 			"demo",
 			[]string{
