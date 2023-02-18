@@ -61,15 +61,8 @@ func ComputeManifest(
 			},
 		},
 	}
-	// Schema import
-	schemaImport := &pb.DataCommonsManifest_Import{
-		ImportName:    proto.String("schema"),
-		Category:      pb.DataCommonsManifest_SCHEMA.Enum(),
-		ProvenanceUrl: proto.String("https://datacommons.org"), // Dummy URL
-		McfUrl:        []string{},
-		ImportGroups:  []string{importGroup},
-		DatasetName:   proto.String(importGroup),
-	}
+
+	schemaImportMCFUrls := []string{}
 	// TODO: update sources data based on provenance.json
 	imList := []string{}
 	for im := range layout.imports {
@@ -93,8 +86,8 @@ func ComputeManifest(
 
 		// Gather all the schema mcf in each imports into a schema import
 		if importFolder.mcf != "" {
-			schemaImport.McfUrl = append(
-				schemaImport.McfUrl,
+			schemaImportMCFUrls = append(
+				schemaImportMCFUrls,
 				filepath.Join("/bigstore", bucket, root, "data", im, importFolder.mcf),
 			)
 		}
@@ -131,6 +124,19 @@ func ComputeManifest(
 		}
 		manifest.Import = append(manifest.Import, manifestImport)
 	}
-	manifest.Import = append(manifest.Import, schemaImport)
+
+	// Schema import entry is added if at least 1 dataset has schemas.
+	if len(schemaImportMCFUrls) > 0 {
+		// Schema import
+		schemaImport := &pb.DataCommonsManifest_Import{
+			ImportName:    proto.String("schema"),
+			Category:      pb.DataCommonsManifest_SCHEMA.Enum(),
+			ProvenanceUrl: proto.String("https://datacommons.org"), // Dummy URL
+			McfUrl:        schemaImportMCFUrls,
+			ImportGroups:  []string{importGroup},
+			DatasetName:   proto.String(importGroup),
+		}
+		manifest.Import = append(manifest.Import, schemaImport)
+	}
 	return manifest, nil
 }

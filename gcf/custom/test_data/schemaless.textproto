@@ -1,0 +1,36 @@
+import: {
+  import_name: "import1"
+  provenance_url: "https://datacommons.org"
+  category: STATS
+  import_groups: "schemaless"
+  mcf_proto_url: "/bigstore/test-bucket/schemaless/data/import1/ocean/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/schemaless/data/import1/smokepm/graph.tfrecord@*.gz"
+  table: {
+    mapping_path: "/bigstore/test-bucket/schemaless/data/import1/ocean/sea.tmcf"
+    csv_path: "/bigstore/test-bucket/schemaless/data/import1/ocean/river.csv"
+    csv_path: "/bigstore/test-bucket/schemaless/data/import1/ocean/lake.csv"
+  }
+  table: {
+    mapping_path: "/bigstore/test-bucket/schemaless/data/import1/smokepm/data.tmcf"
+    csv_path: "/bigstore/test-bucket/schemaless/data/import1/smokepm/1.csv"
+    csv_path: "/bigstore/test-bucket/schemaless/data/import1/smokepm/2.csv"
+  }
+  resolution_info: {
+    uses_id_resolver: true
+  }
+  automated_mcf_generation_by: "schemaless"
+  dataset_name: "import1"
+}
+import_groups: {
+  name: "schemaless"
+  description: "Custom DC import group"
+  is_custom_dc: true
+}
+dataset_source: {
+  name: "import1"
+  url: "https://datacommons.org"
+  datasets: {
+    name: "import1"
+    url: "https://datacommons.org"
+  }
+}
