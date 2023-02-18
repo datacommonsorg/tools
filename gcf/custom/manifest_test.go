@@ -64,6 +64,28 @@ func TestComputeManifest(t *testing.T) {
 			},
 			"golden.textproto",
 		},
+		{
+			"test-bucket",
+			&Layout{
+				root: "schemaless",
+				imports: map[string]*Import{
+					"import1": {
+						tables: map[string]*Table{
+							"empty": nil,
+							"smokepm": {
+								tmcf: "data.tmcf",
+								csv:  []string{"1.csv", "2.csv"},
+							},
+							"ocean": {
+								tmcf: "sea.tmcf",
+								csv:  []string{"river.csv", "lake.csv"},
+							},
+						},
+					},
+				},
+			},
+			"schemaless.textproto",
+		},
 	} {
 		_, filename, _, _ := runtime.Caller(0)
 		testDataDir := path.Join(path.Dir(filename), "test_data")
