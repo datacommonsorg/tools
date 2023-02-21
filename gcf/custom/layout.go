@@ -20,6 +20,8 @@ import (
 	"strings"
 )
 
+const provFile = "provenance.json"
+
 type Table struct {
 	tmcf string
 	csv  []string
@@ -27,11 +29,13 @@ type Table struct {
 
 type Import struct {
 	mcf    string
+	prov   string
 	tables map[string]*Table
 }
 
 type Layout struct {
 	root    string
+	prov    string
 	imports map[string]*Import
 }
 
@@ -62,8 +66,10 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 	}
 	// Put files under each Import
 	for _, parts := range files {
-		if len(parts) < 2 {
-			logging("Ignore file", parts)
+		if len(parts) == 1 {
+			if parts[0] == provFile {
+				layout.prov = provFile
+			}
 			continue
 		}
 		im := parts[0]
@@ -73,13 +79,15 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			}
 		}
 
-		// source1/schema.mcf
+		// import1/schema.mcf
 		if len(parts) == 2 {
 			fileName := parts[1]
-			// Only .mcf file can be directly under a source folder
+			// Only .mcf and provenance.json file can be directly under an import folder
 			if strings.HasSuffix(fileName, ".mcf") {
 				layout.imports[im].mcf = parts[1]
 				logging("Add MCF", parts)
+			} else if fileName == provFile {
+				layout.imports[im].prov = provFile
 			} else {
 				logging("Ignore file", parts)
 			}
