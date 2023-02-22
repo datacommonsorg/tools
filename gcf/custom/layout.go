@@ -69,7 +69,9 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 		if len(parts) == 1 {
 			if parts[0] == provFile {
 				layout.prov = provFile
+				logging("Add Provenance", parts)
 			}
+			logging("Ignore file", parts)
 			continue
 		}
 		im := parts[0]
@@ -88,6 +90,7 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 				logging("Add MCF", parts)
 			} else if fileName == provFile {
 				layout.imports[im].prov = provFile
+				logging("Add Provenance", parts)
 			} else {
 				logging("Ignore file", parts)
 			}
