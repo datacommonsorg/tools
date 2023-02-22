@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+terraform {
+  backend "gcs" {}
+}
+
 locals {
     resource_suffix = (
         var.resource_suffix != null ?
