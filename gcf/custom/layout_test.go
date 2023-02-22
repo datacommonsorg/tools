@@ -54,8 +54,8 @@ func TestLayout(t *testing.T) {
 				prov: "provenance.json",
 				imports: map[string]*Import{
 					"smokepm": {
-						mcf:  "schema.mcf",
-						prov: "provenance.json",
+						schema: "schema.mcf",
+						prov:   "provenance.json",
 						tables: map[string]*Table{
 							"table1": {
 								tmcf: "data.tmcf",
@@ -64,7 +64,7 @@ func TestLayout(t *testing.T) {
 						},
 					},
 					"solar": {
-						mcf: "schema.mcf",
+						schema: "schema.mcf",
 						tables: map[string]*Table{
 							"table1": {
 								tmcf: "data.tmcf",
@@ -179,6 +179,63 @@ func TestLayout(t *testing.T) {
 				},
 			},
 			"",
+		},
+		{
+			"Data MCFs",
+			"demo",
+			[]string{
+				"demo/data/smokepm/table1/data1.mcf",
+				"demo/data/smokepm/table1/data2.mcf",
+			},
+			&Layout{
+				root: "demo",
+				imports: map[string]*Import{
+					"smokepm": {
+						tables: map[string]*Table{
+							"table1": {
+								mcf: []string{"data1.mcf", "data2.mcf"},
+							},
+						},
+					},
+				},
+			},
+			"",
+		},
+		{
+			"Globbed MCFs",
+			"demo",
+			[]string{
+				"demo/data/smokepm/table1/data1.mcf",
+				"demo/data/smokepm/table1/data2.mcf",
+				"demo/data/smokepm/table1/data3.mcf",
+				"demo/data/smokepm/table1/data4.mcf",
+				"demo/data/smokepm/table1/data5.mcf",
+				"demo/data/smokepm/table1/data6.mcf",
+			},
+			&Layout{
+				root: "demo",
+				imports: map[string]*Import{
+					"smokepm": {
+						tables: map[string]*Table{
+							"table1": {
+								mcf: []string{"*.mcf"},
+							},
+						},
+					},
+				},
+			},
+			"",
+		},
+		{
+			"No mixing of TMCF/CSV and MCF",
+			"demo",
+			[]string{
+				"demo/data/smokepm/table1/data.mcf",
+				"demo/data/smokepm/table1/data.tmcf",
+				"demo/data/smokepm/table1/data.csv",
+			},
+			nil,
+			"[Datasource smokepm, Dataset table1] Mix of TMCF/CSV and data MCF are not supported",
 		},
 	} {
 		got, err := BuildLayout(c.RootDir, c.input)
