@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestLayout(t *testing.T) {
@@ -34,37 +33,40 @@ func TestLayout(t *testing.T) {
 			"demo",
 			[]string{
 				"demo/data/",
-				"demo/data/source1/",
-				"demo/data/source1/schema.mcf",
-				"demo/data/source1/empty/",
-				"demo/data/source1/smokepm/",
-				"demo/data/source1/smokepm/data.tmcf",
-				"demo/data/source1/smokepm/graph.tfrecord.tz",
-				"demo/data/source1/smokepm/output.csv",
-				"demo/data/source2/",
-				"demo/data/source2/schema.mcf",
-				"demo/data/source2/solar/",
-				"demo/data/source2/solar/data.tmcf",
-				"demo/data/source1/solar/graph.tfrecord.tz",
-				"demo/data/source2/solar/output.csv",
+				"demo/data/provenance.json",
+				"demo/data/smokepm/",
+				"demo/data/smokepm/schema.mcf",
+				"demo/data/smokepm/empty/",
+				"demo/data/smokepm/table1/",
+				"demo/data/smokepm/provenance.json",
+				"demo/data/smokepm/table1/data.tmcf",
+				"demo/data/smokepm/table1/graph.tfrecord.tz",
+				"demo/data/smokepm/table1/output.csv",
+				"demo/data/solar/",
+				"demo/data/solar/schema.mcf",
+				"demo/data/solar/table1/",
+				"demo/data/solar/table1/data.tmcf",
+				"demo/data/smokepm/table1/graph.tfrecord.tz",
+				"demo/data/solar/table1/output.csv",
 			},
 			&Layout{
 				root: "demo",
+				prov: "provenance.json",
 				imports: map[string]*Import{
-					"source1": {
-						mcf: "schema.mcf",
+					"smokepm": {
+						mcf:  "schema.mcf",
+						prov: "provenance.json",
 						tables: map[string]*Table{
-							"empty": nil,
-							"smokepm": {
+							"table1": {
 								tmcf: "data.tmcf",
 								csv:  []string{"output.csv"},
 							},
 						},
 					},
-					"source2": {
+					"solar": {
 						mcf: "schema.mcf",
 						tables: map[string]*Table{
-							"solar": {
+							"table1": {
 								tmcf: "data.tmcf",
 								csv:  []string{"output.csv"},
 							},
@@ -86,7 +88,6 @@ func TestLayout(t *testing.T) {
 				imports: map[string]*Import{
 					"california_distribution_grid": {
 						tables: map[string]*Table{
-							"empty": nil,
 							"dataset1": {
 								tmcf: "california_distribution_lines.tmcf",
 								csv:  []string{"california_distribution_lines.csv"},
@@ -102,30 +103,30 @@ func TestLayout(t *testing.T) {
 			"demo",
 			[]string{
 				"demo/data/",
-				"demo/data/source1/",
-				"demo/data/source1/smokepm/",
-				"demo/data/source1/smokepm/data.tmcf",
-				"demo/data/source1/smokepm/bad.tmcf",
-				"demo/data/source1/smokepm/output.csv",
+				"demo/data/smokepm/",
+				"demo/data/smokepm/table1/",
+				"demo/data/smokepm/table1/data.tmcf",
+				"demo/data/smokepm/table1/bad.tmcf",
+				"demo/data/smokepm/table1/output.csv",
 			},
 			nil,
-			"[Multiple TMCF] source1/smokepm",
+			"[Multiple TMCF] smokepm/table1",
 		},
 		{
 			"Missing tmcf",
 			"demo",
 			[]string{
 				"demo/data/",
-				"demo/data/source1/",
-				"demo/data/source1/smokepm/",
-				"demo/data/source1/smokepm/output.csv",
+				"demo/data/smokepm/",
+				"demo/data/smokepm/table1/",
+				"demo/data/smokepm/table1/output.csv",
 			},
 			&Layout{
 				root: "demo",
 				imports: map[string]*Import{
-					"source1": {
+					"smokepm": {
 						tables: map[string]*Table{
-							"smokepm": nil,
+							"table1": nil,
 						},
 					},
 				},
@@ -137,16 +138,16 @@ func TestLayout(t *testing.T) {
 			"demo",
 			[]string{
 				"demo/data/",
-				"demo/data/source1/",
-				"demo/data/source1/smokepm/",
-				"demo/data/source1/smokepm/schema.tmcf",
+				"demo/data/smokepm/",
+				"demo/data/smokepm/table1/",
+				"demo/data/smokepm/table1/schema.tmcf",
 			},
 			&Layout{
 				root: "demo",
 				imports: map[string]*Import{
-					"source1": {
+					"smokepm": {
 						tables: map[string]*Table{
-							"smokepm": nil,
+							"table1": nil,
 						},
 					},
 				},
@@ -158,18 +159,18 @@ func TestLayout(t *testing.T) {
 			"some/dir/root",
 			[]string{
 				"some/dir/root/data/",
-				"some/dir/root/data/source1/",
-				"some/dir/root/data/source1/random.csv",
-				"some/dir/root/data/source1/smokepm/",
-				"some/dir/root/data/source1/smokepm/data.tmcf",
-				"some/dir/root/data/source1/smokepm/output.csv",
+				"some/dir/root/data/smokepm/",
+				"some/dir/root/data/smokepm/random.csv",
+				"some/dir/root/data/smokepm/table1/",
+				"some/dir/root/data/smokepm/table1/data.tmcf",
+				"some/dir/root/data/smokepm/table1/output.csv",
 			},
 			&Layout{
 				root: "some/dir/root",
 				imports: map[string]*Import{
-					"source1": {
+					"smokepm": {
 						tables: map[string]*Table{
-							"smokepm": {
+							"table1": {
 								tmcf: "data.tmcf",
 								csv:  []string{"output.csv"},
 							},
@@ -189,7 +190,11 @@ func TestLayout(t *testing.T) {
 			t.Errorf("[%s] Expected err msg \"%s\", got \"%s\"", c.title, c.errWant, err.Error())
 			continue
 		}
-		if diff := cmp.Diff(got, c.want, cmpopts.IgnoreUnexported(Layout{})); diff != "" {
+		if diff := cmp.Diff(
+			got,
+			c.want,
+			cmp.AllowUnexported(Layout{}, Import{}, Table{}),
+		); diff != "" {
 			t.Errorf("[%s] Build() got diff %v", c.title, diff)
 		}
 	}

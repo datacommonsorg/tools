@@ -20,6 +20,8 @@ import (
 	"strings"
 )
 
+const provFile = "provenance.json"
+
 type Table struct {
 	tmcf string
 	csv  []string
@@ -27,11 +29,13 @@ type Table struct {
 
 type Import struct {
 	mcf    string
+	prov   string
 	tables map[string]*Table
 }
 
 type Layout struct {
 	root    string
+	prov    string
 	imports map[string]*Import
 }
 
@@ -62,7 +66,11 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 	}
 	// Put files under each Import
 	for _, parts := range files {
-		if len(parts) < 2 {
+		if len(parts) == 1 {
+			if parts[0] == provFile {
+				layout.prov = provFile
+				logging("Add Provenance", parts)
+			}
 			logging("Ignore file", parts)
 			continue
 		}
@@ -73,20 +81,23 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			}
 		}
 
-		// source1/schema.mcf
+		// <import>/schema.mcf, <import>/provenance.json
 		if len(parts) == 2 {
 			fileName := parts[1]
-			// Only .mcf file can be directly under a source folder
+			// Only .mcf and provenance.json file can be directly under an import folder
 			if strings.HasSuffix(fileName, ".mcf") {
 				layout.imports[im].mcf = parts[1]
 				logging("Add MCF", parts)
+			} else if fileName == provFile {
+				layout.imports[im].prov = provFile
+				logging("Add Provenance", parts)
 			} else {
 				logging("Ignore file", parts)
 			}
 			continue
 		}
-		// source1/folder1/stat.csv
-		// source1/folder1/data.tmcf
+		// <import>/<table>/stat.csv
+		// <import>/<table>/data.tmcf
 		if len(parts) == 3 {
 			tab := parts[1]
 			if _, tabExists := layout.imports[im].tables[tab]; !tabExists {
