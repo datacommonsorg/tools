@@ -25,6 +25,8 @@ resource "google_bigtable_instance" "bt_cache" {
   name           = format("dc-graph%s", local.resource_suffix)
   project        = var.project_id
 
+  deletion_protection = false
+
   cluster {
     # There will be one cluster. Constant seems appropriate for now.
     cluster_id   = "dc-graph-c1"
@@ -40,7 +42,7 @@ resource "google_bigtable_instance" "bt_cache" {
 
 data "archive_file" "bt_automation_go_source" {
   type        = "zip"
-  source_dir  = "${path.module}/../gcf"
+  source_dir  = "${path.module}/../../gcf"
   output_path = "${path.module}/source/bt_automation_go_source.zip"
 }
 
@@ -65,7 +67,7 @@ resource "google_cloudfunctions_function" "bt_automation" {
   region      = var.region
 
   timeout                      = 300
-  entry_point                  = "CustomBTImportController"
+  entry_point                  = "CustomController"
 
   service_account_email        = var.service_account_email
 
