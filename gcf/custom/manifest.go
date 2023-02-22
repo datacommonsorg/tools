@@ -38,6 +38,14 @@ func computeTable(bucket, root, im, tab string, table *Table) *pb.ExternalTable 
 	}
 }
 
+func computeDataMCF(bucket, root, im, tab string, mcf []string) []string {
+	bigstoreMCFs := make([]string, len(mcf))
+	for i, m := range mcf {
+		bigstoreMCFs[i] = filepath.Join("/bigstore", bucket, root, "data", im, tab, m)
+	}
+	return bigstoreMCFs
+}
+
 func ComputeManifest(
 	bucket string,
 	layout *Layout,
@@ -85,10 +93,10 @@ func ComputeManifest(
 			})
 
 		// Gather all the schema mcf in each imports into a schema import
-		if importFolder.mcf != "" {
+		if importFolder.schema != "" {
 			schemaImportMCFUrls = append(
 				schemaImportMCFUrls,
-				filepath.Join("/bigstore", bucket, root, "data", im, importFolder.mcf),
+				filepath.Join("/bigstore", bucket, root, "data", im, importFolder.schema),
 			)
 		}
 		// Construct stat import
@@ -113,10 +121,18 @@ func ComputeManifest(
 			if tableFolder == nil {
 				continue
 			}
-			manifestImport.Table = append(
-				manifestImport.Table,
-				computeTable(bucket, root, im, tab, tableFolder),
-			)
+
+			if len(tableFolder.tmcf) > 0 && len(tableFolder.csv) > 0 {
+				manifestImport.Table = append(
+					manifestImport.Table,
+					computeTable(bucket, root, im, tab, tableFolder),
+				)
+			}
+
+			if len(tableFolder.mcf) > 0 {
+				manifestImport.McfUrl = computeDataMCF(bucket, root, im, tab, tableFolder.mcf)
+			}
+
 			manifestImport.McfProtoUrl = append(
 				manifestImport.McfProtoUrl,
 				filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),

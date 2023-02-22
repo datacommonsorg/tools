@@ -22,13 +22,15 @@ import (
 
 const provFile = "provenance.json"
 
+// Only one of (mcf, (tmcf, csv)) should be set.
 type Table struct {
 	tmcf string
 	csv  []string
+	mcf  []string
 }
 
 type Import struct {
-	mcf    string
+	schema string
 	prov   string
 	tables map[string]*Table
 }
@@ -86,8 +88,8 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			fileName := parts[1]
 			// Only .mcf and provenance.json file can be directly under an import folder
 			if strings.HasSuffix(fileName, ".mcf") {
-				layout.imports[im].mcf = parts[1]
-				logging("Add MCF", parts)
+				layout.imports[im].schema = parts[1]
+				logging("Add Schema MCF", parts)
 			} else if fileName == provFile {
 				layout.imports[im].prov = provFile
 				logging("Add Provenance", parts)
@@ -116,6 +118,9 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			} else if strings.HasSuffix(fileName, ".csv") {
 				tables[tab].csv = append(tables[tab].csv, fileName)
 				logging("Add CSV", parts)
+			} else if strings.HasSuffix(fileName, ".mcf") {
+				tables[tab].mcf = append(tables[tab].mcf, fileName)
+				logging("Add data MCF", parts)
 			} else {
 				logging("Ignore file", parts)
 			}
@@ -123,13 +128,35 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 		}
 		logging("Ignore file", parts)
 	}
-	// Trim invalid folders with no TMCF or CSV
+
+	// Post processing after iterating through data files.
 	for im, importFolders := range layout.imports {
 		for tab, tableFolders := range importFolders.tables {
-			if tableFolders.tmcf == "" || len(tableFolders.csv) == 0 {
-				layout.imports[im].tables[tab] = nil
-				logging("Trim folder", []string{root, "data", im, tab})
+			hasTMCFCSV := len(tableFolders.tmcf) > 0 && len(tableFolders.csv) > 0
+			hasDataMCF := len(tableFolders.mcf) > 0
+			// Validate that only one of TMCF/CSV, data MCFs are set.
+			if hasTMCFCSV && hasDataMCF {
+				return nil, fmt.Errorf("[Datasource %s, Dataset %s] Mix of TMCF/CSV and data MCF are not supported", im, tab)
 			}
+
+			// Prune shards into glob patterns to prevent large config files.
+			if hasTMCFCSV {
+				if len(tableFolders.csv) > 5 {
+					tableFolders.csv = []string{"*.csv"}
+				}
+				continue
+			}
+
+			if hasDataMCF {
+				if len(tableFolders.mcf) > 5 {
+					tableFolders.mcf = []string{"*.mcf"}
+				}
+				continue
+			}
+
+			// Trim invalid folders with either no TMCF and CSV, or no data MCFs.
+			layout.imports[im].tables[tab] = nil
+			logging("Trim folder", []string{root, "data", im, tab})
 		}
 	}
 	return layout, nil

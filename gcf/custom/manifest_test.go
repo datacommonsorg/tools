@@ -38,7 +38,7 @@ func TestComputeManifest(t *testing.T) {
 				root: "demo",
 				imports: map[string]*Import{
 					"import1": {
-						mcf: "schema.mcf",
+						schema: "schema.mcf",
 						tables: map[string]*Table{
 							"empty": nil,
 							"smokepm": {
@@ -52,7 +52,7 @@ func TestComputeManifest(t *testing.T) {
 						},
 					},
 					"import2": {
-						mcf: "schema.mcf",
+						schema: "schema.mcf",
 						tables: map[string]*Table{
 							"solar": {
 								tmcf: "data.tmcf",
@@ -85,6 +85,23 @@ func TestComputeManifest(t *testing.T) {
 				},
 			},
 			"schemaless.textproto",
+		},
+		{
+			"test-bucket",
+			&Layout{
+				root: "datamcf",
+				imports: map[string]*Import{
+					"import1": {
+						tables: map[string]*Table{
+							"empty": nil,
+							"smokepm": {
+								mcf: []string{"1.mcf", "2.mcf"},
+							},
+						},
+					},
+				},
+			},
+			"datamcf.textproto",
 		},
 	} {
 		_, filename, _, _ := runtime.Caller(0)
