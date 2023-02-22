@@ -25,6 +25,8 @@ resource "google_bigtable_instance" "bt_cache" {
   name           = format("dc-graph%s", local.resource_suffix)
   project        = var.project_id
 
+  deletion_protection = false
+
   cluster {
     # There will be one cluster. Constant seems appropriate for now.
     cluster_id   = "dc-graph-c1"
