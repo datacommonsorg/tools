@@ -79,7 +79,7 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			}
 		}
 
-		// import1/schema.mcf
+		// <import>/schema.mcf, <import>/provenance.json
 		if len(parts) == 2 {
 			fileName := parts[1]
 			// Only .mcf and provenance.json file can be directly under an import folder
@@ -93,8 +93,8 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 			}
 			continue
 		}
-		// source1/folder1/stat.csv
-		// source1/folder1/data.tmcf
+		// <import>/<table>/stat.csv
+		// <import>/<table>/data.tmcf
 		if len(parts) == 3 {
 			tab := parts[1]
 			if _, tabExists := layout.imports[im].tables[tab]; !tabExists {
