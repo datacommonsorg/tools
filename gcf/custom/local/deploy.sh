@@ -12,6 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# To run custom gcf locally, call ./deploy.sh from local directory.
+#
+# To trigger the local gcf to mimick "trigger.txt" in gcs,
+# first change the context and data objects in trigger.sh to match
+# The environment variables below, and then call ./trigger.sh
 
 set -x
 

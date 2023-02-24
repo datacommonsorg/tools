@@ -23,7 +23,7 @@ curl localhost:8080 \
           "eventType": "google.storage.object.finalize",
           "resource": {
              "service": "storage.googleapis.com",
-             "name": "projects/_/buckets/datcom-stanford-resources/imports/deepsolar/internal/control/trigger.txt",
+             "name": "projects/_/buckets/datcom-stanford-resources/imports/widap/internal/control/trigger.txt",
              "type": "storage#object"
           }
         },
@@ -33,7 +33,7 @@ curl localhost:8080 \
           "kind": "storage#object",
           "md5Hash": "...",
           "metageneration": "1",
-          "name": "imports/deepsolar/internal/control/trigger.txt",
+          "name": "imports/widap/internal/control/trigger.txt",
           "size": "0",
           "storageClass": "MULTI_REGIONAL",
           "timeCreated": "2020-04-23T07:38:57.230Z",
