@@ -35,7 +35,8 @@ func TestLayout(t *testing.T) {
 				"demo/data/",
 				"demo/data/provenance.json",
 				"demo/data/smokepm/",
-				"demo/data/smokepm/schema.mcf",
+				"demo/data/smokepm/schema1.mcf",
+				"demo/data/smokepm/schema2.mcf",
 				"demo/data/smokepm/empty/",
 				"demo/data/smokepm/table1/",
 				"demo/data/smokepm/provenance.json",
@@ -54,8 +55,8 @@ func TestLayout(t *testing.T) {
 				prov: "provenance.json",
 				imports: map[string]*Import{
 					"smokepm": {
-						schema: "schema.mcf",
-						prov:   "provenance.json",
+						schemas: []string{"schema1.mcf", "schema2.mcf"},
+						prov:    "provenance.json",
 						tables: map[string]*Table{
 							"table1": {
 								tmcf: "data.tmcf",
@@ -64,7 +65,7 @@ func TestLayout(t *testing.T) {
 						},
 					},
 					"solar": {
-						schema: "schema.mcf",
+						schemas: []string{"schema.mcf"},
 						tables: map[string]*Table{
 							"table1": {
 								tmcf: "data.tmcf",

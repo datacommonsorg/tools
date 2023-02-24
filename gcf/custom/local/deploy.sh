@@ -18,12 +18,18 @@ set -x
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $DIR
 
-export projectID="datcom-mixer-encode"
+
+# Local GCF can access real cloud resources as long the environment variables
+# below are set correctly.
+# To run GCF locally with other projects, please change the values below.
+export projectID="datcom-stanford"
 export instance="dc-graph"
 export cluster="dc-graph-c1"
 export dataflowTemplate="gs://datcom-templates/templates/flex/csv_to_bt_0.0.3.json"
-export tempLocation="gs://datcom-mixer-encode-resources/dataflow/tmp"
+export tempLocation="gs://datcom-stanford-resources/dataflow/tmp"
 export controllerTriggerTopic="projects/datcom-204919/topics/private-import-notification-dev"
-export bucket="datcom-mixer-encode-resources"
+export bucket="datcom-stanford-resources"
+# Comment out the line below to trigger controllers from local gcf.
+# export isLocal="true"
 
 go run main.go

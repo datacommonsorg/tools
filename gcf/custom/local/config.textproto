@@ -1,0 +1,80 @@
+import: {
+  import_name: "cepa"
+  provenance_url: "https://datacommons.org"
+  category: STATS
+  import_groups: "stanford-dc"
+  mcf_url: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/cepa/seda/*.mcf"
+  resolution_info: {
+    uses_id_resolver: true
+  }
+  dataset_name: "cepa"
+}
+import: {
+  import_name: "stanford"
+  provenance_url: "https://datacommons.org"
+  category: STATS
+  import_groups: "stanford-dc"
+  mcf_proto_url: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/stanford/deepsolar/graph.tfrecord@*.gz"
+  table: {
+    mapping_path: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/stanford/deepsolar/deepsolar.tmcf"
+    csv_path: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/stanford/deepsolar/deepsolar.csv"
+  }
+  resolution_info: {
+    uses_id_resolver: true
+  }
+  automated_mcf_generation_by: "stanford-dc"
+  dataset_name: "stanford"
+}
+import: {
+  import_name: "waqi"
+  provenance_url: "https://datacommons.org"
+  category: STATS
+  import_groups: "stanford-dc"
+  mcf_proto_url: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/waqi/aqicn/graph.tfrecord@*.gz"
+  table: {
+    mapping_path: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/waqi/aqicn/aqicn.tmcf"
+    csv_path: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/waqi/aqicn/*.csv"
+  }
+  resolution_info: {
+    uses_id_resolver: true
+  }
+  automated_mcf_generation_by: "stanford-dc"
+  dataset_name: "waqi"
+}
+import: {
+  import_name: "schema"
+  provenance_url: "https://datacommons.org"
+  category: SCHEMA
+  import_groups: "stanford-dc"
+  mcf_url: "/bigstore/datcom-stanford-resources/imports/stanford-dc/data/stanford/*.mcf*"
+  dataset_name: "stanford-dc"
+}
+import_groups: {
+  name: "stanford-dc"
+  description: "Custom DC import group"
+  is_custom_dc: true
+}
+dataset_source: {
+  name: "cepa"
+  url: "https://datacommons.org"
+  datasets: {
+    name: "cepa"
+    url: "https://datacommons.org"
+  }
+}
+dataset_source: {
+  name: "stanford"
+  url: "https://datacommons.org"
+  datasets: {
+    name: "stanford"
+    url: "https://datacommons.org"
+  }
+}
+dataset_source: {
+  name: "waqi"
+  url: "https://datacommons.org"
+  datasets: {
+    name: "waqi"
+    url: "https://datacommons.org"
+  }
+}
