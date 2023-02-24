@@ -18,7 +18,7 @@ import_groups: {
   is_custom_dc: true
 }
 dataset_source: {
-  name: "import1"
+  name: "datamcf"
   url: "https://datacommons.org"
   datasets: {
     name: "import1"

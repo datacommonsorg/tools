@@ -15,6 +15,7 @@
 package custom
 
 import (
+	"context"
 	"os"
 	"path"
 	"runtime"
@@ -26,7 +27,23 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
+type TestReader struct{}
+
+func (g *TestReader) ListObjects(
+	ctx context.Context, bucket, rootDir string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (g *TestReader) ReadObject(
+	ctx context.Context, bucket, object string) ([]byte, error) {
+	if bucket == "test-bucket" && object == "demo/data/provenance.json" {
+		return []byte(`{"name":"good source", "url": "test.com"}`), nil
+	}
+	return []byte{}, nil
+}
+
 func TestComputeManifest(t *testing.T) {
+	ctx := context.Background()
 	for _, c := range []struct {
 		bucket     string
 		input      *Layout
@@ -36,9 +53,11 @@ func TestComputeManifest(t *testing.T) {
 			"test-bucket",
 			&Layout{
 				root: "demo",
+				prov: "provenance.json",
 				imports: map[string]*Import{
 					"import1": {
 						schema: "schema.mcf",
+						prov:   "provenance.json",
 						tables: map[string]*Table{
 							"empty": nil,
 							"smokepm": {
@@ -117,7 +136,8 @@ func TestComputeManifest(t *testing.T) {
 			t.Errorf("Error unmarshal golden file %v", err)
 			continue
 		}
-		got, err := ComputeManifest(c.bucket, c.input)
+		reader := &TestReader{}
+		got, err := ComputeManifest(ctx, reader, c.bucket, c.input)
 		if err != nil {
 			t.Errorf("ComputeManifest() got err: %v", err)
 			continue

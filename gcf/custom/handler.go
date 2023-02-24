@@ -36,8 +36,8 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 		return errors.New("controllerTriggerTopic is not set in environment")
 	}
 	reader := &GCSReader{}
-	// Read objects from GCS
-	objects, err := reader.ReadObjects(ctx, bucket, root)
+	// List objects from GCS
+	objects, err := reader.ListObjects(ctx, bucket, root)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 		return errors.Wrap(err, "build layout got errors")
 	}
 	// Compute manifest
-	manifest, err := ComputeManifest(bucket, layout)
+	manifest, err := ComputeManifest(ctx, reader, bucket, layout)
 	if err != nil {
 		return err
 	}

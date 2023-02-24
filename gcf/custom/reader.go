@@ -16,6 +16,7 @@ package custom
 
 import (
 	"context"
+	"io"
 	"log"
 	"path"
 
@@ -24,12 +25,14 @@ import (
 )
 
 type Reader interface {
-	ReadObjects(context.Context, string, string) ([]string, error)
+	ListObjects(context.Context, string, string) ([]string, error)
+	ReadObject(context.Context, string, string) ([]byte, error)
 }
 
 type GCSReader struct{}
 
-func (g *GCSReader) ReadObjects(ctx context.Context, bucket, rootDir string) ([]string, error) {
+func (g *GCSReader) ListObjects(
+	ctx context.Context, bucket, rootDir string) ([]string, error) {
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -52,4 +55,23 @@ func (g *GCSReader) ReadObjects(ctx context.Context, bucket, rootDir string) ([]
 		objects = append(objects, attrs.Name)
 	}
 	return objects, nil
+}
+
+func (g *GCSReader) ReadObject(
+	ctx context.Context, bucket, object string) ([]byte, error) {
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	obj := client.Bucket(bucket).Object(object)
+	rc, err := obj.NewReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
