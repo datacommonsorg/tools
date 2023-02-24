@@ -15,11 +15,13 @@
 package custom
 
 import (
+	"context"
 	"path"
 	"path/filepath"
 	"sort"
 
 	pb "github.com/datacommonsorg/tools/gcf/proto"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -47,6 +49,8 @@ func computeDataMCF(bucket, root, im, tab string, mcf []string) []string {
 }
 
 func ComputeManifest(
+	ctx context.Context,
+	reader Reader,
 	bucket string,
 	layout *Layout,
 ) (*pb.DataCommonsManifest, error) {
@@ -58,6 +62,7 @@ func ComputeManifest(
 		importGroup = importGroup[:20]
 	}
 
+	// Init manifest
 	manifest := &pb.DataCommonsManifest{
 		Import:        []*pb.DataCommonsManifest_Import{},
 		DatasetSource: []*pb.DataCommonsManifest_DatasetSource{},
@@ -69,6 +74,29 @@ func ComputeManifest(
 			},
 		},
 	}
+	// Populate data source
+	// Now only support one data source which has to be set at the import group
+	// level
+	if layout.prov != "" {
+		provJSON, err := reader.ReadObject(
+			ctx, bucket, path.Join(root, "data", layout.prov))
+		if err != nil {
+			return nil, err
+		}
+		datasetSource := &pb.DataCommonsManifest_DatasetSource{}
+		err = protojson.Unmarshal(provJSON, datasetSource)
+		if err != nil {
+			return nil, err
+		}
+		manifest.DatasetSource = []*pb.DataCommonsManifest_DatasetSource{datasetSource}
+	} else {
+		manifest.DatasetSource = []*pb.DataCommonsManifest_DatasetSource{
+			{
+				Url:  proto.String("https://datacommons.org"),
+				Name: proto.String(root),
+			},
+		}
+	}
 
 	schemaImportMCFUrls := []string{}
 	// TODO: update sources data based on provenance.json
@@ -79,19 +107,13 @@ func ComputeManifest(
 	sort.Strings(imList)
 	for _, im := range imList {
 		importFolder := layout.imports[im]
-		manifest.DatasetSource = append(
-			manifest.DatasetSource,
-			&pb.DataCommonsManifest_DatasetSource{
-				Url:  proto.String("https://datacommons.org"),
+		manifest.DatasetSource[0].Datasets = append(
+			manifest.DatasetSource[0].Datasets,
+			&pb.DataCommonsManifest_DatasetInfo{
 				Name: proto.String(im),
-				Datasets: []*pb.DataCommonsManifest_DatasetInfo{
-					{
-						Name: proto.String(im),
-						Url:  proto.String("https://datacommons.org"),
-					},
-				},
-			})
-
+				Url:  proto.String("https://datacommons.org"),
+			},
+		)
 		// Gather all the schema mcf in each imports into a schema import
 		if importFolder.schema != "" {
 			schemaImportMCFUrls = append(
