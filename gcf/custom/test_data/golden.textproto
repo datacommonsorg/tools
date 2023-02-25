@@ -41,8 +41,8 @@ import: {
   import_name: "schema"
   provenance_url: "https://datacommons.org"
   category: SCHEMA
-  mcf_url: "/bigstore/test-bucket/demo/data/import1/schema.mcf"
-  mcf_url: "/bigstore/test-bucket/demo/data/import2/schema.mcf"
+  mcf_url: "/bigstore/test-bucket/demo/data/import1/*.mcf*"
+  mcf_url: "/bigstore/test-bucket/demo/data/import2/*.mcf*"
   import_groups: "demo"
   dataset_name: "demo"
 }

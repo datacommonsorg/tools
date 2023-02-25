@@ -115,23 +115,22 @@ func ComputeManifest(
 			},
 		)
 		// Gather all the schema mcf in each imports into a schema import
-		if importFolder.schema != "" {
+		if len(importFolder.schemas) > 0 {
 			schemaImportMCFUrls = append(
 				schemaImportMCFUrls,
-				filepath.Join("/bigstore", bucket, root, "data", im, importFolder.schema),
-			)
+				filepath.Join("/bigstore", bucket, root, "data", im, "*.mcf*"))
 		}
+
 		// Construct stat import
 		manifestImport := &pb.DataCommonsManifest_Import{
-			ImportName:               proto.String(im), // Use datasetName for import name.
-			Category:                 pb.DataCommonsManifest_STATS.Enum(),
-			ProvenanceUrl:            proto.String("https://datacommons.org"), // Dummy URL
-			McfProtoUrl:              []string{},
-			ImportGroups:             []string{importGroup},
-			ResolutionInfo:           &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
-			DatasetName:              proto.String(im),
-			AutomatedMcfGenerationBy: proto.String(importGroup),
-			Table:                    []*pb.ExternalTable{},
+			ImportName:     proto.String(im), // Use datasetName for import name.
+			Category:       pb.DataCommonsManifest_STATS.Enum(),
+			ProvenanceUrl:  proto.String("https://datacommons.org"), // Dummy URL
+			McfProtoUrl:    []string{},
+			ImportGroups:   []string{importGroup},
+			ResolutionInfo: &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
+			DatasetName:    proto.String(im),
+			Table:          []*pb.ExternalTable{},
 		}
 		tabList := []string{}
 		for tab := range importFolder.tables {
@@ -145,9 +144,17 @@ func ComputeManifest(
 			}
 
 			if len(tableFolder.tmcf) > 0 && len(tableFolder.csv) > 0 {
+				// Only set automated_mcf_generation_by for tmcf/csv imports.
+				// Setting this flag for mcf based imports will error out.
+				manifestImport.AutomatedMcfGenerationBy = proto.String(importGroup)
 				manifestImport.Table = append(
 					manifestImport.Table,
 					computeTable(bucket, root, im, tab, tableFolder),
+				)
+				// Only tmcf/csv imports have tf record generated.
+				manifestImport.McfProtoUrl = append(
+					manifestImport.McfProtoUrl,
+					filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
 				)
 			}
 
@@ -155,10 +162,6 @@ func ComputeManifest(
 				manifestImport.McfUrl = computeDataMCF(bucket, root, im, tab, tableFolder.mcf)
 			}
 
-			manifestImport.McfProtoUrl = append(
-				manifestImport.McfProtoUrl,
-				filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
-			)
 		}
 		manifest.Import = append(manifest.Import, manifestImport)
 	}

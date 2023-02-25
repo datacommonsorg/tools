@@ -25,12 +25,9 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
-const (
-	dcManifestPath = "/memfile/core_resolved_mcfs_memfile/core_resolved_mcfs.binarypb"
-)
-
 func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 	projectID := os.Getenv("projectID")
+	isLocal := os.Getenv("isLocal") == "true"
 	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if controllerTriggerTopic == "" {
 		return errors.New("controllerTriggerTopic is not set in environment")
@@ -53,11 +50,20 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 		return err
 	}
 	// Copy congfig to GCS
-	bytes, err := prototext.Marshal(manifest)
+	marshalOpts := prototext.MarshalOptions{Multiline: true}
+	bytes, err := marshalOpts.Marshal(manifest)
 	if err != nil {
 		log.Fatalf("Failed to serialize proto: %v", err)
 		return err
 	}
+
+	if isLocal {
+		// For local testing, write the context text proto to a local file.
+		// PubSub is message is not sent.
+		return os.WriteFile("config.textproto", bytes, 0644)
+	}
+
+	// Write to manifest to gcs.
 	configPath := fmt.Sprintf(
 		"gs://%s/%s/internal/config/config.textproto", bucket, root)
 	if err = lib.WriteToGCS(ctx, configPath, string(bytes)); err != nil {
@@ -75,7 +81,6 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 
 	attributes := map[string]string{
 		"instance_id":                instanceID,
-		"dc_manifest_path":           dcManifestPath,
 		"custom_manifest_path":       bigstoreConfigPath,
 		"bigstore_data_directory":    bigstoreDataDirectory,
 		"bigstore_cache_directory":   bigstoreCacheDirectory,

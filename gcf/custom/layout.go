@@ -30,9 +30,9 @@ type Table struct {
 }
 
 type Import struct {
-	schema string
-	prov   string
-	tables map[string]*Table
+	schemas []string
+	prov    string
+	tables  map[string]*Table
 }
 
 type Layout struct {
@@ -87,8 +87,9 @@ func BuildLayout(root string, objects []string) (*Layout, error) {
 		if len(parts) == 2 {
 			fileName := parts[1]
 			// Only .mcf and provenance.json file can be directly under an import folder
-			if strings.HasSuffix(fileName, ".mcf") {
-				layout.imports[im].schema = parts[1]
+			// mcf files may be sharded, hence "Contains" as opposed to "HasSuffix"
+			if strings.Contains(fileName, ".mcf") {
+				layout.imports[im].schemas = append(layout.imports[im].schemas, parts[1])
 				logging("Add Schema MCF", parts)
 			} else if fileName == provFile {
 				layout.imports[im].prov = provFile

@@ -56,8 +56,8 @@ func TestComputeManifest(t *testing.T) {
 				prov: "provenance.json",
 				imports: map[string]*Import{
 					"import1": {
-						schema: "schema.mcf",
-						prov:   "provenance.json",
+						prov:    "provenance.json",
+						schemas: []string{"schema.mcf"},
 						tables: map[string]*Table{
 							"empty": nil,
 							"smokepm": {
@@ -71,7 +71,7 @@ func TestComputeManifest(t *testing.T) {
 						},
 					},
 					"import2": {
-						schema: "schema.mcf",
+						schemas: []string{"schema.mcf"},
 						tables: map[string]*Table{
 							"solar": {
 								tmcf: "data.tmcf",
