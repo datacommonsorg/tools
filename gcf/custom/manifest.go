@@ -144,9 +144,6 @@ func ComputeManifest(
 			}
 
 			if len(tableFolder.tmcf) > 0 && len(tableFolder.csv) > 0 {
-				// Only set automated_mcf_generation_by for tmcf/csv imports.
-				// Setting this flag for mcf based imports will error out.
-				manifestImport.AutomatedMcfGenerationBy = proto.String(importGroup)
 				manifestImport.Table = append(
 					manifestImport.Table,
 					computeTable(bucket, root, im, tab, tableFolder),

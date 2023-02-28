@@ -18,7 +18,6 @@ import: {
   resolution_info: {
     uses_id_resolver: true
   }
-  automated_mcf_generation_by: "schemaless"
   dataset_name: "import1"
 }
 import_groups: {
