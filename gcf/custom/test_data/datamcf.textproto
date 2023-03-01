@@ -3,8 +3,8 @@ import: {
   provenance_url: "https://datacommons.org"
   category: STATS
   import_groups: "datamcf"
-  mcf_url: "/bigstore/test-bucket/datamcf/data/import1/smokepm/1.mcf"
-  mcf_url: "/bigstore/test-bucket/datamcf/data/import1/smokepm/2.mcf"
+  mcf_url: "/bigstore/test-bucket/parent/datamcf/data/import1/smokepm/1.mcf"
+  mcf_url: "/bigstore/test-bucket/parent/datamcf/data/import1/smokepm/2.mcf"
   resolution_info: {
     uses_id_resolver: true
   }

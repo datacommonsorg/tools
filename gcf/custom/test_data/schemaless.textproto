@@ -3,17 +3,17 @@ import: {
   provenance_url: "https://datacommons.org"
   category: STATS
   import_groups: "schemaless"
-  mcf_proto_url: "/bigstore/test-bucket/schemaless/data/import1/ocean/graph.tfrecord@*.gz"
-  mcf_proto_url: "/bigstore/test-bucket/schemaless/data/import1/smokepm/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/parent/schemaless/data/import1/smokepm/graph.tfrecord@*.gz"
   table: {
-    mapping_path: "/bigstore/test-bucket/schemaless/data/import1/ocean/sea.tmcf"
-    csv_path: "/bigstore/test-bucket/schemaless/data/import1/ocean/river.csv"
-    csv_path: "/bigstore/test-bucket/schemaless/data/import1/ocean/lake.csv"
+    mapping_path: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/sea.tmcf"
+    csv_path: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/river.csv"
+    csv_path: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/lake.csv"
   }
   table: {
-    mapping_path: "/bigstore/test-bucket/schemaless/data/import1/smokepm/data.tmcf"
-    csv_path: "/bigstore/test-bucket/schemaless/data/import1/smokepm/1.csv"
-    csv_path: "/bigstore/test-bucket/schemaless/data/import1/smokepm/2.csv"
+    mapping_path: "/bigstore/test-bucket/parent/schemaless/data/import1/smokepm/data.tmcf"
+    csv_path: "/bigstore/test-bucket/parent/schemaless/data/import1/smokepm/1.csv"
+    csv_path: "/bigstore/test-bucket/parent/schemaless/data/import1/smokepm/2.csv"
   }
   resolution_info: {
     uses_id_resolver: true
