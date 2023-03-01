@@ -93,7 +93,7 @@ func ComputeManifest(
 		manifest.DatasetSource = []*pb.DataCommonsManifest_DatasetSource{
 			{
 				Url:  proto.String("https://datacommons.org"),
-				Name: proto.String(root),
+				Name: proto.String(path.Base(root)),
 			},
 		}
 	}
