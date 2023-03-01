@@ -70,3 +70,14 @@ variable "service_account_email" {
   type        = string
   description = "GCP service account email to be used for BT automation Cloud Function."
 }
+
+variable "enable_bigtable_instance" {
+  type        = bool
+  description = <<EOF
+Enabling this option will create an actual BigTable instance.
+
+Since BigTable instances are costly (on the order of several hundred dollars per month),
+the creation of an instance can be delayed until the first import to save cost.
+EOF
+  default     = false
+}

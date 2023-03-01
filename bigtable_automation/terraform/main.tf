@@ -22,18 +22,23 @@ locals {
         var.resource_suffix != null ?
         format("-%s", var.resource_suffix) : ""
     )
+
+    bt_instance   = format("dc-graph%s", local.resource_suffix)
+    bt_cluster_id = "dc-graph-c1"
 }
 
 # BigTable instance used to store cache tables.
 resource "google_bigtable_instance" "bt_cache" {
-  name           = format("dc-graph%s", local.resource_suffix)
+  count = var.enable_bigtable_instance ? 1 : 0
+
+  name           = local.bt_instance
   project        = var.project_id
 
   deletion_protection = false
 
   cluster {
     # There will be one cluster. Constant seems appropriate for now.
-    cluster_id   = "dc-graph-c1"
+    cluster_id   = local.bt_cluster_id
     zone         = var.bt_instance_zone
 
     autoscaling_config {
@@ -92,10 +97,10 @@ resource "google_cloudfunctions_function" "bt_automation" {
     bucket           = var.dc_resource_bucket
 
     # Variables from BT instance created from this file.
-    instance         = google_bigtable_instance.bt_cache.name
-    cluster          = google_bigtable_instance.bt_cache.cluster[0].cluster_id
-    nodesLow         = google_bigtable_instance.bt_cache.cluster[0].autoscaling_config[0].min_nodes
-    nodesHigh        = google_bigtable_instance.bt_cache.cluster[0].autoscaling_config[0].max_nodes
+    instance         = local.bt_instance
+    cluster          = local.bt_cluster_id
+    nodesLow         = var.bt_autoscaling_min_nodes
+    nodesHigh        = var.bt_autoscaling_max_nodes
 
     dataflowTemplate = var.csv2bt_template_path
     tempLocation     = format("gs://%s/dataflow/tmp", var.dc_resource_bucket)
