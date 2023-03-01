@@ -37,7 +37,10 @@ func (g *TestReader) ListObjects(
 func (g *TestReader) ReadObject(
 	ctx context.Context, bucket, object string) ([]byte, error) {
 	if bucket == "test-bucket" && object == "parent/demo/data/provenance.json" {
-		return []byte(`{"name":"good source", "url": "test.com"}`), nil
+		return []byte(`{"name":"data source", "url": "test.com"}`), nil
+	}
+	if bucket == "test-bucket" && object == "parent/demo/data/import1/provenance.json" {
+		return []byte(`{"name":"foo_dataset", "url": "test.com/bar"}`), nil
 	}
 	return []byte{}, nil
 }

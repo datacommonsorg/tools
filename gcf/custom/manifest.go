@@ -48,6 +48,58 @@ func computeDataMCF(bucket, root, im, tab string, mcf []string) []string {
 	return bigstoreMCFs
 }
 
+func computeSource(
+	ctx context.Context, reader Reader, bucket, root, provFile string,
+) (
+	*pb.DataCommonsManifest_DatasetSource, error,
+) {
+	// Populate data source that should be specified at import group level.
+	if provFile != "" {
+		provJSON, err := reader.ReadObject(
+			ctx, bucket, path.Join(root, "data", provFile))
+		if err != nil {
+			return nil, err
+		}
+		datasetSource := &pb.DataCommonsManifest_DatasetSource{}
+		err = protojson.Unmarshal(provJSON, datasetSource)
+		if err != nil {
+			return nil, err
+		}
+		return datasetSource, nil
+	}
+
+	return &pb.DataCommonsManifest_DatasetSource{
+		Url:  proto.String("https://datacommons.org"),
+		Name: proto.String(path.Base(root)),
+	}, nil
+}
+
+func computeDataset(
+	ctx context.Context, reader Reader,
+	bucket, root, im, provFile, sourceUrl string,
+) (
+	*pb.DataCommonsManifest_DatasetInfo, error,
+) {
+	// Populate data source that should be specified at import group level.
+	if provFile != "" {
+		provJSON, err := reader.ReadObject(
+			ctx, bucket, path.Join(root, "data", im, provFile))
+		if err != nil {
+			return nil, err
+		}
+		dataset := &pb.DataCommonsManifest_DatasetInfo{}
+		err = protojson.Unmarshal(provJSON, dataset)
+		if err != nil {
+			return nil, err
+		}
+		return dataset, nil
+	}
+	return &pb.DataCommonsManifest_DatasetInfo{
+		Url:  proto.String(sourceUrl),
+		Name: proto.String(im),
+	}, nil
+}
+
 func ComputeManifest(
 	ctx context.Context,
 	reader Reader,
@@ -74,45 +126,31 @@ func ComputeManifest(
 			},
 		},
 	}
-	// Populate data source
-	// Now only support one data source which has to be set at the import group
-	// level
-	if layout.prov != "" {
-		provJSON, err := reader.ReadObject(
-			ctx, bucket, path.Join(root, "data", layout.prov))
-		if err != nil {
-			return nil, err
-		}
-		datasetSource := &pb.DataCommonsManifest_DatasetSource{}
-		err = protojson.Unmarshal(provJSON, datasetSource)
-		if err != nil {
-			return nil, err
-		}
-		manifest.DatasetSource = []*pb.DataCommonsManifest_DatasetSource{datasetSource}
-	} else {
-		manifest.DatasetSource = []*pb.DataCommonsManifest_DatasetSource{
-			{
-				Url:  proto.String("https://datacommons.org"),
-				Name: proto.String(path.Base(root)),
-			},
-		}
+	source, err := computeSource(ctx, reader, bucket, root, layout.prov)
+	if err != nil {
+		return nil, err
 	}
+	manifest.DatasetSource = []*pb.DataCommonsManifest_DatasetSource{source}
 
 	schemaImportMCFUrls := []string{}
-	// TODO: update sources data based on provenance.json
 	imList := []string{}
 	for im := range layout.imports {
 		imList = append(imList, im)
 	}
 	sort.Strings(imList)
+
+	// Process each import group
 	for _, im := range imList {
 		importFolder := layout.imports[im]
+		// Compute dataset
+		dataset, err := computeDataset(
+			ctx, reader, bucket, root, im, layout.imports[im].prov, *source.Url)
+		if err != nil {
+			return nil, err
+		}
 		manifest.DatasetSource[0].Datasets = append(
 			manifest.DatasetSource[0].Datasets,
-			&pb.DataCommonsManifest_DatasetInfo{
-				Name: proto.String(im),
-				Url:  proto.String("https://datacommons.org"),
-			},
+			dataset,
 		)
 		// Gather all the schema mcf in each imports into a schema import
 		if len(importFolder.schemas) > 0 {
@@ -120,16 +158,15 @@ func ComputeManifest(
 				schemaImportMCFUrls,
 				filepath.Join("/bigstore", bucket, root, "data", im, "*.mcf*"))
 		}
-
 		// Construct stat import
 		manifestImport := &pb.DataCommonsManifest_Import{
-			ImportName:     proto.String(im), // Use datasetName for import name.
+			ImportName:     proto.String(*dataset.Name),
 			Category:       pb.DataCommonsManifest_STATS.Enum(),
-			ProvenanceUrl:  proto.String("https://datacommons.org"), // Dummy URL
+			ProvenanceUrl:  dataset.Url,
 			McfProtoUrl:    []string{},
 			ImportGroups:   []string{importGroup},
 			ResolutionInfo: &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
-			DatasetName:    proto.String(im),
+			DatasetName:    proto.String(*dataset.Name),
 			Table:          []*pb.ExternalTable{},
 		}
 		tabList := []string{}
@@ -172,7 +209,7 @@ func ComputeManifest(
 		schemaImport := &pb.DataCommonsManifest_Import{
 			ImportName:    proto.String("schema"),
 			Category:      pb.DataCommonsManifest_SCHEMA.Enum(),
-			ProvenanceUrl: proto.String("https://datacommons.org"), // Dummy URL
+			ProvenanceUrl: source.Url,
 			McfUrl:        schemaImportMCFUrls,
 			ImportGroups:  []string{importGroup},
 			DatasetName:   proto.String(importGroup),
