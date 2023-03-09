@@ -239,23 +239,13 @@ class TimelineExplorer extends Component<
       }
     }
 
-    const labelPromises = locations.map((location) => {
-      return ((location.startsWith('dcid:') ?
-          getName(location.slice(5)) :
-          getName(location)
-      ));
+    const labels = await getName(locations);
+    return locations.map((location, i) => {
+      return {
+        value: location,
+        label: labels[i],
+      };
     });
-
-    return Promise.all(labelPromises).then(
-        (labels) => {
-          return locations.map((location, i) => {
-            return {
-              value: location,
-              label: labels[i],
-            };
-          });
-        },
-    );
   }
 
 
@@ -384,14 +374,19 @@ class TimelineExplorer extends Component<
               <button
                 className="button"
                 onClick={() => {
+                  const locations = this.state.locationOptions.map(
+                      (option: SelectOption) => option.value,
+                  );
+                  const page = 0;
+                  const statVarGroups = Object.values(
+                      this.getVariableToSeries(locations),
+                  ) as Series[][];
+
                   this.setState(() => {
-                    const locations = this.state.locationOptions.map(
-                        (option: SelectOption) => option.value,
-                    );
-                    const page = 0;
                     return {
                       locations,
                       page,
+                      statVarGroups,
                     };
                   });
                 }}
@@ -401,6 +396,7 @@ class TimelineExplorer extends Component<
                 onClick={() => {
                   this.setState({
                     locations: [],
+                    statVarGroups: [],
                     page: 0,
                   });
                 }}

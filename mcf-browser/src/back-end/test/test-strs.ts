@@ -452,46 +452,87 @@ observationDate: 2020-07-07
 value: 130236
 `;
 
+const expectedFacetAndValueMcf = 
+`Node: COVIDTracking_States_E2_R8
+typeOf: dcs:StatVarObservation
+variableMeasured: dcs:CumulativeCount_MedicalTest_COVID_19_Negative
+measurementMethod: dcs:CovidTrackingProject
+observationAbout: dcid:geoId/02
+observationDate: 2020-07-07
+value: 130236`;
 export const expectedFacetandValue0 = {
   facet: 'dcs:CumulativeCount_MedicalTest_COVID_19_Negative,dcid:geoId/02,,dcs:CovidTrackingProject,,,',
   date: '2020-07-07',
-  value: '130236'
+  value: '130236',
+  mcf: expectedFacetAndValueMcf
 };
 
 export const expectedFacetandValue1 = null;
 
 export const expectedDatapoints = {
-  "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,": {"row1_date": 5}, 
-  "dcs:CumulativeCount_MedicalTest_COVID_19,row2_geoid,,dcs:CovidTrackingProject,,,": {"row2_date": 6}
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row1_geoid,,dcs:CovidTrackingProject,,,": {
+    "row1_date": {
+      value: 5,
+      mcf: `Node: COVIDTracking_States_E0_R1
+typeOf: dcs:StatVarObservation
+variableMeasured: dcs:CumulativeCount_MedicalTest_COVID_19
+measurementMethod: dcs:CovidTrackingProject
+observationAbout: row1_geoid
+observationDate: row1_date
+value: 5`
+    }
+  }, 
+  "dcs:CumulativeCount_MedicalTest_COVID_19,row2_geoid,,dcs:CovidTrackingProject,,,": {
+    "row2_date": {
+      value: 6,
+      mcf: `Node: COVIDTracking_States_E0_R2
+typeOf: dcs:StatVarObservation
+variableMeasured: dcs:CumulativeCount_MedicalTest_COVID_19
+measurementMethod: dcs:CovidTrackingProject
+observationAbout: row2_geoid
+observationDate: row2_date
+value: 6`
+    }
+  }
 }
 
 export const datapoints = [
   {
     "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
-      "row1_date": 1, "row2_date": 2
+      "row1_date": {value: 1, mcf: ''}, 
+      "row2_date": {value: 2, mcf: ''}
     },
   },
   {
     "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
-      "row3_date": 5, "row4_date": 8
+      "row3_date": {value: 5, mcf: ''}, 
+      "row4_date": {value: 8, mcf: ''}
     },
     "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
-      "row3_date": 9, "row4_date": 22
+      "row3_date": {value: 9, mcf: ''}, 
+      "row4_date": {value: 22, mcf: ''}
     }
   },
   {
     "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
-      "row1_date": 111, "row2_date": 2
+      "row1_date": {value: 111, mcf: ''}, 
+      "row2_date": {value: 2, mcf: ''}
     }
   }
 ];
 
 export const expectedTimeData = {
   "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,1": {
-    "row1_date": 1, "row2_date": 2, "row3_date": 5, "row4_date": 8
+    "row1_date": {value: 1, mcf: ''}, 
+    "row2_date": {value: 2, mcf: ''},
+    "row3_date": {value: 5, mcf: ''}, 
+    "row4_date": {value: 8, mcf: ''}
   },
   "dcs:CumulativeCount_MedicalTest_COVID_19,dcid:geoId/02,,dcs:CovidTrackingProject,,,100": {
-    "row1_date": 111, "row2_date": 2, "row3_date": 9, "row4_date": 22
+    "row1_date": {value: 111, mcf: ''}, 
+    "row2_date": {value: 2, mcf: ''},
+    "row3_date": {value: 9, mcf: ''}, 
+    "row4_date": {value: 22, mcf: ''}
   }
 };
 
@@ -531,3 +572,33 @@ export const expectedID1 =
 
 export const expectedID2 =
 `dcs:CumulativeCount_MedicalTest_COVID_19,geoId/12345,,dcs:CovidTrackingProject,P1Y,,100`;
+
+const dataEntity =
+`Node: E:COVIDTracking_States->E0
+typeOf: dcs:StatVarObservation
+variableMeasured: dcs:CumulativeCount_MedicalTest_COVID_19
+measurementMethod: dcs:CovidTrackingProject
+observationAbout: C:COVIDTracking_States->GeoId
+observationDate: C:COVIDTracking_States->Date
+value: C:COVIDTracking_States->CumulativeCount_MedicalTest_COVID_19`;
+
+const otherEntity1 = 
+`Node: E:SomeDataset->E1
+typeOf: ResponseOption
+dcid: C:SomeDataset->ResponseOption_Dcid
+name: C:SomeDataset->ResponseOption_Name
+identifier: C:SomeDataset->ResponseOption_Identifier
+text: C:SomeDataset->ResponseOption_Text`;
+
+const otherEntity2 =
+`Node: E:SomeDataset->E2
+hasResponseOption: E:SomeDataset->E1
+typeOf: SurveyItem
+dcid: C:SomeDataset->SurveyItem_Dcid`;
+
+export const otherEntities = [otherEntity1, otherEntity2];
+
+export const expectedTemplate1 = {
+  dataEntities: [dataEntity],
+  otherEntities: [otherEntity1, otherEntity2]
+}
