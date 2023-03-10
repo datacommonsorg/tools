@@ -85,6 +85,7 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 		"bigstore_data_directory":    bigstoreDataDirectory,
 		"bigstore_cache_directory":   bigstoreCacheDirectory,
 		"bigstore_control_directory": bigstoreControlDirectory,
+		"produce_sv_and_svg_mcfs":    "true",
 	}
 	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
 	return Publish(ctx, controllerTriggerTopic, attributes)
