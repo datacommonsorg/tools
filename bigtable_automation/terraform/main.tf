@@ -106,7 +106,7 @@ resource "google_cloudfunctions_function" "bt_automation" {
     tempLocation     = format("gs://%s/dataflow/tmp", var.dc_resource_bucket)
 
     bucket           = var.dc_resource_bucket
-    controllerTriggerTopic = "projects/datcom-204919/topics/private-import-notification-prod"
+    controllerTriggerTopic = "projects/datcom-204919/topics/private-import-notification-dev"
 
   }
 
