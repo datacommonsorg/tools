@@ -62,7 +62,7 @@ function submit_cloud_build {
 	# create a header file that will include the first few lines of the email
 	# to make it easier to parse quickly.
 	# first line; email subject (used by notify_results.sh)
-	echo "[Periodic Builds] Error building datacommonsorg/$1" > $header_file
+	echo "[Periodic Builds Error] $1" > $header_file
 	# second line; link to cloud build log page
 	cat $buildlog_file | sed -n "s/Logs are available at/Cloud Build Logs:/p" >> $header_file
 	# third line; link to the cloudbuild yaml file that this was ran with
