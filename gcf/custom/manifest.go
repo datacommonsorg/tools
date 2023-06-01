@@ -164,6 +164,7 @@ func ComputeManifest(
 			Category:       pb.DataCommonsManifest_STATS.Enum(),
 			ProvenanceUrl:  dataset.Url,
 			McfProtoUrl:    []string{},
+			McfUrl:         []string{},
 			ImportGroups:   []string{importGroup},
 			ResolutionInfo: &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
 			DatasetName:    proto.String(*dataset.Name),
@@ -193,10 +194,17 @@ func ComputeManifest(
 					manifestImport.McfProtoUrl,
 					filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
 				)
+				manifestImport.McfUrl = append(
+					manifestImport.McfUrl,
+					filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
+				)
 			}
 
 			if len(tableFolder.mcf) > 0 {
-				manifestImport.McfUrl = computeDataMCF(bucket, root, im, tab, tableFolder.mcf)
+				manifestImport.McfUrl = append(
+					manifestImport.McfUrl,
+					computeDataMCF(bucket, root, im, tab, tableFolder.mcf)...,
+				)
 			}
 
 		}
