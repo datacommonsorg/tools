@@ -164,7 +164,6 @@ func ComputeManifest(
 			Category:       pb.DataCommonsManifest_STATS.Enum(),
 			ProvenanceUrl:  dataset.Url,
 			McfProtoUrl:    []string{},
-			McfUrl:         []string{},
 			ImportGroups:   []string{importGroup},
 			ResolutionInfo: &pb.ResolutionInfo{UsesIdResolver: proto.Bool(true)},
 			DatasetName:    proto.String(*dataset.Name),
