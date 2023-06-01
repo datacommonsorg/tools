@@ -196,7 +196,7 @@ func ComputeManifest(
 				)
 				manifestImport.McfUrl = append(
 					manifestImport.McfUrl,
-					filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
+					filepath.Join("/bigstore", bucket, root, "data", im, tab, "nodes.mcf@*"),
 				)
 			}
 
