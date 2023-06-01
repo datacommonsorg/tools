@@ -5,8 +5,6 @@ import: {
   import_groups: "schemaless"
   mcf_proto_url: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/graph.tfrecord@*.gz"
   mcf_proto_url: "/bigstore/test-bucket/parent/schemaless/data/import1/smokepm/graph.tfrecord@*.gz"
-  mcf_url: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/nodes.mcf@*"
-  mcf_url: "/bigstore/test-bucket/parent/schemaless/data/import1/smokepm/nodes.mcf@*"
   table: {
     mapping_path: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/sea.tmcf"
     csv_path: "/bigstore/test-bucket/parent/schemaless/data/import1/ocean/river.csv"

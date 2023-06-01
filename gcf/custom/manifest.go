@@ -194,10 +194,6 @@ func ComputeManifest(
 					manifestImport.McfProtoUrl,
 					filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
 				)
-				manifestImport.McfUrl = append(
-					manifestImport.McfUrl,
-					filepath.Join("/bigstore", bucket, root, "data", im, tab, "nodes.mcf@*"),
-				)
 			}
 
 			if len(tableFolder.mcf) > 0 {
