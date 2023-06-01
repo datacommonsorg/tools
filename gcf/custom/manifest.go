@@ -197,10 +197,7 @@ func ComputeManifest(
 			}
 
 			if len(tableFolder.mcf) > 0 {
-				manifestImport.McfUrl = append(
-					manifestImport.McfUrl,
-					computeDataMCF(bucket, root, im, tab, tableFolder.mcf)...,
-				)
+				manifestImport.McfUrl = computeDataMCF(bucket, root, im, tab, tableFolder.mcf)
 			}
 
 		}
