@@ -49,7 +49,7 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 	if err != nil {
 		return err
 	}
-	// Copy congfig to GCS
+	// Copy config to GCS
 	marshalOpts := prototext.MarshalOptions{Multiline: true}
 	bytes, err := marshalOpts.Marshal(manifest)
 	if err != nil {

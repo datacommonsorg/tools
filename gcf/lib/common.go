@@ -86,9 +86,17 @@ func WriteToGCS(ctx context.Context, path, data string) error {
 		return errors.Wrap(err, "Failed to create gcsClient")
 	}
 	w := gcsClient.Bucket(bucket).Object(object).NewWriter(ctx)
-	defer w.Close()
-	_, err = fmt.Fprint(w, data)
-	return errors.WithMessagef(err, "Failed to write data to %s/%s", bucket, object)
+	_, writeErr := fmt.Fprint(w, data)
+	closeErr := w.Close()
+	if writeErr != nil {
+		return errors.WithMessagef(
+			writeErr, "Failed to write data to %s/%s", bucket, object)
+	}
+	if closeErr != nil {
+		return errors.WithMessagef(
+			closeErr, "Failed to finalize writing to %s/%s", bucket, object)
+	}
+	return nil
 }
 
 func SetupBT(ctx context.Context, btProjectID, btInstance, tableID string) error {
