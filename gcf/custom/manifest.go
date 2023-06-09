@@ -159,7 +159,7 @@ func ComputeManifest(
 				filepath.Join("/bigstore", bucket, root, "data", im, "*.mcf*"))
 		}
 		// Construct stat import
-		manifestImport := &pb.DataCommonsManifest_Import{
+		statImport := &pb.DataCommonsManifest_Import{
 			ImportName:     proto.String(*dataset.Name),
 			Category:       pb.DataCommonsManifest_STATS.Enum(),
 			ProvenanceUrl:  dataset.Url,
@@ -179,28 +179,28 @@ func ComputeManifest(
 			if tableFolder == nil {
 				continue
 			}
-
 			if len(tableFolder.tmcf) > 0 && len(tableFolder.csv) > 0 {
 				// Only set automated_mcf_generation_by for tmcf/csv imports.
 				// Setting this flag for mcf based imports will error out.
-				manifestImport.AutomatedMcfGenerationBy = proto.String(importGroup)
-				manifestImport.Table = append(
-					manifestImport.Table,
+				statImport.AutomatedMcfGenerationBy = proto.String(importGroup)
+				statImport.Table = append(
+					statImport.Table,
 					computeTable(bucket, root, im, tab, tableFolder),
 				)
 				// Only tmcf/csv imports have tf record generated.
-				manifestImport.McfProtoUrl = append(
-					manifestImport.McfProtoUrl,
+				statImport.McfProtoUrl = append(
+					statImport.McfProtoUrl,
 					filepath.Join("/bigstore", bucket, root, "data", im, tab, "graph.tfrecord@*.gz"),
 				)
 			}
-
 			if len(tableFolder.mcf) > 0 {
-				manifestImport.McfUrl = computeDataMCF(bucket, root, im, tab, tableFolder.mcf)
+				statImport.McfUrl = computeDataMCF(bucket, root, im, tab, tableFolder.mcf)
 			}
-
 		}
-		manifest.Import = append(manifest.Import, manifestImport)
+		// Stat import entry is added if there is data files.
+		if len(statImport.McfProtoUrl) > 0 {
+			manifest.Import = append(manifest.Import, statImport)
+		}
 	}
 
 	// Schema import entry is added if at least 1 dataset has schemas.
