@@ -198,7 +198,7 @@ func ComputeManifest(
 			}
 		}
 		// Stat import entry is added if there is data files.
-		if len(statImport.McfProtoUrl) > 0 {
+		if len(statImport.McfProtoUrl) > 0 || len(statImport.McfUrl) > 0 {
 			manifest.Import = append(manifest.Import, statImport)
 		}
 	}
