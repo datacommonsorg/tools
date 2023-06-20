@@ -5,4 +5,5 @@ mixer/build/ci/cloudbuild.test.yaml
 website/build/ci/cloudbuild.npm.yaml
 website/build/ci/cloudbuild.py.yaml
 website/build/ci/cloudbuild.webdriver.yaml
+website/build/ci/cloudbuild.website_snapshot.yaml
 api-python/cloudbuild.yaml
