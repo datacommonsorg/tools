@@ -6,4 +6,5 @@ website/build/ci/cloudbuild.npm.yaml
 website/build/ci/cloudbuild.py.yaml
 website/build/ci/cloudbuild.webdriver.yaml
 website/build/ci/cloudbuild.website_snapshot.yaml
+website/build/ci/cloudbuild.website_sanity.yaml
 api-python/cloudbuild.yaml
