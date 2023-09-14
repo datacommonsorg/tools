@@ -59,7 +59,7 @@ function submit_cloud_build {
 	# "2>&1" redirects "stderr" to where "stdout" is going
 	# The result is that both stdout and stderr are written to $buildlog_file
 	if [[ -n "$substitutions" ]]; then
-			gcloud builds submit --config $(echo $1 | cut -d',' -f1) --substitutions=$substitutions $repo > $buildlog_file 2>&1
+			gcloud builds submit --config $(echo $1 | cut -d' ' -f1) --substitutions=$substitutions $repo > $buildlog_file 2>&1
 	else
 		gcloud builds submit --config $1 $repo > $buildlog_file 2>&1
 	fi
