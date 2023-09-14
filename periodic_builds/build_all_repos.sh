@@ -40,6 +40,8 @@ function submit_cloud_build {
 	repo=$(get_root_folder_of_path_like $1)
 	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
 	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
+	# Extract substitutions if it exists
+	local substitutions=$(echo $1 | cut -d' ' -f2)
 
 	# appending $1 to the beginning of the filenames makes sure that the
 	# filenames are unique so that the concurrent processes don't write over
@@ -56,7 +58,11 @@ function submit_cloud_build {
 	# "> $buildlog_file" redirects stdout to write to $buildlog_file
 	# "2>&1" redirects "stderr" to where "stdout" is going
 	# The result is that both stdout and stderr are written to $buildlog_file
-	gcloud builds submit --config $1 $repo > $buildlog_file 2>&1
+	if [[ -n "$substitutions" ]]; then
+			gcloud builds submit --config $(echo $1 | cut -d' ' -f1) --substitutions=$substitutions $repo > $buildlog_file 2>&1
+	else
+		gcloud builds submit --config $1 $repo > $buildlog_file 2>&1
+	fi
 	return_code=$? # store the return code of the gcloud command
 
 	# create a header file that will include the first few lines of the email
