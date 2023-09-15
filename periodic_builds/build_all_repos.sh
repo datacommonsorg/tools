@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ function submit_cloud_build {
 	cloudbuild_path=$(echo $1 | cut -d"/" -f2-) # get path without repo name
 	cloudbuild_link="https://github.com/datacommonsorg/$repo/blob/master/$cloudbuild_path"
 	# Extract substitutions if it exists
-	local substitutions=$(echo $1 | cut -d' ' -f2)
+	local substitutions=$2
 
 	# appending $1 to the beginning of the filenames makes sure that the
 	# filenames are unique so that the concurrent processes don't write over
@@ -59,7 +59,7 @@ function submit_cloud_build {
 	# "2>&1" redirects "stderr" to where "stdout" is going
 	# The result is that both stdout and stderr are written to $buildlog_file
 	if [[ -n "$substitutions" ]]; then
-			gcloud builds submit --config $(echo $1 | cut -d' ' -f1) --substitutions=$substitutions $repo > $buildlog_file 2>&1
+		gcloud builds submit --config $1 --substitutions=$substitutions $repo > $buildlog_file 2>&1
 	else
 		gcloud builds submit --config $1 $repo > $buildlog_file 2>&1
 	fi
@@ -112,16 +112,23 @@ function main {
 	mkdir $FAILED_FOLDER
 
 	# Synchronously clone git repositories
-	while read -r cloudbuild_path; do
+	while read -r cloudbuild_config; do
+		cloudbuild_path=$(echo "$cloudbuild_config" | cut -d' ' -f1)
 		clone_dc $(get_root_folder_of_path_like $cloudbuild_path)
 	done < "$BUILDS_FILE"
 
 	# Launch the build jobs in parallel, accumulating process IDs
 	# in $pids. reference: https://stackoverflow.com/a/26240420
 	pids=""
-	while read -r cloudbuild_path; do
+	while read -r cloudbuild_config; do
+		cloudbuild_path=$(echo "$cloudbuild_config" | cut -d' ' -f1)
+		substitutions=""
+		if [[ $cloudbuild_config == *" "* ]]; then
+    	substitutions=$(echo "$cloudbuild_config" | cut -d' ' -f2)
+		fi
 		echo "running cloudbuild: $cloudbuild_path"
-		submit_cloud_build $cloudbuild_path &
+		echo "substitutions: $substitutions"
+		submit_cloud_build $cloudbuild_path $substitutions &
 		pid=$! # $! is the process ID of the last command ran
 		pids="$pids $!"
 	done < "$BUILDS_FILE"
