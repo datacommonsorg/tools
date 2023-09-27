@@ -28,6 +28,10 @@ import (
 func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 	projectID := os.Getenv("projectID")
 	isLocal := os.Getenv("isLocal") == "true"
+	skipNamesInSvgCache := "false"
+	if os.Getenv("skipNamesInSvgCache") == "true" {
+		skipNamesInSvgCache = "true"
+	}
 	controllerTriggerTopic := os.Getenv("controllerTriggerTopic")
 	if controllerTriggerTopic == "" {
 		return errors.New("controllerTriggerTopic is not set in environment")
@@ -86,6 +90,7 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 		"bigstore_cache_directory":   bigstoreCacheDirectory,
 		"bigstore_control_directory": bigstoreControlDirectory,
 		"produce_sv_and_svg_mcfs":    "true",
+		"skip_names_in_svg_cache":    skipNamesInSvgCache,
 	}
 	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
 	return Publish(ctx, controllerTriggerTopic, attributes)
