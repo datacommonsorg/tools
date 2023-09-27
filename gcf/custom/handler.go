@@ -87,6 +87,9 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 		"bigstore_control_directory": bigstoreControlDirectory,
 		"produce_sv_and_svg_mcfs":    "true",
 	}
+	if os.Getenv("skipNamesInSvgCache") == "true" {
+		attributes["skip_names_in_svg_cache"] = "true"
+	}
 	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
 	return Publish(ctx, controllerTriggerTopic, attributes)
 }
