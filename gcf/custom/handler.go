@@ -90,6 +90,9 @@ func HandleTriggerFlow(ctx context.Context, bucket, root string) error {
 	if os.Getenv("skipNamesInSvgCache") == "true" {
 		attributes["skip_names_in_svg_cache"] = "true"
 	}
+	if os.Getenv("processCapacitor") == "true" {
+		attributes["process_capacitor"] = "true"
+	}
 	log.Printf("Using PubSub topic: %s", controllerTriggerTopic)
 	return Publish(ctx, controllerTriggerTopic, attributes)
 }

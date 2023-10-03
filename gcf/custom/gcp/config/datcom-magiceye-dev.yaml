@@ -9,3 +9,4 @@ controllerTriggerTopic: "projects/datcom-204919/topics/private-import-notificati
 bucket: "datcom-magiceye-dev-resources"
 gcfSA: "datcom-magiceye-dev@appspot.gserviceaccount.com"
 skipNamesInSvgCache: "true"
+processCapacitor: "true"
