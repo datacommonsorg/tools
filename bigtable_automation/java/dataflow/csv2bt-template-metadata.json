@@ -33,6 +33,12 @@
             "paramType": "TEXT"
         },
         {
+            "name": "bigtableAppProfileId",
+            "label": "Bigtable App Profile ID",
+            "helpText": "The App Profile ID to use for Bigtable writes.",
+            "paramType": "TEXT"
+        },
+        {
             "name": "tempLocation",
             "label": "GCP temp location",
             "helpText": "A GCS bucket where the running jobs will have access to.",
