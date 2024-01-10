@@ -36,7 +36,8 @@
             "name": "bigtableAppProfileId",
             "label": "Bigtable App Profile ID",
             "helpText": "The App Profile ID to use for Bigtable writes.",
-            "paramType": "TEXT"
+            "paramType": "TEXT",
+            "isOptional": true
         },
         {
             "name": "tempLocation",
