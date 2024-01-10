@@ -27,7 +27,7 @@ if [[ "$1" == "flex" ]]; then
 fi
 
 # Good to read the yaml file keys and convert them to bash array
-for var in projectID cluster instance dataflowTemplate dataPath controlPath
+for var in projectID cluster instance dataflowTemplate dataPath controlPath appProfileID
 do
     value=$(yq eval .$var $config_file)
     export $var=$value
