@@ -23,4 +23,9 @@ public interface CloudBigtableOptions extends DataflowPipelineOptions {
   @SuppressWarnings("unused")
   void setBigtableTableId(ValueProvider<String> bigtableTableId);
 
+  @Description("The App Profile to use for Bigtable writes.")
+  ValueProvider<String> getBigtableAppProfileId();
+
+  @SuppressWarnings("unused")
+  void setBigtableAppProfileId(ValueProvider<String> bigtableAppProfileId);
 }

@@ -78,7 +78,7 @@ func customInternal(ctx context.Context, e lib.GCSEvent) error {
 		}
 		dataPath := lib.JoinURL(rootFolder, "cache")
 		controlPath := lib.JoinURL(rootFolder, "control")
-		err = lib.LaunchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate)
+		err = lib.LaunchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate, "")
 		if err != nil {
 			if errDeleteBT := lib.DeleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
 				log.Printf("Failed to delete BT table on failed Dataflow launch: %v", errDeleteBT)

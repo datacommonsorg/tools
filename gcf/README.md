@@ -28,7 +28,7 @@ production entry point can be tested locally through `local/main.go`
 0. First start the Cloud Function locally, as follows:
 
    ```bash
-   ./local/deploy.sh
+   ./base/local/deploy.sh
    ```
 
 1. A test branch cache exists in this [folder](https://pantheon.corp.google.com/storage/browser/prophet_cache/dcbranch_2022_05_06_16_16_13).
@@ -36,13 +36,13 @@ production entry point can be tested locally through `local/main.go`
    Just in case a test was run with that cache before, clean-up first:
 
    ```bash
-   ./local/test.sh cleanup
+   ./base/local/test.sh cleanup
    ```
 
 2. Fake an init trigger from Google pipeline:
 
    ```bash
-   ./local/test.sh init
+   ./base/local/test.sh init
    ```
 
    To validate this step:
@@ -62,7 +62,7 @@ production entry point can be tested locally through `local/main.go`
 3. Fake a completion trigger from Dataflow job:
 
    ```bash
-   ./local/test.sh completed
+   ./base/local/test.sh completed
    ```
 
    Validate this step by confirming that the
@@ -74,8 +74,8 @@ production entry point can be tested locally through `local/main.go`
 After validating the change in test environment, deploy to PROD by running:
 
 ```bash
-./prod/deploy.sh base
-./prod/deploy.sh branch
+./base/gcp/deploy.sh base
+./base/gcp/deploy.sh branch
 ```
 
 When this completes, look at the
@@ -86,5 +86,5 @@ To deploy private GCF, identify the environment, pick the corresponding yaml
 files in `private/*.yaml` and run
 
 ```bash
-./private/deploy.sh <env>
+./base/custom/deploy.sh <env>
 ```

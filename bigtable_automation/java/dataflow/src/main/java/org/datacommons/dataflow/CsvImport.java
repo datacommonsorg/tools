@@ -25,6 +25,7 @@ import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.TypeDescriptor;
+import org.apache.hadoop.hbase.shaded.org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -126,6 +127,10 @@ public class CsvImport {
         .withProjectId(options.getBigtableProjectId())
         .withInstanceId(options.getBigtableInstanceId())
         .withTableId(options.getBigtableTableId());
+    if (options.getBigtableAppProfileId().isAccessible() &&
+        StringUtils.isNotEmpty(options.getBigtableAppProfileId().get())) {
+      write = write.withAppProfileId(options.getBigtableAppProfileId());
+    }
     // Write with results.
     PCollection<BigtableWriteResult> writeResults = cacheData
         .apply("WriteToBigtable", write.withWriteResults());
