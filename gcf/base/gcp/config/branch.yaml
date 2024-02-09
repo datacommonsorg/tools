@@ -6,3 +6,4 @@ tempLocation: "gs://datcom-store-resources/dataflow/tmp"
 dataPath: "gs://datcom-store"
 controlPath: "gs://datcom-control/branch"
 appProfileID: "batch"
+maxNumWorkers: 1000

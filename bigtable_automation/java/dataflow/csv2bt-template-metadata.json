@@ -40,6 +40,13 @@
             "isOptional": true
         },
         {
+            "name": "bigtableMaxNumWorkers",
+            "label": "Bigtable maximum number of workers",
+            "helpText": "The maximum number of workers for Dataflow jobs.",
+            "paramType": "TEXT",
+            "isOptional": true
+        },
+        {
             "name": "tempLocation",
             "label": "GCP temp location",
             "helpText": "A GCS bucket where the running jobs will have access to.",
