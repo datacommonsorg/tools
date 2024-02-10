@@ -30,8 +30,8 @@ public interface CloudBigtableOptions extends DataflowPipelineOptions {
   void setBigtableAppProfileId(ValueProvider<String> bigtableAppProfileId);
 
   @Description("The maximum number of workers for Dataflow jobs.")
-  ValueProvider<String> getBigtableMaxNumWorkers();
+  ValueProvider<String> getDataflowMaxNumWorkers();
 
   @SuppressWarnings("unused")
-  void setBigtableMaxNumWorkers(ValueProvider<String> bigtableMaxNumWorkers);
+  void setDataflowMaxNumWorkers(ValueProvider<String> dataflowMaxNumWorkers);
 }

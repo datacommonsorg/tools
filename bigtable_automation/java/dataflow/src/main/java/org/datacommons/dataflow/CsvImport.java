@@ -118,9 +118,9 @@ public class CsvImport {
   public static void main(String[] args) throws IllegalArgumentException {
     BigtableCsvOptions options =
         PipelineOptionsFactory.fromArgs(args).withValidation().as(BigtableCsvOptions.class);
-    if (options.getBigtableMaxNumWorkers().isAccessible() && 
-        StringUtils.isNotEmpty(options.getBigtableMaxNumWorkers().get())) {
-      options.setMaxNumWorkers(Integer.parseInt(options.getBigtableMaxNumWorkers().get()));
+    if (options.getDataflowMaxNumWorkers().isAccessible() && 
+        StringUtils.isNotEmpty(options.getDataflowMaxNumWorkers().get())) {
+      options.setMaxNumWorkers(Integer.parseInt(options.getDataflowMaxNumWorkers().get()));
     }
     Pipeline pipeline = Pipeline.create(options);
     PCollection<KV<ByteString, Iterable<Mutation>>> cacheData = pipeline

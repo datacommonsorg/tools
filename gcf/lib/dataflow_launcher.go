@@ -125,7 +125,7 @@ func launchFromFlexTemplate(
 			"bigtableProjectId":     projectID,
 			"tempLocation":          tempLocation,
 			"bigtableAppProfileId":  appProfileID,
-			"bigtableMaxNumWorkers": maxNumWorkers,
+			"dataflowMaxNumWorkers": maxNumWorkers,
 		},
 		ContainerSpecGcsPath: dataflowTemplate,
 	}
@@ -176,7 +176,7 @@ func launchFromClassicTemplate(
 			"bigtableProjectId":     projectID,
 			"region":                region,
 			"bigtableAppProfileId":  appProfileID,
-			"bigtableMaxNumWorkers": maxNumWorkers,
+			"dataflowMaxNumWorkers": maxNumWorkers,
 		},
 	}
 	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", instance, tableID, dataFile, launchedPath)

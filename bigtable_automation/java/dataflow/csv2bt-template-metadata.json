@@ -40,8 +40,8 @@
             "isOptional": true
         },
         {
-            "name": "bigtableMaxNumWorkers",
-            "label": "Bigtable maximum number of workers",
+            "name": "dataflowMaxNumWorkers",
+            "label": "Dataflow maximum number of workers",
             "helpText": "The maximum number of workers for Dataflow jobs.",
             "paramType": "TEXT",
             "isOptional": true
