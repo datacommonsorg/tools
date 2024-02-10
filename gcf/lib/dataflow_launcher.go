@@ -58,6 +58,7 @@ func LaunchDataflowJob(
 	controlPath string,
 	dataflowTemplate string,
 	appProfileID string,
+	maxNumWorkers string,
 ) error {
 	// Flex templates are json based templates.
 	// Please see the README under java/dataflow in this repo.
@@ -66,7 +67,7 @@ func LaunchDataflowJob(
 		return launchFromFlexTemplate(
 			ctx, projectID, instance, tableID,
 			dataPath, controlPath, dataflowTemplate,
-			appProfileID,
+			appProfileID, maxNumWorkers,
 		)
 	}
 
@@ -74,7 +75,7 @@ func LaunchDataflowJob(
 	return launchFromClassicTemplate(
 		ctx, projectID, instance, tableID,
 		dataPath, controlPath, dataflowTemplate,
-		appProfileID,
+		appProfileID, maxNumWorkers,
 	)
 }
 
@@ -94,6 +95,7 @@ func launchFromFlexTemplate(
 	controlPath string,
 	dataflowTemplate string,
 	appProfileID string,
+	maxNumWorkers string,
 ) error {
 	dataflowService, err := dataflow.NewService(ctx)
 	if err != nil {
@@ -116,13 +118,14 @@ func launchFromFlexTemplate(
 	params := &dataflow.LaunchFlexTemplateParameter{
 		JobName: jobName,
 		Parameters: map[string]string{
-			"inputFile":            dataFile,
-			"completionFile":       completedPath,
-			"bigtableInstanceId":   instance,
-			"bigtableTableId":      tableID,
-			"bigtableProjectId":    projectID,
-			"tempLocation":         tempLocation,
-			"bigtableAppProfileId": appProfileID,
+			"inputFile":             dataFile,
+			"completionFile":        completedPath,
+			"bigtableInstanceId":    instance,
+			"bigtableTableId":       tableID,
+			"bigtableProjectId":     projectID,
+			"tempLocation":          tempLocation,
+			"bigtableAppProfileId":  appProfileID,
+			"dataflowMaxNumWorkers": maxNumWorkers,
 		},
 		ContainerSpecGcsPath: dataflowTemplate,
 	}
@@ -154,6 +157,7 @@ func launchFromClassicTemplate(
 	controlPath string,
 	dataflowTemplate string,
 	appProfileID string,
+	maxNumWorkers string,
 ) error {
 	dataflowService, err := dataflow.NewService(ctx)
 	if err != nil {
@@ -165,13 +169,14 @@ func launchFromClassicTemplate(
 	params := &dataflow.LaunchTemplateParameters{
 		JobName: tableID,
 		Parameters: map[string]string{
-			"inputFile":            dataFile,
-			"completionFile":       completedPath,
-			"bigtableInstanceId":   instance,
-			"bigtableTableId":      tableID,
-			"bigtableProjectId":    projectID,
-			"region":               region,
-			"bigtableAppProfileId": appProfileID,
+			"inputFile":             dataFile,
+			"completionFile":        completedPath,
+			"bigtableInstanceId":    instance,
+			"bigtableTableId":       tableID,
+			"bigtableProjectId":     projectID,
+			"region":                region,
+			"bigtableAppProfileId":  appProfileID,
+			"dataflowMaxNumWorkers": maxNumWorkers,
 		},
 	}
 	log.Printf("[%s/%s] Launching dataflow job: %s -> %s\n", instance, tableID, dataFile, launchedPath)

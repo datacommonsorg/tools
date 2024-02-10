@@ -2,6 +2,7 @@ package org.datacommons.dataflow;
 
 import com.google.bigtable.v2.Mutation;
 import com.google.bigtable.v2.Mutation.SetCell;
+import com.google.cloud.bigtable.config.BigtableOptions;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
@@ -117,7 +118,10 @@ public class CsvImport {
   public static void main(String[] args) throws IllegalArgumentException {
     BigtableCsvOptions options =
         PipelineOptionsFactory.fromArgs(args).withValidation().as(BigtableCsvOptions.class);
-
+    if (options.getDataflowMaxNumWorkers().isAccessible() && 
+        StringUtils.isNotEmpty(options.getDataflowMaxNumWorkers().get())) {
+      options.setMaxNumWorkers(Integer.parseInt(options.getDataflowMaxNumWorkers().get()));
+    }
     Pipeline pipeline = Pipeline.create(options);
     PCollection<KV<ByteString, Iterable<Mutation>>> cacheData = pipeline
         .apply("ReadMyFile", TextIO.read().from(options.getInputFile()).withHintMatchesManyFiles())
@@ -129,7 +133,10 @@ public class CsvImport {
         .withTableId(options.getBigtableTableId());
     if (options.getBigtableAppProfileId().isAccessible() &&
         StringUtils.isNotEmpty(options.getBigtableAppProfileId().get())) {
-      write = write.withAppProfileId(options.getBigtableAppProfileId());
+       BigtableOptions bigtableOptions = BigtableOptions.builder()
+        .setAppProfileId(options.getBigtableAppProfileId().get())
+        .build();
+      write = write.withBigtableOptions(bigtableOptions);
     }
     // Write with results.
     PCollection<BigtableWriteResult> writeResults = cacheData

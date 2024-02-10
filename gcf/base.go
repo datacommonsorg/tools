@@ -32,6 +32,7 @@ func prodInternal(ctx context.Context, e lib.GCSEvent) error {
 	dataPath := os.Getenv("dataPath")
 	controlPath := os.Getenv("controlPath")
 	appProfileID := os.Getenv("appProfileID")
+	maxNumWorkers := os.Getenv("maxNumWorkers")
 	if projectID == "" {
 		return errors.New("projectID is not set in environment")
 	}
@@ -87,7 +88,7 @@ func prodInternal(ctx context.Context, e lib.GCSEvent) error {
 		if err := lib.SetupBT(ctx, projectID, instance, tableID); err != nil {
 			return err
 		}
-		err = lib.LaunchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate, appProfileID)
+		err = lib.LaunchDataflowJob(ctx, projectID, instance, tableID, dataPath, controlPath, dataflowTemplate, appProfileID, maxNumWorkers)
 		if err != nil {
 			if errDeleteBT := lib.DeleteBTTable(ctx, projectID, instance, tableID); errDeleteBT != nil {
 				log.Printf("Failed to delete BT table on failed GCS write: %v", errDeleteBT)
