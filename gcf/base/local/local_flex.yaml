@@ -8,4 +8,4 @@ dataPath: "gs://prophet_cache"
 controlPath: "gs://automation_control_test/branch"
 tempLocation: "gs://datcom-store-dev-resources/dataflow/tmp"
 appProfileID: "batch"
-maxNumWorkers: 1000
+maxNumWorkers: "1000"
