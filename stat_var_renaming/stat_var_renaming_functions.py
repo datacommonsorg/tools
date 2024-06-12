@@ -142,7 +142,7 @@ def cause_of_death_remap(prop_remap, client):
         icd10_code = row['ICD10Code']
         # Manually remap abnormally long names.
         if icd10_code in svrc.MANUAL_CAUSE_OF_DEATH_RENAMINGS:
-            return svrc.MANUAL_CAUSE_OF_DEATH_RENAMINGS[id]
+            return svrc.MANUAL_CAUSE_OF_DEATH_RENAMINGS[icd10_code]
 
         # Otherwise remove codes and camel case the name.
         row['id'] = icd10_code
@@ -158,7 +158,12 @@ def cause_of_death_remap(prop_remap, client):
 
     # Add modification function.
     def death_id_to_name(_, death_id, _pop):
-        return cause_of_death_instances.loc[death_id]['name']
+        if death_id in cause_of_death_instances or death_id.startswith("ICD10"):
+            return cause_of_death_instances.loc[death_id]['name']
+        else:
+            # Some causeOfDeathCodes are not ICD10. Use these literally.
+            return death_id.replace("(", "").replace(")", "").replace("-", "")
+    
 
     svr.addPropertyRemapping(prop_remap, 'medicalCode', death_id_to_name)
     svr.addPropertyRemapping(prop_remap, 'causeOfDeath', death_id_to_name)
