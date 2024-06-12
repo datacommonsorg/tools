@@ -51,6 +51,11 @@ interface PropertyLabelResponse {
   outLabels: string[];
 }
 
+interface NameResponse {
+  entity: string;
+  values?: {provenanceId: string, value: string}[]
+}
+
 /**
  * Gets all property labels of the given dcid that are in the DC KG.
  *
@@ -169,21 +174,37 @@ function shouldReadLine(line: string) : boolean {
 }
 
 /**
- * Queries Data Commons to get the name for a location
- * @param {string} dcid The dcid to get the location for
- * @return {Promise<string>} Returns the location
+ * Queries Data Commons to get the name for a set of entities
+ * @param {string[]} entities The dcids for the entities
+ * @return {Promise<string>} Returns a list of names
  */
-async function getName(dcid: string) {
-  const url = `${API_ROOT}/v1/property/values/out/${dcid}/name`;
+async function getName(entities: string[]) {
+  if (entities.length == 0) {
+    return [];
+  }
 
-  // expected response if dcid exists is {"values":"[...]}
-  // expected response if dcid does not exist is {}
-  return fetch(url)
+  const url = `${API_ROOT}/v1/bulk/property/values/out`;
+  const data = {
+    'property': 'name',
+    'entities': entities,
+  };
+  const options = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  };
+  // response is {"data": [...list of entities...]}
+  // expected entity if dcid exists is {"entity": entity, "values":"[...]}
+  // expected entity if dcid does not exist is {"entity": entity}
+  return fetch(url, options)
       .then((res) => res.json())
       .then((data) =>
-        (data.values && data.values.length > 0) ?
-        (data.values[0].value) :
-        `${dcid}`,
+        data.data.map(
+            (entity: NameResponse) =>
+            entity.values ? entity.values[0].value : entity.entity,
+        ),
       );
 }
 

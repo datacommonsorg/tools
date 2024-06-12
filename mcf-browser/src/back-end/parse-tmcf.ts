@@ -13,18 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import {Series, TimeDataObject} from './time-series';
+import {Series, SeriesObject, TimeDataObject} from './time-series';
 import {shouldReadLine} from './utils';
 
+interface Properties {
+  [property: string]: string;
+}
+
 interface CsvRow {
-  [header: string]: string | number
+  [header: string]: string | number;
 }
 
 interface ParsedCsvRow {
   facet: string;
   date: string;
   value: string;
+  mcf: string
+}
+
+interface ParsedCsv {
+  otherMcfs: string[];
+  datapoints: TimeDataObject;
+}
+
+interface ParsedTemplate {
+  dataEntities: string[];
+  otherEntities: string[];
 }
 
 /**
@@ -61,46 +75,46 @@ function getEntityID(line: string) : string | null {
  */
 class ParseTmcf {
   /**
-   * Current row number of the csv file that is being parsed.
-   * @type {number}
-   */
+ * Current row number of the csv file that is being parsed.
+ * @type {number}
+ */
   csvIndex: number;
 
   /**
-  * Create a ParseTmcf object which keeps tracks of the current csv row
-  * number being parsed.
-  */
+* Create a ParseTmcf object which keeps tracks of the current csv row
+* number being parsed.
+*/
   constructor() {
     this.csvIndex = -1;
   }
 
   /**
-   * Generates a local id for a node of specfic row in csv from an entity id
-   * used in tmcf file. Ex: E:SomeDataset->E1 => SomeDataset_E1_R<index>
-   * @param {string} entityID The entity id used in tmcf file.
-   * @return {string|null} The local id for the node of the specific csv row.
-   */
+ * Generates a local id for a node of specfic row in csv from an entity id
+ * used in tmcf file. Ex: E:SomeDataset->E1 => SomeDataset_E1_R<index>
+ * @param {string} entityID The entity id used in tmcf file.
+ * @return {string|null} The local id for the node of the specific csv row.
+ */
   getLocalIdFromEntityId(entityID: string) : string | null {
     if (entityID) {
       return entityID.replace('->', '_').replace('E:', '') + '_R' +
-             this.csvIndex;
+            this.csvIndex;
     }
     return null;
   }
 
   /**
-   * Converts propertyValues from a line of tmcf to mcf by either converting
-   * entity ids to local ids or replacing a csv column reference with the actual
-   * value from the csv.
-   *
-   * @param {string} propValues The property values from the line of TMCF.
-   * @param {CsvRow} csvRow The JSON representation of a single row of a csv
-   *     file. The keys are the column names and values are the corresponding
-   *     entries of the csv for the specfic row/column.
-   * @return {string} The mcf version of the given propValues which has local
-   *     ids in lieu of entity ids and csv column references replaces with csv
-   *     values.
-   */
+ * Converts propertyValues from a line of tmcf to mcf by either converting
+ * entity ids to local ids or replacing a csv column reference with the actual
+ * value from the csv.
+ *
+ * @param {string} propValues The property values from the line of TMCF.
+ * @param {CsvRow} csvRow The JSON representation of a single row of a csv
+ *     file. The keys are the column names and values are the corresponding
+ *     entries of the csv for the specfic row/column.
+ * @return {string} The mcf version of the given propValues which has local
+ *     ids in lieu of entity ids and csv column references replaces with csv
+ *     values.
+ */
   fillPropertyValues(propValues: string, csvRow: CsvRow) : string {
     const filledValues = [];
 
@@ -128,79 +142,18 @@ class ParseTmcf {
   }
 
   /**
-   * Convert a single row from the csv file to multiple lines of mcf by filling
-   * in the appropriate values in the tmcf template.
-   * @param {string} template The string representation of tmcf file.
-   * @param {CsvRow} csvRow The JSON representation of a single row of a csv
-   *     file. The keys are the column names and values are the corresponding
-   *     entries of the csv for the specfic row/column.
-   * @return {string} The constructed mcf for the single row from csv file.
-   */
-  fillTemplateFromRow(template: string, csvRow: CsvRow) : string {
-    const filledTemplate = [];
-
-    for (const line of template.split('\n')) {
-      if (!line.trim() || !shouldReadLine(line)) {
-        filledTemplate.push('');
-        continue;
-      }
-
-      const propLabel = line.split(':')[0].trim();
-      const propValues = line.substring(line.indexOf(':') + 1).trim();
-
-      if (propLabel === 'Node') {
-        if (propValues.includes(',')) {
-          throw new Error('cannot have multiple ids for Node declaration');
-        }
-        const entityID = getEntityID(propValues);
-        if (entityID) {
-          filledTemplate.push(propLabel + ': ' +
-                              this.getLocalIdFromEntityId(entityID));
-        } else {
-          filledTemplate.push(propLabel + ': ' + propValues);
-        }
-      } else {
-        const filledValues = this.fillPropertyValues(propValues, csvRow);
-        filledTemplate.push(propLabel + ': ' + filledValues);
-      }
-    }
-    return filledTemplate.join('\n');
-  }
-
-  /**
-   * Creates an mcf string from a string representation of TMCF file and the
-   * json representation of a CSV file. The whole template from the tmcf is
-   * populated with values for each row of the csv.
-   * @param {string} template The string representation of a tmcf file.
-   * @param {Array<CsvRow>} csvRows The json representation of the csv file.
-   *     Each CsvRow element of the array represents one row of the csv.
-   * @return {string} The generated mcf as a string.
-   */
-  csvToMcf(template: string, csvRows: CsvRow[]) : string {
-    this.csvIndex = 1;
-    const mcfLines = [];
-    for (const row of csvRows) {
-      mcfLines.push(this.fillTemplateFromRow(template, row));
-      this.csvIndex += 1;
-    }
-    return mcfLines.join('\n');
-  }
-
-  /**
-   * Convert a single row to an object containining its facet
-   * and its corresponding value and date
-   * @param {string} template The string representation of a tmcf file.
-   * @param {CsvRow} row The json representation of the csv row.
-   *     Each CsvRow element of the array represents one row of the csv.
-   * @return {ParsedCsvRow | null} an object containing the facet, date,
-   *     and value
-   */
+ * Convert a single row to an object containining its facet
+ * and its corresponding value, date, and other properties
+ * @param {string} template The string representation of a tmcf file.
+ * @param {CsvRow} row The json representation of the csv row.
+ *     Each CsvRow element of the array represents one row of the csv.
+ * @return {ParsedCsvRow | null} an object containing the facet, date,
+ *     value, and other additional properties
+ */
   getFacetAndValueFromRow(template: string, row: CsvRow)
   : ParsedCsvRow | null {
-    type Properties = {
-      [propertyLabel: string]: string | undefined
-    }
     const properties: Properties = {};
+
     // Parse row
     for (const line of template.split('\n')) {
       if (!line.trim() || !shouldReadLine(line)) {
@@ -245,131 +198,116 @@ class ParseTmcf {
     );
     const date = properties.observationDate ? properties.observationDate : '';
     const value = properties.value ? properties.value : '';
-    return {facet, date, value};
+
+    const propertyPairs = [];
+    for (const property of Object.keys(properties)) {
+      propertyPairs.push(`${property}: ${properties[property]}`);
+    }
+    const mcf = propertyPairs.join('\n');
+
+    return {facet, date, value, mcf};
   }
 
-  /**
-   * Splits a tmcf file string into an array of entity strings
-   * @param {string} template the string representation of a tmcf file
-   * @return {string[]} an array of strings representing each entity in
-   * the tmcf file
-   */
-  getEntityTemplates(template: string): string[] {
-    const entityTemplates: string[] = [];
-    const lines = template.split(/\r?\n/);
-
-    let current ='';
-    for (let line of lines) {
-      line = line.trim();
-      if (line.startsWith('Node')) {
-        if (current !== '') {
-          entityTemplates.push(current);
-        }
-        current = '';
-      }
-
-      current += line + '\n';
-    }
-
-    if (current !== '') {
-      entityTemplates.push(current);
-    }
-
-    return entityTemplates;
-  }
 
   /**
-   * Creates a mapping from facet to values from a string representation of
-   * TMCF file and the json representation of a CSV file. The whole
-   * template from the tmcf is populated with values for each row of the csv.
-   * @param {string} template The string representation of a tmcf file.
-   * @param {Array<CsvRow>} csvRows The json representation of the csv file.
-   *     Each CsvRow element of the array represents one row of the csv.
-   * @return {TimeDataObject} The generated mcf as an Object.
-   */
-  csvToDataPoint(template: string, csvRows: CsvRow[]) : TimeDataObject {
+ * Creates a mapping from facet to values from a string representation of
+ * TMCF file and the json representation of a CSV file. The whole
+ * template from the tmcf is populated with values for each row of the csv.
+ * @param {string} template The string representation of a tmcf file.
+ * @param {Array<CsvRow>} csvRows The json representation of the csv file.
+ *     Each CsvRow element of the array represents one row of the csv.
+ * @return {ParsedCsv} An object containing the parsed datapoints and mcf
+ * strings
+ */
+  parseCsvRows(template: string, csvRows: CsvRow[]) : ParsedCsv {
     this.csvIndex = 1;
 
+    // Split tmcf file into StatVarObs entities and non-StatVarObs entities
+    const {dataEntities, otherEntities} =
+        ParseTmcf.getEntityTemplates(template);
+
     const datapoints: TimeDataObject = {};
-    const entityTemplates = this.getEntityTemplates(template);
+    const otherMcfs = otherEntities;
+
     for (const row of csvRows) {
-      for (const entityTemplate of entityTemplates) {
+      for (const entityTemplate of dataEntities) {
         const parsedCsvRow = this.getFacetAndValueFromRow(
             entityTemplate,
             row,
         );
 
         if (parsedCsvRow) {
-          const {facet, date, value} = parsedCsvRow;
+          const {facet, date, value, mcf} = parsedCsvRow;
           const parsedValue = value !== '' ? parseFloat(value) : undefined;
-          datapoints[facet] = datapoints[facet] ?
-              {
-                ...datapoints[facet],
-                [date]: parsedValue,
-              } :
-              {[date]: parsedValue};
+          const datapoint = {
+            mcf,
+            value: parsedValue,
+          };
+
+          // Add
+          const seriesObject = datapoints[facet] ?
+              datapoints[facet] as SeriesObject : {};
+          seriesObject[date] = datapoint;
+          datapoints[facet] = seriesObject;
         }
       }
       this.csvIndex += 1;
     }
-    return datapoints;
+    return {datapoints, otherMcfs};
   }
 
   /**
-   * Converts CSV file to a JS object where the keys are facet and the
-   * values are the datapoints
-   * @param {string} template The string representation of a tmcf file.
-   * @param {FileObject} csvFile The csv file from html file-input element.
-   * @return {TimeDataObject} The json representation of the csv file.
-   */
-  async getDataPointsFromFile(
+  * Turns a CSV string array to a CsvRow object
+  * @param {string[]} lines an array of lines where each line is a row
+  * of the csv
+  * @return {CsvRow[]} an array of objects with keys as column names and
+  * values as the corresponding row value
+  */
+  static convertCsvToJson(lines: string[]) : CsvRow[] {
+    const headers = lines.length > 0 ?
+    lines.shift()?.split(',') as string[] : [];
+
+    return lines.map((line) => {
+      const values = line.trim().split(',');
+      const output: CsvRow = {};
+
+      for (let i = 0; i < values.length; i++) {
+        output[headers[i]] = values[i];
+      }
+      return output;
+    });
+  }
+
+  /**
+ * Converts CSV file to an object containing the data points and their
+ * mcf strings
+ * @param {string} template The string representation of a tmcf file.
+ * @param {FileObject} csvFile The csv file from html file-input element.
+ * @return {ParsedCsv} An object containing the parsed datapoints and mcf
+ * strings
+ */
+  async parseCsv(
       template: string, csvFile: Blob,
-  ) : Promise<TimeDataObject> {
+  ) : Promise<ParsedCsv> {
     const fileReader = new FileReader();
     fileReader.readAsText(csvFile);
+
     return new Promise((res, rej) => {
       fileReader.addEventListener('loadend', () => {
-        const csv = require('csvtojson');
-        csv()
-            .fromString(fileReader.result)
-            .then((csvRows: CsvRow[]) => {
-              res(this.csvToDataPoint(template, csvRows));
-            });
+        const lines = (fileReader.result as string).split('\n');
+        const csvRows = ParseTmcf.convertCsvToJson(lines);
+
+        res(this.parseCsvRows(template, csvRows));
       });
       fileReader.addEventListener('error', rej);
     });
   }
 
   /**
-   * Converts CSV file to an array of JS Object where each JS Object in the
-   * array represents one row of the csv. The keys of the object are the column
-   * header names and the values of the object are the csv entries in that
-   * column of the given row the object represents.
-   * @param {string} template The string representation of a tmcf file.
-   * @param {FileObject} csvFile The csv file from html file-input element.
-   * @return {string} The mcf string for the csv file.
-   */
-  async readCsvFile(template: string, csvFile: Blob) : Promise<string> {
-    const fileReader = new FileReader();
-    fileReader.readAsText(csvFile);
-    return new Promise((res, rej) => {
-      fileReader.addEventListener('loadend', () => {
-        const csv = require('csvtojson');
-        csv()
-            .fromString(fileReader.result)
-            .then((csvRows: CsvRow[]) => {
-              res(this.csvToMcf(template, csvRows));
-            });
-      });
-      fileReader.addEventListener('error', rej);
-    });
-  }
-
-  /**
-   * Reads a tmcf file and returns the contents as a string
-   * @param {FileObject} tmcfFile The tmcf file from html file-input element.
-   * @return {string} The string representation of the tmcf file.
-   */
+ * Reads a tmcf file and returns the contents as a string
+ * @param {FileObject} tmcfFile The tmcf file from html file-input element.
+ * @return {string} The string representation of the tmcf file.
+ */
   static async readTmcfFile(
       tmcfFile: Blob,
   ): Promise<string | ArrayBuffer | null> {
@@ -385,32 +323,76 @@ class ParseTmcf {
   }
 
   /**
-   * Converts a TMCF file and CSV file to an MCF string.
-   * @param {FileObject} tmcfFile The tmcf file from html file-input element.
-   * @param {FileObject} csvFile THe csv file from html file-input element.
-   * @return {string} The translated mcf as a string.
-   */
-  static async generateMcf(tmcfFile: Blob, csvFile: Blob) : Promise<string> {
-    return ParseTmcf.readTmcfFile(tmcfFile).then(
-        (template: string | ArrayBuffer | null) => {
-          const tmcfParser = new ParseTmcf();
-          return tmcfParser.readCsvFile(template as string, csvFile);
-        },
-    );
+ * Splits a tmcf file string into StatVarObservation entity strings and
+ * other entity strings
+ * @param {string} template the string representation of a tmcf file
+ * @return {ParsedTemplate} an object that sorts each entity string into
+ * either a statVarObs (data) entity or other entity
+ */
+  static getEntityTemplates(template: string): ParsedTemplate {
+    const templates: ParsedTemplate = {
+      dataEntities: [],
+      otherEntities: [],
+    };
+
+    const lines = template.split(/\r?\n/);
+
+    let current = '';
+    let currentIsStatVarObs = false;
+
+    for (let line of lines) {
+      line = line.trim();
+
+      // If a new entity block has started, add current string
+      // and reset all values
+      if (line.startsWith('Node')) {
+        // Only add if the string is not empty
+        if (current.trim() !== '') {
+          if (currentIsStatVarObs) {
+            templates.dataEntities.push(current.trim());
+          } else {
+            templates.otherEntities.push(current.trim());
+          }
+        }
+
+        // Reset values
+        current = '';
+        currentIsStatVarObs = false;
+      } else if (line.startsWith('typeOf')) {
+        const index = line.indexOf(':');
+        const type = line.slice(index + 1).trim();
+
+        currentIsStatVarObs = type === 'dcs:StatVarObservation';
+      }
+
+      current += line + '\n';
+    }
+
+    // Add current entity
+    if (current.trim() !== '') {
+      if (currentIsStatVarObs) {
+        templates.dataEntities.push(current.trim());
+      } else {
+        templates.otherEntities.push(current.trim());
+      }
+    }
+
+    return templates;
   }
 
   /**
-   * Converts a TMCF file and CSV file to a list of data points
-   * @param {FileObject} tmcfFile The tmcf file from html file-input element.
-   * @param {FileObject} csvFile THe csv file from html file-input element.
-   * @return {TimeDataObject} A list of data points
-   */
-  static async generateDataPoints(tmcfFile: Blob, csvFile: Blob)
-  : Promise<TimeDataObject> {
+ * Converts a TMCF file and CSV file to a set of datapoints and mcf strings
+ * @param {FileObject} tmcfFile The tmcf file from html file-input element.
+ * @param {FileObject} csvFile THe csv file from html file-input element.
+ * @return {ParsedCsv} An object containing the parsed datapoints and mcf
+ * strings
+ */
+  static async parseTmcfAndCsv(tmcfFile: Blob, csvFile: Blob)
+  : Promise<ParsedCsv> {
     return ParseTmcf.readTmcfFile(tmcfFile).then(
         (template: string | ArrayBuffer | null) => {
           const tmcfParser = new ParseTmcf();
-          return tmcfParser.getDataPointsFromFile(template as string, csvFile);
+          return tmcfParser.parseCsv(template as string, csvFile);
         },
     );
   }

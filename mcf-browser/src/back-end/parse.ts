@@ -14,48 +14,48 @@
  * limitations under the License.
  */
 
-import {Series, SeriesObject, TimeDataObject} from './time-series';
+import {Series, SeriesObject, TimeDataObject, ValueObject} from './time-series';
 import {ParseMcf} from './parse-mcf';
 import {ParseTmcf} from './parse-tmcf';
 import {ParsingError, ERROR_MESSAGES} from './utils';
 
- type ParseFileResponse = {
-   /** A list of errors that occurred while parsing
-    * the files
-    */
-   errMsgs: ParsingError[];
+type ParseFileResponse = {
+  /** A list of errors that occurred while parsing
+   * the files
+   */
+  errMsgs: ParsingError[];
 
-   /** A list of the ids of the subject nodes */
-   localNodes: string[];
+  /** A list of the ids of the subject nodes */
+  localNodes: string[];
 
-   /** A list of the generated mcf string for
-    * each CSV row
-    */
-   datapoints: TimeDataObject;
- };
+  /** A list of the generated mcf string for
+   * each CSV row
+   */
+  datapoints: TimeDataObject;
+};
 
- type TimeDataOutput = {
-   /** A list of time series data */
-   timeData: Series[];
+type TimeDataOutput = {
+  /** A list of time series data */
+  timeData: Series[];
 
-   /** Error messages that occurred while parsing */
-   errMsgs: ParsingError[];
- }
+  /** Error messages that occurred while parsing */
+  errMsgs: ParsingError[];
+}
 
- type ParseSeriesOutput = {
+type ParseSeriesOutput = {
   /** A parsed series object */
   series: Series | null;
 
   /** Error messages that occurred while parsing */
   errMsgs: ParsingError[];
- }
+}
 
 /**
-  * Combines two TimeDataObjects into one
-  * @param {TimeDataObject} datapoints the current set of all data points
-  * @param {TimeDataObject} newData the new set of data points
-  * @return {TimeDataObject} a merged set of all data points
-  */
+ * Combines two TimeDataObjects into one
+ * @param {TimeDataObject} datapoints the current set of all data points
+ * @param {TimeDataObject} newData the new set of data points
+ * @return {TimeDataObject} a merged set of all data points
+ */
 function mergeDataPoints(
     datapoints: TimeDataObject,
     newData: TimeDataObject,
@@ -73,10 +73,10 @@ function mergeDataPoints(
 }
 
 /** Parse files and get the local nodes
-  * @param {Array<Blob>} fileList the list of blobs to be parsed
-  * @return {ParseFileResponse} an object containing all of the ids of the
-  *    subject nodes and the error messages
-  */
+ * @param {Array<Blob>} fileList the list of blobs to be parsed
+ * @return {ParseFileResponse} an object containing all of the ids of the
+ *    subject nodes and the error messages
+ */
 async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
   const finalReturn: ParseFileResponse = {
     errMsgs: [],
@@ -128,30 +128,32 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
     } else if (fileExt === 'csv') {
       if (tmcfFile) {
         const tmcfFileName = (tmcfFile as File).name;
-        const tmcfOut = await ParseTmcf.generateMcf(tmcfFile, file).then(
-            (mcf) => {
-              const mcfParser = new ParseMcf(
-                  tmcfFileName + '&' + fileName,
-              );
-              return mcfParser.parseMcfStr(mcf as string);
-            },
-        );
 
-        const datapoints = await ParseTmcf.generateDataPoints(tmcfFile, file);
+        const parsedCsv = await ParseTmcf.parseTmcfAndCsv(tmcfFile, file);
+
+        const datapoints = parsedCsv.datapoints;
         finalReturn['datapoints'] = mergeDataPoints(
             finalReturn['datapoints'],
             datapoints,
         );
 
-        if (tmcfOut['errMsgs'].length !== 0) {
-          finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
-            file: tmcfFileName,
-            errs: tmcfOut['errMsgs'],
-          });
-        }
-        finalReturn['localNodes'] = finalReturn['localNodes'].concat(
-            tmcfOut['localNodes'],
+        const mcfs = parsedCsv.otherMcfs;
+        const mcfParser = new ParseMcf(
+            tmcfFileName + '&' + fileName,
         );
+        for (const mcf of mcfs) {
+          const parsedMcf = mcfParser.parseMcfStr(mcf as string);
+
+          if (parsedMcf['errMsgs'].length !== 0) {
+            finalReturn['errMsgs'] = finalReturn['errMsgs'].concat({
+              file: tmcfFileName,
+              errs: parsedMcf['errMsgs'],
+            });
+          }
+          finalReturn['localNodes'] = finalReturn['localNodes'].concat(
+              parsedMcf['localNodes'],
+          );
+        }
       }
     }
   }
@@ -159,10 +161,10 @@ async function getNodes(fileList: Blob[]) : Promise<ParseFileResponse> {
 }
 
 /** Group nodes and find all time series
-  * @param {TimeDataObject} datapoints the time series data
-  * @return {TimeDataOutput} an object containing an array of
-  * time series in the data and any error messages
-  */
+ * @param {TimeDataObject} datapoints the time series data
+ * @return {TimeDataOutput} an object containing an array of
+ * time series in the data and any error messages
+ */
 function getTimeData(datapoints: TimeDataObject) : TimeDataOutput {
   // Turn from object to a list of series
   const output: TimeDataOutput = {
@@ -190,12 +192,12 @@ function getTimeData(datapoints: TimeDataObject) : TimeDataOutput {
 }
 
 /**
-  * Takes in the facet string generated when parsing the file
-  * and return an object of type Series
-  * @param {string} facet the facet defining the series
-  * @param {SeriesObject} values the values for the series
-  * @return {ParseSeriesOutput} a series object or an error message
-  */
+ * Takes in the facet string generated when parsing the file
+ * and return an object of type Series
+ * @param {string} facet the facet defining the series
+ * @param {SeriesObject} values the values for the series
+ * @return {ParseSeriesOutput} a series object or an error message
+ */
 function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
   const {
     variableMeasured,
@@ -231,9 +233,10 @@ function parseSeries(facet: string, values: SeriesObject) : ParseSeriesOutput {
 
   const data = [];
   for (const date of Object.keys(values)) {
+    const datapoint = values[date] as ValueObject;
     data.push({
       x: date,
-      y: values[date] as number,
+      y: datapoint.value as number,
     });
   }
 

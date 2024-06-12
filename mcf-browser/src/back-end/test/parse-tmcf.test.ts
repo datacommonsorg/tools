@@ -43,32 +43,6 @@ test('testing fillPropertyValues', () => {
   expect(filledPropVals2).toBe(expected2);
 });
 
-test('testing fillTemplateFromRow', () => {
-  const parser = new ParseTmcf();
-  parser.csvIndex = 8;
-  const filledTemp =
-      parser.fillTemplateFromRow(TestStr.testTMCF2, TestStr.testCSV2[0]);
-  expect(filledTemp).toBe(TestStr.expectedFilledTemp0);
-
-  // testing multiple propValues that are comma separated
-  const template =
-      'Node: dcid:test1\npropLabel1: C:TestSet->Col1, C:TestSet->Col2';
-  const row = {
-    'Col1': 'dcid:propVal1',
-    'Col2': 'dcid:propVal2',
-  };
-  const expectedMCF =
-      'Node: dcid:test1\npropLabel1: dcid:propVal1, dcid:propVal2';
-  const filledTemp2 = parser.fillTemplateFromRow(template, row);
-  expect(filledTemp2).toBe(expectedMCF);
-});
-
-test('testing csvToMCF', () => {
-  const parser = new ParseTmcf();
-  const mcf = parser.csvToMcf(TestStr.testTMCF1, TestStr.testCSV1);
-  expect(mcf).toBe(TestStr.expectedMCF1);
-});
-
 test('testing getFacetAndValueFromRow', () => {
   const parser = new ParseTmcf();
   parser.csvIndex = 8;
@@ -89,8 +63,52 @@ test('testing getFacetAndValueFromRow', () => {
   expect(filledTemp2).toStrictEqual(TestStr.expectedFacetandValue1);
 });
 
-test('testing csvToDataPoint', () => {
+test('testing parseCsv', () => {
   const parser = new ParseTmcf();
-  const mcf = parser.csvToDataPoint(TestStr.testTMCF1, TestStr.testCSV1);
-  expect(mcf).toStrictEqual(TestStr.expectedDatapoints);
+  const parsedCsv = parser.parseCsvRows(TestStr.testTMCF1, TestStr.testCSV1);
+  const expectedParsedCsv = {
+    datapoints: TestStr.expectedDatapoints,
+    otherMcfs: TestStr.otherEntities,
+  };
+  expect(parsedCsv).toStrictEqual(expectedParsedCsv);
+});
+
+test('testing getEntityTemplates', () => {
+  const parsedTemplate = ParseTmcf.getEntityTemplates(TestStr.testTMCF1);
+  expect(parsedTemplate).toStrictEqual(TestStr.expectedTemplate1);
+});
+
+test('testing convertCsvToJson', () => {
+  const lines = [
+    'a,b,c,d,e,f,g',
+    '1,2,3,4,5,6,7',
+    '9,8,7,6,5,4,3',
+    '100,5,2,7,aaaaaa,0,-55',
+  ];
+  const json = ParseTmcf.convertCsvToJson(lines);
+
+  const expectedJson = [
+    {a: '1', b: '2', c: '3', d: '4', e: '5', f: '6', g: '7'},
+    {a: '9', b: '8', c: '7', d: '6', e: '5', f: '4', g: '3'},
+    {a: '100', b: '5', c: '2', d: '7', e: 'aaaaaa', f: '0', g: '-55'},
+  ];
+
+  expect(json).toStrictEqual(expectedJson);
+
+  // test with empty values
+  const lines2 = [
+    'a,b,c,d,e,f,g',
+    ',2,3,4,5,6,7',
+    '9,8,7,6,5,4,',
+    '100,5,2,7,aaaaaa,,-55',
+  ];
+  const json2 = ParseTmcf.convertCsvToJson(lines2);
+
+  const expectedJson2 = [
+    {a: '', b: '2', c: '3', d: '4', e: '5', f: '6', g: '7'},
+    {a: '9', b: '8', c: '7', d: '6', e: '5', f: '4', g: ''},
+    {a: '100', b: '5', c: '2', d: '7', e: 'aaaaaa', f: '', g: '-55'},
+  ];
+
+  expect(json2).toStrictEqual(expectedJson2);
 });
