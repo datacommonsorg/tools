@@ -17,10 +17,10 @@
 import logging
 import time
 
-from data_llm import base
-from data_llm import dc
-from data_llm import prompts
-from data_llm import validate
+from data_gemma import base
+from data_gemma import dc
+from data_gemma import prompts
+from data_gemma import validate
 
 _MAX_QUESTIONS = 25
 

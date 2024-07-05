@@ -14,7 +14,7 @@
 
 """Basic Flow."""
 
-from data_llm import base
+from data_gemma import base
 
 
 class BaselineFlow(base.Flow):

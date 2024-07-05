@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from data_llm import base
-from data_llm import baseline
-from data_llm import dc
-from data_llm import llms
-from data_llm import rag
-from data_llm import rig
+from data_gemma import base
+from data_gemma import baseline
+from data_gemma import dc
+from data_gemma import llms
+from data_gemma import rag
+from data_gemma import rig
 
 # LLM related classes.
 LLM = base.LLM

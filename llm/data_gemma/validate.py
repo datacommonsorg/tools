@@ -16,8 +16,8 @@
 
 import logging
 
-from data_llm import base
-from data_llm import prompts
+from data_gemma import base
+from data_gemma import prompts
 
 
 def run_validation(

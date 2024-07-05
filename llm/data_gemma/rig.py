@@ -19,10 +19,10 @@ import logging
 import re
 import time
 
-from data_llm import base
-from data_llm import dc
-from data_llm import prompts
-from data_llm import validate
+from data_gemma import base
+from data_gemma import dc
+from data_gemma import prompts
+from data_gemma import validate
 
 
 _DC_PATTERN = r'\[__DC__\("([^"]+)"\) --> "([^"]*)"\]?'
