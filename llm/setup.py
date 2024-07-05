@@ -17,7 +17,7 @@ from setuptools import setup
 
 
 # Package metadata.
-NAME = 'data_gemma'
+NAME = 'datagemma'
 DESCRIPTION = 'A library to integrate with Data Gemma models and Data Commons.'
 URL = 'https://github.com/datacommonsorg/api-python'
 EMAIL = 'support@datacommons.org'
