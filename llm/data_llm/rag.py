@@ -30,50 +30,48 @@ class RAGFlow(base.Flow):
 
   def __init__(
       self,
-      v_llm_ques: base.LLM,
-      v_llm_ans: base.LLM,
-      ft_llm: base.LLM,
+      llm_ques: base.LLM,
+      llm_ans: base.LLM,
       datacommons: dc.DataCommons,
-      options: base.Options,
+      verbose: bool = True,
+      in_context: bool = False,
+      validate_dc_responses: bool = False,
       metrics_list: str = '',
   ):
-    self.v_llm_ques = v_llm_ques
-    self.v_llm_ans = v_llm_ans
-    self.ft_llm = ft_llm
+    self.llm_ques = llm_ques
+    self.llm_ans = llm_ans
     self.dc = datacommons
-    self.options = options
+    self.options = base.Options(verbose=verbose)
+    self.in_context = in_context
+    self.validate_dc_responses = validate_dc_responses
     self.metrics_list = metrics_list
 
   def query(
       self,
       query: str,
-      in_context: bool = False,
-      prompt1: str = '',
-      prompt2: str = '',
   ) -> base.FlowResponse:
-    assert in_context or self.ft_llm
 
     #
     # First call FT or V LLM model to get questions for Retrieval
     #
-    if in_context:
+    if self.in_context:
       if self.metrics_list:
-        prompt = prompt1 or prompts.RAG_IN_CONTEXT_PROMPT_WITH_VARS
+        prompt = prompts.RAG_IN_CONTEXT_PROMPT_WITH_VARS
         self.options.vlog(
             '... [RAG] Calling UNTUNED model for DC '
             'questions with all DC vars in prompt'
         )
-        ques_resp = self.v_llm_ques.query(
+        ques_resp = self.llm_ques.query(
             prompt.format(metrics_list=self.metrics_list, sentence=query)
         )
       else:
-        prompt = prompt1 or prompts.RAG_IN_CONTEXT_PROMPT
+        prompt = prompts.RAG_IN_CONTEXT_PROMPT
         self.options.vlog('... [RAG] Calling UNTUNED model for DC questions')
-        ques_resp = self.v_llm_ques.query(prompt.format(sentence=query))
+        ques_resp = self.llm_ques.query(prompt.format(sentence=query))
     else:
-      prompt = prompt1 or prompts.RAG_FINE_TUNED_PROMPT
+      prompt = prompts.RAG_FINE_TUNED_PROMPT
       self.options.vlog('... [RAG] Calling FINETUNED model for DC questions')
-      ques_resp = self.ft_llm.query(prompt.format(sentence=query))
+      ques_resp = self.llm_ques.query(prompt.format(sentence=query))
     llm_calls = [ques_resp]
     if not ques_resp.response:
       return base.FlowResponse(llm_calls=llm_calls)
@@ -91,9 +89,9 @@ class RAGFlow(base.Flow):
       pass
     dc_duration = time.time() - start
 
-    if self.options.validate_dc_responses:
+    if self.validate_dc_responses:
       q2resp = validate.run_validation(
-          q2resp, self.v_llm_ans, self.options, llm_calls
+          q2resp, self.llm_ans, self.options, llm_calls
       )
 
     table_parts: list[str] = []
@@ -107,7 +105,7 @@ class RAGFlow(base.Flow):
       resp.id = tidx
       dc_calls.append(resp)
     if table_parts:
-      prompt = prompt2 or prompts.RAG_FINAL_ANSWER_PROMPT
+      prompt = prompts.RAG_FINAL_ANSWER_PROMPT
       tables_str = '\n'.join(table_parts)
       final_prompt = prompt.format(sentence=query, table_str=tables_str)
     else:
@@ -116,7 +114,7 @@ class RAGFlow(base.Flow):
       tables_str = ''
 
     self.options.vlog('... [RAG] Calling UNTUNED model for final response')
-    ans_resp = self.v_llm_ans.query(final_prompt)
+    ans_resp = self.llm_ans.query(final_prompt)
     llm_calls.append(ans_resp)
     if not ans_resp.response:
       return base.FlowResponse(

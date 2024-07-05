@@ -15,7 +15,6 @@
 """Base Types."""
 
 import dataclasses
-import time
 from typing import Any, Protocol
 
 
@@ -24,21 +23,13 @@ DC = '__DC__'
 
 @dataclasses.dataclass(frozen=True)
 class Options:
-  """Options for the Flow."""
+  """Common options for all APIs."""
+  # Print messages to stdout.
   verbose: bool = True
-  start_time: float = time.time()
-  validate_dc_responses: bool = False
 
   def vlog(self, msg: str) -> None:
     if self.verbose:
       print(msg)
-
-  def timeit(self, msg: str = '') -> None:
-    e = time.time()
-    d = e - self.start_time
-    self.start_time = e
-    if msg:
-      print(f'{msg}: took {d:.2f}s')
 
 
 @dataclasses.dataclass(frozen=True)
@@ -183,6 +174,7 @@ class LLM(Protocol):
 
 
 class Flow(Protocol):
+  """A Flow integrates LLMs with DC in a certain way."""
 
   # `prompt1`:
   #  - For RAG this is question generation prompt
@@ -190,11 +182,5 @@ class Flow(Protocol):
   # `prompt2`:
   #  - For RAG this is final-answer generation prompt
   #  - For RIG this is unused
-  def query(
-      self,
-      query: str,
-      in_context: bool = False,
-      prompt1: str = '',
-      prompt2: str = '',
-  ) -> FlowResponse:
+  def query(self, query: str) -> FlowResponse:
     ...

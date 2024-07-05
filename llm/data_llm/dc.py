@@ -39,17 +39,19 @@ class DataCommons:
 
   def __init__(
       self,
-      session: requests.Session,
       api_key: str,
-      options: base.Options,
-      env: str = 'bard',
+      verbose: bool = True,
       num_threads: int = 10,
+      env: str = 'dev',
+      session: requests.Session = None,
   ):
-    self.session = session
-    self.api_key = api_key
+    self.options = base.Options(verbose=verbose)
     self.num_threads = num_threads
     self.env = env
-    self.options = options
+    self.api_key = api_key
+    if not session:
+      session = requests.Session()
+    self.session = session
 
   def point(self, query: str) -> base.DCCall:
     """Calls Data Commons API."""

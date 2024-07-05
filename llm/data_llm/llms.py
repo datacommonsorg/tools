@@ -54,14 +54,16 @@ class GoogleAIStudio(base.LLM):
   def __init__(
       self,
       model: str,
-      session: requests.Session,
-      keys: list[str],
-      options: base.Options,
+      api_keys: list[str],
+      verbose: bool = True,
+      session: requests.Session = None,
   ):
-    self.keys = keys
+    self.keys = api_keys
+    if not session:
+      session = requests.Session()
     self.session: requests.Session = session
     self.next_key_idx = 0
-    self.options = options
+    self.options = base.Options(verbose=verbose)
     self.model = model
 
   def query(self, prompt: str) -> base.LLMCall:

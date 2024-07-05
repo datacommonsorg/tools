@@ -36,32 +36,30 @@ class RIGFlow(base.Flow):
 
   def __init__(
       self,
-      v_llm: base.LLM,
-      ft_llm: base.LLM,
+      llm: base.LLM,
       datacommons: dc.DataCommons,
-      options: base.Options,
+      verbose: bool = True,
+      in_context: bool = False,
+      validate_dc_responses: bool = False,
   ):
-    self.v_llm = v_llm
-    self.ft_llm = ft_llm
+    self.llm = llm
     self.dc = datacommons
-    self.options = options
+    self.options = base.Options(verbose=verbose)
+    self.in_context = in_context
+    self.validate_dc_responses = validate_dc_responses
 
   def query(
       self,
       query: str,
-      in_context: bool = False,
-      prompt1: str = '',
-      prompt2: str = '',
   ) -> base.FlowResponse:
-    assert in_context or self.ft_llm
 
-    if in_context:
+    if self.in_context:
       self.options.vlog('... [RIG] Calling UNTUNED Model')
-      prompt = prompt1 or prompts.RIG_IN_CONTEXT_PROMPT
-      llm_resp = self.v_llm.query(prompt.format(sentence=query))
+      prompt = prompts.RIG_IN_CONTEXT_PROMPT
+      llm_resp = self.llm.query(prompt.format(sentence=query))
     else:
       self.options.vlog('... [RIG] Calling FINETUNED Model')
-      llm_resp = self.ft_llm.query(query)
+      llm_resp = self.llm.query(query)
     if not llm_resp.response:
       logging.error('FAILED: %s', query)
       return base.FlowResponse(llm_calls=[llm_resp])
@@ -73,9 +71,9 @@ class RIGFlow(base.Flow):
 
     # Sanity check DC call and response using LLM, and keep only the "good"
     # ones.
-    if self.options.validate_dc_responses:
+    if self.validate_dc_responses:
       q2resp = validate.run_validation(
-          q2resp, self.v_llm, self.options, llm_calls
+          q2resp, self.llm, self.options, llm_calls
       )
 
     self.options.vlog('... [RIG] Calling DC Evaluate')

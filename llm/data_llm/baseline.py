@@ -22,11 +22,11 @@ class BaselineFlow(base.Flow):
 
   def __init__(
       self,
-      ut_llm: base.LLM,
-      options: base.Options,
+      llm: base.LLM,
+      verbose: bool = True,
   ):
-    self.ut_llm = ut_llm
-    self.options = options
+    self.llm = llm
+    self.options = base.Options(verbose=verbose)
 
   def query(
       self,
@@ -36,7 +36,7 @@ class BaselineFlow(base.Flow):
       prompt2: str = '',
   ) -> base.FlowResponse:
     self.options.vlog('... [DEFAULT] Calling BASE model')
-    resp = self.ut_llm.query(query)
+    resp = self.llm.query(query)
     return base.FlowResponse(
         main_text=resp.response,
         llm_calls=[resp],

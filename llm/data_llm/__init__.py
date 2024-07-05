@@ -19,16 +19,18 @@ from data_llm import llms
 from data_llm import rag
 from data_llm import rig
 
+# LLM related classes.
+LLM = base.LLM
+LLMCall = base.LLMCall
+GoogleAIStudio = llms.GoogleAIStudio
 
-# Expose the core classes.
+# Data Commons related classes.
+DataCommons = dc.DataCommons
 DCCall = base.DCCall
+
+# Flow related classes.
 Flow = base.Flow
 FlowResponse = base.FlowResponse
-LLMCall = base.LLMCall
-Options = base.Options
-LLM = base.LLM
-DataCommons = dc.DataCommons
 BaselineFlow = baseline.BaselineFlow
 RAGFlow = rag.RAGFlow
 RIGFlow = rig.RIGFlow
-GoogleAIStudio = llms.GoogleAIStudio
