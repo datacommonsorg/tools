@@ -43,7 +43,7 @@ class DataCommons:
       verbose: bool = True,
       num_threads: int = 10,
       env: str = 'dev',
-      session: requests.Session = None,
+      session: requests.Session | None = None,
   ):
     self.options = base.Options(verbose=verbose)
     self.num_threads = num_threads

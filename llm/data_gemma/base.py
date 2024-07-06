@@ -49,7 +49,7 @@ class LLMCall:
 
 @dataclasses.dataclass
 class DCCall:
-  """A single response from Data Commons."""
+  """A single request and response from Data Commons."""
 
   id: int = 0
   query: str = ''
