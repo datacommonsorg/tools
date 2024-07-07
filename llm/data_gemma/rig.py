@@ -20,7 +20,7 @@ import re
 import time
 
 from data_gemma import base
-from data_gemma import dc
+from data_gemma import datacommons
 from data_gemma import prompts
 from data_gemma import validate
 
@@ -37,13 +37,13 @@ class RIGFlow(base.Flow):
   def __init__(
       self,
       llm: base.LLM,
-      datacommons: dc.DataCommons,
+      data_fetcher: datacommons.DataCommons,
       verbose: bool = True,
       in_context: bool = False,
       validate_dc_responses: bool = False,
   ):
     self.llm = llm
-    self.dc = datacommons
+    self.data_fetcher = data_fetcher
     self.options = base.Options(verbose=verbose)
     self.in_context = in_context
     self.validate_dc_responses = validate_dc_responses
@@ -89,7 +89,7 @@ class RIGFlow(base.Flow):
 
   def _call_dc(
       self, llm_text: str
-  ) -> tuple[dict[str, list[str]], dict[str, base.DCCall], float]:
+  ) -> tuple[dict[str, list[str]], dict[str, base.DataCommonsCall], float]:
     """Calls DC."""
 
     start = time.time()
@@ -99,7 +99,9 @@ class RIGFlow(base.Flow):
       q2llmval.setdefault(match[0], []).append(match[1])
 
     try:
-      q2resp = self.dc.calln(list(q2llmval.keys()), self.dc.point)
+      q2resp = self.data_fetcher.calln(
+          list(q2llmval.keys()), self.data_fetcher.point
+      )
     except Exception as e:
       logging.warning(e)
       q2resp = {}
@@ -111,11 +113,11 @@ class RIGFlow(base.Flow):
       self,
       text: str,
       q2llmval: dict[str, list[str]],
-      q2resp: dict[str, base.DCCall],
-  ) -> tuple[str, list[str], list[base.DCCall]]:
+      q2resp: dict[str, base.DataCommonsCall],
+  ) -> tuple[str, list[str], list[base.DataCommonsCall]]:
     """Evaluates a text contained DC Calls."""
 
-    def _rtag(txt: str, r: base.DCCall) -> str:
+    def _rtag(txt: str, r: base.DataCommonsCall) -> str:
       return f'[{base.DC}#{r.id}({txt})]'
 
     dc_calls = []

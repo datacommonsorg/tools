@@ -21,11 +21,11 @@ from data_gemma import prompts
 
 
 def run_validation(
-    q2resp: dict[str, base.DCCall],
+    q2resp: dict[str, base.DataCommonsCall],
     llm: base.LLM,
     options: base.Options,
     llm_calls: list[base.LLMCall],
-) -> dict[str, base.DCCall]:
+) -> dict[str, base.DataCommonsCall]:
   """Runs DC QA validation."""
   queries, input_text = _dc_qa_validation_input(
       {q: r.title for q, r in q2resp.items()}
@@ -53,7 +53,8 @@ def run_validation(
 
   queries = set(queries)
   q2resp = {
-      q: r if q in queries else base.DCCall(query=q) for q, r in q2resp.items()
+      q: r if q in queries else base.DataCommonsCall(query=q)
+      for q, r in q2resp.items()
   }
   return q2resp
 

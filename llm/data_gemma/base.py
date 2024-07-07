@@ -48,7 +48,7 @@ class LLMCall:
 
 
 @dataclasses.dataclass
-class DCCall:
+class DataCommonsCall:
   """A single request and response from Data Commons."""
 
   id: int = 0
@@ -121,7 +121,7 @@ class FlowResponse:
   tables_str: str = ''
 
   llm_calls: list[LLMCall] = dataclasses.field(default_factory=list)
-  dc_calls: list[DCCall] = dataclasses.field(default_factory=list)
+  dc_calls: list[DataCommonsCall] = dataclasses.field(default_factory=list)
   dc_duration_secs: float = 0.0
 
   def duration_secs(self) -> float:
@@ -176,11 +176,5 @@ class LLM(Protocol):
 class Flow(Protocol):
   """A Flow integrates LLMs with DC in a certain way."""
 
-  # `prompt1`:
-  #  - For RAG this is question generation prompt
-  #  - For RIG this is used only if `in_context=True`
-  # `prompt2`:
-  #  - For RAG this is final-answer generation prompt
-  #  - For RIG this is unused
   def query(self, query: str) -> FlowResponse:
     ...

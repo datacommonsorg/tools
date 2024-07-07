@@ -53,7 +53,7 @@ class DataCommons:
       session = requests.Session()
     self.session = session
 
-  def point(self, query: str) -> base.DCCall:
+  def point(self, query: str) -> base.DataCommonsCall:
     """Calls Data Commons API."""
 
     self.options.vlog(f'... calling DC with "{query}"')
@@ -65,12 +65,12 @@ class DataCommons:
         chart = c
         break
     if not chart:
-      return base.DCCall(query=query)
+      return base.DataCommonsCall(query=query)
 
     v = str(chart.get('highlight', {}).get('value', ''))
     v = utils.round_float(v)
     if not v:
-      return base.DCCall(query=query)
+      return base.DataCommonsCall(query=query)
 
     u = chart.get('unit', '')
     d = chart.get('highlight', {}).get('date')
@@ -81,7 +81,7 @@ class DataCommons:
     score = svm.get('CosineScore', [-1])[0]
     var = svm.get('SV', [''])[0]
     url = chart.get('dcUrl', '')
-    return base.DCCall(
+    return base.DataCommonsCall(
         query=query,
         val=v,
         unit=u,
@@ -93,7 +93,7 @@ class DataCommons:
         score=score,
     )
 
-  def table(self, query: str) -> base.DCCall:
+  def table(self, query: str) -> base.DataCommonsCall:
     """Calls Data Commons API."""
 
     self.options.vlog(f'... calling DC for table with "{query}"')
@@ -101,13 +101,13 @@ class DataCommons:
     # Get the first chart.
     charts = response.get('charts')
     if not charts:
-      return base.DCCall(query=query)
+      return base.DataCommonsCall(query=query)
     chart = charts[0]
 
     data_csv = chart.get('data_csv', '')
     rows = list(csv.reader(io.StringIO(data_csv)))
     if not data_csv or not rows:
-      return base.DCCall(query=query)
+      return base.DataCommonsCall(query=query)
 
     u = chart.get('unit', '')
     s = _src(chart)
@@ -126,7 +126,7 @@ class DataCommons:
     score = svm.get('CosineScore', [-1])[0]
     var = svm.get('SV', [''])[0]
     url = chart.get('dcUrl', '')
-    return base.DCCall(
+    return base.DataCommonsCall(
         query=query,
         unit=u,
         title=t,
@@ -138,8 +138,8 @@ class DataCommons:
     )
 
   def calln(
-      self, queries: list[str], func: Callable[[str], base.DCCall]
-  ) -> dict[str, base.DCCall]:
+      self, queries: list[str], func: Callable[[str], base.DataCommonsCall]
+  ) -> dict[str, base.DataCommonsCall]:
     """Calls Data Commons API in parallel if needed."""
 
     if self.num_threads == 1:
@@ -150,7 +150,7 @@ class DataCommons:
         futures = [executor.submit(func, query) for query in queries]
         results = [f.result() for f in futures]
 
-    q2resp: dict[str, base.DCCall] = {}
+    q2resp: dict[str, base.DataCommonsCall] = {}
     for i, (q, r) in enumerate(zip(queries, results)):
       r.id = i + 1
       q2resp[q] = r

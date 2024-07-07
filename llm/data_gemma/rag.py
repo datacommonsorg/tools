@@ -18,7 +18,7 @@ import logging
 import time
 
 from data_gemma import base
-from data_gemma import dc
+from data_gemma import datacommons
 from data_gemma import prompts
 from data_gemma import validate
 
@@ -32,7 +32,7 @@ class RAGFlow(base.Flow):
       self,
       llm_ques: base.LLM,
       llm_ans: base.LLM,
-      datacommons: dc.DataCommons,
+      data_fetcher: datacommons.DataCommons,
       verbose: bool = True,
       in_context: bool = False,
       validate_dc_responses: bool = False,
@@ -40,7 +40,7 @@ class RAGFlow(base.Flow):
   ):
     self.llm_ques = llm_ques
     self.llm_ans = llm_ans
-    self.dc = datacommons
+    self.data_fetcher = data_fetcher
     self.options = base.Options(verbose=verbose)
     self.in_context = in_context
     self.validate_dc_responses = validate_dc_responses
@@ -82,7 +82,7 @@ class RAGFlow(base.Flow):
     self.options.vlog('... [RAG] Making DC Calls')
     start = time.time()
     try:
-      q2resp = self.dc.calln(questions, self.dc.table)
+      q2resp = self.data_fetcher.calln(questions, self.data_fetcher.table)
     except Exception as e:
       logging.warning(e)
       q2resp = {}

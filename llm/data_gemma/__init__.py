@@ -14,7 +14,7 @@
 
 from data_gemma import base
 from data_gemma import baseline
-from data_gemma import dc
+from data_gemma import datacommons
 from data_gemma import google_api
 from data_gemma import rag
 from data_gemma import rig
@@ -25,8 +25,8 @@ LLMCall = base.LLMCall
 GoogleAIStudio = google_api.GoogleAIStudio
 
 # Data Commons related classes.
-DataCommons = dc.DataCommons
-DCCall = base.DCCall
+DataCommons = datacommons.DataCommons
+DataCommonsCall = base.DataCommonsCall
 
 # Flow related classes.
 Flow = base.Flow
