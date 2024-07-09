@@ -19,6 +19,11 @@ import os
 import textwrap
 
 
+# Use a larger field size limit since we can have longer text in training
+# data CSVs.
+_LARGE_FIELD_SIZE = 1048576
+
+
 def get_header(in_file):
   with open(in_file, 'r') as f:
     csvr = csv.reader(f)
@@ -60,7 +65,7 @@ def load_csv(
 ) -> dict[str, dict[str, str]]:
   """Loads an ID keyed csv file."""
 
-  csv.field_size_limit(1048576)
+  csv.field_size_limit(_LARGE_FIELD_SIZE)
   results = {}
   if os.path.exists(csv_file):
     with open(csv_file, 'r') as f:

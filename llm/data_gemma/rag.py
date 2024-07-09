@@ -30,16 +30,16 @@ class RAGFlow(base.Flow):
 
   def __init__(
       self,
-      llm_ques: base.LLM,
-      llm_ans: base.LLM,
+      llm_question: base.LLM,
+      llm_answer: base.LLM,
       data_fetcher: datacommons.DataCommons,
       verbose: bool = True,
       in_context: bool = False,
       validate_dc_responses: bool = False,
       metrics_list: str = '',
   ):
-    self.llm_ques = llm_ques
-    self.llm_ans = llm_ans
+    self.llm_question = llm_question
+    self.llm_answer = llm_answer
     self.data_fetcher = data_fetcher
     self.options = base.Options(verbose=verbose)
     self.in_context = in_context
@@ -61,17 +61,17 @@ class RAGFlow(base.Flow):
             '... [RAG] Calling UNTUNED model for DC '
             'questions with all DC vars in prompt'
         )
-        ques_resp = self.llm_ques.query(
+        ques_resp = self.llm_question.query(
             prompt.format(metrics_list=self.metrics_list, sentence=query)
         )
       else:
         prompt = prompts.RAG_IN_CONTEXT_PROMPT
         self.options.vlog('... [RAG] Calling UNTUNED model for DC questions')
-        ques_resp = self.llm_ques.query(prompt.format(sentence=query))
+        ques_resp = self.llm_question.query(prompt.format(sentence=query))
     else:
       prompt = prompts.RAG_FINE_TUNED_PROMPT
       self.options.vlog('... [RAG] Calling FINETUNED model for DC questions')
-      ques_resp = self.llm_ques.query(prompt.format(sentence=query))
+      ques_resp = self.llm_question.query(prompt.format(sentence=query))
     llm_calls = [ques_resp]
     if not ques_resp.response:
       return base.FlowResponse(llm_calls=llm_calls)
@@ -91,7 +91,7 @@ class RAGFlow(base.Flow):
 
     if self.validate_dc_responses:
       q2resp = validate.run_validation(
-          q2resp, self.llm_ans, self.options, llm_calls
+          q2resp, self.llm_answer, self.options, llm_calls
       )
 
     table_parts: list[str] = []
@@ -114,7 +114,7 @@ class RAGFlow(base.Flow):
       tables_str = ''
 
     self.options.vlog('... [RAG] Calling UNTUNED model for final response')
-    ans_resp = self.llm_ans.query(final_prompt)
+    ans_resp = self.llm_answer.query(final_prompt)
     llm_calls.append(ans_resp)
     if not ans_resp.response:
       return base.FlowResponse(
