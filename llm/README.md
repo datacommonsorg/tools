@@ -1,9 +1,8 @@
 # Data LLM
 
-This directory contains code to train, evaluate and run inference on LLMs
-integrated with Data Commons.
+This directory contains code to inference on LLMs integrated with Data Commons.
 
-It also includes a python package called `data_gemma` that can be used for doing
+It includes a python package called `data_gemma` that can be used for doing
 inference with the Gemma 2 (or other) LLMs fine-tuned for integration with Data
 Commons.
 
@@ -15,4 +14,4 @@ pip install git+https://github.com/datacommonsorg/tools#subdirectory=llm
 
 ## Examples
 
-* [RAG Flow Demo](link)
+TODO: Add links
