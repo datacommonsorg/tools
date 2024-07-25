@@ -31,7 +31,7 @@ _BASE_URL = 'https://{env}.datacommons.org/nodejs/query'
 _POINT_PARAMS = 'allCharts=1&mode=toolformer_rig&idx=base_uae_mem'
 
 # Allow topics, use lower threshold (0.7)
-_TABLE_PARAMS = 'allCharts=1&mode=toolformer_rag&client=table&idx=base_uae_mem'
+_TABLE_PARAMS = 'mode=toolformer_rag&client=table&idx=base_uae_mem'
 
 
 class DataCommons:
@@ -61,7 +61,8 @@ class DataCommons:
     # Get the first LINE chart.
     chart = None
     for c in response.get('charts', []):
-      if c.get('type') == 'LINE':
+      ctype = c.get('type')
+      if ctype == 'LINE' or ctype == 'HIGHLIGHT':
         chart = c
         break
     if not chart:
