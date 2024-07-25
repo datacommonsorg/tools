@@ -374,14 +374,15 @@ RAG_FINAL_ANSWER_PROMPT = """
 Using statistics from the tables below, respond to the query: "{sentence}"
 
 In your response, when using statistics from a table, please cite the table
-by its ID, for example, "Table 1".
+by its ID, enclosed in square brackets. For example, for one table reference
+`[Table 1]`, and for multiple tables `[Table 1], [Table 2] and [Table 3]`.
 
 If necessary to answer the query, perform simple calculations on the statistics,
 like adding or subtracting statistics, computing growth rates from statistics
 over time, etc.
 
-If you cannot answer the query based on the provided tables, start your response with:
-"The tables do not have the relevant information to answer the query."
+If you are unable to answer the query based on the provided tables, start your
+response with `[NO ANSWER]` as the first line.
 
 ```
 {table_str}

@@ -116,6 +116,12 @@ class RAGFlow(base.Flow):
     self.options.vlog('... [RAG] Calling UNTUNED model for final response')
     ans_resp = self.llm_answer.query(final_prompt)
     llm_calls.append(ans_resp)
+
+    if '[NO ANSWER]' in ans_resp.response:
+      self.options.vlog('... [RAG] Retrying original query!')
+      ans_resp = self.llm_answer.query(query)
+      llm_calls.append(ans_resp)
+
     if not ans_resp.response:
       return base.FlowResponse(
           llm_calls=llm_calls, dc_duration_secs=dc_duration

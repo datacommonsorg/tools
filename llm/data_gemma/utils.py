@@ -21,7 +21,7 @@ import textwrap
 
 # Use a larger field size limit since we can have longer text in training
 # data CSVs.
-_LARGE_FIELD_SIZE = 1048576
+_LARGE_FIELD_SIZE = 10485760
 
 
 def get_header(in_file):
