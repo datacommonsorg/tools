@@ -1,3 +1,17 @@
+// Copyright 2024 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /*
 Package imputation implements a library for time series imputation.
 The dates in the time series are assumed to be either of the forms of (all have the same format):
@@ -41,12 +55,14 @@ func gcd(a, b int) int {
 // dateGapFinder returns the greatest common divisor-like time gap for the given times.
 //
 // Args:
-//   keys: A sorted list of times all with the same format, one of those listed above.
+//
+//	keys: A sorted list of times all with the same format, one of those listed above.
+//
 // Returns:
-//   1) The time format of the keys.
-//   2) The GCD (gap between the keys) in terms of years, months, and days.
-//   3) OK is True iff the function successfully computed the frequency of data collection.
-//   4) Error != nil in case input has multiple date formats or non ISO 8601.
+//  1. The time format of the keys.
+//  2. The GCD (gap between the keys) in terms of years, months, and days.
+//  3. OK is True iff the function successfully computed the frequency of data collection.
+//  4. Error != nil in case input has multiple date formats or non ISO 8601.
 func dateGapFinder(keys []string) (string, int, int, int, bool, error) {
 	var parseFormat string
 	year, month, day := 0, 0, 0
