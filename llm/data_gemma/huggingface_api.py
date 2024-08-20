@@ -85,14 +85,13 @@ class HFBasic(base.LLM):
 
     ans = ''
     err = ''
-    if not outputs:
-      err = 'Empty outputs from model.generate() call!'
-    else:
+    try:
       ans = self.tokenizer.decode(outputs[0])
-    t = round(time.time() - start, 3)
-
-    if err:
+    except Exception as e:
+      err = str(e)
       logging.warning(err)
       print(f'WARNING: {err}')
+
+    t = round(time.time() - start, 3)
 
     return base.LLMCall(prompt=prompt, response=ans, duration_secs=t, error=err)
