@@ -55,5 +55,44 @@ class HFPipeline(base.LLM):
 
     if err:
       logging.warning(err)
+      print(f'WARNING: {err}')
+
+    return base.LLMCall(prompt=prompt, response=ans, duration_secs=t, error=err)
+
+
+class HFBasic(base.LLM):
+  """HuggingFace Model / Tokenizer API.
+
+  Note: Model is assumed to be loaded on a GPU.
+  """
+
+  def __init__(
+      self,
+      model: Any,
+      tokenizer: Any,
+      verbose: bool = True,
+  ):
+    self.model = model
+    self.tokenizer = tokenizer
+    self.options = base.Options(verbose=verbose)
+
+  def query(self, prompt: str) -> base.LLMCall:
+    self.options.vlog(f'... calling HF Pipeline API "{prompt[:50].strip()}..."')
+
+    start = time.time()
+    input_ids = self.tokenizer(prompt, return_tensors='pt').to('cuda')
+    outputs = self.model.generate(**input_ids)
+
+    ans = ''
+    err = ''
+    if not outputs:
+      err = 'Empty outputs from model.generate() call!'
+    else:
+      ans = self.tokenizer.decode(outputs[0])
+    t = round(time.time() - start, 3)
+
+    if err:
+      logging.warning(err)
+      print(f'WARNING: {err}')
 
     return base.LLMCall(prompt=prompt, response=ans, duration_secs=t, error=err)

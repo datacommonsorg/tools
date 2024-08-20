@@ -25,6 +25,7 @@ from data_gemma import rig
 LLM = base.LLM
 LLMCall = base.LLMCall
 GoogleAIStudio = google_api.GoogleAIStudio
+HFBasic = huggingface_api.HFBasic
 HFPipeline = huggingface_api.HFPipeline
 OpenAI = openai_api.OpenAI
 
