@@ -30,7 +30,7 @@ _BASE_URL = 'https://{env}.datacommons.org/nodejs/query'
 # Do not allow topics, use higher threshold (0.8).
 _POINT_PARAMS = 'allCharts=1&mode=toolformer_rig&idx=base_uae_mem'
 
-# Allow topics, use lower threshold (0.7)
+# Allow topics, use lower threshold (0.7).
 _TABLE_PARAMS = 'mode=toolformer_rag&client=table&idx=base_uae_mem'
 
 

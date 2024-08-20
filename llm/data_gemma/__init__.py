@@ -16,6 +16,7 @@ from data_gemma import base
 from data_gemma import baseline
 from data_gemma import datacommons
 from data_gemma import google_api
+from data_gemma import openai_api
 from data_gemma import rag
 from data_gemma import rig
 
@@ -23,6 +24,7 @@ from data_gemma import rig
 LLM = base.LLM
 LLMCall = base.LLMCall
 GoogleAIStudio = google_api.GoogleAIStudio
+OpenAI = openai_api.OpenAI
 
 # Data Commons related classes.
 DataCommons = datacommons.DataCommons
