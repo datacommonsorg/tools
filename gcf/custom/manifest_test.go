@@ -36,10 +36,10 @@ func (g *TestReader) ListObjects(
 
 func (g *TestReader) ReadObject(
 	ctx context.Context, bucket, object string) ([]byte, error) {
-	if bucket == "test-bucket" && object == "parent/demo/data/provenance.json" {
+	if bucket == "test-bucket" && object == "parent/sustainable_systems_lab/data/provenance.json" {
 		return []byte(`{"name":"data source", "url": "test.com"}`), nil
 	}
-	if bucket == "test-bucket" && object == "parent/demo/data/import1/provenance.json" {
+	if bucket == "test-bucket" && object == "parent/sustainable_systems_lab/data/import1/provenance.json" {
 		return []byte(`{"name":"foo_dataset", "url": "test.com/bar"}`), nil
 	}
 	return []byte{}, nil
@@ -55,7 +55,7 @@ func TestComputeManifest(t *testing.T) {
 		{
 			"test-bucket",
 			&Layout{
-				root: "parent/demo",
+				root: "parent/sustainable_systems_lab",
 				prov: "provenance.json",
 				imports: map[string]*Import{
 					"import1": {

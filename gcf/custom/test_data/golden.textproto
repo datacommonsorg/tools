@@ -2,52 +2,52 @@ import: {
   import_name: "foo_dataset"
   provenance_url: "test.com/bar"
   category: STATS
-  import_groups: "demo"
-  mcf_proto_url: "/bigstore/test-bucket/parent/demo/data/import1/ocean/graph.tfrecord@*.gz"
-  mcf_proto_url: "/bigstore/test-bucket/parent/demo/data/import1/smokepm/graph.tfrecord@*.gz"
+  import_groups: "sustainable_systems"
+  mcf_proto_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/ocean/graph.tfrecord@*.gz"
+  mcf_proto_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/smokepm/graph.tfrecord@*.gz"
   table: {
-    mapping_path: "/bigstore/test-bucket/parent/demo/data/import1/ocean/sea.tmcf"
-    csv_path: "/bigstore/test-bucket/parent/demo/data/import1/ocean/river.csv"
-    csv_path: "/bigstore/test-bucket/parent/demo/data/import1/ocean/lake.csv"
+    mapping_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/ocean/sea.tmcf"
+    csv_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/ocean/river.csv"
+    csv_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/ocean/lake.csv"
   }
   table: {
-    mapping_path: "/bigstore/test-bucket/parent/demo/data/import1/smokepm/data.tmcf"
-    csv_path: "/bigstore/test-bucket/parent/demo/data/import1/smokepm/1.csv"
-    csv_path: "/bigstore/test-bucket/parent/demo/data/import1/smokepm/2.csv"
+    mapping_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/smokepm/data.tmcf"
+    csv_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/smokepm/1.csv"
+    csv_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/smokepm/2.csv"
   }
   resolution_info: {
     uses_id_resolver: true
   }
-  automated_mcf_generation_by: "demo"
+  automated_mcf_generation_by: "sustainable_systems"
   dataset_name: "foo_dataset"
 }
 import: {
   import_name: "import2"
   provenance_url: "test.com"
   category: STATS
-  import_groups: "demo"
-  mcf_proto_url: "/bigstore/test-bucket/parent/demo/data/import2/solar/graph.tfrecord@*.gz"
+  import_groups: "sustainable_systems"
+  mcf_proto_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/solar/graph.tfrecord@*.gz"
   table: {
-    mapping_path: "/bigstore/test-bucket/parent/demo/data/import2/solar/data.tmcf"
-    csv_path: "/bigstore/test-bucket/parent/demo/data/import2/solar/output.csv"
+    mapping_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/solar/data.tmcf"
+    csv_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/solar/output.csv"
   }
   resolution_info: {
     uses_id_resolver: true
   }
-  automated_mcf_generation_by: "demo"
+  automated_mcf_generation_by: "sustainable_systems"
   dataset_name: "import2"
 }
 import: {
   import_name: "schema"
   provenance_url: "test.com"
   category: SCHEMA
-  mcf_url: "/bigstore/test-bucket/parent/demo/data/import1/*.mcf*"
-  mcf_url: "/bigstore/test-bucket/parent/demo/data/import2/*.mcf*"
-  import_groups: "demo"
-  dataset_name: "demo"
+  mcf_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/*.mcf*"
+  mcf_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/*.mcf*"
+  import_groups: "sustainable_systems"
+  dataset_name: "sustainable_systems"
 }
 import_groups: {
-  name: "demo"
+  name: "sustainable_systems"
   description: "Custom DC import group"
   is_custom_dc: true
 }
