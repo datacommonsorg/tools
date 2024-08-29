@@ -30,7 +30,7 @@ func isAlphaNumeric(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
-func computeImportGroup(root string) (string, error) {
+func getImportGroupName(root string) (string, error) {
 	importGroup := path.Base(root)
 	if len(importGroup) == 0 {
 		return "", fmt.Errorf("empty importGroup: %s", root)
@@ -142,7 +142,7 @@ func ComputeManifest(
 	layout *Layout,
 ) (*pb.DataCommonsManifest, error) {
 	root := layout.root
-	importGroup, err := computeImportGroup(root)
+	importGroup, err := getImportGroupName(root)
 	if err != nil {
 		return nil, err
 	}
