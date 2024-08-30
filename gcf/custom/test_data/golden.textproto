@@ -2,7 +2,7 @@ import: {
   import_name: "foo_dataset"
   provenance_url: "test.com/bar"
   category: STATS
-  import_groups: "sustainable_systems"
+  import_groups: "sustainablesystemsla"
   mcf_proto_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/ocean/graph.tfrecord@*.gz"
   mcf_proto_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/smokepm/graph.tfrecord@*.gz"
   table: {
@@ -18,14 +18,14 @@ import: {
   resolution_info: {
     uses_id_resolver: true
   }
-  automated_mcf_generation_by: "sustainable_systems"
+  automated_mcf_generation_by: "sustainablesystemsla"
   dataset_name: "foo_dataset"
 }
 import: {
   import_name: "import2"
   provenance_url: "test.com"
   category: STATS
-  import_groups: "sustainable_systems"
+  import_groups: "sustainablesystemsla"
   mcf_proto_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/solar/graph.tfrecord@*.gz"
   table: {
     mapping_path: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/solar/data.tmcf"
@@ -34,7 +34,7 @@ import: {
   resolution_info: {
     uses_id_resolver: true
   }
-  automated_mcf_generation_by: "sustainable_systems"
+  automated_mcf_generation_by: "sustainablesystemsla"
   dataset_name: "import2"
 }
 import: {
@@ -43,11 +43,11 @@ import: {
   category: SCHEMA
   mcf_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import1/*.mcf*"
   mcf_url: "/bigstore/test-bucket/parent/sustainable_systems_lab/data/import2/*.mcf*"
-  import_groups: "sustainable_systems"
-  dataset_name: "sustainable_systems"
+  import_groups: "sustainablesystemsla"
+  dataset_name: "sustainablesystemsla"
 }
 import_groups: {
-  name: "sustainable_systems"
+  name: "sustainablesystemsla"
   description: "Custom DC import group"
   is_custom_dc: true
 }

@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	pb "github.com/datacommonsorg/tools/gcf/proto"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -32,32 +33,27 @@ func isAlphaNumeric(c byte) bool {
 
 func getImportGroupName(root string) (string, error) {
 	importGroup := path.Base(root)
-	if len(importGroup) == 0 {
-		return "", fmt.Errorf("empty importGroup: %s", root)
+
+	// Remove alphanumeric characters since they aren't handled well by GCS.
+	var builder strings.Builder
+	for i := 0; i < len(importGroup); i++ {
+		if isAlphaNumeric(importGroup[i]) {
+			builder.WriteByte(importGroup[i])
+		}
+	}
+	result := builder.String()
+	if len(result) == 0 {
+		return "", fmt.Errorf("importGroup contains no alphanumeric characters: %s", root)
 	}
 
 	// IMPORTANT NOTE:
 	// importGroup has a character constraint of 20 due to internal limitations.
 	// https://cloud.google.com/storage-transfer/docs/known-limitations-transfer#tsop-max-path
-	if len(importGroup) > 20 {
-		importGroup = importGroup[:20]
+	if len(result) > 20 {
+		result = result[:20]
 	}
 
-	// Strip any trailing non-alphanumeric characters.
-	i := len(importGroup)
-	for !isAlphaNumeric(importGroup[i-1]) {
-		i--
-		if i == 0 {
-			break
-		}
-	}
-	importGroup = importGroup[:i]
-	if len(importGroup) == 0 {
-		return "", fmt.Errorf("importGroup contains no alphanumeric characters: %s", root)
-	}
-	importGroup = importGroup[:i]
-
-	return importGroup, nil
+	return result, nil
 }
 
 func computeTable(bucket, root, im, tab string, table *Table) *pb.ExternalTable {
