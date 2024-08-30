@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Data Commons."""
 
 import concurrent.futures
@@ -23,7 +22,6 @@ import requests
 
 from data_gemma import base
 from data_gemma import utils
-
 
 _BASE_URL = 'https://{env}.datacommons.org/nodejs/query'
 
@@ -45,7 +43,7 @@ class DataCommons:
       api_key: str,
       verbose: bool = True,
       num_threads: int = 10,
-      env: str = 'dev',
+      env: str = 'datagemma',
       session: requests.Session | None = None,
   ):
     self.options = base.Options(verbose=verbose)
