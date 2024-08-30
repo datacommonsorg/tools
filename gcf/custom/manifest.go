@@ -16,14 +16,45 @@ package custom
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	pb "github.com/datacommonsorg/tools/gcf/proto"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
+
+func isAlphaNumeric(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+func getImportGroupName(root string) (string, error) {
+	importGroup := path.Base(root)
+
+	// Remove alphanumeric characters since they aren't handled well by GCS.
+	var builder strings.Builder
+	for i := 0; i < len(importGroup); i++ {
+		if isAlphaNumeric(importGroup[i]) {
+			builder.WriteByte(importGroup[i])
+		}
+	}
+	result := builder.String()
+	if len(result) == 0 {
+		return "", fmt.Errorf("importGroup contains no alphanumeric characters: %s", root)
+	}
+
+	// IMPORTANT NOTE:
+	// importGroup has a character constraint of 20 due to internal limitations.
+	// https://cloud.google.com/storage-transfer/docs/known-limitations-transfer#tsop-max-path
+	if len(result) > 20 {
+		result = result[:20]
+	}
+
+	return result, nil
+}
 
 func computeTable(bucket, root, im, tab string, table *Table) *pb.ExternalTable {
 	bigstoreTmcf := filepath.Join("/bigstore", bucket, root, "data", im, tab, table.tmcf)
@@ -107,11 +138,9 @@ func ComputeManifest(
 	layout *Layout,
 ) (*pb.DataCommonsManifest, error) {
 	root := layout.root
-	importGroup := path.Base(root)
-	// IMPORTANT NOTE:
-	// importGroup has a character constraint of 20 due to internal limitations.
-	if len(importGroup) > 20 {
-		importGroup = importGroup[:20]
+	importGroup, err := getImportGroupName(root)
+	if err != nil {
+		return nil, err
 	}
 
 	// Init manifest
