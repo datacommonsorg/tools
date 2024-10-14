@@ -12,16 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-for f in $FAILED_FOLDER/*
-do
-	printf "Sending email for failed file; $(basename $f)\n"
-	subject=$(head $f -n 1)
-	go run main.go \
-	  --subject="$subject" \
-	  --receiver="datacommons-alerts@google.com" \
-	  --body_file="$f" \
-	  --mime_type="text/plain"
+for f in $FAILED_FOLDER/*; do
+  printf "Sending email for failed file; $(basename $f)\n"
+  subject=$(head $f -n 1)
+  go run main.go \
+    --subject="$subject" \
+    --receiver="datacommons-alerts+builds@google.com" \
+    --body_file="$f" \
+    --mime_type="text/plain"
 done
 
 printf "count success: $(ls -l $SUCCESS_FOLDER | wc -l)\n\n"
