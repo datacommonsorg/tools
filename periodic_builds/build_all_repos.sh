@@ -14,6 +14,14 @@
 # limitations under the License.
 
 BUILDS_FILE="$PWD/builds.txt"
+# Repositories have .*ignore files that can cause periodic builds to fail if
+# data files used for tests are included. This is because for periodic builds,
+# cloudbuild uploads the source files to GCS then runs the tests against the
+# uploaded source files. In other cases of running the same tests, the tests are
+# run directly against the repository.
+# This is a list of strings of the format <file>;<line pattern> where the
+# line pattern needs to be removed from the file for periodic builds.
+FILE_LINES_TO_REMOVE=("./website/.dockerignore;/test_data/d" "./website/.dockerignore;/testdata/d" "./data/.gitignore;/data/d")
 
 # Returns the first folder in a path-like string that doesn't start with /
 #
@@ -116,6 +124,14 @@ function main {
 		cloudbuild_path=$(echo "$cloudbuild_config" | cut -d' ' -f1)
 		clone_dc $(get_root_folder_of_path_like $cloudbuild_path)
 	done < "$BUILDS_FILE"
+	
+	for file_line in ${FILE_LINES_TO_REMOVE[@]}; do
+		file_path=$(echo $file_line | cut -d';' -f1)
+		line_pattern=$(echo $file_line | cut -d';' -f2)
+		if [ -f $file_path ]; then
+			sed -i $line_pattern $file_path
+		fi
+	done
 
 	# Launch the build jobs in parallel, accumulating process IDs
 	# in $pids. reference: https://stackoverflow.com/a/26240420
