@@ -1,0 +1,10 @@
+# Code owners for Tools repo
+#
+# Each line is a file pattern followed by one or more owners.
+# The last matching pattern takes precedence.
+
+# Data Weaver stand-alone app.
+dataweaver/ @beets @nick-nlb @miss-o-soup
+
+# Default owners for everything in the repo.
+* @datacommonsorg/owners
