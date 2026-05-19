@@ -1,13 +1,4 @@
 ---
-name: Bug report
-about: Create a report to help us improve
-title: ''
-labels: ''
-assignees: ''
-
----
-
----
 name: Bug Report
 about: Create a report to help us improve.
 labels: ['status:triage', 'type:bug']
@@ -29,7 +20,7 @@ A clear description of what you expected to happen.
 Include error logs, stack traces, or screenshots if applicable.
 
 ## Environment
-- Repo/Component:
+- Project/Component:
 - Version/Commit:
 - Device/Browser/OS (if applicable):
 
