@@ -1,0 +1,69 @@
+import { getServiceConfig, getSkillConfig } from './config';
+import { getGenAI } from './gemini';
+
+interface SafetyResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+/**
+ * Layered prompt safety check:
+ * 1. Regex patterns (instant, zero-cost) — catches obvious injection attempts
+ * 2. Fast LLM classification — catches subtle/novel attacks
+ */
+export const checkPromptSafety = async (
+  query: string,
+): Promise<SafetyResult> => {
+  const skill = getSkillConfig('safety');
+
+  // Layer 1: Regex pattern matching
+  if (skill.regexPatterns) {
+    for (const pattern of skill.regexPatterns) {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(query)) {
+        return {
+          allowed: false,
+          reason: 'Query matched a disallowed pattern.',
+        };
+      }
+    }
+  }
+
+  // Layer 2: LLM classification for ambiguous cases
+  // Skip LLM check for very short/simple queries (optimization)
+  if (query.length < 12) return { allowed: true };
+
+  try {
+    const config = getServiceConfig();
+    const genAI = getGenAI();
+
+    const response = await genAI.models.generateContent({
+      model: config.models.safety,
+      contents: `${skill.systemPrompt}\n\n"${query}"`,
+    });
+
+    const text = response.text || '';
+    const cleaned = text
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim();
+
+    try {
+      const result = JSON.parse(cleaned);
+      if (result.allowed === false) {
+        return {
+          allowed: false,
+          reason: result.reason || 'Blocked by safety classifier.',
+        };
+      }
+    } catch {
+      // If LLM response is unparseable, allow (fail-open for legitimate queries)
+    }
+  } catch (err) {
+    // If safety LLM call fails, allow the query through (fail-open)
+    // Log for monitoring in production
+    console.warn('[safety] LLM safety check failed, allowing query:', err);
+  }
+
+  return { allowed: true };
+};

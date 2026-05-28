@@ -8,11 +8,14 @@
     "lint:type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^2.7.0",
     "clsx": "^2.1.1",
+    "gray-matter": "^4.0.3",
     "motion": "^12.38.0",
+    "nanoid": "^5.1.11",
     "next": "^16.2.6",
     "react-dom": "^19.2.6",
-    "react": "^19.2.6",
+    "recharts": "^3.8.1",
     "tldraw": "^5.0.1"
   },
   "devDependencies": {
