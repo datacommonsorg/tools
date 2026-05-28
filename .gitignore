@@ -13,3 +13,6 @@ bigtable_automation/terraform/source/bt_automation_go_source.zip
 
 # Local GCF generated config.textproto
 gcf/custom/local/config.textproto
+
+# Misc.
+.DS_Store
