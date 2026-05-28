@@ -6,7 +6,7 @@ Monorepo for Dataweaver. Managed with [pnpm workspaces](https://pnpm.io/workspac
 
 ```
 apps/
-  web/         Next.js 15 app (App Router)
+  web/         Next.js app (App Router)
 packages/
   tokens/      Design tokens (JSON → generated .scss / .ts)
 ```
