@@ -1,13 +1,11 @@
 {
 	"$schema": "https://json.schemastore.org/tsconfig",
+
 	// Options largely based on - https://www.totaltypescript.com/tsconfig-cheat-sheet
 	"compilerOptions": {
 		// Next.js plugin for TypeScript
-		"plugins": [
-			{
-				"name": "next"
-			}
-		],
+		"plugins": [{ "name": "next" }],
+
 		// Base Options
 		"allowJs": true,
 		"esModuleInterop": true,
@@ -19,6 +17,7 @@
 		"verbatimModuleSyntax": true,
 		"jsx": "react-jsx",
 		"incremental": false,
+
 		// Strictness
 		"forceConsistentCasingInFileNames": true,
 		"noFallthroughCasesInSwitch": true,
@@ -27,12 +26,15 @@
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"strict": true,
+
 		// TS -> JS Compilation
 		"module": "preserve",
 		"moduleResolution": "bundler",
 		"noEmit": true,
+
 		// For the DOM
 		"lib": ["es2022", "dom", "dom.iterable"],
+
 		// Aliases
 		"paths": {
 			"~/public/*": ["./public/*"],

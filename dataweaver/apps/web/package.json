@@ -6,7 +6,7 @@
 		"build": "next build",
 		"preview": "next start",
 		"lint:type-check": "tsc --noEmit",
-		"generate:tokens": "pnpm --filter @package/tokens generate -- \"$PWD/src/styles/tokens\""
+		"generate:tokens": "pnpm --filter @package/tokens generate -- \"../../apps/web/src/styles/tokens\""
 	},
 	"dependencies": {
 		"clsx": "^2.1.1",

@@ -58,7 +58,11 @@ const generateScss = (): string => {
 };
 
 const generateTypeScript = (): string => {
-	const lines: string[] = [DO_NOT_EDIT_COMMENT_BANNER];
+	const lines: string[] = [
+		DO_NOT_EDIT_COMMENT_BANNER,
+		'',
+		'import type { BezierDefinition } from "motion/react";',
+	];
 
 	// Variables
 	lines.push('');
@@ -82,7 +86,9 @@ const generateTypeScript = (): string => {
 	for (const [name, values] of Object.entries(EASES)) {
 		const constName = `EASE_${name.toUpperCase().replaceAll('-', '_')}`;
 		const formattedValue = values.join(', ');
-		lines.push(`export const ${constName} = [${formattedValue}];`);
+		lines.push(
+			`export const ${constName}: BezierDefinition = [${formattedValue}];`,
+		);
 	}
 
 	lines.push('');

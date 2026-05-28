@@ -34,7 +34,7 @@ const QUERIES = new Map<string, Query>();
 /**
  * Stateful hook that uses the matchMedia API.
  *
- * @param query - The query to match for.
+ * @param queryKey - The query key to match for.
  * @param config - _Optional_ configuration object.
  * @param config.defaultValue - _Optional_ fallback value that is returned in
  * SSR and first match of any unique query. Defaults to `false`.
@@ -63,9 +63,11 @@ export const useMatchMedia = <
 			? null
 			: never,
 >(
-	query: MatchMediaKey,
+	queryKey: MatchMediaKey,
 	config: Partial<TConfig> = {},
 ) => {
+	const query = getMatchMediaQuery(queryKey);
+
 	const getExistingMatch = useCallback(() => {
 		const matchedQuery = QUERIES.get(query);
 
@@ -162,7 +164,7 @@ export const useMatchMedia = <
 
 			// On mount we only checked if there was an existing match. So here we
 			// set matches again in case this is the first of this query
-			const matches = addListener(getMatchMediaQuery(query), listener);
+			const matches = addListener(query, listener);
 			setMatches(matches);
 
 			return () => removeListener(query, listener);

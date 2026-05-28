@@ -1,3 +1,4 @@
+import { IS_BROWSER } from '~/configs/environment-client';
 import { BREAKPOINTS, type Target } from '~/styles/breakpoints';
 
 /** List of media query keys with their custom query. */
@@ -65,6 +66,7 @@ export const getMatchMediaQuery = (key: MatchMediaKey) => {
  * @param key - The shorthand key to match for (see `getMatchMediaQuery`).
  */
 export const getMatchMediaMatch = (key: MatchMediaKey) => {
+	if (!IS_BROWSER) return false;
 	const query = getMatchMediaQuery(key);
 	return window.matchMedia(query).matches;
 };
