@@ -1,0 +1,9 @@
+@use "~/styles/includes";
+
+@layer root {
+  :root {
+    --outline-offset-default: 2px;
+    --outline-offset-inset: -3px;
+    --outline-offset: var(--outline-offset-default);
+  }
+}

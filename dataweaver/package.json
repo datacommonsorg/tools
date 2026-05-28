@@ -1,0 +1,40 @@
+{
+	"name": "dataweaver",
+	"description": "Monorepo for Dataweaver",
+	"type": "module",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev": "pnpm -r --parallel dev",
+		"build": "pnpm -r build",
+		"preview": "pnpm -r --parallel preview",
+		"lint": "pnpm -r run lint:type-check && pnpm run lint:biome && pnpm run lint:styles",
+		"lint:biome": "biome check",
+		"lint:styles": "stylelint \"**/*.scss\"",
+		"fix": "pnpm run fix:biome && pnpm run fix:styles",
+		"fix:biome": "biome check --write --unsafe",
+		"fix:styles": "stylelint \"**/*.scss\" --fix",
+		"generate:tokens": "pnpm --filter @app/web generate:tokens"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.7",
+		"prettier": "^3.8.1",
+		"stylelint-config-css-modules": "^4.6.0",
+		"stylelint-config-recess-order": "^7.7.0",
+		"stylelint-config-standard-scss": "^17.0.0",
+		"stylelint-declaration-block-no-ignored-properties": "^3.0.0",
+		"stylelint-prettier": "^5.0.3",
+		"stylelint": "^17.5.0",
+		"typescript": "5.9.3",
+		"husky": "^9.1.7"
+	},
+	"packageManager": "pnpm@10.20.0",
+	"engines": {
+		"node": ">=22",
+		"pnpm": ">=10"
+	},
+	"browserslist": [
+		"> 0.2%",
+		"not dead"
+	]
+}

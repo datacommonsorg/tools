@@ -1,0 +1,91 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+
+	"files": {
+		"ignoreUnknown": true
+	},
+
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab"
+	},
+
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"suspicious": {
+				"noConfusingVoidType": "off",
+				"noArrayIndexKey": "off",
+				"noConsole": {
+					"level": "error",
+					"options": { "allow": ["warn", "error", "info"] }
+				}
+			},
+			"correctness": {
+				"noUnusedImports": "error",
+				"noUnusedFunctionParameters": "error",
+				"useExhaustiveDependencies": "error"
+			},
+			"complexity": {
+				"useOptionalChain": "off"
+			},
+			"style": {
+				"noDefaultExport": "error",
+				"useImportType": "error",
+				"useConsistentTypeDefinitions": {
+					"level": "error",
+					"options": { "style": "type" }
+				},
+				"noRestrictedImports": {
+					"level": "error",
+					"options": {
+						"patterns": [
+							{
+								"group": ["../**"],
+								"message": "Relative imports are not allowed."
+							}
+						]
+					}
+				}
+			},
+			"a11y": {
+				"noStaticElementInteractions": "off"
+			}
+		}
+	},
+
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
+
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single"
+		}
+	},
+
+	"overrides": [
+		{
+			"includes": ["**/*.scss"],
+			"formatter": { "enabled": false },
+			"linter": { "enabled": false },
+			"assist": { "enabled": false }
+		},
+		{
+			"includes": ["**/src/app/**", "**/*.config.*"],
+			"linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+		}
+	]
+}

@@ -1,0 +1,12 @@
+{
+	"name": "@package/tokens",
+	"type": "module",
+	"scripts": {
+		"generate": "tsx src/generate.ts",
+		"lint:type-check": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"tsx": "^4.21.0"
+	}
+}

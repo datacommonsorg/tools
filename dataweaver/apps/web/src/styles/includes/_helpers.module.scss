@@ -1,0 +1,61 @@
+@use "sass:math";
+@use "sass:meta";
+@use "sass:list";
+@use "sass:string";
+
+/// Mixin to apply styles only when the pointer is coarse (e.g. touch)
+@mixin is-pointer-coarse() {
+  @media (hover: none) and (pointer: coarse) {
+    @content;
+  }
+}
+
+/// Mixin to apply styles only when the pointer is fine (e.g. mouse)
+@mixin is-pointer-fine() {
+  @media (hover: hover) and (pointer: fine) {
+    @content;
+  }
+}
+
+/// Mixin to apply styles only when the user hasn't requested a reduced motion
+/// experience. This can be used to apply animations or transitions only when
+/// the user prefers motion
+@mixin prefers-motion() {
+  @media (prefers-reduced-motion: no-preference) {
+    @content;
+  }
+}
+
+/// Mixin to apply styles only when the user has requested a reduced motion
+/// experience. This can be used to apply animations or transitions only when
+/// the user prefers reduced motion
+@mixin prefers-reduced-motion() {
+  @media (prefers-reduced-motion: reduce) {
+    @content;
+  }
+}
+
+/// Mixin to apply hover styles only when the device supports hover and
+/// the primary input mechanism is a fine pointer (e.g. mouse). This helps
+/// to avoid hover styles being applied on touch devices
+@mixin hover() {
+  @include is-pointer-fine {
+    &:hover {
+      @content;
+    }
+  }
+}
+
+/// Mixin to make element visually hidden but still accessible to screen readers
+@mixin screen-reader-only() {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}

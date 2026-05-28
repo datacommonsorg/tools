@@ -1,0 +1,11 @@
+$-next-z-index: 0;
+
+@function -get-next-z-index() {
+  $-next-z-index: $-next-z-index + 1 !global;
+
+  @return $-next-z-index;
+}
+
+$z-index-behind-content: -1;
+$z-index-content: 0;
+$z-index-above-content: -get-next-z-index();

@@ -1,0 +1,122 @@
+@layer reset {
+  html {
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis: none;
+  }
+
+  body {
+    margin: unset;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: inherit;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    margin: unset;
+    font: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+  }
+
+  button {
+    padding: unset;
+    font: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    color: inherit;
+    text-align: unset;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+    background: unset;
+    border: unset;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: unset;
+
+    &[href] {
+      cursor: pointer;
+    }
+  }
+
+  ul,
+  ol {
+    padding: unset;
+    margin: unset;
+    list-style: none;
+  }
+
+  figure {
+    margin: unset;
+  }
+
+  svg {
+    // Avoid cropping issues caused by sub-pixel rendering
+    overflow: unset;
+  }
+
+  dialog {
+    inset: 0;
+    width: unset;
+    max-width: unset;
+    height: unset;
+    max-height: unset;
+    padding: unset;
+    margin: unset;
+    background: unset;
+    border: unset;
+
+    &::backdrop {
+      display: none;
+    }
+  }
+
+  table {
+    border-spacing: unset;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: unset;
+  }
+
+  fieldset {
+    padding: unset;
+    margin: unset;
+    border: unset;
+  }
+
+  dl,
+  dd {
+    margin: unset;
+  }
+
+  input {
+    padding: unset;
+    color: inherit;
+    outline: unset;
+    background: unset;
+    border: unset;
+  }
+
+  iframe {
+    border: unset;
+  }
+}

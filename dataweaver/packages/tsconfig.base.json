@@ -1,0 +1,15 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig.json",
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "preserve",
+		"moduleResolution": "bundler",
+		"moduleDetection": "force",
+		"strict": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"allowImportingTsExtensions": true,
+		"noUncheckedIndexedAccess": true,
+		"noEmit": true
+	}
+}

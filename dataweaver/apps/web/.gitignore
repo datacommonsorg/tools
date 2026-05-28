@@ -1,0 +1,6 @@
+# Next.js
+.next/
+next-env.d.ts
+
+# Generated
+src/server/storyblok/generated/globals.json
