@@ -5,6 +5,17 @@ export interface ParsedQuery {
   topic: string;
   titles: Record<string, string>;
   dateRange?: { start?: string; end?: string };
+  isFollowUp: boolean;
+}
+
+export interface HistoryNode {
+  id: string;
+  parentId: string | null;
+  query: string;
+  analysis: QueryAnalysis;
+  cardIds: string[];
+  timestamp: number;
+  status: 'pending' | 'complete' | 'error';
 }
 
 type CardType =
@@ -17,6 +28,7 @@ type CardType =
 
 export interface CardEntry {
   shapeId: string;
+  historyNodeId: string;
   type: CardType;
   variableDcids: string[];
   entityDcids: string[];
@@ -91,6 +103,7 @@ export interface McpToolCallResult {
 export interface QueryStreamRequest {
   query: string;
   atlasContext: string;
+  ancestorChain: { query: string; topic: string; places: string[] }[];
   selectedEntityDcids: string[];
 }
 

@@ -1,0 +1,52 @@
+.test {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: grid;
+  grid-template-rows: 1fr min-content;
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+  font-family: Helvetica, sans-serif;
+  font-size: 1rem;
+  background: #eee;
+}
+
+.test-output {
+  padding: 1rem;
+  color: #555;
+  background: #fefefe;
+  border-radius: 1rem;
+}
+
+.test-input {
+  :not(.test) & {
+    position: fixed;
+    bottom: 2rem;
+    left: 2rem;
+    width: 50%;
+    margin: 0;
+    box-shadow: 0 0 0.5rem rgb(0 0 0 / 10%);
+  }
+
+  position: relative;
+  display: grid;
+  height: 10vh;
+  min-height: 10rem;
+  color: #555;
+  background: #fefefe;
+  border-radius: 1rem;
+
+  textarea {
+    grid-area: 1 / 1;
+    padding: 1rem;
+    resize: none;
+    background: transparent;
+    border: none;
+
+    &:focus-visible {
+      border-radius: 1rem;
+    }
+  }
+}

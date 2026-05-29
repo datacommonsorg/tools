@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const { query, atlasContext, selectedEntityDcids } = body;
+  const { query, atlasContext, ancestorChain, selectedEntityDcids } = body;
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
@@ -75,16 +75,21 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // ─── Parse query ──────────────────────────────────────────────────
-        emit({ type: STREAM_EVENT.status, message: 'Parsing query...' });
-        const parsed = await parseQuery({ query, atlasContext });
+        // ─── Analyze query ────────────────────────────────────────────────
+        emit({ type: 'status', message: 'Parsing query...' });
+        const parsed = await parseQuery({
+          query,
+          atlasContext,
+          ancestorChainLength: ancestorChain.length,
+        });
 
         // Resolve places
         let places = parsed.places;
-        if (places.length === 0) {
+        if (parsed.isFollowUp && places.length === 0) {
           places =
             selectedEntityDcids.length > 0 ? selectedEntityDcids : [query];
         }
+        if (places.length === 0) places = [query];
         parsed.places = places;
 
         emit({ type: STREAM_EVENT.parsedQuery, data: parsed });
@@ -121,6 +126,7 @@ export async function POST(request: NextRequest) {
             query,
             parsed,
             atlasContext,
+            ancestorChain,
             geminiTools,
             signal,
             onToolCall: (e) => {
