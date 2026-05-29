@@ -1,5 +1,5 @@
 @use "sass:map";
-@use "../tokens/generated.module" as tokens;
+@use "@package/tokens/scss" as tokens;
 
 $-breakpoints: (
   "tablet": tokens.$breakpoint-tablet,

@@ -1,52 +1,52 @@
 {
-	"$schema": "https://json.schemastore.org/tsconfig",
+  "$schema": "https://json.schemastore.org/tsconfig",
 
-	// Options largely based on - https://www.totaltypescript.com/tsconfig-cheat-sheet
-	"compilerOptions": {
-		// Next.js plugin for TypeScript
-		"plugins": [{ "name": "next" }],
+  // Options largely based on - https://www.totaltypescript.com/tsconfig-cheat-sheet
+  "compilerOptions": {
+    // Next.js plugin for TypeScript
+    "plugins": [{ "name": "next" }],
 
-		// Base Options
-		"allowJs": true,
-		"esModuleInterop": true,
-		"isolatedModules": true,
-		"moduleDetection": "force",
-		"resolveJsonModule": true,
-		"skipLibCheck": true,
-		"target": "es2022",
-		"verbatimModuleSyntax": true,
-		"jsx": "react-jsx",
-		"incremental": false,
+    // Base Options
+    "allowJs": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
+    "incremental": false,
 
-		// Strictness
-		"forceConsistentCasingInFileNames": true,
-		"noFallthroughCasesInSwitch": true,
-		"noImplicitOverride": true,
-		"noUncheckedIndexedAccess": true,
-		"noUnusedLocals": true,
-		"noUnusedParameters": true,
-		"strict": true,
+    // Strictness
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "strict": true,
 
-		// TS -> JS Compilation
-		"module": "preserve",
-		"moduleResolution": "bundler",
-		"noEmit": true,
+    // TS -> JS Compilation
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true,
 
-		// For the DOM
-		"lib": ["es2022", "dom", "dom.iterable"],
+    // For the DOM
+    "lib": ["es2022", "dom", "dom.iterable"],
 
-		// Aliases
-		"paths": {
-			"~/public/*": ["./public/*"],
-			"~/*": ["./src/*"]
-		}
-	},
-	"include": [
-		"**/*.ts",
-		"**/*.tsx",
-		"next-env.d.ts",
-		".next/types/**/*.ts",
-		".next/dev/types/**/*.ts"
-	],
-	"exclude": ["node_modules", ".next"]
+    // Aliases
+    "paths": {
+      "~/public/*": ["./public/*"],
+      "~/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
 }

@@ -8,7 +8,7 @@ Monorepo for Dataweaver. Managed with [pnpm workspaces](https://pnpm.io/workspac
 apps/
   web/         Next.js app (App Router)
 packages/
-  tokens/      Design tokens (JSON → generated .scss / .ts)
+  tokens/      Design tokens (JSON → generated tokens.css / .scss / .ts, consumed via @package/tokens)
 ```
 
 ## Installation
@@ -36,7 +36,15 @@ pnpm i
 | `pnpm dev` | Run all apps in dev mode |
 | `pnpm build` | Build all apps |
 | `pnpm preview` | Serve the built apps |
-| `pnpm generate:tokens` | Regenerate `_generated.module.scss` + `generated.ts` from `packages/tokens/src/*.json` |
+| `pnpm generate:tokens` | Regenerate `packages/tokens/dist/` (`tokens.css` + `_tokens.scss` + `tokens.ts`) from `packages/tokens/src/*.json` |
+
+## Code style
+
+TypeScript follows the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html), enforced as closely as possible through Biome (see `biome.json`).
+
+CSS and SCSS follow the [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html), enforced through Stylelint for `.scss` (see `stylelint.config.mjs`) and Biome for plain `.css`.
+
+Where a guideline can't be linted automatically, please follow it by convention.
 
 ## Linting
 

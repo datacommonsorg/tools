@@ -1,91 +1,128 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
 
-	"vcs": {
-		"enabled": true,
-		"clientKind": "git",
-		"useIgnoreFile": true
-	},
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
 
-	"files": {
-		"ignoreUnknown": true
-	},
+  "files": {
+    "ignoreUnknown": true
+  },
 
-	"formatter": {
-		"enabled": true,
-		"indentStyle": "tab"
-	},
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
 
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"recommended": true,
-			"suspicious": {
-				"noConfusingVoidType": "off",
-				"noArrayIndexKey": "off",
-				"noConsole": {
-					"level": "error",
-					"options": { "allow": ["warn", "error", "info"] }
-				}
-			},
-			"correctness": {
-				"noUnusedImports": "error",
-				"noUnusedFunctionParameters": "error",
-				"useExhaustiveDependencies": "error"
-			},
-			"complexity": {
-				"useOptionalChain": "off"
-			},
-			"style": {
-				"noDefaultExport": "error",
-				"useImportType": "error",
-				"useConsistentTypeDefinitions": {
-					"level": "error",
-					"options": { "style": "type" }
-				},
-				"noRestrictedImports": {
-					"level": "error",
-					"options": {
-						"patterns": [
-							{
-								"group": ["../**"],
-								"message": "Relative imports are not allowed."
-							}
-						]
-					}
-				}
-			},
-			"a11y": {
-				"noStaticElementInteractions": "off"
-			}
-		}
-	},
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noConfusingVoidType": "off",
+        "noConstEnum": "error",
+        "noDebugger": "error",
+        "noDoubleEquals": "error",
+        "noEmptyBlockStatements": "error",
+        "noExplicitAny": "error",
+        "noFallthroughSwitchClause": "error",
+        "noUnusedExpressions": "error",
+        "noVar": "error",
+        "noWith": "error",
+        "useGuardForIn": "error",
+        "noConsole": {
+          "level": "error",
+          "options": { "allow": ["warn", "error", "info"] }
+        }
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "error",
+        "noUnusedImports": "error",
+        "useExhaustiveDependencies": "error"
+      },
+      "complexity": {
+        "useArrowFunction": "error",
+        "useOptionalChain": "off"
+      },
+      "style": {
+        "noCommonJs": "error",
+        "noDefaultExport": "error",
+        "noNamespace": "error",
+        "noNonNullAssertion": "error",
+        "useArrayLiterals": "error",
+        "useConst": "error",
+        "useExportType": "error",
+        "useForOf": "error",
+        "useImportType": "error",
+        "useSingleVarDeclarator": "error",
+        "useTemplate": "error",
+        "useThrowNewError": "error",
+        "useThrowOnlyError": "error",
+        "useNamingConvention": {
+          "level": "error",
+          "options": { "strictCase": false }
+        },
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "useConsistentTypeDefinitions": {
+          "level": "error",
+          "options": { "style": "interface" }
+        },
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": ["../**"],
+                "message": "Relative imports are not allowed."
+              }
+            ]
+          }
+        }
+      },
+      "a11y": {
+        "noStaticElementInteractions": "off"
+      }
+    }
+  },
 
-	"assist": {
-		"enabled": true,
-		"actions": {
-			"source": {
-				"organizeImports": "on"
-			}
-		}
-	},
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
 
-	"javascript": {
-		"formatter": {
-			"quoteStyle": "single"
-		}
-	},
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
 
-	"overrides": [
-		{
-			"includes": ["**/*.scss"],
-			"formatter": { "enabled": false },
-			"linter": { "enabled": false },
-			"assist": { "enabled": false }
-		},
-		{
-			"includes": ["**/src/app/**", "**/*.config.*"],
-			"linter": { "rules": { "style": { "noDefaultExport": "off" } } }
-		}
-	]
+  "css": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+
+  "overrides": [
+    {
+      "includes": ["**/*.scss"],
+      "formatter": { "enabled": false },
+      "linter": { "enabled": false },
+      "assist": { "enabled": false }
+    },
+    {
+      "includes": ["**/src/app/**", "**/*.config.*"],
+      "linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+    }
+  ]
 }

@@ -1,27 +1,26 @@
 {
-	"name": "@app/web",
-	"type": "module",
-	"scripts": {
-		"dev": "next dev",
-		"build": "next build",
-		"preview": "next start",
-		"lint:type-check": "tsc --noEmit",
-		"generate:tokens": "pnpm --filter @package/tokens generate -- \"../../apps/web/src/styles/tokens\""
-	},
-	"dependencies": {
-		"clsx": "^2.1.1",
-		"motion": "^12.38.0",
-		"next": "^16.2.6",
-		"react-dom": "^19.2.6",
-		"react": "^19.2.6",
-		"tldraw": "^5.0.1"
-	},
-	"devDependencies": {
-		"@package/tokens": "workspace:tokens",
-		"@types/node": "^25.9.1",
-		"@types/react-dom": "^19.2.3",
-		"@types/react": "^19.2.15",
-		"babel-plugin-react-compiler": "^1.0.0",
-		"sass": "^1.97.3"
-	}
+  "name": "@app/web",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "preview": "next start",
+    "lint:type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "motion": "^12.38.0",
+    "next": "^16.2.6",
+    "react-dom": "^19.2.6",
+    "react": "^19.2.6",
+    "tldraw": "^5.0.1"
+  },
+  "devDependencies": {
+    "@package/tokens": "workspace:tokens",
+    "@types/node": "^25.9.1",
+    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.2.15",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "sass": "^1.97.3"
+  }
 }
