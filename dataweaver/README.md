@@ -1,6 +1,6 @@
-# dataweaver
+# Data Weaver Experiment
 
-Monorepo for Dataweaver. Managed with [pnpm workspaces](https://pnpm.io/workspaces).
+Root of the `/dataweaver` directory. Managed with [pnpm workspaces](https://pnpm.io/workspaces).
 
 ## Workspace layout
 
@@ -26,6 +26,7 @@ nvm use
 ### Dependencies
 
 ```bash
+corepack enable
 pnpm i
 ```
 

@@ -1,6 +1,6 @@
 {
   "name": "dataweaver",
-  "description": "Monorepo for Dataweaver",
+  "description": "Root of the `/dataweaver` directory.",
   "type": "module",
   "version": "1.0.0",
   "private": true,
