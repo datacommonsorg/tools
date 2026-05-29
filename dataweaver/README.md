@@ -13,7 +13,7 @@ packages/
 
 ## Installation
 
-All commands run from the root of the monorepo.
+All commands run from the root of the `/dataweaver` directory.
 
 ### Node.js version
 
@@ -63,7 +63,7 @@ pnpm run fix
 
 ## Dependency Check
 
-To run a dependency check and update interactively, run the following command from the root of the monorepo:
+To run a dependency check and update interactively, run the following command from the root of the `/dataweaver` directory:
 
 ```bash
 pnpm up --latest --recursive --interactive

@@ -1,7 +1,7 @@
 import '~/styles/layers.css';
 import '~/styles/core.scss';
-import { domMax, LazyMotion } from 'motion/react';
 import type { ReactNode } from 'react';
+import { MotionProvider } from '~/components/foundations/motion-provider';
 
 interface LayoutProps {
   children: ReactNode;
@@ -11,9 +11,9 @@ const RootLayout = ({ children }: LayoutProps) => {
   return (
     <html lang="en">
       <body>
-        <LazyMotion strict features={domMax}>
+        <MotionProvider>
           <main>{children}</main>
-        </LazyMotion>
+        </MotionProvider>
       </body>
     </html>
   );
