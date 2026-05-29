@@ -14,7 +14,7 @@ export const COLORS = {
   'blue-light': '247, 252, 255',
 } as const;
 
-type Easing = [number, number, number, number];
+export type Easing = [number, number, number, number];
 
 export const EASE_LINEAR: Easing = [0, 0, 1, 1];
 export const EASE_OUT: Easing = [0.26, 1, 0.48, 1];
