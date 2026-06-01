@@ -1,11 +1,10 @@
 /* ⚠️ AUTO-GENERATED — Do not edit. Modify the JSON tokens in 'packages/tokens/src/' and run 'pnpm generate:tokens' */
 
 :root {
-  --color-black: 0 0 0;
-  --color-grey-almost-black: 32 33 36;
-  --color-grey-muted: 68 71 70;
-  --color-grey-light: 227 231 237;
-  --color-white: 255 255 255;
-  --color-blue: 11 87 208;
-  --color-blue-light: 247 252 255;
+  --color-surface-base: 247 252 255;
+  --color-surface-raised: 255 255 255;
+  --color-surface-decorator: 227 231 237;
+  --color-text-primary: 32 33 36;
+  --color-text-secondary: 68 71 70;
+  --color-text-strong: 0 0 0;
 }

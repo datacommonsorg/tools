@@ -5,13 +5,12 @@ export const BREAKPOINT_LAPTOP = 1280;
 export const BREAKPOINT_DESKTOP = 1600;
 
 export const COLORS = {
-  black: '0, 0, 0',
-  'grey-almost-black': '32, 33, 36',
-  'grey-muted': '68, 71, 70',
-  'grey-light': '227, 231, 237',
-  white: '255, 255, 255',
-  blue: '11, 87, 208',
-  'blue-light': '247, 252, 255',
+  'surface-base': '247, 252, 255',
+  'surface-raised': '255, 255, 255',
+  'surface-decorator': '227, 231, 237',
+  'text-primary': '32, 33, 36',
+  'text-secondary': '68, 71, 70',
+  'text-strong': '0, 0, 0',
 } as const;
 
 export type Easing = [number, number, number, number];
