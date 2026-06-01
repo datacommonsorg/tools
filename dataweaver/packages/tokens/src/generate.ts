@@ -20,32 +20,23 @@ const DIST_DIRECTORY = resolve(import.meta.dirname, '../dist');
 const DO_NOT_EDIT_COMMENT_BANNER =
   "AUTO-GENERATED — Do not edit. Modify the JSON tokens in 'packages/tokens/src/' and run 'pnpm generate:tokens'";
 
-const generateCss = (): string => {
-  const lines: string[] = [
-    `/* ⚠️ ${DO_NOT_EDIT_COMMENT_BANNER} */`,
-    '',
-    ':root {',
-  ];
-
-  // Colors are exposed as space-separated channels so they can be consumed as
-  // `rgb(var(--color-x))` (and rgba via `rgb(var(--color-x) / <alpha-value>)`)
-  // and overridden by app as theme
-  for (const [name, values] of Object.entries(COLORS)) {
-    lines.push(`  --color-${name}: ${values.join(' ')};`);
-  }
-
-  lines.push('}', '');
-  return lines.join('\n');
-};
-
+// Build-time SCSS values ($-variables). These emit no CSS, so the partial is
+// safe to '@use' / auto-inject into every Sass module.
 const generateScss = (): string => {
   const lines: string[] = [`// ⚠️ ${DO_NOT_EDIT_COMMENT_BANNER}`, ''];
 
   // Breakpoints are build-time values (CSS variables can't be used in '@media'
   // conditions), so they are emitted as SCSS rather than CSS custom properties
+  lines.push('// Variables');
   for (const [name, value] of Object.entries(VARIABLES)) {
     const formattedValue = name.startsWith('gutter-') ? `${value}px` : value;
     lines.push(`$${name}: ${formattedValue};`);
+  }
+
+  // Eases as ready-to-use 'cubic-bezier()' timing functions
+  lines.push('', '// Eases');
+  for (const [name, values] of Object.entries(EASES)) {
+    lines.push(`$ease-${name}: cubic-bezier(${values.join(', ')});`);
   }
 
   lines.push('');
@@ -85,11 +76,31 @@ const generateTypeScript = (): string => {
   return lines.join('\n');
 };
 
+// Runtime, themable colors as ':root' custom properties. Kept in a standalone
+// 'colors.css' (rather than the SCSS partial) so the file's purpose is clear
+// and partners can override the semantic theme at runtime.
+const generateColorsCss = (): string => {
+  const lines: string[] = [
+    `/* ⚠️ ${DO_NOT_EDIT_COMMENT_BANNER} */`,
+    '',
+    ':root {',
+  ];
+
+  // Exposed as space-separated channels so they can be consumed as
+  // `rgb(var(--color-x))` (and rgba via `rgb(var(--color-x) / <alpha-value>)`)
+  for (const [name, values] of Object.entries(COLORS)) {
+    lines.push(`  --color-${name}: ${values.join(' ')};`);
+  }
+
+  lines.push('}', '');
+  return lines.join('\n');
+};
+
 console.info('🟦 Starting token generation...');
 
 mkdirSync(DIST_DIRECTORY, { recursive: true });
-writeFileSync(resolve(DIST_DIRECTORY, 'tokens.css'), generateCss());
 writeFileSync(resolve(DIST_DIRECTORY, '_tokens.scss'), generateScss());
 writeFileSync(resolve(DIST_DIRECTORY, 'tokens.ts'), generateTypeScript());
+writeFileSync(resolve(DIST_DIRECTORY, 'colors.css'), generateColorsCss());
 
-console.info('✅ Generated tokens.css, _tokens.scss and tokens.ts!\n');
+console.info('✅ Generated _tokens.scss, tokens.ts and colors.css!\n');

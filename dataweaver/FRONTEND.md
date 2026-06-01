@@ -12,7 +12,7 @@ setup. The Google-specific differences:
 | Object shapes | **`interface` over `type`** (props named `ComponentNameProps`) | Biome `useConsistentTypeDefinitions: interface` |
 | Indentation | **2 spaces** (no tabs) | Biome / Stylelint |
 | Translucent colour | **`rgb(var(--color-x) / <alpha>)`** — tokens are CSS variables | convention |
-| Token source | **`@package/tokens`** (`/css`, `/scss`, `/ts`) — not in-app generated | convention |
+| Token source | **`@package/tokens`** (`/colors`, `/scss`, `/ts`) — not in-app generated | convention |
 | Class names | **kebab-case** | Stylelint `selector-class-pattern` |
 
 Full rule sources: [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html)

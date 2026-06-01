@@ -1,4 +1,4 @@
 @use "./core/reset";
 @use "./core/root";
 @use "./core/base";
-@import "@package/tokens/css" layer(root);
+@import "@package/tokens/colors" layer(root);

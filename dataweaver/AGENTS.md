@@ -69,9 +69,9 @@ app-wide service / provider → `foundation`.
 Source: `packages/tokens/src/*.json`. Edit those and run `pnpm generate:tokens`;
 never edit `packages/tokens/dist/**` (generated).
 
-- **Colors** → `@package/tokens/css` (imported once in `core.scss`): `:root` custom properties as space-separated channels. Use as `rgb(var(--color-name))`; alpha as `rgb(var(--color-name) / 50%)`. Names are **semantic, not literal** (e.g. `surface-base` and `text-primary`), defined in `colors.json` as `[r, g, b]` — this is the theme contract partners override, so the app never references raw palette names like `blue`.
-- **Breakpoints** → `@package/tokens/scss` (build-time SCSS for `@media`) and `@package/tokens/ts` (`BREAKPOINT_*`). Not CSS variables — `var()` is invalid in media-query conditions.
-- **Eases / color values in JS** → `@package/tokens/ts` (`EASE_*`, `COLORS`).
+- **Colors** → `@package/tokens/colors` → `colors.css` (imported once in `core.scss`): runtime `:root` custom properties as space-separated channels. Use as `rgb(var(--color-name))`; alpha as `rgb(var(--color-name) / 50%)`. Names are **semantic, not literal** (e.g. `surface-base` and `text-primary`), defined in `colors.json` as `[r, g, b]` — this is the theme contract partners override at runtime, so the app never references raw palette names like `blue`. (In JS: `@package/tokens/ts` `COLORS`.)
+- **Breakpoints** → `@package/tokens/scss` (build-time SCSS `$breakpoint-*` for `@media`) and `@package/tokens/ts` (`BREAKPOINT_*`). Not CSS variables — `var()` is invalid in media-query conditions.
+- **Eases** → build-time SCSS `$ease-*` (`@package/tokens/scss`) and typed `EASE_*` (`@package/tokens/ts`), both ready-to-use `cubic-bezier()` timing functions. Not runtime CSS variables.
 
 Add new colors to `colors.json`, breakpoints to `variables.json`, eases to `eases.json`, then regenerate.
 

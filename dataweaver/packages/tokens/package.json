@@ -2,9 +2,9 @@
   "name": "@package/tokens",
   "type": "module",
   "exports": {
+    "./scss": "./dist/_tokens.scss",
     "./ts": "./dist/tokens.ts",
-    "./css": "./dist/tokens.css",
-    "./scss": "./dist/_tokens.scss"
+    "./colors": "./dist/colors.css"
   },
   "scripts": {
     "generate": "tsx src/generate.ts",
