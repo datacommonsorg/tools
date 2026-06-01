@@ -53,12 +53,12 @@ elements compose primitives); `foundations` wrap the whole tree from the root.
 - **`scopes/`** — feature- or page-scoped compositions that assemble primitives
   and elements into a specific view. A scope **owns its sub-components**: pieces
   used only by that scope live in its folder, not in `elements/`. _e.g._
-  `scopes/page-home` and `scopes/tldraw`.
+  `scopes/page_home` and `scopes/tldraw`.
 - **`foundations/`** — app-level infrastructure and cross-cutting providers /
   services that the rest of the tree depends on but that render little or no UI
   of their own: context providers, motion / scroll providers, analytics, global
   embeds, dev tooling. Mounted once near the root (`app/layout.tsx`). _e.g._
-  `foundations/motion-provider` (wraps the tree in motion's `LazyMotion`).
+  `foundations/motion_provider` (wraps the tree in motion's `LazyMotion`).
 
 Decide placement by reuse and concern: a single platform concern → `primitive`;
 reusable presentational UI → `element`; tied to one view → that `scope`;

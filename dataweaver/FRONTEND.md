@@ -37,8 +37,9 @@ reuse and concern (one platform concern → primitive; reusable presentational U
 → element; tied to one view → that scope; app-wide service → foundation). See
 [AGENTS.md](AGENTS.md) for the full description of each category.
 
-- **Kebab-case** file names; **PascalCase** component identifiers
-  (`card-text.tsx` → `CardText`).
+- **snake_case** file names (dash-case only for `src/app` routing — see
+  [AGENTS.md](AGENTS.md)); **PascalCase** component identifiers
+  (`card_text.tsx` → `CardText`).
 - Every `.tsx` pairs with a co-located `.module.scss`. No styled-jsx, no
   Tailwind, no inline styles (CSS custom properties via `style={{}}` are fine
   for index-driven values only — see §3.5).
@@ -176,8 +177,8 @@ only** for per-frame values (compositor-only; skip layout/paint).
 | Need | Use | Import |
 |---|---|---|
 | Link (internal / external / anchor) | `<Link href={…}>…</Link>` | `~/components/primitives/link` |
-| Compose class names | `mergeClassNames(…)` | `~/functions/merge-class-names` |
-| Match a breakpoint / media query | `useMatchMedia("tablet" \| "prefers-motion" \| …)` | `~/hooks/use-match-media` |
+| Compose class names | `mergeClassNames(…)` | `~/functions/merge_class_names` |
+| Match a breakpoint / media query | `useMatchMedia("tablet" \| "prefers-motion" \| …)` | `~/hooks/use_match_media` |
 
 `<Link />` derives internal (`NextLink`) vs external (`target="_blank"` +
 `rel="noopener noreferrer"`) from `href` / `isExternal` — never pass `target`
@@ -188,7 +189,7 @@ only** for per-frame values (compositor-only; skip layout/paint).
 ## 5. Motion / animation
 
 The library is `motion/react`. The `MotionProvider` foundation
-(`foundations/motion-provider`) wires `LazyMotion` (`strict`, `domMax`) at the
+(`foundations/motion_provider`) wires `LazyMotion` (`strict`, `domMax`) at the
 root layout, so use **`m.*`**, never `motion.*`.
 
 JS-side easing constants (typed): import `EASE_LINEAR` / `EASE_OUT` / `EASE_IN`
