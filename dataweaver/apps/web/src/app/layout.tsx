@@ -3,11 +3,11 @@ import '~/styles/core.scss';
 import type { ReactNode } from 'react';
 import { MotionProvider } from '~/components/foundations/motion_provider';
 
-interface LayoutProps {
+interface RootLayoutProps {
   children: ReactNode;
 }
 
-const RootLayout = ({ children }: LayoutProps) => {
+const RootLayout = ({ children }: RootLayoutProps) => {
   return (
     <html lang="en">
       <body>

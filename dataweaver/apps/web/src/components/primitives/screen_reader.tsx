@@ -11,7 +11,7 @@ export const ScreenReaderOnly = ({
   ...rest
 }: ScreenReaderOnlyProps) => {
   return (
-    <span className={s.screenReaderOnly} {...rest}>
+    <span className={s['screen-reader-only']} {...rest}>
       {children}
     </span>
   );

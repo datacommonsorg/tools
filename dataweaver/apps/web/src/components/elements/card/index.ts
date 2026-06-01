@@ -1,6 +1,6 @@
 import { CardBase } from './base';
 import { CardChart } from './chart/chart';
-import { CardText } from './text/text';
+import { CardText } from './text';
 
 export const Card = {
   Base: CardBase,

@@ -1,16 +1,30 @@
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
 import s from './skeleton.module.scss';
 
-interface SkeletonProps {
-  /** One line per entry; each value is the line's width as a % of the row. */
-  widths: number[];
+/** Skeleton line widths (% of the body) mirroring the loading design. */
+const DEFAULT_LINE_WIDTHS = [100, 84, 92, 72];
 
-  /** Announced to assistive tech while content loads. @default 'Loading…' */
+interface SkeletonProps {
+  /**
+   * One line per entry; each value is the line's width as a % of the row.
+   *
+   * @default '[100, 84, 92, 72]'
+   */
+  widths?: number[];
+
+  /**
+   * Announced to assistive tech while content loads.
+   *
+   * @default 'Loading…'
+   */
   label?: string;
 }
 
 /** Animated placeholder lines shown in place of content while it loads. */
-export const Skeleton = ({ widths, label = 'Loading…' }: SkeletonProps) => {
+export const Skeleton = ({
+  widths = DEFAULT_LINE_WIDTHS,
+  label = 'Loading…',
+}: SkeletonProps) => {
   return (
     <div className={s.container} role="status">
       {widths.map((width, index) => (

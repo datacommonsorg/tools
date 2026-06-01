@@ -172,11 +172,11 @@ Drive visual variants and boolean state through `data-*` attributes on the
 container — never through className flags:
 
 ```tsx
-<article className={s.container} data-state={state} data-has-footer={hasFooter}>
+<article className={s.container} data-variant={variant} data-is-loading={isLoading}>
 ```
 
 ```scss
-.container[data-state="selected"] .card { … }
+.container[data-is-loading="true"] .card { … }
 ```
 
 ### 3.4 Design tokens

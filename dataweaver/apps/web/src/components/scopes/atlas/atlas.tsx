@@ -1,72 +1,82 @@
 'use client';
 
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useRef,
-} from 'react';
-import { type Editor, Tldraw } from 'tldraw';
+import { type ReactNode, useCallback, useRef } from 'react';
+import { createShapeId, type Editor, type TLComponents, Tldraw } from 'tldraw';
 import s from './atlas.module.scss';
-import { ATLAS_COMPONENTS, ATLAS_SHAPES } from './config';
-import { type AtlasContent, contentToShape, gridPosition } from './helpers';
+import { Grid } from './components/grid';
+import { contentToShape, gridPosition } from './helpers';
+import { ShapeCardUtil } from './shapes/card';
+import { type Atlas, AtlasContext } from './use_atlas';
 
-interface ContextValue {
-  /** Push new content onto the atlas - auto-placed in the grid. */
-  add: (content: AtlasContent) => void;
+const ATLAS_COMPONENTS = { Grid } as const satisfies TLComponents;
+
+const ATLAS_SHAPES = [ShapeCardUtil] as const;
+
+type Operation = (editor: Editor) => void;
+
+interface AtlasProviderProps {
+  children: ReactNode;
 }
 
-const AtlasContext = createContext<ContextValue | null>(null);
-
-interface ProviderProps {
-  /** Content placed onto the atlas when the editor first mounts. */
-  initialContent?: AtlasContent[];
-  children?: ReactNode;
-}
-
-export const Atlas = ({ initialContent = [], children }: ProviderProps) => {
-  const hasPopulatedInitialContentRef = useRef(false);
+export const AtlasProvider = ({ children }: AtlasProviderProps) => {
   const editorRef = useRef<Editor | null>(null);
+  const pendingShapesQueueRef = useRef<((editor: Editor) => void)[]>([]);
 
   // TODO: For now using count for positioning - we likely want to use a smarter
   // approach that accounts for deleted content and doesn't rely on order of
   // addition, etc later once we hook up to real data
-  const countRef = useRef(0);
+  const countRef = useRef(-1);
 
-  const populate = useCallback((editor: Editor, content: AtlasContent) => {
-    const shape = contentToShape(content, gridPosition(countRef.current));
+  const withEditor = useCallback((operation: Operation) => {
+    const editor = editorRef.current;
 
-    // If we don't get a shape back (e.g. unsupported content type) - skip it
-    if (!shape) return;
-
-    editor.createShape(shape);
-    countRef.current += 1;
+    // If we have the editor available - perform the operation immediately
+    if (editor) operation(editor);
+    // Otherwise queue it up for when the editor is ready (e.g. once mounted)
+    else pendingShapesQueueRef.current.push(operation);
   }, []);
 
-  const mounted = useCallback(
-    (editor: Editor) => {
-      editorRef.current = editor;
+  const add: Atlas['add'] = useCallback(
+    (content) => {
+      const shapeId = createShapeId();
+      const index = countRef.current++;
 
-      // Render the dot grid (camera-tracked via the 'Grid' component slot)
-      editor.updateInstanceState({ isGridMode: true });
+      // First: Create the shape with any immediately available content
+      withEditor((e) =>
+        e.createShape(contentToShape(shapeId, content, gridPosition(index))),
+      );
 
-      // Populate content (if we haven't already, e.g. due to fast refresh)
-      if (!hasPopulatedInitialContentRef.current) {
-        hasPopulatedInitialContentRef.current = true;
-        for (const content of initialContent) populate(editor, content);
-      }
+      // Then: Return handle that allows for future updates to the shape as more
+      // content becomes available, or for the shape to be removed
+      return {
+        id: shapeId,
+        variant: content.variant,
+        update(props) {
+          withEditor((e) =>
+            e.updateShape({ id: shapeId, type: 'card', props }),
+          );
+        },
+        remove() {
+          withEditor((e) => e.deleteShapes([shapeId]));
+        },
+      };
     },
-    [initialContent, populate],
+    [withEditor],
   );
 
-  const add = useCallback(
-    (content: AtlasContent) => {
-      const editor = editorRef.current;
-      if (editor) populate(editor, content);
-    },
-    [populate],
-  );
+  const mounted = useCallback((editor: Editor) => {
+    // Render the dot grid (camera-tracked via the 'Grid' component slot)
+    editor.updateInstanceState({ isGridMode: true });
+
+    editorRef.current = editor;
+    countRef.current = 0;
+
+    // If there were any operations queued up before the editor was ready,
+    // run them now that we've mounted
+    const queued = pendingShapesQueueRef.current;
+    pendingShapesQueueRef.current = [];
+    for (const operation of queued) operation(editor);
+  }, []);
 
   return (
     <AtlasContext.Provider value={{ add }}>
@@ -80,11 +90,4 @@ export const Atlas = ({ initialContent = [], children }: ProviderProps) => {
       {children}
     </AtlasContext.Provider>
   );
-};
-
-/** Hook for accessing the atlas context. */
-export const useAtlas = () => {
-  const value = useContext(AtlasContext);
-  if (!value) throw new Error("'useAtlas' must be used within 'Atlas'.");
-  return value;
 };

@@ -23,13 +23,17 @@ interface ColorScheme {
 type ButtonProps = {
   /** If left `undefined`, the button will use the default app color scheme. */
   colorScheme?: ColorScheme;
-} & Omit<ComponentPropsWithRef<'button'>, 'children'> &
+
+  /** @default false */
+  isDisabled?: boolean;
+} & Omit<ComponentPropsWithRef<'button'>, 'disabled' | 'children'> &
   (WithIconOnly | WithChildrenAndIcon);
 
 export const Button = ({
   icon: Icon,
   children,
   colorScheme,
+  isDisabled = false,
   ...rest
 }: ButtonProps) => {
   const hasChildren = Boolean(children);
@@ -41,6 +45,7 @@ export const Button = ({
       {...rest}
       className={mergeClassNames(s.container, rest.className)}
       data-shape={shape}
+      disabled={isDisabled}
       style={mergeStyles(
         colorScheme && {
           '--color-button-base': colorScheme.base,

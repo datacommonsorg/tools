@@ -1,20 +1,38 @@
-import { createShapeId, type TLCreateShapePartial } from 'tldraw';
+import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { ChartDatum } from '~/components/elements/card/chart/data_line_chart';
-import type { CardChartShape } from './shapes/card_chart';
-import type { CardTextShape } from './shapes/card_text';
+
+export type CardVariant = 'text' | 'chart';
+
+interface BaseContent {
+  isLoading?: boolean;
+  followUp?: string;
+}
+
+interface TextContent extends BaseContent {
+  variant: 'text';
+  title?: string;
+  body?: string;
+}
+
+interface ChartContent extends BaseContent {
+  variant: 'chart';
+  title?: string;
+  description?: string;
+  data?: ChartDatum[];
+}
 
 /**
- * App-level description of a thing to mount on the canvas. This is the layer's
- * public vocabulary — callers describe content, not tldraw shapes.
+ * App-level description of a thing to mount on the canvas. The atlas only
+ * renders cards; the variant decides which content fields are valid.
  */
-export type AtlasContent =
-  | { kind: 'card'; title: string; body?: string; isLoading?: boolean }
-  | {
-      kind: 'card-chart';
-      title: string;
-      description: string;
-      data: ChartDatum[];
-    };
+export type AtlasContent = TextContent | ChartContent;
+
+/**
+ * Flat view of every possible content field — variant-specific fields become
+ * optional. Used by the shape util, since tldraw stores props as a flat record.
+ */
+export type CardContentFields = Omit<TextContent, 'variant'> &
+  Omit<ChartContent, 'variant'>;
 
 interface Position {
   x: number;
@@ -35,53 +53,50 @@ export const gridPosition = (index: number): Position => ({
   y: GRID.originY + Math.floor(index / GRID.columns) * GRID.stepY,
 });
 
-type AtlasShapePartial =
-  | TLCreateShapePartial<CardTextShape>
-  | TLCreateShapePartial<CardChartShape>;
+// Per-variant default canvas footprint
+const VARIANT_SIZE: Record<CardVariant, { w: number; h: number }> = {
+  text: { w: 360, h: 440 },
+  chart: { w: 420, h: 520 },
+};
 
 export const contentToShape = (
+  shapeId: TLShapeId,
   content: AtlasContent,
   position: Position,
-): AtlasShapePartial | null => {
+): TLCreateShapePartial<TLShape<'card'>> => {
   const baseProps = {
-    id: createShapeId(),
+    id: shapeId,
     x: position.x,
     y: position.y,
+    type: 'card' as const,
   };
 
-  switch (content.kind) {
-    case 'card':
-      return {
-        ...baseProps,
-        type: 'card',
-        props: {
-          w: 360,
-          h: 440,
-          title: content.title,
-          body: content.body ?? '',
-          isLoading: content.isLoading ?? false,
-        },
-      };
+  const shapeProps = {
+    ...VARIANT_SIZE[content.variant],
+    isLoading: content.isLoading ?? false,
+    followUp: content.followUp,
+  };
 
-    case 'card-chart':
-      return {
-        ...baseProps,
-        type: 'card-chart',
-        props: {
-          w: 420,
-          h: 520,
-          title: content.title,
-          description: content.description,
-          data: content.data,
-        },
-      };
-
-    default: {
-      console.warn(`Attempting to draw unsupported content in Atlas:`, content);
-
-      // Note: We purposely don't want to throw to improve DX when iterating on
-      // content types. If there's not content type we can just ignore it
-      return null;
-    }
+  if (content.variant === 'chart') {
+    return {
+      ...baseProps,
+      props: {
+        ...shapeProps,
+        variant: 'chart',
+        title: content.title,
+        description: content.description,
+        data: content.data,
+      },
+    };
   }
+
+  return {
+    ...baseProps,
+    props: {
+      ...shapeProps,
+      variant: 'text',
+      title: content.title,
+      body: content.body,
+    },
+  };
 };

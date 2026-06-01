@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import type { CardState } from '~/components/elements/card/base';
+import { Skeleton } from '~/components/elements/skeleton';
 import { IconLineGraph } from '~/components/primitives/icons/line_graph';
 import { IconTable } from '~/components/primitives/icons/table';
 import s from './chart.module.scss';
@@ -17,26 +19,17 @@ const TABS: TabItem[] = [
 const CHART_WIDTH = 356;
 const CHART_HEIGHT = 200;
 
-interface CardChartProps {
+interface CardChartProps extends Pick<CardState, 'isLoading'> {
   title?: string;
   description?: string;
   data?: ChartDatum[];
-
-  /**
-   * Renders skeleton lines in place of the body while content loads.
-   *
-   * @default false
-   */
-  isLoading?: boolean;
 }
 
 export const CardChart = ({
+  isLoading,
   data,
   title,
   description,
-
-  // TODO: Support loading state here
-  // isLoading = false,
 }: CardChartProps) => {
   const [activeTab, setActiveTab] = useState('chart');
 
@@ -49,13 +42,23 @@ export const CardChart = ({
         </div>
       )}
 
-      <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+      {isLoading ? (
+        <Skeleton />
+      ) : (
+        <>
+          <Tabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
-      {activeTab === 'chart' && data && (
-        <DataLineChart data={data} width={CHART_WIDTH} height={CHART_HEIGHT} />
+          {activeTab === 'chart' && data && (
+            <DataLineChart
+              data={data}
+              width={CHART_WIDTH}
+              height={CHART_HEIGHT}
+            />
+          )}
+
+          {activeTab === 'table' && data && <DataTable data={data} />}
+        </>
       )}
-
-      {activeTab === 'table' && data && <DataTable data={data} />}
     </>
   );
 };

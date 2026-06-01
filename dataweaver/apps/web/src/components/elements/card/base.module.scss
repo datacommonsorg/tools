@@ -26,7 +26,7 @@
     transition: transform 0.5s $ease-out;
   }
 
-  [data-state="selected"] & {
+  [data-is-selected="true"] & {
     transform: translateY(calc(var(--actions-height) * -1));
   }
 }
@@ -51,7 +51,7 @@
       border-color 0.5s $ease-out;
   }
 
-  [data-state="selected"] & {
+  [data-is-selected="true"] & {
     border-color: rgb(var(--color-card-base-selected));
     transform: translateY(var(--actions-height));
   }
@@ -68,7 +68,7 @@
   flex-shrink: 0;
   padding: 0 28px 18px;
 
-  [data-state="loading"] & {
+  [data-loading="true"] & {
     visibility: hidden;
     pointer-events: none;
   }

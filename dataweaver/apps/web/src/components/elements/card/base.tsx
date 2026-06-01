@@ -5,30 +5,46 @@ import { Button } from '~/components/elements/button';
 import { useCachedResizeValues } from '~/hooks/use_cached_resize_values';
 import s from './base.module.scss';
 
-export type CardState = 'loading' | 'default' | 'selected';
+/** The card's two orthogonal, independently-settable states. */
+export interface CardState {
+  isLoading: boolean;
+  isSelected: boolean;
+}
 
 interface CardAction {
   icon: ComponentType<ComponentPropsWithRef<'svg'>>;
   label: string;
   onClick?: () => void;
+
+  /** @default false */
+  isDisabled?: boolean;
 }
 
-interface CardProps {
-  state: CardState;
+interface CardProps extends CardState {
   actions: CardAction[];
   content: ReactNode;
 
-  /** **Note**: This isn't shown while `state` is `loading`. */
+  /** **Note**: This isn't shown while `isLoading`. */
   footer?: ReactNode;
 }
 
-export const CardBase = ({ state, actions, content, footer }: CardProps) => {
+export const CardBase = ({
+  isLoading,
+  isSelected,
+  actions,
+  content,
+  footer,
+}: CardProps) => {
   const getCachedCanScroll = useCachedResizeValues((element: HTMLElement) => {
     return element.scrollHeight > element.clientHeight;
   });
 
   return (
-    <article className={s.container} data-state={state}>
+    <article
+      className={s.container}
+      data-is-loading={isLoading}
+      data-is-selected={isSelected}
+    >
       <div className={s['actions-container']}>
         {actions.map((action, index) => (
           <Button
@@ -42,6 +58,7 @@ export const CardBase = ({ state, actions, content, footer }: CardProps) => {
             }}
             aria-label={action.label}
             onClick={action.onClick}
+            isDisabled={action.isDisabled}
           />
         ))}
       </div>
@@ -57,7 +74,7 @@ export const CardBase = ({ state, actions, content, footer }: CardProps) => {
         }}
       >
         <div className={s.content}>{content}</div>
-        <div className={s.footer} inert={state === 'loading'}>
+        <div className={s.footer} inert={isLoading}>
           {footer}
         </div>
       </div>
