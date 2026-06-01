@@ -29,6 +29,7 @@ Run `pnpm lint` (and `pnpm build` for UI changes) before considering work done.
 
 - **TypeScript** follows the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html), enforced via Biome (`biome.json`).
 - **CSS / SCSS** follow the [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html): Stylelint for `.scss` (`stylelint.config.mjs`), Biome for plain `.css`.
+- **File naming** — use `dash-case` for all Next.js routing within `apps/web/src/app` (route segments, `page.tsx`, dynamic params, etc.) and `snake_case` for every other file.
 
 ## Frontend
 

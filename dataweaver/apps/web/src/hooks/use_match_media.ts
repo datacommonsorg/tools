@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import {
   getMatchMediaQuery,
   type MatchMediaKey,
-} from '~/functions/match-media';
+} from '~/functions/match_media';
 
 interface Config {
   /**

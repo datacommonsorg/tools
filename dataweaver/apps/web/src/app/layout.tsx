@@ -1,7 +1,7 @@
 import '~/styles/layers.css';
 import '~/styles/core.scss';
 import type { ReactNode } from 'react';
-import { MotionProvider } from '~/components/foundations/motion-provider';
+import { MotionProvider } from '~/components/foundations/motion_provider';
 
 interface LayoutProps {
   children: ReactNode;

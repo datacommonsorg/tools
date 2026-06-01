@@ -1,3 +1,3 @@
-import { Page404 } from '~/components/scopes/page-404';
+import { Page404 } from '~/components/scopes/page_404';
 
 export default Page404;

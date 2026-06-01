@@ -1,4 +1,4 @@
-import { IS_BROWSER } from '~/configs/environment-client';
+import { IS_BROWSER } from '~/configs/environment_client';
 import { BREAKPOINTS, type Target } from '~/styles/breakpoints';
 
 /** List of media query keys with their custom query. */
