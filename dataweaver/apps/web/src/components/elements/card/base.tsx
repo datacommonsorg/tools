@@ -1,0 +1,66 @@
+'use client';
+
+import type { ComponentPropsWithRef, ComponentType, ReactNode } from 'react';
+import { Button } from '~/components/elements/button';
+import { useCachedResizeValues } from '~/hooks/use_cached_resize_values';
+import s from './base.module.scss';
+
+export type CardState = 'loading' | 'default' | 'selected';
+
+interface CardAction {
+  icon: ComponentType<ComponentPropsWithRef<'svg'>>;
+  label: string;
+  onClick?: () => void;
+}
+
+interface CardProps {
+  state: CardState;
+  actions: CardAction[];
+  content: ReactNode;
+
+  /** **Note**: This isn't shown while `state` is `loading`. */
+  footer?: ReactNode;
+}
+
+export const CardBase = ({ state, actions, content, footer }: CardProps) => {
+  const getCachedCanScroll = useCachedResizeValues((element: HTMLElement) => {
+    return element.scrollHeight > element.clientHeight;
+  });
+
+  return (
+    <article className={s.container} data-state={state}>
+      <div className={s['actions-container']}>
+        {actions.map((action, index) => (
+          <Button
+            key={index}
+            icon={action.icon}
+            colorScheme={{
+              base: 'transparent',
+              'base-hover': 'var(--color-card-base)',
+              content: 'var(--color-card-base)',
+              'content-hover': 'var(--color-card-base-selected)',
+            }}
+            aria-label={action.label}
+            onClick={action.onClick}
+          />
+        ))}
+      </div>
+
+      <div
+        className={s['children-container']}
+        // TLDraw captures all wheel events; this ensures that cards can be
+        // scrolled when children here can scroll
+        onWheelCapture={(event) => {
+          if (getCachedCanScroll(false, event.currentTarget)) {
+            event.stopPropagation();
+          }
+        }}
+      >
+        <div className={s.content}>{content}</div>
+        <div className={s.footer} inert={state === 'loading'}>
+          {footer}
+        </div>
+      </div>
+    </article>
+  );
+};

@@ -1,0 +1,42 @@
+.container {
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgb(var(--color-card-content-subtle));
+}
+
+.tabs-container {
+  display: flex;
+}
+
+.tab {
+  @include type-tab;
+
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 12px 4px 8px;
+  color: rgb(var(--color-card-content-muted));
+  border-bottom: 1px solid transparent;
+
+  @include prefers-motion {
+    transition-timing-function: $ease-linear;
+    transition-duration: 0.2s;
+    transition-property: color, border-bottom-color;
+  }
+
+  &[data-is-active="true"] {
+    color: rgb(var(--color-card-base-selected));
+    border-bottom-color: rgb(var(--color-card-base-selected));
+  }
+
+  @include hover {
+    &[data-is-active="false"] {
+      color: rgb(var(--color-card-base-selected));
+    }
+  }
+}
+
+.icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}

@@ -1,0 +1,28 @@
+// TODO: ATM we're not loading the font-family. Fix this
+@mixin type-title {
+  font-family: "Google Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+@mixin type-body {
+  font-family: "Google Sans", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+@mixin type-label {
+  font-family: "Google Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.33;
+}
+
+@mixin type-tab {
+  font-family: "Google Sans", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}

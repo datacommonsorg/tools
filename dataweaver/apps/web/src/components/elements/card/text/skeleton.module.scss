@@ -1,0 +1,21 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.line {
+  height: 18px;
+  background-color: rgb(var(--color-card-skeleton));
+  border-radius: 8px;
+
+  @include prefers-motion {
+    animation: skeleton-pulse 1.5s $ease-in-out infinite;
+  }
+}

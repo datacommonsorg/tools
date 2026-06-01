@@ -26,9 +26,9 @@ enforced via `biome.json` and `stylelint.config.mjs`.
 | Component | Location |
 |---|---|
 | Primitive (wrapper over one platform / third-party concern) | `components/primitives/<name>.tsx`, or grouped by category — e.g. `components/primitives/icons/<name>.tsx` |
-| Element (generic, reusable building block) | `components/elements/<name>/<name>.tsx` + `.module.scss` |
+| Element (generic, reusable building block) | flat by default: `components/elements/<name>.tsx` + `<name>.module.scss`. Promote to a folder only when sub-components appear (see "Flat vs. nested" below). |
 | Scope (feature- / page-scoped composition) | `components/scopes/<name>/<name>.tsx` |
-| Scope-local subcomponent (used only by that scope) | nested in the scope folder, e.g. `components/scopes/tldraw/card/card.tsx` |
+| Scope-local subcomponent (used only by that scope) | nested in the scope folder, e.g. `components/scopes/atlas/card/card.tsx` |
 | Foundation (app-level provider / service / global embed) | `components/foundations/<name>.tsx`, mounted once near the root |
 
 Layered low → high: **primitives → elements → scopes**, with **foundations**
@@ -45,6 +45,61 @@ reuse and concern (one platform concern → primitive; reusable presentational U
   for index-driven values only — see §3.5).
 - Keep a component in the narrowest scope that owns it. A component used only
   inside one scope lives in that scope's folder, not in `elements/`.
+
+### 1.1 Flat vs. nested — avoid early nesting
+
+Default to **flat**: a component is a pair of sibling files named after it,
+sitting next to its peers.
+
+```
+elements/
+  button.tsx
+  button.module.scss
+  card.tsx
+  card.module.scss
+```
+
+**Promote to a folder only when the component gains a sub-component used solely
+by it.** The original pair keeps its name; the sub-component lives alongside.
+
+```
+elements/
+  button/
+    button.tsx
+    button.module.scss
+    icon.tsx           # used only by button
+    icon.module.scss
+  card.tsx
+  card.module.scss
+```
+
+A sub-component that becomes reused outside its parent gets promoted out to its
+own flat pair in `elements/` (or up to a `primitive`, depending on concern).
+Don't create a folder "in anticipation" of future sub-components — wait until
+the second file actually exists. Same rule applies inside `scopes/`: a scope is
+always a folder (it owns its view), but its sub-components stay flat inside
+that folder until one of *them* grows a child of its own.
+
+### 1.2 Naming — category first
+
+**Lead the name with what the thing *is*, then what makes it specific.** A
+card that holds a chart is `card_chart`, not `chart_card`; a card that holds
+text is `card_text`; a button that closes is `button_close`; an icon of an
+arrow is `icon_arrow_right`.
+
+This trades a slightly less natural-sounding name for real DX wins:
+
+- **Sorted directory listings group by category** — all `card_*` sit together,
+  all `button_*` sit together, all `icon_*` sit together. Browsing the folder
+  reads like an index of what's available.
+- **Editor fuzzy-find narrows by category** — typing `card` surfaces every
+  card variant; you don't have to remember the modifier first.
+- **Imports stay parallel** — `import { CardChart } from …; import { CardText }
+  from …;` line up visually instead of scattering by adjective.
+
+Apply this everywhere a name is composed of a noun + modifier: file and folder
+names, component identifiers (`CardChart`, not `ChartCard`), and the
+element-prefixed SCSS classes in §3.2 (`.button-close`, `.icon-arrow-right`).
 
 ---
 
@@ -87,8 +142,7 @@ CSS Modules only (`*.module.scss`), imported as `import s from './x.module.scss'
 
 `~/styles/includes` (breakpoint / helper / z-index mixins) is **auto-injected**
 into every module via `next.config.ts` `additionalData` — do **not** re-`@use`
-it. Only `@use` files that aren't part of includes (e.g.
-`@use "~/styles/typography.module" as typography;`).
+it.
 
 ### 3.1 Selectors & formatting
 
@@ -109,7 +163,8 @@ it. Only `@use` files that aren't part of includes (e.g.
   `<h2 className={s.title}>{title}</h2>`. Otherwise use a `<noun>-container` or
   an element-prefixed class.
 - **Multiple buttons / icons → element-prefixed kebab**: `.button-close`,
-  `.icon-arrow-right` (read left-to-right: "a button that closes").
+  `.icon-arrow-right` (read left-to-right: "a button that closes"). Same
+  category-first rule as §1.2 — never `.close-button` / `.arrow-right-icon`.
 
 ### 3.3 Variants & state via `data-*`
 

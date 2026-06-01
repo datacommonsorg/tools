@@ -30,6 +30,7 @@ Run `pnpm lint` (and `pnpm build` for UI changes) before considering work done.
 - **TypeScript** follows the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html), enforced via Biome (`biome.json`).
 - **CSS / SCSS** follow the [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html): Stylelint for `.scss` (`stylelint.config.mjs`), Biome for plain `.css`.
 - **File naming** — use `dash-case` for all Next.js routing within `apps/web/src/app` (route segments, `page.tsx`, dynamic params, etc.) and `snake_case` for every other file.
+- **Category-first naming** — composed names lead with what the thing *is*, then what makes it specific: `card_chart` (not `chart_card`), `button_close`, `icon_arrow_right`. Applies to files, folders, component identifiers, and element-prefixed SCSS classes. See [`FRONTEND.md` §1.2](FRONTEND.md#12-naming--category-first).
 
 ## Frontend
 
@@ -49,11 +50,14 @@ elements compose primitives); `foundations` wrap the whole tree from the root.
   `primitives/icons/*`.
 - **`elements/`** — generic, reusable, presentational building blocks composed
   from primitives (a button, a tabs control). Self-contained, no feature or
-  business logic, usable anywhere. _e.g._ `elements/button`.
+  business logic, usable anywhere. **Flat by default** (`elements/button.tsx` +
+  `button.module.scss` sit next to `card.tsx` + `card.module.scss`); promote to
+  a folder only when the element gains a sub-component used solely by it. See
+  [`FRONTEND.md` §1.1](FRONTEND.md#11-flat-vs-nested--avoid-early-nesting).
 - **`scopes/`** — feature- or page-scoped compositions that assemble primitives
   and elements into a specific view. A scope **owns its sub-components**: pieces
   used only by that scope live in its folder, not in `elements/`. _e.g._
-  `scopes/page_home` and `scopes/tldraw`.
+  `scopes/page_home` and `scopes/atlas`.
 - **`foundations/`** — app-level infrastructure and cross-cutting providers /
   services that the rest of the tree depends on but that render little or no UI
   of their own: context providers, motion / scroll providers, analytics, global
@@ -69,7 +73,7 @@ app-wide service / provider → `foundation`.
 Source: `packages/tokens/src/*.json`. Edit those and run `pnpm generate:tokens`;
 never edit `packages/tokens/dist/**` (generated).
 
-- **Colors** → `@package/tokens/colors` → `colors.css` (imported once in `core.scss`): runtime `:root` custom properties as space-separated channels. Use as `rgb(var(--color-name))`; alpha as `rgb(var(--color-name) / 50%)`. Names are **semantic, not literal** (e.g. `surface-base` and `text-primary`), defined in `colors.json` as `[r, g, b]` — this is the theme contract partners override at runtime, so the app never references raw palette names like `blue`. (In JS: `@package/tokens/ts` `COLORS`.)
+- **Colors** → `@package/tokens/colors` → `colors.css` (imported once in `core.scss`): runtime `:root` custom properties as space-separated channels. Use as `rgb(var(--color-name))`; alpha as `rgb(var(--color-name) / 50%)`. Names are **semantic, not literal** (e.g. `surface-base`), defined in `colors.json` as `[r, g, b]` — this is the theme contract partners override at runtime, so the app never references raw palette names like `blue`. (In JS: `@package/tokens/ts` `COLORS`.)
 - **Breakpoints** → `@package/tokens/scss` (build-time SCSS `$breakpoint-*` for `@media`) and `@package/tokens/ts` (`BREAKPOINT_*`). Not CSS variables — `var()` is invalid in media-query conditions.
 - **Eases** → build-time SCSS `$ease-*` (`@package/tokens/scss`) and typed `EASE_*` (`@package/tokens/ts`), both ready-to-use `cubic-bezier()` timing functions. Not runtime CSS variables.
 
