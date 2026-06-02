@@ -57,6 +57,8 @@ export const CardBase = ({
               'content-hover': 'var(--color-card-base-selected)',
             }}
             aria-label={action.label}
+            // Prevent tldraw from triggering canvas gestures (e.g. dragging)
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={action.onClick}
             isDisabled={action.isDisabled}
           />

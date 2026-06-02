@@ -5,6 +5,7 @@ import s from './button.module.scss';
 
 interface WithIconOnly {
   icon: ComponentType<ComponentPropsWithRef<'svg'>>;
+  'aria-label': string;
   children?: never;
 }
 

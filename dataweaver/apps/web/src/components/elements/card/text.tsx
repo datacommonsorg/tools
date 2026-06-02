@@ -12,9 +12,7 @@ export const CardText = ({ title, body, isLoading }: CardTextProps) => {
     <>
       {title && <h2 className={s.title}>{title}</h2>}
 
-      {isLoading && <Skeleton />}
-
-      {body && <div className={s.body}>{body}</div>}
+      {isLoading ? <Skeleton /> : body && <div className={s.body}>{body}</div>}
     </>
   );
 };
