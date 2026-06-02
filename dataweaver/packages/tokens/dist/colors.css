@@ -1,0 +1,10 @@
+/* ⚠️ AUTO-GENERATED — Do not edit. Modify the JSON tokens in 'packages/tokens/src/' and run 'pnpm generate:tokens' */
+
+:root {
+  --color-surface-base: 247 252 255;
+  --color-surface-raised: 255 255 255;
+  --color-surface-decorator: 227 231 237;
+  --color-text-primary: 32 33 36;
+  --color-text-secondary: 68 71 70;
+  --color-text-strong: 0 0 0;
+}

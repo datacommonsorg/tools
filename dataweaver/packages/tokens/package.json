@@ -1,0 +1,17 @@
+{
+  "name": "@package/tokens",
+  "type": "module",
+  "exports": {
+    "./scss": "./dist/_tokens.scss",
+    "./ts": "./dist/tokens.ts",
+    "./colors": "./dist/colors.css"
+  },
+  "scripts": {
+    "generate": "tsx src/generate.ts",
+    "lint:type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0"
+  }
+}

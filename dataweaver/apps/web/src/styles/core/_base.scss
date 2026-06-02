@@ -1,0 +1,12 @@
+@use "~/styles/includes";
+
+@layer base {
+  *:focus {
+    outline: none;
+  }
+
+  *:focus-visible:focus {
+    outline: 1px dashed currentcolor;
+    outline-offset: var(--outline-offset);
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "surface-base": [247, 252, 255],
+  "surface-raised": [255, 255, 255],
+  "surface-decorator": [227, 231, 237],
+  "text-primary": [32, 33, 36],
+  "text-secondary": [68, 71, 70],
+  "text-strong": [0, 0, 0]
+}

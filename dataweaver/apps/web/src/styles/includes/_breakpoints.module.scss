@@ -1,0 +1,24 @@
+@use "sass:map";
+@use "@package/tokens/scss" as tokens;
+
+$-breakpoints: (
+  "tablet": tokens.$breakpoint-tablet,
+  "laptop": tokens.$breakpoint-laptop,
+  "desktop": tokens.$breakpoint-desktop,
+);
+
+@mixin breakpoint($breakpoint) {
+  @if map.has-key($-breakpoints, $breakpoint) {
+    @media only screen and (min-width: #{map.get($-breakpoints, $breakpoint)}px) {
+      @content;
+    }
+  }
+}
+
+@mixin breakpoint-below($breakpoint) {
+  @if map.has-key($-breakpoints, $breakpoint) {
+    @media only screen and (max-width: #{map.get($-breakpoints, $breakpoint) - 1}px) {
+      @content;
+    }
+  }
+}
