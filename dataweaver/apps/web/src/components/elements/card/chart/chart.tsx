@@ -16,6 +16,9 @@ const CHART_HEIGHT = 200;
 interface CardChartProps extends Pick<CardState, 'isLoading'> {
   title?: string;
   description?: string;
+
+  // TODO: Atm data rendered within the card is very specific to the emissions
+  // dataset. Let's make it more generic once we have real data to work with
   data?: ChartDatum[];
 }
 

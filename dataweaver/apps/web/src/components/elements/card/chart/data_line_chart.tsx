@@ -8,8 +8,6 @@ export interface ChartDatum {
   emissions: number;
 }
 
-// Recharts colours SVG presentation attributes, where CSS `var()` doesn't
-// resolve — so source concrete values from the JS token export.
 const LINE_COLOR = `rgb(${COLORS['card-base-selected']})`;
 const GRID_COLOR = `rgb(${COLORS['surface-decorator']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-content-muted']})`;

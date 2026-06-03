@@ -5,6 +5,7 @@ interface DataTableProps {
   data: ChartDatum[];
 }
 
+// TODO: This is temporary - either style it or render using recharts
 export const DataTable = ({ data }: DataTableProps) => {
   return (
     <table className={s.table}>
