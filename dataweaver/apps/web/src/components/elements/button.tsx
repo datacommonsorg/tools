@@ -22,6 +22,8 @@ interface ColorScheme {
 }
 
 type ButtonProps = {
+  size: 'small' | 'large';
+
   /** If left `undefined`, the button will use the default app color scheme. */
   colorScheme?: ColorScheme;
 
@@ -33,6 +35,7 @@ type ButtonProps = {
 export const Button = ({
   icon: Icon,
   children,
+  size,
   colorScheme,
   isDisabled = false,
   ...rest
@@ -46,6 +49,7 @@ export const Button = ({
       {...rest}
       className={mergeClassNames(s.container, rest.className)}
       data-shape={shape}
+      data-size={size}
       disabled={isDisabled}
       style={mergeStyles(
         colorScheme && {

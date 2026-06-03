@@ -119,6 +119,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
             followUp && (
               <Button
                 icon={IconPencil}
+                size="small"
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 {followUp}

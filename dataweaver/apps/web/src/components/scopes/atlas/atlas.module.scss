@@ -2,6 +2,8 @@
 
 .tldraw {
   --tl-color-background: transparent;
+  --tl-color-selected: rgb(var(--color-control-accent));
+  --tl-color-selected-contrast: rgb(var(--color-control-accent-content));
 
   position: fixed;
   inset: 0;
@@ -9,4 +11,10 @@
   // Ensure all nested layers appear from a base of 0 and not above app content
   z-index: $z-index-content;
   background-color: rgb(var(--color-surface-base));
+
+  // The text tool's font family + colour come from the tldraw theme (see
+  // atlas.tsx), but its base weight lives in a tldraw constant. Force here
+  :global(.tl-rich-text) {
+    font-weight: 500;
+  }
 }

@@ -1,0 +1,60 @@
+.container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.controls-container {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 17px;
+  align-items: center;
+  pointer-events: auto;
+
+  .zoom-container {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    height: 46px;
+    padding: 0 8px;
+    color: rgb(var(--color-control-accent));
+    background: rgb(var(--color-control-surface));
+    border-radius: 23px;
+    box-shadow:
+      0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+      0 1px 2px rgb(var(--color-shadow) / 30%);
+
+    .zoom-value {
+      @include type-label-large;
+
+      width: 56px;
+      text-align: center;
+    }
+  }
+
+  .button-export {
+    box-shadow:
+      0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+      0 1px 2px rgb(var(--color-shadow) / 30%);
+  }
+}
+
+.tools-container {
+  position: absolute;
+  top: 200px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  width: 58px;
+  padding: 8px;
+  pointer-events: auto;
+  background: rgb(var(--color-control-surface));
+  border-radius: 29px;
+  box-shadow:
+    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+    0 1px 2px rgb(var(--color-shadow) / 30%);
+}

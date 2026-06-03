@@ -1,6 +1,12 @@
 {
   "surface-base": [247, 252, 255],
   "surface-decorator": [227, 231, 237],
+  "surface-content": [0, 0, 0],
+  "control-surface": [247, 252, 255],
+  "control-surface-hover": [227, 231, 237],
+  "control-accent": [11, 87, 208],
+  "control-accent-content": [255, 255, 255],
+  "control-content": [32, 33, 36],
   "button-base": [194, 231, 255],
   "button-base-hover": [173, 214, 240],
   "button-content": [0, 0, 0],
@@ -10,6 +16,6 @@
   "card-content": [32, 33, 36],
   "card-content-muted": [68, 71, 70],
   "card-content-subtle": [196, 199, 197],
-  "card-shadow": [0, 0, 0],
-  "card-skeleton": [242, 242, 242]
+  "card-skeleton": [242, 242, 242],
+  "shadow": [0, 0, 0]
 }

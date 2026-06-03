@@ -1,6 +1,5 @@
 .container {
   display: flex;
-  gap: 2px;
   align-items: center;
   justify-content: center;
   color: rgb(var(--color-button-content));
@@ -10,12 +9,34 @@
     height: 28px;
     padding-inline: 12px 16px;
     border-radius: 14px;
+
+    &[data-size="small"] {
+      column-gap: 2px;
+      height: 28px;
+      padding-inline: 12px 16px;
+      border-radius: 14px;
+    }
+
+    &[data-size="large"] {
+      column-gap: 6px;
+      height: 46px;
+      padding-inline: 22px 24px;
+      border-radius: 23px;
+    }
   }
 
   &[data-shape="square"] {
-    width: 40px;
-    height: 40px;
-    border-radius: 20px;
+    &[data-size="small"] {
+      width: 28px;
+      height: 28px;
+      border-radius: 14px;
+    }
+
+    &[data-size="large"] {
+      width: 40px;
+      height: 40px;
+      border-radius: 20px;
+    }
   }
 
   @include prefers-motion {
@@ -45,5 +66,11 @@
 }
 
 .children {
-  @include type-label;
+  [data-size="small"] & {
+    @include type-label-small;
+  }
+
+  [data-size="large"] & {
+    @include type-label-large;
+  }
 }

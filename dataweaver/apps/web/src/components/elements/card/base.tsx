@@ -50,6 +50,7 @@ export const CardBase = ({
           <Button
             key={index}
             icon={action.icon}
+            size="large"
             colorScheme={{
               base: 'transparent',
               'base-hover': 'var(--color-card-base)',
