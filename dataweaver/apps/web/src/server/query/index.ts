@@ -63,7 +63,9 @@ export interface ToolLoopResult {
  * Returns the final model text response (expected to be JSON) and the resolved
  * place DCID extracted from tool responses, or empty string/null if not found.
  */
-export const runToolLoop = async (params: ToolLoopParams): Promise<ToolLoopResult> => {
+export const runToolLoop = async (
+  params: ToolLoopParams,
+): Promise<ToolLoopResult> => {
   const {
     place,
     query,
@@ -136,7 +138,7 @@ export const runToolLoop = async (params: ToolLoopParams): Promise<ToolLoopResul
       // Extract place DCID from search_indicators responses
       if (fcName === 'search_indicators' && !resolvedPlaceDcid) {
         try {
-          const resultText = toolResult.content?.[0]?.text;
+          const resultText = toolResult?.content?.[0]?.text;
           if (resultText) {
             const parsed = JSON.parse(resultText);
             const placesWithData =

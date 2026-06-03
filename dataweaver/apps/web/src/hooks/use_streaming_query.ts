@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { QueryStreamRequest, StreamEvent } from '~/server/types';
 
 export interface StreamingQueryState {
@@ -59,6 +59,12 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const start = useCallback(async (params: QueryStreamRequest) => {
     setState({
       status: 'Connecting...',
@@ -107,7 +113,6 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
             setState((prev) => ({ ...prev, status: event.message }));
             break;
           case 'complete':
-            console.log(event);
             setState((prev) => ({
               ...prev,
               status: 'Complete',
