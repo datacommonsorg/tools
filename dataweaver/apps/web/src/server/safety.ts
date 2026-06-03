@@ -1,6 +1,8 @@
 import { getServiceConfig, getSkillConfig } from './config';
 import { getGenAI } from './gemini';
 
+const regexCache = new Map<string, RegExp>();
+
 interface SafetyResult {
   allowed: boolean;
   reason?: string;
@@ -19,7 +21,11 @@ export const checkPromptSafety = async (
   // Layer 1: Regex pattern matching
   if (skill.regexPatterns) {
     for (const pattern of skill.regexPatterns) {
-      const regex = new RegExp(pattern, 'i');
+      let regex = regexCache.get(pattern);
+      if (!regex) {
+        regex = new RegExp(pattern, 'i');
+        regexCache.set(pattern, regex);
+      }
       if (regex.test(query)) {
         return {
           allowed: false,

@@ -55,7 +55,26 @@ export const callMcp = async <T = unknown>(
     }
   }
 
-  const data = JSON.parse(dataStr);
-  if (data.error) throw new Error(data.error.message);
+  let data: {
+    result?: T;
+    error?: { message: string };
+  } | null = null;
+
+  try {
+    data = JSON.parse(dataStr);
+  } catch {
+    throw new Error(
+      `Failed to parse MCP response JSON: ${dataStr.substring(0, 100)}`,
+    );
+  }
+
+  if (data && typeof data === 'object' && data.error) {
+    throw new Error(data.error.message || 'Unknown MCP error');
+  }
+
+  if (data?.result === undefined) {
+    throw new Error('MCP response missing result');
+  }
+
   return data.result;
 };

@@ -21,7 +21,15 @@ interface QueryModelResponse {
 }
 
 export async function POST(request: NextRequest) {
-  const body: QueryStreamRequest = await request.json();
+  let body: QueryStreamRequest;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   const { query, atlasContext } = body;
 
   const encoder = new TextEncoder();
@@ -122,6 +130,9 @@ export async function POST(request: NextRequest) {
               .replace(/```/g, '')
               .trim();
             parsedResponse = JSON.parse(cleaned) as QueryModelResponse;
+            if (!parsedResponse || typeof parsedResponse !== 'object') {
+              throw new Error('Invalid JSON object');
+            }
           } catch {
             emit({
               type: 'status',
