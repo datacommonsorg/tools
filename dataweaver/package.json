@@ -17,7 +17,7 @@
     "generate:tokens": "pnpm --filter @package/tokens generate"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.7",
+    "@biomejs/biome": "2.4.16",
     "prettier": "^3.8.1",
     "stylelint-config-css-modules": "^4.6.0",
     "stylelint-config-recess-order": "^7.7.0",
