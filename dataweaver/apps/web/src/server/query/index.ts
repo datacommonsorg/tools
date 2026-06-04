@@ -5,7 +5,7 @@ import { callMcp } from '~/server/mcp';
 import type {
   McpToolCallResult,
   McpToolsListResult,
-  QueryAnalysis,
+  ParsedQuery,
 } from '~/server/types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ export interface ToolCallEvent {
 interface ToolLoopParams {
   place: string;
   query: string;
-  analysis: QueryAnalysis;
+  parsed: ParsedQuery;
   atlasContext: string;
   geminiTools: GeminiTool[];
   signal?: AbortSignal;
@@ -69,7 +69,7 @@ export const runToolLoop = async (
   const {
     place,
     query,
-    analysis,
+    parsed,
     atlasContext,
     geminiTools,
     signal,
@@ -89,8 +89,8 @@ export const runToolLoop = async (
     ? `\n\nATLAS CONTEXT (data the user already has loaded):\n${atlasContext}\nUse this context to understand what the user has already explored.`
     : '';
 
-  const dateRangeClause = analysis.dateRange
-    ? `\n\nDATE CONSTRAINT: The user wants data limited to ${analysis.dateRange.start && analysis.dateRange.end ? `years ${analysis.dateRange.start} through ${analysis.dateRange.end}` : analysis.dateRange.start ? `years from ${analysis.dateRange.start} onward` : `years up to ${analysis.dateRange.end}`}.`
+  const dateRangeClause = parsed.dateRange
+    ? `\n\nDATE CONSTRAINT: The user wants data limited to ${parsed.dateRange.start && parsed.dateRange.end ? `years ${parsed.dateRange.start} through ${parsed.dateRange.end}` : parsed.dateRange.start ? `years from ${parsed.dateRange.start} onward` : `years up to ${parsed.dateRange.end}`}.`
     : '';
 
   const placeClause = `\n\nTARGET PLACE: "${place}" — all variables MUST be relevant to this location.`;

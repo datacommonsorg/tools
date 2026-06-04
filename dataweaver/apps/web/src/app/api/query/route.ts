@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
-import { analyzeQuery } from '~/server/analyze';
+import { parseQuery } from '~/server/parse_query';
 import { fetchVariableMetadata } from '~/server/observations';
 import { fetchGeminiTools, runToolLoop } from '~/server/query';
 import { checkPromptSafety } from '~/server/safety';
@@ -59,16 +59,16 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // ─── Analyze query ────────────────────────────────────────────────
-        emit({ type: 'status', message: 'Analyzing query...' });
-        const analysis = await analyzeQuery({ query, atlasContext });
+        // ─── Parse query ──────────────────────────────────────────────────
+        emit({ type: 'status', message: 'Parsing query...' });
+        const parsed = await parseQuery({ query, atlasContext });
 
         // Resolve places
-        let places = analysis.places;
+        let places = parsed.places;
         if (places.length === 0) places = [query];
-        analysis.places = places;
+        parsed.places = places;
 
-        emit({ type: 'analysis', data: analysis });
+        emit({ type: 'parsed_query', data: parsed });
         if (signal.aborted) {
           controller.close();
           return;
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
           const place = places[i];
           if (!place?.trim()) continue;
 
-          const placeLabel = analysis.titles[place] || place;
+          const placeLabel = parsed.titles[place] || place;
           emit({
             type: 'status',
             message: `Discovering metrics for ${placeLabel} (${i + 1}/${places.length})...`,
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
           const { text: responseText, resolvedPlaceDcid } = await runToolLoop({
             place,
             query,
-            analysis,
+            parsed,
             atlasContext,
             geminiTools,
             signal,
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
             id: nanoid(),
             chartType: parsedResponse.suggestedChartType || 'line_chart',
             title:
-              analysis.titles[place] ||
+              parsed.titles[place] ||
               parsedResponse.summary ||
               `Metrics for ${place}`,
             variables: variables.map((v) => ({
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
               rationale: v.rationale,
             })),
             entities: [{ dcid: entityDcid, name: place }],
-            dateRange: analysis.dateRange,
+            dateRange: parsed.dateRange,
             summary: parsedResponse.summary,
             insight: parsedResponse.insight,
             followUps: parsedResponse.followUps,

@@ -14,7 +14,7 @@ export interface ServiceConfig {
     };
   };
   models: {
-    analyze: string;
+    parseQuery: string;
     query: string;
     safety: string;
     image: string;
@@ -59,7 +59,7 @@ export const getServiceConfig = (): ServiceConfig => {
       },
     },
     models: {
-      analyze: process.env.MODEL_ANALYZE || raw.models.analyze,
+      parseQuery: process.env.MODEL_PARSE_QUERY || raw.models.parseQuery,
       query: process.env.MODEL_QUERY || raw.models.query,
       safety: process.env.MODEL_SAFETY || raw.models.safety,
       image: process.env.MODEL_IMAGE || raw.models.image,

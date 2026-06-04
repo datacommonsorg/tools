@@ -6,7 +6,7 @@
     }
   },
   "models": {
-    "analyze": "gemini-3.1-flash-lite",
+    "parseQuery": "gemini-3.1-flash-lite",
     "query": "gemini-3.1-flash-lite",
     "safety": "gemini-3.1-flash-lite",
     "image": "gemini-2.5-flash-image"

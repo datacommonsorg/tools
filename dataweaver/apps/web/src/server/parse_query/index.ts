@@ -1,29 +1,29 @@
 import { getServiceConfig, getSkillConfig } from '~/server/config';
 import { getGenAI } from '~/server/gemini';
-import type { QueryAnalysis } from '~/server/types';
+import type { ParsedQuery } from '~/server/types';
 
-interface AnalyzeParams {
+interface ParseQueryParams {
   query: string;
   atlasContext: string;
 }
 
 /**
- * Calls the analyze skill to extract places, topic, titles, and date range
- * from a natural-language query. Returns a structured QueryAnalysis.
+ * Parses a natural-language query into structured parameters (places, topic,
+ * titles, date range) for downstream Data Commons MCP calls.
  */
-export const analyzeQuery = async (
-  params: AnalyzeParams,
-): Promise<QueryAnalysis> => {
+export const parseQuery = async (
+  params: ParseQueryParams,
+): Promise<ParsedQuery> => {
   const { query, atlasContext } = params;
   const config = getServiceConfig();
-  const skill = getSkillConfig('analyze');
+  const skill = getSkillConfig('parse_query');
   const genAI = getGenAI();
 
   const atlasHint = atlasContext ? `\nAtlas context: ${atlasContext}` : '';
   const systemPrompt = skill.systemPrompt + atlasHint;
 
   const response = await genAI.models.generateContent({
-    model: config.models.analyze,
+    model: config.models.parseQuery,
     contents: `${systemPrompt}\n\nQuery: "${query}"\nReturn ONLY its JSON object, no markdown, no other text or explanation.`,
   });
 

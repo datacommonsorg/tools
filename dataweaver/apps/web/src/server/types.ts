@@ -1,6 +1,6 @@
 // --- Store types ---
 
-export interface QueryAnalysis {
+export interface ParsedQuery {
   places: string[];
   topic: string;
   titles: Record<string, string>;
@@ -97,7 +97,7 @@ export interface QueryStreamRequest {
 
 export type StreamEvent =
   | { type: 'status'; message: string }
-  | { type: 'analysis'; data: QueryAnalysis }
+  | { type: 'parsed_query'; data: ParsedQuery }
   | { type: 'tool_call'; tool: string; args: Record<string, unknown> }
   | { type: 'query_result'; result: QueryResult; place: string }
   | { type: 'metadata'; data: ChartMetadata }
