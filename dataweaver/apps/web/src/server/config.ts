@@ -15,7 +15,7 @@ export interface ServiceConfig {
   };
   models: {
     parseQuery: string;
-    query: string;
+    dataDiscovery: string;
     safety: string;
     image: string;
   };
@@ -60,7 +60,8 @@ export const getServiceConfig = (): ServiceConfig => {
     },
     models: {
       parseQuery: process.env.MODEL_PARSE_QUERY || raw.models.parseQuery,
-      query: process.env.MODEL_QUERY || raw.models.query,
+      dataDiscovery:
+        process.env.MODEL_DATA_DISCOVERY || raw.models.dataDiscovery,
       safety: process.env.MODEL_SAFETY || raw.models.safety,
       image: process.env.MODEL_IMAGE || raw.models.image,
     },

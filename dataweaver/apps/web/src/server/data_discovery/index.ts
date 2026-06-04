@@ -77,7 +77,7 @@ export const runToolLoop = async (
   } = params;
 
   const config = getServiceConfig();
-  const skill = getSkillConfig('query');
+  const skill = getSkillConfig('data_discovery');
   const genAI = getGenAI();
   const maxToolCalls = skill.maxToolCalls || 10;
 
@@ -113,7 +113,7 @@ export const runToolLoop = async (
   let toolCallCount = 0;
   while (!signal?.aborted && toolCallCount < maxToolCalls) {
     const response = await genAI.models.generateContent({
-      model: config.models.query,
+      model: config.models.dataDiscovery,
       contents: messages,
       config: { tools: geminiTools, systemInstruction },
     });
