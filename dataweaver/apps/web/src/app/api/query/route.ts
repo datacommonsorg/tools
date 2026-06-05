@@ -74,11 +74,13 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // ─── Fetch tools ──────────────────────────────────────────────────
+        // ─── Data Discovery ──────────────────────────────────────────────────
+        
+        // Fetch tools
         emit({ type: 'status', message: 'Fetching available tools...' });
         const geminiTools = await fetchGeminiTools(signal);
 
-        // ─── Process each place ───────────────────────────────────────────
+        // Process each place
         for (let i = 0; i < places.length; i++) {
           if (signal.aborted) break;
 
@@ -155,7 +157,19 @@ export async function POST(request: NextRequest) {
           const entityDcid =
             parsedResponse.entityDcid || resolvedPlaceDcid || place;
 
-          const queryResult: QueryResult = {
+          // Fetch metadata for each variable
+          emit({
+            type: 'status',
+            message: `Loading metadata for ${placeLabel} (${variables.length} variables)...`,
+          });
+
+          const metadata = await Promise.all(
+            variables.map((v) =>
+              fetchVariableMetadata(v.dcid, entityDcid, signal),
+            ),
+          );
+
+          const discoveryResult: QueryResult = {
             id: nanoid(),
             chartType: parsedResponse.suggestedChartType || 'line_chart',
             title:
@@ -168,29 +182,14 @@ export async function POST(request: NextRequest) {
               rationale: v.rationale,
             })),
             entities: [{ dcid: entityDcid, name: place }],
+            metadata,
             dateRange: parsed.dateRange,
             summary: parsedResponse.summary,
             insight: parsedResponse.insight,
             followUps: parsedResponse.followUps,
           };
 
-          emit({ type: 'query_result', result: queryResult, place });
-
-          // Fetch metadata for each variable
-          emit({
-            type: 'status',
-            message: `Loading metadata for ${placeLabel} (${variables.length} variables)...`,
-          });
-
-          for (const variable of variables) {
-            if (signal.aborted) break;
-            const metadata = await fetchVariableMetadata(
-              variable.dcid,
-              entityDcid,
-              signal,
-            );
-            emit({ type: 'metadata', data: metadata });
-          }
+          emit({ type: 'query_result', result: discoveryResult, place });
         }
 
         emit({ type: 'complete' });

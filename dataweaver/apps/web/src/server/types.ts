@@ -44,6 +44,7 @@ export interface QueryResult {
   title: string;
   variables: ChartVariable[];
   entities: ChartEntity[];
+  metadata: ChartMetadata[];
   dateRange?: { start?: string; end?: string };
   summary?: string;
   insight?: string;
@@ -62,7 +63,7 @@ export interface FacetInfo {
   observations: Array<{ date: string; value: number }>;
 }
 
-interface ChartMetadata {
+export interface ChartMetadata {
   variableDcid: string;
   entityDcid: string;
   facets: FacetInfo[];
@@ -100,6 +101,5 @@ export type StreamEvent =
   | { type: 'parsed_query'; data: ParsedQuery }
   | { type: 'tool_call'; tool: string; args: Record<string, unknown> }
   | { type: 'query_result'; result: QueryResult; place: string }
-  | { type: 'metadata'; data: ChartMetadata }
   | { type: 'complete' }
   | { type: 'error'; message: string };
