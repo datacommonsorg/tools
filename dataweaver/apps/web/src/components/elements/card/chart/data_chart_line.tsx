@@ -18,7 +18,7 @@ interface ChartProps {
   height: number;
 }
 
-export const DataLineChart = ({ data, width, height }: ChartProps) => {
+export const DataChartLine = ({ data, width, height }: ChartProps) => {
   return (
     <LineChart
       width={width}
