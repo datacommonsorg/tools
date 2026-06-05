@@ -6,8 +6,13 @@ import { IconLineGraph } from '~/components/primitives/icons/line_graph';
 import { IconTable } from '~/components/primitives/icons/table';
 import s from './chart.module.scss';
 import { ConditionalTabs } from './conditional_tabs';
-import { type ChartDatum, DataLineChart } from './data_line_chart';
+import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
+
+export interface ChartDatum {
+  year: number;
+  emissions: number;
+}
 
 // TODO: Get dynamically instead of hard coding here
 const CHART_WIDTH = 356;
@@ -46,7 +51,7 @@ export const CardChart = ({
               icon: IconLineGraph,
               label: 'Chart',
               children: (
-                <DataLineChart
+                <DataChartLine
                   data={data}
                   width={CHART_WIDTH}
                   height={CHART_HEIGHT}

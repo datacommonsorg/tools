@@ -25,7 +25,7 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
   // TODO: For now using count for positioning - we likely want to use a smarter
   // approach that accounts for deleted content and doesn't rely on order of
   // addition, etc later once we hook up to real data
-  const countRef = useRef(-1);
+  const countRef = useRef(0);
 
   const withEditor = useCallback((operation: Operation) => {
     const editor = editorRef.current;
@@ -39,12 +39,16 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
   const add: Atlas['add'] = useCallback(
     (content) => {
       const shapeId = createShapeId();
-      const index = countRef.current++;
 
       // First: Create the shape with any immediately available content
-      withEditor((e) =>
-        e.createShape(contentToShape(shapeId, content, gridPosition(index))),
-      );
+      withEditor((e) => {
+        e.createShape(
+          contentToShape(shapeId, content, gridPosition(countRef.current)),
+        );
+
+        // Increment count for next shape's position
+        countRef.current++;
+      });
 
       // Then: Return handle that allows for future updates to the shape as more
       // content becomes available, or for the shape to be removed

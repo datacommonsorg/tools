@@ -2,11 +2,7 @@
 
 import { COLORS } from '@package/tokens/ts';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
-
-export interface ChartDatum {
-  year: number;
-  emissions: number;
-}
+import type { ChartDatum } from './chart';
 
 const LINE_COLOR = `rgb(${COLORS['card-base-selected']})`;
 const GRID_COLOR = `rgb(${COLORS['surface-decorator']})`;
@@ -18,7 +14,7 @@ interface ChartProps {
   height: number;
 }
 
-export const DataLineChart = ({ data, width, height }: ChartProps) => {
+export const DataChartLine = ({ data, width, height }: ChartProps) => {
   return (
     <LineChart
       width={width}
