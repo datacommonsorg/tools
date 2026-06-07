@@ -6,11 +6,18 @@ export const BREAKPOINT_DESKTOP = 1600;
 
 export const COLORS = {
   'surface-base': '247, 252, 255',
-  'surface-raised': '255, 255, 255',
   'surface-decorator': '227, 231, 237',
-  'text-primary': '32, 33, 36',
-  'text-secondary': '68, 71, 70',
-  'text-strong': '0, 0, 0',
+  'button-base': '194, 231, 255',
+  'button-base-hover': '173, 214, 240',
+  'button-content': '0, 0, 0',
+  'button-content-hover': '0, 0, 0',
+  'card-base': '255, 255, 255',
+  'card-base-selected': '11, 87, 208',
+  'card-content': '32, 33, 36',
+  'card-content-muted': '68, 71, 70',
+  'card-content-subtle': '196, 199, 197',
+  'card-shadow': '0, 0, 0',
+  'card-skeleton': '242, 242, 242',
 } as const;
 
 export type Easing = [number, number, number, number];

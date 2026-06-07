@@ -1,0 +1,75 @@
+.container {
+  --actions-height: 48px;
+  --corner-size: 16px;
+  --border-thickness: 2px;
+
+  display: grid;
+  height: 100%;
+}
+
+.actions-container {
+  display: flex;
+  grid-area: 1 / 1;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--actions-height) + var(--corner-size));
+  padding-bottom: calc(var(--corner-size) - var(--border-thickness));
+  margin: var(--actions-height) 2px 0;
+  background: rgb(var(--color-card-base-selected));
+  border-radius: var(--corner-size) var(--corner-size) 0 0;
+  box-shadow:
+    0 1px 3px 1px rgb(var(--color-card-shadow) / 15%),
+    0 1px 2px rgb(var(--color-card-shadow) / 30%);
+
+  @include prefers-motion {
+    transition: transform 0.5s $ease-out;
+  }
+
+  [data-is-selected="true"] & {
+    transform: translateY(calc(var(--actions-height) * -1));
+  }
+}
+
+.children-container {
+  display: flex;
+  flex-direction: column;
+  grid-area: 1 / 1;
+  height: fit-content;
+  max-height: 100%;
+  overflow-y: auto;
+  background: rgb(var(--color-card-base));
+  border: var(--border-thickness) solid transparent;
+  border-radius: var(--corner-size);
+  box-shadow:
+    0 1px 3px 1px rgb(var(--color-card-shadow) / 15%),
+    0 1px 2px rgb(var(--color-card-shadow) / 30%);
+
+  @include prefers-motion {
+    transition:
+      transform 0.5s $ease-out,
+      border-color 0.5s $ease-out;
+  }
+
+  [data-is-selected="true"] & {
+    border-color: rgb(var(--color-card-base-selected));
+    transform: translateY(var(--actions-height));
+  }
+}
+
+.content {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  padding: 28px;
+}
+
+.footer {
+  flex-shrink: 0;
+  padding: 0 28px 18px;
+
+  [data-loading="true"] & {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

@@ -62,10 +62,6 @@
         "useTemplate": "error",
         "useThrowNewError": "error",
         "useThrowOnlyError": "error",
-        "useNamingConvention": {
-          "level": "error",
-          "options": { "strictCase": false }
-        },
         "useConsistentArrayType": {
           "level": "error",
           "options": { "syntax": "shorthand" }

@@ -1,0 +1,12 @@
+.title {
+  @include type-title;
+
+  margin-bottom: 16px;
+  color: rgb(var(--color-card-content));
+}
+
+.body {
+  @include type-body;
+
+  color: rgb(var(--color-card-content));
+}

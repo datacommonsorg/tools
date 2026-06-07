@@ -1,0 +1,11 @@
+@import "tldraw/tldraw.css" layer(primitive);
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    rgb(var(--color-surface-decorator)) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}

@@ -1,6 +1,6 @@
 @import "tldraw/tldraw.css" layer(primitive);
 
-.canvas {
+.tldraw {
   --tl-color-background: transparent;
 
   position: fixed;
@@ -9,10 +9,4 @@
   // Ensure all nested layers appear from a base of 0 and not above app content
   z-index: $z-index-content;
   background-color: rgb(var(--color-surface-base));
-  background-image: radial-gradient(
-    rgb(var(--color-surface-decorator)) 1px,
-    transparent 1px
-  );
-  background-position: center center;
-  background-size: 20px 20px;
 }
