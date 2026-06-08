@@ -9,6 +9,3 @@ export const SCALE_STEP = 0.025;
 
 /** How many toasts stay visible in the collapsed stack. */
 export const MAX_VISIBLE_TOASTS = 3;
-
-/** How far below its resting spot a new toast starts before sliding in. */
-export const ENTER_OFFSET = 24;

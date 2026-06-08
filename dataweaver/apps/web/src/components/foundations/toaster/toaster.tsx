@@ -5,7 +5,6 @@ import { AnimatePresence, m } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMatchMedia } from '~/hooks/use_match_media';
 import {
-  ENTER_OFFSET,
   MAX_VISIBLE_TOASTS,
   ROW_GAP,
   SCALE_STEP,
@@ -77,7 +76,7 @@ const ToastItem = ({
       {...(prefersMotion
         ? {
             style: { zIndex: stackIndex },
-            initial: { opacity: 0, y: y + ENTER_OFFSET, scale },
+            initial: { opacity: 0, y: y + 24, scale },
             animate: { y, scale, opacity },
             exit: { opacity: 0, scale: 0.95 },
             transition: { duration: 0.3, ease: EASE_OUT },
