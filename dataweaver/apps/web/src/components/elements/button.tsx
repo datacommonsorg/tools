@@ -3,17 +3,6 @@ import { mergeClassNames } from '~/functions/merge_class_names';
 import { mergeStyles } from '~/functions/merge_styles';
 import s from './button.module.scss';
 
-interface WithIconOnly {
-  icon: ComponentType<ComponentPropsWithRef<'svg'>>;
-  'aria-label': string;
-  children?: never;
-}
-
-interface WithChildrenAndIcon {
-  icon: ComponentType<ComponentPropsWithRef<'svg'>>;
-  children: React.ReactNode;
-}
-
 interface ColorScheme {
   base: string;
   'base-hover': string;
@@ -21,16 +10,27 @@ interface ColorScheme {
   'content-hover': string;
 }
 
-type ButtonProps = {
-  size: 'small' | 'large';
+interface WithIconOnly {
+  icon: ComponentType<ComponentPropsWithRef<'svg'>>;
+  size: 'small' | 'medium' | 'large';
+  'aria-label': string;
+  children?: never;
+}
 
+interface WithChildrenAndOptionalIcon {
+  children: React.ReactNode;
+  size: 'small' | 'large';
+  icon?: ComponentType<ComponentPropsWithRef<'svg'>>;
+}
+
+type ButtonProps = {
   /** If left `undefined`, the button will use the default app color scheme. */
   colorScheme?: ColorScheme;
 
   /** @default false */
   isDisabled?: boolean;
 } & Omit<ComponentPropsWithRef<'button'>, 'disabled' | 'children'> &
-  (WithIconOnly | WithChildrenAndIcon);
+  (WithIconOnly | WithChildrenAndOptionalIcon);
 
 export const Button = ({
   icon: Icon,
@@ -41,7 +41,7 @@ export const Button = ({
   ...rest
 }: ButtonProps) => {
   const hasChildren = Boolean(children);
-  const shape = hasChildren ? 'pill' : 'square';
+  const shape = hasChildren ? 'pill' : 'circle';
 
   return (
     <button
@@ -50,6 +50,7 @@ export const Button = ({
       className={mergeClassNames(s.container, rest.className)}
       data-shape={shape}
       data-size={size}
+      data-has-icon={Icon !== undefined}
       disabled={isDisabled}
       style={mergeStyles(
         colorScheme && {
@@ -61,7 +62,7 @@ export const Button = ({
         rest.style,
       )}
     >
-      <Icon className={s.icon} />
+      {Icon && <Icon className={s.icon} />}
 
       {children && <span className={s.children}>{children}</span>}
     </button>

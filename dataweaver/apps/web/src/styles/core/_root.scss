@@ -5,5 +5,20 @@
     --outline-offset-default: 2px;
     --outline-offset-inset: -3px;
     --outline-offset: var(--outline-offset-default);
+    --shadow-elevated:
+      0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+      0 1px 2px rgb(var(--color-shadow) / 30%);
+    --button-pill-size-small: 28px;
+    --button-pill-size-large: 46px;
+    --button-circle-size-small: 28px;
+    --button-circle-size-medium: 40px;
+    --button-circle-size-large: 48px;
+    --controls-gutter-outer: 16px;
+    --controls-height: var(--button-pill-size-large);
+    --tools-gutter-outer: 16px;
+    --tools-gutter-inner: 8px;
+    --tools-width: calc(
+      var(--button-circle-size-large) + var(--tools-gutter-inner) * 2
+    );
   }
 }
