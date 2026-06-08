@@ -1,15 +1,14 @@
 import type { TLComponents } from 'tldraw';
-import { Controls } from './components/controls';
 import { Grid } from './components/grid';
+import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
 import { ShapeCardUtil } from './shapes/card';
-
 /**
  * Component overrides for tldraw - this allows us to inject our own React
  * components into the editor's UI via given 'slots'.
  */
 export const ATLAS_COMPONENTS = {
   Grid,
-  InFrontOfTheCanvas: Controls,
+  InFrontOfTheCanvas,
 } as const satisfies TLComponents;
 
 /** The shapes that the Atlas supports. */
