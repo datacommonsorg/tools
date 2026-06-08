@@ -2,93 +2,17 @@
 
 import { EASE_OUT } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMatchMedia } from '~/hooks/use_match_media';
+import {
+  ENTER_OFFSET,
+  MAX_VISIBLE_TOASTS,
+  ROW_GAP,
+  SCALE_STEP,
+  TOAST_AUTO_DISMISS_DELAY,
+} from './config';
+import { TOAST_STORE, type Toast, useToasts } from './store';
 import s from './toaster.module.scss';
-
-/** How long a toast stays on screen before auto-dismissing. */
-const TOAST_AUTO_DISMISS_DELAY = 3000;
-
-/** Vertical gap: The peek when stacked and the spacing when expanded. */
-const ROW_GAP = 16;
-
-/** How much each toast behind the front one shrinks. */
-const SCALE_STEP = 0.025;
-
-/** How many toasts stay visible in the collapsed stack. */
-const MAX_VISIBLE_TOASTS = 3;
-
-/** How far below its resting spot a new toast starts before sliding in. */
-const ENTER_OFFSET = 24;
-
-interface Toast {
-  id: number;
-  title: string;
-  description: string;
-}
-
-type ToastListener = () => void;
-
-/**
- * Holds the live toast list and notifies subscribers on change. A single
- * module-level instance backs both the `toast()` helper and the `Toaster` view,
- * so toasts can be emitted from anywhere without a provider.
- */
-class ToastStore {
-  #toasts: Toast[] = [];
-  #nextId = 0;
-  #listeners = new Set<ToastListener>();
-
-  /** Register a listener and returns an unsubscribe. */
-  subscribe = (listener: ToastListener) => {
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  };
-
-  /** Current toasts — a stable reference until the next mutation. */
-  getSnapshot = () => this.#toasts;
-
-  /** Queue a toast. Returns its ID so callers can dismiss it early. */
-  add = (title: string, description: string) => {
-    const id = this.#nextId++;
-    this.#toasts = [...this.#toasts, { id, title, description }];
-    this.#emit();
-    return id;
-  };
-
-  dismiss = (id: number) => {
-    this.#toasts = this.#toasts.filter((toast) => toast.id !== id);
-    this.#emit();
-  };
-
-  #emit = () => {
-    for (const listener of this.#listeners) listener();
-  };
-}
-
-/** Singleton store instance used to manage toasts across the app. */
-const TOAST_STORE = new ToastStore();
-
-/** Queue a toast. Returns its id so callers can dismiss it early if needed. */
-export const toast = (title: string, description: string) => {
-  return TOAST_STORE.add(title, description);
-};
-
-/** Subscribes a component to the toast store. */
-const useToasts = () => {
-  return useSyncExternalStore(
-    TOAST_STORE.subscribe,
-    TOAST_STORE.getSnapshot,
-    TOAST_STORE.getSnapshot,
-  );
-};
 
 interface ToastItemProps {
   toast: Toast;
@@ -117,26 +41,25 @@ const ToastItem = ({
   onResize,
   onDismiss,
 }: ToastItemProps) => {
-  const { id, title, description } = toast;
-
   const containerRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
     // Only start the auto-dismiss timer if the toast isn't expanded. If opened;
     // the timer is effectively 'on hold' until the user stops interacting
     if (!isExpanded) {
-      const timeout = setTimeout(() => {
-        TOAST_STORE.dismiss(id);
-      }, TOAST_AUTO_DISMISS_DELAY);
+      const timeout = setTimeout(
+        () => TOAST_STORE.dismiss(toast.id),
+        TOAST_AUTO_DISMISS_DELAY,
+      );
       return () => clearTimeout(timeout);
     }
-  }, [id, isExpanded]);
+  }, [toast.id, isExpanded]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const resized = () => onResize(id, container.offsetHeight);
+    const resized = () => onResize(toast.id, container.offsetHeight);
 
     // Trigger on mount
     resized();
@@ -145,7 +68,7 @@ const ToastItem = ({
     const observer = new ResizeObserver(resized);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [id, onResize]);
+  }, [toast.id, onResize]);
 
   return (
     <m.li
@@ -168,15 +91,15 @@ const ToastItem = ({
           })}
     >
       <div className={s['content-container']}>
-        <p className={s.title}>{title}</p>
-        <p className={s.description}>{description}</p>
+        <p className={s.title}>{toast.title}</p>
+        <p className={s.description}>{toast.description}</p>
       </div>
 
       <button
         type="button"
         className={s['button-dismiss']}
-        aria-label={`Dismiss notification: ${title}`}
-        onClick={() => onDismiss(id)}
+        aria-label={`Dismiss notification: ${toast.title}`}
+        onClick={() => onDismiss(toast.id)}
       />
     </m.li>
   );

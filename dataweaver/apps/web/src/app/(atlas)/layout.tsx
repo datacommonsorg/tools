@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Toaster } from '~/components/foundations/toaster';
+import { Toaster } from '~/components/foundations/toaster/toaster';
 import { AtlasProvider } from '~/components/scopes/atlas/atlas';
 
 interface AtlasLayoutProps {
