@@ -19,5 +19,9 @@
   --color-card-content-muted: 68 71 70;
   --color-card-content-subtle: 196 199 197;
   --color-card-skeleton: 242 242 242;
+  --color-toaster-surface: 255 255 255;
+  --color-toaster-surface-hover: 245 245 245;
+  --color-toaster-content: 32 33 36;
+  --color-toaster-content-muted: 68 71 70;
   --color-shadow: 0 0 0;
 }
