@@ -8,7 +8,7 @@ import {
 } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
-import { toast } from '~/components/foundations/toaster';
+import { toast } from '~/components/foundations/toaster/store';
 import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';

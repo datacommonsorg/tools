@@ -1,6 +1,6 @@
 import { useEditor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
-import { toast } from '~/components/foundations/toaster';
+import { toast } from '~/components/foundations/toaster/store';
 import { IconCursor } from '~/components/primitives/icons/cursor';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconHand } from '~/components/primitives/icons/hand';
