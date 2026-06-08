@@ -29,11 +29,7 @@ export const ZOOM_DISPLAY_RANGE = [0, 200] as const;
  */
 const ZOOM_DISPLAY_STEP = 20;
 
-/**
- * The discrete zoom levels the controls step through, generated so they stay
- * evenly spaced across [MIN_ZOOM, MAX_ZOOM] — that even spacing is what makes
- * the displayed value increment by a constant `ZOOM_DISPLAY_STEP`.
- */
+/** The number of discrete zoom steps between `MIN_ZOOM` and `MAX_ZOOM`. */
 const ZOOM_STEP_COUNT =
   (ZOOM_DISPLAY_RANGE[1] - ZOOM_DISPLAY_RANGE[0]) / ZOOM_DISPLAY_STEP;
 
