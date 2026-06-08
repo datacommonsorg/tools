@@ -1,5 +1,5 @@
 import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
-import type { ChartDatum } from '~/components/elements/card/chart/data_chart_line';
+import type { ChartDatum } from '~/components/elements/card/chart/chart';
 
 export type CardVariant = 'text' | 'chart';
 

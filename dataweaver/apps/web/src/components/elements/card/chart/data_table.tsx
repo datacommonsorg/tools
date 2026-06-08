@@ -1,4 +1,4 @@
-import type { ChartDatum } from './data_chart_line';
+import type { ChartDatum } from './chart';
 import s from './data_table.module.scss';
 
 interface DataTableProps {
