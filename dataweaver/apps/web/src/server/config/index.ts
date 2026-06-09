@@ -6,28 +6,56 @@ import matter from 'gray-matter';
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * External service configuration loaded from `default_services.json`.
+ *
+ * Defines API endpoints, model identifiers, and SDK settings consumed by
+ * server-side clients. Values in the JSON file act as defaults; each field can
+ * be overridden at runtime by the corresponding environment variable (see
+ * `getServiceConfig` for the mapping).
+ */
 export interface ServiceConfig {
+  /** API endpoint configuration for external data services. */
   api: {
+    /** Data Commons API settings. */
     dataCommons: {
+      /** Base URL for REST requests. Override: `DC_API_BASE`. */
       baseUrl: string;
+      /** MCP (Model Context Protocol) endpoint URL. Override: `DC_MCP_ENDPOINT`. */
       mcpEndpoint: string;
     };
   };
+  /** Gemini model identifiers used for each pipeline stage. */
   models: {
+    /** Model for parsing raw user queries. Override: `MODEL_PARSE_QUERY`. */
     parseQuery: string;
+    /** Model for discovering relevant data variables. Override: `MODEL_DATA_DISCOVERY`. */
     dataDiscovery: string;
+    /** Model for content-safety classification. Override: `MODEL_SAFETY`. */
     safety: string;
+    /** Model for image generation. Override: `MODEL_IMAGE`. */
     image: string;
   };
+  /** Gemini SDK configuration. */
   gemini: {
+    /** API version string (e.g. `"v1alpha"`). Override: `GEMINI_API_VERSION`. */
     apiVersion: string;
   };
 }
 
+/**
+ * Configuration for a single skill, parsed from a Markdown file with YAML
+ * frontmatter (located in `config/skills/{name}.md`).
+ *
+ * The Markdown body becomes the `systemPrompt`; optional YAML fields supply
+ * execution constraints.
+ */
 export interface SkillConfig {
   /** The prompt body (markdown content without frontmatter). */
   systemPrompt: string;
+  /** Maximum number of tool-call rounds the model may perform for this skill. */
   maxToolCalls?: number;
+  /** Regex patterns used to match user queries to this skill. */
   regexPatterns?: string[];
 }
 
@@ -47,7 +75,7 @@ export const getServiceConfig = (): ServiceConfig => {
   if (_services) return _services;
 
   const raw = JSON.parse(
-    fs.readFileSync(path.join(CONFIG_DIR, 'services.json'), 'utf-8'),
+    fs.readFileSync(path.join(CONFIG_DIR, 'default_services.json'), 'utf-8'),
   );
 
   _services = {

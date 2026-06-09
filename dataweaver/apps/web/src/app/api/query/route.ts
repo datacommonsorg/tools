@@ -1,3 +1,7 @@
+// TODO(scott): Extract the multi-step query workflow into a
+// dedicated orchestrator service (e.g., src/server/query_orchestrator.ts),
+// leaving the API route as a minimal HTTP/SSE transport wrapper.
+
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
@@ -236,6 +240,7 @@ export async function POST(request: NextRequest) {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
+      // biome-ignore lint/style/useNamingConvention: HTTP header name
       Connection: 'keep-alive',
     },
   });

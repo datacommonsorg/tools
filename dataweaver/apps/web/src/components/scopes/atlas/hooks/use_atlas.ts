@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from 'react';
 import type { TLShapeId } from 'tldraw';
-import type { AtlasContent, CardVariant } from './helpers';
+import type { AtlasContent, CardVariant } from '../helpers';
 
 /** The content shape that corresponds to a given card variant. */
 type ContentForVariant<TVariant extends CardVariant> = Extract<

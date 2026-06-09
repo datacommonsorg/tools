@@ -88,6 +88,8 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
         signal: controller.signal,
       });
 
+      if (controller.signal.aborted) return;
+
       if (!res.ok) {
         const errBody = await res.text();
         setState((prev) => ({
@@ -112,6 +114,8 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
       let buffer = '';
 
       const handleEvent = (event: StreamEvent) => {
+        if (controller.signal.aborted) return;
+
         switch (event.type) {
           case STREAM_EVENT.status:
             setState((prev) => ({ ...prev, status: event.message }));
@@ -137,7 +141,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || controller.signal.aborted) break;
 
         buffer += decoder.decode(value, { stream: true });
         const { events, remainder } = parseSSEChunk(buffer);
@@ -149,16 +153,18 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
       }
 
       // Process any remaining buffer
-      if (buffer.trim()) {
+      if (buffer.trim() && !controller.signal.aborted) {
         const { events } = parseSSEChunk(`${buffer}\n\n`);
         for (const event of events) {
           handleEvent(event);
         }
       }
 
-      setState((prev) =>
-        prev.isComplete ? prev : { ...prev, isComplete: true },
-      );
+      if (!controller.signal.aborted) {
+        setState((prev) =>
+          prev.isComplete ? prev : { ...prev, isComplete: true },
+        );
+      }
     } catch (err: unknown) {
       const error =
         err instanceof Error

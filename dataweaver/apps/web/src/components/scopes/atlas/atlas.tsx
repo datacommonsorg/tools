@@ -6,7 +6,7 @@ import { createShapeId, type Editor, Tldraw } from 'tldraw';
 import s from './atlas.module.scss';
 import { ATLAS_COMPONENTS, ATLAS_SHAPES, ZOOM_STEPS } from './config';
 import { contentToShape, gridPosition } from './helpers';
-import { type Atlas, AtlasContext } from './use_atlas';
+import { type Atlas, AtlasContext } from './hooks/use_atlas';
 
 type Operation = (editor: Editor) => void;
 
