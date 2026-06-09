@@ -12,16 +12,18 @@
   line-height: 22px;
 }
 
-@mixin type-label {
+@mixin type-label-large {
+  font-family: "Google Sans", sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  text-box: trim-both cap alphabetic;
+}
+
+@mixin type-label-small {
   font-family: "Google Sans", sans-serif;
   font-size: 12px;
   font-weight: 500;
-  line-height: 1.33;
-}
-
-@mixin type-tab {
-  font-family: "Google Sans", sans-serif;
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1.4;
+  line-height: 1;
+  text-box: trim-both cap alphabetic;
 }

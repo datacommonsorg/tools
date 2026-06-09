@@ -3,6 +3,12 @@
 :root {
   --color-surface-base: 247 252 255;
   --color-surface-decorator: 227 231 237;
+  --color-surface-content: 0 0 0;
+  --color-control-surface: 247 252 255;
+  --color-control-surface-hover: 227 231 237;
+  --color-control-accent: 11 87 208;
+  --color-control-accent-content: 255 255 255;
+  --color-control-content: 32 33 36;
   --color-button-base: 194 231 255;
   --color-button-base-hover: 173 214 240;
   --color-button-content: 0 0 0;
@@ -12,6 +18,6 @@
   --color-card-content: 32 33 36;
   --color-card-content-muted: 68 71 70;
   --color-card-content-subtle: 196 199 197;
-  --color-card-shadow: 0 0 0;
   --color-card-skeleton: 242 242 242;
+  --color-shadow: 0 0 0;
 }

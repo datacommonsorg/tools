@@ -1,16 +1,12 @@
 'use client';
 
+import { COLORS } from '@package/tokens/ts';
 import { type ReactNode, useCallback, useRef } from 'react';
-import { createShapeId, type Editor, type TLComponents, Tldraw } from 'tldraw';
+import { createShapeId, type Editor, Tldraw } from 'tldraw';
 import s from './atlas.module.scss';
-import { Grid } from './components/grid';
+import { ATLAS_COMPONENTS, ATLAS_SHAPES, ZOOM_STEPS } from './config';
 import { contentToShape, gridPosition } from './helpers';
-import { ShapeCardUtil } from './shapes/card';
 import { type Atlas, AtlasContext } from './use_atlas';
-
-const ATLAS_COMPONENTS = { Grid } as const satisfies TLComponents;
-
-const ATLAS_SHAPES = [ShapeCardUtil] as const;
 
 type Operation = (editor: Editor) => void;
 
@@ -71,6 +67,24 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
   const mounted = useCallback((editor: Editor) => {
     // Render the dot grid (camera-tracked via the 'Grid' component slot)
     editor.updateInstanceState({ isGridMode: true });
+
+    // Define camera zoom levels
+    editor.setCameraOptions({ zoomSteps: [...ZOOM_STEPS] });
+
+    // Style built-in theme to match our design system
+    editor.updateThemes((themes) => {
+      // Text styles
+      themes.default.fonts.draw.fontFamily = '"Google Sans", sans-serif';
+      themes.default.fontSize = 24;
+      themes.default.lineHeight = 1.25;
+      themes.default.colors.light.black.solid =
+        'rgb(var(--color-surface-content))';
+
+      // Selection style (Note: This is drawn in Canvas so needs RGB vs CSS var)
+      themes.default.colors.light.selectionStroke = `rgb(${COLORS['control-accent']})`;
+
+      return themes;
+    });
 
     editorRef.current = editor;
     countRef.current = 0;

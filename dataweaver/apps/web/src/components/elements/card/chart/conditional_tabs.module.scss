@@ -5,7 +5,7 @@
 }
 
 .tab {
-  @include type-tab;
+  @include type-label-small;
 
   display: flex;
   gap: 4px;

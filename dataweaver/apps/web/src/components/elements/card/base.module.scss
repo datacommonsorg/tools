@@ -19,8 +19,8 @@
   background: rgb(var(--color-card-base-selected));
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow:
-    0 1px 3px 1px rgb(var(--color-card-shadow) / 15%),
-    0 1px 2px rgb(var(--color-card-shadow) / 30%);
+    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+    0 1px 2px rgb(var(--color-shadow) / 30%);
 
   @include prefers-motion {
     transition: transform 0.5s $ease-out;
@@ -42,8 +42,8 @@
   border: var(--border-thickness) solid transparent;
   border-radius: var(--corner-size);
   box-shadow:
-    0 1px 3px 1px rgb(var(--color-card-shadow) / 15%),
-    0 1px 2px rgb(var(--color-card-shadow) / 30%);
+    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+    0 1px 2px rgb(var(--color-shadow) / 30%);
 
   @include prefers-motion {
     transition:
