@@ -1,5 +1,5 @@
+import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
-import { getGenAI } from '~/server/gemini';
 import type { ParsedQuery } from '~/server/types';
 
 interface ParseQueryParams {

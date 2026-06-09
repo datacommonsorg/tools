@@ -85,10 +85,7 @@ export const getSkillConfig = (name: string): SkillConfig => {
   if (cached) return cached;
 
   // Co-located skill: server/{name}/skill.md — falls back to config/skills/{name}.md
-  const serverDir = path.join(process.cwd(), 'src/server');
-  const colocatedPath = path.join(serverDir, name, 'skill.md');
-  const legacyPath = path.join(CONFIG_DIR, 'skills', `${name}.md`);
-  const filePath = fs.existsSync(colocatedPath) ? colocatedPath : legacyPath;
+  const filePath = path.join(CONFIG_DIR, 'skills', `${name}.md`);
   const raw = fs.readFileSync(filePath, 'utf-8');
   const { data, content } = matter(raw);
 

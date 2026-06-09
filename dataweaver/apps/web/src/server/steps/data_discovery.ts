@@ -1,7 +1,7 @@
 import type { Content } from '@google/genai';
+import { getGenAI } from '~/server/clients/gemini';
+import { callMcp } from '~/server/clients/mcp';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
-import { getGenAI } from '~/server/gemini';
-import { callMcp } from '~/server/mcp';
 import type {
   McpToolCallResult,
   McpToolsListResult,

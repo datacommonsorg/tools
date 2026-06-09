@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { getServiceConfig } from './config';
+import { getServiceConfig } from '~/server/config';
 
 export const callMcp = async <T = unknown>(
   method: string,

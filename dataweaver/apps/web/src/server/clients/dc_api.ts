@@ -1,4 +1,4 @@
-import { getServiceConfig } from './config';
+import { getServiceConfig } from '~/server/config';
 
 export interface ObservationResponse {
   byVariable: Record<

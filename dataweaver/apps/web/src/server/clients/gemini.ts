@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { getServiceConfig } from './config';
+import { getServiceConfig } from '~/server/config';
 
 let _genAI: GoogleGenAI | null = null;
 

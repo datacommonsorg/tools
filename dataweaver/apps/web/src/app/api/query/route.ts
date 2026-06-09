@@ -1,9 +1,9 @@
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
-import { fetchGeminiTools, runToolLoop } from '~/server/data_discovery';
-import { fetchVariableMetadata } from '~/server/observations';
-import { parseQuery } from '~/server/parse_query';
-import { checkPromptSafety } from '~/server/safety';
+import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
+import { fetchVariableMetadata } from '~/server/steps/observations';
+import { parseQuery } from '~/server/steps/parse_query';
+import { checkPromptSafety } from '~/server/steps/safety';
 import {
   type ChartType,
   type QueryResult,

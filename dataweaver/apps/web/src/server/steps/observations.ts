@@ -1,4 +1,4 @@
-import { fetchObservations } from '~/server/dc_api';
+import { fetchObservations } from '~/server/clients/dc_api';
 import type { FacetInfo } from '~/server/types';
 
 export interface VariableMetadata {

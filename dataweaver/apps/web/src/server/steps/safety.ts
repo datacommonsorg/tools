@@ -1,5 +1,5 @@
-import { getServiceConfig, getSkillConfig } from './config';
-import { getGenAI } from './gemini';
+import { getGenAI } from '~/server/clients/gemini';
+import { getServiceConfig, getSkillConfig } from '~/server/config';
 
 const regexCache = new Map<string, RegExp>();
 
