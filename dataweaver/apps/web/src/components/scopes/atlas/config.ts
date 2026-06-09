@@ -1,15 +1,14 @@
 import type { TLComponents } from 'tldraw';
-import { Controls } from './components/controls';
 import { Grid } from './components/grid';
+import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
 import { ShapeCardUtil } from './shapes/card';
-
 /**
  * Component overrides for tldraw - this allows us to inject our own React
  * components into the editor's UI via given 'slots'.
  */
 export const ATLAS_COMPONENTS = {
   Grid,
-  InFrontOfTheCanvas: Controls,
+  InFrontOfTheCanvas,
 } as const satisfies TLComponents;
 
 /** The shapes that the Atlas supports. */
@@ -30,11 +29,7 @@ export const ZOOM_DISPLAY_RANGE = [0, 200] as const;
  */
 const ZOOM_DISPLAY_STEP = 20;
 
-/**
- * The discrete zoom levels the controls step through, generated so they stay
- * evenly spaced across [MIN_ZOOM, MAX_ZOOM] — that even spacing is what makes
- * the displayed value increment by a constant `ZOOM_DISPLAY_STEP`.
- */
+/** The number of discrete zoom steps between `MIN_ZOOM` and `MAX_ZOOM`. */
 const ZOOM_STEP_COUNT =
   (ZOOM_DISPLAY_RANGE[1] - ZOOM_DISPLAY_RANGE[0]) / ZOOM_DISPLAY_STEP;
 
