@@ -4,6 +4,7 @@
 
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
+import { extractJson } from '~/functions/extract_json';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
 import { fetchVariableMetadata } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
@@ -146,14 +147,13 @@ export async function POST(request: NextRequest) {
             message: `Building results for ${placeLabel}...`,
           });
 
-          let parsedResponse: QueryModelResponse;
+          let parsedResponse: QueryModelResponse | undefined;
           try {
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
+            parsedResponse = extractJson<QueryModelResponse>(responseText);
+            if (!parsedResponse) {
               throw new Error('No JSON object found in response');
             }
-            parsedResponse = JSON.parse(jsonMatch[0]) as QueryModelResponse;
-            if (!parsedResponse || typeof parsedResponse !== 'object') {
+            if (typeof parsedResponse !== 'object') {
               throw new Error('Invalid JSON object');
             }
           } catch {
@@ -240,7 +240,6 @@ export async function POST(request: NextRequest) {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      // biome-ignore lint/style/useNamingConvention: HTTP header name
       Connection: 'keep-alive',
     },
   });

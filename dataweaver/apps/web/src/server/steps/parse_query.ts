@@ -1,3 +1,4 @@
+import { extractJson } from '~/functions/extract_json';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
 import type { ParsedQuery } from '~/server/types';
@@ -29,22 +30,17 @@ export const parseQuery = async (
   });
 
   const responseText = response.text || '';
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-  const cleaned = jsonMatch ? jsonMatch[0] : responseText;
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    return {
-      places: Array.isArray(parsed.places) ? parsed.places : [query],
-      topic: parsed.topic || query,
-      titles: parsed.titles || {},
-      dateRange: parsed.dateRange || undefined,
-    };
-  } catch {
-    return {
-      places: [query],
-      topic: query,
-      titles: {},
-    };
-  }
+  const parsed = extractJson<ParsedQuery>(responseText);
+  return parsed
+    ? {
+        places: Array.isArray(parsed.places) ? parsed.places : [query],
+        topic: parsed.topic || query,
+        titles: parsed.titles || {},
+        dateRange: parsed.dateRange || undefined,
+      }
+    : {
+        places: [query],
+        topic: query,
+        titles: {},
+      };
 };

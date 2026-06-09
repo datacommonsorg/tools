@@ -24,7 +24,6 @@ export const callMcp = async <T = unknown>(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      // biome-ignore lint/style/useNamingConvention: HTTP header name
       Accept: 'text/event-stream, application/json',
       'X-API-Key': apiKey,
     },

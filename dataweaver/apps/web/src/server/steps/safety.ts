@@ -1,3 +1,4 @@
+import { extractJson } from '~/functions/extract_json';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
 
@@ -48,23 +49,15 @@ export const checkPromptSafety = async (
       contents: `${skill.systemPrompt}\n\n"${query}"`,
     });
 
-    const text = response.text || '';
-    const cleaned = text
-      .replace(/```json/g, '')
-      .replace(/```/g, '')
-      .trim();
-
-    try {
-      const result = JSON.parse(cleaned);
-      if (result.allowed === false) {
-        return {
-          allowed: false,
-          reason: result.reason || 'Blocked by safety classifier.',
-        };
-      }
-    } catch {
-      // If LLM response is unparseable, allow (fail-open for legitimate queries)
+    const responseText = response.text || '';
+    const parsed = extractJson<SafetyResult>(responseText);
+    if (parsed?.allowed === false) {
+      return {
+        allowed: false,
+        reason: parsed.reason || 'Blocked by safety classifier.',
+      };
     }
+    // If LLM response is unparseable, allow (fail-open for legitimate queries)
   } catch (err) {
     // If safety LLM call fails, allow the query through (fail-open)
     // Log for monitoring in production
