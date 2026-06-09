@@ -1,0 +1,29 @@
+@mixin type-title {
+  font-family: "Google Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+@mixin type-body {
+  font-family: "Google Sans", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+@mixin type-label-large {
+  font-family: "Google Sans", sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  text-box: trim-both cap alphabetic;
+}
+
+@mixin type-label-small {
+  font-family: "Google Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  text-box: trim-both cap alphabetic;
+}

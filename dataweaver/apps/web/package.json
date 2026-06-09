@@ -22,8 +22,8 @@
   "devDependencies": {
     "@package/tokens": "workspace:tokens",
     "@types/node": "^25.9.1",
-    "@types/react-dom": "^19.2.3",
     "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
     "babel-plugin-react-compiler": "^1.0.0",
     "sass": "^1.97.3"
   }

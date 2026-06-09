@@ -1,0 +1,11 @@
+.table {
+  @include type-label-small;
+
+  width: 100%;
+  text-align: left;
+}
+
+.table th,
+.table td {
+  padding: 4px 8px;
+}
