@@ -153,10 +153,6 @@ check `~/styles/includes/_helpers.module.scss` for the full set:
 | `@include breakpoint(tablet\|laptop\|desktop) { … }` | Min-width media (§3.6). |
 | `@include screen-reader-only` | Visually hide, keep available to AT (§7). |
 
-If you need an interaction or media gate that isn't here, add a mixin to
-`_helpers.module.scss` rather than inlining the raw query — keep the gating
-logic in one place.
-
 ### 3.1 Selectors & formatting
 
 - Class names are **kebab-case** (e.g. `.card`, `.icon`, `.actions`). For

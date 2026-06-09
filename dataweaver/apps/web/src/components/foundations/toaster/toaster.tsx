@@ -47,12 +47,12 @@ const ToastItem = ({
     // the timer is effectively 'on hold' until the user stops interacting
     if (!isExpanded) {
       const timeout = setTimeout(
-        () => TOAST_STORE.dismiss(toast.id),
+        () => onDismiss(toast.id),
         TOAST_AUTO_DISMISS_DELAY,
       );
       return () => clearTimeout(timeout);
     }
-  }, [toast.id, isExpanded]);
+  }, [toast.id, isExpanded, onDismiss]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -123,6 +123,12 @@ export const Toaster = () => {
   const dismissed = useCallback((id: number) => {
     TOAST_STORE.dismiss(id);
 
+    // Drop the dismissed toast's height so the record can't grow unbounded
+    setHeights((previousHeights) => {
+      const { [id]: _removedHeight, ...newHeights } = previousHeights;
+      return newHeights;
+    });
+
     // A click focuses the dismiss button; removing it fires no blur, so focus
     // would stay 'stuck' - by clearing it here we fix issue
     setIsFocused(false);
@@ -149,7 +155,13 @@ export const Toaster = () => {
     const [frontToast] = orderedToasts;
     const frontHeight = frontToast ? (heights[frontToast.id] ?? 0) : 0;
     const stackHeight = isExpanded ? heightsBefore : frontHeight;
-    const gaps = ROW_GAP * Math.max(0, orderedToasts.length - 1);
+
+    // Collapsed only renders the front 'MAX_VISIBLE_TOASTS', so basing gaps on
+    // full queue would leave invisible, pointer-blocking height below the stack
+    const visibleCount = isExpanded
+      ? orderedToasts.length
+      : Math.min(orderedToasts.length, MAX_VISIBLE_TOASTS);
+    const gaps = ROW_GAP * Math.max(0, visibleCount - 1);
 
     return [stackHeight + gaps, populatedToasts];
   }, [heights, isExpanded, toasts]);
