@@ -24,6 +24,9 @@ export const PageHome = () => {
 
   // TODO: This is entirely using mock data for now
   const runMockQuery = () => {
+    for (const timeout of timeoutsRef.current) clearTimeout(timeout);
+    timeoutsRef.current = [];
+
     const cardText = atlas.add({
       variant: 'text',
       title: 'Key insights when evaluating greenhouse gas emissions',
@@ -69,7 +72,7 @@ export const PageHome = () => {
 
   return (
     <div className={s.container}>
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {isIntroVisible && (
           <Intro onSelect={setQuery} onClose={() => setIsIntroVisible(false)} />
         )}

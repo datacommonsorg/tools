@@ -45,8 +45,12 @@ export const Prompt = ({ value, onValueChange, onSubmit }: PromptProps) => {
         placeholder={PROMPT_PLACEHOLDER}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={(event) => {
-          // Trigger submit if enter is pressed without shift
-          if (event.key === 'Enter' && !event.shiftKey) {
+          // Submit if enter is pressed without shift or during IME composition
+          if (
+            event.key === 'Enter' &&
+            !event.shiftKey &&
+            !event.nativeEvent.isComposing
+          ) {
             event.preventDefault();
             submitted();
           }

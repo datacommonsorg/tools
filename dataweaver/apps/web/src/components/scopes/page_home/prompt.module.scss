@@ -22,6 +22,11 @@
   color: rgb(var(--color-card-content));
   field-sizing: content;
 
+  // Support manual resizing if content-based sizing isn't supported
+  @supports not (field-sizing: content) {
+    resize: vertical;
+  }
+
   &::placeholder {
     color: rgb(var(--color-card-content-subtle));
   }
