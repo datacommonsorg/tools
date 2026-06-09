@@ -96,10 +96,27 @@ export interface QueryStreamRequest {
 
 // --- SSE Stream event types ---
 
+export const STREAM_EVENT = {
+  status: 'status',
+  parsedQuery: 'parsed_query',
+  toolCall: 'tool_call',
+  queryResult: 'query_result',
+  complete: 'complete',
+  error: 'error',
+} as const;
+
 export type StreamEvent =
-  | { type: 'status'; message: string }
-  | { type: 'parsed_query'; data: ParsedQuery }
-  | { type: 'tool_call'; tool: string; args: Record<string, unknown> }
-  | { type: 'query_result'; result: QueryResult; place: string }
-  | { type: 'complete' }
-  | { type: 'error'; message: string };
+  | { type: typeof STREAM_EVENT.status; message: string }
+  | { type: typeof STREAM_EVENT.parsedQuery; data: ParsedQuery }
+  | {
+      type: typeof STREAM_EVENT.toolCall;
+      tool: string;
+      args: Record<string, unknown>;
+    }
+  | {
+      type: typeof STREAM_EVENT.queryResult;
+      result: QueryResult;
+      place: string;
+    }
+  | { type: typeof STREAM_EVENT.complete }
+  | { type: typeof STREAM_EVENT.error; message: string };

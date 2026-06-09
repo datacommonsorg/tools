@@ -90,7 +90,7 @@ export const runToolLoop = async (
     : '';
 
   const dateRangeClause = parsed.dateRange
-    ? `\n\nDATE CONSTRAINT: The user wants data limited to ${parsed.dateRange.start && parsed.dateRange.end ? `years ${parsed.dateRange.start} through ${parsed.dateRange.end}` : parsed.dateRange.start ? `years from ${parsed.dateRange.start} onward` : `years up to ${parsed.dateRange.end}`}.`
+    ? `\n\nDATE CONSTRAINT: The user wants data limited to ${parsed.dateRange.start && parsed.dateRange.end ? `${parsed.dateRange.start} through ${parsed.dateRange.end}` : parsed.dateRange.start ? `from ${parsed.dateRange.start} onward` : `up to ${parsed.dateRange.end}`}.`
     : '';
 
   const placeClause = `\n\nTARGET PLACE: "${place}" — all variables MUST be relevant to this location.`;
@@ -119,55 +119,58 @@ export const runToolLoop = async (
     });
 
     if (response.functionCalls && response.functionCalls.length > 0) {
-      const fc = response.functionCalls[0];
-      const fcName = fc?.name ?? 'unknown';
-      toolCallCount++;
-      onToolCall?.({
-        tool: fcName,
-        args: fc?.args as Record<string, unknown>,
-        count: toolCallCount,
-        max: maxToolCalls,
-      });
-
-      const toolResult = await callMcp<McpToolCallResult>(
-        'tools/call',
-        { name: fcName, arguments: fc?.args },
-        signal,
-      );
-
-      // Extract place DCID from search_indicators responses
-      if (fcName === 'search_indicators' && !resolvedPlaceDcid) {
-        try {
-          const resultText = toolResult?.content?.[0]?.text;
-          if (resultText) {
-            const parsed = JSON.parse(resultText);
-            const placesWithData =
-              parsed.variables?.[0]?.places_with_data ||
-              parsed.topics?.[0]?.places_with_data;
-            if (placesWithData && placesWithData.length > 0) {
-              resolvedPlaceDcid = placesWithData[0];
-            }
-          }
-        } catch {
-          // Ignore parsing errors — DCID extraction is best-effort
-        }
-      }
-
       const modelContent = response.candidates?.[0]?.content;
       if (modelContent) {
         messages.push(modelContent);
       }
-      messages.push({
-        role: 'tool',
-        parts: [
-          {
-            functionResponse: {
-              name: fc?.name,
-              response: { result: toolResult },
-            },
+
+      const toolResponseParts: Array<{
+        functionResponse: { name: string; response: { result: unknown } };
+      }> = [];
+
+      for (const fc of response.functionCalls) {
+        const fcName = fc?.name ?? 'unknown';
+        toolCallCount++;
+        onToolCall?.({
+          tool: fcName,
+          args: fc?.args as Record<string, unknown>,
+          count: toolCallCount,
+          max: maxToolCalls,
+        });
+
+        const toolResult = await callMcp<McpToolCallResult>(
+          'tools/call',
+          { name: fcName, arguments: fc?.args },
+          signal,
+        );
+
+        // Extract place DCID from search_indicators responses
+        if (fcName === 'search_indicators' && !resolvedPlaceDcid) {
+          try {
+            const resultText = toolResult?.content?.[0]?.text;
+            if (resultText) {
+              const parsed = JSON.parse(resultText);
+              const placesWithData =
+                parsed.variables?.[0]?.places_with_data ||
+                parsed.topics?.[0]?.places_with_data;
+              if (placesWithData && placesWithData.length > 0) {
+                resolvedPlaceDcid = placesWithData[0];
+              }
+            }
+          } catch {
+            // Ignore parsing errors — DCID extraction is best-effort
+          }
+        }
+
+        toolResponseParts.push({
+          functionResponse: {
+            name: fcName,
+            response: { result: toolResult },
           },
-        ],
-      });
+        });
+      }
+
+      messages.push({ role: 'tool', parts: toolResponseParts });
     } else if (response.text) {
       return { text: response.text, resolvedPlaceDcid };
     } else {

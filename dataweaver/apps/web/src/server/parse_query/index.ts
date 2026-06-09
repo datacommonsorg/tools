@@ -24,14 +24,13 @@ export const parseQuery = async (
 
   const response = await genAI.models.generateContent({
     model: config.models.parseQuery,
-    contents: `${systemPrompt}\n\nQuery: "${query}"\nReturn ONLY its JSON object, no markdown, no other text or explanation.`,
+    contents: `Query: "${query}"`,
+    config: { systemInstruction: systemPrompt },
   });
 
-  const text = response.text || '';
-  const cleaned = text
-    .replace(/```json/g, '')
-    .replace(/```/g, '')
-    .trim();
+  const responseText = response.text || '';
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  const cleaned = jsonMatch ? jsonMatch[0] : responseText;
 
   try {
     const parsed = JSON.parse(cleaned);

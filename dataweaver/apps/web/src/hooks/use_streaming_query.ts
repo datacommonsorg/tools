@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { QueryStreamRequest, StreamEvent } from '~/server/types';
+import {
+  type QueryStreamRequest,
+  STREAM_EVENT,
+  type StreamEvent,
+} from '~/server/types';
 
 export interface StreamingQueryState {
   status: string;
@@ -109,17 +113,17 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
       const handleEvent = (event: StreamEvent) => {
         switch (event.type) {
-          case 'status':
+          case STREAM_EVENT.status:
             setState((prev) => ({ ...prev, status: event.message }));
             break;
-          case 'complete':
+          case STREAM_EVENT.complete:
             setState((prev) => ({
               ...prev,
               status: 'Complete',
               isComplete: true,
             }));
             break;
-          case 'error':
+          case STREAM_EVENT.error:
             setState((prev) => ({
               ...prev,
               error: event.message,

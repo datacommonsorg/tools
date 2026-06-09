@@ -4,11 +4,12 @@ import { fetchGeminiTools, runToolLoop } from '~/server/data_discovery';
 import { fetchVariableMetadata } from '~/server/observations';
 import { parseQuery } from '~/server/parse_query';
 import { checkPromptSafety } from '~/server/safety';
-import type {
-  ChartType,
-  QueryResult,
-  QueryStreamRequest,
-  StreamEvent,
+import {
+  type ChartType,
+  type QueryResult,
+  type QueryStreamRequest,
+  STREAM_EVENT,
+  type StreamEvent,
 } from '~/server/types';
 
 interface QueryModelResponse {
@@ -30,7 +31,14 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const { query, atlasContext } = body;
+  const { query, atlasContext, selectedEntityDcids } = body;
+
+  if (typeof query !== 'string' || !query.trim()) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   const encoder = new TextEncoder();
   const signal = request.signal;
@@ -47,11 +55,14 @@ export async function POST(request: NextRequest) {
 
       try {
         // ─── Safety gate ──────────────────────────────────────────────────
-        emit({ type: 'status', message: 'Checking query safety...' });
+        emit({
+          type: STREAM_EVENT.status,
+          message: 'Checking query safety...',
+        });
         const safetyResult = await checkPromptSafety(query);
         if (!safetyResult.allowed) {
           emit({
-            type: 'error',
+            type: STREAM_EVENT.error,
             message:
               safetyResult.reason || 'Query was blocked by safety filter.',
           });
@@ -60,24 +71,30 @@ export async function POST(request: NextRequest) {
         }
 
         // ─── Parse query ──────────────────────────────────────────────────
-        emit({ type: 'status', message: 'Parsing query...' });
+        emit({ type: STREAM_EVENT.status, message: 'Parsing query...' });
         const parsed = await parseQuery({ query, atlasContext });
 
         // Resolve places
         let places = parsed.places;
-        if (places.length === 0) places = [query];
+        if (places.length === 0) {
+          places =
+            selectedEntityDcids.length > 0 ? selectedEntityDcids : [query];
+        }
         parsed.places = places;
 
-        emit({ type: 'parsed_query', data: parsed });
+        emit({ type: STREAM_EVENT.parsedQuery, data: parsed });
         if (signal.aborted) {
           controller.close();
           return;
         }
 
         // ─── Data Discovery ──────────────────────────────────────────────────
-        
+
         // Fetch tools
-        emit({ type: 'status', message: 'Fetching available tools...' });
+        emit({
+          type: STREAM_EVENT.status,
+          message: 'Fetching available tools...',
+        });
         const geminiTools = await fetchGeminiTools(signal);
 
         // Process each place
@@ -89,7 +106,7 @@ export async function POST(request: NextRequest) {
 
           const placeLabel = parsed.titles[place] || place;
           emit({
-            type: 'status',
+            type: STREAM_EVENT.status,
             message: `Discovering metrics for ${placeLabel} (${i + 1}/${places.length})...`,
           });
 
@@ -102,9 +119,9 @@ export async function POST(request: NextRequest) {
             geminiTools,
             signal,
             onToolCall: (e) => {
-              emit({ type: 'tool_call', tool: e.tool, args: e.args });
+              emit({ type: STREAM_EVENT.toolCall, tool: e.tool, args: e.args });
               emit({
-                type: 'status',
+                type: STREAM_EVENT.status,
                 message: `Using tool: ${e.tool} (${e.count}/${e.max})...`,
               });
             },
@@ -113,7 +130,7 @@ export async function POST(request: NextRequest) {
           if (signal.aborted) break;
           if (!responseText) {
             emit({
-              type: 'status',
+              type: STREAM_EVENT.status,
               message: `No response for ${placeLabel}, skipping...`,
             });
             continue;
@@ -121,23 +138,23 @@ export async function POST(request: NextRequest) {
 
           // Parse model response into query results
           emit({
-            type: 'status',
+            type: STREAM_EVENT.status,
             message: `Building results for ${placeLabel}...`,
           });
 
           let parsedResponse: QueryModelResponse;
           try {
-            const cleaned = responseText
-              .replace(/```json/g, '')
-              .replace(/```/g, '')
-              .trim();
-            parsedResponse = JSON.parse(cleaned) as QueryModelResponse;
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+              throw new Error('No JSON object found in response');
+            }
+            parsedResponse = JSON.parse(jsonMatch[0]) as QueryModelResponse;
             if (!parsedResponse || typeof parsedResponse !== 'object') {
               throw new Error('Invalid JSON object');
             }
           } catch {
             emit({
-              type: 'status',
+              type: STREAM_EVENT.status,
               message: `Invalid model response for ${placeLabel}, skipping...`,
             });
             continue;
@@ -146,7 +163,7 @@ export async function POST(request: NextRequest) {
           const variables = parsedResponse.variables || [];
           if (variables.length === 0) {
             emit({
-              type: 'status',
+              type: STREAM_EVENT.status,
               message:
                 parsedResponse.summary ||
                 `No variables found for ${placeLabel}.`,
@@ -154,12 +171,19 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          const entityDcid =
-            parsedResponse.entityDcid || resolvedPlaceDcid || place;
+          const entityDcid = parsedResponse.entityDcid || resolvedPlaceDcid;
+
+          if (!entityDcid) {
+            emit({
+              type: STREAM_EVENT.status,
+              message: `Could not resolve a valid DCID for ${placeLabel}, skipping...`,
+            });
+            continue;
+          }
 
           // Fetch metadata for each variable
           emit({
-            type: 'status',
+            type: STREAM_EVENT.status,
             message: `Loading metadata for ${placeLabel} (${variables.length} variables)...`,
           });
 
@@ -189,15 +213,19 @@ export async function POST(request: NextRequest) {
             followUps: parsedResponse.followUps,
           };
 
-          emit({ type: 'query_result', result: discoveryResult, place });
+          emit({
+            type: STREAM_EVENT.queryResult,
+            result: discoveryResult,
+            place,
+          });
         }
 
-        emit({ type: 'complete' });
+        emit({ type: STREAM_EVENT.complete });
         controller.close();
       } catch (err: unknown) {
         if (!signal.aborted) {
           const message = err instanceof Error ? err.message : 'Unknown error';
-          emit({ type: 'error', message });
+          emit({ type: STREAM_EVENT.error, message });
         }
         controller.close();
       }
