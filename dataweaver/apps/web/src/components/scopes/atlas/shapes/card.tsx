@@ -12,7 +12,7 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
-import { useExport } from '~/components/scopes/atlas/components/in_front_of_canvas/export/export_provider';
+import { useExportActions } from '~/components/scopes/atlas/components/in_front_of_canvas/export/export_provider';
 import type {
   CardContentFields,
   CardVariant,
@@ -115,7 +115,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   override component = (shape: ShapeCard) => {
     const { w, h, isLoading, followUp } = shape.props;
     const isSelected = this.editor.getSelectedShapeIds().includes(shape.id);
-    const { open: openExport } = useExport();
+    const { open: openExport } = useExportActions();
 
     return (
       <HTMLContainer style={{ width: w, height: h, pointerEvents: 'auto' }}>

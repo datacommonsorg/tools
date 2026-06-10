@@ -5,6 +5,7 @@ import { Button } from '~/components/elements/button';
 import { IconClose } from '~/components/primitives/icons/close';
 import { IconSelect } from '~/components/primitives/icons/select';
 import { IconShapes } from '~/components/primitives/icons/shapes';
+import { IS_IOS } from '~/configs/environment_client';
 import { useMatchMedia } from '~/hooks/use_match_media';
 import s from './export_panel.module.scss';
 import { useExport } from './export_provider';
@@ -55,12 +56,23 @@ export const ExportPanel = () => {
   }, [editor]);
 
   const selectedCount = useValue('atlas-selected-card-count', () => {
-    return editor.getSelectedShapes().filter((shape) => shape.type === 'card')
-      .length;
+    const selectedCards = editor.getSelectedShapeIds().filter((id) => {
+      const shape = editor.getShape(id);
+      return shape ? shape.type === 'card' : false;
+    });
+    return selectedCards.length;
   }, [editor]);
 
   const status =
     cardCount === 0 ? 'empty' : selectedCount === 0 ? 'none-selected' : 'ready';
+
+  const selectAllCards = () => {
+    const cardIds = editor
+      .getCurrentPageShapes()
+      .filter((shape) => shape.type === 'card')
+      .map((shape) => shape.id);
+    editor.select(...cardIds);
+  };
 
   return (
     <AnimatePresence>
@@ -73,6 +85,7 @@ export const ExportPanel = () => {
           // Prevent tldraw from treating panel interactions as canvas gestures
           onPointerDown={(event) => event.stopPropagation()}
           onWheelCapture={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
           {...(prefersMotion && {
             initial: { opacity: 0, transform: 'translateY(-8px)' },
             animate: { opacity: 1, transform: 'translateY(0px)' },
@@ -132,10 +145,12 @@ export const ExportPanel = () => {
                     <button
                       type="button"
                       className={s['status-button-select-all']}
-                      onClick={() => editor.selectAll()}
+                      onClick={selectAllCards}
                     >
                       <span className={s['select-all-label']}>Select All</span>
-                      <span className={s['select-all-keys']}>CMD + A</span>
+                      <span className={s['select-all-keys']}>
+                        {IS_IOS ? 'Cmd + A' : 'Ctrl + A'}
+                      </span>
                     </button>
                   </>
                 )}
