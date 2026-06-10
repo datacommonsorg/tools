@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const NEXT_CONFIG: NextConfig = {
+  output: 'standalone',
   reactStrictMode: true,
   reactCompiler: true,
   devIndicators: false,
