@@ -1,0 +1,223 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/*
+ * Single source of truth for the design system.
+ *
+ * Colors registered here as `--color-*` automatically generate Tailwind v4
+ * utility classes (e.g. `--color-teal` → `bg-teal`, `text-teal`, `border-teal`,
+ * `hover:bg-teal`, etc.) AND are available as CSS custom properties for use
+ * inside `var()`. Edit a value here and every consumer updates.
+ *
+ * Names mirror the Figma GM3 token vocabulary where possible.
+ */
+@theme {
+  --font-sans: "Google Sans Text", "Inter", system-ui, sans-serif;
+  --font-display: "Google Sans", "Roboto", system-ui, sans-serif;
+
+  /* Brand */
+  --color-teal: #175C75;
+  --color-brand-green: #65A782;
+  --color-brand-teal: #6FAEC0;
+  --color-google-green: #0f9d58;
+
+  /* Surfaces */
+  --color-surface-soft: #F9F9F9;
+  --color-surface-blue: #f0f4f9;
+  --color-user-msg: #E8F2F4;
+  --color-button-hover: #e1e5eb;
+
+  /* Lines */
+  --color-line: #C4C7C5;
+
+  /* Text — primary */
+  --color-on-surface: #1B1C1D;
+  --color-on-surface-variant: #444746;
+  --color-muted: #575B5F;
+  --color-subtle: #747775;
+  --color-placeholder: #8E918F;
+
+  /* Text — table */
+  --color-table-data: #191C1B;
+  --color-table-header: #3F4946;
+  --color-table-body: #212529;
+}
+
+:root {
+  /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
+     Consumed by the .text-* utility classes below. */
+  --Static-Display-Small-Font: "Google Sans";
+  --Static-Display-Small-Size: 32px;
+  --Static-Display-Small-Line-Height: 36px;
+
+  --Static-Title-Large-Font: "Google Sans";
+  --Static-Title-Large-Size: 22px;
+  --Static-Title-Large-Line-Height: 28px;
+
+  --Static-Body-Large-Font: "Google Sans Text";
+  --Static-Body-Large-Size: 16px;
+  --Static-Body-Large-Line-Height: 24px;
+
+  --Static-Body-Medium-Font: "Google Sans Text";
+  --Static-Body-Medium-Size: 14px;
+  --Static-Body-Medium-Line-Height: 20px;
+
+  --Static-Label-Large-Font: "Google Sans Text";
+  --Static-Label-Large-Size: 14px;
+  --Static-Label-Large-Line-Height: 20px;
+
+  --Static-Label-Small-Font: "Google Sans Text";
+  --Static-Label-Small-Size: 11px;
+  --Static-Label-Small-Line-Height: 16px;
+
+  --Static-Caption-Font: "Google Sans Text";
+  --Static-Caption-Size: 12px;
+  --Static-Caption-Line-Height: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-white);
+  color: var(--color-on-surface);
+  margin: 0;
+  padding: 0;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+.text-display-small {
+  font-family: var(--Static-Display-Small-Font, "Google Sans");
+  font-size: var(--Static-Display-Small-Size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--Static-Display-Small-Line-Height, 36px);
+  letter-spacing: 0;
+}
+
+.text-title-large-emphasized {
+  font-family: var(--Static-Title-Large-Font, "Google Sans");
+  font-size: var(--Static-Title-Large-Size, 22px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--Static-Title-Large-Line-Height, 28px);
+  letter-spacing: 0;
+}
+
+.text-body-large {
+  font-family: var(--Static-Body-Large-Font, "Google Sans Text");
+  font-size: var(--Static-Body-Large-Size, 16px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--Static-Body-Large-Line-Height, 24px);
+  letter-spacing: 0;
+}
+
+.text-body-large-emphasized {
+  font-family: var(--Static-Body-Large-Font, "Google Sans Text");
+  font-size: var(--Static-Body-Large-Size, 16px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--Static-Body-Large-Line-Height, 24px);
+  letter-spacing: 0;
+}
+
+.text-body-medium {
+  font-family: var(--Static-Body-Medium-Font, "Google Sans Text");
+  font-size: var(--Static-Body-Medium-Size, 14px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--Static-Body-Medium-Line-Height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-large {
+  font-family: var(--Static-Label-Large-Font, "Google Sans Text");
+  font-size: var(--Static-Label-Large-Size, 14px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--Static-Label-Large-Line-Height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-large-emphasized {
+  font-family: var(--Static-Label-Large-Font, "Google Sans Text");
+  font-size: var(--Static-Label-Large-Size, 14px);
+  font-style: normal;
+  font-weight: 700;
+  line-height: var(--Static-Label-Large-Line-Height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-small {
+  font-family: var(--Static-Label-Small-Font, "Google Sans Text");
+  font-size: var(--Static-Label-Small-Size, 11px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--Static-Label-Small-Line-Height, 16px);
+  letter-spacing: 0;
+}
+
+.text-caption {
+  font-family: var(--Static-Caption-Font, "Google Sans Text");
+  font-size: var(--Static-Caption-Size, 12px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--Static-Caption-Line-Height, 16px);
+  letter-spacing: 0;
+}
+
+.text-display-small-gradient {
+  font-family: var(--Static-Display-Small-Font, "Google Sans");
+  font-size: var(--Static-Display-Small-Size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--Static-Display-Small-Line-Height, 36px);
+  letter-spacing: 0;
+  background: linear-gradient(4deg, var(--color-brand-green) 0%, var(--color-brand-teal) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Print stylesheet: when ExportPdfButton triggers window.print(),
+ * `body[data-print-target]` is set; the AnswerPanel keeps rendering
+ * while everything else (sidebar, header, chat input) is hidden.
+ * ──────────────────────────────────────────────────────────────────── */
+@media print {
+  body[data-print-target] aside,
+  body[data-print-target] header,
+  body[data-print-target] nav,
+  body[data-print-target] [data-non-print="true"] {
+    display: none !important;
+  }
+  body[data-print-target] {
+    background: #ffffff !important;
+  }
+  body[data-print-target] #answer-panel {
+    box-shadow: none !important;
+    border: 0 !important;
+    background: #ffffff !important;
+  }
+  /* Avoid splitting a chart card or table across pages where possible */
+  .dc-chart-card,
+  .markdown-body table,
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3 {
+    break-inside: avoid;
+  }
+}
+
+@keyframes reasoning-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
