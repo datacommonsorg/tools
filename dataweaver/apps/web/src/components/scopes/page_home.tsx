@@ -7,6 +7,10 @@ const Tldraw = dynamic(
   { ssr: false },
 );
 
-export const PageHome = () => {
-  return <Tldraw />;
+interface PageHomeProps {
+  licenseKey?: string;
+}
+
+export const PageHome = ({ licenseKey }: PageHomeProps) => {
+  return <Tldraw licenseKey={licenseKey} />;
 };

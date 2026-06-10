@@ -3,6 +3,10 @@
 import { Tldraw as PrimitiveTldraw } from 'tldraw';
 import s from './tldraw.module.scss';
 
-export const Tldraw = () => {
-  return <PrimitiveTldraw className={s.canvas} hideUi />;
+interface TldrawProps {
+  licenseKey?: string;
+}
+
+export const Tldraw = ({ licenseKey }: TldrawProps) => {
+  return <PrimitiveTldraw className={s.canvas} hideUi licenseKey={licenseKey} />;
 };
