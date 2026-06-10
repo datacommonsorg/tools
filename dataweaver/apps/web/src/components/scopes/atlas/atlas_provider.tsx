@@ -108,8 +108,8 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
         const shapeId = createShapeId();
 
         // First: Create the shape with any immediately available content
-        withEditor((e) => {
-          e.createShape(
+        withEditor((editor) => {
+          editor.createShape(
             contentToShape(shapeId, content, gridPosition(countRef.current)),
           );
 
@@ -123,12 +123,15 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
           id: shapeId,
           variant: content.variant,
           update(props) {
-            withEditor((e) =>
-              e.updateShape({ id: shapeId, type: 'card', props }),
-            );
+            withEditor((editor) => {
+              // The shape may have been deleted before an async update resolves
+              if (!editor.getShape(shapeId)) return;
+
+              editor.updateShape({ id: shapeId, type: 'card', props });
+            });
           },
           remove() {
-            withEditor((e) => e.deleteShapes([shapeId]));
+            withEditor((editor) => editor.deleteShapes([shapeId]));
           },
         };
       },

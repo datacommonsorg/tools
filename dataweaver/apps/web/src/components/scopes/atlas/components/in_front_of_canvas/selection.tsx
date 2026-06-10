@@ -40,14 +40,15 @@ export const Selection = () => {
     const container = containerRef.current;
     if (!container || !bounds) return;
 
-    const origin = editor.pageToViewport({
-      x: bounds.x - INSET_SIDES_AND_BOTTOM,
-      y: bounds.y - INSET_TOP,
-    });
+    const origin = editor.pageToViewport({ x: bounds.x, y: bounds.y });
+    const left = origin.x - INSET_SIDES_AND_BOTTOM;
+    const top = origin.y - INSET_TOP;
+    const width = bounds.width * zoom + INSET_SIDES_AND_BOTTOM * 2;
+    const height = bounds.height * zoom + INSET_TOP + INSET_SIDES_AND_BOTTOM;
 
-    container.style.transform = `translate(${origin.x}px, ${origin.y}px) scale(${zoom})`;
-    container.style.width = `${bounds.width + INSET_SIDES_AND_BOTTOM * 2}px`;
-    container.style.height = `${bounds.height + INSET_TOP + INSET_SIDES_AND_BOTTOM}px`;
+    container.style.transform = `translate(${left}px, ${top}px)`;
+    container.style.width = `${width}px`;
+    container.style.height = `${height}px`;
   }, [editor]);
 
   // Keep the box tracking the canvas while it's mounted
