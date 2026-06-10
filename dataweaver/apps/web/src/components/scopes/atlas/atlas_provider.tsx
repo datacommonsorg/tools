@@ -11,7 +11,6 @@ import {
 } from 'react';
 import { createShapeId, type Editor, type TLShapeId, Tldraw } from 'tldraw';
 import s from './atlas_provider.module.scss';
-import { ExportProvider } from './components/in_front_of_canvas/export/export_provider';
 import {
   ATLAS_COMPONENTS,
   ATLAS_OVERLAYS,
@@ -139,17 +138,15 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
 
   return (
     <AtlasContext.Provider value={providerValue}>
-      <ExportProvider>
-        <Tldraw
-          className={s.tldraw}
-          hideUi
-          components={ATLAS_COMPONENTS}
-          shapeUtils={ATLAS_SHAPES}
-          overlayUtils={ATLAS_OVERLAYS}
-          onMount={mounted}
-        />
-        {children}
-      </ExportProvider>
+      <Tldraw
+        className={s.tldraw}
+        hideUi
+        components={ATLAS_COMPONENTS}
+        shapeUtils={ATLAS_SHAPES}
+        overlayUtils={ATLAS_OVERLAYS}
+        onMount={mounted}
+      />
+      {children}
     </AtlasContext.Provider>
   );
 };
