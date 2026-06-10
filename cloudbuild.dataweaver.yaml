@@ -4,7 +4,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:latest'
+      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:$COMMIT_SHA'
       - '-f'
       - 'dataweaver/Dockerfile'
       - 'dataweaver'
@@ -13,7 +13,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:latest'
+      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:$COMMIT_SHA'
 
   # 3. Deploy to Cloud Run with IAP
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -23,7 +23,7 @@ steps:
       - 'deploy'
       - 'dataweaver-dev'
       - '--image'
-      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:latest'
+      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:$COMMIT_SHA'
       - '--project'
       - 'datcom-website-sandbox'
       - '--region'
