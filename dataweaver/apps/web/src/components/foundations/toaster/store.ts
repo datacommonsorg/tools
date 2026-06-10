@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { IS_BROWSER } from '~/configs/environment_client';
 
 export interface Toast {
   id: number;
@@ -29,6 +30,9 @@ class ToastStore {
 
   /** Queue a toast. Returns its ID so callers can dismiss it early. */
   add = (title: string, description: string) => {
+    // Prevent adding toasts on server
+    if (!IS_BROWSER) return;
+
     const id = this.#nextId++;
     this.#toasts = [...this.#toasts, { id, title, description }];
     this.#emit();

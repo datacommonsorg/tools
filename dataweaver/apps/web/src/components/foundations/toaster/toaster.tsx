@@ -2,7 +2,14 @@
 
 import { EASE_OUT } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useMatchMedia } from '~/hooks/use_match_media';
 import {
   MAX_VISIBLE_TOASTS,
@@ -69,13 +76,20 @@ const ToastItem = ({
     return () => observer.disconnect();
   }, [toast.id, onResize]);
 
+  const sharedStyles: CSSProperties = {
+    zIndex: stackIndex,
+
+    // Ensure hidden toasts don't block pointer events when fully hidden
+    pointerEvents: opacity === 0 ? 'none' : undefined,
+  };
+
   return (
     <m.li
       ref={containerRef}
       className={s['toast-container']}
       {...(prefersMotion
         ? {
-            style: { zIndex: stackIndex },
+            style: sharedStyles,
             initial: { opacity: 0, y: y + 24, scale },
             animate: { y, scale, opacity },
             exit: { opacity: 0, scale: 0.95 },
@@ -83,7 +97,7 @@ const ToastItem = ({
           }
         : {
             style: {
-              zIndex: stackIndex,
+              ...sharedStyles,
               transform: `translateY(${y}px) scale(${scale})`,
               opacity,
             },
