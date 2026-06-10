@@ -85,7 +85,8 @@ export const ExportPanel = () => {
 
             <Button
               icon={IconClose}
-              size="small"
+              className={s['button-close']}
+              size="large"
               aria-label="Close export"
               colorScheme={{
                 base: 'transparent',
