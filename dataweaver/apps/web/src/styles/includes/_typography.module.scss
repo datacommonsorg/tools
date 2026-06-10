@@ -1,15 +1,47 @@
-@mixin type-title {
+@use "sass:list";
+
+@mixin -font-weight-sans($font-weight, $supportedFontWeights) {
+  @if not list.index($supportedFontWeights, $font-weight) {
+    @error "Invalid font name used '#{$font-weight}'. Please use one of the supported weights - '#{$supportedFontWeights}'.";
+  }
+
+  // Note: If adding any new font weights in here, make sure to also add
+  // respective weights to the 'FONT_URL' in 'layout.txt' file
+  @if $font-weight == 400 {
+    font-weight: 400;
+  } @else if $font-weight == 500 {
+    font-weight: 500;
+  } @else if $font-weight == 700 {
+    font-weight: 700;
+  }
+}
+
+$-supported-title-font-weights: 500, 700;
+
+@mixin type-title($font-weight: 700) {
+  @include -font-weight-sans($font-weight, $-supported-title-font-weights);
+
   font-family: "Google Sans", sans-serif;
   font-size: 16px;
-  font-weight: 700;
   line-height: 22px;
 }
 
-@mixin type-body {
+$-supported-body-font-weights: 400, 500;
+
+@mixin type-body-large($font-weight: 400) {
+  @include -font-weight-sans($font-weight, $-supported-body-font-weights);
+
   font-family: "Google Sans", sans-serif;
   font-size: 14px;
-  font-weight: 400;
   line-height: 22px;
+}
+
+@mixin type-body-small($font-weight: 400) {
+  @include -font-weight-sans($font-weight, $-supported-body-font-weights);
+
+  font-family: "Google Sans", sans-serif;
+  font-size: 10px;
+  line-height: 14px;
 }
 
 @mixin type-label-large {

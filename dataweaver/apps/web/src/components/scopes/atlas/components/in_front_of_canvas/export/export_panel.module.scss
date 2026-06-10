@@ -1,0 +1,128 @@
+.container {
+  position: absolute;
+  top: 74px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  padding: 20px;
+  pointer-events: auto;
+  background: rgb(var(--color-control-surface));
+  border-radius: 16px;
+  box-shadow:
+    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
+    0 1px 2px rgb(var(--color-shadow) / 30%);
+  backdrop-filter: blur(40px);
+}
+
+.header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+
+  .title {
+    @include type-title(500);
+
+    color: rgb(var(--color-control-content));
+  }
+}
+
+.statuses-container {
+  height: 148px;
+  background: rgb(var(--color-control-surface-raised));
+  border-radius: 8px;
+
+  .status-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 8px 20px;
+    text-align: center;
+
+    .status-icon {
+      width: 24px;
+      height: 24px;
+      color: rgb(var(--color-control-content));
+    }
+
+    .status-title {
+      @include type-title(500);
+
+      margin-top: 8px;
+      color: rgb(var(--color-control-content));
+    }
+
+    .status-description {
+      @include type-body-small;
+
+      color: rgb(var(--color-control-content-muted));
+    }
+
+    .status-button-select-all {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 16px;
+
+      @include hover {
+        text-decoration: underline;
+      }
+
+      .select-all-label {
+        @include type-body-small(500);
+
+        color: rgb(var(--color-control-content));
+      }
+
+      .select-all-keys {
+        @include type-body-small;
+
+        padding: 1px 4px;
+        color: rgb(var(--color-control-content-muted));
+        border-radius: 4px;
+      }
+    }
+  }
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  margin-top: 30px;
+
+  .options-title {
+    @include type-title(500);
+
+    padding-bottom: 8px;
+    color: rgb(var(--color-control-content-muted));
+    border-bottom: 1px solid rgb(var(--color-surface-decorator));
+  }
+
+  .options-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 32px;
+    margin-top: 18px;
+
+    .option-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      .option-title {
+        @include type-body-large(500);
+
+        color: rgb(var(--color-control-content));
+      }
+
+      .option-description {
+        @include type-body-small;
+
+        color: rgb(var(--color-control-content-muted));
+      }
+    }
+  }
+}

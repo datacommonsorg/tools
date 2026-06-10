@@ -4,6 +4,7 @@ import { COLORS } from '@package/tokens/ts';
 import { type ReactNode, useCallback, useRef } from 'react';
 import { createShapeId, type Editor, Tldraw } from 'tldraw';
 import s from './atlas.module.scss';
+import { ExportProvider } from './components/in_front_of_canvas/export/export_provider';
 import { ATLAS_COMPONENTS, ATLAS_SHAPES, ZOOM_STEPS } from './config';
 import { contentToShape, gridPosition } from './helpers';
 import { type Atlas, AtlasContext } from './use_atlas';
@@ -98,14 +99,16 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
 
   return (
     <AtlasContext.Provider value={{ add }}>
-      <Tldraw
-        className={s.tldraw}
-        hideUi
-        components={ATLAS_COMPONENTS}
-        shapeUtils={ATLAS_SHAPES}
-        onMount={mounted}
-      />
-      {children}
+      <ExportProvider>
+        <Tldraw
+          className={s.tldraw}
+          hideUi
+          components={ATLAS_COMPONENTS}
+          shapeUtils={ATLAS_SHAPES}
+          onMount={mounted}
+        />
+        {children}
+      </ExportProvider>
     </AtlasContext.Provider>
   );
 };

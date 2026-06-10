@@ -12,6 +12,7 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
+import { useExport } from '~/components/scopes/atlas/components/in_front_of_canvas/export/export_provider';
 import type {
   CardContentFields,
   CardVariant,
@@ -62,18 +63,25 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     });
   };
 
-  #getActions = (shape: ShapeCard, isLoading: boolean) => {
+  #getActions = (
+    shape: ShapeCard,
+    isLoading: boolean,
+    openExport: () => void,
+  ) => {
     const deleteAction = {
       icon: IconDelete,
       label: 'Delete',
       onClick: () => this.editor.deleteShapes([shape.id]),
     };
 
-    // TODO: Hook up action(s) once supported
     const exportAction = {
       icon: IconExport,
       label: 'Export',
       isDisabled: isLoading,
+      onClick: () => {
+        this.editor.select(shape.id);
+        openExport();
+      },
     };
 
     if (shape.props.variant === 'chart') {
@@ -107,13 +115,14 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   override component = (shape: ShapeCard) => {
     const { w, h, isLoading, followUp } = shape.props;
     const isSelected = this.editor.getSelectedShapeIds().includes(shape.id);
+    const { open: openExport } = useExport();
 
     return (
       <HTMLContainer style={{ width: w, height: h, pointerEvents: 'auto' }}>
         <Card.Base
           isLoading={isLoading}
           isSelected={isSelected}
-          actions={this.#getActions(shape, isLoading)}
+          actions={this.#getActions(shape, isLoading, openExport)}
           content={this.#renderContent(shape, isLoading)}
           footer={
             followUp && (

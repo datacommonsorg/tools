@@ -10,6 +10,7 @@ import {
 } from '~/components/scopes/atlas/config';
 import { mapRange } from '~/functions/map_range';
 import s from './controls.module.scss';
+import { useExport } from './export/export_provider';
 
 const BUTTON_EXPORT_COLOR_SCHEME = {
   base: 'var(--color-control-surface)',
@@ -31,6 +32,8 @@ const BUTTON_ZOOM_COLOR_SCHEME = {
  */
 export const Controls = () => {
   const editor = useEditor();
+
+  const { isOpen, toggle } = useExport();
 
   const zoom = useValue('zoom', () => editor.getZoomLevel(), [editor]);
 
@@ -73,7 +76,9 @@ export const Controls = () => {
         size="large"
         className={s['button-export']}
         colorScheme={BUTTON_EXPORT_COLOR_SCHEME}
-        // TODO: Support export here
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={toggle}
       >
         Export
       </Button>
