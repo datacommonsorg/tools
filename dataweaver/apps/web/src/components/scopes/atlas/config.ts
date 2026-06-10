@@ -1,6 +1,7 @@
 import type { TLComponents } from 'tldraw';
 import { Grid } from './components/grid';
 import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
+import { AtlasSelectionForegroundOverlayUtil } from './overlays/selection_foreground';
 import { ShapeCardUtil } from './shapes/card';
 /**
  * Component overrides for tldraw - this allows us to inject our own React
@@ -11,8 +12,11 @@ export const ATLAS_COMPONENTS = {
   InFrontOfTheCanvas,
 } as const satisfies TLComponents;
 
-/** The shapes that the Atlas supports. */
+/** The shapes that Atlas supports. */
 export const ATLAS_SHAPES = [ShapeCardUtil] as const;
+
+/** Overlay utils for tldraw. */
+export const ATLAS_OVERLAYS = [AtlasSelectionForegroundOverlayUtil] as const;
 
 /** Atlas min zoom level. This is the minimum zoom enforced by tldraw. */
 export const MIN_ZOOM = 0.25;

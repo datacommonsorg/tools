@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useAtlas } from './atlas/use_atlas';
+import { useAtlas } from './atlas/atlas_provider';
 
 export const PageHome = () => {
   const atlas = useAtlas();

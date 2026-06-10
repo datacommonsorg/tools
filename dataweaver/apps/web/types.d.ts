@@ -18,7 +18,30 @@ declare global {
    * // Result is { a: number; common: string } | { b: string; common: string }
    * ```
    */
-  type WithRequired<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>;
+  type WithRequired<T, K extends keyof T> = T extends unknown
+    ? Omit<T, K> & Required<Pick<T, K>>
+    : never;
+
+  /**
+   * Helper to make given props optional within a union type.
+   *
+   * Use this when you have a union type and want to ensure that certain
+   * properties are optional for each member of the union, without affecting the
+   * overall structure of the types.
+   *
+   * @example
+   * ```ts
+   * type A = { a: number; common: string };
+   * type B = { b: string; common: string };
+   * type Union = A | B;
+   *
+   * type Result = WithOptional<Union, 'common'>;
+   * // Result is { a: number; common?: string } | { b: string; common?: string }
+   * ```
+   */
+  type WithOptional<T, K extends keyof T> = T extends unknown
+    ? Omit<T, K> & Partial<Pick<T, K>>
+    : never;
 }
 
 declare module 'react' {

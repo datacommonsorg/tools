@@ -1,4 +1,5 @@
 import { Controls } from './controls';
+import { Selection } from './selection';
 import { Tools } from './tools';
 
 export const InFrontOfTheCanvas = () => {
@@ -6,6 +7,7 @@ export const InFrontOfTheCanvas = () => {
     <>
       <Controls />
       <Tools />
+      <Selection />
     </>
   );
 };

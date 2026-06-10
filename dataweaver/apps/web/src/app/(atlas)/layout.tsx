@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AtlasProvider } from '~/components/scopes/atlas/atlas';
+import { AtlasProvider } from '~/components/scopes/atlas/atlas_provider';
 
 interface AtlasLayoutProps {
   children: ReactNode;
