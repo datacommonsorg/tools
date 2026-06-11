@@ -30,6 +30,5 @@ gcloud run deploy dataweaver-dev \
   --image us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:${COMMIT_SHA} \
   --project datcom-website-sandbox \
   --region us-central1 \
-  --no-allow-unauthenticated \
-  --iap \
+  --allow-unauthenticated \
   --service-account data-weaver-sa-mj@datcom-website-sandbox.iam.gserviceaccount.com
