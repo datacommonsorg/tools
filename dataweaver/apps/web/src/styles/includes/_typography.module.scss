@@ -1,3 +1,10 @@
+@mixin type-headline {
+  font-family: "Google Sans", sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+}
+
 @mixin type-title {
   font-family: "Google Sans", sans-serif;
   font-size: 16px;

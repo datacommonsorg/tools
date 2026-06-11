@@ -77,10 +77,7 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
       themes.default.fonts.draw.fontFamily = '"Google Sans", sans-serif';
       themes.default.fontSize = 24;
       themes.default.lineHeight = 1.25;
-      themes.default.colors.light.black.solid =
-        'rgb(var(--color-surface-content))';
-
-      // Selection style (Note: This is drawn in Canvas so needs RGB vs CSS var)
+      themes.default.colors.light.black.solid = `rgb(${COLORS['surface-content']})`;
       themes.default.colors.light.selectionStroke = `rgb(${COLORS['control-accent']})`;
 
       return themes;
