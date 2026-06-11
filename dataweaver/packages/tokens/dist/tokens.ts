@@ -23,6 +23,10 @@ export const COLORS = {
   'card-content-muted': '68, 71, 70',
   'card-content-subtle': '196, 199, 197',
   'card-skeleton': '242, 242, 242',
+  'toaster-surface': '255, 255, 255',
+  'toaster-surface-hover': '245, 245, 245',
+  'toaster-content': '32, 33, 36',
+  'toaster-content-muted': '68, 71, 70',
   shadow: '0, 0, 0',
 } as const;
 
