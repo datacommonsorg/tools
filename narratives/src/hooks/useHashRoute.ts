@@ -15,7 +15,8 @@ function readRoute(): string {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.location.hash.replace(/^#\/?/, "");
+  const path = window.location.hash.replace(/^#\/?/, "");
+  return path.split("?")[0];
 }
 
 export function useHashRoute(): [string] {

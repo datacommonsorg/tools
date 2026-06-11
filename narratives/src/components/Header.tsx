@@ -1,9 +1,11 @@
 import { ChevronDown } from "lucide-react";
 import { navConfig } from "../config/navConfig";
 import { useHashRoute } from "../hooks/useHashRoute";
+import { useBrand } from "../hooks/BrandingContext";
 
 export default function Header() {
   const [route] = useHashRoute();
+  const { logo_url, instance_name } = useBrand();
   // Empty route → Agent (the default landing view).
   const activeId = route || "agent";
 
@@ -11,7 +13,11 @@ export default function Header() {
     <header className="w-full flex items-center justify-between px-6 lg:px-12 py-5 shrink-0 whitespace-nowrap overflow-x-auto">
       {/* Logo Section */}
       <div className="flex items-center select-none">
-        <img src="/logo.png" alt="People + AI Logo" className="h-10 object-contain" />
+        <img
+          src={logo_url || "/logo.png"}
+          alt={`${instance_name || "People + AI"} Logo`}
+          className="h-10 object-contain"
+        />
       </div>
 
       {/* Right Navigation */}

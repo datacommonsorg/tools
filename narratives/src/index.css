@@ -20,6 +20,8 @@
   --color-brand-green: #65A782;
   --color-brand-teal: #6FAEC0;
   --color-google-green: #0f9d58;
+  --color-brand-primary: var(--brand-primary, #1A73E8);
+  --color-brand-accent: var(--brand-accent, #34A853);
 
   /* Surfaces */
   --color-surface-soft: #F9F9F9;
@@ -46,31 +48,31 @@
 :root {
   /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
      Consumed by the .text-* utility classes below. */
-  --Static-Display-Small-Font: "Google Sans";
+  --Static-Display-Small-Font: var(--brand-font, "Google Sans");
   --Static-Display-Small-Size: 32px;
   --Static-Display-Small-Line-Height: 36px;
 
-  --Static-Title-Large-Font: "Google Sans";
+  --Static-Title-Large-Font: var(--brand-font, "Google Sans");
   --Static-Title-Large-Size: 22px;
   --Static-Title-Large-Line-Height: 28px;
 
-  --Static-Body-Large-Font: "Google Sans Text";
+  --Static-Body-Large-Font: var(--brand-font, "Google Sans Text");
   --Static-Body-Large-Size: 16px;
   --Static-Body-Large-Line-Height: 24px;
 
-  --Static-Body-Medium-Font: "Google Sans Text";
+  --Static-Body-Medium-Font: var(--brand-font, "Google Sans Text");
   --Static-Body-Medium-Size: 14px;
   --Static-Body-Medium-Line-Height: 20px;
 
-  --Static-Label-Large-Font: "Google Sans Text";
+  --Static-Label-Large-Font: var(--brand-font, "Google Sans Text");
   --Static-Label-Large-Size: 14px;
   --Static-Label-Large-Line-Height: 20px;
 
-  --Static-Label-Small-Font: "Google Sans Text";
+  --Static-Label-Small-Font: var(--brand-font, "Google Sans Text");
   --Static-Label-Small-Size: 11px;
   --Static-Label-Small-Line-Height: 16px;
 
-  --Static-Caption-Font: "Google Sans Text";
+  --Static-Caption-Font: var(--brand-font, "Google Sans Text");
   --Static-Caption-Size: 12px;
   --Static-Caption-Line-Height: 16px;
 }
