@@ -1,17 +1,15 @@
 .container {
   position: absolute;
   top: 200px;
-  right: 16px;
+  right: var(--tools-gutter-outer);
   display: flex;
   flex-direction: column;
   gap: 20px;
   align-items: center;
-  width: 58px;
-  padding: 8px;
+  width: var(--tools-width);
+  padding: var(--tools-gutter-inner);
   pointer-events: auto;
   background: rgb(var(--color-control-surface));
-  border-radius: 29px;
-  box-shadow:
-    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
-    0 1px 2px rgb(var(--color-shadow) / 30%);
+  border-radius: calc(var(--tools-width) / 2);
+  box-shadow: var(--shadow-elevated);
 }

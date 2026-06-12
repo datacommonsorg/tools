@@ -108,12 +108,22 @@
     margin: unset;
   }
 
-  input {
+  input,
+  textarea {
     padding: unset;
+    font: inherit;
+    font-weight: inherit;
+    line-height: inherit;
     color: inherit;
+    letter-spacing: inherit;
     outline: unset;
     background: unset;
     border: unset;
+  }
+
+  textarea {
+    margin: unset;
+    resize: none;
   }
 
   iframe {
