@@ -21,9 +21,7 @@
   pointer-events: auto;
   background: rgb(var(--color-control-accent));
   border-radius: 16px;
-  box-shadow:
-    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
-    0 1px 2px rgb(var(--color-shadow) / 30%);
+  box-shadow: var(--shadow-elevated);
 
   // Center horizontally and straddle the selection's top edge
   transform: translate(-50%, -50%);

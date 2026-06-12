@@ -1,18 +1,23 @@
-import type { ComponentPropsWithRef } from 'react';
+import type { ComponentPropsWithRef, ElementType } from 'react';
 import s from './screen_reader.module.scss';
 
-type ScreenReaderOnlyProps = Omit<
-  WithRequired<ComponentPropsWithRef<'span'>, 'children'>,
+type ScreenReaderOnlyProps<TElement extends ElementType = 'span'> = {
+  element?: TElement;
+} & DistributiveOmit<
+  WithRequired<ComponentPropsWithRef<TElement>, 'children'>,
   'className'
 >;
 
-export const ScreenReaderOnly = ({
+export const ScreenReaderOnly = <TElement extends ElementType = 'span'>({
+  element,
   children,
   ...rest
-}: ScreenReaderOnlyProps) => {
+}: ScreenReaderOnlyProps<TElement>) => {
+  const Container = element ?? 'span';
+
   return (
-    <span className={s['screen-reader-only']} {...rest}>
+    <Container className={s['screen-reader-only']} {...rest}>
       {children}
-    </span>
+    </Container>
   );
 };
