@@ -8,6 +8,7 @@ import {
 } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
+import type { CardSelection } from '~/components/elements/card/base';
 import { toast } from '~/components/foundations/toaster/store';
 import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
@@ -15,15 +16,13 @@ import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
 import type {
   CardContentFields,
+  CardSize,
   CardVariant,
 } from '~/components/scopes/atlas/helpers';
 
-type ShapeCardProps = CardContentFields & {
-  w: number;
-  h: number;
-  variant: CardVariant;
-  isLoading: boolean;
-};
+interface ShapeCardProps extends CardContentFields, CardSize {
+  variant?: CardVariant;
+}
 
 // Register the custom shape within tldraw
 declare module 'tldraw' {
@@ -40,19 +39,19 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   static override props: RecordProps<ShapeCard> = {
     w: T.number,
     h: T.number,
-    variant: T.literalEnum('text', 'chart'),
+    variant: T.literalEnum('text', 'chart').optional(),
     title: T.string.optional(),
     description: T.string.optional(),
     body: T.string.optional(),
     data: T.arrayOf(
       T.object({ year: T.number, emissions: T.number }),
     ).optional(),
-    isLoading: T.boolean,
+    isLoading: T.boolean.optional(),
     followUp: T.string.optional(),
   };
 
   override getDefaultProps = (): ShapeCardProps => {
-    return { w: 360, h: 440, variant: 'text', isLoading: false };
+    return { w: 360, h: 440 };
   };
 
   override getGeometry = (shape: ShapeCard) => {
@@ -61,6 +60,13 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       height: shape.props.h,
       isFilled: true,
     });
+  };
+
+  #getSelectionState = (shape: ShapeCard): CardSelection => {
+    const selectedIds = this.editor.getSelectedShapeIds();
+    const isSelected = selectedIds.includes(shape.id);
+    if (!isSelected) return 'none';
+    return selectedIds.length > 1 ? 'multiple' : 'single';
   };
 
   #getActions = (shape: ShapeCard, isLoading: boolean) => {
@@ -123,14 +129,14 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   };
 
   override component = (shape: ShapeCard) => {
-    const { w, h, isLoading, followUp } = shape.props;
-    const isSelected = this.editor.getSelectedShapeIds().includes(shape.id);
+    const { w, h, followUp } = shape.props;
+    const isLoading = shape.props.isLoading ?? false;
 
     return (
       <HTMLContainer style={{ width: w, height: h, pointerEvents: 'auto' }}>
         <Card.Base
           isLoading={isLoading}
-          isSelected={isSelected}
+          selection={this.#getSelectionState(shape)}
           actions={this.#getActions(shape, isLoading)}
           content={this.#renderContent(shape, isLoading)}
           footer={
@@ -151,7 +157,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
 
   // Disable default TLDraw events
   override canResize = () => false;
-  override hideSelectionBoundsFg = () => true;
+  override hideResizeHandles = () => true;
+  override hideRotateHandle = () => true;
   override hideSelectionBoundsBg = () => true;
+  override hideSelectionBoundsFg = () => true;
   override getIndicatorPath = () => undefined;
 }
