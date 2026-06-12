@@ -9,10 +9,12 @@ cd "$(dirname "$0")"
 COMMIT_SHA=$(git rev-parse --short HEAD)
 
 # Build the app locally to verify compilation
-echo "Building the app locally..."
 if command -v pnpm &> /dev/null; then
+  echo "Building the app locally..."
   pnpm i
   pnpm build
+else
+  echo "WARNING: 'pnpm' not found. Skipping local verification build."
 fi
 
 # Build the container using Cloud Build (using custom service account & regional buckets to bypass default compute service account deletion issues)
