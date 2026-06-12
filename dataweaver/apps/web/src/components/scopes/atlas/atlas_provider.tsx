@@ -56,9 +56,10 @@ type EditorOperation = (editor: Editor) => void;
 
 interface AtlasProviderProps {
   children: ReactNode;
+  licenseKey?: string;
 }
 
-export const AtlasProvider = ({ children }: AtlasProviderProps) => {
+export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   const editorRef = useRef<Editor | null>(null);
   const pendingShapesQueueRef = useRef<EditorOperation[]>([]);
 
@@ -150,6 +151,7 @@ export const AtlasProvider = ({ children }: AtlasProviderProps) => {
           shapeUtils={ATLAS_SHAPES}
           overlayUtils={ATLAS_OVERLAYS}
           onMount={mounted}
+          licenseKey={licenseKey}
         />
         {children}
       </ExportProvider>
