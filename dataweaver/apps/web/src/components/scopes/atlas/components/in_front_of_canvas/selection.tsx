@@ -8,6 +8,7 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { useMatchMedia } from '~/hooks/use_match_media';
+import { useExportActions } from './export/export_provider';
 import s from './selection.module.scss';
 
 /** Screen-space margin the selection box extends past the cards, in pixels. */
@@ -25,6 +26,7 @@ const BUTTON_COLOR_SCHEME = {
 
 export const Selection = () => {
   const editor = useEditor();
+  const { open: openExport } = useExportActions();
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +91,7 @@ export const Selection = () => {
               colorScheme={BUTTON_COLOR_SCHEME}
               // Prevent tldraw from treating the press as a canvas gesture
               onPointerDown={(event) => event.stopPropagation()}
-              // TODO: Support export here
+              // TODO: Support chart options here
               onClick={() =>
                 toast(
                   'Selection chart options not supported yet',
@@ -103,12 +105,7 @@ export const Selection = () => {
               aria-label="Export"
               colorScheme={BUTTON_COLOR_SCHEME}
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() =>
-                toast(
-                  'Selection export not supported yet',
-                  'This feature will be coming in a future release. Stay tuned!',
-                )
-              }
+              onClick={openExport}
             />
             <Button
               icon={IconDelete}

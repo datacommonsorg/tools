@@ -14,6 +14,7 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
+import { useExportActions } from '~/components/scopes/atlas/components/in_front_of_canvas/export/export_provider';
 import type {
   CardContentFields,
   CardSize,
@@ -69,7 +70,11 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     return selectedIds.length > 1 ? 'multiple' : 'single';
   };
 
-  #getActions = (shape: ShapeCard, isLoading: boolean) => {
+  #getActions = (
+    shape: ShapeCard,
+    isLoading: boolean,
+    openExport: () => void,
+  ) => {
     const deleteAction = {
       icon: IconDelete,
       label: 'Delete',
@@ -80,13 +85,10 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       icon: IconExport,
       label: 'Export',
       isDisabled: isLoading,
-
-      // TODO: Support export here
-      onClick: () =>
-        toast(
-          'Card export not supported yet',
-          'This feature will be coming in a future release. Stay tuned!',
-        ),
+      onClick: () => {
+        this.editor.select(shape.id);
+        openExport();
+      },
     };
 
     if (shape.props.variant === 'chart') {
@@ -131,13 +133,14 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   override component = (shape: ShapeCard) => {
     const { w, h, followUp } = shape.props;
     const isLoading = shape.props.isLoading ?? false;
+    const { open: openExport } = useExportActions();
 
     return (
       <HTMLContainer style={{ width: w, height: h, pointerEvents: 'auto' }}>
         <Card.Base
           isLoading={isLoading}
           selection={this.#getSelectionState(shape)}
-          actions={this.#getActions(shape, isLoading)}
+          actions={this.#getActions(shape, isLoading, openExport)}
           content={this.#renderContent(shape, isLoading)}
           footer={
             followUp && (

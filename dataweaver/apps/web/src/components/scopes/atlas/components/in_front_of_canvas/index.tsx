@@ -1,4 +1,5 @@
 import { Controls } from './controls';
+import { ExportPanel } from './export/export_panel';
 import { Selection } from './selection';
 import { Tools } from './tools';
 
@@ -7,6 +8,7 @@ export const InFrontOfTheCanvas = () => {
     <>
       <Controls />
       <Tools />
+      <ExportPanel />
       <Selection />
     </>
   );
