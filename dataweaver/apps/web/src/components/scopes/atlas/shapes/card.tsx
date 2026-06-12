@@ -8,6 +8,7 @@ import {
 } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
+import { toast } from '~/components/foundations/toaster/store';
 import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
@@ -86,7 +87,18 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
 
     if (shape.props.variant === 'chart') {
       return [
-        { icon: IconBarChart, label: 'View chart', isDisabled: isLoading },
+        {
+          icon: IconBarChart,
+          label: 'View chart',
+          isDisabled: isLoading,
+
+          // TODO: Support chart options here
+          onClick: () =>
+            toast(
+              'Cart chart options not supported yet',
+              'This feature will be coming in a future release. Stay tuned!',
+            ),
+        },
         exportAction,
         deleteAction,
       ];

@@ -117,7 +117,7 @@
       gap: 8px;
 
       .option-title {
-        @include type-body-large(500);
+        @include type-body-small(500);
 
         color: rgb(var(--color-control-content));
       }

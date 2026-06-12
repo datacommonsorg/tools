@@ -1,11 +1,14 @@
 import { EASE_OUT } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
+import { useRef } from 'react';
 import { useEditor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { IconClose } from '~/components/primitives/icons/close';
 import { IconSelect } from '~/components/primitives/icons/select';
 import { IconShapes } from '~/components/primitives/icons/shapes';
-import { IS_IOS } from '~/configs/environment_client';
+import { IS_APPLE } from '~/configs/environment_client';
+import { useFocusTrap } from '~/hooks/use_focus_trap';
+import { useKeydown } from '~/hooks/use_keydown';
 import { useMatchMedia } from '~/hooks/use_match_media';
 import s from './export_panel.module.scss';
 import { useExport } from './export_provider';
@@ -47,6 +50,8 @@ export const ExportPanel = () => {
 
   const { isOpen, close } = useExport();
 
+  const containerRef = useRef<HTMLElement>(null);
+
   const prefersMotion = useMatchMedia('prefers-motion');
 
   const cardCount = useValue('atlas-card-count', () => {
@@ -74,11 +79,19 @@ export const ExportPanel = () => {
     editor.select(...cardIds);
   };
 
+  useKeydown('Escape', close, { isEnabled: isOpen });
+
+  // TODO: For now this doesn't seem to really work due to TLDraw consuming
+  // tab events. Review focus trap implementation once we review how TLDraw
+  // handles focus and keyboard events in general, and adjust as needed
+  useFocusTrap(containerRef, { isEnabled: isOpen });
+
   return (
     <AnimatePresence>
       {isOpen && (
         <m.section
           className={s.container}
+          ref={containerRef}
           role="dialog"
           aria-modal="false"
           aria-label="Export"
@@ -149,7 +162,7 @@ export const ExportPanel = () => {
                     >
                       <span className={s['select-all-label']}>Select All</span>
                       <span className={s['select-all-keys']}>
-                        {IS_IOS ? 'Cmd + A' : 'Ctrl + A'}
+                        {IS_APPLE ? 'Cmd + A' : 'Ctrl + A'}
                       </span>
                     </button>
                   </>

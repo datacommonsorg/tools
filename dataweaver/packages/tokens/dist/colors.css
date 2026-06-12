@@ -16,10 +16,16 @@
   --color-button-content: 0 0 0;
   --color-button-content-hover: 0 0 0;
   --color-card-base: 255 255 255;
+  --color-card-base-subtle: 248 249 252;
   --color-card-base-selected: 11 87 208;
   --color-card-content: 32 33 36;
   --color-card-content-muted: 68 71 70;
-  --color-card-content-subtle: 196 199 197;
+  --color-card-content-subtle: 95 99 104;
+  --color-card-content-dimmed: 196 199 197;
   --color-card-skeleton: 242 242 242;
+  --color-toaster-surface: 255 255 255;
+  --color-toaster-surface-hover: 245 245 245;
+  --color-toaster-content: 32 33 36;
+  --color-toaster-content-muted: 68 71 70;
   --color-shadow: 0 0 0;
 }

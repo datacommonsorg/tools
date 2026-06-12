@@ -20,11 +20,17 @@ export const COLORS = {
   'button-content': '0, 0, 0',
   'button-content-hover': '0, 0, 0',
   'card-base': '255, 255, 255',
+  'card-base-subtle': '248, 249, 252',
   'card-base-selected': '11, 87, 208',
   'card-content': '32, 33, 36',
   'card-content-muted': '68, 71, 70',
-  'card-content-subtle': '196, 199, 197',
+  'card-content-subtle': '95, 99, 104',
+  'card-content-dimmed': '196, 199, 197',
   'card-skeleton': '242, 242, 242',
+  'toaster-surface': '255, 255, 255',
+  'toaster-surface-hover': '245, 245, 245',
+  'toaster-content': '32, 33, 36',
+  'toaster-content-muted': '68, 71, 70',
   shadow: '0, 0, 0',
 } as const;
 
