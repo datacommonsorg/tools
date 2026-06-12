@@ -6,7 +6,7 @@
   }
 
   // Note: If adding any new font weights in here, make sure to also add
-  // respective weights to the 'FONT_URL' in 'layout.txt' file
+  // respective weights to the 'FONT_URL' in 'layout.tsx' file
   @if $font-weight == 400 {
     font-weight: 400;
   } @else if $font-weight == 500 {

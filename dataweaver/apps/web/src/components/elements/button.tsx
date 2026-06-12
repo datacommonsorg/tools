@@ -3,12 +3,26 @@ import { mergeClassNames } from '~/functions/merge_class_names';
 import { mergeStyles } from '~/functions/merge_styles';
 import s from './button.module.scss';
 
+// Note: Here '(string & {})' is a trick to allow any string while still
+// supporting 'transparent' as a distinct type
+type Color = 'transparent' | (string & {});
+
 interface ColorScheme {
-  base: string;
-  'base-hover': string;
-  content: string;
-  'content-hover': string;
+  base: Color;
+  'base-hover': Color;
+  content: Color;
+  'content-hover': Color;
 }
+
+/**
+ * In the CSS we map all colors via `rgb(var(--foo))`. This means that we need
+ * to convert `transparent` to a 'real' value to avoid passing invalid
+ * `rgb(transparent)`. Instead mapped to `rgb(0 0 0 / 0%)` which is effectively
+ * the same thing but valid CSS.
+ */
+const mapColor = (color: Color) => {
+  return color === 'transparent' ? `0 0 0 / 0%` : color;
+};
 
 interface WithIconOnly {
   icon: ComponentType<ComponentPropsWithRef<'svg'>>;
@@ -54,10 +68,12 @@ export const Button = ({
       disabled={isDisabled}
       style={mergeStyles(
         colorScheme && {
-          '--color-button-base': colorScheme.base,
-          '--color-button-base-hover': colorScheme['base-hover'],
-          '--color-button-content': colorScheme.content,
-          '--color-button-content-hover': colorScheme['content-hover'],
+          '--color-button-base': mapColor(colorScheme.base),
+          '--color-button-base-hover': mapColor(colorScheme['base-hover']),
+          '--color-button-content': mapColor(colorScheme.content),
+          '--color-button-content-hover': mapColor(
+            colorScheme['content-hover'],
+          ),
         },
         rest.style,
       )}

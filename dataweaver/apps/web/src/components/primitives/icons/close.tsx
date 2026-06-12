@@ -10,7 +10,7 @@ export const IconClose = (props: ComponentPropsWithRef<'svg'>) => {
       aria-hidden="true"
     >
       <path
-        fill="currentcolor"
+        fill="currentColor"
         fillRule="evenodd"
         clipRule="evenodd"
         d="m12.893 12.001 7.553-7.554-.892-.892L12 11.108 4.446 3.555l-.892.892 7.553 7.554-7.553 7.554.892.892L12 12.894l7.554 7.553.892-.892L12.893 12Z"

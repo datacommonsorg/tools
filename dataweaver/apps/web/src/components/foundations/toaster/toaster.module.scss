@@ -1,0 +1,56 @@
+.container {
+  position: fixed;
+  bottom: 40px;
+  left: 40px;
+  z-index: $z-index-toaster;
+  width: 560px;
+  max-width: calc(100vw - 80px);
+  user-select: none;
+}
+
+.toast-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  width: 100%;
+  background: rgb(var(--color-toaster-surface));
+  border-radius: 28px;
+  box-shadow: 0 1px 18px rgb(var(--color-shadow) / 12%);
+  transform-origin: bottom center;
+
+  @include prefers-motion {
+    transition: background 0.2s $ease-linear;
+  }
+
+  @include hover {
+    background: rgb(var(--color-toaster-surface-hover));
+  }
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  grid-area: 1 / 1;
+  row-gap: 16px;
+  padding: 24px;
+
+  .title {
+    @include type-headline;
+
+    color: rgb(var(--color-toaster-content));
+  }
+
+  .description {
+    @include type-body-small;
+
+    color: rgb(var(--color-toaster-content-muted));
+  }
+}
+
+.button-dismiss {
+  --outline-offset: var(--outline-offset-inset);
+
+  grid-area: 1 / 1;
+  border-radius: inherit;
+}

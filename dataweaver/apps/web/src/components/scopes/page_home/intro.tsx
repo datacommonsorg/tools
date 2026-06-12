@@ -43,7 +43,7 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
 
         <div className={s['content-container']}>
           <h2 className={s.title}>
-            Lets discover what you can do with Data Commons
+            Let's discover what you can do with Data Commons
           </h2>
 
           <p className={s.description}>

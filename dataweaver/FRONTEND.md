@@ -142,7 +142,16 @@ CSS Modules only (`*.module.scss`), imported as `import s from './x.module.scss'
 
 `~/styles/includes` (breakpoint / helper / z-index mixins) is **auto-injected**
 into every module via `next.config.ts` `additionalData` — do **not** re-`@use`
-it.
+it. Reach for these helpers before hand-rolling a media query or pseudo-class;
+check `~/styles/includes/_helpers.module.scss` for the full set:
+
+| Helper | Use |
+|---|---|
+| `@include hover { … }` | Hover styles — **always use this, never a bare `&:hover`.** Gates on `hover: hover` + fine pointer so styles don't stick on touch. |
+| `@include is-pointer-fine { … }` / `is-pointer-coarse { … }` | Target mouse vs. touch directly. |
+| `@include prefers-motion { … }` / `prefers-reduced-motion { … }` | Motion-preference gates (§3.7). |
+| `@include breakpoint(tablet\|laptop\|desktop) { … }` | Min-width media (§3.6). |
+| `@include screen-reader-only` | Visually hide, keep available to AT (§7). |
 
 ### 3.1 Selectors & formatting
 
@@ -302,6 +311,9 @@ Target WCAG 2.2 AA. Build it in, don't bolt it on.
   `rgb(0 0 0 / …)` for translucency — anchor to `rgb(var(--color-x) / a)`.
 - Restate the reset in a component module.
 - Drive variants via className flags — use `data-*`.
+- A bare `&:hover` — gate hover through `@include hover` (fine-pointer only, so
+  it doesn't stick on touch). Likewise prefer the `~/styles/includes` helpers
+  over hand-written media queries / pseudo-class gates.
 - Raw `<a>` / `NextLink` / `<div onClick>`; remove the focus outline; mark a
   focusable element `aria-hidden`.
 - A raw `z-index` number, or `motion.*` (use `m.*`).
