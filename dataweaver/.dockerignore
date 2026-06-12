@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.gitignore
+.dockerignore
+Dockerfile
+deploy.sh
+README.md
+FRONTEND.md
+AGENTS.md
+stylelint.config.mjs
+biome.json
