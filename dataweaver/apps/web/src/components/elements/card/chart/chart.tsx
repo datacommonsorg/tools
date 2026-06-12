@@ -18,7 +18,7 @@ export interface ChartDatum {
 const CHART_WIDTH = 356;
 const CHART_HEIGHT = 200;
 
-interface CardChartProps extends Pick<CardState, 'isLoading'> {
+export interface CardChartProps extends Pick<CardState, 'isLoading'> {
   title?: string;
   description?: string;
 

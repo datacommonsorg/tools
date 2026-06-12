@@ -24,7 +24,7 @@
     transition: transform 0.5s $ease-out;
   }
 
-  [data-is-selected="true"] & {
+  :is([data-selection="single"]) & {
     transform: translateY(calc(var(--actions-height) * -1));
   }
 }
@@ -44,11 +44,14 @@
   @include prefers-motion {
     transition:
       transform 0.5s $ease-out,
-      border-color 0.5s $ease-out;
+      border-color 0.1s $ease-linear;
   }
 
-  [data-is-selected="true"] & {
+  :is([data-selection="single"], [data-selection="multiple"]) & {
     border-color: rgb(var(--color-card-base-selected));
+  }
+
+  :is([data-selection="single"]) & {
     transform: translateY(var(--actions-height));
   }
 }

@@ -1,0 +1,28 @@
+.container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  border: 1.5px solid rgb(var(--color-control-accent));
+  border-radius: 4px;
+  transform-origin: top left;
+}
+
+.actions-container {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  height: 50px;
+  padding: 0 50px;
+  pointer-events: auto;
+  background: rgb(var(--color-control-accent));
+  border-radius: 16px;
+  box-shadow: var(--shadow-elevated);
+
+  // Center horizontally and straddle the selection's top edge
+  transform: translate(-50%, -50%);
+}

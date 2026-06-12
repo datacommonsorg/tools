@@ -2,7 +2,7 @@
 
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { useAtlas } from '~/components/scopes/atlas/use_atlas';
+import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
 import { Prompt } from './prompt';

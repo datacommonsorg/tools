@@ -2,7 +2,7 @@ import type { CardState } from '~/components/elements/card/base';
 import { Skeleton } from '~/components/elements/skeleton';
 import s from './text.module.scss';
 
-interface CardTextProps extends Pick<CardState, 'isLoading'> {
+export interface CardTextProps extends Pick<CardState, 'isLoading'> {
   title?: string;
   body?: string;
 }

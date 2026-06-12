@@ -2,7 +2,7 @@
   --gutter: 40px;
   --buffer: 12px;
   --controls-height-with-gutters: calc(
-    var(--button-pill-size-large) + var(--controls-gutter-outer) * 2
+    var(--controls-height) + var(--controls-gutter-outer) * 2
   );
   --tools-width-with-gutters: calc(
     var(--tools-width) + var(--tools-gutter-outer) * 2

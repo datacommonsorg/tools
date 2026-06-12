@@ -1,7 +1,13 @@
 .container {
+  --controls-height-with-gutters: calc(
+    var(--controls-height) + var(--controls-gutter-outer) * 2
+  );
+
   position: absolute;
-  top: 80px;
-  right: 14px;
+  top: var(--controls-height-with-gutters);
+
+  // Note: We remove 2px here to avoid tools shadow appearing at edge of this
+  right: calc(var(--tools-gutter-outer) - 2px);
   display: flex;
   flex-direction: column;
   width: 360px;
@@ -9,9 +15,7 @@
   pointer-events: auto;
   background: rgb(var(--color-control-surface));
   border-radius: 16px;
-  box-shadow:
-    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
-    0 1px 2px rgb(var(--color-shadow) / 30%);
+  box-shadow: var(--shadow-elevated);
   backdrop-filter: blur(40px);
 }
 
