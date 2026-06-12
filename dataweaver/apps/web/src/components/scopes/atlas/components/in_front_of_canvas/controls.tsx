@@ -1,5 +1,6 @@
 import { useEditor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
+import { toast } from '~/components/foundations/toaster/store';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconMinus } from '~/components/primitives/icons/minus';
 import { IconPlus } from '~/components/primitives/icons/plus';
@@ -74,6 +75,12 @@ export const Controls = () => {
         className={s['button-export']}
         colorScheme={BUTTON_EXPORT_COLOR_SCHEME}
         // TODO: Support export here
+        onClick={() =>
+          toast(
+            'Controls export not supported yet',
+            'This feature will be coming in a future release. Stay tuned!',
+          )
+        }
       >
         Export
       </Button>

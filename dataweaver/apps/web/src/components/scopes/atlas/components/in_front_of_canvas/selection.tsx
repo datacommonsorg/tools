@@ -3,6 +3,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { useCallback, useRef } from 'react';
 import { useEditor, useQuickReactor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
+import { toast } from '~/components/foundations/toaster/store';
 import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
@@ -88,6 +89,13 @@ export const Selection = () => {
               colorScheme={BUTTON_COLOR_SCHEME}
               // Prevent tldraw from treating the press as a canvas gesture
               onPointerDown={(event) => event.stopPropagation()}
+              // TODO: Support export here
+              onClick={() =>
+                toast(
+                  'Selection chart options not supported yet',
+                  'This feature will be coming in a future release. Stay tuned!',
+                )
+              }
             />
             <Button
               icon={IconExport}
@@ -95,6 +103,12 @@ export const Selection = () => {
               aria-label="Export"
               colorScheme={BUTTON_COLOR_SCHEME}
               onPointerDown={(event) => event.stopPropagation()}
+              onClick={() =>
+                toast(
+                  'Selection export not supported yet',
+                  'This feature will be coming in a future release. Stay tuned!',
+                )
+              }
             />
             <Button
               icon={IconDelete}

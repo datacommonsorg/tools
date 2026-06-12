@@ -9,3 +9,4 @@ $-next-z-index: 0;
 $z-index-behind-content: -1;
 $z-index-content: 0;
 $z-index-above-content: -get-next-z-index();
+$z-index-toaster: -get-next-z-index();
