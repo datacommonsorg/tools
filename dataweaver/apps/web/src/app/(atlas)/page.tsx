@@ -1,5 +1,3 @@
 import { PageHome } from '~/components/scopes/page_home/page_home';
 
-export default function Page() {
-  return <PageHome />;
-}
+export default PageHome;
