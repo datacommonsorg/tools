@@ -20,6 +20,20 @@
       }
     }
 
+    &[data-size="medium"] {
+      column-gap: 4px;
+      min-height: var(--button-pill-size-medium);
+      border-radius: calc(var(--button-pill-size-medium) / 2);
+
+      &[data-has-icon="false"] {
+        padding-inline: 16px;
+      }
+
+      &[data-has-icon="true"] {
+        padding-inline: 16px 18px;
+      }
+    }
+
     &[data-size="large"] {
       column-gap: 6px;
       min-height: var(--button-pill-size-large);
@@ -85,6 +99,12 @@
     @include type-label-small;
 
     padding-block: 8px;
+  }
+
+  [data-size="medium"] & {
+    @include type-label-medium;
+
+    padding-block: 12px;
   }
 
   [data-size="large"] & {
