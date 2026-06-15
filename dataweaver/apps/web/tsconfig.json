@@ -33,7 +33,7 @@
     "noEmit": true,
 
     // For the DOM
-    "lib": ["es2022", "dom", "dom.iterable"],
+    "lib": ["es2024", "dom", "dom.iterable"],
 
     // Aliases
     "paths": {

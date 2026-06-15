@@ -7,8 +7,8 @@ import { toast } from '~/components/foundations/toaster/store';
 import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
+import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useMatchMedia } from '~/hooks/use_match_media';
-import { useExportActions } from './export/export_provider';
 import s from './selection.module.scss';
 
 /** Screen-space margin the selection box extends past the cards, in pixels. */

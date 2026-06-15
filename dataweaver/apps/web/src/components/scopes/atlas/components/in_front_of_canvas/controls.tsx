@@ -8,9 +8,9 @@ import {
   MIN_ZOOM,
   ZOOM_DISPLAY_RANGE,
 } from '~/components/scopes/atlas/config';
+import { useExport } from '~/components/scopes/atlas/export_provider';
 import { mapRange } from '~/functions/map_range';
 import s from './controls.module.scss';
-import { useExport } from './export/export_provider';
 
 const BUTTON_EXPORT_COLOR_SCHEME = {
   base: 'var(--color-control-surface)',
