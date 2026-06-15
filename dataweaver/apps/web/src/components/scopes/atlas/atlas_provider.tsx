@@ -20,13 +20,8 @@ import {
   ZOOM_STEPS,
 } from './config';
 import { ExportProvider } from './export_provider';
-import {
-  type AtlasContent,
-  type CardVariant,
-  contentToShape,
-  keepInView,
-  placeCard,
-} from './helpers';
+import { type AtlasContent, type CardVariant, contentToShape } from './helpers';
+import { keepInView, placeCard } from './placement';
 import { QueryProvider } from './query_provider';
 
 /** The content shape that corresponds to a given card variant. */
