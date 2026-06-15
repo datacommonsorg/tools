@@ -152,16 +152,11 @@ const cardBounds = (editor: Editor): CardBounds[] => {
  * the top-left of wherever the camera is looking — pan left and the next cards
  * land left of the previous spot. With `anchor` (cloning) the card lands beside
  * the source rather than at the origin.
- *
- * `reserved` holds footprints not yet committed to the store — e.g. sibling
- * clones being created in the same paste/duplicate batch — so cards placed in
- * one tick don't land on top of each other.
  */
 export const placeCard = (
   editor: Editor,
   size: CardSize,
   anchor?: CardPosition,
-  reserved: CardBounds[] = [],
 ): CardPosition => {
   const viewport = editor.getViewportPageBounds();
   const origin = {
@@ -169,8 +164,7 @@ export const placeCard = (
     y: viewport.minY + DISTANCE_FROM_OTHER_CARDS,
   };
   const maxRight = viewport.maxX - DISTANCE_FROM_OTHER_CARDS;
-  const occupied = [...cardBounds(editor), ...reserved];
-  return findVacantPosition(occupied, size, origin, maxRight, anchor);
+  return findVacantPosition(cardBounds(editor), size, origin, maxRight, anchor);
 };
 
 /**
