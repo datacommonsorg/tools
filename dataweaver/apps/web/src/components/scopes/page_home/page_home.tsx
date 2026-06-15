@@ -1,13 +1,32 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useAtlas } from './atlas/hooks/use_atlas';
+import { AnimatePresence } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
+import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
+import { Intro } from './intro';
+import s from './page_home.module.scss';
+import { Prompt } from './prompt';
 
 export const PageHome = () => {
   const atlas = useAtlas();
 
-  // TODO: This is only temporary to show case adding / update flow
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const [isIntroVisible, setIsIntroVisible] = useState(true);
+  const [query, setQuery] = useState('');
+
   useEffect(() => {
+    return () => {
+      // Clear any in-flight timeouts if the page unmounts mid-response
+      for (const timeout of timeoutsRef.current) clearTimeout(timeout);
+    };
+  }, []);
+
+  // TODO: This is entirely using mock data for now
+  const runMockQuery = () => {
+    for (const timeout of timeoutsRef.current) clearTimeout(timeout);
+    timeoutsRef.current = [];
+
     const cardText = atlas.add({
       variant: 'text',
       title: 'Key insights when evaluating greenhouse gas emissions',
@@ -48,13 +67,26 @@ export const PageHome = () => {
       });
     }, 2500);
 
-    return () => {
-      clearTimeout(cardTimeout);
-      clearTimeout(chartTimeout);
-      cardText.remove();
-      cardChart.remove();
-    };
-  }, [atlas]);
+    timeoutsRef.current.push(cardTimeout, chartTimeout);
+  };
 
-  return null;
+  return (
+    <div className={s.container}>
+      <AnimatePresence initial={false}>
+        {isIntroVisible && (
+          <Intro onSelect={setQuery} onClose={() => setIsIntroVisible(false)} />
+        )}
+      </AnimatePresence>
+
+      <Prompt
+        value={query}
+        onValueChange={setQuery}
+        onSubmit={() => {
+          runMockQuery();
+          setQuery('');
+          setIsIntroVisible(false);
+        }}
+      />
+    </div>
+  );
 };

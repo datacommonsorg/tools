@@ -1,0 +1,38 @@
+steps:
+  # 1. Build the container image using Docker/Cloud Build
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:$COMMIT_SHA'
+      - '-f'
+      - 'dataweaver/Dockerfile'
+      - 'dataweaver'
+
+  # 2. Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:$COMMIT_SHA'
+
+  # 3. Deploy to Cloud Run with IAP
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'dataweaver-dev'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/datcom-website-sandbox/cloud-run-source-deploy/dataweaver-dev:$COMMIT_SHA'
+      - '--project'
+      - 'datcom-website-sandbox'
+      - '--region'
+      - 'us-central1'
+      - '--no-allow-unauthenticated'
+      - '--iap'
+      - '--service-account'
+      - 'data-weaver-sa-mj@datcom-website-sandbox.iam.gserviceaccount.com'
+      - '--update-secrets=TLDRAW_LICENSE_KEY=tldraw-license-key:latest,DATACOMMONS_API_KEY=datacommons-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

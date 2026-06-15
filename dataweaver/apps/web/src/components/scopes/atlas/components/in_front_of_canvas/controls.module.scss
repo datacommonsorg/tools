@@ -1,9 +1,9 @@
 .container {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: var(--controls-gutter-outer);
+  right: var(--controls-gutter-outer);
   display: flex;
-  column-gap: 16px;
+  column-gap: var(--controls-gutter-outer);
   align-items: center;
   pointer-events: auto;
 }
@@ -12,14 +12,12 @@
   display: flex;
   gap: 4px;
   align-items: center;
-  height: 46px;
+  height: var(--controls-height);
   padding: 0 8px;
   color: rgb(var(--color-control-accent));
   background: rgb(var(--color-control-surface));
-  border-radius: 23px;
-  box-shadow:
-    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
-    0 1px 2px rgb(var(--color-shadow) / 30%);
+  border-radius: calc(var(--controls-height) / 2);
+  box-shadow: var(--shadow-elevated);
 
   .zoom-value {
     @include type-label-large;
@@ -30,7 +28,5 @@
 }
 
 .button-export {
-  box-shadow:
-    0 1px 3px 1px rgb(var(--color-shadow) / 15%),
-    0 1px 2px rgb(var(--color-shadow) / 30%);
+  box-shadow: var(--shadow-elevated);
 }

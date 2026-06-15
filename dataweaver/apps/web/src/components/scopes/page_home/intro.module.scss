@@ -1,0 +1,76 @@
+.outer-container {
+  overflow-y: auto;
+  overscroll-behavior: none;
+  pointer-events: auto;
+  background: rgb(var(--color-card-base));
+  border-radius: 36px;
+  box-shadow: var(--shadow-elevated);
+}
+
+.inner-container {
+  display: grid;
+  grid-template-areas:
+    "content close"
+    "notice notice";
+  grid-template-columns: 1fr min-content;
+  padding-top: 44px;
+}
+
+.button-close {
+  grid-area: close;
+  margin-right: 24px;
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  grid-area: content;
+  row-gap: 32px;
+  padding: 0 0 40px 32px;
+
+  .title {
+    @include type-display;
+
+    max-width: 540px;
+    color: rgb(var(--color-card-content-subtle));
+  }
+
+  .description {
+    @include type-body-large;
+
+    max-width: 600px;
+    color: rgb(var(--color-card-content));
+  }
+
+  .question {
+    @include type-body-large(500);
+
+    max-width: 600px;
+    color: rgb(var(--color-card-content));
+  }
+
+  .examples-container {
+    display: flex;
+    flex-direction: column;
+    row-gap: 8px;
+    align-items: flex-start;
+  }
+}
+
+.notice-container {
+  @include type-body-small;
+
+  display: flex;
+  grid-area: notice;
+  column-gap: 8px;
+  align-items: center;
+  padding: 32px 28px;
+  color: rgb(var(--color-card-content));
+  background: rgb(var(--color-card-base-subtle));
+
+  .icon-info {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+  }
+}
