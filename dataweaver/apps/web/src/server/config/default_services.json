@@ -1,0 +1,17 @@
+{
+  "api": {
+    "dataCommons": {
+      "baseUrl": "https://api.datacommons.org",
+      "mcpEndpoint": "https://api.datacommons.org/mcp"
+    }
+  },
+  "models": {
+    "parseQuery": "gemini-3.1-flash-lite",
+    "dataDiscovery": "gemini-3.1-flash-lite",
+    "safety": "gemini-3.1-flash-lite",
+    "image": "gemini-2.5-flash-image"
+  },
+  "gemini": {
+    "apiVersion": "v1alpha"
+  }
+}
