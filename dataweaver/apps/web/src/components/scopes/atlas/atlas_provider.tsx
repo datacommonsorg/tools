@@ -60,8 +60,12 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   const editorRef = useRef<Editor | null>(null);
 
   // Resolves with the editor once tldraw mounts. Canvas writes chain off this,
-  // so `add` works whether it's called before or after mount.
-  const [isMounted] = useState(() => Promise.withResolvers<Editor>());
+  // so `add` works whether it's called before or after mount
+  const [isMounted] = useState(() => {
+    let resolve!: (value: Editor) => void;
+    const promise = new Promise<Editor>((response) => (resolve = response));
+    return { promise, resolve };
+  });
 
   const clonesRef = useRef<Map<TLShapeId, Set<TLShapeId>>>(new Map());
 
