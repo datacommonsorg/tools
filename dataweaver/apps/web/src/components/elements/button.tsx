@@ -33,7 +33,7 @@ interface WithIconOnly {
 
 interface WithChildrenAndOptionalIcon {
   children: React.ReactNode;
-  size: 'small' | 'large';
+  size: 'small' | 'medium' | 'large';
   icon?: ComponentType<ComponentPropsWithRef<'svg'>>;
 }
 
