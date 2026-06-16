@@ -61,7 +61,10 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
           status: 'pending',
         };
         set(
-          (state) => ({ nodes: { ...state.nodes, [id]: node } }),
+          (state) => ({
+            nodes: { ...state.nodes, [id]: node },
+            latestNodeId: id,
+          }),
           undefined,
           'startQuery',
         );

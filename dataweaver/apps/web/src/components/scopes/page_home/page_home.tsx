@@ -47,7 +47,7 @@ export const PageHome = () => {
 
         {status && <Status key="status" status={status} />}
       </AnimatePresence>
-
+      <Status />
       <Prompt
         value={promptValue}
         onValueChange={setPromptValue}

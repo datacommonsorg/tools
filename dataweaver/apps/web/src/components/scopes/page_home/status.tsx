@@ -2,19 +2,13 @@
 
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
-import { Button } from '~/components/elements/button';
-import {
-  type Status as StatusType,
-  useQueryActions,
-} from '~/components/scopes/atlas/query_provider';
+import { useDataWeaverStore } from '~/store';
 import s from './status.module.scss';
 
-interface StatusProps {
-  status: StatusType;
-}
-
-export const Status = ({ status }: StatusProps) => {
-  const { cancelRunningPrompt } = useQueryActions();
+export const Status = () => {
+  const { currentStatus, nodes, latestNodeId } = useDataWeaverStore();
+  const latestNode = latestNodeId ? nodes[latestNodeId] : null;
+  const { query } = latestNode || {};
 
   return (
     <m.aside
@@ -24,19 +18,9 @@ export const Status = ({ status }: StatusProps) => {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
-      <h2 className={s['prompt-value']}>{status.promptValue}</h2>
+      <h2 className={s['prompt-value']}>{query}</h2>
 
-      <p className={s['indicator-message']}>{status.indicatorMessage}</p>
-
-      <Button
-        className={s['button-cancel']}
-        size="small"
-        variant="border"
-        tone="subtle"
-        onClick={cancelRunningPrompt}
-      >
-        Cancel
-      </Button>
+      <p className={s['indicator-message']}>{currentStatus}</p>
     </m.aside>
   );
 };
