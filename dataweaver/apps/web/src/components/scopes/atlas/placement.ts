@@ -1,4 +1,4 @@
-import type { Editor } from 'tldraw';
+import type { Box, Editor } from 'tldraw';
 import { DISTANCE_FROM_OTHER_CARDS, KEEP_IN_VIEW_ANIMATION } from './config';
 import type { CardBounds, CardPosition, CardSize } from './helpers';
 
@@ -64,25 +64,44 @@ const distanceSquared = (a: CardPosition, b: CardPosition): number => {
   return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 };
 
+/** Whether a card of `size` at `slot` overlaps the visible `viewport` */
+const isOnScreen = (
+  slot: CardPosition,
+  size: CardSize,
+  viewport: Box,
+): boolean => {
+  return (
+    slot.x < viewport.maxX &&
+    slot.x + size.w > viewport.minX &&
+    slot.y < viewport.maxY &&
+    slot.y + size.h > viewport.minY
+  );
+};
+
 /**
  * Find where to place a new card of `size` so it clears every `occupied` card
- * by `DISTANCE_FROM_OTHER_CARDS`. Cards pack left-to-right from `origin` using
- * their real widths, wrapping to a new row only when the card would cross
- * `maxRight` (the row's right edge). Both axes are driven by the cards actually
- * on the canvas — no fixed cell size — so cards of any size pack tightly and
- * moving or deleting one frees its space.
+ * by `DISTANCE_FROM_OTHER_CARDS`. Cards pack left-to-right from the viewport's
+ * top-left, wrapping to a new row only when the card would cross the viewport's
+ * right edge. Both axes are driven by the cards actually on the canvas — no
+ * fixed cell size — so cards of any size pack tightly and moving or deleting one
+ * frees its space.
  *
  * Without `anchor`, takes the first free slot in reading order (new query
- * cards). With `anchor` (e.g. cloning), takes the free slot nearest to it, so
- * the new card lands beside its source rather than back at the origin.
+ * cards). With `anchor` (e.g. cloning), takes the free slot nearest to it that
+ * still overlaps the viewport — staying on-screen matters because tldraw's
+ * paste re-centers any shape that lands fully off-screen, which would tear the
+ * card away from where we placed it (and from where the camera follows it).
  */
 const findVacantPosition = (
   occupied: CardBounds[],
   size: CardSize,
-  origin: CardPosition,
-  maxRight: number,
+  viewport: Box,
   anchor?: CardPosition,
 ): CardPosition => {
+  const origin = {
+    x: viewport.minX + DISTANCE_FROM_OTHER_CARDS,
+    y: viewport.minY + DISTANCE_FROM_OTHER_CARDS,
+  };
   const candidatesX = candidateAxis(
     occupied,
     origin.x,
@@ -99,21 +118,24 @@ const findVacantPosition = (
   // Every candidate slot, in reading order (top-to-bottom, left-to-right)
   const slots = candidatesY.flatMap((y) => candidatesX.map((x) => ({ x, y })));
 
-  // If we got an anchor: Drop the card in the free slot nearest the anchor
-  // (the drop point), ignoring the row edge so it stays beside its source
+  // Cloning: the free slot nearest the anchor (drop point) that still overlaps
+  // the viewport, so tldraw's paste leaves it where we put it
   if (anchor) {
-    const freeSlots = slots.filter((slot) => isFree(slot, size, occupied));
+    const freeSlots = slots.filter(
+      (slot) =>
+        isFree(slot, size, occupied) && isOnScreen(slot, size, viewport),
+    );
     freeSlots.sort(
       (a, b) => distanceSquared(a, anchor) - distanceSquared(b, anchor),
     );
 
-    // If we got a nearest free slot, return it
     const [nearest] = freeSlots;
     if (nearest) return nearest;
   }
 
-  // For other instances: The first free slot that fits within the row's right
-  // edge — the origin always fits, starting a fresh row
+  // New card (or clone with nowhere free on-screen): the first free slot that
+  // fits within the row's right edge — the origin always fits, starting a row
+  const maxRight = viewport.maxX - DISTANCE_FROM_OTHER_CARDS;
   const nearest = slots.find(
     (slot) =>
       fitsRow(slot, size, maxRight, origin.x) && isFree(slot, size, occupied),
@@ -159,12 +181,7 @@ export const placeCard = (
   anchor?: CardPosition,
 ): CardPosition => {
   const viewport = editor.getViewportPageBounds();
-  const origin = {
-    x: viewport.minX + DISTANCE_FROM_OTHER_CARDS,
-    y: viewport.minY + DISTANCE_FROM_OTHER_CARDS,
-  };
-  const maxRight = viewport.maxX - DISTANCE_FROM_OTHER_CARDS;
-  return findVacantPosition(cardBounds(editor), size, origin, maxRight, anchor);
+  return findVacantPosition(cardBounds(editor), size, viewport, anchor);
 };
 
 /**
