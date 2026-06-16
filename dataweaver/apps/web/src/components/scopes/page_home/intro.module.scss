@@ -13,12 +13,12 @@
     "content close"
     "notice notice";
   grid-template-columns: 1fr min-content;
-  padding-top: 44px;
+  padding-top: 20px;
 }
 
 .button-close {
   grid-area: close;
-  margin-right: 24px;
+  margin-right: 20px;
 }
 
 .content-container {
@@ -26,7 +26,7 @@
   flex-direction: column;
   grid-area: content;
   row-gap: 32px;
-  padding: 0 0 40px 32px;
+  padding: 20px 0 40px 32px;
 
   .title {
     @include type-display;
@@ -62,9 +62,9 @@
 
   display: flex;
   grid-area: notice;
-  column-gap: 8px;
+  column-gap: 4px;
   align-items: center;
-  padding: 32px 28px;
+  padding: 20px 28px;
   color: rgb(var(--color-card-content));
   background: rgb(var(--color-card-base-subtle));
 

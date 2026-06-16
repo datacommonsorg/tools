@@ -59,7 +59,7 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
           <ul className={s['examples-container']}>
             {EXAMPLE_PROMPTS.map((example) => (
               <li key={example}>
-                <Button size="large" onClick={() => onSelect(example)}>
+                <Button size="medium" onClick={() => onSelect(example)}>
                   {example}
                 </Button>
               </li>
