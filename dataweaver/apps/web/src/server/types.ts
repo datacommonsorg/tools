@@ -12,7 +12,7 @@ export interface HistoryNode {
   id: string;
   parentId: string | null;
   query: string;
-  analysis: QueryAnalysis;
+  parsedQuery: ParsedQuery | null;
   cardIds: string[];
   timestamp: number;
   status: 'pending' | 'complete' | 'error';

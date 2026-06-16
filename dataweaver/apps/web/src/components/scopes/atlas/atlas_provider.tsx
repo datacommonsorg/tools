@@ -47,6 +47,7 @@ export interface AtlasContextProps {
   add<TVariant extends CardVariant>(
     content: ContentForVariant<TVariant>,
   ): CardHandle<TVariant>;
+  getSelectedShapeIds(): string[];
 }
 
 const AtlasContext = createContext<AtlasContextProps | null>(null);
@@ -193,6 +194,8 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
 
   const providerValue = useMemo<AtlasContextProps>(
     () => ({
+      getSelectedShapeIds: () =>
+        editorRef.current?.getSelectedShapeIds().map(String) ?? [],
       add: (content) => {
         const shapeId = createShapeId();
 

@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { CardEntry, HistoryNode, QueryAnalysis } from '~/server/types';
+import type { CardEntry, HistoryNode, ParsedQuery } from '~/server/types';
 
 const MAX_ANCESTOR_CHAIN = 10;
 
@@ -20,9 +20,10 @@ export interface DataWeaverStore {
   // --- Actions ---
   startQuery: (
     query: string,
-    analysis: QueryAnalysis,
+    parsedQuery: ParsedQuery | null,
     parentNodeId: string | null,
   ) => string;
+  setParsedQuery: (nodeId: string, parsedQuery: ParsedQuery) => void;
   completeQuery: (nodeId: string, cardIds: string[]) => void;
   failQuery: (nodeId: string) => void;
   registerCard: (entry: CardEntry) => void;
@@ -48,13 +49,13 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
       isProcessing: false,
       currentStatus: '',
 
-      startQuery: (query, analysis, parentNodeId) => {
+      startQuery: (query, parsedQuery, parentNodeId) => {
         const id = nanoid();
         const node: HistoryNode = {
           id,
           parentId: parentNodeId,
           query,
-          analysis,
+          parsedQuery,
           cardIds: [],
           timestamp: Date.now(),
           status: 'pending',
@@ -65,6 +66,23 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
           'startQuery',
         );
         return id;
+      },
+
+      setParsedQuery: (nodeId, parsedQuery) => {
+        set(
+          (state) => {
+            const node = state.nodes[nodeId];
+            if (!node) return state;
+            return {
+              nodes: {
+                ...state.nodes,
+                [nodeId]: { ...node, parsedQuery },
+              },
+            };
+          },
+          undefined,
+          'setParsedQuery',
+        );
       },
 
       completeQuery: (nodeId, cardIds) => {
