@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        emit({ type: STREAM_EVENT.complete });
+        emit({ type: STREAM_EVENT.complete, message: 'Complete.' });
         controller.close();
       } catch (err: unknown) {
         if (!signal.aborted) {

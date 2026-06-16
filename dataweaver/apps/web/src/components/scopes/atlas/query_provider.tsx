@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import type { TLShapeId } from 'tldraw';
 import {
   type AtlasContextProps,
   useAtlas,
@@ -40,11 +39,7 @@ interface QueryProviderProps {
  *  always reads fresh values without re-creating the closure. */
 interface ActiveQuery {
   nodeId: string;
-  placeholderShapeId: TLShapeId;
-  placeholderUpdate: (props: Record<string, unknown>) => void;
-  placeholderRemove: () => void;
   cardIds: string[];
-  isFirstResult: boolean;
 }
 
 /** Map a QueryResult into card entry fields for the store. */
@@ -80,12 +75,10 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
     const {
       setParsedQuery,
       setCurrentStatus,
-      updateCard,
       registerCard,
       completeQuery,
       failQuery,
       setIsProcessing,
-      unregisterCard,
     } = store.getState();
 
     switch (event.type) {
@@ -99,43 +92,23 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
       case STREAM_EVENT.queryResult: {
         const { result } = event;
-
-        if (active.isFirstResult) {
-          // First result — update the placeholder card in place
-          active.isFirstResult = false;
-          active.placeholderUpdate({
-            title: result.title,
-            body: buildBody(result),
-            isLoading: false,
-            followUp: result.followUps?.[0],
-          });
-          active.cardIds.push(String(active.placeholderShapeId));
-          updateCard(String(active.placeholderShapeId), {
-            type: 'query_result',
-            variableDcids: result.variables.map((v) => v.dcid),
-            entityDcids: result.entities.map((e) => e.dcid),
-            title: result.title,
-          });
-        } else {
-          // Subsequent results — create additional cards
-          const handle = atlasRef.current.add({
-            variant: 'text',
-            title: result.title,
-            body: buildBody(result),
-            isLoading: false,
-            followUp: result.followUps?.[0],
-          });
-          const entry = toCardEntry(String(handle.id), active.nodeId, result);
-          registerCard(entry);
-          active.cardIds.push(String(handle.id));
-        }
+        const handle = atlasRef.current.add({
+          variant: 'text',
+          title: result.title,
+          body: buildBody(result),
+          isLoading: false,
+          followUp: result.followUps?.[0],
+        });
+        const entry = toCardEntry(String(handle.id), active.nodeId, result);
+        registerCard(entry);
+        active.cardIds.push(String(handle.id));
         break;
       }
 
       case STREAM_EVENT.complete:
         completeQuery(active.nodeId, active.cardIds);
         setIsProcessing(false);
-        setCurrentStatus('');
+        setCurrentStatus(event.message);
         activeQueryRef.current = null;
         break;
 
@@ -143,9 +116,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         failQuery(active.nodeId);
         setIsProcessing(false);
         setCurrentStatus('');
-        // Remove the placeholder card on error
-        active.placeholderRemove();
-        unregisterCard(String(active.placeholderShapeId));
         activeQueryRef.current = null;
         break;
     }
@@ -158,7 +128,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       runPrompt: (prompt: string) => {
         const {
           startQuery,
-          registerCard,
           setIsProcessing,
           setCurrentStatus,
           getAncestorChain,
@@ -186,31 +155,10 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Create history node in store
         const nodeId = startQuery(prompt, null, parentNodeId);
 
-        // Create placeholder card on atlas
-        const handle = atlas.add({
-          variant: 'text',
-          title: prompt,
-          isLoading: true,
-        });
-
-        // Register placeholder in store
-        registerCard({
-          shapeId: String(handle.id),
-          historyNodeId: nodeId,
-          type: 'loading',
-          variableDcids: [],
-          entityDcids: [],
-          title: prompt,
-        });
-
         // Store active query state for the stream handler
         activeQueryRef.current = {
           nodeId,
-          placeholderShapeId: handle.id,
-          placeholderUpdate: handle.update,
-          placeholderRemove: handle.remove,
           cardIds: [],
-          isFirstResult: true,
         };
 
         // Build atlas context description for the API

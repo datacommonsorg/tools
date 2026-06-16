@@ -131,5 +131,5 @@ export type StreamEvent =
       result: QueryResult;
       place: string;
     }
-  | { type: typeof STREAM_EVENT.complete }
+  | { type: typeof STREAM_EVENT.complete; message: string }
   | { type: typeof STREAM_EVENT.error; message: string };
