@@ -1,0 +1,35 @@
+.title {
+  @include type-title;
+
+  margin-bottom: 16px;
+  color: rgb(var(--color-card-content));
+}
+
+.table {
+  @include type-label-small;
+
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+}
+
+.table th {
+  padding: 8px;
+  color: rgb(var(--color-card-content-muted));
+  border-bottom: 1px solid rgb(var(--color-surface-decorator));
+}
+
+.table td {
+  padding: 8px;
+  vertical-align: top;
+  color: rgb(var(--color-card-content));
+  border-bottom: 1px solid rgb(var(--color-surface-decorator));
+}
+
+.facet-source {
+  font-weight: 500;
+}
+
+.facet-meta {
+  color: rgb(var(--color-card-content-muted));
+}

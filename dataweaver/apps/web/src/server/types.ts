@@ -33,13 +33,18 @@ export interface CardEntry {
   variableDcids: string[];
   entityDcids: string[];
   title: string;
+  variables?: ChartVariable[];
+  metadata?: ChartMetadata[];
+  summary?: string;
+  insight?: string;
+  followUps?: string[];
 }
 
 // --- Chart Specification types ---
 
 export type ChartType = 'line_chart' | 'bar_chart' | 'comparison' | 'table';
 
-interface ChartVariable {
+export interface ChartVariable {
   dcid: string;
   name: string;
   rationale?: string;

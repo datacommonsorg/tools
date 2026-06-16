@@ -24,7 +24,7 @@ export const DataChartLine = ({ data, width, height }: ChartProps) => {
     >
       <CartesianGrid stroke={GRID_COLOR} vertical={false} />
       <XAxis
-        dataKey="year"
+        dataKey="date"
         tickLine={false}
         axisLine={false}
         tick={{ fontSize: 10, fill: AXIS_COLOR }}
@@ -34,10 +34,13 @@ export const DataChartLine = ({ data, width, height }: ChartProps) => {
         tickLine={false}
         axisLine={false}
         tick={{ fontSize: 10, fill: AXIS_COLOR }}
+        tickFormatter={(v) =>
+          Intl.NumberFormat('en', { notation: 'compact' }).format(v)
+        }
       />
       <Line
         type="monotone"
-        dataKey="emissions"
+        dataKey="value"
         stroke={LINE_COLOR}
         strokeWidth={2}
         dot={false}

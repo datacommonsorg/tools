@@ -54,6 +54,11 @@ const toCardEntry = (
   variableDcids: result.variables.map((v) => v.dcid),
   entityDcids: result.entities.map((e) => e.dcid),
   title: result.title,
+  variables: result.variables,
+  metadata: result.metadata,
+  summary: result.summary,
+  insight: result.insight,
+  followUps: result.followUps,
 });
 
 /** Build a text body from a query result's summary + insight. */
@@ -92,16 +97,61 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
       case STREAM_EVENT.queryResult: {
         const { result } = event;
-        const handle = atlasRef.current.add({
+
+        // 1. Summary card (text variant)
+        const summaryHandle = atlasRef.current.add({
           variant: 'text',
           title: result.title,
           body: buildBody(result),
           isLoading: false,
           followUp: result.followUps?.[0],
         });
-        const entry = toCardEntry(String(handle.id), active.nodeId, result);
-        registerCard(entry);
-        active.cardIds.push(String(handle.id));
+        const summaryEntry = toCardEntry(
+          String(summaryHandle.id),
+          active.nodeId,
+          result,
+        );
+        registerCard(summaryEntry);
+        active.cardIds.push(String(summaryHandle.id));
+
+        // 2. Table card (statistical variables, facets, rationale)
+        const tableHandle = atlasRef.current.add({
+          variant: 'table',
+          title: result.title,
+          variables: result.variables,
+          metadata: result.metadata,
+          isLoading: false,
+        });
+        const tableEntry = toCardEntry(
+          String(tableHandle.id),
+          active.nodeId,
+          result,
+        );
+        registerCard(tableEntry);
+        active.cardIds.push(String(tableHandle.id));
+
+        // 3. Chart card (observations from first variable's first facet)
+        const firstMeta = result.metadata[0];
+        const firstFacet = firstMeta?.facets[0];
+        const chartData = firstFacet?.observations;
+
+        if (chartData && chartData.length > 0) {
+          const chartHandle = atlasRef.current.add({
+            variant: 'chart',
+            title: result.variables[0]?.name ?? result.title,
+            description: firstFacet.source,
+            data: chartData,
+            isLoading: false,
+          });
+          const chartEntry = toCardEntry(
+            String(chartHandle.id),
+            active.nodeId,
+            result,
+          );
+          registerCard(chartEntry);
+          active.cardIds.push(String(chartHandle.id));
+        }
+
         break;
       }
 

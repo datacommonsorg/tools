@@ -5,21 +5,22 @@ interface DataTableProps {
   data: ChartDatum[];
 }
 
-// TODO: This is temporary - either style it or render using recharts
 export const DataTable = ({ data }: DataTableProps) => {
   return (
     <table className={s.table}>
       <thead>
         <tr>
-          <th>Year</th>
-          <th>Emissions (Mt CO₂e)</th>
+          <th>Date</th>
+          <th>Value</th>
         </tr>
       </thead>
       <tbody>
-        {data.map(({ year, emissions }) => (
-          <tr key={year}>
-            <td>{year}</td>
-            <td>{emissions}</td>
+        {data.map(({ date, value }) => (
+          <tr key={date}>
+            <td>{date}</td>
+            <td>
+              {Intl.NumberFormat('en', { notation: 'compact' }).format(value)}
+            </td>
           </tr>
         ))}
       </tbody>

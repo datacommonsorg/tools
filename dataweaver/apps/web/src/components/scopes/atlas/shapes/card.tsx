@@ -43,12 +43,38 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   static override props: RecordProps<ShapeCard> = {
     w: T.number,
     h: T.number,
-    variant: T.literalEnum('text', 'chart').optional(),
+    variant: T.literalEnum('text', 'chart', 'table').optional(),
     title: T.string.optional(),
     description: T.string.optional(),
     body: T.string.optional(),
-    data: T.arrayOf(
-      T.object({ year: T.number, emissions: T.number }),
+    data: T.arrayOf(T.object({ date: T.string, value: T.number })).optional(),
+    variables: T.arrayOf(
+      T.object({
+        dcid: T.string,
+        name: T.string,
+        rationale: T.string.optional(),
+      }),
+    ).optional(),
+    metadata: T.arrayOf(
+      T.object({
+        variableDcid: T.string,
+        entityDcid: T.string,
+        facets: T.arrayOf(
+          T.object({
+            facetId: T.string,
+            source: T.string,
+            sourceUrl: T.string,
+            unit: T.string,
+            earliestDate: T.string,
+            latestDate: T.string,
+            observationCount: T.number,
+            measurementMethod: T.string.optional(),
+            observations: T.arrayOf(
+              T.object({ date: T.string, value: T.number }),
+            ),
+          }),
+        ),
+      }),
     ).optional(),
     isLoading: T.boolean.optional(),
     followUp: T.string.optional(),
@@ -115,7 +141,8 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   };
 
   #renderContent = (shape: ShapeCard, isLoading: boolean) => {
-    const { variant, title, description, body, data } = shape.props;
+    const { variant, title, description, body, data, variables, metadata } =
+      shape.props;
 
     if (variant === 'chart') {
       return (
@@ -123,6 +150,17 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           title={title}
           description={description}
           data={data}
+          isLoading={isLoading}
+        />
+      );
+    }
+
+    if (variant === 'table') {
+      return (
+        <Card.Table
+          title={title}
+          variables={variables}
+          metadata={metadata}
           isLoading={isLoading}
         />
       );
