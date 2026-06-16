@@ -143,23 +143,23 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       case STREAM_EVENT.queryResult: {
         const { result } = event;
 
-        // 1. Variables table card (text variant with HTML table)
-        const tableHandle = atlasRef.current.add({
-          variant: 'text',
+        // 1. Variables table card (table variant with HTML table)
+        const tableCard = atlasRef.current.add({
+          variant: 'table',
           title: result.title,
           body: buildTableHtml(result),
           isLoading: false,
         });
         const tableEntry = toCardEntry(
-          String(tableHandle.id),
+          String(tableCard.id),
           active.nodeId,
           result,
         );
         registerCard(tableEntry);
-        active.cardIds.push(String(tableHandle.id));
+        active.cardIds.push(String(tableCard.id));
 
         // 2. Notes card (text variant with About this data + Relevant insights)
-        const notesHandle = atlasRef.current.add({
+        const notesCard = atlasRef.current.add({
           variant: 'text',
           title: `${result.title} • Notes`,
           body: buildNotesHtml(result),
@@ -167,12 +167,12 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           followUp: result.followUps?.[0],
         });
         const notesEntry = toCardEntry(
-          String(notesHandle.id),
+          String(notesCard.id),
           active.nodeId,
           result,
         );
         registerCard(notesEntry);
-        active.cardIds.push(String(notesHandle.id));
+        active.cardIds.push(String(notesCard.id));
 
         // 3. Chart card (observations from first variable's facets)
         const firstMeta = result.metadata[0];
@@ -180,7 +180,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const firstFacet = allFacets?.[0];
 
         if (allFacets && firstFacet && firstFacet.observations.length > 0) {
-          const chartHandle = atlasRef.current.add({
+          const chartCard = atlasRef.current.add({
             variant: 'chart',
             title: result.variables[0]?.name ?? result.title,
             description: firstFacet.source,
@@ -189,12 +189,12 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
             isLoading: false,
           });
           const chartEntry = toCardEntry(
-            String(chartHandle.id),
+            String(chartCard.id),
             active.nodeId,
             result,
           );
           registerCard(chartEntry);
-          active.cardIds.push(String(chartHandle.id));
+          active.cardIds.push(String(chartCard.id));
         }
 
         break;

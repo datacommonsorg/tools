@@ -14,7 +14,6 @@ export interface CardTextProps extends Pick<CardState, 'isLoading'> {
 }
 
 export const CardText = ({ title, body, isLoading }: CardTextProps) => {
-  console.log("Rendering CardText with body:", body);
   const parsedHtml = useMemo(
     () =>
       body ? parse(body, {
