@@ -130,17 +130,18 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         registerCard(tableEntry);
         active.cardIds.push(String(tableHandle.id));
 
-        // 3. Chart card (observations from first variable's first facet)
+        // 3. Chart card (observations from first variable's facets)
         const firstMeta = result.metadata[0];
-        const firstFacet = firstMeta?.facets[0];
-        const chartData = firstFacet?.observations;
+        const allFacets = firstMeta?.facets;
+        const firstFacet = allFacets?.[0];
 
-        if (chartData && chartData.length > 0) {
+        if (allFacets && firstFacet && firstFacet.observations.length > 0) {
           const chartHandle = atlasRef.current.add({
             variant: 'chart',
             title: result.variables[0]?.name ?? result.title,
             description: firstFacet.source,
-            data: chartData,
+            data: firstFacet.observations,
+            facets: allFacets,
             isLoading: false,
           });
           const chartEntry = toCardEntry(

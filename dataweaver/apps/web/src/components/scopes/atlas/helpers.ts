@@ -17,7 +17,7 @@ interface TextContent
 
 interface ChartContent
   extends BaseContent,
-    Pick<CardChartProps, 'title' | 'description' | 'data'> {
+    Pick<CardChartProps, 'title' | 'description' | 'data' | 'facets'> {
   variant: 'chart';
 }
 
@@ -77,6 +77,7 @@ export const contentToShape = (
         title: content.title,
         description: content.description,
         data: content.data,
+        facets: content.facets,
       },
     };
   }
