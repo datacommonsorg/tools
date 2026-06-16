@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         }
 
         // ─── Analyze query ────────────────────────────────────────────────
-        emit({ type: 'status', message: 'Parsing query...' });
+        emit({ type: STREAM_EVENT.status, message: 'Parsing query...' });
         const parsed = await parseQuery({
           query,
           atlasContext,
