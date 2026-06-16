@@ -1,7 +1,6 @@
 import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { CardState } from '~/components/elements/card/base';
 import type { CardChartProps } from '~/components/elements/card/chart/chart';
-import type { CardTableProps } from '~/components/elements/card/table/table';
 import type { CardTextProps } from '~/components/elements/card/text';
 import { CARD_VARIANT_SIZE } from './config';
 
@@ -21,20 +20,13 @@ interface ChartContent
   variant: 'chart';
 }
 
-interface TableContent
-  extends BaseContent,
-    Pick<CardTableProps, 'title' | 'variables' | 'metadata'> {
-  variant: 'table';
-}
-
-export type AtlasContent = TextContent | ChartContent | TableContent;
+export type AtlasContent = TextContent | ChartContent;
 
 export type CardVariant = AtlasContent['variant'];
 
 /** Flat view of every possible card content field. */
 export type CardContentFields = Omit<TextContent, 'variant'> &
-  Omit<ChartContent, 'variant'> &
-  Omit<TableContent, 'variant'>;
+  Omit<ChartContent, 'variant'>;
 
 export interface CardPosition {
   x: number;
@@ -78,19 +70,6 @@ export const contentToShape = (
         description: content.description,
         data: content.data,
         facets: content.facets,
-      },
-    };
-  }
-
-  if (content.variant === 'table') {
-    return {
-      ...baseProps,
-      props: {
-        ...shapeProps,
-        variant: 'table',
-        title: content.title,
-        variables: content.variables,
-        metadata: content.metadata,
       },
     };
   }

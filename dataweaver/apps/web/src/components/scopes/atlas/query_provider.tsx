@@ -1,5 +1,6 @@
 'use client';
 
+import { marked } from 'marked';
 import {
   createContext,
   type ReactNode,
@@ -56,14 +57,58 @@ const toCardEntry = (
   title: result.title,
   variables: result.variables,
   metadata: result.metadata,
-  summary: result.summary,
-  insight: result.insight,
+  introduction: result.introduction,
+  coverage: result.coverage,
+  insights: result.insights,
   followUps: result.followUps,
 });
 
-/** Build a text body from a query result's summary + insight. */
-const buildBody = (result: QueryResult): string =>
-  [result.summary, result.insight].filter(Boolean).join('\n\n');
+/** Build the variables table as an HTML string from a query result. */
+const buildTableHtml = (result: QueryResult): string => {
+  const entityDcid = result.entities[0]?.dcid ?? '';
+  const placeName = result.entities[0]?.name ?? '';
+  const intro = result.introduction ?? '';
+
+  let md = intro ? `${intro}\n\n` : '';
+  md += '| Statistical variable | Facet(s) | Rationale |\n';
+  md += '| --- | --- | --- |\n';
+
+  for (const variable of result.variables) {
+    const meta = result.metadata.find((m) => m.variableDcid === variable.dcid);
+    const firstFacet = meta?.facets[0];
+    const facetCell = firstFacet
+      ? `${firstFacet.source}<br>${firstFacet.earliestDate} – ${firstFacet.latestDate}${firstFacet.unit ? ` · ${firstFacet.unit}` : ''}`
+      : 'No data';
+
+    const encodedVar = encodeURIComponent(variable.name);
+    const encodedPlace = encodeURIComponent(placeName);
+    const link = `[${variable.name}](#fetch=${variable.dcid}&place=${entityDcid}&varName=${encodedVar}&placeName=${encodedPlace})`;
+
+    md += `| ${link} | ${facetCell} | ${variable.rationale ?? '—'} |\n`;
+  }
+
+  return marked.parse(md) as string;
+};
+
+/** Build the notes card HTML from a query result's introduction + insights. */
+const buildNotesHtml = (result: QueryResult): string => {
+  let md = '### About this data\n\n';
+  if (result.coverage) {
+    md += `${result.coverage}\n\n`;
+  }
+  if (result.introduction) {
+    md += `${result.introduction}\n\n`;
+  }
+
+  if (result.insights && result.insights.length > 0) {
+    md += '### Relevant insights\n\n';
+    for (const insight of result.insights) {
+      md += `- **${insight.title}**: ${insight.text}\n`;
+    }
+  }
+
+  return marked.parse(md) as string;
+};
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const atlas = useAtlas();
@@ -98,28 +143,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       case STREAM_EVENT.queryResult: {
         const { result } = event;
 
-        // 1. Summary card (text variant)
-        const summaryHandle = atlasRef.current.add({
+        // 1. Variables table card (text variant with HTML table)
+        const tableHandle = atlasRef.current.add({
           variant: 'text',
           title: result.title,
-          body: buildBody(result),
-          isLoading: false,
-          followUp: result.followUps?.[0],
-        });
-        const summaryEntry = toCardEntry(
-          String(summaryHandle.id),
-          active.nodeId,
-          result,
-        );
-        registerCard(summaryEntry);
-        active.cardIds.push(String(summaryHandle.id));
-
-        // 2. Table card (statistical variables, facets, rationale)
-        const tableHandle = atlasRef.current.add({
-          variant: 'table',
-          title: result.title,
-          variables: result.variables,
-          metadata: result.metadata,
+          body: buildTableHtml(result),
           isLoading: false,
         });
         const tableEntry = toCardEntry(
@@ -129,6 +157,22 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         );
         registerCard(tableEntry);
         active.cardIds.push(String(tableHandle.id));
+
+        // 2. Notes card (text variant with About this data + Relevant insights)
+        const notesHandle = atlasRef.current.add({
+          variant: 'text',
+          title: `${result.title} • Notes`,
+          body: buildNotesHtml(result),
+          isLoading: false,
+          followUp: result.followUps?.[0],
+        });
+        const notesEntry = toCardEntry(
+          String(notesHandle.id),
+          active.nodeId,
+          result,
+        );
+        registerCard(notesEntry);
+        active.cardIds.push(String(notesHandle.id));
 
         // 3. Chart card (observations from first variable's facets)
         const firstMeta = result.metadata[0];

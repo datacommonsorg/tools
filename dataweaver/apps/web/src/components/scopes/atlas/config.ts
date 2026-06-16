@@ -91,7 +91,6 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
 export const CARD_VARIANT_SIZE: Record<CardVariant, CardSize> = {
   text: { w: 360, h: 440 },
   chart: { w: 420, h: 520 },
-  table: { w: 480, h: 440 },
 };
 
 /** Minimum gap to keep between a placed card and any other card, in px. */

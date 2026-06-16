@@ -26,6 +26,11 @@ type CardType =
   | 'image'
   | 'query_result';
 
+export interface Insight {
+  title: string;
+  text: string;
+}
+
 export interface CardEntry {
   shapeId: string;
   historyNodeId: string;
@@ -35,14 +40,13 @@ export interface CardEntry {
   title: string;
   variables?: ChartVariable[];
   metadata?: ChartMetadata[];
-  summary?: string;
-  insight?: string;
+  introduction?: string;
+  coverage?: string;
+  insights?: Insight[];
   followUps?: string[];
 }
 
 // --- Chart Specification types ---
-
-export type ChartType = 'line_chart' | 'bar_chart' | 'comparison' | 'table';
 
 export interface ChartVariable {
   dcid: string;
@@ -57,14 +61,14 @@ interface ChartEntity {
 
 export interface QueryResult {
   id: string;
-  chartType: ChartType;
   title: string;
   variables: ChartVariable[];
   entities: ChartEntity[];
   metadata: ChartMetadata[];
   dateRange?: { start?: string; end?: string };
-  summary?: string;
-  insight?: string;
+  introduction?: string;
+  coverage?: string;
+  insights?: Insight[];
   followUps?: string[];
 }
 

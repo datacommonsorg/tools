@@ -10,7 +10,7 @@ import { fetchVariableMetadata } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
 import { checkPromptSafety } from '~/server/steps/safety';
 import {
-  type ChartType,
+  type Insight,
   type QueryResult,
   type QueryStreamRequest,
   STREAM_EVENT,
@@ -18,11 +18,12 @@ import {
 } from '~/server/types';
 
 interface QueryModelResponse {
-  entityDcid?: string;
+  placeDcid?: string;
+  placeName?: string;
+  coverage?: string;
+  introduction?: string;
   variables?: Array<{ dcid: string; name: string; rationale?: string }>;
-  suggestedChartType?: ChartType;
-  summary?: string;
-  insight?: string;
+  insights?: Insight[];
   followUps?: string[];
 }
 
@@ -175,13 +176,13 @@ export async function POST(request: NextRequest) {
             emit({
               type: STREAM_EVENT.status,
               message:
-                parsedResponse.summary ||
+                parsedResponse.introduction ||
                 `No variables found for ${placeLabel}.`,
             });
             continue;
           }
 
-          const entityDcid = parsedResponse.entityDcid || resolvedPlaceDcid;
+          const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
 
           if (!entityDcid) {
             emit({
@@ -205,21 +206,22 @@ export async function POST(request: NextRequest) {
 
           const discoveryResult: QueryResult = {
             id: nanoid(),
-            chartType: parsedResponse.suggestedChartType || 'line_chart',
             title:
               parsed.titles[place] ||
-              parsedResponse.summary ||
-              `Metrics for ${place}`,
+              `Metrics for ${parsedResponse.placeName || place}`,
             variables: variables.map((v) => ({
               dcid: v.dcid,
               name: v.name,
               rationale: v.rationale,
             })),
-            entities: [{ dcid: entityDcid, name: place }],
+            entities: [
+              { dcid: entityDcid, name: parsedResponse.placeName || place },
+            ],
             metadata,
             dateRange: parsed.dateRange,
-            summary: parsedResponse.summary,
-            insight: parsedResponse.insight,
+            introduction: parsedResponse.introduction,
+            coverage: parsedResponse.coverage,
+            insights: parsedResponse.insights,
             followUps: parsedResponse.followUps,
           };
 
