@@ -7,26 +7,3 @@
   align-items: center;
   pointer-events: auto;
 }
-
-.zoom-container {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  height: var(--controls-height);
-  padding: 0 8px;
-  color: rgb(var(--color-control-accent));
-  background: rgb(var(--color-control-surface));
-  border-radius: calc(var(--controls-height) / 2);
-  box-shadow: var(--shadow-elevated);
-
-  .zoom-value {
-    @include type-label-large;
-
-    width: 56px;
-    text-align: center;
-  }
-}
-
-.button-export {
-  box-shadow: var(--shadow-elevated);
-}

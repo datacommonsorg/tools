@@ -42,7 +42,7 @@
   }
 
   .description {
-    @include type-body-small;
+    @include type-body-medium;
 
     color: rgb(var(--color-toaster-content-muted));
   }

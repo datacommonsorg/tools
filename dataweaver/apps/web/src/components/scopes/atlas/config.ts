@@ -27,14 +27,17 @@ export const MIN_ZOOM = 0.25;
 /** Atlas max zoom level. This is the maximum zoom enforced by tldraw. */
 export const MAX_ZOOM = 3.25;
 
-/** The range the actual zoom is rescaled onto for display in the controls. */
-export const ZOOM_DISPLAY_RANGE = [0, 200] as const;
+/**
+ * The range the actual zoom is rescaled onto for display in the controls.
+ * Anchored so tldraw's 1:1 zoom (level 1.0) reads as 100% at the midpoint.
+ */
+export const ZOOM_DISPLAY_RANGE = [0, 400] as const;
 
 /**
  * How much the displayed zoom value changes per zoom in / out step. We divide
- * the display range evenly (i.e. here 200 / 20 = 10 steps).
+ * the display range evenly (i.e. here 400 / 25 = 16 steps).
  */
-const ZOOM_DISPLAY_STEP = 20;
+const ZOOM_DISPLAY_STEP = 25;
 
 /** The number of discrete zoom steps between `MIN_ZOOM` and `MAX_ZOOM`. */
 const ZOOM_STEP_COUNT =

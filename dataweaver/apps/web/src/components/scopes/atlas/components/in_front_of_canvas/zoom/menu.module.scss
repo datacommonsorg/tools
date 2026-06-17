@@ -1,0 +1,69 @@
+.menu-container {
+  --menu-padding: 10px;
+
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: 250px;
+  padding: var(--menu-padding);
+  background: rgb(var(--color-control-surface));
+  border-radius: var(--border-radius-medium);
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: blur(40px);
+}
+
+.actions-container {
+  display: flex;
+  flex-direction: column;
+  row-gap: 1px;
+
+  .button-action {
+    display: flex;
+    column-gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 40px;
+    padding-inline: 12px;
+    border-radius: calc(var(--border-radius-medium) - var(--menu-padding));
+
+    @include prefers-motion {
+      transition: background 0.2s $ease-linear;
+    }
+
+    @include hover {
+      background: rgb(var(--color-control-accent-subtle));
+    }
+
+    .label {
+      @include type-label-medium;
+
+      color: rgb(var(--color-control-content));
+    }
+
+    .shortcut {
+      @include type-label-small;
+
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 32px;
+
+      // Ensure keys are aligned vertically
+      font-variant-numeric: tabular-nums;
+      color: rgb(var(--color-control-content-muted));
+
+      .icon-modifier,
+      .icon-key {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+      }
+
+      .icon-key {
+        // Vertically center key icons with text-based keys
+        margin-left: -8px;
+      }
+    }
+  }
+}

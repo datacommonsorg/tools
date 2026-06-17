@@ -56,7 +56,7 @@ $-supported-body-font-weights: 400, 500;
   line-height: 1.4;
 }
 
-@mixin type-body-small($font-weight: 400) {
+@mixin type-body-medium($font-weight: 400) {
   @include -font-weight-google-sans(
     $font-weight,
     $-supported-body-font-weights
@@ -64,6 +64,17 @@ $-supported-body-font-weights: 400, 500;
 
   font-family: "Google Sans", sans-serif;
   font-size: 14px;
+  line-height: 1.4;
+}
+
+@mixin type-body-small($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-body-font-weights
+  );
+
+  font-family: "Google Sans", sans-serif;
+  font-size: 10px;
   line-height: 1.4;
 }
 

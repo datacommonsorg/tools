@@ -6,14 +6,18 @@ import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
 import { Prompt } from './prompt';
+import { Status } from './status';
 
 export const PageHome = () => {
-  const { runPrompt } = useQueryActions();
+  const { status, runPrompt } = useQueryActions();
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [promptValue, setPromptValue] = useState('');
 
-  const submit = () => {
+  // Auto close intro if we have a status and it's visible
+  if (status && isIntroVisible) setIsIntroVisible(false);
+
+  const submit = (promptValue: string) => {
     runPrompt(promptValue);
     setPromptValue('');
     setIsIntroVisible(false);
@@ -21,10 +25,16 @@ export const PageHome = () => {
 
   return (
     <div className={s.container}>
-      <AnimatePresence initial={false}>
-        {isIntroVisible && (
-          <Intro onSelect={submit} onClose={() => setIsIntroVisible(false)} />
+      <AnimatePresence initial={false} mode="wait">
+        {isIntroVisible && !status && (
+          <Intro
+            key="intro"
+            onSelect={submit}
+            onClose={() => setIsIntroVisible(false)}
+          />
         )}
+
+        {status && !isIntroVisible && <Status key="status" status={status} />}
       </AnimatePresence>
 
       <Prompt

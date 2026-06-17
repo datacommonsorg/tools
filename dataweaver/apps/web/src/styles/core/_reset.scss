@@ -101,6 +101,10 @@
     padding: unset;
     margin: unset;
     border: unset;
+
+    label {
+      cursor: pointer;
+    }
   }
 
   dl,

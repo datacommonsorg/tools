@@ -4,7 +4,7 @@
   left: 0;
   pointer-events: none;
   border: 1.5px solid rgb(var(--color-control-accent));
-  border-radius: 4px;
+  border-radius: var(--border-radius-small);
   transform-origin: top left;
 }
 
@@ -20,7 +20,7 @@
   padding: 0 50px;
   pointer-events: auto;
   background: rgb(var(--color-control-accent));
-  border-radius: 16px;
+  border-radius: var(--border-radius-medium);
   box-shadow: var(--shadow-elevated);
 
   // Center horizontally and straddle the selection's top edge

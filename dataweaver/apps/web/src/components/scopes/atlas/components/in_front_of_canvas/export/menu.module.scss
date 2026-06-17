@@ -1,0 +1,43 @@
+.menu-container {
+  --menu-padding: 20px;
+
+  position: absolute;
+  top: calc(100% + 12px);
+
+  // Note: We remove 2px here to avoid tools shadow appearing at edge of this
+  right: -2px;
+
+  // Lift above the tools bar, which it overlaps and which renders earlier
+  z-index: $z-index-above-content;
+  display: flex;
+  flex-direction: column;
+  width: 370px;
+  pointer-events: auto;
+  background: rgb(var(--color-control-surface));
+  border-radius: var(--border-radius-medium);
+  box-shadow: var(--shadow-elevated);
+}
+
+.header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding-inline: var(--menu-padding);
+
+  .title {
+    @include type-title(500);
+
+    color: rgb(var(--color-control-content));
+  }
+
+  .button-close {
+    margin: -4px -10px -4px 0;
+  }
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--menu-padding) var(--menu-padding);
+}

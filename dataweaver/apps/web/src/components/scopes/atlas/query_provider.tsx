@@ -7,13 +7,25 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { type MockQueryCleanup, runMockQuery } from '~/configs/mock_query';
 
+export interface Status {
+  promptValue: string;
+  indicatorMessage: string;
+}
+
 interface QueryActionsContextProps {
+  /** The current status of the query, if any. */
+  status: Status | null;
+
   /** Run a query for the given prompt, streaming results onto the canvas. */
   runPrompt(prompt: string): void;
+
+  /** Cancel the currently running prompt, if any. */
+  cancelRunningPrompt(): void;
 }
 
 const QueryActionsContext = createContext<QueryActionsContextProps | null>(
@@ -27,6 +39,8 @@ interface QueryProviderProps {
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const atlas = useAtlas();
 
+  const [status, setStatus] = useState<Status | null>(null);
+
   const cleanupsRef = useRef<Set<MockQueryCleanup>>(new Set());
 
   useEffect(() => {
@@ -39,12 +53,24 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
   const providerValue = useMemo<QueryActionsContextProps>(
     () => ({
+      status,
       runPrompt: (prompt: string) => {
         // TODO: Swap mock query for real query streaming setup here
         cleanupsRef.current.add(runMockQuery(prompt, atlas));
+
+        // TODO: Hook up to real query status updates here
+        setStatus({
+          promptValue: prompt,
+          indicatorMessage: 'Running query...',
+        });
+      },
+      cancelRunningPrompt: () => {
+        for (const cleanup of cleanupsRef.current) cleanup();
+        cleanupsRef.current.clear();
+        setStatus(null);
       },
     }),
-    [atlas],
+    [atlas, status],
   );
 
   return (
