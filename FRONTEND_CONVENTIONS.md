@@ -117,7 +117,7 @@ Target WCAG 2.2 AA compliance natively:
 *   Do not add custom styled wrappers inside layout loops (keep resets clean).
 
 ### 8.2 What to Implement (Always Do)
-*   Enforce named exports, type-only declarations (`import type`), and interfaces/types for props.
+*   Enforce named exports, type-only declarations (import type), and interfaces for props.
 *   Write corresponding unit tests (`*.test.tsx` or `*.test.ts`) for any added logic.
 *   Keep files within a maximum limit of 80 characters per line.
 *   Separate styles into co-located modules.
