@@ -71,6 +71,12 @@ interface AtlasProviderProps {
 
 export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   /**
+   * Use this for reads that must return a value now; use `editorReadyRef` for
+   * writes that can wait for mount.
+   */
+  const editorRef = useRef<Editor | null>(null);
+
+  /**
    * Resolves with the editor once `tldraw` mounts, so any editor actions work
    * before or after editor has been mounted via promise pattern.
    */
@@ -173,7 +179,9 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       },
     );
 
-    // Release any canvas writes that were issued before mount
+    // Expose the editor for synchronous reads and release any canvas writes
+    // that were issued before mount
+    editorRef.current = editor;
     editorReadyRef.current.resolve(editor);
 
     // Let the CSS know we're mounted so it can fade the canvas in
@@ -187,6 +195,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       // Swap in a fresh deferred and drop clone tracking tied to this
       // editor, so any future remount starts clean rather than chaining
       // writes onto the editor we just tore down
+      editorRef.current = null;
       editorReadyRef.current = createDeferred<Editor>();
       clonesRef.current.clear();
     };
@@ -194,8 +203,11 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
 
   const providerValue = useMemo<AtlasContextProps>(
     () => ({
-      getSelectedShapeIds: () =>
-        editorRef.current?.getSelectedShapeIds().map(String) ?? [],
+      getSelectedShapeIds: () => {
+        return editorRef.current
+          ? editorRef.current.getSelectedShapeIds().map(String)
+          : [];
+      },
       add: (content) => {
         const shapeId = createShapeId();
 
