@@ -36,7 +36,7 @@ type ContentForVariant<TVariant extends CardVariant> = Extract<
  * typed against the variant passed to `add`, so updates can only set fields
  * that belong to that variant.
  */
-interface CardHandle<TVariant extends CardVariant> {
+export interface CardHandle<TVariant extends CardVariant> {
   readonly id: TLShapeId;
   readonly variant: TVariant;
   update(props: Partial<Omit<ContentForVariant<TVariant>, 'variant'>>): void;

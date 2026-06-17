@@ -11,6 +11,7 @@ import {
 } from 'react';
 import {
   type AtlasContextProps,
+  type CardHandle,
   useAtlas,
 } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
@@ -43,7 +44,8 @@ interface QueryProviderProps {
 interface ActiveQuery {
   nodeId: string;
   cardIds: string[];
-  removeHandles: Array<() => void>;
+  removeCards: Array<() => void>;
+  placeholderCards: Map<string, CardHandle<'table'>>;
 }
 
 /** Map a QueryResult into card entry fields for the store. */
@@ -141,26 +143,51 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
       case STREAM_EVENT.parsedQuery:
         setParsedQuery(active.nodeId, event.data);
+
+        // Create loading placeholder cards for each place with the title.
+        for (const place of event.data.places) {
+          const title = event.data.titles[place] || place;
+          const card = atlasRef.current.add({
+            variant: 'table',
+            title,
+            isLoading: true,
+          });
+          active.placeholderCards.set(place, card);
+          active.removeCards.push(() => card.remove());
+        }
         break;
 
       case STREAM_EVENT.queryResult: {
-        const { result } = event;
+        const { result, place } = event;
 
         // 1. Variables table card (table variant with HTML table)
-        const tableCard = atlasRef.current.add({
-          variant: 'table',
-          title: result.title,
-          body: buildTableHtml(result),
-          isLoading: false,
-        });
-        const tableEntry = toCardEntry(
-          String(tableCard.id),
-          active.nodeId,
-          result,
-        );
+        const existingCard = active.placeholderCards.get(place);
+        let tableCardId: string;
+
+        if (existingCard) {
+          // Update the loading placeholder with real data.
+          existingCard.update({
+            title: result.title,
+            body: buildTableHtml(result),
+            isLoading: false,
+          });
+          tableCardId = String(existingCard.id);
+          active.placeholderCards.delete(place);
+        } else {
+          // Fallback: no placeholder exists, create fresh.
+          const tableCard = atlasRef.current.add({
+            variant: 'table',
+            title: result.title,
+            body: buildTableHtml(result),
+            isLoading: false,
+          });
+          tableCardId = String(tableCard.id);
+          active.removeCards.push(() => tableCard.remove());
+        }
+
+        const tableEntry = toCardEntry(tableCardId, active.nodeId, result);
         registerCard(tableEntry);
-        active.cardIds.push(String(tableCard.id));
-        active.removeHandles.push(() => tableCard.remove());
+        active.cardIds.push(tableCardId);
 
         // 2. Notes card (text variant with About this data + Relevant insights)
         const notesCard = atlasRef.current.add({
@@ -177,7 +204,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         );
         registerCard(notesEntry);
         active.cardIds.push(String(notesCard.id));
-        active.removeHandles.push(() => notesCard.remove());
+        active.removeCards.push(() => notesCard.remove());
 
         // 3. Chart card (observations from first variable's facets)
         const firstMeta = result.metadata[0];
@@ -200,7 +227,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           );
           registerCard(chartEntry);
           active.cardIds.push(String(chartCard.id));
-          active.removeHandles.push(() => chartCard.remove());
+          active.removeCards.push(() => chartCard.remove());
         }
 
         break;
@@ -233,7 +260,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         abortStream();
 
-        for (const remove of active.removeHandles) {
+        for (const remove of active.removeCards) {
           remove();
         }
 
@@ -274,7 +301,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = {
           nodeId,
           cardIds: [],
-          removeHandles: [],
+          removeCards: [],
+          placeholderCards: new Map(),
         };
 
         // Build atlas context description for the API
