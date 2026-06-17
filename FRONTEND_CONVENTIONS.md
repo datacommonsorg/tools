@@ -29,6 +29,10 @@
     test suites (`pnpm test`), and validation builds (`pnpm build`) before
     submitting changes to ensure code cleanliness, logical correctness, and
     import safety.
+*   **Documentation**: Include a file overview header explaining the scope and
+    architectural responsibility of any file carrying complex workflows or
+    orchestrations.  Add clear annotations to public-facing functions so
+    callers immediately understand the inputs, outputs, and failure cases.
 
 ---
 
@@ -57,6 +61,11 @@ This ensures:
 *   **DX Efficiency**: Fuzzy-find matches are grouped by category.
 *   **Parallel Imports**: Imports align visually under the same category
     prefix.
+
+### 2.3 Tight Modules and Concise Functions
+Break large files into small, focused modules. Both modules and individual
+functions should remain tight, concise, and do exactly one thing. This directly
+maximizes code reuse, simplifies unit testing, and reduces cognitive load.
 
 ---
 
