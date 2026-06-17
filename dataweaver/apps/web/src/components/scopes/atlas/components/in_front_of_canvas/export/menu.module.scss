@@ -2,10 +2,9 @@
   --menu-padding: 20px;
 
   position: absolute;
-  top: calc(100% + 12px);
 
   // Note: We remove 2px here to avoid tools shadow appearing at edge of this
-  right: -2px;
+  inset: calc(100% + 12px) -2px auto auto;
 
   // Lift above the tools bar, which it overlaps and which renders earlier
   z-index: $z-index-above-content;

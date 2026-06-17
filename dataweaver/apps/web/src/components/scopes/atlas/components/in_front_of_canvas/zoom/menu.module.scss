@@ -2,8 +2,7 @@
   --menu-padding: 10px;
 
   position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
+  inset: calc(100% + 12px) 0 auto auto;
   width: 250px;
   padding: var(--menu-padding);
   background: rgb(var(--color-control-surface));

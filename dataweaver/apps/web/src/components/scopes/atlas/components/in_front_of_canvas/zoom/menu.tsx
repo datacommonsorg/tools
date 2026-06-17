@@ -88,7 +88,8 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
   const editor = useEditor();
 
   return (
-    <m.div
+    <m.dialog
+      open
       id={id}
       className={s['menu-container']}
       aria-label="Zoom options"
@@ -123,6 +124,6 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
           </li>
         ))}
       </ul>
-    </m.div>
+    </m.dialog>
   );
 };

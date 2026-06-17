@@ -33,10 +33,10 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
   const status = totalSelected > 0 ? 'selected' : 'empty';
 
   return (
-    <m.section
+    <m.dialog
+      open
       id={id}
       className={s['menu-container']}
-      role="dialog"
       aria-modal="false"
       aria-label="Export"
       // Prevent tldraw from treating panel interactions as canvas gestures
@@ -95,6 +95,6 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
           {status === 'empty' ? <StatusEmpty /> : <StatusSelected />}
         </m.div>
       </AnimatePresence>
-    </m.section>
+    </m.dialog>
   );
 };
