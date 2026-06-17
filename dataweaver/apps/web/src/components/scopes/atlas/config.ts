@@ -1,4 +1,5 @@
-import type { TLComponents } from 'tldraw';
+import type { TLComponents, TLUiOverrides } from 'tldraw';
+import { ContextMenu } from './components/context_menu';
 import { Grid } from './components/grid';
 import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
 import { AtlasSelectionForegroundOverlayUtil } from './overlays/selection_foreground';
@@ -8,9 +9,42 @@ import { ShapeCardUtil } from './shapes/card';
  * components into the editor's UI via given 'slots'.
  */
 export const ATLAS_COMPONENTS = {
+  ContextMenu,
   Grid,
   InFrontOfTheCanvas,
 } as const satisfies TLComponents;
+
+/**
+ * List of actions we don't want to support. These are included natively via
+ * tldraw's actions registry so this deletes them so that they're not supported
+ * both via the UI and keyboard shortcuts.
+ */
+const DISABLED_ACTION_IDS = [
+  // Flatten (Shift+F) + Toggle-lock (Shift+L) — the only two with shortcuts
+  'flatten-to-image',
+  'toggle-lock',
+
+  // Export as… (also lives in our own toolbar UI)
+  'export-as-svg',
+  'export-as-png',
+  'download-original',
+
+  // Copy as…
+  'copy-as-svg',
+  'copy-as-png',
+  'copy-as-json',
+
+  // Move to page (Atlas is single-page)
+  'move-to-new-page',
+] as const;
+
+/** UI behaviour overrides for tldraw. */
+export const ATLAS_OVERRIDES: TLUiOverrides = {
+  actions(_editor, actions) {
+    for (const id of DISABLED_ACTION_IDS) delete actions[id];
+    return actions;
+  },
+};
 
 /** The shapes that Atlas supports. */
 export const ATLAS_SHAPES = [ShapeCardUtil] as const;

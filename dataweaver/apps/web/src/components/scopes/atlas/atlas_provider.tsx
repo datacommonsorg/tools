@@ -15,6 +15,7 @@ import { ExportProvider } from './components/in_front_of_canvas/export/export_pr
 import {
   ATLAS_COMPONENTS,
   ATLAS_OVERLAYS,
+  ATLAS_OVERRIDES,
   ATLAS_SHAPES,
   ZOOM_STEPS,
 } from './config';
@@ -148,6 +149,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
           className={s.tldraw}
           hideUi
           components={ATLAS_COMPONENTS}
+          overrides={ATLAS_OVERRIDES}
           shapeUtils={ATLAS_SHAPES}
           overlayUtils={ATLAS_OVERLAYS}
           onMount={mounted}

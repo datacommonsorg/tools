@@ -17,14 +17,12 @@
 }
 
 @mixin type-display {
-  font-family: "Google Sans", sans-serif;
   font-size: 32px;
   font-weight: 500;
   line-height: 1.2;
 }
 
 @mixin type-headline {
-  font-family: "Google Sans", sans-serif;
   font-size: 24px;
   font-weight: 400;
   line-height: 1.2;
@@ -38,7 +36,6 @@ $-supported-title-font-weights: 500, 700;
     $-supported-title-font-weights
   );
 
-  font-family: "Google Sans", sans-serif;
   font-size: 16px;
   line-height: 1.4;
 }
@@ -51,7 +48,6 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
-  font-family: "Google Sans", sans-serif;
   font-size: 18px;
   line-height: 1.4;
 }
@@ -62,13 +58,11 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
-  font-family: "Google Sans", sans-serif;
   font-size: 14px;
   line-height: 1.4;
 }
 
 @mixin type-label-large($has-text-box-trim: true) {
-  font-family: "Google Sans", sans-serif;
   font-size: 20px;
   font-weight: 500;
   line-height: 1.4;
@@ -79,7 +73,6 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-medium($has-text-box-trim: true) {
-  font-family: "Google Sans", sans-serif;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.4;
@@ -90,7 +83,6 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-small($has-text-box-trim: true) {
-  font-family: "Google Sans", sans-serif;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
