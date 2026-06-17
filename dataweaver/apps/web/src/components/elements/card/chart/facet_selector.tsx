@@ -36,6 +36,8 @@ export const FacetSelector = ({
       <button
         type="button"
         className={s.trigger}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={() => setIsOpen(!isOpen)}
       >

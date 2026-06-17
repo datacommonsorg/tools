@@ -37,7 +37,13 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const { query, atlasContext, ancestorChain, selectedEntityDcids } = body;
+
+  const query = body?.query;
+  const atlasContext = typeof body?.atlasContext === 'string' ? body.atlasContext : '';
+  const ancestorChain = Array.isArray(body?.ancestorChain) ? body.ancestorChain : [];
+  const selectedEntityDcids = Array.isArray(body?.selectedEntityDcids)
+    ? body.selectedEntityDcids
+    : [];
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
