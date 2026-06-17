@@ -26,6 +26,8 @@ export interface Status {
 interface QueryActionsContextProps {
   /** Run a query for the given prompt, streaming results onto the canvas. */
   runPrompt(prompt: string): void;
+  /** Abort the in-flight query, remove its cards, and clean up the store. */
+  cancelQuery(): void;
 }
 
 const QueryActionsContext = createContext<QueryActionsContextProps | null>(
@@ -41,6 +43,7 @@ interface QueryProviderProps {
 interface ActiveQuery {
   nodeId: string;
   cardIds: string[];
+  removeHandles: Array<() => void>;
 }
 
 /** Map a QueryResult into card entry fields for the store. */
@@ -157,6 +160,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         );
         registerCard(tableEntry);
         active.cardIds.push(String(tableCard.id));
+        active.removeHandles.push(() => tableCard.remove());
 
         // 2. Notes card (text variant with About this data + Relevant insights)
         const notesCard = atlasRef.current.add({
@@ -173,6 +177,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         );
         registerCard(notesEntry);
         active.cardIds.push(String(notesCard.id));
+        active.removeHandles.push(() => notesCard.remove());
 
         // 3. Chart card (observations from first variable's facets)
         const firstMeta = result.metadata[0];
@@ -195,6 +200,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           );
           registerCard(chartEntry);
           active.cardIds.push(String(chartCard.id));
+          active.removeHandles.push(() => chartCard.remove());
         }
 
         break;
@@ -216,10 +222,24 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
     }
   }, []);
 
-  const { start: startStream } = useStreamingQuery(handleStreamEvent);
+  const { start: startStream, abort: abortStream } =
+    useStreamingQuery(handleStreamEvent);
 
   const providerValue = useMemo<QueryActionsContextProps>(
     () => ({
+      cancelQuery: () => {
+        const active = activeQueryRef.current;
+        if (!active) return;
+
+        abortStream();
+
+        for (const remove of active.removeHandles) {
+          remove();
+        }
+
+        store.getState().cancelQuery(active.nodeId);
+        activeQueryRef.current = null;
+      },
       runPrompt: (prompt: string) => {
         const {
           startQuery,
@@ -254,6 +274,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = {
           nodeId,
           cardIds: [],
+          removeHandles: [],
         };
 
         // Build atlas context description for the API
@@ -271,7 +292,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         });
       },
     }),
-    [atlas, startStream],
+    [atlas, startStream, abortStream],
   );
 
   return (

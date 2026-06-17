@@ -32,6 +32,7 @@ export interface DataWeaverStore {
     updates: Partial<Omit<CardEntry, 'shapeId'>>,
   ) => void;
   unregisterCard: (shapeId: string) => void;
+  cancelQuery: (nodeId: string) => void;
   setIsProcessing: (val: boolean) => void;
   setCurrentStatus: (val: string) => void;
 
@@ -153,6 +154,35 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
           },
           undefined,
           'unregisterCard',
+        );
+      },
+
+      cancelQuery: (nodeId) => {
+        set(
+          (state) => {
+            const node = state.nodes[nodeId];
+            if (!node) return state;
+
+            const { [nodeId]: _, ...remainingNodes } = state.nodes;
+            const remainingCards = Object.fromEntries(
+              Object.entries(state.cards).filter(
+                ([, card]) => card.historyNodeId !== nodeId,
+              ),
+            );
+
+            return {
+              nodes: remainingNodes,
+              cards: remainingCards,
+              latestNodeId:
+                state.latestNodeId === nodeId
+                  ? (node.parentId ?? null)
+                  : state.latestNodeId,
+              isProcessing: false,
+              currentStatus: '',
+            };
+          },
+          undefined,
+          'cancelQuery',
         );
       },
 

@@ -133,7 +133,7 @@ export const runToolLoop = async (
     const response = await genAI.models.generateContent({
       model: config.models.dataDiscovery,
       contents: messages,
-      config: { tools: geminiTools, systemInstruction },
+      config: { tools: geminiTools, systemInstruction, abortSignal: signal },
     });
 
     if (response.functionCalls && response.functionCalls.length > 0) {
