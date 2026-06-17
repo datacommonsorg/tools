@@ -6,8 +6,8 @@
   --tl-color-selected-contrast: rgb(var(--color-control-accent-content));
 
   // The UI font is inherited from 'html' (see styles/core/_base.scss). These
-  // align tldraw's own font CSS vars brand font so they don't fall back
-  // to the bundled tldraw_* fonts
+  // align tldraw's own font CSS vars to our brand font so that they don't fall
+  // back to the bundled tldraw_* fonts if / when they're shown
   --tl-font-draw: "Google Sans", sans-serif;
   --tl-font-sans: "Google Sans", sans-serif;
   --tl-font-serif: "Google Sans", serif;
