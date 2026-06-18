@@ -11,6 +11,15 @@
   // Ensure all nested layers appear from a base of 0 and not above app content
   z-index: $z-index-content;
   background-color: rgb(var(--color-surface-base));
+  opacity: 0;
+
+  @include prefers-motion {
+    transition: opacity 0.2s $ease-linear;
+  }
+
+  &[data-is-mounted="true"] {
+    opacity: 1;
+  }
 
   // The text tool's font family + colour come from the tldraw theme (see
   // atlas.tsx), but its base weight lives in a tldraw constant. Force here

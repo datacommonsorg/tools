@@ -2,6 +2,7 @@ import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { CardState } from '~/components/elements/card/base';
 import type { CardChartProps } from '~/components/elements/card/chart/chart';
 import type { CardTextProps } from '~/components/elements/card/text';
+import { CARD_VARIANT_SIZE } from './config';
 
 interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
   followUp?: string;
@@ -37,26 +38,10 @@ export interface CardSize {
   h: number;
 }
 
-const GRID = {
-  columns: 4,
-  stepX: 460,
-  stepY: 600,
-  originX: 120,
-  originY: 120,
-} as const;
+/** A card's position and size together. */
+export type CardBounds = CardPosition & CardSize;
 
-/** A simple utility to get a new content's position based on index. */
-export const gridPosition = (index: number): CardPosition => ({
-  x: GRID.originX + (index % GRID.columns) * GRID.stepX,
-  y: GRID.originY + Math.floor(index / GRID.columns) * GRID.stepY,
-});
-
-// Per-variant default canvas footprint
-const VARIANT_SIZE: Record<CardVariant, CardSize> = {
-  text: { w: 360, h: 440 },
-  chart: { w: 420, h: 520 },
-};
-
+/** Convert card content into `TLShape` for placement on the canvas. */
 export const contentToShape = (
   shapeId: TLShapeId,
   content: AtlasContent,
@@ -70,7 +55,7 @@ export const contentToShape = (
   };
 
   const shapeProps = {
-    ...VARIANT_SIZE[content.variant],
+    ...CARD_VARIANT_SIZE[content.variant],
     isLoading: content.isLoading ?? false,
     followUp: content.followUp,
   };
