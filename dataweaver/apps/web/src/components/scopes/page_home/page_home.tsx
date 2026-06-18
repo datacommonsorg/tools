@@ -1,8 +1,10 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
+import { STATUS } from '~/server/types';
+import { useDataWeaverStore } from '~/store/store';
 import { FollowUp, type QuestionAndAnswers } from './follow_up';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
@@ -11,12 +13,13 @@ import { Status } from './status';
 
 export const PageHome = () => {
   const { runPrompt } = useQueryActions();
+  const { currentStatus, nodes, latestNodeId } = useDataWeaverStore();
+  const latestNode = latestNodeId ? nodes[latestNodeId] : null;
+  const query = latestNode?.query ?? '';
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [followUp, setFollowUp] = useState<QuestionAndAnswers | null>(null);
   const [promptValue, setPromptValue] = useState('');
-
-  const status = null;
 
   const submit = (value = promptValue) => {
     runPrompt(value);
@@ -24,6 +27,10 @@ export const PageHome = () => {
     setIsIntroVisible(false);
     setFollowUp(null);
   };
+
+  const showStatus = useMemo(() => {
+    return !isIntroVisible && currentStatus !== STATUS.complete;
+  }, [isIntroVisible, currentStatus]);
 
   return (
     <div className={s.container}>
@@ -38,11 +45,13 @@ export const PageHome = () => {
           />
         )}
 
-        {followUp && !status && (
+        {followUp && !showStatus && (
           <FollowUp key="follow-up" followUp={followUp} onSelect={submit} />
         )}
+        {showStatus && (
+          <Status key="status" prompt={query} status={currentStatus} />
+        )}
       </AnimatePresence>
-      <Status />
       <Prompt
         value={promptValue}
         onValueChange={setPromptValue}

@@ -13,6 +13,7 @@ import {
   type Insight,
   type QueryResult,
   type QueryStreamRequest,
+  STATUS,
   STREAM_EVENT,
   type StreamEvent,
 } from '~/server/types';
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
         // ─── Safety gate ──────────────────────────────────────────────────
         emit({
           type: STREAM_EVENT.status,
-          message: 'Checking query safety...',
+          message: STATUS.checkingSafety,
         });
         const safetyResult = await checkPromptSafety(query);
         if (!safetyResult.allowed) {
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
         }
 
         // ─── Analyze query ────────────────────────────────────────────────
-        emit({ type: STREAM_EVENT.status, message: 'Parsing query...' });
+        emit({ type: STREAM_EVENT.status, message: STATUS.parsingQuery });
         const parsed = await parseQuery({
           query,
           atlasContext,
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
         // Fetch tools
         emit({
           type: STREAM_EVENT.status,
-          message: 'Fetching available tools...',
+          message: STATUS.fetchingTools,
         });
         const geminiTools = await fetchGeminiTools(signal);
 
@@ -127,7 +128,11 @@ export async function POST(request: NextRequest) {
           const placeLabel = parsed.titles[place] || place;
           emit({
             type: STREAM_EVENT.status,
-            message: `Discovering metrics for ${placeLabel} (${i + 1}/${places.length})...`,
+            message: STATUS.discoveringMetrics(
+              placeLabel,
+              i + 1,
+              places.length,
+            ),
           });
 
           // Run Gemini tool loop
@@ -143,7 +148,7 @@ export async function POST(request: NextRequest) {
               emit({ type: STREAM_EVENT.toolCall, tool: e.tool, args: e.args });
               emit({
                 type: STREAM_EVENT.status,
-                message: `Using tool: ${e.tool} (${e.count}/${e.max})...`,
+                message: STATUS.usingTool(e.tool, e.count, e.max),
               });
             },
           });
@@ -152,7 +157,7 @@ export async function POST(request: NextRequest) {
           if (!responseText) {
             emit({
               type: STREAM_EVENT.status,
-              message: `No response for ${placeLabel}, skipping...`,
+              message: STATUS.noResponse(placeLabel),
             });
             continue;
           }
@@ -160,7 +165,7 @@ export async function POST(request: NextRequest) {
           // Parse model response into query results
           emit({
             type: STREAM_EVENT.status,
-            message: `Building results for ${placeLabel}...`,
+            message: STATUS.buildingResults(placeLabel),
           });
 
           let parsedResponse: QueryModelResponse | undefined;
@@ -175,7 +180,7 @@ export async function POST(request: NextRequest) {
           } catch {
             emit({
               type: STREAM_EVENT.status,
-              message: `Invalid model response for ${placeLabel}, skipping...`,
+              message: STATUS.invalidResponse(placeLabel),
             });
             continue;
           }
@@ -185,8 +190,7 @@ export async function POST(request: NextRequest) {
             emit({
               type: STREAM_EVENT.status,
               message:
-                parsedResponse.introduction ||
-                `No variables found for ${placeLabel}.`,
+                parsedResponse.introduction || STATUS.noVariables(placeLabel),
             });
             continue;
           }
@@ -196,7 +200,7 @@ export async function POST(request: NextRequest) {
           if (!entityDcid) {
             emit({
               type: STREAM_EVENT.status,
-              message: `Could not resolve a valid DCID for ${placeLabel}, skipping...`,
+              message: STATUS.invalidDcid(placeLabel),
             });
             continue;
           }
@@ -204,7 +208,7 @@ export async function POST(request: NextRequest) {
           // Fetch metadata for each variable
           emit({
             type: STREAM_EVENT.status,
-            message: `Loading metadata for ${placeLabel} (${variables.length} variables)...`,
+            message: STATUS.loadingMetadata(placeLabel, variables.length),
           });
 
           const metadata = await Promise.all(
@@ -241,7 +245,7 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        emit({ type: STREAM_EVENT.complete, message: 'Complete.' });
+        emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
         controller.close();
       } catch (err: unknown) {
         if (!signal.aborted) {

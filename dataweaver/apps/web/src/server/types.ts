@@ -105,6 +105,39 @@ export interface QueryStreamRequest {
   selectedEntityDcids: string[];
 }
 
+// --- Status messages ---
+
+export const STATUS = {
+  // Terminal states (for programmatic checks)
+  idle: '',
+  complete: 'Complete.',
+  stopped: 'Stopped',
+
+  // Static messages
+  starting: 'Starting query...',
+  connecting: 'Connecting...',
+  checkingSafety: 'Checking query safety...',
+  parsingQuery: 'Parsing query...',
+  fetchingTools: 'Fetching available tools...',
+  noResponseBody: 'No response body',
+
+  // Dynamic messages
+  discoveringMetrics: (place: string, current: number, total: number) =>
+    `Discovering metrics for ${place} (${current}/${total})...`,
+  usingTool: (tool: string, count: number, max: number) =>
+    `Using tool: ${tool} (${count}/${max})...`,
+  noResponse: (place: string) => `No response for ${place}, skipping...`,
+  buildingResults: (place: string) => `Building results for ${place}...`,
+  invalidResponse: (place: string) =>
+    `Invalid model response for ${place}, skipping...`,
+  noVariables: (place: string) => `No variables found for ${place}.`,
+  invalidDcid: (place: string) =>
+    `Could not resolve a valid DCID for ${place}, skipping...`,
+  loadingMetadata: (place: string, varCount: number) =>
+    `Loading metadata for ${place} (${varCount} variables)...`,
+  apiError: (status: number, body: string) => `API error: ${status} ${body}`,
+} as const;
+
 // --- SSE Stream event types ---
 
 export const STREAM_EVENT = {

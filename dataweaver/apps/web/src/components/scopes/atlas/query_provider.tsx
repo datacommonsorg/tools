@@ -11,7 +11,7 @@ import {
 import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { StreamEvent } from '~/server/types';
-import { STREAM_EVENT } from '~/server/types';
+import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useDataWeaverStore } from '~/store';
 import { useStoreShapeSync } from './sync_store';
 
@@ -126,7 +126,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       case STREAM_EVENT.error:
         failQuery(active.nodeId);
         setIsProcessing(false);
-        setCurrentStatus('');
+        setCurrentStatus(STATUS.idle);
         activeQueryRef.current = null;
         break;
     }
@@ -156,7 +156,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         } = store.getState();
 
         setIsProcessing(true);
-        setCurrentStatus('Starting query...');
+        setCurrentStatus(STATUS.starting);
 
         // Derive context from selected shapes
         const selectedShapeIds = atlas.getSelectedShapeIds();
