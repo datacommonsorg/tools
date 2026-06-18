@@ -1,6 +1,5 @@
 'use client';
 
-import { marked } from 'marked';
 import {
   createContext,
   type ReactNode,
@@ -9,15 +8,12 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import {
-  type AtlasContextProps,
-  type CardHandle,
-  useAtlas,
-} from '~/components/scopes/atlas/atlas_provider';
+import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
-import type { CardEntry, QueryResult, StreamEvent } from '~/server/types';
+import type { StreamEvent } from '~/server/types';
 import { STREAM_EVENT } from '~/server/types';
 import { useDataWeaverStore } from '~/store';
+import { useStoreShapeSync } from './sync_store';
 
 export interface Status {
   promptValue: string;
@@ -44,82 +40,14 @@ interface QueryProviderProps {
 interface ActiveQuery {
   nodeId: string;
   cardIds: string[];
-  removeCards: Array<() => void>;
-  placeholderCards: Map<string, CardHandle<'table'>>;
 }
-
-/** Map a QueryResult into card entry fields for the store. */
-const toCardEntry = (
-  shapeId: string,
-  historyNodeId: string,
-  result: QueryResult,
-): CardEntry => ({
-  shapeId,
-  historyNodeId,
-  type: 'query_result',
-  variableDcids: result.variables.map((v) => v.dcid),
-  entityDcids: result.entities.map((e) => e.dcid),
-  title: result.title,
-  variables: result.variables,
-  metadata: result.metadata,
-  introduction: result.introduction,
-  coverage: result.coverage,
-  insights: result.insights,
-  followUps: result.followUps,
-});
-
-/** Build the variables table as an HTML string from a query result. */
-const buildTableHtml = (result: QueryResult): string => {
-  const entityDcid = result.entities[0]?.dcid ?? '';
-  const placeName = result.entities[0]?.name ?? '';
-  const intro = result.introduction ?? '';
-
-  let md = intro ? `${intro}\n\n` : '';
-  md += '| Statistical variable | Facet(s) | Rationale |\n';
-  md += '| --- | --- | --- |\n';
-
-  for (const variable of result.variables) {
-    const meta = result.metadata.find((m) => m.variableDcid === variable.dcid);
-    const firstFacet = meta?.facets[0];
-    const facetCell = firstFacet
-      ? `${firstFacet.source}<br>${firstFacet.earliestDate} – ${firstFacet.latestDate}${firstFacet.unit ? ` · ${firstFacet.unit}` : ''}`
-      : 'No data';
-
-    const encodedVar = encodeURIComponent(variable.name);
-    const encodedPlace = encodeURIComponent(placeName);
-    const link = `[${variable.name}](#fetch=${variable.dcid}&place=${entityDcid}&varName=${encodedVar}&placeName=${encodedPlace})`;
-
-    md += `| ${link} | ${facetCell} | ${variable.rationale ?? '—'} |\n`;
-  }
-
-  return marked.parse(md) as string;
-};
-
-/** Build the notes card HTML from a query result's introduction + insights. */
-const buildNotesHtml = (result: QueryResult): string => {
-  let md = '### About this data\n\n';
-  if (result.coverage) {
-    md += `${result.coverage}\n\n`;
-  }
-  if (result.introduction) {
-    md += `${result.introduction}\n\n`;
-  }
-
-  if (result.insights && result.insights.length > 0) {
-    md += '### Relevant insights\n\n';
-    for (const insight of result.insights) {
-      md += `- **${insight.title}**: ${insight.text}\n`;
-    }
-  }
-
-  return marked.parse(md) as string;
-};
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const atlas = useAtlas();
   const activeQueryRef = useRef<ActiveQuery | null>(null);
-  const atlasRef = useRef<AtlasContextProps>(atlas);
-  atlasRef.current = atlas;
+
+  // Mount the store→shape sync layer.
+  useStoreShapeSync(atlas);
 
   const store = useDataWeaverStore;
 
@@ -130,6 +58,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
     const {
       setParsedQuery,
       setCurrentStatus,
+      addResult,
       registerCard,
       completeQuery,
       failQuery,
@@ -144,90 +73,44 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       case STREAM_EVENT.parsedQuery:
         setParsedQuery(active.nodeId, event.data);
 
-        // Create loading placeholder cards for each place with the title.
+        // Register loading placeholder cards for each place.
         for (const place of event.data.places) {
-          const title = event.data.titles[place] || place;
-          const card = atlasRef.current.add({
-            variant: 'table',
-            title,
-            isLoading: true,
-          });
-          active.placeholderCards.set(place, card);
-          active.removeCards.push(() => card.remove());
+          const shapeId = `shape:${active.nodeId}__${place}__loading`;
+          registerCard(shapeId, active.nodeId, 'loading', place);
+          active.cardIds.push(shapeId);
         }
         break;
 
       case STREAM_EVENT.queryResult: {
         const { result, place } = event;
+        const entityDcid = result.entities[0]?.dcid ?? place;
 
-        // 1. Variables table card (table variant with HTML table)
-        const existingCard = active.placeholderCards.get(place);
-        let tableCardId: string;
+        // Write the query result data to the history node.
+        addResult(active.nodeId, entityDcid, result);
 
-        if (existingCard) {
-          // Update the loading placeholder with real data.
-          existingCard.update({
-            title: result.title,
-            body: buildTableHtml(result),
-            isLoading: false,
-          });
-          tableCardId = String(existingCard.id);
-          active.placeholderCards.delete(place);
-        } else {
-          // Fallback: no placeholder exists, create fresh.
-          const tableCard = atlasRef.current.add({
-            variant: 'table',
-            title: result.title,
-            body: buildTableHtml(result),
-            isLoading: false,
-          });
-          tableCardId = String(tableCard.id);
-          active.removeCards.push(() => tableCard.remove());
-        }
+        // Remove the loading placeholder for this place and replace with real cards.
+        const loadingId = `shape:${active.nodeId}__${place}__loading`;
+        const { unregisterCard } = store.getState();
+        unregisterCard(loadingId);
+        active.cardIds = active.cardIds.filter((id) => id !== loadingId);
 
-        const tableEntry = toCardEntry(tableCardId, active.nodeId, result);
-        registerCard(tableEntry);
-        active.cardIds.push(tableCardId);
+        // Register table card.
+        const tableId = `shape:${active.nodeId}__${entityDcid}__table`;
+        registerCard(tableId, active.nodeId, 'table', entityDcid);
+        active.cardIds.push(tableId);
 
-        // 2. Notes card (text variant with About this data + Relevant insights)
-        const notesCard = atlasRef.current.add({
-          variant: 'text',
-          title: `${result.title} • Notes`,
-          body: buildNotesHtml(result),
-          isLoading: false,
-          followUp: result.followUps?.[0],
-        });
-        const notesEntry = toCardEntry(
-          String(notesCard.id),
-          active.nodeId,
-          result,
-        );
-        registerCard(notesEntry);
-        active.cardIds.push(String(notesCard.id));
-        active.removeCards.push(() => notesCard.remove());
+        // Register notes card.
+        const notesId = `shape:${active.nodeId}__${entityDcid}__notes`;
+        registerCard(notesId, active.nodeId, 'notes', entityDcid);
+        active.cardIds.push(notesId);
 
-        // 3. Chart card (observations from first variable's facets)
+        // Register chart card (only if data exists).
         const firstMeta = result.metadata[0];
-        const allFacets = firstMeta?.facets;
-        const firstFacet = allFacets?.[0];
-
-        if (allFacets && firstFacet && firstFacet.observations.length > 0) {
-          const chartCard = atlasRef.current.add({
-            variant: 'chart',
-            title: result.variables[0]?.name ?? result.title,
-            description: firstFacet.source,
-            data: firstFacet.observations,
-            facets: allFacets,
-            isLoading: false,
-          });
-          const chartEntry = toCardEntry(
-            String(chartCard.id),
-            active.nodeId,
-            result,
-          );
-          registerCard(chartEntry);
-          active.cardIds.push(String(chartCard.id));
-          active.removeCards.push(() => chartCard.remove());
+        const firstFacet = firstMeta?.facets[0];
+        if (firstFacet && firstFacet.observations.length > 0) {
+          const chartId = `shape:${active.nodeId}__${entityDcid}__chart`;
+          registerCard(chartId, active.nodeId, 'chart', entityDcid);
+          active.cardIds.push(chartId);
         }
 
         break;
@@ -259,11 +142,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         if (!active) return;
 
         abortStream();
-
-        for (const remove of active.removeCards) {
-          remove();
-        }
-
         store.getState().cancelQuery(active.nodeId);
         activeQueryRef.current = null;
       },
@@ -274,7 +152,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           setCurrentStatus,
           getAncestorChain,
           getContextNodeId,
-          cards,
+          getSelectedEntityDcids,
         } = store.getState();
 
         setIsProcessing(true);
@@ -289,10 +167,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           places: node.parsedQuery?.places ?? [],
         }));
 
-        // Derive selected entity dcids from selected cards
-        const selectedEntityDcids = selectedShapeIds.flatMap(
-          (id) => cards[id]?.entityDcids ?? [],
-        );
+        // Derive selected entity dcids from selected cards via store
+        const selectedEntityDcids = getSelectedEntityDcids(selectedShapeIds);
 
         // Create history node in store
         const nodeId = startQuery(prompt, null, parentNodeId);
@@ -301,8 +177,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = {
           nodeId,
           cardIds: [],
-          removeCards: [],
-          placeholderCards: new Map(),
         };
 
         // Build atlas context description for the API

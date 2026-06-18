@@ -39,8 +39,11 @@ export async function POST(request: NextRequest) {
   }
 
   const query = body?.query;
-  const atlasContext = typeof body?.atlasContext === 'string' ? body.atlasContext : '';
-  const ancestorChain = Array.isArray(body?.ancestorChain) ? body.ancestorChain : [];
+  const atlasContext =
+    typeof body?.atlasContext === 'string' ? body.atlasContext : '';
+  const ancestorChain = Array.isArray(body?.ancestorChain)
+    ? body.ancestorChain
+    : [];
   const selectedEntityDcids = Array.isArray(body?.selectedEntityDcids)
     ? body.selectedEntityDcids
     : [];

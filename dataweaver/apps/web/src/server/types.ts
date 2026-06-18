@@ -13,18 +13,14 @@ export interface HistoryNode {
   parentId: string | null;
   query: string;
   parsedQuery: ParsedQuery | null;
+  /** Query results keyed by entity (place) DCID. */
+  results: Record<string, QueryResult>;
   cardIds: string[];
   timestamp: number;
   status: 'pending' | 'complete' | 'error';
 }
 
-type CardType =
-  | 'loading'
-  | 'html'
-  | 'dataset'
-  | 'comparison'
-  | 'image'
-  | 'query_result';
+export type CardType = 'loading' | 'table' | 'notes' | 'chart';
 
 export interface Insight {
   title: string;
@@ -35,15 +31,8 @@ export interface CardEntry {
   shapeId: string;
   historyNodeId: string;
   type: CardType;
-  variableDcids: string[];
-  entityDcids: string[];
-  title: string;
-  variables?: ChartVariable[];
-  metadata?: ChartMetadata[];
-  introduction?: string;
-  coverage?: string;
-  insights?: Insight[];
-  followUps?: string[];
+  /** Key into the parent HistoryNode's `results` record. */
+  placeDcid: string;
 }
 
 // --- Chart Specification types ---
@@ -54,7 +43,7 @@ export interface ChartVariable {
   rationale?: string;
 }
 
-interface ChartEntity {
+export interface ChartEntity {
   dcid: string;
   name: string;
 }

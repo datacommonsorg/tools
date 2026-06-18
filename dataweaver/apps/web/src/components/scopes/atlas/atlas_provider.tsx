@@ -10,6 +10,7 @@ import {
   useRef,
 } from 'react';
 import { createShapeId, type Editor, type TLShapeId, Tldraw } from 'tldraw';
+import { useDataWeaverStore } from '~/store';
 import s from './atlas_provider.module.scss';
 import {
   ATLAS_COMPONENTS,
@@ -46,6 +47,7 @@ export interface CardHandle<TVariant extends CardVariant> {
 export interface AtlasContextProps {
   add<TVariant extends CardVariant>(
     content: ContentForVariant<TVariant>,
+    customId?: string,
   ): CardHandle<TVariant>;
   getSelectedShapeIds(): string[];
 }
@@ -168,6 +170,9 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       (shape) => {
         if (shape.type !== 'card') return;
 
+        // Sync deletion back to the store so card registry stays consistent.
+        useDataWeaverStore.getState().unregisterCard(String(shape.id));
+
         const clones = clonesRef.current.get(shape.id);
         if (!clones) return;
 
@@ -208,8 +213,8 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
           ? editorRef.current.getSelectedShapeIds().map(String)
           : [];
       },
-      add: (content) => {
-        const shapeId = createShapeId();
+      add: (content, customId?) => {
+        const shapeId = customId ? createShapeId(customId) : createShapeId();
 
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)

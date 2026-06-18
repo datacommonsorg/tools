@@ -4,7 +4,7 @@ interface ValidLinkProps {
   rel?: string;
 }
 
-export const validate_href = (href?: string): ValidLinkProps | false  => {
+export const validate_href = (href?: string): ValidLinkProps | false => {
   if (!href) return false;
 
   const isHash = href.startsWith('#');
@@ -19,4 +19,4 @@ export const validate_href = (href?: string): ValidLinkProps | false  => {
     target: isHttp ? '_blank' : undefined,
     rel: isHttp ? 'noopener noreferrer' : undefined,
   };
-}
+};

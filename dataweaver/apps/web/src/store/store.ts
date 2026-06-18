@@ -1,7 +1,13 @@
 import { nanoid } from 'nanoid';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { CardEntry, HistoryNode, ParsedQuery } from '~/server/types';
+import type {
+  CardEntry,
+  CardType,
+  HistoryNode,
+  ParsedQuery,
+  QueryResult,
+} from '~/server/types';
 
 const MAX_ANCESTOR_CHAIN = 10;
 
@@ -24,12 +30,14 @@ export interface DataWeaverStore {
     parentNodeId: string | null,
   ) => string;
   setParsedQuery: (nodeId: string, parsedQuery: ParsedQuery) => void;
+  addResult: (nodeId: string, placeDcid: string, result: QueryResult) => void;
   completeQuery: (nodeId: string, cardIds: string[]) => void;
   failQuery: (nodeId: string) => void;
-  registerCard: (entry: CardEntry) => void;
-  updateCard: (
+  registerCard: (
     shapeId: string,
-    updates: Partial<Omit<CardEntry, 'shapeId'>>,
+    historyNodeId: string,
+    type: CardType,
+    placeDcid: string,
   ) => void;
   unregisterCard: (shapeId: string) => void;
   cancelQuery: (nodeId: string) => void;
@@ -39,6 +47,7 @@ export interface DataWeaverStore {
   // --- Selectors ---
   getAncestorChain: (nodeId: string | null) => HistoryNode[];
   getContextNodeId: (selectedShapeIds: string[]) => string | null;
+  getSelectedEntityDcids: (selectedShapeIds: string[]) => string[];
 }
 
 export const useDataWeaverStore = create<DataWeaverStore>()(
@@ -57,6 +66,7 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
           parentId: parentNodeId,
           query,
           parsedQuery,
+          results: {},
           cardIds: [],
           timestamp: Date.now(),
           status: 'pending',
@@ -86,6 +96,26 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
           },
           undefined,
           'setParsedQuery',
+        );
+      },
+
+      addResult: (nodeId, placeDcid, result) => {
+        set(
+          (state) => {
+            const node = state.nodes[nodeId];
+            if (!node) return state;
+            return {
+              nodes: {
+                ...state.nodes,
+                [nodeId]: {
+                  ...node,
+                  results: { ...node.results, [placeDcid]: result },
+                },
+              },
+            };
+          },
+          undefined,
+          'addResult',
         );
       },
 
@@ -124,25 +154,16 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
         );
       },
 
-      registerCard: (entry) => {
+      registerCard: (shapeId, historyNodeId, type, placeDcid) => {
         set(
-          (state) => ({ cards: { ...state.cards, [entry.shapeId]: entry } }),
+          (state) => ({
+            cards: {
+              ...state.cards,
+              [shapeId]: { shapeId, historyNodeId, type, placeDcid },
+            },
+          }),
           undefined,
           'registerCard',
-        );
-      },
-
-      updateCard: (shapeId, updates) => {
-        set(
-          (state) => {
-            const existing = state.cards[shapeId];
-            if (!existing) return state;
-            return {
-              cards: { ...state.cards, [shapeId]: { ...existing, ...updates } },
-            };
-          },
-          undefined,
-          'updateCard',
         );
       },
 
@@ -229,6 +250,25 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
         }
 
         return bestNodeId || latestNodeId;
+      },
+
+      getSelectedEntityDcids: (selectedShapeIds) => {
+        const { cards, nodes } = get();
+        const dcids: string[] = [];
+
+        for (const shapeId of selectedShapeIds) {
+          const card = cards[shapeId];
+          if (!card) continue;
+          const node = nodes[card.historyNodeId];
+          if (!node) continue;
+          const result = node.results[card.placeDcid];
+          if (!result) continue;
+          for (const entity of result.entities) {
+            dcids.push(entity.dcid);
+          }
+        }
+
+        return dcids;
       },
     }),
     { name: 'DataWeaverStore' },
