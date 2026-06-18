@@ -18,9 +18,6 @@ export const PageHome = () => {
 
   const status = null;
 
-  // Auto close intro if we have a status and it's visible
-  if (isIntroVisible) setIsIntroVisible(false);
-
   const submit = (value = promptValue) => {
     runPrompt(value);
     setPromptValue('');
@@ -44,8 +41,6 @@ export const PageHome = () => {
         {followUp && !status && (
           <FollowUp key="follow-up" followUp={followUp} onSelect={submit} />
         )}
-
-        {status && <Status key="status" status={status} />}
       </AnimatePresence>
       <Status />
       <Prompt

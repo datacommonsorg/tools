@@ -25,7 +25,13 @@ export const Status = () => {
 
       <p className={s['indicator-message']}>{currentStatus}</p>
 
-      <Button className={s['button-cancel']} size="small" onClick={cancelQuery}>
+      <Button
+        className={s['button-cancel']}
+        size="small"
+        variant="border"
+        tone="subtle"
+        onClick={cancelQuery}
+      >
         Cancel
       </Button>
     </m.aside>
