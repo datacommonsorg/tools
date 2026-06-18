@@ -93,10 +93,15 @@ export const deriveChartContent = (
     return null;
   }
 
+  const varName = result.variables[0]?.name;
+  const placeName = result.entities[0]?.name;
+  const title =
+    varName && placeName ? `${varName} in ${placeName}` : result.title;
+
   return {
     variant: 'chart',
-    title: result.variables[0]?.name ?? result.title,
-    description: firstFacet.source,
+    title,
+    description: result.variables[0]?.rationale ?? firstFacet.source,
     data: firstFacet.observations,
     facets: allFacets,
     isLoading: false,
