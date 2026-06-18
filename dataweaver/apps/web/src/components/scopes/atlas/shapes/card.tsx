@@ -14,12 +14,13 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
-import { useExportActions } from '~/components/scopes/atlas/components/in_front_of_canvas/export/export_provider';
+import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import type {
   CardContentFields,
   CardSize,
   CardVariant,
 } from '~/components/scopes/atlas/helpers';
+import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 
 interface ShapeCardProps extends CardContentFields, CardSize {
   variant?: CardVariant;
@@ -70,11 +71,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     return selectedIds.length > 1 ? 'multiple' : 'single';
   };
 
-  #getActions = (
-    shape: ShapeCard,
-    isLoading: boolean,
-    openExport: () => void,
-  ) => {
+  #getActions = (shape: ShapeCard, isLoading: boolean) => {
+    const { open: openExport } = useExportActions();
+
     const deleteAction = {
       icon: IconDelete,
       label: 'Delete',
@@ -130,29 +129,42 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     return <Card.Text title={title} body={body} isLoading={isLoading} />;
   };
 
-  override component = (shape: ShapeCard) => {
-    const { w, h, followUp } = shape.props;
-    const isLoading = shape.props.isLoading ?? false;
-    const { open: openExport } = useExportActions();
+  #renderFooter = (shape: ShapeCard) => {
+    const { runPrompt } = useQueryActions();
+    const { followUp } = shape.props;
+
+    // Only render follow-up button if the card has a follow-up query defined
+    if (!followUp) return null;
 
     return (
-      <HTMLContainer style={{ width: w, height: h, pointerEvents: 'auto' }}>
+      <Button
+        icon={IconPencil}
+        size="small"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => runPrompt(followUp)}
+      >
+        {followUp}
+      </Button>
+    );
+  };
+
+  override component = (shape: ShapeCard) => {
+    const isLoading = shape.props.isLoading ?? false;
+
+    return (
+      <HTMLContainer
+        style={{
+          width: shape.props.w,
+          height: shape.props.h,
+          pointerEvents: 'auto',
+        }}
+      >
         <Card.Base
           isLoading={isLoading}
           selection={this.#getSelectionState(shape)}
-          actions={this.#getActions(shape, isLoading, openExport)}
+          actions={this.#getActions(shape, isLoading)}
           content={this.#renderContent(shape, isLoading)}
-          footer={
-            followUp && (
-              <Button
-                icon={IconPencil}
-                size="small"
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                {followUp}
-              </Button>
-            )
-          }
+          footer={this.#renderFooter(shape)}
         />
       </HTMLContainer>
     );

@@ -6,12 +6,12 @@ import { Button } from '~/components/elements/button';
 import { IconClose } from '~/components/primitives/icons/close';
 import { IconSelect } from '~/components/primitives/icons/select';
 import { IconShapes } from '~/components/primitives/icons/shapes';
+import { useExport } from '~/components/scopes/atlas/export_provider';
 import { IS_APPLE } from '~/configs/environment_client';
 import { useFocusTrap } from '~/hooks/use_focus_trap';
 import { useKeydown } from '~/hooks/use_keydown';
 import { useMatchMedia } from '~/hooks/use_match_media';
 import s from './export_panel.module.scss';
-import { useExport } from './export_provider';
 
 /** The available export formats shown in the panel's options grid. */
 const EXPORT_OPTIONS = [

@@ -1,7 +1,10 @@
-import type { TLComponents, TLUiOverrides } from 'tldraw';
+import { EASE_OUT } from '@package/tokens/ts';
+import { cubicBezier } from 'motion';
+import type { TLCameraMoveOptions, TLComponents, TLUiOverrides } from 'tldraw';
 import { ContextMenu } from './components/context_menu';
 import { Grid } from './components/grid';
 import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
+import type { CardSize, CardVariant } from './helpers';
 import { AtlasSelectionForegroundOverlayUtil } from './overlays/selection_foreground';
 import { ShapeCardUtil } from './shapes/card';
 /**
@@ -80,3 +83,18 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
   { length: ZOOM_STEP_COUNT + 1 },
   (_, index) => MIN_ZOOM + (index * (MAX_ZOOM - MIN_ZOOM)) / ZOOM_STEP_COUNT,
 );
+
+/** Per-variant default canvas footprint. */
+export const CARD_VARIANT_SIZE: Record<CardVariant, CardSize> = {
+  text: { w: 360, h: 440 },
+  chart: { w: 420, h: 520 },
+};
+
+/** Minimum gap to keep between a placed card and any other card, in px. */
+export const DISTANCE_FROM_OTHER_CARDS = 40;
+
+/** Animation used when the camera pans to reveal a freshly placed card. */
+export const KEEP_IN_VIEW_ANIMATION: TLCameraMoveOptions['animation'] = {
+  duration: 500,
+  easing: cubicBezier(...EASE_OUT),
+} as const;
