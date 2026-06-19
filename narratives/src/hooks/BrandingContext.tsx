@@ -4,7 +4,26 @@ import { useBranding, DEFAULT_BRAND, type Branding } from "./useBranding";
 const BrandingContext = createContext<Branding>(DEFAULT_BRAND);
 
 /**
- * Context provider wrapper that fetches and injects the active instance's branding definitions.
+ * Context provider component that wraps the React application shell and exposes
+ * the active Custom Data Commons instance branding parameters (such as colors, fonts,
+ * logos, names, and customized metrics dashboard options).
+ *
+ * This provider triggers the fetch of `branding.json` configurations at mount and registers
+ * custom CSS variables onto the HTML document root to apply custom themes dynamically.
+ *
+ * @example
+ * ```tsx
+ * import { BrandingProvider } from './hooks/BrandingContext';
+ * 
+ * function AppContainer() {
+ *   return (
+ *     <BrandingProvider>
+ *       <Header />
+ *       <MainContent />
+ *     </BrandingProvider>
+ *   );
+ * }
+ * ```
  */
 export function BrandingProvider({ children }: { children: ReactNode }) {
   const { branding } = useBranding();
@@ -16,7 +35,23 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Hook to retrieve the current instance branding configurations (colors, font, logo, name).
+ * React hook to retrieve the current Custom Data Commons instance branding configurations
+ * from the surrounding `BrandingProvider` context.
+ *
+ * Used by UI components like headers, footers, and charts to dynamically style themselves
+ * matching the brand config.
+ *
+ * @returns The active instance branding settings (e.g. `instanceName`, `logoUrl`, `accentColor`).
+ *
+ * @example
+ * ```tsx
+ * import { useBrand } from '../hooks/BrandingContext';
+ * 
+ * function Logo() {
+ *   const { logoUrl, instanceName } = useBrand();
+ *   return <img src={logoUrl} alt={instanceName} />;
+ * }
+ * ```
  */
 export function useBrand(): Branding {
   return useContext(BrandingContext);
