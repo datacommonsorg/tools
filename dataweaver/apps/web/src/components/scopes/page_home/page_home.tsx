@@ -28,6 +28,10 @@ export const PageHome = () => {
     setFollowUp(null);
   };
 
+  const showIntro = useMemo(() => {
+    return isIntroVisible && currentStatus !== STATUS.complete;
+  }, [isIntroVisible, currentStatus]);
+
   const showStatus = useMemo(() => {
     return !isIntroVisible && currentStatus !== STATUS.complete;
   }, [isIntroVisible, currentStatus]);
@@ -35,7 +39,7 @@ export const PageHome = () => {
   return (
     <div className={s.container}>
       <AnimatePresence initial={false} mode="wait">
-        {isIntroVisible && (
+        {showIntro && (
           <Intro
             key="intro"
             onSelect={(selected) => {
