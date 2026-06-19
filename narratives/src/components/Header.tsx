@@ -26,16 +26,24 @@ export function Header() {
 
       {/* Right Navigation */}
       <nav className="flex items-center gap-8 text-label-large text-on-surface-variant ml-auto overflow-x-auto whitespace-nowrap scrollbar-none py-1">
-        {NAV_CONFIG.map((item) => (
-          item.id === activeId ? (
-            <div key={item.id} className="relative cursor-pointer group py-1">
-              <span className="font-medium text-teal">{item.label}</span>
-              <div className="absolute top-0 left-0 w-full h-0.5 rounded-b-sm bg-teal"></div>
-            </div>
-          ) : (
-            <a key={item.id} href={item.href} className="hover:text-on-surface transition-colors">{item.label}</a>
-          )
-        ))}
+        {NAV_CONFIG.map((item) => {
+          const isActive = item.id === activeId;
+          return (
+            <a
+              key={item.id}
+              href={item.href}
+              aria-current={isActive ? "page" : undefined}
+              className={`relative py-1 transition-colors ${
+                isActive ? "font-medium text-teal" : "hover:text-on-surface"
+              }`}
+            >
+              {item.label}
+              {isActive && (
+                <div className="absolute top-0 left-0 w-full h-0.5 rounded-b-sm bg-teal"></div>
+              )}
+            </a>
+          );
+        })}
 
         <div className="h-4 w-px bg-gray-300 mx-1"></div>
 
