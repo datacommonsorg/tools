@@ -47,6 +47,8 @@ export function Header() {
 
         <div className="h-4 w-px bg-gray-300 mx-1"></div>
 
+        {/* TODO(i18n): Language is currently hardcoded to English. Move this configuration to dynamic branding options or configure localization support. */}
+        {/* TODO(a11y): Add aria-haspopup="listbox" and aria-expanded when language selection dropdown is implemented. */}
         <button className="flex items-center gap-1 hover:text-on-surface transition-colors font-medium">
           English
           <ChevronDown size={16} className="mt-0.5 text-on-surface-variant" strokeWidth={2} />
