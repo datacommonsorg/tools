@@ -26,6 +26,10 @@ function readRoute(): string {
 /**
  * Custom React hook that subscribes to window `hashchange` events and returns
  * the active normalized route segment as a single-item array tuple.
+ *
+ * @returns The active route segment (untrusted user input from window.location).
+ * @warning The returned string is user-controlled. Do not pass it directly to
+ *          location redirects or anchor href attributes without validation.
  */
 export function useHashRoute(): [string] {
   const [route, setRoute] = useState<string>(readRoute);
