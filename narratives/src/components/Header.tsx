@@ -14,9 +14,9 @@ export function Header() {
   const activeId = route || "agent";
 
   return (
-    <header className="w-full flex items-center justify-between px-6 lg:px-12 py-5 shrink-0 whitespace-nowrap overflow-x-auto">
+    <header className="w-full flex items-center justify-between px-6 lg:px-12 py-5 shrink-0 overflow-hidden">
       {/* Logo Section */}
-      <div className="flex items-center select-none">
+      <div className="flex items-center select-none shrink-0 mr-4">
         <img
           src={logoUrl || "/logo.png"}
           alt={`${instanceName || "People + AI"} Logo`}
@@ -25,7 +25,7 @@ export function Header() {
       </div>
 
       {/* Right Navigation */}
-      <nav className="flex items-center gap-8 text-label-large text-on-surface-variant ml-auto">
+      <nav className="flex items-center gap-8 text-label-large text-on-surface-variant ml-auto overflow-x-auto whitespace-nowrap scrollbar-none py-1">
         {NAV_CONFIG.map((item) => (
           item.id === activeId ? (
             <div key={item.id} className="relative cursor-pointer group py-1">
