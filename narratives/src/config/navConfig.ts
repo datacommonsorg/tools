@@ -23,8 +23,8 @@ export interface NavItem {
  * Ordered matching the Figma reference (AppbarDataAgent).
  */
 export const NAV_CONFIG: NavItem[] = [
-  { id: "agent", label: "Data agent", href: "#/agent" },
-  { id: "metrics", label: "Key metrics dashboard", href: "#/metrics" },
-  { id: "download", label: "Data download tool", href: "#/download" },
-  { id: "statvar", label: "Statistical variable explorer", href: "#/statvar" },
+  { id: "agent", label: "Data Agent", href: "#/agent" },
+  { id: "metrics", label: "Key Metrics Dashboard", href: "#/metrics" },
+  { id: "download", label: "Data Download Tool", href: "#/download" },
+  { id: "statvar", label: "Statistical Variable Explorer", href: "#/statvar" },
 ];
