@@ -1,4 +1,9 @@
 /**
+ * @fileoverview Defines top-level navigation layout configurations and routing metadata
+ * for the custom Narratives client application.
+ */
+
+/**
  * Represents an item in the top navigation bar.
  */
 export interface NavItem {

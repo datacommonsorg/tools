@@ -1,4 +1,8 @@
 /**
+ * @fileoverview Type definitions for config-driven Key Metrics dashboard charting elements.
+ */
+
+/**
  * Allowed visualization types for metrics cards.
  */
 export type MetricsTileType =

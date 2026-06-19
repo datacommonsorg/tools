@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Header navigation component displaying dynamic logos and responsive menu selections.
+ */
+
 import React from "react";
 import { ChevronDown } from "lucide-react";
 import { NAV_CONFIG } from "../config/navConfig";

@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Left sidebar navigation rail displaying chat session actions.
+ */
+
 import React from "react";
 import { Menu, SquarePen } from "lucide-react";
 import { useHashRoute } from "../hooks/useHashRoute";

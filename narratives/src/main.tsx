@@ -1,3 +1,7 @@
+/**
+ * @fileoverview DOM entry point mounting the root React application onto the document.
+ */
+
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { App } from './App';

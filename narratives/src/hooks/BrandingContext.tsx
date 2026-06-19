@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Exposes the Branding React Context Provider and hook for accessing
+ * dynamic theme config variables inside consumer components.
+ */
+
 import React, { createContext, useContext, type ReactNode } from "react";
 import { useBranding, DEFAULT_BRAND, type Branding } from "./useBranding";
 

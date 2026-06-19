@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Hook to fetch, parse, and apply dynamic tenant-specific branding
+ * configurations (colors, fonts, and assets) from GCS configuration buckets.
+ */
+
 import { useEffect, useState } from "react";
 import type { MetricsConfig } from "../types/metrics";
 

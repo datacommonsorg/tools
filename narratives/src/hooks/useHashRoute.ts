@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Hook offering lightweight, client-side hash routing state management
+ * which parses path segments and strips tracking query parameters.
+ */
+
 import { useEffect, useState } from "react";
 
 // Lightweight hash-based router. We deliberately avoid react-router-dom

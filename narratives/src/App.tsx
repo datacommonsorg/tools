@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Main single-page application core setup, integrating layout
+ * grids, contexts, and tab route selection.
+ */
+
 import React from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
