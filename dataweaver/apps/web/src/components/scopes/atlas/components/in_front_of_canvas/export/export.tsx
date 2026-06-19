@@ -10,6 +10,9 @@ import { Control } from './control';
 import s from './export.module.scss';
 import { Menu } from './menu';
 
+/** Prevent card clicks from closing the export menu. */
+const IGNORE_TARGETS = [`[${CARD_DATA_ATTRIBUTE}]`];
+
 export const Export = () => {
   const menuId = useId();
 
@@ -23,9 +26,7 @@ export const Export = () => {
 
   useClickOutside(containerRef, close, {
     isEnabled: isOpen,
-
-    // Prevent clicking a card from dismissing the export panel
-    ignoreTargets: [`[${CARD_DATA_ATTRIBUTE}]`],
+    ignoreTargets: IGNORE_TARGETS,
   });
 
   // TODO: For now this doesn't seem to really work due to TLDraw consuming

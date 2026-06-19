@@ -8,7 +8,6 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
-import { useMatchMedia } from '~/hooks/use_match_media';
 import s from './selection.module.scss';
 
 /** Screen-space margin the selection box extends past the cards, in pixels. */
@@ -29,8 +28,6 @@ export const Selection = () => {
   const { open: openExport } = useExportActions();
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const prefersMotion = useMatchMedia('prefers-motion');
 
   const hasMultipleSelected = useValue('multi-selection-active', () => {
     return editor.getSelectedShapeIds().length > 1;
@@ -72,12 +69,10 @@ export const Selection = () => {
         <m.div
           ref={setContainer}
           className={s.container}
-          {...(prefersMotion && {
-            initial: { opacity: 0 },
-            animate: { opacity: 1 },
-            exit: { opacity: 0 },
-            transition: { duration: 0.1, ease: EASE_LINEAR },
-          })}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.1, ease: EASE_LINEAR }}
         >
           <div
             className={s['actions-container']}

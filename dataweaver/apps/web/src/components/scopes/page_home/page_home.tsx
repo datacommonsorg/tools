@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
@@ -15,7 +15,9 @@ export const PageHome = () => {
   const [promptValue, setPromptValue] = useState('');
 
   // Auto close intro if we have a status and it's visible
-  if (status && isIntroVisible) setIsIntroVisible(false);
+  useEffect(() => {
+    if (status && isIntroVisible) setIsIntroVisible(false);
+  }, [status, isIntroVisible]);
 
   const submit = (promptValue: string) => {
     runPrompt(promptValue);

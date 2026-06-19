@@ -1,10 +1,8 @@
-import type { ComponentPropsWithRef, ReactNode } from 'react';
+import type { ComponentPropsWithRef } from 'react';
 import { mergeClassNames } from '~/functions/merge_class_names';
 import s from './radio.module.scss';
 
-type RadioProps = {
-  children?: ReactNode;
-} & Omit<ComponentPropsWithRef<'input'>, 'type'>;
+type RadioProps = Omit<ComponentPropsWithRef<'input'>, 'type'>;
 
 export const Radio = ({ children, className, ...rest }: RadioProps) => {
   return (

@@ -36,7 +36,7 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
     <m.dialog
       open
       id={id}
-      className={s['menu-container']}
+      className={s.container}
       aria-modal="false"
       aria-label="Export"
       // Prevent tldraw from treating panel interactions as canvas gestures
@@ -56,14 +56,11 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
           <AnimatePresence initial={false}>
             {status === 'selected' && (
               <m.span
-                {...(prefersMotion && {
-                  initial: { opacity: 0 },
-                  animate: { opacity: 1 },
-                  exit: { opacity: 0 },
-
-                  // Delay here ensures this matches status mode wait reveal
-                  transition: { duration: 0.2, delay: 0.2, ease: EASE_OUT },
-                })}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                // Delay here ensures this matches status mode wait reveal
+                transition={{ duration: 0.2, delay: 0.2, ease: EASE_OUT }}
               >
                 {` (${totalSelected} selected)`}
               </m.span>
@@ -85,12 +82,10 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
         <m.div
           key={status}
           className={s['content-container']}
-          {...(prefersMotion && {
-            initial: { opacity: 0 },
-            animate: { opacity: 1 },
-            exit: { opacity: 0 },
-            transition: { duration: 0.2, ease: EASE_OUT },
-          })}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: EASE_OUT }}
         >
           {status === 'empty' ? <StatusEmpty /> : <StatusSelected />}
         </m.div>

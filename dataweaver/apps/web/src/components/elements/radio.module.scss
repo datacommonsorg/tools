@@ -24,10 +24,7 @@
     background: rgb(var(--color-control-content));
     border-radius: 50%;
     opacity: 0;
-
-    @include prefers-motion {
-      transition: opacity 0.2s $ease-linear;
-    }
+    transition: opacity 0.2s $ease-linear;
   }
 }
 

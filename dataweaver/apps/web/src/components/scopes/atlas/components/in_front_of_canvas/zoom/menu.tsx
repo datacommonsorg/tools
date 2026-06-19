@@ -91,7 +91,7 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
     <m.dialog
       open
       id={id}
-      className={s['menu-container']}
+      className={s.container}
       aria-label="Zoom options"
       // Prevent tldraw from treating menu interactions as canvas gestures
       onPointerDown={(event) => event.stopPropagation()}

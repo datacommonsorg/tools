@@ -166,8 +166,13 @@ check `~/styles/includes/_helpers.module.scss` for the full set:
 
 - **Root element = `.container`.** One per file; identity comes from the file
   name and `data-*` attributes, not a unique root class.
-- **Layout wrappers = `<noun>-container`** (e.g. `.assets-container`). Never
-  `wrapper` / `outer` / `inner`.
+- **Layout wrappers = `<noun>-container`** (e.g. `.assets-container`). Avoid
+  vague `wrapper`. The one sanctioned positional pair is `.outer-container` /
+  `.inner-container` — for a surface-plus-layout split where the outer element
+  paints the surface (background, radius, shadow, scroll) and the inner one
+  arranges its children. Here `outer` / `inner` *is* the meaningful noun, so the
+  root rule above doesn't force `.container`; reach for it only for that pair,
+  not as a generic substitute for a real noun.
 - **Bare leaf class only when it renders a prop of the same name** —
   `<h2 className={s.title}>{title}</h2>`. Otherwise use a `<noun>-container` or
   an element-prefixed class.
@@ -214,9 +219,20 @@ Base styles target mobile; layer up with `@include breakpoint(tablet)` (768px+),
 
 ### 3.7 Motion
 
-Always wrap animation / transition styles in `@include prefers-motion { … }` so
-reduced-motion users get a static rendering. Animate **`transform` / `opacity`
-only** for per-frame values (compositor-only; skip layout/paint).
+Wrap **motion-bearing** animation / transition styles in
+`@include prefers-motion { … }` so reduced-motion users get a static rendering.
+Motion-bearing means anything that moves, scales, rotates, or otherwise animates
+position or geometry (`transform`, layout, `clip-path`, a looping `animation`,
+etc.).
+
+**Opacity-only transitions are exempt** — a pure fade conveys no motion, so
+there is nothing for reduced-motion to reduce. Leave a `transition: opacity …`
+(with no other animated property) ungated. The moment another property joins it
+(`transform`, `width`, …), the whole block becomes motion-bearing and must be
+gated.
+
+Animate **`transform` / `opacity` only** for per-frame values (compositor-only;
+skip layout/paint).
 
 ### 3.8 Misc
 
@@ -262,6 +278,12 @@ JS-side easing constants (typed): import `EASE_LINEAR` / `EASE_OUT` / `EASE_IN`
 Gate motion in CSS with `@include prefers-motion`. For Motion props, gate the
 animation block on `useMatchMedia("prefers-motion")` via a conditional spread so
 reduced-motion users render the static resting state.
+
+**Opacity-only transitions don't count as motion** (see §3.7) — a fade between
+`opacity` states needs no gate. Pass `initial` / `animate` / `exit` props
+unconditionally when they animate `opacity` alone; only reach for the
+`useMatchMedia` spread once the block also moves the element (`y`, `scale`,
+`transform`, …).
 
 ---
 
@@ -324,6 +346,6 @@ Target WCAG 2.2 AA. Build it in, don't bolt it on.
 - Co-locate `.tsx` with `.module.scss`; kebab class names; `.container` root.
 - Keep lines ≤ 80 columns (code and prose).
 - Consume tokens from `@package/tokens`; wrap motion-bearing SCSS in
-  `@include prefers-motion`.
+  `@include prefers-motion` (opacity-only transitions are exempt — see §3.7).
 - Icon-only controls get `aria-label`, inner icon `aria-hidden`.
 - Run `pnpm lint` (and `pnpm build` for UI changes) before done.
