@@ -33,6 +33,8 @@ export interface CardEntry {
   type: CardType;
   /** Key into the parent HistoryNode's `results` record. */
   placeDcid: string;
+  /** When set, the chart card targets this specific variable instead of the first. */
+  variableDcid?: string;
 }
 
 // --- Chart Specification types ---

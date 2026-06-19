@@ -38,6 +38,7 @@ export interface DataWeaverStore {
     historyNodeId: string,
     type: CardType,
     placeDcid: string,
+    variableDcid?: string,
   ) => void;
   unregisterCard: (shapeId: string) => void;
   cancelQuery: (nodeId: string) => void;
@@ -154,12 +155,24 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
         );
       },
 
-      registerCard: (shapeId, historyNodeId, type, placeDcid) => {
+      registerCard: (
+        shapeId,
+        historyNodeId,
+        type,
+        placeDcid,
+        variableDcid?,
+      ) => {
         set(
           (state) => ({
             cards: {
               ...state.cards,
-              [shapeId]: { shapeId, historyNodeId, type, placeDcid },
+              [shapeId]: {
+                shapeId,
+                historyNodeId,
+                type,
+                placeDcid,
+                variableDcid,
+              },
             },
           }),
           undefined,

@@ -108,11 +108,48 @@ export const deriveChartContent = (
   };
 };
 
+/** Derive AtlasContent for a chart card targeting a specific variable by DCID. */
+export const deriveChartContentForVariable = (
+  result: QueryResult,
+  variableDcid: string,
+  entityDcid?: string,
+): AtlasContent | null => {
+  const meta = result.metadata.find(
+    (m) =>
+      m.variableDcid === variableDcid &&
+      (!entityDcid || m.entityDcid === entityDcid),
+  );
+  const allFacets = meta?.facets;
+  const firstFacet = allFacets?.[0];
+
+  if (!allFacets || !firstFacet || firstFacet.observations.length === 0) {
+    return null;
+  }
+
+  const variable = result.variables.find((v) => v.dcid === variableDcid);
+  const placeName = entityDcid
+    ? result.entities.find((e) => e.dcid === entityDcid)?.name
+    : result.entities[0]?.name;
+  const varName = variable?.name;
+  const title =
+    varName && placeName ? `${varName} in ${placeName}` : result.title;
+
+  return {
+    variant: 'chart',
+    title,
+    description: variable?.rationale ?? firstFacet.source,
+    data: firstFacet.observations,
+    facets: allFacets,
+    isLoading: false,
+  };
+};
+
 /** Derive AtlasContent for a given card type and its associated query result. */
 export const deriveContentForCard = (
   type: CardType,
   result: QueryResult | undefined,
   placeholderTitle?: string,
+  variableDcid?: string,
 ): AtlasContent | null => {
   if (type === 'loading') {
     return deriveLoadingContent(placeholderTitle ?? '');
@@ -124,7 +161,9 @@ export const deriveContentForCard = (
     case 'notes':
       return deriveNotesContent(result);
     case 'chart':
-      return deriveChartContent(result);
+      return variableDcid
+        ? deriveChartContentForVariable(result, variableDcid)
+        : deriveChartContent(result);
   }
 };
 
@@ -159,7 +198,12 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
         const title =
           node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
 
-        const content = deriveContentForCard(card.type, result, title);
+        const content = deriveContentForCard(
+          card.type,
+          result,
+          title,
+          card.variableDcid,
+        );
         if (!content) continue;
 
         // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
@@ -175,7 +219,12 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
 
         const node = nodes[card.historyNodeId];
         const result = node?.results[card.placeDcid];
-        const content = deriveContentForCard(card.type, result);
+        const content = deriveContentForCard(
+          card.type,
+          result,
+          undefined,
+          card.variableDcid,
+        );
         if (!content) continue;
 
         const handle = handles.get(shapeId);

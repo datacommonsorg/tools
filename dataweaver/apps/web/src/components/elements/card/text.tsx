@@ -11,9 +11,16 @@ export interface CardTextProps extends Pick<CardState, 'isLoading'> {
   title?: string;
   /** HTML string rendered via `html-react-parser` (sanitized/filtered). */
   body?: string;
+  /** Callback fired when an internal `#hash` action link is clicked. */
+  onAction?: (href: string) => void;
 }
 
-export const CardText = ({ title, body, isLoading }: CardTextProps) => {
+export const CardText = ({
+  title,
+  body,
+  isLoading,
+  onAction,
+}: CardTextProps) => {
   const parsedHtml = useMemo(
     () =>
       body
@@ -32,6 +39,22 @@ export const CardText = ({ title, body, isLoading }: CardTextProps) => {
                     }
 
                     const { href, target, rel } = validLink;
+
+                    // Internal action links — fire callback instead of navigating.
+                    if (href.startsWith('#') && onAction) {
+                      return (
+                        <a
+                          href={href}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onAction(href);
+                          }}
+                        >
+                          {domToReact(domNode.children as DOMNode[])}
+                        </a>
+                      );
+                    }
 
                     return (
                       <Link href={href} target={target} rel={rel}>
@@ -54,7 +77,7 @@ export const CardText = ({ title, body, isLoading }: CardTextProps) => {
             },
           })
         : null,
-    [body],
+    [body, onAction],
   );
 
   return (
