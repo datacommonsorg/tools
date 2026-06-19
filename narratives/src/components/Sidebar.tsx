@@ -1,13 +1,13 @@
+import React from "react";
 import { Menu, SquarePen } from "lucide-react";
 import { useHashRoute } from "../hooks/useHashRoute";
 import { useChatSession } from "../hooks/ChatSessionContext";
 
-// The left rail itself stays visible across all tabs (same width, same fill)
-// so the page layout doesn't jump as the user navigates — per Adriana's
-// 23 Apr ¶17 direction. Only the two icons (the "accordion" hamburger and
-// the "start new chat" pencil) are tied to the Agent tab; on every other
-// tab the rail renders empty.
-export default function Sidebar() {
+/**
+ * Sidebar component representing the left rail.
+ * Toggles the chat history drawer and initiates new sessions when on the Agent tab.
+ */
+export function Sidebar() {
   const [route] = useHashRoute();
   const { newSession, toggleDrawer, isDrawerOpen } = useChatSession();
   const isAgent = route === "" || route === "agent";
@@ -17,8 +17,7 @@ export default function Sidebar() {
       {isAgent && (
         <>
           {/* Menu / "accordion" icon — toggles the SessionDrawer that lists
-              all chat threads. Adriana referred to this as the accordion in
-              23 Apr ¶17. */}
+              all chat threads. */}
           <button
             type="button"
             aria-label="Toggle chats list"
@@ -32,8 +31,7 @@ export default function Sidebar() {
           >
             <Menu size={24} strokeWidth={1.5} />
           </button>
-          {/* Start a fresh chat thread — does NOT delete other sessions; they
-              remain accessible from the drawer above. */}
+          {/* Start a fresh chat thread. */}
           <button
             type="button"
             aria-label="Start new chat"

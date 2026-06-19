@@ -11,6 +11,10 @@ import { useEffect, useState } from "react";
 //
 // Empty hash (`""` / `"#"` / `"#/"`) → "" (treat as default / agent).
 
+/**
+ * Normalizes and extracts the active route token from window.location.hash,
+ * stripping leading hash symbols, slashes, and query parameters.
+ */
 function readRoute(): string {
   if (typeof window === "undefined") {
     return "";
@@ -19,6 +23,10 @@ function readRoute(): string {
   return path.split("?")[0];
 }
 
+/**
+ * Custom React hook that subscribes to window `hashchange` events and returns
+ * the active normalized route segment as a single-item array tuple.
+ */
 export function useHashRoute(): [string] {
   const [route, setRoute] = useState<string>(readRoute);
 

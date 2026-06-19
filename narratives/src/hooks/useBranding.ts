@@ -15,49 +15,75 @@ export type MetricsTileType =
   | "gauge"
   | "slider";
 
-// A tile maps 1:1 onto a <datacommons-${type}> web component. The MetricsPage
-// <Tile> wrapper shows `title` as its chrome header; everything else passes
-// through as attributes to the DC component. See
-// website/packages/web-components/docs/components/*.md for the per-type
-// required/optional attribute set.
-//
-// Highlight cards are just `type: "highlight"` tiles — they render with the
-// DC component's native light-blue chip styling (no custom gradient wrapper).
+/**
+ * Configuration for a single data commons visualization card/tile.
+ */
 export interface MetricsTile {
+  /** The type of web component to render (e.g. line, bar, map). */
   type: MetricsTileType;
+  /** Title shown as the card header. */
   title: string;
+  /** Custom header override. */
   header?: string;
+  /** Variable DCID for single-variable charts. */
   variable?: string;
+  /** Comma-separated variable DCIDs for multi-variable charts. */
   variables?: string;
+  /** Place DCID for single-place charts. */
   place?: string;
+  /** Comma-separated place DCIDs. */
   places?: string;
+  /** Parent place DCID (useful for map navigation). */
   parentPlace?: string;
+  /** Child place type filter. */
   childPlaceType?: string;
+  /** Specific date filter. */
   date?: string;
+  /** Maximum number of places to show in ranking charts. */
   rankingCount?: number;
+  /** Whether to show both highest and lowest in ranking. */
   showHighestLowest?: boolean;
+  /** Whether to show only lowest in ranking. */
   showLowest?: boolean;
+  /** Whether to show place labels on maps/charts. */
   showPlaceLabels?: boolean;
+  /** Sort order for ranking charts. */
   sort?:
     | "ascending"
     | "descending"
     | "ascendingPopulation"
     | "descendingPopulation";
+  /** Custom color palette override. */
   colors?: string;
+  /** Unit override. */
   unit?: string;
+  /** Minimum range value. */
   min?: number;
+  /** Maximum range value. */
   max?: number;
+  /** Start date filter range. */
   startDate?: string;
+  /** End date filter range. */
   endDate?: string;
 }
 
+/**
+ * Represents a tab group inside the Key Metrics Dashboard page.
+ */
 export interface MetricsTab {
+  /** Unique ID for the tab. */
   id: string;
+  /** Label text displayed on the tab selector. */
   label: string;
+  /** Set of metric visualization cards to render within the tab. */
   tiles: MetricsTile[];
 }
 
+/**
+ * Complete Key Metrics Dashboard configuration.
+ */
 export interface MetricsConfig {
+  /** List of tabs containing visualizations. */
   tabs: MetricsTab[];
 }
 
@@ -65,7 +91,36 @@ export interface MetricsConfig {
 // Branding — per-instance config fetched from the bucket at page mount
 // ---------------------------------------------------------------------------
 
+/**
+ * Branding configuration schema for customizing the instance layout and style.
+ */
 export interface Branding {
+  /** The version of the branding schema configuration. */
+  schemaVersion?: string;
+  /** The name of this Custom Data Commons instance. */
+  instanceName?: string;
+  /** The URL of the brand logo image. */
+  logoUrl?: string;
+  /** Primary brand color used for key elements and buttons. */
+  primaryColor?: string;
+  /** Accent color used for highlighting selected tabs or callouts. */
+  accentColor?: string;
+  /** Custom Google Font family name applied to the site typography. */
+  fontFamily?: string;
+  /** A list of sample starter questions shown on the home page. */
+  suggestions?: string[];
+  /** Custom navigation links shown in the footer or sidebar. */
+  navigation?: Array<{ label: string; href: string }>;
+  /** Copyright or disclaimer text displayed in the footer. */
+  footerText?: string;
+  /** Optional customized key metrics dashboard tabs configuration. */
+  metrics?: MetricsConfig;
+}
+
+/**
+ * Raw branding response representation directly from the JSON files.
+ */
+interface RawBranding {
   schema_version?: string;
   instance_name?: string;
   logo_url?: string;
@@ -75,50 +130,63 @@ export interface Branding {
   suggestions?: string[];
   navigation?: Array<{ label: string; href: string }>;
   footer_text?: string;
-  // When absent, MetricsPage falls back to DEFAULT_METRICS_TABS — see
-  // src/components/MetricsPage.tsx.
   metrics?: MetricsConfig;
 }
 
-// Bundled fallback used if the agent's /agent/brand endpoint returns an
-// empty URL, or the fetch of branding.json fails. Keep in sync with
-// brands/default/branding.json (the canonical copy lives in the deployment
-// repo so per-instance uploads have a reference schema to copy from).
 export const DEFAULT_BRAND: Branding = {
-  schema_version: "1",
-  instance_name: "Custom Data Commons",
-  logo_url: "",
-  primary_color: "#1A73E8",
-  accent_color: "#34A853",
-  font_family: "Google Sans",
+  schemaVersion: "1",
+  instanceName: "Custom Data Commons",
+  logoUrl: "",
+  primaryColor: "#1A73E8",
+  accentColor: "#34A853",
+  fontFamily: "Google Sans",
   suggestions: [
     "How has average annual wage changed over time in the United States?",
     "Compare GDP growth across G7 countries",
     "What is the gender wage gap in OECD countries?",
   ],
   navigation: [{ label: "Data Agent", href: "/" }],
-  footer_text: "Powered by Data Commons, an initiative from Google.",
+  footerText: "Powered by Data Commons, an initiative from Google.",
 };
 
 interface BrandConfigResponse {
   brand_config_url?: string;
 }
 
-// Apply branding values as CSS custom properties so the existing index.css
-// @theme block can pick them up at render time.
-function applyCssVars(b: Branding) {
+function mapRawToBranding(raw: RawBranding): Branding {
+  return {
+    schemaVersion: raw.schema_version,
+    instanceName: raw.instance_name,
+    logoUrl: raw.logo_url,
+    primaryColor: raw.primary_color,
+    accentColor: raw.accent_color,
+    fontFamily: raw.font_family,
+    suggestions: raw.suggestions,
+    navigation: raw.navigation,
+    footerText: raw.footer_text,
+    metrics: raw.metrics,
+  };
+}
+
+/**
+ * Applies branding custom property values onto the root HTML element.
+ */
+function applyCssVars(brandingConfig: Branding) {
   const root = document.documentElement;
-  if (b.primary_color) {
-    root.style.setProperty("--brand-primary", b.primary_color);
+  if (brandingConfig.primaryColor) {
+    root.style.setProperty("--brand-primary", brandingConfig.primaryColor);
   }
-  if (b.accent_color) {
-    root.style.setProperty("--brand-accent", b.accent_color);
+  if (brandingConfig.accentColor) {
+    root.style.setProperty("--brand-accent", brandingConfig.accentColor);
   }
-  if (b.font_family) {
-    root.style.setProperty("--brand-font", b.font_family);
+  if (brandingConfig.fontFamily) {
+    root.style.setProperty("--brand-font", brandingConfig.fontFamily);
   }
 }
 
+/**
+ * Hook to dynamically load branding custom configurations.
+ */
 export function useBranding(): { branding: Branding; loaded: boolean; error: string | null } {
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRAND);
   const [loaded, setLoaded] = useState(false);
@@ -129,11 +197,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
 
     async function load() {
       try {
-        // 1. Ask the agent sidecar where this instance's branding lives.
         const brandResp = await fetch("/agent/brand", {
-          // 15s: cross-origin GCS fetches on a cold connection can take
-          // 5-10s — earlier 5s timeout was firing falsely, falling back to
-          // DEFAULT_BRAND even when the bucket eventually responded 200.
           signal: AbortSignal.timeout(15000),
         });
         if (!brandResp.ok) {
@@ -142,7 +206,6 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
         const { brand_config_url } =
           (await brandResp.json()) as BrandConfigResponse;
         if (!brand_config_url) {
-          // Configured intentionally empty => use DEFAULT_BRAND.
           if (!cancelled) {
             applyCssVars(DEFAULT_BRAND);
             setLoaded(true);
@@ -150,11 +213,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
           return;
         }
 
-        // 2. Fetch branding.json from the per-instance directory.
         const bResp = await fetch(`${brand_config_url}/branding.json`, {
-          // 15s: cross-origin GCS fetches on a cold connection can take
-          // 5-10s — earlier 5s timeout was firing falsely, falling back to
-          // DEFAULT_BRAND even when the bucket eventually responded 200.
           signal: AbortSignal.timeout(15000),
         });
         if (!bResp.ok) {
@@ -162,7 +221,8 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
             `branding.json HTTP ${bResp.status} from ${brand_config_url}`,
           );
         }
-        const fetched = (await bResp.json()) as Branding;
+        const rawFetched = (await bResp.json()) as RawBranding;
+        const fetched = mapRawToBranding(rawFetched);
         const merged = { ...DEFAULT_BRAND, ...fetched };
         if (!cancelled) {
           setBranding(merged);
