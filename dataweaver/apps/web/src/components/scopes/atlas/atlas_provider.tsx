@@ -14,6 +14,7 @@ import s from './atlas_provider.module.scss';
 import {
   ATLAS_COMPONENTS,
   ATLAS_OVERLAYS,
+  ATLAS_OVERRIDES,
   ATLAS_SHAPES,
   CARD_VARIANT_SIZE,
   ZOOM_STEPS,
@@ -257,6 +258,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
             className={s.tldraw}
             hideUi
             components={ATLAS_COMPONENTS}
+            overrides={ATLAS_OVERRIDES}
             shapeUtils={ATLAS_SHAPES}
             overlayUtils={ATLAS_OVERLAYS}
             onMount={mounted}
