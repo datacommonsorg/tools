@@ -2,6 +2,7 @@ import { EASE_OUT } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
 import { useEditor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
+import { Menu as MenuElement } from '~/components/elements/menu';
 import { IconClose } from '~/components/primitives/icons/close';
 import s from './menu.module.scss';
 import { StatusEmpty } from './status_empty';
@@ -16,11 +17,10 @@ const BUTTON_CLOSE_COLOR_SCHEME = {
 
 interface MenuProps {
   id: string;
-  prefersMotion: boolean;
   onClose(): void;
 }
 
-export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
+export const Menu = ({ id, onClose }: MenuProps) => {
   const editor = useEditor();
 
   const totalSelected = useValue('atlas-selected-card-count', () => {
@@ -33,22 +33,15 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
   const status = totalSelected > 0 ? 'selected' : 'empty';
 
   return (
-    <m.dialog
-      open
+    <MenuElement
       id={id}
-      className={s.container}
-      aria-modal="false"
+      className={s.menu}
       aria-label="Export"
-      // Prevent tldraw from treating panel interactions as canvas gestures
+      onClose={onClose}
+      // Keep canvas gestures from leaking through to tldraw behind the menu
       onPointerDown={(event) => event.stopPropagation()}
       onWheelCapture={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
-      {...(prefersMotion && {
-        initial: { opacity: 0, transform: 'translateY(-8px)' },
-        animate: { opacity: 1, transform: 'translateY(0px)' },
-        exit: { opacity: 0, transform: 'translateY(-8px)' },
-        transition: { duration: 0.3, ease: EASE_OUT },
-      })}
     >
       <header className={s['header-container']}>
         <h2 className={s.title}>
@@ -90,6 +83,6 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
           {status === 'empty' ? <StatusEmpty /> : <StatusSelected />}
         </m.div>
       </AnimatePresence>
-    </m.dialog>
+    </MenuElement>
   );
 };

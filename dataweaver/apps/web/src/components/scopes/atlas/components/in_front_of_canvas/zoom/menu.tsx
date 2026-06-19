@@ -1,7 +1,6 @@
-import { EASE_OUT } from '@package/tokens/ts';
-import { m } from 'motion/react';
 import type { ComponentPropsWithRef, ComponentType } from 'react';
 import { type Editor, useEditor } from 'tldraw';
+import { Menu as MenuElement } from '~/components/elements/menu';
 import { IconCmd } from '~/components/primitives/icons/cmd';
 import { IconCtrl } from '~/components/primitives/icons/ctrl';
 import { IconMinus } from '~/components/primitives/icons/minus';
@@ -80,28 +79,22 @@ const KeyHint = ({ shortcutKey: Key }: KeyHintProps) => {
 
 interface MenuProps {
   id: string;
-  prefersMotion: boolean;
   onClose(): void;
 }
 
-export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
+export const Menu = ({ id, onClose }: MenuProps) => {
   const editor = useEditor();
 
   return (
-    <m.dialog
-      open
+    <MenuElement
       id={id}
-      className={s.container}
+      className={s.menu}
       aria-label="Zoom options"
-      // Prevent tldraw from treating menu interactions as canvas gestures
+      onClose={onClose}
+      // Keep canvas gestures from leaking through to tldraw behind the menu
       onPointerDown={(event) => event.stopPropagation()}
       onWheelCapture={(event) => event.stopPropagation()}
-      {...(prefersMotion && {
-        initial: { opacity: 0, transform: 'translateY(-8px)' },
-        animate: { opacity: 1, transform: 'translateY(0px)' },
-        exit: { opacity: 0, transform: 'translateY(-8px)' },
-        transition: { duration: 0.2, ease: EASE_OUT },
-      })}
+      onKeyDown={(event) => event.stopPropagation()}
     >
       <ul className={s['actions-container']}>
         {ZOOM_ACTIONS.map((action) => (
@@ -124,6 +117,6 @@ export const Menu = ({ id, prefersMotion, onClose }: MenuProps) => {
           </li>
         ))}
       </ul>
-    </m.dialog>
+    </MenuElement>
   );
 };

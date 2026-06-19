@@ -1,13 +1,9 @@
-.container {
+.menu {
   --menu-padding: 10px;
 
-  position: absolute;
-  inset: calc(100% + 12px) 0 auto auto;
+  right: 0;
   width: 250px;
   padding: var(--menu-padding);
-  background: rgb(var(--color-control-surface));
-  border-radius: var(--border-radius-medium);
-  box-shadow: var(--shadow-elevated);
   backdrop-filter: blur(40px);
 }
 

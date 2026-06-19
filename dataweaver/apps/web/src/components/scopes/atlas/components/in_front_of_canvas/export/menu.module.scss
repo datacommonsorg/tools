@@ -1,20 +1,11 @@
-.container {
+.menu {
   --menu-padding: 20px;
 
-  position: absolute;
-
   // Note: We remove 2px here to avoid tools shadow appearing at edge of this
-  inset: calc(100% + 12px) -2px auto auto;
-
-  // Lift above the tools bar, which it overlaps and which renders earlier
-  z-index: $z-index-above-content;
+  right: -2px;
   display: flex;
   flex-direction: column;
   width: 370px;
-  pointer-events: auto;
-  background: rgb(var(--color-control-surface));
-  border-radius: var(--border-radius-medium);
-  box-shadow: var(--shadow-elevated);
 }
 
 .header-container {
