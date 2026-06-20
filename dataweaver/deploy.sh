@@ -35,4 +35,4 @@ gcloud run deploy dataweaver-dev \
   --no-allow-unauthenticated \
   --iap \
   --service-account data-weaver-sa-mj@datcom-website-sandbox.iam.gserviceaccount.com \
-  --update-secrets=TLDRAW_LICENSE_KEY=tldraw-license-key:latest,DATACOMMONS_API_KEY=datacommons-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest
+  --update-secrets=TLDRAW_LICENSE_KEY=tldraw-license-key:latest,DATA_COMMONS_API_KEY=datacommons-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest
