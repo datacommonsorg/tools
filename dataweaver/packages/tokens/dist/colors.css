@@ -9,6 +9,7 @@
   --color-control-surface-hover: 227 231 237;
   --color-control-accent: 11 87 208;
   --color-control-accent-content: 255 255 255;
+  --color-control-accent-subtle: 194 231 255;
   --color-control-content: 32 33 36;
   --color-control-content-muted: 68 71 70;
   --color-button-base: 194 231 255;
@@ -21,7 +22,8 @@
   --color-card-content: 32 33 36;
   --color-card-content-muted: 68 71 70;
   --color-card-content-subtle: 95 99 104;
-  --color-card-content-dimmed: 196 199 197;
+  --color-card-content-dimmed: 126 126 127;
+  --color-card-border: 196 199 197;
   --color-card-skeleton: 242 242 242;
   --color-toaster-surface: 255 255 255;
   --color-toaster-surface-hover: 245 245 245;

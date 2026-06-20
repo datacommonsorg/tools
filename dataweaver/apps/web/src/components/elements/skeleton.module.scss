@@ -13,7 +13,7 @@
 .line {
   height: 18px;
   background-color: rgb(var(--color-card-skeleton));
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
 
   @include prefers-motion {
     animation: skeleton-pulse 1.5s $ease-in-out infinite;

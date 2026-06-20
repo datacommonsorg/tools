@@ -22,6 +22,8 @@ import type {
 } from '~/components/scopes/atlas/helpers';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 
+export const CARD_DATA_ATTRIBUTE = 'data-card';
+
 interface ShapeCardProps extends CardContentFields, CardSize {
   variant?: CardVariant;
 }
@@ -153,6 +155,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
 
     return (
       <HTMLContainer
+        // Marks the card in the DOM so that we can target it with CSS selectors
+        // outside of this component (e.g. in the export menu)
+        {...{ [CARD_DATA_ATTRIBUTE]: true }}
         style={{
           width: shape.props.w,
           height: shape.props.h,

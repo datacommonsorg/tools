@@ -1,0 +1,33 @@
+.container {
+  display: grid;
+  grid-template-columns: 1fr min-content;
+  gap: 32px 16px;
+  width: 100%;
+  padding: 32px 26px;
+  pointer-events: auto;
+  background: rgb(var(--color-card-base-subtle));
+  border-radius: var(--border-radius-large);
+  box-shadow: var(--shadow-elevated);
+}
+
+.prompt-value {
+  @include type-body-large(500);
+
+  grid-row: 1;
+  grid-column: 1;
+  color: rgb(var(--color-card-content-subtle));
+}
+
+.indicator-message {
+  @include type-body-medium(400);
+
+  grid-row: 2;
+  grid-column: 1;
+  color: rgb(var(--color-card-content-dimmed));
+}
+
+.button-cancel {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: flex-end;
+}

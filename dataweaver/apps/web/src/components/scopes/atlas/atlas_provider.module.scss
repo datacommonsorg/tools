@@ -20,10 +20,7 @@
   z-index: $z-index-content;
   background-color: rgb(var(--color-surface-base));
   opacity: 0;
-
-  @include prefers-motion {
-    transition: opacity 0.2s $ease-linear;
-  }
+  transition: opacity 0.2s $ease-linear;
 
   &[data-is-mounted="true"] {
     opacity: 1;

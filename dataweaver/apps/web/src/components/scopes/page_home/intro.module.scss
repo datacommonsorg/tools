@@ -3,7 +3,7 @@
   overscroll-behavior: none;
   pointer-events: auto;
   background: rgb(var(--color-card-base));
-  border-radius: 36px;
+  border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
 }
 
@@ -58,7 +58,7 @@
 }
 
 .notice-container {
-  @include type-body-small;
+  @include type-body-medium;
 
   display: flex;
   grid-area: notice;
