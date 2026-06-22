@@ -11,7 +11,7 @@ import type {
 
 const MAX_ANCESTOR_CHAIN = 10;
 
-export interface DataWeaverStore {
+export interface AtlasStore {
   // --- History ---
   nodes: Record<string, HistoryNode>;
   latestNodeId: string | null;
@@ -55,7 +55,7 @@ export interface DataWeaverStore {
   getSelectedEntityDcids: (selectedShapeIds: string[]) => string[];
 }
 
-export const useDataWeaverStore = create<DataWeaverStore>()(
+export const useAtlasStore = create<AtlasStore>()(
   devtools(
     (set, get) => ({
       nodes: {},
@@ -288,6 +288,6 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
         return dcids;
       },
     }),
-    { name: 'DataWeaverStore' },
+    { name: 'AtlasStore' },
   ),
 );

@@ -21,7 +21,7 @@ import type {
   CardVariant,
 } from '~/components/scopes/atlas/helpers';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import { useDataWeaverStore } from '~/store';
+import { useAtlasStore } from '~/store';
 
 export const CARD_DATA_ATTRIBUTE = 'data-card';
 
@@ -157,7 +157,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     const placeDcid = params.get('place');
     if (!variableDcid || !placeDcid) return;
 
-    const { cards, cardRegister } = useDataWeaverStore.getState();
+    const { cards, cardRegister } = useAtlasStore.getState();
 
     // Find the card entry for this shape to get the historyNodeId.
     const cardEntry = cards[shape.id];

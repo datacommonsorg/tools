@@ -1,2 +1,2 @@
-export type { DataWeaverStore } from './store';
-export { useDataWeaverStore } from './store';
+export type { AtlasStore } from './store';
+export { useAtlasStore } from './store';

@@ -3,7 +3,7 @@
 import { marked } from 'marked';
 import { useEffect, useRef } from 'react';
 import type { CardEntry, CardType, QueryResult } from '~/server/types';
-import { useDataWeaverStore } from '~/store';
+import { useAtlasStore } from '~/store';
 import type { AtlasContextProps, CardHandle } from './atlas_provider';
 import type { AtlasContent, CardVariant } from './helpers';
 
@@ -179,11 +179,11 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
   const prevCardsRef = useRef<Record<string, CardEntry>>({});
 
   useEffect(() => {
-    const unsubscribe = useDataWeaverStore.subscribe(({ cards }) => {
+    const unsubscribe = useAtlasStore.subscribe(({ cards }) => {
       const prevCards = prevCardsRef.current;
 
       const handles = handlesRef.current;
-      const nodes = useDataWeaverStore.getState().nodes;
+      const nodes = useAtlasStore.getState().nodes;
 
       // Detect new cards
       for (const [shapeId, card] of Object.entries(cards)) {

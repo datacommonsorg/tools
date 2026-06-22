@@ -4,7 +4,7 @@ import { AnimatePresence } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { STATUS } from '~/server/types';
-import { useDataWeaverStore } from '~/store/store';
+import { useAtlasStore } from '~/store/store';
 import { FollowUp, type QuestionAndAnswers } from './follow_up';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
@@ -13,7 +13,7 @@ import { Status } from './status';
 
 export const PageHome = () => {
   const { runPrompt } = useQueryActions();
-  const { currentStatus, nodes, latestNodeId } = useDataWeaverStore();
+  const { currentStatus, nodes, latestNodeId } = useAtlasStore();
   const latestNode = latestNodeId ? nodes[latestNodeId] : null;
   const query = latestNode?.query ?? '';
 

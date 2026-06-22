@@ -1,21 +1,19 @@
 import { STATUS } from '~/server/types';
-import { useDataWeaverStore } from '~/store';
+import { useAtlasStore } from '~/store';
 
 interface StateEnvelope {
   version: 1;
   exportedAt: string;
   state: {
-    nodes: ReturnType<typeof useDataWeaverStore.getState>['nodes'];
-    latestNodeId: ReturnType<
-      typeof useDataWeaverStore.getState
-    >['latestNodeId'];
-    cards: ReturnType<typeof useDataWeaverStore.getState>['cards'];
+    nodes: ReturnType<typeof useAtlasStore.getState>['nodes'];
+    latestNodeId: ReturnType<typeof useAtlasStore.getState>['latestNodeId'];
+    cards: ReturnType<typeof useAtlasStore.getState>['cards'];
   };
 }
 
 /** Export the current persistent store state as a downloaded JSON file. */
 export const exportState = (): void => {
-  const { nodes, latestNodeId, cards } = useDataWeaverStore.getState();
+  const { nodes, latestNodeId, cards } = useAtlasStore.getState();
 
   const envelope: StateEnvelope = {
     version: 1,
@@ -30,7 +28,7 @@ export const exportState = (): void => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const a = document.createElement('a');
   a.href = url;
-  a.download = `dataweaver-state-${timestamp}.json`;
+  a.download = `atlas-state-${timestamp}.json`;
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -45,7 +43,7 @@ export const importState = async (file: File): Promise<void> => {
   }
 
   // Clear transient UI and replace persistent slices atomically.
-  useDataWeaverStore.setState({
+  useAtlasStore.setState({
     nodes: envelope.state.nodes,
     latestNodeId: envelope.state.latestNodeId,
     cards: envelope.state.cards,

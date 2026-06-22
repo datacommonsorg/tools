@@ -12,7 +12,7 @@ import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
-import { useDataWeaverStore } from '~/store';
+import { useAtlasStore } from '~/store';
 import { useStoreShapeSync } from './sync_store';
 
 export interface Status {
@@ -49,7 +49,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
   // Mount the store→shape sync layer.
   useStoreShapeSync(atlas);
 
-  const store = useDataWeaverStore;
+  const store = useAtlasStore;
 
   const handleStreamEvent = useCallback((event: StreamEvent) => {
     const active = activeQueryRef.current;
