@@ -21,7 +21,7 @@ interface WithExternalTones {
 
 interface WithIconOnly {
   icon: ComponentType<ComponentPropsWithRef<'svg'>>;
-  size: 'small' | 'medium' | 'large';
+  size: 'extra-small' | 'small' | 'medium' | 'large';
   'aria-label': string;
   children?: never;
 }

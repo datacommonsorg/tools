@@ -17,9 +17,23 @@ export interface Status {
   indicatorMessage: string;
 }
 
+export interface QueryTag {
+  id: string;
+  label: string;
+}
+
 interface QueryActionsContextProps {
+  /** List of tags associated with the current query. */
+  tags: QueryTag[];
+
   /** The current status of the query, if any. */
   status: Status | null;
+
+  /** Add a tag to the current query. */
+  addTag(tag: QueryTag): void;
+
+  /** Remove the tag with the given id from the current query. */
+  removeTag(id: string): void;
 
   /** Run a query for the given prompt, streaming results onto the canvas. */
   runPrompt(prompt: string): void;
@@ -39,6 +53,7 @@ interface QueryProviderProps {
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const atlas = useAtlas();
 
+  const [tags, setTags] = useState<QueryTag[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
 
   const cleanupsRef = useRef<Set<MockQueryCleanup>>(new Set());
@@ -53,7 +68,14 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
   const providerValue = useMemo<QueryActionsContextProps>(
     () => ({
+      tags,
       status,
+      addTag: (tag: QueryTag) => {
+        setTags((current) => [...current, tag]);
+      },
+      removeTag: (id: string) => {
+        setTags((current) => current.filter((t) => t.id !== id));
+      },
       runPrompt: (prompt: string) => {
         // TODO: Swap mock query for real query streaming setup here
         cleanupsRef.current.add(runMockQuery(prompt, atlas));
@@ -70,7 +92,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         setStatus(null);
       },
     }),
-    [atlas, status],
+    [atlas, tags, status],
   );
 
   return (

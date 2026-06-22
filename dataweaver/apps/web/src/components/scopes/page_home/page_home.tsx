@@ -9,7 +9,7 @@ import { Prompt } from './prompt';
 import { Status } from './status';
 
 export const PageHome = () => {
-  const { status, runPrompt } = useQueryActions();
+  const { tags, status, addTag, removeTag, runPrompt } = useQueryActions();
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [promptValue, setPromptValue] = useState('');
@@ -23,6 +23,10 @@ export const PageHome = () => {
     runPrompt(promptValue);
     setPromptValue('');
     setIsIntroVisible(false);
+
+    // TODO: This is purely to showcase tags. We won't add tags this way later
+    // but for now allows us to demo. Note: ID is wrong here but just temporary
+    addTag({ id: promptValue, label: promptValue });
   };
 
   return (
@@ -41,8 +45,10 @@ export const PageHome = () => {
 
       <Prompt
         value={promptValue}
+        tags={tags}
         onValueChange={setPromptValue}
         onSubmit={submit}
+        onRemoveTag={removeTag}
       />
     </div>
   );

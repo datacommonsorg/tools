@@ -72,6 +72,9 @@
   "control-content": "$content",
   "control-content-muted": "$content-muted",
 
+  "tag-border": "$accent",
+  "tag-content": "$content",
+
   "card-surface": "$surface-raised",
   "card-surface-selected": "$accent",
   "card-content": "$content",
