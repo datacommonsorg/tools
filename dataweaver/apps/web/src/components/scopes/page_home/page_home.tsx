@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
@@ -28,18 +28,16 @@ export const PageHome = () => {
     setFollowUp(null);
   };
 
-  const showIntro = useMemo(() => {
-    return isIntroVisible && currentStatus !== STATUS.complete;
-  }, [isIntroVisible, currentStatus]);
+  useEffect(() => {
+    if (Object.values(nodes).length > 0) setIsIntroVisible(false);
+  }, [nodes]);
 
-  const showStatus = useMemo(() => {
-    return !isIntroVisible && currentStatus !== STATUS.complete;
-  }, [isIntroVisible, currentStatus]);
+  const showStatus = !isIntroVisible && currentStatus !== STATUS.complete;
 
   return (
     <div className={s.container}>
       <AnimatePresence initial={false} mode="wait">
-        {showIntro && (
+        {isIntroVisible && (
           <Intro
             key="intro"
             onSelect={(selected) => {
