@@ -15,7 +15,7 @@
   "content-dimmed": [126, 126, 127],
 
   "shadow": [0, 0, 0],
-  "transparent": "$transparent",
+  "transparent": [0, 0, 0, 0],
 
   "atlas-surface": "$surface",
   "atlas-decorator": "$surface-hover",
