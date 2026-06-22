@@ -134,6 +134,10 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
     const unsubscribe = useAtlasStore.subscribe(({ cards }) => {
       const prevCards = prevCardsRef.current;
 
+      // TODO: look into subscribeWithSelector to avoid unnecessary updates. https://zustand.docs.pmnd.rs/reference/middlewares/subscribe-with-selector
+      // checking cards for changes and returning to avoid running this whenever anything updates in the store.
+      if (cards === prevCards) return;
+
       const handles = handlesRef.current;
       const nodes = useAtlasStore.getState().nodes;
 

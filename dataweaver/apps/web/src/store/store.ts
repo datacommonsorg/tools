@@ -235,7 +235,10 @@ export const useAtlasStore = create<AtlasStore>()(
         const chain: HistoryNode[] = [];
         let currentId: string | null = nodeId;
 
+        const visited = new Set<string>();
         while (currentId && chain.length < MAX_ANCESTOR_CHAIN) {
+          if (visited.has(currentId)) break;
+          visited.add(currentId);
           const node: HistoryNode | undefined = nodes[currentId];
           if (!node) break;
           chain.unshift(node);
@@ -271,8 +274,7 @@ export const useAtlasStore = create<AtlasStore>()(
 
       getSelectedEntityDcids: (selectedShapeIds) => {
         const { cards, nodes } = get();
-        const dcids: string[] = [];
-
+        const dcids = new Set<string>();
         for (const shapeId of selectedShapeIds) {
           const card = cards[shapeId];
           if (!card) continue;
@@ -281,11 +283,10 @@ export const useAtlasStore = create<AtlasStore>()(
           const result = node.results[card.placeDcid];
           if (!result) continue;
           for (const entity of result.entities) {
-            dcids.push(entity.dcid);
+            dcids.add(entity.dcid);
           }
         }
-
-        return dcids;
+        return Array.from(dcids);
       },
     }),
     { name: 'AtlasStore' },

@@ -14,6 +14,8 @@ interface ChartProps {
   height: number;
 }
 
+const compactFormatter = new Intl.NumberFormat('en', { notation: 'compact' });
+
 export const DataChartLine = ({ data, width, height }: ChartProps) => {
   return (
     <LineChart
@@ -34,9 +36,7 @@ export const DataChartLine = ({ data, width, height }: ChartProps) => {
         tickLine={false}
         axisLine={false}
         tick={{ fontSize: 10, fill: AXIS_COLOR }}
-        tickFormatter={(v) =>
-          Intl.NumberFormat('en', { notation: 'compact' }).format(v)
-        }
+        tickFormatter={(v) => compactFormatter.format(v)}
       />
       <Line
         type="monotone"

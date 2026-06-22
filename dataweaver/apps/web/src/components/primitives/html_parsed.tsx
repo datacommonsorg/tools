@@ -19,6 +19,11 @@ export const HtmlParsed = ({
         ? parse(html, {
             replace: (domNode) => {
               if (domNode instanceof Element) {
+                for (const attr of Object.keys(domNode.attribs)) {
+                  if (attr.toLowerCase().startsWith('on')) {
+                    delete domNode.attribs[attr];
+                  }
+                }
                 switch (domNode.name) {
                   case 'script':
                   case 'style':
