@@ -23,29 +23,11 @@
   "atlas-accent": "$accent",
   "atlas-accent-content": "$accent-content",
 
-  "control-surface": "$surface",
-  "control-surface-raised": "$surface-raised",
-  "control-surface-hover": "$surface-hover",
-  "control-accent": "$accent",
-  "control-accent-subtle": "$accent-subtle",
-  "control-content": "$content",
-  "control-content-muted": "$content-muted",
-
-  "card-surface": "$surface-raised",
-  "card-surface-selected": "$accent",
-  "card-content": "$content",
-  "card-content-muted": "$content-muted",
-  "card-divider": [196, 199, 197],
-  "card-chart-grid": "$surface-hover",
-  "card-action-base": "$transparent",
-  "card-action-content": "$accent-content",
-  "card-action-base-hover": "$surface-raised",
-  "card-action-content-hover": "$accent",
-
-  "toast-surface": "$surface-raised",
-  "toast-surface-hover": [245, 245, 245],
-  "toast-content": "$content",
-  "toast-content-muted": "$content-muted",
+  "query-surface": "$surface-raised",
+  "query-surface-subtle": "$surface-subtle",
+  "query-content": "$content",
+  "query-content-subtle": "$content-subtle",
+  "query-content-dimmed": "$content-dimmed",
 
   "button-prominent-base": "$transparent",
   "button-prominent-content": "$content",
@@ -82,19 +64,37 @@
   "button-accent-subtle-border": "$transparent",
   "button-accent-subtle-border-hover": "$transparent",
 
+  "control-surface": "$surface",
+  "control-surface-raised": "$surface-raised",
+  "control-surface-hover": "$surface-hover",
+  "control-accent": "$accent",
+  "control-accent-subtle": "$accent-subtle",
+  "control-content": "$content",
+  "control-content-muted": "$content-muted",
+
+  "card-surface": "$surface-raised",
+  "card-surface-selected": "$accent",
+  "card-content": "$content",
+  "card-content-muted": "$content-muted",
+  "card-divider": [196, 199, 197],
+  "card-chart-grid": "$surface-hover",
+  "card-action-base": "$transparent",
+  "card-action-content": "$accent-content",
+  "card-action-base-hover": "$surface-raised",
+  "card-action-content-hover": "$accent",
+
+  "skeleton-surface": [242, 242, 242],
+
+  "menu-surface": "$surface",
+
   "radio-surface": "$surface-hover",
   "radio-surface-hover": "$surface",
   "radio-surface-checked": "$surface-raised",
   "radio-border": "$content-dimmed",
   "radio-mark": "$content",
 
-  "menu-surface": "$surface",
-
-  "skeleton-surface": [242, 242, 242],
-
-  "query-surface": "$surface-raised",
-  "query-surface-subtle": "$surface-subtle",
-  "query-content": "$content",
-  "query-content-subtle": "$content-subtle",
-  "query-content-dimmed": "$content-dimmed"
+  "toast-surface": "$surface-raised",
+  "toast-surface-hover": [245, 245, 245],
+  "toast-content": "$content",
+  "toast-content-muted": "$content-muted"
 }
