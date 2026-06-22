@@ -57,7 +57,6 @@ export const Prompt = ({ value, onValueChange, onSubmit }: PromptProps) => {
         }}
       />
 
-      {/* TODO: In designs this is a button with an outline. Review + explore real disabled styles. */}
       <Button
         className={s['button-submit']}
         type="submit"
