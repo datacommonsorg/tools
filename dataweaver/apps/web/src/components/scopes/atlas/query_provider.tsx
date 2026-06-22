@@ -24,7 +24,7 @@ interface QueryActionsContextProps {
   /** Run a query for the given prompt, streaming results onto the canvas. */
   runPrompt(prompt: string): void;
   /** Abort the in-flight query, remove its cards, and clean up the store. */
-  cancelQuery(): void;
+  queryCancel(): void;
 }
 
 const QueryActionsContext = createContext<QueryActionsContextProps | null>(
@@ -56,27 +56,27 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
     if (!active) return;
 
     const {
-      setParsedQuery,
-      setCurrentStatus,
-      addResult,
-      registerCard,
-      completeQuery,
-      failQuery,
-      setIsProcessing,
+      nodeSetParsedQuery,
+      querySetStatus,
+      nodeAddResult,
+      cardRegister,
+      queryComplete,
+      queryFail,
+      querySetProcessing,
     } = store.getState();
 
     switch (event.type) {
       case STREAM_EVENT.status:
-        setCurrentStatus(event.message);
+        querySetStatus(event.message);
         break;
 
       case STREAM_EVENT.parsedQuery:
-        setParsedQuery(active.nodeId, event.data);
+        nodeSetParsedQuery(active.nodeId, event.data);
 
         // Register loading placeholder cards for each place.
         for (const place of event.data.places) {
           const shapeId = `shape:${active.nodeId}__${place}__loading`;
-          registerCard(shapeId, active.nodeId, 'loading', place);
+          cardRegister(shapeId, active.nodeId, 'loading', place);
           active.cardIds.push(shapeId);
         }
         break;
@@ -86,22 +86,22 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const entityDcid = result.entities[0]?.dcid ?? place;
 
         // Write the query result data to the history node.
-        addResult(active.nodeId, entityDcid, result);
+        nodeAddResult(active.nodeId, entityDcid, result);
 
         // Remove the loading placeholder for this place and replace with real cards.
         const loadingId = `shape:${active.nodeId}__${place}__loading`;
-        const { unregisterCard } = store.getState();
-        unregisterCard(loadingId);
+        const { cardUnregister } = store.getState();
+        cardUnregister(loadingId);
         active.cardIds = active.cardIds.filter((id) => id !== loadingId);
 
         // Register table card.
         const tableId = `shape:${active.nodeId}__${entityDcid}__table`;
-        registerCard(tableId, active.nodeId, 'table', entityDcid);
+        cardRegister(tableId, active.nodeId, 'table', entityDcid);
         active.cardIds.push(tableId);
 
         // Register notes card.
         const notesId = `shape:${active.nodeId}__${entityDcid}__notes`;
-        registerCard(notesId, active.nodeId, 'notes', entityDcid);
+        cardRegister(notesId, active.nodeId, 'notes', entityDcid);
         active.cardIds.push(notesId);
 
         // Register chart card (only if data exists).
@@ -109,7 +109,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const firstFacet = firstMeta?.facets[0];
         if (firstFacet && firstFacet.observations.length > 0) {
           const chartId = `shape:${active.nodeId}__${entityDcid}__chart`;
-          registerCard(chartId, active.nodeId, 'chart', entityDcid);
+          cardRegister(chartId, active.nodeId, 'chart', entityDcid);
           active.cardIds.push(chartId);
         }
 
@@ -117,16 +117,16 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       }
 
       case STREAM_EVENT.complete:
-        completeQuery(active.nodeId, active.cardIds);
-        setIsProcessing(false);
-        setCurrentStatus(event.message);
+        queryComplete(active.nodeId, active.cardIds);
+        querySetProcessing(false);
+        querySetStatus(event.message);
         activeQueryRef.current = null;
         break;
 
       case STREAM_EVENT.error:
-        failQuery(active.nodeId);
-        setIsProcessing(false);
-        setCurrentStatus(STATUS.idle);
+        queryFail(active.nodeId);
+        querySetProcessing(false);
+        querySetStatus(STATUS.idle);
         activeQueryRef.current = null;
         break;
     }
@@ -137,26 +137,26 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
   const providerValue = useMemo<QueryActionsContextProps>(
     () => ({
-      cancelQuery: () => {
+      queryCancel: () => {
         const active = activeQueryRef.current;
         if (!active) return;
 
         abortStream();
-        store.getState().cancelQuery(active.nodeId);
+        store.getState().queryCancel(active.nodeId);
         activeQueryRef.current = null;
       },
       runPrompt: (prompt: string) => {
         const {
-          startQuery,
-          setIsProcessing,
-          setCurrentStatus,
+          queryStart,
+          querySetProcessing,
+          querySetStatus,
           getAncestorChain,
           getContextNodeId,
           getSelectedEntityDcids,
         } = store.getState();
 
-        setIsProcessing(true);
-        setCurrentStatus(STATUS.starting);
+        querySetProcessing(true);
+        querySetStatus(STATUS.starting);
 
         // Derive context from selected shapes
         const selectedShapeIds = atlas.getSelectedShapeIds();
@@ -171,7 +171,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const selectedEntityDcids = getSelectedEntityDcids(selectedShapeIds);
 
         // Create history node in store
-        const nodeId = startQuery(prompt, null, parentNodeId);
+        const nodeId = queryStart(prompt, null, parentNodeId);
 
         // Store active query state for the stream handler
         activeQueryRef.current = {

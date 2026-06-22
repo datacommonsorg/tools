@@ -157,7 +157,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     const placeDcid = params.get('place');
     if (!variableDcid || !placeDcid) return;
 
-    const { cards, registerCard } = useDataWeaverStore.getState();
+    const { cards, cardRegister } = useDataWeaverStore.getState();
 
     // Find the card entry for this shape to get the historyNodeId.
     const cardEntry = cards[shape.id];
@@ -167,7 +167,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     const chartShapeId = `shape:${cardEntry.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
     if (cards[chartShapeId]) return;
 
-    registerCard(
+    cardRegister(
       chartShapeId,
       cardEntry.historyNodeId,
       'chart',

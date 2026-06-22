@@ -12,7 +12,7 @@ interface StatusProps {
 }
 
 export const Status = ({ prompt, status }: StatusProps) => {
-  const { cancelQuery } = useQueryActions();
+  const { queryCancel } = useQueryActions();
 
   return (
     <m.aside
@@ -31,7 +31,7 @@ export const Status = ({ prompt, status }: StatusProps) => {
         size="small"
         variant="border"
         tone="subtle"
-        onClick={cancelQuery}
+        onClick={queryCancel}
       >
         Cancel
       </Button>

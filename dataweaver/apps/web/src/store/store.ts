@@ -24,26 +24,30 @@ export interface DataWeaverStore {
   currentStatus: string;
 
   // --- Actions ---
-  startQuery: (
+  queryStart: (
     query: string,
     parsedQuery: ParsedQuery | null,
     parentNodeId: string | null,
   ) => string;
-  setParsedQuery: (nodeId: string, parsedQuery: ParsedQuery) => void;
-  addResult: (nodeId: string, placeDcid: string, result: QueryResult) => void;
-  completeQuery: (nodeId: string, cardIds: string[]) => void;
-  failQuery: (nodeId: string) => void;
-  registerCard: (
+  nodeSetParsedQuery: (nodeId: string, parsedQuery: ParsedQuery) => void;
+  nodeAddResult: (
+    nodeId: string,
+    placeDcid: string,
+    result: QueryResult,
+  ) => void;
+  queryComplete: (nodeId: string, cardIds: string[]) => void;
+  queryFail: (nodeId: string) => void;
+  cardRegister: (
     shapeId: string,
     historyNodeId: string,
     type: CardType,
     placeDcid: string,
     variableDcid?: string,
   ) => void;
-  unregisterCard: (shapeId: string) => void;
-  cancelQuery: (nodeId: string) => void;
-  setIsProcessing: (val: boolean) => void;
-  setCurrentStatus: (val: string) => void;
+  cardUnregister: (shapeId: string) => void;
+  queryCancel: (nodeId: string) => void;
+  querySetProcessing: (val: boolean) => void;
+  querySetStatus: (val: string) => void;
 
   // --- Selectors ---
   getAncestorChain: (nodeId: string | null) => HistoryNode[];
@@ -60,7 +64,7 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
       isProcessing: false,
       currentStatus: '',
 
-      startQuery: (query, parsedQuery, parentNodeId) => {
+      queryStart: (query, parsedQuery, parentNodeId) => {
         const id = nanoid();
         const node: HistoryNode = {
           id,
@@ -78,12 +82,12 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             latestNodeId: id,
           }),
           undefined,
-          'startQuery',
+          'queryStart',
         );
         return id;
       },
 
-      setParsedQuery: (nodeId, parsedQuery) => {
+      nodeSetParsedQuery: (nodeId, parsedQuery) => {
         set(
           (state) => {
             const node = state.nodes[nodeId];
@@ -96,11 +100,11 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             };
           },
           undefined,
-          'setParsedQuery',
+          'nodeSetParsedQuery',
         );
       },
 
-      addResult: (nodeId, placeDcid, result) => {
+      nodeAddResult: (nodeId, placeDcid, result) => {
         set(
           (state) => {
             const node = state.nodes[nodeId];
@@ -116,11 +120,11 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             };
           },
           undefined,
-          'addResult',
+          'nodeAddResult',
         );
       },
 
-      completeQuery: (nodeId, cardIds) => {
+      queryComplete: (nodeId, cardIds) => {
         set(
           (state) => {
             const node = state.nodes[nodeId];
@@ -134,11 +138,11 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             };
           },
           undefined,
-          'completeQuery',
+          'queryComplete',
         );
       },
 
-      failQuery: (nodeId) => {
+      queryFail: (nodeId) => {
         set(
           (state) => {
             const node = state.nodes[nodeId];
@@ -151,11 +155,11 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             };
           },
           undefined,
-          'failQuery',
+          'queryFail',
         );
       },
 
-      registerCard: (
+      cardRegister: (
         shapeId,
         historyNodeId,
         type,
@@ -176,22 +180,22 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             },
           }),
           undefined,
-          'registerCard',
+          'cardRegister',
         );
       },
 
-      unregisterCard: (shapeId) => {
+      cardUnregister: (shapeId) => {
         set(
           (state) => {
             const { [shapeId]: _, ...rest } = state.cards;
             return { cards: rest };
           },
           undefined,
-          'unregisterCard',
+          'cardUnregister',
         );
       },
 
-      cancelQuery: (nodeId) => {
+      queryCancel: (nodeId) => {
         set(
           (state) => {
             const node = state.nodes[nodeId];
@@ -216,14 +220,14 @@ export const useDataWeaverStore = create<DataWeaverStore>()(
             };
           },
           undefined,
-          'cancelQuery',
+          'queryCancel',
         );
       },
 
-      setIsProcessing: (val) =>
-        set({ isProcessing: val }, undefined, 'setIsProcessing'),
-      setCurrentStatus: (val) =>
-        set({ currentStatus: val }, undefined, 'setCurrentStatus'),
+      querySetProcessing: (val) =>
+        set({ isProcessing: val }, undefined, 'querySetProcessing'),
+      querySetStatus: (val) =>
+        set({ currentStatus: val }, undefined, 'querySetStatus'),
 
       getAncestorChain: (nodeId) => {
         if (!nodeId) return [];

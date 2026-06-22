@@ -171,7 +171,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
         if (shape.type !== 'card') return;
 
         // Sync deletion back to the store so card registry stays consistent.
-        useDataWeaverStore.getState().unregisterCard(String(shape.id));
+        useDataWeaverStore.getState().cardUnregister(String(shape.id));
 
         const clones = clonesRef.current.get(shape.id);
         if (!clones) return;
