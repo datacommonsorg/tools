@@ -4,7 +4,7 @@ interface ValidLinkProps {
   rel?: string;
 }
 
-export const validate_href = (href?: string): ValidLinkProps | false => {
+export const validateHref = (href?: string): ValidLinkProps | false => {
   if (!href) return false;
 
   const isHash = href.startsWith('#');

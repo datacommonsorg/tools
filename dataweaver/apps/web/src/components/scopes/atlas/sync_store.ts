@@ -179,15 +179,11 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
   const prevCardsRef = useRef<Record<string, CardEntry>>({});
 
   useEffect(() => {
-    const unsubscribe = useDataWeaverStore.subscribe((state) => {
-      const cards = state.cards;
+    const unsubscribe = useDataWeaverStore.subscribe(({ cards }) => {
       const prevCards = prevCardsRef.current;
 
-      // Skip if cards reference hasn't changed.
-      if (cards === prevCards) return;
-
       const handles = handlesRef.current;
-      const { nodes } = state;
+      const nodes = useDataWeaverStore.getState().nodes;
 
       // Detect new cards
       for (const [shapeId, card] of Object.entries(cards)) {

@@ -54,7 +54,7 @@ export const importState = async (file: File): Promise<void> => {
   });
 };
 
-function isValidEnvelope(value: unknown): value is StateEnvelope {
+const isValidEnvelope = (value: unknown): value is StateEnvelope => {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
   if (obj.version !== 1) return false;
@@ -67,4 +67,4 @@ function isValidEnvelope(value: unknown): value is StateEnvelope {
     state.cards !== null &&
     'latestNodeId' in state
   );
-}
+};
