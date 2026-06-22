@@ -8,6 +8,7 @@ import { extractJson } from '~/functions/extract_json';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
 import { fetchVariableMetadata } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
+import { renderResultHtml } from '~/server/steps/render_result_html';
 import { checkPromptSafety } from '~/server/steps/safety';
 import {
   type Insight,
@@ -237,6 +238,10 @@ export async function POST(request: NextRequest) {
             insights: parsedResponse.insights,
             followUps: parsedResponse.followUps,
           };
+
+          const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
+          discoveryResult.tableHtml = tableHtml;
+          discoveryResult.notesHtml = notesHtml;
 
           emit({
             type: STREAM_EVENT.queryResult,

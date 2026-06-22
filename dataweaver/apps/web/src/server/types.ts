@@ -61,6 +61,8 @@ export interface QueryResult {
   coverage?: string;
   insights?: Insight[];
   followUps?: string[];
+  tableHtml?: string;
+  notesHtml?: string;
 }
 
 export interface FacetInfo {
