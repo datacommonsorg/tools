@@ -131,73 +131,72 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
   const prevCardsRef = useRef<Record<string, CardEntry>>({});
 
   useEffect(() => {
-    const unsubscribe = useAtlasStore.subscribe(({ cards }) => {
-      const prevCards = prevCardsRef.current;
+    const unsubscribe = useAtlasStore.subscribe(
+      (state) => state.cards,
+      (cards) => {
+        const prevCards = prevCardsRef.current;
 
-      // TODO: look into subscribeWithSelector to avoid unnecessary updates. https://zustand.docs.pmnd.rs/reference/middlewares/subscribe-with-selector
-      // checking cards for changes and returning to avoid running this whenever anything updates in the store.
-      if (cards === prevCards) return;
+        const handles = handlesRef.current;
+        const nodes = useAtlasStore.getState().nodes;
 
-      const handles = handlesRef.current;
-      const nodes = useAtlasStore.getState().nodes;
+        // Detect new cards
+        for (const [shapeId, card] of Object.entries(cards)) {
+          if (prevCards[shapeId]) continue;
 
-      // Detect new cards
-      for (const [shapeId, card] of Object.entries(cards)) {
-        if (prevCards[shapeId]) continue;
+          const node = nodes[card.historyNodeId];
+          const result = node?.results[card.placeDcid];
+          const title =
+            node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
 
-        const node = nodes[card.historyNodeId];
-        const result = node?.results[card.placeDcid];
-        const title =
-          node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
+          const content = deriveContentForCard(
+            card.type,
+            result,
+            title,
+            card.variableDcid,
+          );
+          if (!content) continue;
 
-        const content = deriveContentForCard(
-          card.type,
-          result,
-          title,
-          card.variableDcid,
-        );
-        if (!content) continue;
-
-        // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
-        const rawId = shapeId.replace(/^shape:/, '');
-        const handle = atlas.add(content, rawId);
-        handles.set(shapeId, handle);
-      }
-
-      // Detect cards whose type changed (loading → real)
-      for (const [shapeId, card] of Object.entries(cards)) {
-        const prevCard = prevCards[shapeId];
-        if (!prevCard || prevCard.type === card.type) continue;
-
-        const node = nodes[card.historyNodeId];
-        const result = node?.results[card.placeDcid];
-        const content = deriveContentForCard(
-          card.type,
-          result,
-          undefined,
-          card.variableDcid,
-        );
-        if (!content) continue;
-
-        const handle = handles.get(shapeId);
-        if (handle) {
-          const { variant: _, ...updateProps } = content;
-          handle.update(updateProps as Parameters<typeof handle.update>[0]);
+          // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
+          const rawId = shapeId.replace(/^shape:/, '');
+          const handle = atlas.add(content, rawId);
+          handles.set(shapeId, handle);
         }
-      }
 
-      // Detect removed cards
-      for (const shapeId of Object.keys(prevCards)) {
-        if (cards[shapeId]) continue;
-        const handle = handles.get(shapeId);
-        if (handle) {
-          handle.remove();
-          handles.delete(shapeId);
+        // Detect cards whose type changed (loading → real)
+        for (const [shapeId, card] of Object.entries(cards)) {
+          const prevCard = prevCards[shapeId];
+          if (!prevCard || prevCard.type === card.type) continue;
+
+          const node = nodes[card.historyNodeId];
+          const result = node?.results[card.placeDcid];
+          const content = deriveContentForCard(
+            card.type,
+            result,
+            undefined,
+            card.variableDcid,
+          );
+          if (!content) continue;
+
+          const handle = handles.get(shapeId);
+          if (handle) {
+            const { variant: _, ...updateProps } = content;
+            handle.update(updateProps as Parameters<typeof handle.update>[0]);
+          }
         }
-      }
 
-      prevCardsRef.current = cards;
-    });
+        // Detect removed cards
+        for (const shapeId of Object.keys(prevCards)) {
+          if (cards[shapeId]) continue;
+          const handle = handles.get(shapeId);
+          if (handle) {
+            handle.remove();
+            handles.delete(shapeId);
+          }
+        }
+
+        prevCardsRef.current = cards;
+      },
+    );
 
     return () => unsubscribe();
   }, [atlas]);
