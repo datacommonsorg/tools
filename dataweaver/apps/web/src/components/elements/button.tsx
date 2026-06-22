@@ -2,7 +2,7 @@ import type { ComponentPropsWithRef, ComponentType, ReactNode } from 'react';
 import { mergeClassNames } from '~/functions/merge_class_names';
 import s from './button.module.scss';
 
-// These are the main button styles - unique based on the button's purpose
+/** These are the main button styles - unique based on the button's purpose. */
 interface WithInternalTones {
   variant: 'flat' | 'border';
   tone:
@@ -13,7 +13,7 @@ interface WithInternalTones {
     | 'accent-subtle';
 }
 
-// There inherit from the parent element based on use case
+/** These inherit from the parent element based on use case. */
 interface WithExternalTones {
   variant: 'flat';
   tone: 'control' | 'card-action';
