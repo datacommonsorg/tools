@@ -61,8 +61,10 @@ export const Prompt = ({ value, onValueChange, onSubmit }: PromptProps) => {
       <Button
         className={s['button-submit']}
         type="submit"
-        icon={IconArrowUp}
         size="large"
+        variant="border"
+        tone="prominent"
+        icon={IconArrowUp}
         aria-label="Submit prompt"
         isDisabled={!hasValue}
       />

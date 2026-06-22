@@ -140,8 +140,10 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
 
     return (
       <Button
-        icon={IconPencil}
         size="small"
+        variant="flat"
+        tone="accent-subtle"
+        icon={IconPencil}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={() => runPrompt(followUp)}
       >

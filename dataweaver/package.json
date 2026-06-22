@@ -14,7 +14,8 @@
     "fix": "pnpm run fix:biome && pnpm run fix:styles",
     "fix:biome": "biome check --write --unsafe",
     "fix:styles": "stylelint \"**/*.scss\" --fix",
-    "generate:tokens": "pnpm --filter @package/tokens generate"
+    "generate:tokens": "pnpm --filter @package/tokens generate",
+    "prepare": "pnpm run generate:tokens"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",

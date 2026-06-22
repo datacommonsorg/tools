@@ -16,7 +16,7 @@
   height: calc(var(--actions-height) + var(--corner-size));
   padding-bottom: calc(var(--corner-size) - var(--border-thickness));
   margin: var(--actions-height) 2px 0;
-  background: rgb(var(--color-card-base-selected));
+  background: rgb(var(--color-card-surface-selected));
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow: var(--shadow-elevated);
 
@@ -36,7 +36,7 @@
   height: fit-content;
   max-height: 100%;
   overflow-y: auto;
-  background: rgb(var(--color-card-base));
+  background: rgb(var(--color-card-surface));
   border: var(--border-thickness) solid transparent;
   border-radius: var(--corner-size);
   box-shadow: var(--shadow-elevated);
@@ -48,7 +48,7 @@
   }
 
   :is([data-selection="single"], [data-selection="multiple"]) & {
-    border-color: rgb(var(--color-card-base-selected));
+    border-color: rgb(var(--color-card-surface-selected));
   }
 
   :is([data-selection="single"]) & {

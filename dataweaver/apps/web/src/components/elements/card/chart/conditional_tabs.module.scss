@@ -1,7 +1,7 @@
 .tabs-container {
   display: flex;
   margin-bottom: 16px;
-  border-bottom: 1px solid rgb(var(--color-card-border));
+  border-bottom: 1px solid rgb(var(--color-card-divider));
 }
 
 .tab {
@@ -21,13 +21,13 @@
   }
 
   &[data-is-active="true"] {
-    color: rgb(var(--color-card-base-selected));
-    border-bottom-color: rgb(var(--color-card-base-selected));
+    color: rgb(var(--color-card-surface-selected));
+    border-bottom-color: rgb(var(--color-card-surface-selected));
   }
 
   @include hover {
     &[data-is-active="false"] {
-      color: rgb(var(--color-card-base-selected));
+      color: rgb(var(--color-card-surface-selected));
     }
   }
 }

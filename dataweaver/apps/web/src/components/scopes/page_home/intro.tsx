@@ -31,13 +31,9 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
           className={s['button-close']}
           icon={IconClose}
           size="medium"
+          variant="flat"
+          tone="subtle"
           aria-label="Close"
-          colorScheme={{
-            base: 'transparent',
-            'base-hover': 'var(--color-card-base-subtle)',
-            content: 'var(--color-card-content)',
-            'content-hover': 'var(--color-card-content)',
-          }}
           onClick={onClose}
         />
 
@@ -59,7 +55,12 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
           <ul className={s['examples-container']}>
             {EXAMPLE_PROMPTS.map((example) => (
               <li key={example}>
-                <Button size="medium" onClick={() => onSelect(example)}>
+                <Button
+                  size="medium"
+                  variant="flat"
+                  tone="accent-subtle"
+                  onClick={() => onSelect(example)}
+                >
                   {example}
                 </Button>
               </li>

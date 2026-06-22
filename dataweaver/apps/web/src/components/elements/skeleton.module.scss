@@ -12,7 +12,7 @@
 
 .line {
   height: 18px;
-  background-color: rgb(var(--color-card-skeleton));
+  background: rgb(var(--color-skeleton-surface));
   border-radius: var(--border-radius-small);
 
   @include prefers-motion {

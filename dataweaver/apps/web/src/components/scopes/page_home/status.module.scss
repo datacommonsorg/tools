@@ -5,7 +5,7 @@
   width: 100%;
   padding: 32px 26px;
   pointer-events: auto;
-  background: rgb(var(--color-card-base-subtle));
+  background: rgb(var(--color-query-surface-subtle));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
 }
@@ -15,7 +15,7 @@
 
   grid-row: 1;
   grid-column: 1;
-  color: rgb(var(--color-card-content-subtle));
+  color: rgb(var(--color-query-content-subtle));
 }
 
 .indicator-message {
@@ -23,7 +23,7 @@
 
   grid-row: 2;
   grid-column: 1;
-  color: rgb(var(--color-card-content-dimmed));
+  color: rgb(var(--color-query-content-dimmed));
 }
 
 .button-cancel {

@@ -3,7 +3,7 @@
   inset: calc(100% + 12px) auto auto;
   z-index: $z-index-above-content;
   height: fit-content;
-  background: rgb(var(--color-control-surface));
+  background: rgb(var(--color-menu-surface));
   border-radius: var(--border-radius-medium);
   box-shadow: var(--shadow-elevated);
 }

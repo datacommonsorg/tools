@@ -31,6 +31,8 @@ export const Status = ({ status }: StatusProps) => {
       <Button
         className={s['button-cancel']}
         size="small"
+        variant="border"
+        tone="subtle"
         onClick={cancelRunningPrompt}
       >
         Cancel

@@ -93,8 +93,8 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       themes.default.fonts.draw.fontFamily = '"Google Sans", sans-serif';
       themes.default.fontSize = 24;
       themes.default.lineHeight = 1.25;
-      themes.default.colors.light.black.solid = `rgb(${COLORS['surface-content']})`;
-      themes.default.colors.light.selectionStroke = `rgb(${COLORS['control-accent']})`;
+      themes.default.colors.light.black.solid = `rgb(${COLORS['atlas-content']})`;
+      themes.default.colors.light.selectionStroke = `rgb(${COLORS['atlas-accent']})`;
       return themes;
     });
 

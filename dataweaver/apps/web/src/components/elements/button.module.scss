@@ -5,6 +5,75 @@
   color: rgb(var(--color-button-content));
   background: rgb(var(--color-button-base));
 
+  &[data-variant="border"] {
+    border: 1px solid rgb(var(--color-button-border));
+  }
+
+  &[data-tone="prominent"] {
+    --color-button-base: var(--color-button-prominent-base);
+    --color-button-content: var(--color-button-prominent-content);
+    --color-button-base-hover: var(--color-button-prominent-base-hover);
+    --color-button-content-hover: var(--color-button-prominent-content-hover);
+    --color-button-border: var(--color-button-prominent-border);
+    --color-button-border-hover: var(--color-button-prominent-border-hover);
+  }
+
+  &[data-tone="subtle"] {
+    --color-button-base: var(--color-button-subtle-base);
+    --color-button-content: var(--color-button-subtle-content);
+    --color-button-base-hover: var(--color-button-subtle-base-hover);
+    --color-button-content-hover: var(--color-button-subtle-content-hover);
+    --color-button-border: var(--color-button-subtle-border);
+    --color-button-border-hover: var(--color-button-subtle-border-hover);
+  }
+
+  &[data-tone="subtle-highlight"] {
+    --color-button-base: var(--color-button-subtle-highlight-base);
+    --color-button-content: var(--color-button-subtle-highlight-content);
+    --color-button-base-hover: var(--color-button-subtle-highlight-base-hover);
+    --color-button-content-hover: var(
+      --color-button-subtle-highlight-content-hover
+    );
+    --color-button-border: var(--color-button-subtle-highlight-border);
+    --color-button-border-hover: var(
+      --color-button-subtle-highlight-border-hover
+    );
+  }
+
+  &[data-tone="accent"] {
+    --color-button-base: var(--color-button-accent-base);
+    --color-button-content: var(--color-button-accent-content);
+    --color-button-base-hover: var(--color-button-accent-base-hover);
+    --color-button-content-hover: var(--color-button-accent-content-hover);
+    --color-button-border: var(--color-button-accent-border);
+    --color-button-border-hover: var(--color-button-accent-border-hover);
+  }
+
+  &[data-tone="accent-subtle"] {
+    --color-button-base: var(--color-button-accent-subtle-base);
+    --color-button-content: var(--color-button-accent-subtle-content);
+    --color-button-base-hover: var(--color-button-accent-subtle-base-hover);
+    --color-button-content-hover: var(
+      --color-button-accent-subtle-content-hover
+    );
+    --color-button-border: var(--color-button-accent-subtle-border);
+    --color-button-border-hover: var(--color-button-accent-subtle-border-hover);
+  }
+
+  &[data-tone="control"] {
+    --color-button-base: var(--color-control-surface);
+    --color-button-content: var(--color-control-accent);
+    --color-button-base-hover: var(--color-control-surface-hover);
+    --color-button-content-hover: var(--color-control-accent);
+  }
+
+  &[data-tone="card-action"] {
+    --color-button-base: var(--color-card-action-base);
+    --color-button-content: var(--color-card-action-content);
+    --color-button-base-hover: var(--color-card-action-base-hover);
+    --color-button-content-hover: var(--color-card-action-content-hover);
+  }
+
   &[data-shape="pill"] {
     &[data-size="small"] {
       column-gap: 2px;
@@ -71,10 +140,16 @@
   @include prefers-motion {
     transition-timing-function: $ease-linear;
     transition-duration: 0.2s;
-    transition-property: color, background;
+
+    &[data-variant="flat"] {
+      transition-property: color, background;
+    }
+
+    &[data-variant="border"] {
+      transition-property: color, background, border-color;
+    }
   }
 
-  // TODO: Implement disabled style
   &[disabled] {
     cursor: not-allowed;
     opacity: 0.4;
@@ -84,6 +159,10 @@
     @include hover {
       color: rgb(var(--color-button-content-hover));
       background: rgb(var(--color-button-base-hover));
+
+      &[data-variant="border"] {
+        border-color: rgb(var(--color-button-border-hover));
+      }
     }
   }
 }

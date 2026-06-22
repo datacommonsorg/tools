@@ -10,13 +10,6 @@ import {
 import { mapRange } from '~/functions/map_range';
 import s from './control.module.scss';
 
-const BUTTON_ZOOM_COLOR_SCHEME = {
-  base: 'transparent',
-  'base-hover': 'var(--color-control-surface-hover)',
-  content: 'var(--color-control-accent)',
-  'content-hover': 'var(--color-control-accent)',
-};
-
 interface ControlProps {
   id: string;
   isOpen: boolean;
@@ -45,8 +38,9 @@ export const Control = ({ id, isOpen, onToggle }: ControlProps) => {
       <Button
         icon={IconPlus}
         size="small"
+        variant="flat"
+        tone="subtle-highlight"
         aria-label="Zoom in"
-        colorScheme={BUTTON_ZOOM_COLOR_SCHEME}
         onClick={() => editor.zoomIn()}
       />
 
@@ -65,8 +59,9 @@ export const Control = ({ id, isOpen, onToggle }: ControlProps) => {
       <Button
         icon={IconMinus}
         size="small"
+        variant="flat"
+        tone="subtle-highlight"
         aria-label="Zoom out"
-        colorScheme={BUTTON_ZOOM_COLOR_SCHEME}
         onClick={() => editor.zoomOut()}
       />
     </div>
