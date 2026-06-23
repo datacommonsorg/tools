@@ -1,6 +1,6 @@
 import type { ComponentPropsWithRef } from 'react';
 
-export const IconBarChart = (props: ComponentPropsWithRef<'svg'>) => {
+export const IconBarChartOutlined = (props: ComponentPropsWithRef<'svg'>) => {
   return (
     <svg
       {...props}
