@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
+import { toast } from '~/components/foundations/toaster/store';
 import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { CardEntry, StreamEvent } from '~/server/types';
@@ -139,6 +140,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         break;
 
       case STREAM_EVENT.error:
+        toast('Query failed', event.message);
         queryFail(active.nodeId);
         querySetProcessing(false);
         querySetStatus(STATUS.idle);

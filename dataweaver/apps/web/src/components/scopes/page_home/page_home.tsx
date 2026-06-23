@@ -32,7 +32,10 @@ export const PageHome = () => {
     if (Object.values(nodes).length > 0) setIsIntroVisible(false);
   }, [nodes]);
 
-  const showStatus = !isIntroVisible && currentStatus !== STATUS.complete;
+  const showStatus =
+    !isIntroVisible &&
+    currentStatus !== STATUS.complete &&
+    currentStatus !== STATUS.idle;
 
   return (
     <div className={s.container}>

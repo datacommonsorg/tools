@@ -162,13 +162,11 @@ export async function POST(request: NextRequest) {
             });
             continue;
           }
-
           // Parse model response into query results
           emit({
             type: STREAM_EVENT.status,
             message: STATUS.buildingResults(placeLabel),
           });
-
           let parsedResponse: QueryModelResponse | undefined;
           try {
             parsedResponse = extractJson<QueryModelResponse>(responseText);
@@ -185,19 +183,15 @@ export async function POST(request: NextRequest) {
             });
             continue;
           }
-
           const variables = parsedResponse.variables || [];
           if (variables.length === 0) {
             emit({
-              type: STREAM_EVENT.status,
-              message:
-                parsedResponse.introduction || STATUS.noVariables(placeLabel),
+              type: STREAM_EVENT.error,
+              message: STATUS.noVariables(placeLabel),
             });
             continue;
           }
-
           const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-
           if (!entityDcid) {
             emit({
               type: STREAM_EVENT.status,
@@ -215,7 +209,6 @@ export async function POST(request: NextRequest) {
           const timeSeries = await Promise.all(
             variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
           );
-
           const discoveryResult: QueryResult = {
             id: nanoid(),
             title:

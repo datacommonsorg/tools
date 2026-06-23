@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from '~/components/foundations/toaster/store';
 import {
   type QueryStreamRequest,
   STATUS,
@@ -93,9 +94,11 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
       if (!res.ok) {
         const errBody = await res.text();
+        const errorMessage = STATUS.apiError(res.status, errBody);
+        toast('Query failed', errorMessage);
         setState((prev) => ({
           ...prev,
-          error: STATUS.apiError(res.status, errBody),
+          error: errorMessage,
           isComplete: true,
         }));
         return;
@@ -176,6 +179,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
           : null;
 
       if (error && error.name !== 'AbortError') {
+        toast('Connection error', error.message);
         setState((prev) => ({
           ...prev,
           error: error.message,
