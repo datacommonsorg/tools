@@ -40,7 +40,7 @@ export const PageHome = () => {
   return (
     <div className={s.container}>
       <AnimatePresence initial={false} mode="wait">
-        {isIntroVisible && (
+        {isIntroVisible && !status && !followUp && (
           <Intro
             key="intro"
             onSelect={selectExample}
@@ -48,7 +48,7 @@ export const PageHome = () => {
           />
         )}
 
-        {followUp && (
+        {followUp && !status && (
           <FollowUp
             key="follow-up"
             followUp={followUp}

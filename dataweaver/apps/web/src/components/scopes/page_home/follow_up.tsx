@@ -33,7 +33,7 @@ export const FollowUp = ({ followUp, onSelect }: FollowUpProps) => {
       <div className={s['inner-container']}>
         <p className={s.question}>{followUp.question}</p>
 
-        <p className={s.answer}>{followUp.answer}</p>
+        <div className={s.answer}>{followUp.answer}</div>
 
         {followUp.prompts.length > 0 && (
           <ul className={s['prompts-container']}>
