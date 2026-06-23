@@ -4,8 +4,8 @@ import { COLORS } from '@package/tokens/ts';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import type { ChartDatum } from './chart';
 
-const LINE_COLOR = `rgb(${COLORS['card-base-selected']})`;
-const GRID_COLOR = `rgb(${COLORS['surface-decorator']})`;
+const LINE_COLOR = `rgb(${COLORS['card-surface-selected']})`;
+const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-content-muted']})`;
 
 interface ChartProps {

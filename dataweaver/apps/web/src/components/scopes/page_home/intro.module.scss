@@ -2,7 +2,7 @@
   overflow-y: auto;
   overscroll-behavior: none;
   pointer-events: auto;
-  background: rgb(var(--color-card-base));
+  background: rgb(var(--color-query-surface));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
 }
@@ -32,21 +32,21 @@
     @include type-display;
 
     max-width: 540px;
-    color: rgb(var(--color-card-content-subtle));
+    color: rgb(var(--color-query-content-subtle));
   }
 
   .description {
     @include type-body-large;
 
     max-width: 600px;
-    color: rgb(var(--color-card-content));
+    color: rgb(var(--color-query-content));
   }
 
   .question {
     @include type-body-large(500);
 
     max-width: 600px;
-    color: rgb(var(--color-card-content));
+    color: rgb(var(--color-query-content));
   }
 
   .examples-container {
@@ -65,8 +65,8 @@
   column-gap: 4px;
   align-items: center;
   padding: 20px 28px;
-  color: rgb(var(--color-card-content));
-  background: rgb(var(--color-card-base-subtle));
+  color: rgb(var(--color-query-content));
+  background: rgb(var(--color-query-surface-subtle));
 
   .icon-info {
     flex-shrink: 0;

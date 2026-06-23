@@ -16,13 +16,6 @@ const INSET_SIDES_AND_BOTTOM = 16;
 /** Larger top margin, leaving room to seat the action panel above the cards. */
 const INSET_TOP = 60;
 
-const BUTTON_COLOR_SCHEME = {
-  base: 'transparent',
-  'base-hover': 'var(--color-card-base)',
-  content: 'var(--color-card-base)',
-  'content-hover': 'var(--color-card-base-selected)',
-};
-
 export const Selection = () => {
   const editor = useEditor();
   const { open: openExport } = useExportActions();
@@ -81,9 +74,10 @@ export const Selection = () => {
           >
             <Button
               icon={IconBarChart}
-              size="large"
+              size="medium"
+              variant="flat"
+              tone="card-action"
               aria-label="View chart"
-              colorScheme={BUTTON_COLOR_SCHEME}
               // Prevent tldraw from treating the press as a canvas gesture
               onPointerDown={(event) => event.stopPropagation()}
               // TODO: Support chart options here
@@ -96,17 +90,19 @@ export const Selection = () => {
             />
             <Button
               icon={IconExport}
-              size="large"
+              size="medium"
+              variant="flat"
+              tone="card-action"
               aria-label="Export"
-              colorScheme={BUTTON_COLOR_SCHEME}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={openExport}
             />
             <Button
               icon={IconDelete}
-              size="large"
+              size="medium"
+              variant="flat"
+              tone="card-action"
               aria-label="Delete"
-              colorScheme={BUTTON_COLOR_SCHEME}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => editor.deleteShapes(editor.getSelectedShapeIds())}
             />

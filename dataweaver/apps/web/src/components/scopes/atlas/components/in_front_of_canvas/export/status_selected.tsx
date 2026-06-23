@@ -74,10 +74,11 @@ export const StatusSelected = () => {
         </ul>
       </fieldset>
 
-      {/* TODO: Review button design to match designs. */}
       <Button
         className={s['button-download']}
         size="large"
+        variant="border"
+        tone="subtle-highlight"
         icon={selectedOption.icon}
         onClick={() => exportSelectedCards(selectedKey)}
       >

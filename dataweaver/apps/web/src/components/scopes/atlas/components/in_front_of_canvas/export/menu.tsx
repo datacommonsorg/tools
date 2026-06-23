@@ -8,13 +8,6 @@ import s from './menu.module.scss';
 import { StatusEmpty } from './status_empty';
 import { StatusSelected } from './status_selected';
 
-const BUTTON_CLOSE_COLOR_SCHEME = {
-  base: 'transparent',
-  'base-hover': 'var(--color-control-surface-hover)',
-  content: 'var(--color-control-content)',
-  'content-hover': 'var(--color-control-content)',
-};
-
 interface MenuProps {
   id: string;
   onClose(): void;
@@ -65,8 +58,9 @@ export const Menu = ({ id, onClose }: MenuProps) => {
           icon={IconClose}
           className={s['button-close']}
           size="medium"
+          variant="flat"
+          tone="subtle"
           aria-label="Close export"
-          colorScheme={BUTTON_CLOSE_COLOR_SCHEME}
           onClick={onClose}
         />
       </header>

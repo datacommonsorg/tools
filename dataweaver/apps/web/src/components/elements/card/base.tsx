@@ -59,12 +59,8 @@ export const CardBase = ({
             key={index}
             icon={action.icon}
             size="medium"
-            colorScheme={{
-              base: 'transparent',
-              'base-hover': 'var(--color-card-base)',
-              content: 'var(--color-card-base)',
-              'content-hover': 'var(--color-card-base-selected)',
-            }}
+            variant="flat"
+            tone="card-action"
             aria-label={action.label}
             // Prevent tldraw from triggering canvas gestures (e.g. dragging)
             onPointerDown={(event) => event.stopPropagation()}

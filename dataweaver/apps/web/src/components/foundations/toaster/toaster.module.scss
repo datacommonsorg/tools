@@ -14,9 +14,9 @@
   left: 0;
   display: grid;
   width: 100%;
-  background: rgb(var(--color-toaster-surface));
+  background: rgb(var(--color-toast-surface));
   border-radius: 28px;
-  box-shadow: 0 1px 18px rgb(var(--color-shadow) / 12%);
+  box-shadow: var(--shadow-elevated);
   transform-origin: bottom center;
 
   @include prefers-motion {
@@ -24,7 +24,7 @@
   }
 
   @include hover {
-    background: rgb(var(--color-toaster-surface-hover));
+    background: rgb(var(--color-toast-surface-hover));
   }
 }
 
@@ -38,13 +38,13 @@
   .title {
     @include type-headline;
 
-    color: rgb(var(--color-toaster-content));
+    color: rgb(var(--color-toast-content));
   }
 
   .description {
     @include type-body-medium;
 
-    color: rgb(var(--color-toaster-content-muted));
+    color: rgb(var(--color-toast-content-muted));
   }
 }
 
