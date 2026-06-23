@@ -141,7 +141,10 @@ export const CardChart = ({
         {isStyleMenuOpen && (
           <MenuChartOptions
             value={selectedStyle}
-            onConfirmSelectionChange={setSelectedStyle}
+            onConfirmSelectionChange={(newStyle) => {
+              setSelectedStyle(newStyle);
+              setIsStyleMenuOpen(false);
+            }}
             onClose={() => setIsStyleMenuOpen(false)}
           />
         )}

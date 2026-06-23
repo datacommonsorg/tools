@@ -51,7 +51,7 @@ export const MenuChartOptions = ({
   onClose,
   onConfirmSelectionChange,
 }: MenuChartOptionsProps) => {
-  const containerRef = useRef<HTMLElement>(null);
+  const contentContainerRef = useRef<HTMLElement>(null);
 
   const [selectedValue, setSelectedValue] = useState<ChartStyle>(value);
 
@@ -60,7 +60,7 @@ export const MenuChartOptions = ({
   // TODO: For now this doesn't seem to really work due to TLDraw consuming
   // tab events. Review focus trap implementation once we review how TLDraw
   // handles focus and keyboard events in general, and adjust as needed
-  useFocusTrap(containerRef);
+  useFocusTrap(contentContainerRef);
 
   return (
     <m.dialog
@@ -75,7 +75,7 @@ export const MenuChartOptions = ({
       {/** biome-ignore lint/a11y/useKeyWithClickEvents: This is a backdrop that closes the menu on click. */}
       <span className={s.backdrop} onClick={onClose} />
 
-      <section className={s['content-container']}>
+      <section ref={contentContainerRef} className={s['content-container']}>
         <h2 className={s.title}>Chart options</h2>
 
         <fieldset className={s['options-container']}>
