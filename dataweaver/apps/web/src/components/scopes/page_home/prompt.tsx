@@ -1,6 +1,6 @@
 'use client';
 
-import { EASE_LINEAR, EASE_OUT } from '@package/tokens/ts';
+import { EASE_IN_OUT, EASE_LINEAR, EASE_OUT } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
 import { useId } from 'react';
 import { Button } from '~/components/elements/button';
@@ -48,14 +48,25 @@ export const Prompt = ({
       <AnimatePresence initial={false}>
         {tags.length > 0 && (
           <m.div
-            // Here we animate parent as inner container here has padding. If we
-            // animate element with padding then height trick here doesn't work
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{
-              height: { duration: 0.5, ease: EASE_OUT },
-              opacity: { duration: 0.1, ease: EASE_LINEAR },
+            animate={{
+              height: 'auto',
+              opacity: 1,
+              transition: {
+                height: { duration: 0.5, ease: EASE_OUT },
+
+                // Delay here prevents tag showing over textarea on mount
+                opacity: { duration: 0.1, delay: 0.1, ease: EASE_LINEAR },
+              },
+            }}
+            exit={{
+              height: 0,
+              opacity: 0,
+              transition: {
+                // Ease in out also does same here to persist height a tad
+                height: { duration: 0.5, ease: EASE_IN_OUT },
+                opacity: { duration: 0.1, ease: EASE_LINEAR },
+              },
             }}
           >
             <ul className={s['tags-inner-container']}>
