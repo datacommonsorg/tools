@@ -22,9 +22,9 @@ const DO_NOT_EDIT_COMMENT_BANNER =
 
 /**
  * A color is either an RGB (triplet or with a 4th alpha element) or an alias
- * '$other-token'. Aliases let component-scoped tokens (e.g. 'card-surface') point
- * at a single generic role (e.g. '$surface-raised') so there's one source of
- * truth per value.
+ * '$other-token'. Aliases let component-scoped tokens (e.g. 'card-surface')
+ * point at a single generic role (e.g. '$surface-raised') so there's one source
+ * of truth per value.
  */
 type ColorValue = number[] | string;
 
@@ -34,14 +34,19 @@ const isAlias = (value: ColorValue): value is string => {
   return typeof value === 'string';
 };
 
-/** Resolves an alias chain down to its raw channels (RGB, optional alpha). */
-const resolveChannels = (name: string): number[] => {
+/** The const name for a token, e.g. 'card-surface' → 'COLOR_CARD_SURFACE'. */
+const colorConst = (name: string): string => {
+  return `COLOR_${name.replaceAll('-', '_').toUpperCase()}`;
+};
+
+/** Follows an alias chain to its source (non-alias) token name. */
+const resolveName = (name: string): string => {
   const value = COLOR_MAP[name];
   if (value === undefined) {
     throw new Error(`Unknown color token referenced: '${name}'`);
   }
 
-  return isAlias(value) ? resolveChannels(value.slice(1)) : value;
+  return isAlias(value) ? resolveName(value.slice(1)) : name;
 };
 
 /**
@@ -101,12 +106,21 @@ const generateTypeScript = (): string => {
     lines.push(`export const ${constName} = ${value};`);
   }
 
-  // Colors
+  // Each distinct source value is declared once as a const; aliases then
+  // reference it, so a shared color (e.g. accent) lives in a single place
+  lines.push('');
+  for (const [name, value] of Object.entries(COLOR_MAP)) {
+    if (!isAlias(value)) {
+      lines.push(`const ${colorConst(name)} = '${toCssChannels(value)}';`);
+    }
+  }
+
+  // Colors — each token references the const of its resolved source value.
   lines.push('');
   lines.push('export const COLORS = {');
   for (const name of Object.keys(COLOR_MAP)) {
-    const constName = name.includes('-') ? `'${name}'` : name;
-    lines.push(`  ${constName}: '${toCssChannels(resolveChannels(name))}',`);
+    const key = name.includes('-') ? `'${name}'` : name;
+    lines.push(`  ${key}: ${colorConst(resolveName(name))},`);
   }
   lines.push('} as const;');
 
