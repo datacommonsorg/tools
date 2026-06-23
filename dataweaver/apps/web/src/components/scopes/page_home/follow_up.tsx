@@ -31,7 +31,7 @@ export const FollowUp = ({ followUp, onSelect }: FollowUpProps) => {
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
       <div className={s['inner-container']}>
-        <h2 className={s.question}>{followUp.question}</h2>
+        <p className={s.question}>{followUp.question}</p>
 
         <p className={s.answer}>{followUp.answer}</p>
 
