@@ -37,8 +37,8 @@ export const deriveNotesContent = (result: QueryResult): AtlasContent => ({
 export const deriveChartContent = (
   result: QueryResult,
 ): AtlasContent | null => {
-  const firstMeta = result.metadata[0];
-  const allFacets = firstMeta?.facets;
+  const firstTimeSeries = result.timeSeries[0];
+  const allFacets = firstTimeSeries?.facets;
   const firstFacet = allFacets?.[0];
 
   if (!allFacets || !firstFacet || firstFacet.observations.length === 0) {
@@ -66,12 +66,12 @@ export const deriveChartContentForVariable = (
   variableDcid: string,
   entityDcid?: string,
 ): AtlasContent | null => {
-  const meta = result.metadata.find(
+  const timeSeries = result.timeSeries.find(
     (m) =>
       m.variableDcid === variableDcid &&
       (!entityDcid || m.entityDcid === entityDcid),
   );
-  const allFacets = meta?.facets;
+  const allFacets = timeSeries?.facets;
   const firstFacet = allFacets?.[0];
 
   if (!allFacets || !firstFacet || firstFacet.observations.length === 0) {

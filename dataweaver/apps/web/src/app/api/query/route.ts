@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
 import { extractJson } from '~/functions/extract_json';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
-import { fetchVariableMetadata } from '~/server/steps/observations';
+import { fetchTimeSeries } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
 import { renderResultHtml } from '~/server/steps/render_result_html';
 import { checkPromptSafety } from '~/server/steps/safety';
@@ -206,16 +206,14 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Fetch metadata for each variable
+          // Fetch time-series observations for each variable
           emit({
             type: STREAM_EVENT.status,
-            message: STATUS.loadingMetadata(placeLabel, variables.length),
+            message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const metadata = await Promise.all(
-            variables.map((v) =>
-              fetchVariableMetadata(v.dcid, entityDcid, signal),
-            ),
+          const timeSeries = await Promise.all(
+            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
           );
 
           const discoveryResult: QueryResult = {
@@ -231,7 +229,7 @@ export async function POST(request: NextRequest) {
             entities: [
               { dcid: entityDcid, name: parsedResponse.placeName || place },
             ],
-            metadata,
+            timeSeries,
             dateRange: parsed.dateRange,
             introduction: parsedResponse.introduction,
             coverage: parsedResponse.coverage,

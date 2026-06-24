@@ -55,7 +55,7 @@ export interface QueryResult {
   title: string;
   variables: ChartVariable[];
   entities: ChartEntity[];
-  metadata: ChartMetadata[];
+  timeSeries: TimeSeries[];
   dateRange?: { start?: string; end?: string };
   introduction?: string;
   coverage?: string;
@@ -77,7 +77,7 @@ export interface FacetInfo {
   observations: Array<{ date: string; value: number }>;
 }
 
-export interface ChartMetadata {
+export interface TimeSeries {
   variableDcid: string;
   entityDcid: string;
   facets: FacetInfo[];

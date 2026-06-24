@@ -105,8 +105,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         active.cardIds.push(notesId);
 
         // Register chart card (only if data exists).
-        const firstMeta = result.metadata[0];
-        const firstFacet = firstMeta?.facets[0];
+        const firstTimeSeries = result.timeSeries[0];
+        const firstFacet = firstTimeSeries?.facets[0];
         if (firstFacet && firstFacet.observations.length > 0) {
           const chartId = `shape:${active.nodeId}__${entityDcid}__chart`;
           cardRegister(chartId, active.nodeId, 'chart', entityDcid);

@@ -12,8 +12,10 @@ const buildTableHtml = (result: QueryResult): string => {
   md += '| --- | --- | --- |\n';
 
   for (const variable of result.variables) {
-    const meta = result.metadata.find((m) => m.variableDcid === variable.dcid);
-    const firstFacet = meta?.facets[0];
+    const timeSeries = result.timeSeries.find(
+      (m) => m.variableDcid === variable.dcid,
+    );
+    const firstFacet = timeSeries?.facets[0];
     const facetCell = firstFacet
       ? `${firstFacet.source}<br>${firstFacet.earliestDate} – ${firstFacet.latestDate}${firstFacet.unit ? ` · ${firstFacet.unit}` : ''}`
       : 'No data';
