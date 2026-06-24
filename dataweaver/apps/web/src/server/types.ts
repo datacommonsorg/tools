@@ -37,15 +37,15 @@ export interface CardEntry {
   variableDcid?: string;
 }
 
-// --- Chart Specification types ---
+// --- Data Commons identity types ---
 
-export interface ChartVariable {
+export interface StatVar {
   dcid: string;
   name: string;
   rationale?: string;
 }
 
-export interface ChartEntity {
+export interface Entity {
   dcid: string;
   name: string;
 }
@@ -53,8 +53,8 @@ export interface ChartEntity {
 export interface QueryResult {
   id: string;
   title: string;
-  variables: ChartVariable[];
-  entities: ChartEntity[];
+  variables: StatVar[];
+  entities: Entity[];
   timeSeries: TimeSeries[];
   dateRange?: { start?: string; end?: string };
   introduction?: string;
@@ -137,8 +137,8 @@ export const STATUS = {
   noVariables: (place: string) => `No variables found for ${place}.`,
   invalidDcid: (place: string) =>
     `Could not resolve a valid DCID for ${place}, skipping...`,
-  loadingMetadata: (place: string, varCount: number) =>
-    `Loading metadata for ${place} (${varCount} variables)...`,
+  loadingTimeSeries: (place: string, varCount: number) =>
+    `Loading time-series data for ${place} (${varCount} variables)...`,
   apiError: (status: number, body: string) => `API error: ${status} ${body}`,
 } as const;
 
