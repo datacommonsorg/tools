@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
-import type { StreamEvent } from '~/server/types';
+import type { CardEntry, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useStoreShapeSync } from './sync_store';
@@ -59,7 +59,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       nodeSetParsedQuery,
       querySetStatus,
       nodeAddResult,
-      cardRegister,
+      cardRegisterBatch,
       queryComplete,
       queryFail,
       querySetProcessing,
@@ -70,16 +70,20 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(event.message);
         break;
 
-      case STREAM_EVENT.parsedQuery:
+      case STREAM_EVENT.parsedQuery: {
         nodeSetParsedQuery(active.nodeId, event.data);
 
         // Register loading placeholder cards for each place.
-        for (const place of event.data.places) {
-          const shapeId = `shape:${active.nodeId}__${place}__loading`;
-          cardRegister(shapeId, active.nodeId, 'loading', place);
-          active.cardIds.push(shapeId);
-        }
+        const loadingEntries = event.data.places.map((place) => ({
+          shapeId: `shape:${active.nodeId}__${place}__loading`,
+          historyNodeId: active.nodeId,
+          type: 'loading' as const,
+          placeDcid: place,
+        }));
+        cardRegisterBatch(loadingEntries);
+        active.cardIds.push(...loadingEntries.map((e) => e.shapeId));
         break;
+      }
 
       case STREAM_EVENT.queryResult: {
         const { result, place } = event;
@@ -88,30 +92,41 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Write the query result data to the history node.
         nodeAddResult(active.nodeId, entityDcid, result);
 
-        // Remove the loading placeholder for this place and replace with real cards.
+        // Remove the loading placeholder for this place.
         const loadingId = `shape:${active.nodeId}__${place}__loading`;
         const { cardUnregister } = store.getState();
         cardUnregister(loadingId);
         active.cardIds = active.cardIds.filter((id) => id !== loadingId);
 
-        // Register table card.
-        const tableId = `shape:${active.nodeId}__${entityDcid}__table`;
-        cardRegister(tableId, active.nodeId, 'table', entityDcid);
-        active.cardIds.push(tableId);
+        // Batch-register result cards.
+        const resultEntries: CardEntry[] = [
+          {
+            shapeId: `shape:${active.nodeId}__${entityDcid}__table`,
+            historyNodeId: active.nodeId,
+            type: 'table',
+            placeDcid: entityDcid,
+          },
+          {
+            shapeId: `shape:${active.nodeId}__${entityDcid}__notes`,
+            historyNodeId: active.nodeId,
+            type: 'notes',
+            placeDcid: entityDcid,
+          },
+        ];
 
-        // Register notes card.
-        const notesId = `shape:${active.nodeId}__${entityDcid}__notes`;
-        cardRegister(notesId, active.nodeId, 'notes', entityDcid);
-        active.cardIds.push(notesId);
-
-        // Register chart card (only if data exists).
         const firstTimeSeries = result.timeSeries[0];
         const firstFacet = firstTimeSeries?.facets[0];
         if (firstFacet && firstFacet.observations.length > 0) {
-          const chartId = `shape:${active.nodeId}__${entityDcid}__chart`;
-          cardRegister(chartId, active.nodeId, 'chart', entityDcid);
-          active.cardIds.push(chartId);
+          resultEntries.push({
+            shapeId: `shape:${active.nodeId}__${entityDcid}__chart`,
+            historyNodeId: active.nodeId,
+            type: 'chart',
+            placeDcid: entityDcid,
+          });
         }
+
+        cardRegisterBatch(resultEntries);
+        active.cardIds.push(...resultEntries.map((e) => e.shapeId));
 
         break;
       }

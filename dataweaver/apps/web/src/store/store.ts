@@ -44,6 +44,7 @@ export interface AtlasStore {
     placeDcid: string,
     variableDcid?: string,
   ) => void;
+  cardRegisterBatch: (entries: CardEntry[]) => void;
   cardUnregister: (shapeId: string) => void;
   queryCancel: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
@@ -182,6 +183,21 @@ export const useAtlasStore = create<AtlasStore>()(
             }),
             undefined,
             'cardRegister',
+          );
+        },
+
+        cardRegisterBatch: (entries) => {
+          set(
+            (state) => ({
+              cards: {
+                ...state.cards,
+                ...Object.fromEntries(
+                  entries.map((entry) => [entry.shapeId, entry]),
+                ),
+              },
+            }),
+            undefined,
+            'cardRegisterBatch',
           );
         },
 
