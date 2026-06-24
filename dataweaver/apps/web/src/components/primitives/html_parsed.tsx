@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import type { DOMNode } from 'html-react-parser';
 import parse, { domToReact, Element } from 'html-react-parser';
 import Link from 'next/link';
@@ -13,22 +14,15 @@ export const HtmlParsed = ({
   onAction?: (href: string) => void;
   className?: string;
 }) => {
+  DOMPurify.setConfig({ FORBID_TAGS: ['style'] });
+
   const parsedHtml = useMemo(
     () =>
       html
-        ? parse(html, {
+        ? parse(DOMPurify.sanitize(html), {
             replace: (domNode) => {
               if (domNode instanceof Element) {
-                for (const attr of Object.keys(domNode.attribs)) {
-                  if (attr.toLowerCase().startsWith('on')) {
-                    delete domNode.attribs[attr];
-                  }
-                }
                 switch (domNode.name) {
-                  case 'script':
-                  case 'style':
-                  case 'iframe':
-                    return null;
                   case 'a': {
                     const validLink = validateHref(domNode.attribs.href);
                     if (!validLink) {
@@ -38,7 +32,7 @@ export const HtmlParsed = ({
                     const { href, target, rel } = validLink;
 
                     // Internal action links — fire callback instead of navigating.
-                    if (href.startsWith('#') && onAction) {
+                    if (href.startsWith('#fetch') && onAction) {
                       return (
                         <Link
                           href={href}

@@ -7,7 +7,7 @@ interface ValidLinkProps {
 export const validateHref = (href?: string): ValidLinkProps | false => {
   if (!href) return false;
 
-  const isHash = href.startsWith('#');
+  const isHash = href.startsWith('#fetch');
   const isHttp = /^https?:\/\//i.test(href);
 
   if (!isHash && !isHttp) {
