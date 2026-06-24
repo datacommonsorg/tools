@@ -47,7 +47,7 @@ const parseSSEChunk = (
         const event: StreamEvent = JSON.parse(dataLine);
         events.push(event);
       } catch {
-        // Skip malformed events
+        console.warn('[SSE] Malformed event data, skipping:', dataLine);
       }
     }
   }
@@ -165,9 +165,16 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
       }
 
       if (!controller.signal.aborted) {
-        setState((prev) =>
-          prev.isComplete ? prev : { ...prev, isComplete: true },
-        );
+        setState((prev) => {
+          if (prev.isComplete) return prev;
+          // Stream ended without a complete/error event — synthesize one
+          // so the provider always receives a terminal signal.
+          onEventRef.current?.({
+            type: STREAM_EVENT.complete,
+            message: STATUS.complete,
+          });
+          return { ...prev, status: STATUS.complete, isComplete: true };
+        });
       }
     } catch (err: unknown) {
       const error =
@@ -180,6 +187,11 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
       if (error && error.name !== 'AbortError') {
         toast('Connection error', error.message);
+        // Synthesize an error event so the provider can clean up store state.
+        onEventRef.current?.({
+          type: STREAM_EVENT.error,
+          message: error.message,
+        });
         setState((prev) => ({
           ...prev,
           error: error.message,

@@ -156,11 +156,19 @@ export const runToolLoop = async (
           max: maxToolCalls,
         });
 
-        const toolResult = await callMcp<McpToolCallResult>(
-          'tools/call',
-          { name: fcName, arguments: fc?.args },
-          signal,
-        );
+        let toolResult: McpToolCallResult;
+        try {
+          toolResult = await callMcp<McpToolCallResult>(
+            'tools/call',
+            { name: fcName, arguments: fc?.args },
+            signal,
+          );
+        } catch (err: unknown) {
+          // If the caller aborted, re-throw so the outer loop exits cleanly.
+          if (signal?.aborted) throw err;
+          // Tool call timed out or failed — return empty so the place is skipped.
+          return { text: '', resolvedPlaceDcid };
+        }
 
         // Extract place DCID from search_indicators responses
         if (fcName === 'search_indicators' && !resolvedPlaceDcid) {

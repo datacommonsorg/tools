@@ -149,11 +149,19 @@ export const useAtlasStore = create<AtlasStore>()(
             (state) => {
               const node = state.nodes[nodeId];
               if (!node) return state;
+
+              const remainingCards = Object.fromEntries(
+                Object.entries(state.cards).filter(
+                  ([, card]) => card.historyNodeId !== nodeId,
+                ),
+              );
+
               return {
                 nodes: {
                   ...state.nodes,
                   [nodeId]: { ...node, status: 'error' },
                 },
+                cards: remainingCards,
               };
             },
             undefined,

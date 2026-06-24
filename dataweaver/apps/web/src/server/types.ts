@@ -149,6 +149,7 @@ export const STREAM_EVENT = {
   parsedQuery: 'parsed_query',
   toolCall: 'tool_call',
   queryResult: 'query_result',
+  placeSkipped: 'place_skipped',
   complete: 'complete',
   error: 'error',
 } as const;
@@ -166,5 +167,6 @@ export type StreamEvent =
       result: QueryResult;
       place: string;
     }
+  | { type: typeof STREAM_EVENT.placeSkipped; place: string; reason: string }
   | { type: typeof STREAM_EVENT.complete; message: string }
   | { type: typeof STREAM_EVENT.error; message: string };
