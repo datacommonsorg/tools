@@ -117,6 +117,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      let isTerminalReached = false;
       const handleEvent = (event: StreamEvent) => {
         if (controller.signal.aborted) return;
 
@@ -125,6 +126,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
             setState((prev) => ({ ...prev, status: event.message }));
             break;
           case STREAM_EVENT.complete:
+            isTerminalReached = true;
             setState((prev) => ({
               ...prev,
               status: STATUS.complete,
@@ -132,6 +134,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
             }));
             break;
           case STREAM_EVENT.error:
+            isTerminalReached = true;
             setState((prev) => ({
               ...prev,
               error: event.message,
@@ -164,17 +167,16 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
         }
       }
 
-      if (!controller.signal.aborted) {
-        setState((prev) => {
-          if (prev.isComplete) return prev;
-          // Stream ended without a complete/error event — synthesize one
-          // so the provider always receives a terminal signal.
-          onEventRef.current?.({
-            type: STREAM_EVENT.complete,
-            message: STATUS.complete,
-          });
-          return { ...prev, status: STATUS.complete, isComplete: true };
+      if (!controller.signal.aborted && !isTerminalReached) {
+        onEventRef.current?.({
+          type: STREAM_EVENT.complete,
+          message: STATUS.complete,
         });
+        setState((prev) => ({
+          ...prev,
+          status: STATUS.complete,
+          isComplete: true,
+        }));
       }
     } catch (err: unknown) {
       const error =

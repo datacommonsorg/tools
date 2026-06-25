@@ -155,13 +155,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
       case STREAM_EVENT.error: {
         toast('Query failed', event.message);
-
-        // Remove any cards created during this query (e.g. loading placeholders).
-        const { cardUnregister } = store.getState();
-        for (const id of active.cardIds) {
-          cardUnregister(id);
-        }
-
         queryFail(active.nodeId);
         querySetProcessing(false);
         querySetStatus(STATUS.idle);
