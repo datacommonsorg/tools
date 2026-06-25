@@ -1,14 +1,14 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ThoughtEvent } from "../hooks/useSseChat";
+import type { ThoughtEvent } from "../hooks/use_sse_chat";
 
-interface ThoughtsPanelProps {
+interface PanelThoughtsProps {
   thoughts: ThoughtEvent[];
 }
 
 // Streamed "thinking" text the model emits with thinkingConfig.includeThoughts=true.
 // Rendered inline, always expanded — no collapse/expand toggle, no header.
-export default function ThoughtsPanel({ thoughts }: ThoughtsPanelProps) {
+export default function PanelThoughts({ thoughts }: PanelThoughtsProps) {
   if (thoughts.length === 0) return null;
 
   const grouped = groupByPhase(thoughts);

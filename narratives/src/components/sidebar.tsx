@@ -4,8 +4,8 @@
 
 import React from "react";
 import { Menu, SquarePen } from "lucide-react";
-import { useHashRoute } from "../hooks/useHashRoute";
-import { useChatSession } from "../hooks/ChatSessionContext";
+import { useHashRoute } from "../hooks/use_hash_route";
+import { useChatSession } from "../hooks/chat_session_context";
 
 /**
  * Sidebar component representing the left rail.
@@ -20,7 +20,7 @@ export function Sidebar() {
     <aside className="w-[72px] h-full bg-surface-blue flex flex-col items-center py-4 gap-4 shrink-0 border-r border-button-hover lg:border-none">
       {isAgent && (
         <>
-          {/* Menu / "accordion" icon — toggles the SessionDrawer that lists
+          {/* Menu / "accordion" icon — toggles the DrawerSession that lists
               all chat threads. */}
           <button
             type="button"

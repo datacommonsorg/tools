@@ -1,10 +1,10 @@
-import type { ProvenanceItem } from "../hooks/useSseChat";
+import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 // Figma node 3427-16738 ("Sources" heading) + 3427-16739 ("Body" with the
 // numbered list). Each source is a numbered line — the number stays in
 // the default body color, the source name itself is rendered in
 // #175C75 (AI Dark Blue, token "ts4") as a hyperlink to provenanceUrl.
-// Each row receives id="source-N" so inline CitationChips can anchor.
+// Each row receives id="source-N" so inline ChipCitations can anchor.
 
 const COLOR_TITLE = "#1B1C1D";
 const COLOR_BODY = "#1B1C1D";
@@ -12,11 +12,11 @@ const COLOR_LINK = "#175C75";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-interface SourcesListProps {
+interface ListSourcesProps {
   sources: ProvenanceItem[];
 }
 
-export default function SourcesList({ sources }: SourcesListProps) {
+export default function ListSources({ sources }: ListSourcesProps) {
   if (!sources || sources.length === 0) return null;
 
   return (

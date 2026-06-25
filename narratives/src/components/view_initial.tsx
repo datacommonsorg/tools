@@ -1,15 +1,15 @@
 import { ChangeEvent, RefObject } from "react";
-import SuggestionChip from "./SuggestionChip";
-import { useBrand } from "../hooks/BrandingContext";
+import ChipSuggestion from "./chip_suggestion";
+import { useBrand } from "../hooks/branding_context";
 
-interface InitialViewProps {
+interface ViewInitialProps {
   query: string;
   setQuery: (val: string) => void;
   onSend: () => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-export default function InitialView({ query, setQuery, onSend, textareaRef }: InitialViewProps) {
+export default function ViewInitial({ query, setQuery, onSend, textareaRef }: ViewInitialProps) {
   const isExpanded = query.trim().length > 0;
   const brand = useBrand();
   const suggestions = brand.suggestions ?? [];
@@ -61,7 +61,7 @@ export default function InitialView({ query, setQuery, onSend, textareaRef }: In
       {/* Prompt Chips (from branding.json suggestions, fallback DEFAULT_BRAND) */}
       <div className="absolute bottom-6 left-0 right-0 flex flex-wrap justify-center gap-4 px-6">
         {suggestions.map((text, i) => (
-          <SuggestionChip
+          <ChipSuggestion
             key={i}
             text={text}
             onClick={(t) => {

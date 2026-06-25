@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, type ReactNode } from "react";
-import { useBranding, DEFAULT_BRAND, type Branding } from "./useBranding";
+import { useBranding, DEFAULT_BRAND, type Branding } from "./use_branding";
 
 const BrandingContext = createContext<Branding>(DEFAULT_BRAND);
 
@@ -18,7 +18,7 @@ const BrandingContext = createContext<Branding>(DEFAULT_BRAND);
  *
  * @example
  * ```tsx
- * import { BrandingProvider } from './hooks/BrandingContext';
+ * import { BrandingProvider } from './hooks/branding_context';
  * 
  * function AppContainer() {
  *   return (
@@ -50,7 +50,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
  *
  * @example
  * ```tsx
- * import { useBrand } from '../hooks/BrandingContext';
+ * import { useBrand } from '../hooks/branding_context';
  * 
  * function Logo() {
  *   const { logoUrl, instanceName } = useBrand();

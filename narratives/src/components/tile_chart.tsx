@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Chart tile component that parses chart configuration and renders
+ * Recharts visualizations (lines or bars) inside cards.
+ */
+
 import { useEffect, useState } from "react";
 import {
   Bar,
@@ -22,18 +27,23 @@ import {
   type ChartRow,
   type PointResponse,
   type SeriesResponse,
-} from "../api/dcObservations";
+} from "../api/dc_observations";
 import type {
   ChartConfig,
   ChartItem,
   ProvenanceItem,
-} from "../hooks/useSseChat";
+} from "../hooks/use_sse_chat";
 
-// Figma "ChartModule" (node 3427-16743) — owned by us end-to-end, no DC
-// web components. Charts are rendered with Recharts so every pixel of the
-// chart interior is themable to match Figma exactly.
+// TODO(followup): Split this large file into multiple files under a charts/ subfolder
+// (e.g. charts/chart_tile.tsx, charts/chart_card.tsx, charts/chart_graph.tsx, etc.)
+// to improve readability and code organization. Also, extract inline styling to a template/theme file.
 
-interface ChartTileProps {
+/**
+ * Visual spec (Figma node 3427-16743) — owned by us end-to-end, no DC
+ * web components. Charts are rendered with Recharts so every pixel of the
+ * chart interior is themable to match Figma exactly.
+ */
+interface TileChartProps {
   config: ChartConfig;
   provenance?: ProvenanceItem[];
 }
@@ -61,7 +71,11 @@ const SERIES_COLORS = [
   "#9334E6",
 ];
 
-export default function ChartTile({ config, provenance }: ChartTileProps) {
+/**
+ * TileChart component parses chart configurations and renders up to three
+ * visualization cards inside a layout grid.
+ */
+export function TileChart({ config, provenance }: TileChartProps) {
   if (!config || !config.should_render || config.hide_charts) {
     return null;
   }

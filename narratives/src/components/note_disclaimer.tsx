@@ -1,4 +1,4 @@
-// Figma node 3427-16777 "Disclaimer" → 3427-16778 "DisclaimerNote".
+// Figma node 3427-16777 "Disclaimer" → 3427-16778 "NoteDisclaimer".
 // Info icon + body text + thin divider below.
 // Token "ts5" (the \_ space character) maps to color #F9F9F9, used only
 // inside the text — we collapse it back to a regular space.
@@ -8,14 +8,14 @@ const COLOR_DIVIDER = "#E3E3E3";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-interface DisclaimerNoteProps {
+interface NoteDisclaimerProps {
   text?: string;
 }
 
 const DEFAULT_TEXT =
   "This data overview was crafted using Gemini to help you navigate the statistical variables available in Data Commons. Think of it as a starting point for your exploration, not an exhaustive answer. We encourage you to always double-check your findings against the original data linked on each chart.";
 
-export default function DisclaimerNote({ text = DEFAULT_TEXT }: DisclaimerNoteProps) {
+export default function NoteDisclaimer({ text = DEFAULT_TEXT }: NoteDisclaimerProps) {
   return (
     <section
       className="flex flex-col gap-1.5"

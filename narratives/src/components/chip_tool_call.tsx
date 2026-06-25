@@ -1,12 +1,12 @@
-import type { ToolCallEvent } from "../hooks/useSseChat";
+import type { ToolCallEvent } from "../hooks/use_sse_chat";
 
-interface ToolCallChipProps {
+interface ChipToolCallProps {
   toolCall: ToolCallEvent;
 }
 
 // Pretty-prints one MCP tool call as a small inline pill, e.g.
 //   search_indicators("average_annual_wage", places=["country/USA"])
-export default function ToolCallChip({ toolCall }: ToolCallChipProps) {
+export default function ChipToolCall({ toolCall }: ChipToolCallProps) {
   const args = toolCall.arguments ?? {};
   const summary = describeArguments(toolCall.name, args);
   const failed = toolCall.status === "error";

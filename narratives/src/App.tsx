@@ -4,16 +4,16 @@
  */
 
 import React from "react";
-import { Sidebar } from "./components/Sidebar";
-import { Header } from "./components/Header";
-import { DataAgent } from "./components/DataAgent";
-import { MetricsPage } from "./components/MetricsPage";
-import { DataDownloadTool } from "./components/DataDownloadTool";
-import { StatVarExplorer } from "./components/StatVarExplorer";
-import { SessionDrawer } from "./components/SessionDrawer";
-import { BrandingProvider } from "./hooks/BrandingContext";
-import { ChatSessionProvider } from "./hooks/ChatSessionContext";
-import { useHashRoute } from "./hooks/useHashRoute";
+import { Sidebar } from "./components/sidebar";
+import { Header } from "./components/header";
+import { DataAgent } from "./components/data_agent";
+import { MetricsPage } from "./components/metrics_page";
+import { DataDownloadTool } from "./components/data_download_tool";
+import { StatVarExplorer } from "./components/stat_var_explorer";
+import { DrawerSession } from "./components/drawer_session";
+import { BrandingProvider } from "./hooks/branding_context";
+import { ChatSessionProvider } from "./hooks/chat_session_context";
+import { useHashRoute } from "./hooks/use_hash_route";
 
 /**
  * Main application component. Sets up routing, branding, and chat session contexts.
@@ -42,7 +42,7 @@ export function App() {
       <ChatSessionProvider>
         <div className="flex h-screen w-full bg-white overflow-hidden relative">
           <Sidebar />
-          <SessionDrawer />
+          <DrawerSession />
           <main className="flex-1 flex flex-col h-full relative">
             <Header />
             {renderContent()}

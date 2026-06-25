@@ -1,8 +1,8 @@
-interface SkeletonCardProps {
+interface CardSkeletonProps {
   query: string;
 }
 
-export default function SkeletonCard({ query }: SkeletonCardProps) {
+export default function CardSkeleton({ query }: CardSkeletonProps) {
   return (
     <div className="w-full border border-gray-200 rounded-[24px] overflow-hidden shadow-sm bg-surface-soft">
       <div className="px-6 py-4 border-b border-gray-100 text-body-large-emphasized text-on-surface bg-white">

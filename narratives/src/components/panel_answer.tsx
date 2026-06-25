@@ -1,20 +1,24 @@
+/**
+ * @fileoverview PanelAnswer component wrapping the full answer display structure,
+ * including toolbar, body, markdown response card, sources, charts, disclaimers,
+ * and PDF export actions.
+ */
+
 import { useRef } from "react";
-import type { ChatTurn } from "../hooks/useSseChat";
-import ChartTile from "./ChartTile";
-import DisclaimerNote from "./DisclaimerNote";
-import ExportPdfButton from "./ExportPdfButton";
-import FollowUpQuestions from "./FollowUpQuestions";
-import ResponseCard from "./ResponseCard";
-import SourcesList from "./SourcesList";
+import type { ChatTurn } from "../hooks/use_sse_chat";
+import { TileChart } from "./tile_chart";
+import NoteDisclaimer from "./note_disclaimer";
+import ButtonExportPdf from "./button_export_pdf";
+import QuestionsFollowUp from "./questions_follow_up";
+import CardResponse from "./card_response";
+import ListSources from "./list_sources";
 
-// Wraps the full answer in a "Side panel" card (Figma node 3427:16726):
-//   • Outer: 1px #E3E3E3 border, 16px radius
-//   • Toolbar header (16/16/0/0 radius, #F9F9F9 fill, padding 12 12 12 20):
-//       left  = title text (user's question) — Title S, 14/20 Medium
-//       right = "Export PDF" outline pill (#F0F4F9 fill)
-//   • Content body (#FFFFFF) hosts the existing sections.
+// TODO(followup): Extract the inline styling in this react component into a template/theme file.
 
-interface AnswerPanelProps {
+/**
+ * Props for the PanelAnswer component.
+ */
+interface PanelAnswerProps {
   turn: ChatTurn;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
@@ -36,11 +40,14 @@ const COLOR_TITLE = "#1B1C1D";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-export default function AnswerPanel({
+/**
+ * PanelAnswer component wraps the full answer in a side panel card layout.
+ */
+export function PanelAnswer({
   turn,
   isStreaming,
   onAsk,
-}: AnswerPanelProps) {
+}: PanelAnswerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const hasCharts = !!turn.chartConfig;
   const hasSources = turn.provenance.length > 0;
@@ -94,7 +101,7 @@ export default function AnswerPanel({
         }}
       >
         {/* 1. Markdown body — bare (no nested card chrome) */}
-        <ResponseCard
+        <CardResponse
           title={turn.userMessage}
           body={turn.text}
           streaming={isStreaming && turn.status !== "done"}
@@ -102,33 +109,35 @@ export default function AnswerPanel({
         />
 
         {/* 2. Sources */}
-        {hasSources && <SourcesList sources={turn.provenance} />}
+        {hasSources && <ListSources sources={turn.provenance} />}
 
         {/* 3. Charts */}
         {hasCharts && (
-          <ChartTile config={turn.chartConfig!} provenance={turn.provenance} />
+          <TileChart config={turn.chartConfig!} provenance={turn.provenance} />
         )}
 
         {/* 4. Disclaimer */}
-        {(hasCharts || hasSources) && <DisclaimerNote />}
+        {(hasCharts || hasSources) && <NoteDisclaimer />}
 
         {/* 5. Export PDF (filled, in-content) */}
         {turn.status === "done" && (
-          <ExportPdfButton targetRef={panelRef} />
+          <ButtonExportPdf targetRef={panelRef} />
         )}
 
         {/* 6. Follow-up questions */}
         {turn.status === "done" && (
-          <FollowUpQuestions questions={STUB_FOLLOWUPS} onAsk={onAsk} />
+          <QuestionsFollowUp questions={STUB_FOLLOWUPS} onAsk={onAsk} />
         )}
       </div>
     </div>
   );
 }
 
-// Outline-style Export PDF pill that lives in the card's toolbar header.
-// Distinct from the filled <ExportPdfButton /> that sits inside the card
-// body — both appear in Figma 3427-16715 and the user's screenshot.
+/**
+ * Outline-style Export PDF pill that lives in the card's toolbar header.
+ * Distinct from the filled <ButtonExportPdf /> that sits inside the card
+ * body — both appear in Figma 3427-16715 and the user's screenshot.
+ */
 function ToolbarExportPdfPill({
   targetRef,
 }: {

@@ -4,9 +4,9 @@
 
 import React from "react";
 import { ChevronDown } from "lucide-react";
-import { NAV_CONFIG } from "../config/navConfig";
-import { useHashRoute } from "../hooks/useHashRoute";
-import { useBrand } from "../hooks/BrandingContext";
+import { NAV_CONFIG } from "../config/nav_config";
+import { useHashRoute } from "../hooks/use_hash_route";
+import { useBrand } from "../hooks/branding_context";
 
 /**
  * Header component rendering the brand logo and the horizontal navigation menu.

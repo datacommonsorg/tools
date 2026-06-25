@@ -1,9 +1,9 @@
-interface SuggestionChipProps {
+interface ChipSuggestionProps {
   text: string;
   onClick?: (text: string) => void;
 }
 
-export default function SuggestionChip({ text, onClick }: SuggestionChipProps) {
+export default function ChipSuggestion({ text, onClick }: ChipSuggestionProps) {
   return (
     <button
       type="button"

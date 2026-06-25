@@ -10,13 +10,13 @@ import { useRef } from "react";
 //   - label: Google Sans Text Medium 14/20, color #FFFFFF
 //
 // Behaviour: triggers `window.print()` against a print stylesheet that
-// hides chat input + side panels and keeps just the AnswerPanel visible.
+// hides chat input + side panels and keeps just the PanelAnswer visible.
 // This is the cheapest reliable PDF export — works in every browser, no
 // extra dependency. A future enhancement could swap in html2pdf.js or
 // jspdf for a non-print path, but for V1 print-to-PDF matches Figma's
 // "Export PDF" affordance exactly.
 
-interface ExportPdfButtonProps {
+interface ButtonExportPdfProps {
   targetRef?: React.RefObject<HTMLElement | null>;
   label?: string;
 }
@@ -26,10 +26,10 @@ const COLOR_TEXT = "#FFFFFF";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-export default function ExportPdfButton({
+export default function ButtonExportPdf({
   targetRef,
   label = "Export PDF",
-}: ExportPdfButtonProps) {
+}: ButtonExportPdfProps) {
   const internalRef = useRef<HTMLButtonElement>(null);
 
   const onExport = () => {

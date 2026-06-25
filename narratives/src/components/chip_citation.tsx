@@ -1,14 +1,20 @@
-// Small inline pill that renders [N] inside the markdown body as a
-// clickable badge linking to the matching entry in the Sources block.
-//
-// Visual spec (Figma node 3427-16728, token "ts1"):
-//   color: #175C75 (AI Dark Blue)
-//   weight: 500 (Medium)
-//   font: Google Sans Text Medium 16/24 (inherits from surrounding body)
+/**
+ * @fileoverview Citation chip component and utilities to parse markdown text
+ * and render citations with anchor links.
+ */
 
 const COLOR = "#175C75";
 
-export default function CitationChip({ n }: { n: number }) {
+/**
+ * Small inline pill that renders [N] inside the markdown body as a
+ * clickable badge linking to the matching entry in the Sources block.
+ *
+ * Visual spec (Figma node 3427-16728, token "ts1"):
+ *   color: #175C75 (AI Dark Blue)
+ *   weight: 500 (Medium)
+ *   font: Google Sans Text Medium 16/24 (inherits from surrounding body)
+ */
+export function ChipCitation({ n }: { n: number }) {
   return (
     <a
       href={`#source-${n}`}
@@ -29,12 +35,14 @@ export default function CitationChip({ n }: { n: number }) {
   );
 }
 
-// Walk a children array and replace `[N]` patterns inside strings with
-// <CitationChip /> elements. Returns a new children array suitable for
-// React rendering. Pass any react-markdown component's `children` through
-// this helper to apply citation styling consistently inside p, li, td,
-// strong, em, etc.
-export function withCitationChips(
+/**
+ * Walks a children array and replaces `[N]` patterns inside strings with
+ * <ChipCitation /> elements. Returns a new children array suitable for
+ * React rendering. Pass any react-markdown component's `children` through
+ * this helper to apply citation styling consistently inside p, li, td,
+ * strong, em, etc.
+ */
+export function withChipCitations(
   children: React.ReactNode,
 ): React.ReactNode {
   if (children == null) {
@@ -55,9 +63,11 @@ function ChildWithCitations({ children }: { children: React.ReactNode }) {
   return <>{splitWithCitations(children)}</>;
 }
 
-// Split a string into a mixed array of text fragments and CitationChip
-// elements, matching `[N]` where N is 1-99. Handles multiple adjacent
-// citations like `[1] [2]` or `[1][2]`.
+/**
+ * Splits a string into a mixed array of text fragments and ChipCitation
+ * elements, matching `[N]` where N is 1-99. Handles multiple adjacent
+ * citations like `[1] [2]` or `[1][2]`.
+ */
 function splitWithCitations(s: string): React.ReactNode[] {
   const pattern = /\[(\d{1,2})\]/g;
   const out: React.ReactNode[] = [];
@@ -68,7 +78,7 @@ function splitWithCitations(s: string): React.ReactNode[] {
     if (match.index > last) {
       out.push(s.slice(last, match.index));
     }
-    out.push(<CitationChip key={`c-${i++}`} n={Number(match[1])} />);
+    out.push(<ChipCitation key={`c-${i++}`} n={Number(match[1])} />);
     last = match.index + match[0].length;
   }
   if (last < s.length) {

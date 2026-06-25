@@ -1,18 +1,23 @@
-// Typed access to the Custom Data Commons observation endpoints.
-// We use these directly so charts render inside our own Recharts layer —
-// no DC web components, full Figma fidelity.
+/**
+ * Typed access to the Custom Data Commons observation endpoints.
+ * We use these directly so charts render inside our own Recharts layer —
+ * no DC web components, full Figma fidelity.
+ */
 
-export type SeriesPoint = { date: string; value: number };
+export interface SeriesPoint {
+  date: string;
+  value: number;
+}
 
-export type SeriesResponse = {
+export interface SeriesResponse {
   data: Record<string, Record<string, { series: SeriesPoint[] } | undefined>>;
   facets: Record<
     string,
     { importName?: string; provenanceUrl?: string; unit?: string }
   >;
-};
+}
 
-export type PointResponse = {
+export interface PointResponse {
   data: Record<
     string,
     Record<string, { date?: string; value?: number } | undefined>
@@ -21,12 +26,15 @@ export type PointResponse = {
     string,
     { importName?: string; provenanceUrl?: string; unit?: string }
   >;
-};
+}
 
-// Recharts dataset row: { date: "2020", "<dcid1>": 42, "<dcid2>": 7, ... }
-export type ChartRow = Record<string, string | number | undefined> & {
+/**
+ * Recharts dataset row: { date: "2020", "<dcid1>": 42, "<dcid2>": 7, ... }
+ */
+export interface ChartRow {
   date: string;
-};
+  [key: string]: string | number | undefined;
+}
 
 const ORIGIN =
   typeof window !== "undefined" ? window.location.origin : "";
@@ -35,14 +43,14 @@ function buildSeriesUrl(
   variableDcids: string[],
   entityDcids: string[],
 ): string {
-  const u = new URL("/api/observations/series", ORIGIN);
-  for (const v of variableDcids) {
-    u.searchParams.append("variables", v);
+  const url = new URL("/api/observations/series", ORIGIN);
+  for (const variableDcid of variableDcids) {
+    url.searchParams.append("variables", variableDcid);
   }
-  for (const e of entityDcids) {
-    u.searchParams.append("entities", e);
+  for (const entityDcid of entityDcids) {
+    url.searchParams.append("entities", entityDcid);
   }
-  return u.toString();
+  return url.toString();
 }
 
 function buildPointUrl(
@@ -50,19 +58,22 @@ function buildPointUrl(
   entityDcids: string[],
   date: string,
 ): string {
-  const u = new URL("/api/observations/point", ORIGIN);
-  for (const v of variableDcids) {
-    u.searchParams.append("variables", v);
+  const url = new URL("/api/observations/point", ORIGIN);
+  for (const variableDcid of variableDcids) {
+    url.searchParams.append("variables", variableDcid);
   }
-  for (const e of entityDcids) {
-    u.searchParams.append("entities", e);
+  for (const entityDcid of entityDcids) {
+    url.searchParams.append("entities", entityDcid);
   }
   if (date) {
-    u.searchParams.set("date", date);
+    url.searchParams.set("date", date);
   }
-  return u.toString();
+  return url.toString();
 }
 
+/**
+ * Fetches series observations for the given variables and entities.
+ */
 export async function fetchSeries(
   variableDcids: string[],
   entityDcids: string[],
@@ -75,6 +86,9 @@ export async function fetchSeries(
   return (await res.json()) as SeriesResponse;
 }
 
+/**
+ * Fetches point observations for the given variables and entities on a specific date.
+ */
 export async function fetchPoint(
   variableDcids: string[],
   entityDcids: string[],
@@ -88,25 +102,26 @@ export async function fetchPoint(
   return (await res.json()) as PointResponse;
 }
 
-// Time-series shape (line/bar over time, single place per variable):
-// pivots the API response into one row per date, with each variable as a
-// column. Variables that don't have a value on a given date are omitted
-// from that row.
+/**
+ * Pivots the time-series API response into one row per date, with each variable as a
+ * column. Variables that don't have a value on a given date are omitted
+ * from that row.
+ */
 export function pivotSeriesToRows(
   response: SeriesResponse,
   variableDcids: string[],
   place: string,
 ): ChartRow[] {
   const byDate = new Map<string, ChartRow>();
-  for (const v of variableDcids) {
-    const series = response?.data?.[v]?.[place]?.series ?? [];
+  for (const variableDcid of variableDcids) {
+    const series = response?.data?.[variableDcid]?.[place]?.series ?? [];
     for (const point of series) {
       let row = byDate.get(point.date);
       if (!row) {
         row = { date: point.date };
         byDate.set(point.date, row);
       }
-      row[v] = point.value;
+      row[variableDcid] = point.value;
     }
   }
   return Array.from(byDate.values()).sort((a, b) =>
@@ -114,8 +129,9 @@ export function pivotSeriesToRows(
   );
 }
 
-// Bar-by-place shape (single variable, single date, one row per place):
-// returns rows keyed by place DCID for a single variable.
+/**
+ * Pivots the point API response into rows keyed by place DCID for a single variable.
+ */
 export function pivotPointToRowsByPlace(
   response: PointResponse,
   variable: string,
@@ -130,8 +146,10 @@ export function pivotPointToRowsByPlace(
   return out;
 }
 
-// Try to derive a primary source from the facets section of a response.
-// Falls back to undefined if nothing usable is present.
+/**
+ * Tries to derive a primary source from the facets section of a response.
+ * Falls back to undefined if nothing usable is present.
+ */
 export function pickSourceFromFacets(
   response: SeriesResponse | PointResponse,
 ): { name: string; url: string } | undefined {
@@ -139,27 +157,31 @@ export function pickSourceFromFacets(
   if (!facets) {
     return undefined;
   }
-  for (const f of Object.values(facets)) {
-    if (f?.provenanceUrl) {
+  for (const facet of Object.values(facets)) {
+    if (facet?.provenanceUrl) {
       return {
-        name: f.importName || f.provenanceUrl,
-        url: f.provenanceUrl,
+        name: facet.importName || facet.provenanceUrl,
+        url: facet.provenanceUrl,
       };
     }
   }
   return undefined;
 }
 
-// Strip the "country/", "geoId/", "dc/" prefix to get a shorter display
-// label. Falls back to the full DCID if no prefix.
+/**
+ * Strips the "country/", "geoId/", "dc/" prefix to get a shorter display
+ * label. Falls back to the full DCID if no prefix.
+ */
 export function prettyPlaceName(dcid: string): string {
-  const i = dcid.indexOf("/");
-  return i >= 0 ? dcid.slice(i + 1) : dcid;
+  const index = dcid.indexOf("/");
+  return index >= 0 ? dcid.slice(index + 1) : dcid;
 }
 
-// Heuristic readable name for a variable DCID when we don't have its
-// canonical title from the upstream catalog. Splits on underscores and
-// title-cases the first segment.
+/**
+ * Returns a heuristic readable name for a variable DCID when we don't have its
+ * canonical title from the upstream catalog. Splits on underscores and
+ * title-cases the first segment.
+ */
 export function prettyVariableName(dcid: string): string {
   if (!dcid) {
     return "";

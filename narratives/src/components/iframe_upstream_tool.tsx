@@ -18,7 +18,7 @@ import { useCallback, useRef } from "react";
 // cross-origin, fall back to a server-side query-param flag (e.g.
 // /tools/download?embed=1) and a template branch that drops the nav.
 
-interface UpstreamToolIframeProps {
+interface IframeUpstreamToolProps {
   src: string;
   title: string;
   // Optional tool-specific CSS appended after the generic chrome-hider rules.
@@ -45,11 +45,11 @@ const CHROME_HIDER_CSS = `
 
 const INJECTED_STYLE_ID = "cdc-iframe-chrome-hider";
 
-export default function UpstreamToolIframe({
+export default function IframeUpstreamTool({
   src,
   title,
   extraCss,
-}: UpstreamToolIframeProps) {
+}: IframeUpstreamToolProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Fires on every iframe `load` — including internal navigations within the

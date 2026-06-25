@@ -1,12 +1,12 @@
-import type { ProvenanceItem } from "../hooks/useSseChat";
+import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
-interface SourcesFooterProps {
+interface FooterSourcesProps {
   sources: ProvenanceItem[];
 }
 
 // Renders the list of import_name + provenance_url pairs extracted from
 // get_observations source_metadata by the agent backend.
-export default function SourcesFooter({ sources }: SourcesFooterProps) {
+export default function FooterSources({ sources }: FooterSourcesProps) {
   if (sources.length === 0) return null;
   return (
     <div className="mt-2 flex flex-col gap-1">

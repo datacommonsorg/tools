@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ThoughtEvent, TurnStatus } from "../hooks/useSseChat";
+import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
 
 // Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
 // Header row: Gemini teal sparkle icon (left) + "Reasoning ▾" chip (right of it).
@@ -72,7 +72,7 @@ export default function ReasoningBlock({
   const label = phaseLabel(streaming, status);
 
   // Flatten to a single markdown string (newline-separated). Phase grouping
-  // existed in the old ThoughtsPanel; the new Figma design renders the
+  // existed in the old PanelThoughts; the new Figma design renders the
   // reasoning as one continuous block. When the agent emits no thoughts,
   // we render a short status placeholder so the section stays present
   // above the response card per Figma 3427-16715.

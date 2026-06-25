@@ -1,13 +1,13 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { withCitationChips } from "./CitationChip";
+import { withChipCitations } from "./chip_citation";
 
-interface ResponseCardProps {
+interface CardResponseProps {
   title: string;
   body: string;
   streaming?: boolean;
   // When true, renders the markdown body only — no outer card, no title
-  // bar. Used inside AnswerPanel's "Side panel" card where the user's
+  // bar. Used inside PanelAnswer's "Side panel" card where the user's
   // question is already shown in the toolbar.
   bare?: boolean;
 }
@@ -19,12 +19,12 @@ interface ResponseCardProps {
 
 const LINK_COLOR = "#175C75"; // Figma "AI Dark Blue"
 
-export default function ResponseCard({
+export default function CardResponse({
   title,
   body,
   streaming,
   bare = false,
-}: ResponseCardProps) {
+}: CardResponseProps) {
   const markdown = (
     <div className={bare ? "markdown-body" : "px-[56px] py-6 text-on-surface markdown-body"}>
       <ReactMarkdownInner body={body} streaming={streaming} />
@@ -67,7 +67,7 @@ function ReactMarkdownInner({
           components={{
             p: ({ children }) => (
               <p className="text-body-large mb-3 last:mb-0">
-                {withCitationChips(children)}
+                {withChipCitations(children)}
               </p>
             ),
             h1: ({ children }) => (
@@ -90,7 +90,7 @@ function ReactMarkdownInner({
               <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
             ),
             li: ({ children }) => (
-              <li className="leading-relaxed">{withCitationChips(children)}</li>
+              <li className="leading-relaxed">{withChipCitations(children)}</li>
             ),
             a: ({ children, href }) => (
               <a
@@ -141,17 +141,17 @@ function ReactMarkdownInner({
             ),
             th: ({ children }) => (
               <th className="border border-gray-200 px-3 py-2 text-left font-medium">
-                {withCitationChips(children)}
+                {withChipCitations(children)}
               </th>
             ),
             td: ({ children }) => (
               <td className="border border-gray-200 px-3 py-2">
-                {withCitationChips(children)}
+                {withChipCitations(children)}
               </td>
             ),
             strong: ({ children }) => (
               <strong className="font-semibold">
-                {withCitationChips(children)}
+                {withChipCitations(children)}
               </strong>
             ),
             hr: () => <hr className="my-4 border-gray-200" />,

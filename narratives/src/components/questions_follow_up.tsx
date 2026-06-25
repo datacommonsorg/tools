@@ -8,15 +8,15 @@ const COLOR_LINK = "#175C75";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-interface FollowUpQuestionsProps {
+interface QuestionsFollowUpProps {
   questions: string[];
   onAsk?: (question: string) => void;
 }
 
-export default function FollowUpQuestions({
+export default function QuestionsFollowUp({
   questions,
   onAsk,
-}: FollowUpQuestionsProps) {
+}: QuestionsFollowUpProps) {
   if (!questions || questions.length === 0) return null;
 
   return (
