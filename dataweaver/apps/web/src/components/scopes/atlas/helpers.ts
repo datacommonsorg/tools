@@ -14,18 +14,25 @@ interface TextContent
   variant: 'text';
 }
 
+interface TableContent
+  extends BaseContent,
+    Pick<CardTextProps, 'title' | 'body'> {
+  variant: 'table';
+}
+
 interface ChartContent
   extends BaseContent,
-    Pick<CardChartProps, 'title' | 'description' | 'data'> {
+    Pick<CardChartProps, 'title' | 'description' | 'data' | 'facets'> {
   variant: 'chart';
 }
 
-export type AtlasContent = TextContent | ChartContent;
+export type AtlasContent = TextContent | TableContent | ChartContent;
 
 export type CardVariant = AtlasContent['variant'];
 
 /** Flat view of every possible card content field. */
 export type CardContentFields = Omit<TextContent, 'variant'> &
+  Omit<TableContent, 'variant'> &
   Omit<ChartContent, 'variant'>;
 
 export interface CardPosition {
@@ -69,6 +76,7 @@ export const contentToShape = (
         title: content.title,
         description: content.description,
         data: content.data,
+        facets: content.facets,
       },
     };
   }

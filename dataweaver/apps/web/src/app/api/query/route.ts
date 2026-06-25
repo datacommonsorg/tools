@@ -6,23 +6,26 @@ import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
 import { extractJson } from '~/functions/extract_json';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
-import { fetchVariableMetadata } from '~/server/steps/observations';
+import { fetchTimeSeries } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
+import { renderResultHtml } from '~/server/steps/render_result_html';
 import { checkPromptSafety } from '~/server/steps/safety';
 import {
-  type ChartType,
+  type Insight,
   type QueryResult,
   type QueryStreamRequest,
+  STATUS,
   STREAM_EVENT,
   type StreamEvent,
 } from '~/server/types';
 
 interface QueryModelResponse {
-  entityDcid?: string;
+  placeDcid?: string;
+  placeName?: string;
+  coverage?: string;
+  introduction?: string;
   variables?: Array<{ dcid: string; name: string; rationale?: string }>;
-  suggestedChartType?: ChartType;
-  summary?: string;
-  insight?: string;
+  insights?: Insight[];
   followUps?: string[];
 }
 
@@ -36,7 +39,16 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const { query, atlasContext, selectedEntityDcids } = body;
+
+  const query = body?.query;
+  const atlasContext =
+    typeof body?.atlasContext === 'string' ? body.atlasContext : '';
+  const ancestorChain = Array.isArray(body?.ancestorChain)
+    ? body.ancestorChain
+    : [];
+  const selectedEntityDcids = Array.isArray(body?.selectedEntityDcids)
+    ? body.selectedEntityDcids
+    : [];
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
@@ -62,7 +74,7 @@ export async function POST(request: NextRequest) {
         // ─── Safety gate ──────────────────────────────────────────────────
         emit({
           type: STREAM_EVENT.status,
-          message: 'Checking query safety...',
+          message: STATUS.checkingSafety,
         });
         const safetyResult = await checkPromptSafety(query);
         if (!safetyResult.allowed) {
@@ -75,16 +87,21 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // ─── Parse query ──────────────────────────────────────────────────
-        emit({ type: STREAM_EVENT.status, message: 'Parsing query...' });
-        const parsed = await parseQuery({ query, atlasContext });
+        // ─── Analyze query ────────────────────────────────────────────────
+        emit({ type: STREAM_EVENT.status, message: STATUS.parsingQuery });
+        const parsed = await parseQuery({
+          query,
+          atlasContext,
+          ancestorChainLength: ancestorChain.length,
+        });
 
         // Resolve places
         let places = parsed.places;
-        if (places.length === 0) {
+        if (parsed.isFollowUp && places.length === 0) {
           places =
             selectedEntityDcids.length > 0 ? selectedEntityDcids : [query];
         }
+        if (places.length === 0) places = [query];
         parsed.places = places;
 
         emit({ type: STREAM_EVENT.parsedQuery, data: parsed });
@@ -98,7 +115,7 @@ export async function POST(request: NextRequest) {
         // Fetch tools
         emit({
           type: STREAM_EVENT.status,
-          message: 'Fetching available tools...',
+          message: STATUS.fetchingTools,
         });
         const geminiTools = await fetchGeminiTools(signal);
 
@@ -112,7 +129,11 @@ export async function POST(request: NextRequest) {
           const placeLabel = parsed.titles[place] || place;
           emit({
             type: STREAM_EVENT.status,
-            message: `Discovering metrics for ${placeLabel} (${i + 1}/${places.length})...`,
+            message: STATUS.discoveringMetrics(
+              placeLabel,
+              i + 1,
+              places.length,
+            ),
           });
 
           // Run Gemini tool loop
@@ -121,13 +142,14 @@ export async function POST(request: NextRequest) {
             query,
             parsed,
             atlasContext,
+            ancestorChain,
             geminiTools,
             signal,
             onToolCall: (e) => {
               emit({ type: STREAM_EVENT.toolCall, tool: e.tool, args: e.args });
               emit({
                 type: STREAM_EVENT.status,
-                message: `Using tool: ${e.tool} (${e.count}/${e.max})...`,
+                message: STATUS.usingTool(e.tool, e.count, e.max),
               });
             },
           });
@@ -136,7 +158,7 @@ export async function POST(request: NextRequest) {
           if (!responseText) {
             emit({
               type: STREAM_EVENT.status,
-              message: `No response for ${placeLabel}, skipping...`,
+              message: STATUS.noResponse(placeLabel),
             });
             continue;
           }
@@ -144,7 +166,7 @@ export async function POST(request: NextRequest) {
           // Parse model response into query results
           emit({
             type: STREAM_EVENT.status,
-            message: `Building results for ${placeLabel}...`,
+            message: STATUS.buildingResults(placeLabel),
           });
 
           let parsedResponse: QueryModelResponse | undefined;
@@ -159,7 +181,7 @@ export async function POST(request: NextRequest) {
           } catch {
             emit({
               type: STREAM_EVENT.status,
-              message: `Invalid model response for ${placeLabel}, skipping...`,
+              message: STATUS.invalidResponse(placeLabel),
             });
             continue;
           }
@@ -169,53 +191,55 @@ export async function POST(request: NextRequest) {
             emit({
               type: STREAM_EVENT.status,
               message:
-                parsedResponse.summary ||
-                `No variables found for ${placeLabel}.`,
+                parsedResponse.introduction || STATUS.noVariables(placeLabel),
             });
             continue;
           }
 
-          const entityDcid = parsedResponse.entityDcid || resolvedPlaceDcid;
+          const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
 
           if (!entityDcid) {
             emit({
               type: STREAM_EVENT.status,
-              message: `Could not resolve a valid DCID for ${placeLabel}, skipping...`,
+              message: STATUS.invalidDcid(placeLabel),
             });
             continue;
           }
 
-          // Fetch metadata for each variable
+          // Fetch time-series observations for each variable
           emit({
             type: STREAM_EVENT.status,
-            message: `Loading metadata for ${placeLabel} (${variables.length} variables)...`,
+            message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const metadata = await Promise.all(
-            variables.map((v) =>
-              fetchVariableMetadata(v.dcid, entityDcid, signal),
-            ),
+          const timeSeries = await Promise.all(
+            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
           );
 
           const discoveryResult: QueryResult = {
             id: nanoid(),
-            chartType: parsedResponse.suggestedChartType || 'line_chart',
             title:
               parsed.titles[place] ||
-              parsedResponse.summary ||
-              `Metrics for ${place}`,
+              `Metrics for ${parsedResponse.placeName || place}`,
             variables: variables.map((v) => ({
               dcid: v.dcid,
               name: v.name,
               rationale: v.rationale,
             })),
-            entities: [{ dcid: entityDcid, name: place }],
-            metadata,
+            entities: [
+              { dcid: entityDcid, name: parsedResponse.placeName || place },
+            ],
+            timeSeries,
             dateRange: parsed.dateRange,
-            summary: parsedResponse.summary,
-            insight: parsedResponse.insight,
+            introduction: parsedResponse.introduction,
+            coverage: parsedResponse.coverage,
+            insights: parsedResponse.insights,
             followUps: parsedResponse.followUps,
           };
+
+          const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
+          discoveryResult.tableHtml = tableHtml;
+          discoveryResult.notesHtml = notesHtml;
 
           emit({
             type: STREAM_EVENT.queryResult,
@@ -224,7 +248,7 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        emit({ type: STREAM_EVENT.complete });
+        emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
         controller.close();
       } catch (err: unknown) {
         if (!signal.aborted) {

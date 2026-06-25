@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type QueryStreamRequest,
+  STATUS,
   STREAM_EVENT,
   type StreamEvent,
 } from '~/server/types';
@@ -71,7 +72,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
   const start = useCallback(async (params: QueryStreamRequest) => {
     setState({
-      status: 'Connecting...',
+      status: STATUS.connecting,
       isComplete: false,
       error: null,
     });
@@ -94,7 +95,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
         const errBody = await res.text();
         setState((prev) => ({
           ...prev,
-          error: `API error: ${res.status} ${errBody}`,
+          error: STATUS.apiError(res.status, errBody),
           isComplete: true,
         }));
         return;
@@ -104,7 +105,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
       if (!reader) {
         setState((prev) => ({
           ...prev,
-          error: 'No response body',
+          error: STATUS.noResponseBody,
           isComplete: true,
         }));
         return;
@@ -123,7 +124,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
           case STREAM_EVENT.complete:
             setState((prev) => ({
               ...prev,
-              status: 'Complete',
+              status: STATUS.complete,
               isComplete: true,
             }));
             break;
@@ -186,7 +187,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
-    setState((prev) => ({ ...prev, status: 'Stopped', isComplete: true }));
+    setState((prev) => ({ ...prev, status: STATUS.stopped, isComplete: true }));
   }, []);
 
   return { ...state, start, abort };

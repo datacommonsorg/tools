@@ -5,50 +5,64 @@ export interface ParsedQuery {
   topic: string;
   titles: Record<string, string>;
   dateRange?: { start?: string; end?: string };
+  isFollowUp: boolean;
 }
 
-type CardType =
-  | 'loading'
-  | 'html'
-  | 'dataset'
-  | 'comparison'
-  | 'image'
-  | 'query_result';
+export interface HistoryNode {
+  id: string;
+  parentId: string | null;
+  query: string;
+  parsedQuery: ParsedQuery | null;
+  /** Query results keyed by entity (place) DCID. */
+  results: Record<string, QueryResult>;
+  cardIds: string[];
+  timestamp: number;
+  status: 'pending' | 'complete' | 'error';
+}
+
+export type CardType = 'loading' | 'table' | 'notes' | 'chart';
+
+export interface Insight {
+  title: string;
+  text: string;
+}
 
 export interface CardEntry {
   shapeId: string;
+  historyNodeId: string;
   type: CardType;
-  variableDcids: string[];
-  entityDcids: string[];
-  title: string;
+  /** Key into the parent HistoryNode's `results` record. */
+  placeDcid: string;
+  /** When set, the chart card targets this specific variable instead of the first. */
+  variableDcid?: string;
 }
 
-// --- Chart Specification types ---
+// --- Data Commons identity types ---
 
-export type ChartType = 'line_chart' | 'bar_chart' | 'comparison' | 'table';
-
-interface ChartVariable {
+export interface StatVar {
   dcid: string;
   name: string;
   rationale?: string;
 }
 
-interface ChartEntity {
+export interface Entity {
   dcid: string;
   name: string;
 }
 
 export interface QueryResult {
   id: string;
-  chartType: ChartType;
   title: string;
-  variables: ChartVariable[];
-  entities: ChartEntity[];
-  metadata: ChartMetadata[];
+  variables: StatVar[];
+  entities: Entity[];
+  timeSeries: TimeSeries[];
   dateRange?: { start?: string; end?: string };
-  summary?: string;
-  insight?: string;
+  introduction?: string;
+  coverage?: string;
+  insights?: Insight[];
   followUps?: string[];
+  tableHtml?: string;
+  notesHtml?: string;
 }
 
 export interface FacetInfo {
@@ -63,7 +77,7 @@ export interface FacetInfo {
   observations: Array<{ date: string; value: number }>;
 }
 
-export interface ChartMetadata {
+export interface TimeSeries {
   variableDcid: string;
   entityDcid: string;
   facets: FacetInfo[];
@@ -91,8 +105,42 @@ export interface McpToolCallResult {
 export interface QueryStreamRequest {
   query: string;
   atlasContext: string;
+  ancestorChain: { query: string; topic: string; places: string[] }[];
   selectedEntityDcids: string[];
 }
+
+// --- Status messages ---
+
+export const STATUS = {
+  // Terminal states (for programmatic checks)
+  idle: '',
+  complete: 'Complete.',
+  stopped: 'Stopped',
+
+  // Static messages
+  starting: 'Starting query...',
+  connecting: 'Connecting...',
+  checkingSafety: 'Checking query safety...',
+  parsingQuery: 'Parsing query...',
+  fetchingTools: 'Fetching available tools...',
+  noResponseBody: 'No response body',
+
+  // Dynamic messages
+  discoveringMetrics: (place: string, current: number, total: number) =>
+    `Discovering metrics for ${place} (${current}/${total})...`,
+  usingTool: (tool: string, count: number, max: number) =>
+    `Using tool: ${tool} (${count}/${max})...`,
+  noResponse: (place: string) => `No response for ${place}, skipping...`,
+  buildingResults: (place: string) => `Building results for ${place}...`,
+  invalidResponse: (place: string) =>
+    `Invalid model response for ${place}, skipping...`,
+  noVariables: (place: string) => `No variables found for ${place}.`,
+  invalidDcid: (place: string) =>
+    `Could not resolve a valid DCID for ${place}, skipping...`,
+  loadingTimeSeries: (place: string, varCount: number) =>
+    `Loading time-series data for ${place} (${varCount} variables)...`,
+  apiError: (status: number, body: string) => `API error: ${status} ${body}`,
+} as const;
 
 // --- SSE Stream event types ---
 
@@ -118,5 +166,5 @@ export type StreamEvent =
       result: QueryResult;
       place: string;
     }
-  | { type: typeof STREAM_EVENT.complete }
+  | { type: typeof STREAM_EVENT.complete; message: string }
   | { type: typeof STREAM_EVENT.error; message: string };
