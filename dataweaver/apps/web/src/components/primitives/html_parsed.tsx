@@ -14,12 +14,10 @@ export const HtmlParsed = ({
   onAction?: (href: string) => void;
   className?: string;
 }) => {
-  DOMPurify.setConfig({ FORBID_TAGS: ['style'] });
-
   const parsedHtml = useMemo(
     () =>
       html
-        ? parse(DOMPurify.sanitize(html), {
+        ? parse(DOMPurify.sanitize(html, { FORBID_TAGS: ['style'] }), {
             replace: (domNode) => {
               if (domNode instanceof Element) {
                 switch (domNode.name) {
