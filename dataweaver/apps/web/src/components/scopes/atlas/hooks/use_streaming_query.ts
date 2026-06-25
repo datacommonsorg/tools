@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from '~/components/foundations/toaster/store';
 import {
   type QueryStreamRequest,
   STATUS,
@@ -94,24 +93,12 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
       if (!res.ok) {
         const errBody = await res.text();
-        const errorMessage = STATUS.apiError(res.status, errBody);
-        toast('Query failed', errorMessage);
-        setState((prev) => ({
-          ...prev,
-          error: errorMessage,
-          isComplete: true,
-        }));
-        return;
+        throw new Error(STATUS.apiError(res.status, errBody));
       }
 
       const reader = res.body?.getReader();
       if (!reader) {
-        setState((prev) => ({
-          ...prev,
-          error: STATUS.noResponseBody,
-          isComplete: true,
-        }));
-        return;
+        throw new Error(STATUS.noResponseBody);
       }
 
       const decoder = new TextDecoder();
@@ -188,7 +175,6 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
           : null;
 
       if (error && error.name !== 'AbortError') {
-        toast('Connection error', error.message);
         // Synthesize an error event so the provider can clean up store state.
         onEventRef.current?.({
           type: STREAM_EVENT.error,
