@@ -11,6 +11,7 @@ import { parseQuery } from '~/server/steps/parse_query';
 import { renderResultHtml } from '~/server/steps/render_result_html';
 import { checkPromptSafety } from '~/server/steps/safety';
 import {
+  type Disambiguation,
   type Insight,
   type QueryResult,
   type QueryStreamRequest,
@@ -27,6 +28,7 @@ interface QueryModelResponse {
   variables?: Array<{ dcid: string; name: string; rationale?: string }>;
   insights?: Insight[];
   followUps?: string[];
+  disambiguation?: Disambiguation;
 }
 
 export async function POST(request: NextRequest) {
@@ -239,6 +241,7 @@ export async function POST(request: NextRequest) {
             coverage: parsedResponse.coverage,
             insights: parsedResponse.insights,
             followUps: parsedResponse.followUps,
+            disambiguation: parsedResponse.disambiguation,
           };
 
           const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
