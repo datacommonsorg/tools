@@ -46,7 +46,7 @@ const parseSSEChunk = (
         const event: StreamEvent = JSON.parse(dataLine);
         events.push(event);
       } catch {
-        // Skip malformed events
+        console.warn('[SSE] Malformed event data, skipping:', dataLine);
       }
     }
   }
@@ -93,27 +93,18 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
 
       if (!res.ok) {
         const errBody = await res.text();
-        setState((prev) => ({
-          ...prev,
-          error: STATUS.apiError(res.status, errBody),
-          isComplete: true,
-        }));
-        return;
+        throw new Error(STATUS.apiError(res.status, errBody));
       }
 
       const reader = res.body?.getReader();
       if (!reader) {
-        setState((prev) => ({
-          ...prev,
-          error: STATUS.noResponseBody,
-          isComplete: true,
-        }));
-        return;
+        throw new Error(STATUS.noResponseBody);
       }
 
       const decoder = new TextDecoder();
       let buffer = '';
 
+      let isTerminalReached = false;
       const handleEvent = (event: StreamEvent) => {
         if (controller.signal.aborted) return;
 
@@ -122,6 +113,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
             setState((prev) => ({ ...prev, status: event.message }));
             break;
           case STREAM_EVENT.complete:
+            isTerminalReached = true;
             setState((prev) => ({
               ...prev,
               status: STATUS.complete,
@@ -129,6 +121,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
             }));
             break;
           case STREAM_EVENT.error:
+            isTerminalReached = true;
             setState((prev) => ({
               ...prev,
               error: event.message,
@@ -161,10 +154,16 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
         }
       }
 
-      if (!controller.signal.aborted) {
-        setState((prev) =>
-          prev.isComplete ? prev : { ...prev, isComplete: true },
-        );
+      if (!controller.signal.aborted && !isTerminalReached) {
+        onEventRef.current?.({
+          type: STREAM_EVENT.complete,
+          message: STATUS.complete,
+        });
+        setState((prev) => ({
+          ...prev,
+          status: STATUS.complete,
+          isComplete: true,
+        }));
       }
     } catch (err: unknown) {
       const error =
@@ -176,6 +175,11 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
           : null;
 
       if (error && error.name !== 'AbortError') {
+        // Synthesize an error event so the provider can clean up store state.
+        onEventRef.current?.({
+          type: STREAM_EVENT.error,
+          message: error.message,
+        });
         setState((prev) => ({
           ...prev,
           error: error.message,

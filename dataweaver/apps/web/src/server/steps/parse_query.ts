@@ -35,7 +35,9 @@ export const parseQuery = async (
   });
 
   const responseText = response.text || '';
+
   const parsed = extractJson<ParsedQuery>(responseText);
+
   return parsed
     ? {
         places: Array.isArray(parsed.places) ? parsed.places : [query],

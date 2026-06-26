@@ -124,7 +124,14 @@ export async function POST(request: NextRequest) {
           if (signal.aborted) break;
 
           const place = places[i];
-          if (!place?.trim()) continue;
+          if (!place?.trim()) {
+            emit({
+              type: STREAM_EVENT.placeSkipped,
+              place: place ?? '',
+              reason: 'Empty place name',
+            });
+            continue;
+          }
 
           const placeLabel = parsed.titles[place] || place;
           emit({
@@ -157,18 +164,17 @@ export async function POST(request: NextRequest) {
           if (signal.aborted) break;
           if (!responseText) {
             emit({
-              type: STREAM_EVENT.status,
-              message: STATUS.noResponse(placeLabel),
+              type: STREAM_EVENT.placeSkipped,
+              place,
+              reason: STATUS.noResponse(placeLabel),
             });
             continue;
           }
-
           // Parse model response into query results
           emit({
             type: STREAM_EVENT.status,
             message: STATUS.buildingResults(placeLabel),
           });
-
           let parsedResponse: QueryModelResponse | undefined;
           try {
             parsedResponse = extractJson<QueryModelResponse>(responseText);
@@ -180,28 +186,27 @@ export async function POST(request: NextRequest) {
             }
           } catch {
             emit({
-              type: STREAM_EVENT.status,
-              message: STATUS.invalidResponse(placeLabel),
+              type: STREAM_EVENT.placeSkipped,
+              place,
+              reason: STATUS.invalidResponse(placeLabel),
             });
             continue;
           }
-
           const variables = parsedResponse.variables || [];
           if (variables.length === 0) {
             emit({
-              type: STREAM_EVENT.status,
-              message:
-                parsedResponse.introduction || STATUS.noVariables(placeLabel),
+              type: STREAM_EVENT.placeSkipped,
+              place,
+              reason: STATUS.noVariables(placeLabel),
             });
             continue;
           }
-
           const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-
           if (!entityDcid) {
             emit({
-              type: STREAM_EVENT.status,
-              message: STATUS.invalidDcid(placeLabel),
+              type: STREAM_EVENT.placeSkipped,
+              place,
+              reason: STATUS.invalidDcid(placeLabel),
             });
             continue;
           }
@@ -215,7 +220,6 @@ export async function POST(request: NextRequest) {
           const timeSeries = await Promise.all(
             variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
           );
-
           const discoveryResult: QueryResult = {
             id: nanoid(),
             title:

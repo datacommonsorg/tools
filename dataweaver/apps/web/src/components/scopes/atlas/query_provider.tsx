@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
+import { toast } from '~/components/foundations/toaster/store';
 import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { CardEntry, StreamEvent } from '~/server/types';
@@ -131,19 +132,46 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         break;
       }
 
-      case STREAM_EVENT.complete:
-        queryComplete(active.nodeId, active.cardIds);
+      case STREAM_EVENT.complete: {
+        // Defensive cleanup: remove any orphan loading cards that were never
+        // resolved (e.g. if a placeSkipped event was somehow missed).
+        const { cardUnregister: unregisterOrphan, cards } = store.getState();
+        const remaining: string[] = [];
+        for (const id of active.cardIds) {
+          const card = cards[id];
+          if (card?.type === 'loading') {
+            unregisterOrphan(id);
+          } else {
+            remaining.push(id);
+          }
+        }
+
+        queryComplete(active.nodeId, remaining);
         querySetProcessing(false);
         querySetStatus(event.message);
         activeQueryRef.current = null;
         break;
+      }
 
-      case STREAM_EVENT.error:
+      case STREAM_EVENT.error: {
+        toast('Query failed', event.message);
         queryFail(active.nodeId);
         querySetProcessing(false);
         querySetStatus(STATUS.idle);
         activeQueryRef.current = null;
         break;
+      }
+
+      case STREAM_EVENT.placeSkipped: {
+        // Remove the loading placeholder for this skipped place.
+        const loadingId = `shape:${active.nodeId}__${event.place}__loading`;
+        const { cardUnregister: unregisterSkipped } = store.getState();
+        unregisterSkipped(loadingId);
+        active.cardIds = active.cardIds.filter((id) => id !== loadingId);
+        toast('Place skipped', event.reason);
+        querySetStatus(event.reason);
+        break;
+      }
     }
   }, []);
 
