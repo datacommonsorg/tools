@@ -4,11 +4,17 @@
  * no DC web components, full Figma fidelity.
  */
 
+/**
+ * Represents a single observation point in a timeseries.
+ */
 export interface SeriesPoint {
   date: string;
   value: number;
 }
 
+/**
+ * Represents the response structure returned by the /api/observations/series endpoint.
+ */
 export interface SeriesResponse {
   data: Record<string, Record<string, { series: SeriesPoint[] } | undefined>>;
   facets: Record<
@@ -17,6 +23,9 @@ export interface SeriesResponse {
   >;
 }
 
+/**
+ * Represents the response structure returned by the /api/observations/point endpoint.
+ */
 export interface PointResponse {
   data: Record<
     string,
@@ -36,6 +45,10 @@ export interface ChartRow {
   [key: string]: string | number | undefined;
 }
 
+/**
+ * Represents the page's host origin, dynamically set to window.location.origin
+ * in the browser, or fallback empty string in node/test environments.
+ */
 const ORIGIN =
   typeof window !== "undefined" ? window.location.origin : "";
 
@@ -169,20 +182,20 @@ export function pickSourceFromFacets(
 }
 
 /**
- * Strips the "country/", "geoId/", "dc/" prefix to get a shorter display
- * label. Falls back to the full DCID if no prefix.
+ * Gets a shorter display label for a place DCID by stripping the "country/",
+ * "geoId/", "dc/" prefix. Falls back to the full DCID if no prefix is found.
  */
-export function prettyPlaceName(dcid: string): string {
+export function getPrettyPlaceName(dcid: string): string {
   const index = dcid.indexOf("/");
   return index >= 0 ? dcid.slice(index + 1) : dcid;
 }
 
 /**
- * Returns a heuristic readable name for a variable DCID when we don't have its
- * canonical title from the upstream catalog. Splits on underscores and
- * title-cases the first segment.
+ * Generates a heuristic readable name for a variable DCID when we don't have its
+ * canonical title from the upstream catalog. Splits on both underscores and
+ * forward slashes, and title-cases the first segment.
  */
-export function prettyVariableName(dcid: string): string {
+export function getPrettyVariableName(dcid: string): string {
   if (!dcid) {
     return "";
   }

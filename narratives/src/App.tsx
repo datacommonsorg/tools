@@ -3,7 +3,6 @@
  * grids, contexts, and tab route selection.
  */
 
-import React from "react";
 import { Sidebar } from "./components/sidebar";
 import { Header } from "./components/header";
 import { DataAgent } from "./components/data_agent";

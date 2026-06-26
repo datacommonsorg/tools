@@ -22,8 +22,8 @@ import {
   pickSourceFromFacets,
   pivotPointToRowsByPlace,
   pivotSeriesToRows,
-  prettyPlaceName,
-  prettyVariableName,
+  getPrettyPlaceName,
+  getPrettyVariableName,
   type ChartRow,
   type PointResponse,
   type SeriesResponse,
@@ -277,7 +277,7 @@ function ChartGraph({
               <Bar
                 key={v}
                 dataKey={v}
-                name={prettyVariableName(v)}
+                name={getPrettyVariableName(v)}
                 fill={SERIES_COLORS[i % SERIES_COLORS.length]}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={48}
@@ -317,7 +317,7 @@ function ChartGraph({
             <Tooltip {...tooltipProps()} />
             <Bar
               dataKey={variableKeys[0]}
-              name={prettyVariableName(variableKeys[0])}
+              name={getPrettyVariableName(variableKeys[0])}
               fill={SERIES_COLORS[0]}
               radius={[0, 4, 4, 0]}
             />
@@ -341,7 +341,7 @@ function ChartGraph({
                 key={v}
                 type="monotone"
                 dataKey={v}
-                name={prettyVariableName(v)}
+                name={getPrettyVariableName(v)}
                 stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                 strokeWidth={2}
                 dot={false}
@@ -433,7 +433,7 @@ async function loadChart(
     const json = (await fetchSeries(variables, places, signal)) as SeriesResponse;
     const rows = pivotSeriesToRows(json, variables, places[0]);
     return {
-      rows: rows.map((r) => ({ ...r, date: prettyPlaceName(places[0]) })),
+      rows: rows.map((r) => ({ ...r, date: getPrettyPlaceName(places[0]) })),
       variableKeys: variables,
       source: pickSourceFromFacets(json),
     };
@@ -450,7 +450,7 @@ async function loadChart(
     const byPlace = pivotPointToRowsByPlace(json, variables[0]);
     return {
       rows: byPlace.map((r) => ({
-        date: prettyPlaceName(r.place),
+        date: getPrettyPlaceName(r.place),
         [variables[0]]: r.value,
       })),
       variableKeys: [variables[0]],
