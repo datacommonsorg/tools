@@ -9,8 +9,11 @@ export interface QuestionAndAnswers {
   /** The question the user asked, echoed back as a chat bubble. */
   question: string;
 
-  /** The assistant's answer. Newlines are preserved. */
+  /** The assistant's answer. */
   answer: string;
+
+  /** The assistant's follow-up question. */
+  followUp: string;
 
   /** Suggested follow-up prompts, rendered as selectable pills. */
   prompts: string[];
@@ -34,6 +37,7 @@ export const FollowUp = ({ followUp, onSelect }: FollowUpProps) => {
         <p className={s.question}>{followUp.question}</p>
 
         <div className={s.answer}>{followUp.answer}</div>
+        <div className={s.answer}>{followUp.followUp}</div>
 
         {followUp.prompts.length > 0 && (
           <ul className={s['prompts-container']}>

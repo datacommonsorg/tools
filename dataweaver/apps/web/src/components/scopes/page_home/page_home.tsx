@@ -37,6 +37,26 @@ export const PageHome = () => {
     currentStatus !== STATUS.complete &&
     currentStatus !== STATUS.idle;
 
+  useEffect(() => {
+    const node = latestNodeId ? nodes[latestNodeId] : null;
+    const disambiguations = node?.results
+      ? Object.values(node.results)
+          .map((r) => r.disambiguation)
+          .filter(Boolean)
+      : [];
+    const disambiguation = disambiguations[0];
+    if (node && disambiguation && currentStatus === STATUS.complete) {
+      setFollowUp({
+        question: node.query,
+        answer: disambiguation.summary,
+        followUp: disambiguation.question,
+        prompts: disambiguation.options,
+      });
+    } else {
+      setFollowUp(null);
+    }
+  }, [currentStatus, latestNodeId, nodes]);
+
   return (
     <div className={s.container}>
       <AnimatePresence initial={false} mode="wait">

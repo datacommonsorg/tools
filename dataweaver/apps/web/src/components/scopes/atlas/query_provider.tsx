@@ -99,6 +99,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         cardUnregister(loadingId);
         active.cardIds = active.cardIds.filter((id) => id !== loadingId);
 
+        if (result.disambiguation) {
+          // Handle disambiguation if present
+          break;
+        }
+
         // Batch-register result cards.
         const resultEntries: CardEntry[] = [
           {

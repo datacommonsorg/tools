@@ -18,6 +18,7 @@ export interface HistoryNode {
   cardIds: string[];
   timestamp: number;
   status: 'pending' | 'complete' | 'error';
+  disambiguation?: Disambiguation;
 }
 
 export type CardType = 'loading' | 'table' | 'notes' | 'chart';
@@ -50,6 +51,12 @@ export interface Entity {
   name: string;
 }
 
+export interface Disambiguation {
+  summary: string;
+  question: string;
+  options: string[];
+}
+
 export interface QueryResult {
   id: string;
   title: string;
@@ -63,6 +70,7 @@ export interface QueryResult {
   followUps?: string[];
   tableHtml?: string;
   notesHtml?: string;
+  disambiguation?: Disambiguation;
 }
 
 export interface FacetInfo {
