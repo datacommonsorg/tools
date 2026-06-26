@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Response card that renders the agent's streamed synthesis as
+ * markdown (bold, italics, lists, links, tables, code spans, citations).
+ */
+
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { withChipCitations } from "./chip_citation";
@@ -12,14 +17,16 @@ interface CardResponseProps {
   bare?: boolean;
 }
 
-// Renders the agent's streamed synthesis as actual markdown. Bold,
-// italics, lists, links, tables, code spans, and backslash-escaped
-// underscores (e.g. `average\_annual\_wage`) all parse correctly.
-// GFM enables tables + autolinks + strikethrough.
-
 const LINK_COLOR = "#175C75"; // Figma "AI Dark Blue"
 
-export default function CardResponse({
+/**
+ * Renders the agent's streamed synthesis as markdown. Bold, italics, lists,
+ * links, tables, code spans, and backslash-escaped underscores (e.g.
+ * `average\_annual\_wage`) all parse correctly; GFM enables tables, autolinks,
+ * and strikethrough. When `bare` is true, only the markdown body is rendered
+ * (no outer card or title bar) — used inside PanelAnswer's side-panel card.
+ */
+export function CardResponse({
   title,
   body,
   streaming,
@@ -41,7 +48,7 @@ export default function CardResponse({
         <h3 className="text-label-large text-on-surface">{title}</h3>
         {streaming && (
           <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-teal animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-brand-primary-dark animate-pulse" />
             streaming
           </span>
         )}

@@ -1,13 +1,15 @@
-// Type declarations for Data Commons web components loaded via
-// https://datacommons.org/datacommons.js.
-//
-// At runtime these are plain HTMLElements. We augment React's existing JSX
-// namespace so TypeScript allows the documented attribute set without
-// stripping the standard HTML elements (div/span/p/etc.).
-//
-// Attribute names mirror what the upstream VM template
-// (server/templates/custom_dc/custom/homepage.html, renderDCComponent)
-// passes to each element.
+/**
+ * @fileoverview Type declarations for Data Commons web components loaded via
+ * https://datacommons.org/datacommons.js.
+ *
+ * At runtime these are plain HTMLElements. We augment React's existing JSX
+ * namespace so TypeScript allows the documented attribute set without
+ * stripping the standard HTML elements (div/span/p/etc.).
+ *
+ * Attribute names mirror what the upstream VM template
+ * (server/templates/custom_dc/custom/homepage.html, renderDCComponent)
+ * passes to each element.
+ */
 
 import type { DetailedHTMLProps, HTMLAttributes } from "react";
 

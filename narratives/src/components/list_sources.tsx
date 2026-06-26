@@ -1,10 +1,12 @@
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+/**
+ * @fileoverview Sources list rendered beneath an answer (Figma node 3427-16738
+ * heading + 3427-16739 numbered body). Each source is a numbered line — the
+ * number stays in the default body color, the source name is rendered in
+ * #175C75 (AI Dark Blue, token "ts4") as a hyperlink. Each row receives
+ * id="source-N" so inline ChipCitations can anchor to it.
+ */
 
-// Figma node 3427-16738 ("Sources" heading) + 3427-16739 ("Body" with the
-// numbered list). Each source is a numbered line — the number stays in
-// the default body color, the source name itself is rendered in
-// #175C75 (AI Dark Blue, token "ts4") as a hyperlink to provenanceUrl.
-// Each row receives id="source-N" so inline ChipCitations can anchor.
+import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 const COLOR_TITLE = "#1B1C1D";
 const COLOR_BODY = "#1B1C1D";
@@ -16,7 +18,11 @@ interface ListSourcesProps {
   sources: ProvenanceItem[];
 }
 
-export default function ListSources({ sources }: ListSourcesProps) {
+/**
+ * Renders the numbered, linked list of provenance sources for an answer.
+ * Returns nothing when there are no sources.
+ */
+export function ListSources({ sources }: ListSourcesProps) {
   if (!sources || sources.length === 0) return null;
 
   return (
@@ -46,23 +52,23 @@ export default function ListSources({ sources }: ListSourcesProps) {
           color: COLOR_BODY,
         }}
       >
-        {sources.map((s, i) => {
-          const n = i + 1;
+        {sources.map((source, index) => {
+          const position = index + 1;
           return (
             <li
-              key={`${s.url}-${i}`}
-              id={`source-${n}`}
+              key={`${source.url}-${index}`}
+              id={`source-${position}`}
               className="flex items-baseline gap-1.5"
             >
-              <span aria-hidden="true">[{n}]</span>
+              <span aria-hidden="true">[{position}]</span>
               <a
-                href={s.url}
+                href={source.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline"
                 style={{ color: COLOR_LINK }}
               >
-                {s.name || s.url}
+                {source.name || source.url}
               </a>
             </li>
           );

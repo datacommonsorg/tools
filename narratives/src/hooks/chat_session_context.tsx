@@ -1,10 +1,19 @@
-import React, { createContext, useContext, useMemo, type ReactNode } from "react";
+/**
+ * @fileoverview React context, provider, and hook for managing chat session
+ * state (the list of conversations, the active session, the drawer toggle,
+ * and the streaming send action) across the app. Currently a stub provider
+ * that wires up the shape without persistence.
+ */
 
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+
+/** A single message in a conversation, attributed to the user or the model. */
 export interface ChatTurn {
   role: "user" | "model";
   text: string;
 }
 
+/** A saved conversation thread with its metadata and message history. */
 export interface ChatSession {
   id: string;
   title: string;
@@ -13,6 +22,7 @@ export interface ChatSession {
   turns: ChatTurn[];
 }
 
+/** The full set of state and actions exposed to chat-session consumers. */
 export interface ChatSessionContextValue {
   isStreaming: boolean;
   error: string | null;

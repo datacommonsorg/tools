@@ -68,8 +68,13 @@ export const DEFAULT_BRAND: Branding = {
   footerText: "Powered by Data Commons, an initiative from Google.",
 };
 
+/**
+ * Parsed response from the `/agent/brand` endpoint, pointing at the bucket
+ * location where this instance's `branding.json` lives.
+ */
 interface BrandConfigResponse {
-  brand_config_url?: string;
+  /** Base URL of the branding config bucket (without the trailing file). */
+  brandConfigUrl?: string;
 }
 
 function mapRawToBranding(raw: RawBranding): Branding {
@@ -122,9 +127,11 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
         if (!brandResp.ok) {
           throw new Error(`/agent/brand HTTP ${brandResp.status}`);
         }
-        const { brand_config_url } =
-          (await brandResp.json()) as BrandConfigResponse;
-        if (!brand_config_url) {
+        const rawConfig = (await brandResp.json()) as { brand_config_url?: string };
+        const { brandConfigUrl }: BrandConfigResponse = {
+          brandConfigUrl: rawConfig.brand_config_url,
+        };
+        if (!brandConfigUrl) {
           if (!cancelled) {
             applyCssVars(DEFAULT_BRAND);
             setLoaded(true);
@@ -132,15 +139,16 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
           return;
         }
 
-        const bResp = await fetch(`${brand_config_url}/branding.json`, {
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!bResp.ok) {
+        const brandingConfigResponse = await fetch(
+          `${brandConfigUrl}/branding.json`,
+          { signal: AbortSignal.timeout(15000) },
+        );
+        if (!brandingConfigResponse.ok) {
           throw new Error(
-            `branding.json HTTP ${bResp.status} from ${brand_config_url}`,
+            `branding.json HTTP ${brandingConfigResponse.status} from ${brandConfigUrl}`,
           );
         }
-        const rawFetched = (await bResp.json()) as RawBranding;
+        const rawFetched = (await brandingConfigResponse.json()) as RawBranding;
         const fetched = mapRawToBranding(rawFetched);
         const merged = { ...DEFAULT_BRAND, ...fetched };
         if (!cancelled) {

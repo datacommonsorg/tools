@@ -1,22 +1,25 @@
-import { useCallback, useRef } from "react";
+/**
+ * @fileoverview Generic same-origin iframe wrapper for embedding upstream
+ * Custom DC Flask-rendered tool pages (/tools/download, /tools/statvar,
+ * /tools/map, …) directly inside our React app without showing upstream's
+ * own top nav.
+ *
+ * How it works:
+ *   • iframe src is a relative path — same-origin in dev (Vite proxy →
+ *     BACKEND_URL) and in prod (services-container nginx → Flask).
+ *   • On the iframe's load event we inject a <style> into its contentDocument
+ *     that hides upstream's nav/header/footer chrome, so the user sees ONE
+ *     app bar (ours) and the bare tool body. Mirrors the IITM custom-dc-setup
+ *     convention where the tool renders inside the host instance's frame,
+ *     not the default Custom DC chrome.
+ *
+ * Same-origin requirement: contentDocument access requires the iframe URL
+ * to be same-origin with the parent page. If a future deploy moves the tool
+ * cross-origin, fall back to a server-side query-param flag (e.g.
+ * /tools/download?embed=1) and a template branch that drops the nav.
+ */
 
-// Generic same-origin iframe wrapper for embedding upstream Custom DC
-// Flask-rendered tool pages (/tools/download, /tools/statvar, /tools/map, …)
-// directly inside our React app without showing upstream's own top nav.
-//
-// How it works:
-//   • iframe src is a relative path — same-origin in dev (Vite proxy →
-//     BACKEND_URL) and in prod (services-container nginx → Flask).
-//   • On the iframe's load event we inject a <style> into its contentDocument
-//     that hides upstream's nav/header/footer chrome, so the user sees ONE
-//     app bar (ours) and the bare tool body. Mirrors the IITM custom-dc-setup
-//     convention where the tool renders inside the host instance's frame,
-//     not the default Custom DC chrome.
-//
-// Same-origin requirement: contentDocument access requires the iframe URL
-// to be same-origin with the parent page. If a future deploy moves the tool
-// cross-origin, fall back to a server-side query-param flag (e.g.
-// /tools/download?embed=1) and a template branch that drops the nav.
+import { useCallback, useRef } from "react";
 
 interface IframeUpstreamToolProps {
   src: string;
@@ -45,7 +48,11 @@ const CHROME_HIDER_CSS = `
 
 const INJECTED_STYLE_ID = "cdc-iframe-chrome-hider";
 
-export default function IframeUpstreamTool({
+/**
+ * Renders a same-origin iframe for an upstream tool page and strips its nav/
+ * header/footer chrome on load so it blends into the host app shell.
+ */
+export function IframeUpstreamTool({
   src,
   title,
   extraCss,

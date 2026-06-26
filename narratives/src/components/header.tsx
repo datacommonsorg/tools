@@ -38,12 +38,12 @@ export function Header() {
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               className={`relative py-1 transition-colors ${
-                isActive ? "font-medium text-teal" : "hover:text-on-surface"
+                isActive ? "font-medium text-brand-primary-dark" : "hover:text-on-surface"
               }`}
             >
               {item.label}
               {isActive && (
-                <div className="absolute top-0 left-0 w-full h-0.5 rounded-b-sm bg-teal"></div>
+                <div className="absolute top-0 left-0 w-full h-0.5 rounded-b-sm bg-brand-primary-dark"></div>
               )}
             </a>
           );

@@ -1,17 +1,20 @@
+/**
+ * @fileoverview Collapsible "Reasoning" block shown above an answer. Header
+ * row: a sparkle/loader icon plus the "Reasoning ▾" chip; body: the model's
+ * reasoning text, expanded by default. Figma "Sparkle + Extension chip"
+ * (node 3427:16720) + "Content" (3427:16723).
+ *
+ * Tokens:
+ *   Header gap 12, items centered
+ *   Label "Reasoning" — Google Sans Text Medium 14/20 (Type scale - Desktop/Label L)
+ *   Chevron — Material keyboard_arrow_down
+ *   Default expanded; chevron rotates 180° when collapsed
+ */
+
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
-
-// Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
-// Header row: Gemini teal sparkle icon (left) + "Reasoning ▾" chip (right of it).
-// Body: model reasoning text, expanded by default.
-//
-// Tokens:
-//   Header gap 12, items centered
-//   Label "Reasoning" — Google Sans Text Medium 14/20 (Type scale - Desktop/Label L)
-//   Chevron — Material keyboard_arrow_down
-//   Default expanded; chevron rotates 180° when collapsed
 
 const COLOR_TEXT = "#1B1C1D";
 const COLOR_CHEVRON = "#444746";
@@ -42,9 +45,11 @@ const PLACEHOLDER_STREAMING =
 const PLACEHOLDER_DONE =
   "Analyzed the query and retrieved relevant data from Data Commons.";
 
-// Header label is derived from the turn status. Server emits status
-// transitions (`mcp_start` → `mcp_complete` → `synthesis_start` → `done`);
-// these strings are the UI-side copy for each phase.
+/**
+ * Header label derived from the turn status. The server emits status
+ * transitions (`mcp_start` → `mcp_complete` → `synthesis_start` → `done`);
+ * these strings are the UI-side copy for each phase.
+ */
 function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   if (!streaming) {
     return "Reasoning";
@@ -61,7 +66,13 @@ function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   }
 }
 
-export default function ReasoningBlock({
+/**
+ * Renders the reasoning section for a chat turn. While streaming it shows a
+ * phase-specific label with a loader; once done it shows "Reasoning" with the
+ * sparkle icon. Falls back to a short placeholder when the agent emits no
+ * thought events, and renders nothing if there is nothing to show at all.
+ */
+export function ReasoningBlock({
   thoughts,
   defaultOpen = true,
   streaming = false,
@@ -173,8 +184,10 @@ export default function ReasoningBlock({
   );
 }
 
-// Rotating loader shown while the turn is still streaming.
-// Uses the public/loader.png asset already shipped by the app.
+/**
+ * Rotating loader shown while the turn is still streaming. Uses the
+ * public/loader.png asset already shipped by the app.
+ */
 function LoaderSpinner() {
   return (
     <img
@@ -191,8 +204,11 @@ function LoaderSpinner() {
   );
 }
 
-// Gemini-style 4-point sparkle in teal/green. Matches the icon shown in
-// the Figma screenshot — a four-pointed star with concave sides.
+/**
+ * Gemini-style 4-point sparkle icon (fill driven by COLOR_SPARKLE). Matches
+ * the icon shown in the Figma screenshot — a four-pointed star with concave
+ * sides.
+ */
 function SparkleIcon() {
   return (
     <svg

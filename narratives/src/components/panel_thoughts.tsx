@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Inline panel that renders the model's streamed "thinking" text
+ * (emitted with thinkingConfig.includeThoughts=true), grouped by phase.
+ */
+
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ThoughtEvent } from "../hooks/use_sse_chat";
@@ -6,9 +11,11 @@ interface PanelThoughtsProps {
   thoughts: ThoughtEvent[];
 }
 
-// Streamed "thinking" text the model emits with thinkingConfig.includeThoughts=true.
-// Rendered inline, always expanded — no collapse/expand toggle, no header.
-export default function PanelThoughts({ thoughts }: PanelThoughtsProps) {
+/**
+ * Renders the streamed thoughts inline, always expanded — no collapse/expand
+ * toggle and no header. Returns nothing when there are no thoughts.
+ */
+export function PanelThoughts({ thoughts }: PanelThoughtsProps) {
   if (thoughts.length === 0) return null;
 
   const grouped = groupByPhase(thoughts);
@@ -21,8 +28,8 @@ export default function PanelThoughts({ thoughts }: PanelThoughtsProps) {
               <div className="text-xs uppercase tracking-wide text-on-surface-variant">
                 {phase}
               </div>
-              {items.map((t, i) => (
-                <div key={i} className="leading-relaxed thought-markdown">
+              {items.map((thought, index) => (
+                <div key={index} className="leading-relaxed thought-markdown">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
@@ -88,7 +95,7 @@ export default function PanelThoughts({ thoughts }: PanelThoughtsProps) {
                       ),
                     }}
                   >
-                    {t.text}
+                    {thought.text}
                   </ReactMarkdown>
                 </div>
               ))}

@@ -1,8 +1,17 @@
+/**
+ * @fileoverview Loading skeleton card shown while an answer is being prepared —
+ * echoes the user's query in the header and animates placeholder paragraphs.
+ */
+
 interface CardSkeletonProps {
   query: string;
 }
 
-export default function CardSkeleton({ query }: CardSkeletonProps) {
+/**
+ * Renders the answer-loading placeholder card with the in-flight query and
+ * pulsing skeleton lines.
+ */
+export function CardSkeleton({ query }: CardSkeletonProps) {
   return (
     <div className="w-full border border-gray-200 rounded-[24px] overflow-hidden shadow-sm bg-surface-soft">
       <div className="px-6 py-4 border-b border-gray-100 text-body-large-emphasized text-on-surface bg-white">

@@ -5,17 +5,6 @@
 
 import { useEffect, useState } from "react";
 
-// Lightweight hash-based router. We deliberately avoid react-router-dom
-// (the codebase intentionally has no router — see implementation-reference.md
-// §7.3). Hash navigation works without server-side rewrites and survives
-// reloads, while the nginx SPA fallback already handles deep paths.
-//
-// Usage:
-//   const [route] = useHashRoute();          // "" | "metrics" | "explorer" | ...
-//   <a href="#/metrics">Metrics</a>           // browsers handle the navigation
-//
-// Empty hash (`""` / `"#"` / `"#/"`) → "" (treat as default / agent).
-
 /**
  * Normalizes and extracts the active route token from window.location.hash,
  * stripping leading hash symbols, slashes, and query parameters.
@@ -29,8 +18,21 @@ function readRoute(): string {
 }
 
 /**
- * Custom React hook that subscribes to window `hashchange` events and returns
- * the active normalized route segment as a single-item array tuple.
+ * Lightweight hash-based router hook. We deliberately avoid react-router-dom
+ * (the codebase intentionally has no router — see implementation-reference.md
+ * §7.3). Hash navigation works without server-side rewrites and survives
+ * reloads, while the nginx SPA fallback already handles deep paths.
+ *
+ * Subscribes to the window `hashchange` event and returns the active
+ * normalized route segment as a single-item array tuple. An empty hash
+ * (`""` / `"#"` / `"#/"`) resolves to `""` (treated as the default / agent
+ * view).
+ *
+ * @example
+ * ```tsx
+ * const [route] = useHashRoute();   // "" | "metrics" | "explorer" | ...
+ * <a href="#/metrics">Metrics</a>   // browsers handle the navigation
+ * ```
  *
  * @returns The active route segment (untrusted user input from window.location).
  * @warning The returned string is user-controlled. Do not pass it directly to

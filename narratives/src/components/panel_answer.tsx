@@ -7,11 +7,11 @@
 import { useRef } from "react";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { TileChart } from "./tile_chart";
-import NoteDisclaimer from "./note_disclaimer";
-import ButtonExportPdf from "./button_export_pdf";
-import QuestionsFollowUp from "./questions_follow_up";
-import CardResponse from "./card_response";
-import ListSources from "./list_sources";
+import { NoteDisclaimer } from "./note_disclaimer";
+import { ButtonExportPdf } from "./button_export_pdf";
+import { QuestionsFollowUp } from "./questions_follow_up";
+import { CardResponse } from "./card_response";
+import { ListSources } from "./list_sources";
 
 // TODO(followup): Extract the inline styling in this react component into a template/theme file.
 

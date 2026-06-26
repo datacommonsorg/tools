@@ -5,9 +5,13 @@
  * Single source of truth for the design system.
  *
  * Colors registered here as `--color-*` automatically generate Tailwind v4
- * utility classes (e.g. `--color-teal` → `bg-teal`, `text-teal`, `border-teal`,
- * `hover:bg-teal`, etc.) AND are available as CSS custom properties for use
- * inside `var()`. Edit a value here and every consumer updates.
+ * utility classes (e.g. `--color-brand-primary-dark` → `bg-brand-primary-dark`,
+ * `text-brand-primary-dark`, `border-brand-primary-dark`, `hover:bg-brand-primary-dark`,
+ * etc.) AND are available as CSS custom properties for use inside `var()`. Edit a
+ * value here and every consumer updates.
+ *
+ * Token names are semantic (describing role, not hue) so a downstream instance
+ * can re-skin the app by editing values here without touching component classes.
  *
  * Names mirror the Figma GM3 token vocabulary where possible.
  */
@@ -16,12 +20,11 @@
   --font-display: "Google Sans", "Roboto", system-ui, sans-serif;
 
   /* Brand */
-  --color-teal: #175C75;
-  --color-brand-green: #65A782;
-  --color-brand-teal: #6FAEC0;
-  --color-google-green: #0f9d58;
   --color-brand-primary: var(--brand-primary, #1A73E8);
   --color-brand-accent: var(--brand-accent, #34A853);
+  --color-brand-primary-dark: #175C75;
+  --color-brand-gradient-start: #65A782;
+  --color-brand-gradient-end: #6FAEC0;
 
   /* Surfaces */
   --color-surface-soft: #F9F9F9;
@@ -48,33 +51,33 @@
 :root {
   /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
      Consumed by the .text-* utility classes below. */
-  --Static-Display-Small-Font: var(--brand-font, "Google Sans");
-  --Static-Display-Small-Size: 32px;
-  --Static-Display-Small-Line-Height: 36px;
+  --static-display-small-font: var(--brand-font, "Google Sans");
+  --static-display-small-size: 32px;
+  --static-display-small-line-height: 36px;
 
-  --Static-Title-Large-Font: var(--brand-font, "Google Sans");
-  --Static-Title-Large-Size: 22px;
-  --Static-Title-Large-Line-Height: 28px;
+  --static-title-large-font: var(--brand-font, "Google Sans");
+  --static-title-large-size: 22px;
+  --static-title-large-line-height: 28px;
 
-  --Static-Body-Large-Font: var(--brand-font, "Google Sans Text");
-  --Static-Body-Large-Size: 16px;
-  --Static-Body-Large-Line-Height: 24px;
+  --static-body-large-font: var(--brand-font, "Google Sans Text");
+  --static-body-large-size: 16px;
+  --static-body-large-line-height: 24px;
 
-  --Static-Body-Medium-Font: var(--brand-font, "Google Sans Text");
-  --Static-Body-Medium-Size: 14px;
-  --Static-Body-Medium-Line-Height: 20px;
+  --static-body-medium-font: var(--brand-font, "Google Sans Text");
+  --static-body-medium-size: 14px;
+  --static-body-medium-line-height: 20px;
 
-  --Static-Label-Large-Font: var(--brand-font, "Google Sans Text");
-  --Static-Label-Large-Size: 14px;
-  --Static-Label-Large-Line-Height: 20px;
+  --static-label-large-font: var(--brand-font, "Google Sans Text");
+  --static-label-large-size: 14px;
+  --static-label-large-line-height: 20px;
 
-  --Static-Label-Small-Font: var(--brand-font, "Google Sans Text");
-  --Static-Label-Small-Size: 11px;
-  --Static-Label-Small-Line-Height: 16px;
+  --static-label-small-font: var(--brand-font, "Google Sans Text");
+  --static-label-small-size: 11px;
+  --static-label-small-line-height: 16px;
 
-  --Static-Caption-Font: var(--brand-font, "Google Sans Text");
-  --Static-Caption-Size: 12px;
-  --Static-Caption-Line-Height: 16px;
+  --static-caption-font: var(--brand-font, "Google Sans Text");
+  --static-caption-size: 12px;
+  --static-caption-line-height: 16px;
 }
 
 body {
@@ -94,94 +97,94 @@ body {
 }
 
 .text-display-small {
-  font-family: var(--Static-Display-Small-Font, "Google Sans");
-  font-size: var(--Static-Display-Small-Size, 32px);
+  font-family: var(--static-display-small-font, "Google Sans");
+  font-size: var(--static-display-small-size, 32px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--Static-Display-Small-Line-Height, 36px);
+  line-height: var(--static-display-small-line-height, 36px);
   letter-spacing: 0;
 }
 
 .text-title-large-emphasized {
-  font-family: var(--Static-Title-Large-Font, "Google Sans");
-  font-size: var(--Static-Title-Large-Size, 22px);
+  font-family: var(--static-title-large-font, "Google Sans");
+  font-size: var(--static-title-large-size, 22px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--Static-Title-Large-Line-Height, 28px);
+  line-height: var(--static-title-large-line-height, 28px);
   letter-spacing: 0;
 }
 
 .text-body-large {
-  font-family: var(--Static-Body-Large-Font, "Google Sans Text");
-  font-size: var(--Static-Body-Large-Size, 16px);
+  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-size: var(--static-body-large-size, 16px);
   font-style: normal;
   font-weight: 400;
-  line-height: var(--Static-Body-Large-Line-Height, 24px);
+  line-height: var(--static-body-large-line-height, 24px);
   letter-spacing: 0;
 }
 
 .text-body-large-emphasized {
-  font-family: var(--Static-Body-Large-Font, "Google Sans Text");
-  font-size: var(--Static-Body-Large-Size, 16px);
+  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-size: var(--static-body-large-size, 16px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--Static-Body-Large-Line-Height, 24px);
+  line-height: var(--static-body-large-line-height, 24px);
   letter-spacing: 0;
 }
 
 .text-body-medium {
-  font-family: var(--Static-Body-Medium-Font, "Google Sans Text");
-  font-size: var(--Static-Body-Medium-Size, 14px);
+  font-family: var(--static-body-medium-font, "Google Sans Text");
+  font-size: var(--static-body-medium-size, 14px);
   font-style: normal;
   font-weight: 400;
-  line-height: var(--Static-Body-Medium-Line-Height, 20px);
+  line-height: var(--static-body-medium-line-height, 20px);
   letter-spacing: 0;
 }
 
 .text-label-large {
-  font-family: var(--Static-Label-Large-Font, "Google Sans Text");
-  font-size: var(--Static-Label-Large-Size, 14px);
+  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-size: var(--static-label-large-size, 14px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--Static-Label-Large-Line-Height, 20px);
+  line-height: var(--static-label-large-line-height, 20px);
   letter-spacing: 0;
 }
 
 .text-label-large-emphasized {
-  font-family: var(--Static-Label-Large-Font, "Google Sans Text");
-  font-size: var(--Static-Label-Large-Size, 14px);
+  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-size: var(--static-label-large-size, 14px);
   font-style: normal;
   font-weight: 700;
-  line-height: var(--Static-Label-Large-Line-Height, 20px);
+  line-height: var(--static-label-large-line-height, 20px);
   letter-spacing: 0;
 }
 
 .text-label-small {
-  font-family: var(--Static-Label-Small-Font, "Google Sans Text");
-  font-size: var(--Static-Label-Small-Size, 11px);
+  font-family: var(--static-label-small-font, "Google Sans Text");
+  font-size: var(--static-label-small-size, 11px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--Static-Label-Small-Line-Height, 16px);
+  line-height: var(--static-label-small-line-height, 16px);
   letter-spacing: 0;
 }
 
 .text-caption {
-  font-family: var(--Static-Caption-Font, "Google Sans Text");
-  font-size: var(--Static-Caption-Size, 12px);
+  font-family: var(--static-caption-font, "Google Sans Text");
+  font-size: var(--static-caption-size, 12px);
   font-style: normal;
   font-weight: 400;
-  line-height: var(--Static-Caption-Line-Height, 16px);
+  line-height: var(--static-caption-line-height, 16px);
   letter-spacing: 0;
 }
 
 .text-display-small-gradient {
-  font-family: var(--Static-Display-Small-Font, "Google Sans");
-  font-size: var(--Static-Display-Small-Size, 32px);
+  font-family: var(--static-display-small-font, "Google Sans");
+  font-size: var(--static-display-small-size, 32px);
   font-style: normal;
   font-weight: 500;
-  line-height: var(--Static-Display-Small-Line-Height, 36px);
+  line-height: var(--static-display-small-line-height, 36px);
   letter-spacing: 0;
-  background: linear-gradient(4deg, var(--color-brand-green) 0%, var(--color-brand-teal) 100%);
+  background: linear-gradient(4deg, var(--color-brand-gradient-start) 0%, var(--color-brand-gradient-end) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -222,4 +225,3 @@ body {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-

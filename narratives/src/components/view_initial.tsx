@@ -1,5 +1,10 @@
+/**
+ * @fileoverview Initial Data Agent landing view — the empty prompt screen with
+ * the gradient title, the GM3 search box, and branded suggestion chips.
+ */
+
 import { ChangeEvent, RefObject } from "react";
-import ChipSuggestion from "./chip_suggestion";
+import { ChipSuggestion } from "./chip_suggestion";
 import { useBrand } from "../hooks/branding_context";
 
 interface ViewInitialProps {
@@ -9,7 +14,11 @@ interface ViewInitialProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-export default function ViewInitial({ query, setQuery, onSend, textareaRef }: ViewInitialProps) {
+/**
+ * Renders the first-load prompt screen. Owns no chat state itself — query
+ * value, the send action, and the textarea ref are supplied by the parent.
+ */
+export function ViewInitial({ query, setQuery, onSend, textareaRef }: ViewInitialProps) {
   const isExpanded = query.trim().length > 0;
   const brand = useBrand();
   const suggestions = brand.suggestions ?? [];

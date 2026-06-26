@@ -76,23 +76,23 @@ const SERIES_COLORS = [
  * visualization cards inside a layout grid.
  */
 export function TileChart({ config, provenance }: TileChartProps) {
-  if (!config || !config.should_render || config.hide_charts) {
+  if (!config || !config.shouldRender || config.hideCharts) {
     return null;
   }
 
   // Modern format: charts[] array. Legacy fallback: treat the config
-  // itself as a single chart if it has variable_dcids at the top level.
+  // itself as a single chart if it has variableDcids at the top level.
   let charts: ChartItem[] | undefined = config.charts;
   if (!charts || !Array.isArray(charts) || charts.length === 0) {
-    if (config.variable_dcids && config.variable_dcids.length > 0) {
+    if (config.variableDcids && config.variableDcids.length > 0) {
       charts = [
         {
-          viz_type: config.viz_type ?? "line",
+          vizType: config.vizType ?? "line",
           title: config.title,
-          variable_dcids: config.variable_dcids,
-          place_dcids: config.place_dcids,
-          parent_place: config.parent_place,
-          child_place_type: config.child_place_type,
+          variableDcids: config.variableDcids,
+          placeDcids: config.placeDcids,
+          parentPlace: config.parentPlace,
+          childPlaceType: config.childPlaceType,
           date: config.date,
         },
       ];
@@ -103,7 +103,7 @@ export function TileChart({ config, provenance }: TileChartProps) {
 
   const toRender = charts
     .slice(0, MAX_CHARTS)
-    .filter((c) => c.variable_dcids && c.variable_dcids.length > 0);
+    .filter((c) => c.variableDcids && c.variableDcids.length > 0);
   if (toRender.length === 0) {
     return null;
   }
@@ -260,7 +260,7 @@ function ChartGraph({
 }) {
   const isComparison = variableKeys.length > 1;
 
-  switch (chart.viz_type) {
+  switch (chart.vizType) {
     case "bar": {
       // Single-date bar across places, or time-series bar — we plot
       // whichever the data shape is. In both cases x is `date` (which is
@@ -378,12 +378,12 @@ function useChartData(chart: ChartItem): ChartDataState {
   // the in-flight fetch via the cleanup function and start a new one,
   // leaving the spinner spinning forever).
   const key = JSON.stringify({
-    v: chart.variable_dcids,
-    p: chart.place_dcids,
-    t: chart.viz_type,
+    v: chart.variableDcids,
+    p: chart.placeDcids,
+    t: chart.vizType,
     d: chart.date,
-    pp: chart.parent_place,
-    cpt: chart.child_place_type,
+    pp: chart.parentPlace,
+    cpt: chart.childPlaceType,
   });
 
   useEffect(() => {
@@ -416,18 +416,18 @@ async function loadChart(
   chart: ChartItem,
   signal: AbortSignal,
 ): Promise<Omit<ChartDataState, "loading">> {
-  const variables = chart.variable_dcids.filter(Boolean);
+  const variables = chart.variableDcids.filter(Boolean);
   const places =
-    chart.place_dcids && chart.place_dcids.length > 0
-      ? chart.place_dcids
+    chart.placeDcids && chart.placeDcids.length > 0
+      ? chart.placeDcids
       : ["country/USA"];
 
   // For ranking, ideally we'd query /api/observations/point across all
-  // children of parent_place. Without a child-enumeration endpoint
+  // children of parentPlace. Without a child-enumeration endpoint
   // available client-side, we fall back to whatever places the agent
   // gave us. If only one place is supplied the ranking will be a
   // degenerate single bar — better than crashing.
-  if (chart.viz_type === "ranking" && places.length === 1) {
+  if (chart.vizType === "ranking" && places.length === 1) {
     // No child enumeration → fall back to time-series style render
     // with a single bar over years for the supplied place.
     const json = (await fetchSeries(variables, places, signal)) as SeriesResponse;
@@ -440,7 +440,7 @@ async function loadChart(
   }
 
   // Bar by place (single variable, single date): use point endpoint
-  if (chart.viz_type === "bar" && places.length > 1 && chart.date) {
+  if (chart.vizType === "bar" && places.length > 1 && chart.date) {
     const json = (await fetchPoint(
       variables,
       places,

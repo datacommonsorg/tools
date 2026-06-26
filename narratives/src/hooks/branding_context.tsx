@@ -3,7 +3,7 @@
  * dynamic theme config variables inside consumer components.
  */
 
-import React, { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useBranding, DEFAULT_BRAND, type Branding } from "./use_branding";
 
 const BrandingContext = createContext<Branding>(DEFAULT_BRAND);
