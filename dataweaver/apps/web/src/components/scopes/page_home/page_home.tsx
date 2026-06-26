@@ -3,9 +3,9 @@
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import { STATUS } from '~/server/types';
+import { type Disambiguation, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
-import { FollowUp, type QuestionAndAnswers } from './follow_up';
+import { FollowUp } from './follow_up';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
 import { Prompt } from './prompt';
@@ -18,7 +18,7 @@ export const PageHome = () => {
   const query = latestNode?.query ?? '';
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [followUp, setFollowUp] = useState<QuestionAndAnswers | null>(null);
+  const [followUp, setFollowUp] = useState<Disambiguation | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
   const submit = (value = promptValue) => {
@@ -46,12 +46,7 @@ export const PageHome = () => {
       : [];
     const disambiguation = disambiguations[0];
     if (node && disambiguation && currentStatus === STATUS.complete) {
-      setFollowUp({
-        question: node.query,
-        answer: disambiguation.summary,
-        followUp: disambiguation.question,
-        prompts: disambiguation.options,
-      });
+      setFollowUp(disambiguation);
     } else {
       setFollowUp(null);
     }
@@ -71,7 +66,12 @@ export const PageHome = () => {
         )}
 
         {followUp && !showStatus && (
-          <FollowUp key="follow-up" followUp={followUp} onSelect={submit} />
+          <FollowUp
+            key="follow-up"
+            prompt={query}
+            followUp={followUp}
+            onSelect={submit}
+          />
         )}
         {showStatus && (
           <Status key="status" prompt={query} status={currentStatus} />
