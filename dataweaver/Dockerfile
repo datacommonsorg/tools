@@ -17,7 +17,7 @@ COPY packages/tokens/package.json ./packages/tokens/
 COPY apps/web/package.json ./apps/web/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 
 # Rebuild the source code only when needed
@@ -35,6 +35,7 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 
 # Build the project
+RUN pnpm run generate:tokens
 RUN pnpm build
 
 # Production image, copy all the files and run next

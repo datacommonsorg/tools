@@ -5,16 +5,17 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "pnpm run generate:tokens && pnpm -r --parallel dev",
-    "build": "pnpm run generate:tokens && pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
     "preview": "pnpm -r --parallel preview",
-    "lint": "pnpm run generate:tokens && pnpm -r run lint:type-check && pnpm run lint:biome && pnpm run lint:styles",
+    "lint": "pnpm -r run lint:type-check && pnpm run lint:biome && pnpm run lint:styles",
     "lint:biome": "biome check",
     "lint:styles": "stylelint \"**/*.scss\"",
     "fix": "pnpm run fix:biome && pnpm run fix:styles",
     "fix:biome": "biome check --write --unsafe",
     "fix:styles": "stylelint \"**/*.scss\" --fix",
-    "generate:tokens": "pnpm --filter @package/tokens generate"
+    "generate:tokens": "pnpm --filter @package/tokens generate",
+    "prepare": "pnpm run generate:tokens"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
