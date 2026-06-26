@@ -11,7 +11,8 @@
 
 import type { DetailedHTMLProps, HTMLAttributes } from "react";
 
-type DCAttrs = DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
+interface DataCommonsAttributes
+  extends DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> {
   // Common
   apiroot?: string;
   header?: string;
@@ -49,20 +50,20 @@ type DCAttrs = DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
 
   // Scatter
   showPlaceLabels?: boolean | "" | "true" | "false";
-};
+}
 
 declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
-      "datacommons-line":      DCAttrs;
-      "datacommons-bar":       DCAttrs;
-      "datacommons-pie":       DCAttrs;
-      "datacommons-map":       DCAttrs;
-      "datacommons-highlight": DCAttrs;
-      "datacommons-ranking":   DCAttrs;
-      "datacommons-gauge":     DCAttrs;
-      "datacommons-scatter":   DCAttrs;
-      "datacommons-slider":    DCAttrs;
+      "datacommons-line":      DataCommonsAttributes;
+      "datacommons-bar":       DataCommonsAttributes;
+      "datacommons-pie":       DataCommonsAttributes;
+      "datacommons-map":       DataCommonsAttributes;
+      "datacommons-highlight": DataCommonsAttributes;
+      "datacommons-ranking":   DataCommonsAttributes;
+      "datacommons-gauge":     DataCommonsAttributes;
+      "datacommons-scatter":   DataCommonsAttributes;
+      "datacommons-slider":    DataCommonsAttributes;
     }
   }
 }
