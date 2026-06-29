@@ -1,0 +1,19 @@
+.container {
+  display: flex;
+  column-gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--controls-height);
+  padding: 0
+    calc((var(--controls-height) - var(--button-circle-size-medium)) / 2);
+  color: rgb(var(--color-control-accent));
+  background: rgb(var(--color-control-surface));
+  border-radius: calc(var(--controls-height) / 2);
+  box-shadow: var(--shadow-elevated);
+
+  .divider {
+    width: 1px;
+    height: 30px;
+    background: rgb(var(--color-control-divider));
+  }
+}

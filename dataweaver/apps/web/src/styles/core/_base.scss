@@ -1,6 +1,11 @@
 @use "~/styles/includes";
 
 @layer base {
+  html {
+    // Set global default font-family
+    font-family: "Google Sans", sans-serif;
+  }
+
   *:focus {
     outline: none;
   }

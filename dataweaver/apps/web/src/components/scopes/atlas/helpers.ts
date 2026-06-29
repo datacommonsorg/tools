@@ -1,68 +1,58 @@
 import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
-import type { ChartDatum } from '~/components/elements/card/chart/chart';
+import type { CardState } from '~/components/elements/card/base';
+import type { CardChartProps } from '~/components/elements/card/chart/chart';
+import type { CardTextProps } from '~/components/elements/card/text';
+import { CARD_VARIANT_SIZE } from './config';
 
-export type CardVariant = 'text' | 'chart';
-
-interface BaseContent {
-  isLoading?: boolean;
+interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
   followUp?: string;
 }
 
-interface TextContent extends BaseContent {
+interface TextContent
+  extends BaseContent,
+    Pick<CardTextProps, 'title' | 'body'> {
   variant: 'text';
-  title?: string;
-  body?: string;
 }
 
-interface ChartContent extends BaseContent {
+interface TableContent
+  extends BaseContent,
+    Pick<CardTextProps, 'title' | 'body'> {
+  variant: 'table';
+}
+
+interface ChartContent
+  extends BaseContent,
+    Pick<CardChartProps, 'title' | 'description' | 'data' | 'facets'> {
   variant: 'chart';
-  title?: string;
-  description?: string;
-  data?: ChartDatum[];
 }
 
-/**
- * App-level description of a thing to mount on the canvas. The atlas only
- * renders cards; the variant decides which content fields are valid.
- */
-export type AtlasContent = TextContent | ChartContent;
+export type AtlasContent = TextContent | TableContent | ChartContent;
 
-/**
- * Flat view of every possible content field — variant-specific fields become
- * optional. Used by the shape util, since tldraw stores props as a flat record.
- */
+export type CardVariant = AtlasContent['variant'];
+
+/** Flat view of every possible card content field. */
 export type CardContentFields = Omit<TextContent, 'variant'> &
+  Omit<TableContent, 'variant'> &
   Omit<ChartContent, 'variant'>;
 
-interface Position {
+export interface CardPosition {
   x: number;
   y: number;
 }
 
-const GRID = {
-  columns: 4,
-  stepX: 460,
-  stepY: 600,
-  originX: 120,
-  originY: 120,
-} as const;
+export interface CardSize {
+  w: number;
+  h: number;
+}
 
-/** A simple utility to get a new content's position based on index. */
-export const gridPosition = (index: number): Position => ({
-  x: GRID.originX + (index % GRID.columns) * GRID.stepX,
-  y: GRID.originY + Math.floor(index / GRID.columns) * GRID.stepY,
-});
+/** A card's position and size together. */
+export type CardBounds = CardPosition & CardSize;
 
-// Per-variant default canvas footprint
-const VARIANT_SIZE: Record<CardVariant, { w: number; h: number }> = {
-  text: { w: 360, h: 440 },
-  chart: { w: 420, h: 520 },
-};
-
+/** Convert card content into `TLShape` for placement on the canvas. */
 export const contentToShape = (
   shapeId: TLShapeId,
   content: AtlasContent,
-  position: Position,
+  position: CardPosition,
 ): TLCreateShapePartial<TLShape<'card'>> => {
   const baseProps = {
     id: shapeId,
@@ -72,7 +62,7 @@ export const contentToShape = (
   };
 
   const shapeProps = {
-    ...VARIANT_SIZE[content.variant],
+    ...CARD_VARIANT_SIZE[content.variant],
     isLoading: content.isLoading ?? false,
     followUp: content.followUp,
   };
@@ -86,6 +76,7 @@ export const contentToShape = (
         title: content.title,
         description: content.description,
         data: content.data,
+        facets: content.facets,
       },
     };
   }

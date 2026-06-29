@@ -1,0 +1,59 @@
+.indicator {
+  position: relative;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  background: rgb(var(--color-radio-surface));
+  border: 1px solid rgb(var(--color-radio-border));
+  border-radius: 50%;
+
+  @include prefers-motion {
+    transition:
+      background 0.2s $ease-linear,
+      border-color 0.2s $ease-linear;
+  }
+
+  &::after {
+    grid-area: 1 / 1;
+    width: 7px;
+    height: 7px;
+    content: "";
+    background: rgb(var(--color-radio-mark));
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.2s $ease-linear;
+  }
+}
+
+.input {
+  @include screen-reader-only;
+
+  &:checked + .indicator {
+    background: rgb(var(--color-radio-surface-checked));
+    border-color: rgb(var(--color-radio-mark));
+
+    &::after {
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible:focus + .indicator {
+    outline: 1px dashed currentcolor;
+    outline-offset: var(--outline-offset);
+  }
+}
+
+.container {
+  display: flex;
+  column-gap: 8px;
+  align-items: flex-start;
+
+  @include hover {
+    .input:not(:disabled, :checked) + .indicator {
+      background: rgb(var(--color-radio-surface-hover));
+    }
+  }
+}

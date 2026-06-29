@@ -1,0 +1,37 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--menu-padding);
+  border-top: 1px solid rgb(var(--color-atlas-decorator));
+
+  .fieldset-container {
+    margin-bottom: 40px;
+  }
+
+  .options-container {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 16px;
+    justify-content: space-between;
+
+    .option-text-container {
+      display: flex;
+      flex-direction: column;
+      row-gap: 8px;
+      width: 140px;
+    }
+  }
+}
+
+.option-title {
+  @include type-body-medium(500);
+
+  color: rgb(var(--color-control-content));
+}
+
+.option-description {
+  @include type-body-small;
+
+  width: 140px;
+  color: rgb(var(--color-control-content-muted));
+}

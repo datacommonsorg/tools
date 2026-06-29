@@ -16,20 +16,6 @@ type ToolName = keyof typeof TOOLS;
 /** Type guard to ensure a given string is a valid ToolName. */
 const isToolName = (name: string): name is ToolName => name in TOOLS;
 
-const BUTTON_TOOL_COLOR_SCHEME_SELECTED = {
-  base: 'var(--color-control-accent)',
-  'base-hover': 'var(--color-control-accent)',
-  content: 'var(--color-control-accent-content)',
-  'content-hover': 'var(--color-control-accent-content)',
-};
-
-const BUTTON_TOOL_COLOR_SCHEME_INACTIVE = {
-  base: 'transparent',
-  'base-hover': 'var(--color-control-surface-hover)',
-  content: 'var(--color-control-content)',
-  'content-hover': 'var(--color-control-content)',
-};
-
 /**
  * Editor-bound wrapper rendered through tldraw's `InFrontOfTheCanvas` slot so
  * it can read live tool / zoom state via `useEditor`.
@@ -55,13 +41,10 @@ export const Tools = () => {
           key={name}
           icon={tool.Icon}
           size="large"
+          variant="flat"
           aria-label={tool.label}
           aria-pressed={activeToolName === name}
-          colorScheme={
-            activeToolName === name
-              ? BUTTON_TOOL_COLOR_SCHEME_SELECTED
-              : BUTTON_TOOL_COLOR_SCHEME_INACTIVE
-          }
+          tone={activeToolName === name ? 'accent' : 'subtle'}
           onClick={() => editor.setCurrentTool(name)}
         />
       ))}

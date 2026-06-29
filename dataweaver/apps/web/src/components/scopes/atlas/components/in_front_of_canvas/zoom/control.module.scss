@@ -1,0 +1,29 @@
+.container {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  height: var(--controls-height);
+  padding: 0 8px;
+  color: rgb(var(--color-control-accent));
+  background: rgb(var(--color-control-surface));
+  border-radius: calc(var(--controls-height) / 2);
+  box-shadow: var(--shadow-elevated);
+
+  .button-value {
+    @include type-label-large;
+
+    width: 60px;
+    height: 28px;
+    color: rgb(var(--color-control-accent));
+    text-align: center;
+    border-radius: var(--border-radius-small);
+
+    @include prefers-motion {
+      transition: background 0.2s $ease-linear;
+    }
+
+    @include hover {
+      background: rgb(var(--color-control-surface-hover));
+    }
+  }
+}

@@ -1,0 +1,23 @@
+.container {
+  --gutter: 40px;
+  --buffer: 12px;
+  --controls-height-with-gutters: calc(
+    var(--controls-height) + var(--controls-gutter-outer) * 2
+  );
+  --tools-width-with-gutters: calc(
+    var(--tools-width) + var(--tools-gutter-outer) * 2
+  );
+
+  position: fixed;
+  right: calc(var(--tools-width-with-gutters) + var(--buffer));
+  bottom: var(--gutter);
+  z-index: $z-index-above-content;
+  display: flex;
+  flex-direction: column;
+  row-gap: var(--gutter);
+  width: 696px;
+  max-height: calc(
+    100dvh - var(--gutter) - var(--controls-height-with-gutters) - var(--buffer)
+  );
+  pointer-events: none;
+}

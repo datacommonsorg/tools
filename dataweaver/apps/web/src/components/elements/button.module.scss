@@ -5,47 +5,151 @@
   color: rgb(var(--color-button-content));
   background: rgb(var(--color-button-base));
 
-  &[data-shape="pill"] {
-    height: 28px;
-    padding-inline: 12px 16px;
-    border-radius: 14px;
+  &[data-variant="border"] {
+    border: 1px solid rgb(var(--color-button-border));
+  }
 
+  &[data-tone="prominent"] {
+    --color-button-base: var(--color-button-prominent-base);
+    --color-button-content: var(--color-button-prominent-content);
+    --color-button-base-hover: var(--color-button-prominent-base-hover);
+    --color-button-content-hover: var(--color-button-prominent-content-hover);
+    --color-button-border: var(--color-button-prominent-border);
+    --color-button-border-hover: var(--color-button-prominent-border-hover);
+  }
+
+  &[data-tone="subtle"] {
+    --color-button-base: var(--color-button-subtle-base);
+    --color-button-content: var(--color-button-subtle-content);
+    --color-button-base-hover: var(--color-button-subtle-base-hover);
+    --color-button-content-hover: var(--color-button-subtle-content-hover);
+    --color-button-border: var(--color-button-subtle-border);
+    --color-button-border-hover: var(--color-button-subtle-border-hover);
+  }
+
+  &[data-tone="subtle-highlight"] {
+    --color-button-base: var(--color-button-subtle-highlight-base);
+    --color-button-content: var(--color-button-subtle-highlight-content);
+    --color-button-base-hover: var(--color-button-subtle-highlight-base-hover);
+    --color-button-content-hover: var(
+      --color-button-subtle-highlight-content-hover
+    );
+    --color-button-border: var(--color-button-subtle-highlight-border);
+    --color-button-border-hover: var(
+      --color-button-subtle-highlight-border-hover
+    );
+  }
+
+  &[data-tone="accent"] {
+    --color-button-base: var(--color-button-accent-base);
+    --color-button-content: var(--color-button-accent-content);
+    --color-button-base-hover: var(--color-button-accent-base-hover);
+    --color-button-content-hover: var(--color-button-accent-content-hover);
+    --color-button-border: var(--color-button-accent-border);
+    --color-button-border-hover: var(--color-button-accent-border-hover);
+  }
+
+  &[data-tone="accent-subtle"] {
+    --color-button-base: var(--color-button-accent-subtle-base);
+    --color-button-content: var(--color-button-accent-subtle-content);
+    --color-button-base-hover: var(--color-button-accent-subtle-base-hover);
+    --color-button-content-hover: var(
+      --color-button-accent-subtle-content-hover
+    );
+    --color-button-border: var(--color-button-accent-subtle-border);
+    --color-button-border-hover: var(--color-button-accent-subtle-border-hover);
+  }
+
+  &[data-tone="control"] {
+    --color-button-base: var(--color-control-surface);
+    --color-button-content: var(--color-control-accent);
+    --color-button-base-hover: var(--color-control-surface-hover);
+    --color-button-content-hover: var(--color-control-accent);
+  }
+
+  &[data-tone="card-action"] {
+    --color-button-base: var(--color-card-action-base);
+    --color-button-content: var(--color-card-action-content);
+    --color-button-base-hover: var(--color-card-action-base-hover);
+    --color-button-content-hover: var(--color-card-action-content-hover);
+  }
+
+  &[data-shape="pill"] {
     &[data-size="small"] {
       column-gap: 2px;
-      height: 28px;
-      padding-inline: 12px 16px;
-      border-radius: 14px;
+      min-height: var(--button-pill-size-small);
+      border-radius: calc(var(--button-pill-size-small) / 2);
+
+      &[data-has-icon="false"] {
+        padding-inline: 16px;
+      }
+
+      &[data-has-icon="true"] {
+        padding-inline: 10px 16px;
+      }
+    }
+
+    &[data-size="medium"] {
+      column-gap: 4px;
+      min-height: var(--button-pill-size-medium);
+      border-radius: calc(var(--button-pill-size-medium) / 2);
+
+      &[data-has-icon="false"] {
+        padding-inline: 16px;
+      }
+
+      &[data-has-icon="true"] {
+        padding-inline: 16px 18px;
+      }
     }
 
     &[data-size="large"] {
       column-gap: 6px;
-      height: 46px;
-      padding-inline: 22px 24px;
-      border-radius: 23px;
+      min-height: var(--button-pill-size-large);
+      border-radius: calc(var(--button-pill-size-large) / 2);
+
+      &[data-has-icon="false"] {
+        padding-inline: 16px;
+      }
+
+      &[data-has-icon="true"] {
+        padding-inline: 22px 24px;
+      }
     }
   }
 
-  &[data-shape="square"] {
+  &[data-shape="circle"] {
+    border-radius: 50%;
+
     &[data-size="small"] {
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
+      width: var(--button-circle-size-small);
+      height: var(--button-circle-size-small);
+    }
+
+    &[data-size="medium"] {
+      width: var(--button-circle-size-medium);
+      height: var(--button-circle-size-medium);
     }
 
     &[data-size="large"] {
-      width: 40px;
-      height: 40px;
-      border-radius: 20px;
+      width: var(--button-circle-size-large);
+      height: var(--button-circle-size-large);
     }
   }
 
   @include prefers-motion {
     transition-timing-function: $ease-linear;
     transition-duration: 0.2s;
-    transition-property: color, background;
+
+    &[data-variant="flat"] {
+      transition-property: color, background;
+    }
+
+    &[data-variant="border"] {
+      transition-property: color, background, border-color;
+    }
   }
 
-  // TODO: Implement disabled style
   &[disabled] {
     cursor: not-allowed;
     opacity: 0.4;
@@ -55,6 +159,10 @@
     @include hover {
       color: rgb(var(--color-button-content-hover));
       background: rgb(var(--color-button-base-hover));
+
+      &[data-variant="border"] {
+        border-color: rgb(var(--color-button-border-hover));
+      }
     }
   }
 }
@@ -68,9 +176,19 @@
 .children {
   [data-size="small"] & {
     @include type-label-small;
+
+    padding-block: 8px;
+  }
+
+  [data-size="medium"] & {
+    @include type-label-medium;
+
+    padding-block: 12px;
   }
 
   [data-size="large"] & {
     @include type-label-large;
+
+    padding-block: 14px;
   }
 }

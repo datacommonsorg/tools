@@ -5,10 +5,18 @@ import { Button } from '~/components/elements/button';
 import { useCachedResizeValues } from '~/hooks/use_cached_resize_values';
 import s from './base.module.scss';
 
+/**
+ * How the card is selected on the canvas:
+ * - `none`: Not selected
+ * - `single`: The only selected shape
+ * - `multiple`: Selected alongside other shapes
+ */
+export type CardSelection = 'none' | 'single' | 'multiple';
+
 /** The card's two orthogonal, independently-settable states. */
 export interface CardState {
   isLoading: boolean;
-  isSelected: boolean;
+  selection: CardSelection;
 }
 
 interface CardAction {
@@ -30,7 +38,7 @@ interface CardProps extends CardState {
 
 export const CardBase = ({
   isLoading,
-  isSelected,
+  selection,
   actions,
   content,
   footer,
@@ -43,20 +51,16 @@ export const CardBase = ({
     <article
       className={s.container}
       data-is-loading={isLoading}
-      data-is-selected={isSelected}
+      data-selection={selection}
     >
       <div className={s['actions-container']}>
         {actions.map((action, index) => (
           <Button
             key={index}
             icon={action.icon}
-            size="large"
-            colorScheme={{
-              base: 'transparent',
-              'base-hover': 'var(--color-card-base)',
-              content: 'var(--color-card-base)',
-              'content-hover': 'var(--color-card-base-selected)',
-            }}
+            size="medium"
+            variant="flat"
+            tone="card-action"
             aria-label={action.label}
             // Prevent tldraw from triggering canvas gestures (e.g. dragging)
             onPointerDown={(event) => event.stopPropagation()}
