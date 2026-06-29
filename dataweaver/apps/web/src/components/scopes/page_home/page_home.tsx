@@ -44,6 +44,9 @@ export const PageHome = () => {
           .map((r) => r.disambiguation)
           .filter(Boolean)
       : [];
+    // TODO - we currently can get more than one disambiguation, as the api will return
+    // one per place in the query. Here I'm just using the first one, but we'll need to figure
+    // out a better way to handle this
     const disambiguation = disambiguations[0];
     if (node && disambiguation && currentStatus === STATUS.complete) {
       setFollowUp(disambiguation);

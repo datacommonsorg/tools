@@ -100,8 +100,9 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         active.cardIds = active.cardIds.filter((id) => id !== loadingId);
 
         if (result.disambiguation) {
-          // Handle disambiguation if present
-          break;
+          // If the api has returned a follow-up question, we skip card registration here,
+          // as the FollowUp component will be rendered instead of new cards
+          return;
         }
 
         // Batch-register result cards.

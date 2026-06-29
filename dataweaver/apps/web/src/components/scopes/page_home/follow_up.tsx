@@ -27,7 +27,7 @@ export const FollowUp = ({ prompt, followUp, onSelect }: FollowUpProps) => {
         <div className={s.answer}>{followUp.summary}</div>
         <div className={s.answer}>{followUp.question}</div>
 
-        {followUp.options.length > 0 && (
+        {followUp?.options?.length > 0 && (
           <ul className={s['prompts-container']}>
             {followUp.options.map((option) => (
               <li key={option}>
