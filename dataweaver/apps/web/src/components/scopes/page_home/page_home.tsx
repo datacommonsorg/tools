@@ -13,8 +13,11 @@ import { Status } from './status';
 
 export const PageHome = () => {
   const { runPrompt } = useQueryActions();
-  const { currentStatus, nodes, latestNodeId } = useAtlasStore();
-  const latestNode = latestNodeId ? nodes[latestNodeId] : null;
+  const currentStatus = useAtlasStore((s) => s.currentStatus);
+  const latestNode = useAtlasStore((s) =>
+    s.latestNodeId ? s.nodes[s.latestNodeId] : null,
+  );
+  const hasNodes = useAtlasStore((s) => Object.keys(s.nodes).length > 0);
   const query = latestNode?.query ?? '';
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
@@ -29,8 +32,8 @@ export const PageHome = () => {
   };
 
   useEffect(() => {
-    if (Object.values(nodes).length > 0) setIsIntroVisible(false);
-  }, [nodes]);
+    if (hasNodes) setIsIntroVisible(false);
+  }, [hasNodes]);
 
   const showStatus =
     !isIntroVisible &&
@@ -38,9 +41,8 @@ export const PageHome = () => {
     currentStatus !== STATUS.idle;
 
   useEffect(() => {
-    const node = latestNodeId ? nodes[latestNodeId] : null;
-    const disambiguations = node?.results
-      ? Object.values(node.results)
+    const disambiguations = latestNode?.results
+      ? Object.values(latestNode.results)
           .map((r) => r.disambiguation)
           .filter(Boolean)
       : [];
@@ -48,12 +50,12 @@ export const PageHome = () => {
     // one per place in the query. Here I'm just using the first one, but we'll need to figure
     // out a better way to handle this
     const disambiguation = disambiguations[0];
-    if (node && disambiguation && currentStatus === STATUS.complete) {
+    if (latestNode && disambiguation && currentStatus === STATUS.complete) {
       setFollowUp(disambiguation);
     } else {
       setFollowUp(null);
     }
-  }, [currentStatus, latestNodeId, nodes]);
+  }, [currentStatus, latestNode]);
 
   return (
     <div className={s.container}>
