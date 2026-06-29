@@ -10,6 +10,8 @@ import { withChipCitations } from "./chip_citation";
 interface CardResponseProps {
   title: string;
   body: string;
+  // When true, the response is still being streamed in: shows a pulsing
+  // "streaming" badge in the title bar and a blinking cursor after the body.
   streaming?: boolean;
   // When true, renders the markdown body only — no outer card, no title
   // bar. Used inside PanelAnswer's "Side panel" card where the user's

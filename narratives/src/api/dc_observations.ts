@@ -2,6 +2,10 @@
  * Typed access to the Custom Data Commons observation endpoints.
  * We use these directly so charts render inside our own Recharts layer —
  * no DC web components, full Figma fidelity.
+ *
+ * TODO: Add unit tests for all exported functions in this file (fetchSeries,
+ * fetchPoint, pivotSeriesToRows, pivotPointToRowsByPlace, pickSourceFromFacets,
+ * getPrettyPlaceName, getPrettyVariableName).
  */
 
 /**
