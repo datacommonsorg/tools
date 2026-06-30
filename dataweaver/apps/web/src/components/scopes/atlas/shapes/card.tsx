@@ -21,6 +21,7 @@ import type {
   CardVariant,
 } from '~/components/scopes/atlas/helpers';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
+import { useAtlasStore } from '~/store';
 
 export const CARD_DATA_ATTRIBUTE = 'data-card';
 
@@ -47,8 +48,19 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     title: T.string.optional(),
     description: T.string.optional(),
     body: T.string.optional(),
-    data: T.arrayOf(
-      T.object({ year: T.number, emissions: T.number }),
+    data: T.arrayOf(T.object({ date: T.string, value: T.number })).optional(),
+    facets: T.arrayOf(
+      T.object({
+        facetId: T.string,
+        source: T.string,
+        sourceUrl: T.string,
+        unit: T.string,
+        earliestDate: T.string,
+        latestDate: T.string,
+        observationCount: T.number,
+        measurementMethod: T.string.optional(),
+        observations: T.arrayOf(T.object({ date: T.string, value: T.number })),
+      }),
     ).optional(),
     isLoading: T.boolean.optional(),
     followUp: T.string.optional(),
@@ -115,7 +127,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   };
 
   #renderContent = (shape: ShapeCard, isLoading: boolean) => {
-    const { variant, title, description, body, data } = shape.props;
+    const { variant, title, description, body, data, facets } = shape.props;
 
     if (variant === 'chart') {
       return (
@@ -123,12 +135,45 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           title={title}
           description={description}
           data={data}
+          facets={facets}
           isLoading={isLoading}
         />
       );
     }
 
-    return <Card.Text title={title} body={body} isLoading={isLoading} />;
+    return (
+      <Card.Text
+        title={title}
+        body={body}
+        isLoading={isLoading}
+        onAction={(href) => this.#handleAction(shape, href)}
+      />
+    );
+  };
+
+  #handleAction = (shape: ShapeCard, href: string) => {
+    const params = new URLSearchParams(href.replace(/^#/, ''));
+    const variableDcid = params.get('fetch');
+    const placeDcid = params.get('place');
+    if (!variableDcid || !placeDcid) return;
+
+    const { cards, cardRegister } = useAtlasStore.getState();
+
+    // Find the card entry for this shape to get the historyNodeId.
+    const cardEntry = cards[shape.id];
+    if (!cardEntry) return;
+
+    // Deterministic ID prevents duplicates.
+    const chartShapeId = `shape:${cardEntry.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
+    if (cards[chartShapeId]) return;
+
+    cardRegister(
+      chartShapeId,
+      cardEntry.historyNodeId,
+      'chart',
+      placeDcid,
+      variableDcid,
+    );
   };
 
   #renderFooter = (shape: ShapeCard) => {

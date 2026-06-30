@@ -89,7 +89,8 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
 
 /** Per-variant default canvas footprint. */
 export const CARD_VARIANT_SIZE: Record<CardVariant, CardSize> = {
-  text: { w: 360, h: 440 },
+  text: { w: 420, h: 440 },
+  table: { w: 650, h: 500 },
   chart: { w: 420, h: 520 },
 };
 
