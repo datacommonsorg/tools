@@ -9,8 +9,8 @@ import {
   useRef,
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
-import { buildFollowUpPrompt } from '~/functions/build_follow_up_prompt';
-import type { CardEntry, StreamEvent } from '~/server/types';
+
+import type { CardEntry, FollowUpContext, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
@@ -183,16 +183,36 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           places: node.parsedQuery?.places ?? [],
         }));
 
-        // If the parent node had a followUp, enrich the prompt with the
-        // original query so the model has full context for the selection.
-        let resolvedPrompt = prompt;
+        // If the parent node had a followUp, build structured context
+        // instead of concatenating into the query string.
+        let followUpContext: FollowUpContext | undefined;
         if (parentNodeId) {
           const parentNode = nodes[parentNodeId];
-          const parentHadFollowUp = parentNode?.results
-            ? Object.values(parentNode.results).some((r) => r.followUp)
-            : false;
-          if (parentHadFollowUp && parentNode) {
-            resolvedPrompt = buildFollowUpPrompt(parentNode.query, prompt);
+          const parentFollowUp = parentNode?.results
+            ? Object.values(parentNode.results)
+                .map((r) => r.followUp)
+                .find(Boolean)
+            : undefined;
+
+          if (parentFollowUp && parentNode) {
+            if (parentNode.followUpContext) {
+              // Extend existing chain
+              followUpContext = {
+                originalQuery: parentNode.followUpContext.originalQuery,
+                followUps: [
+                  ...parentNode.followUpContext.followUps,
+                  { question: parentFollowUp.question, answer: prompt },
+                ],
+              };
+            } else {
+              // Start a new chain
+              followUpContext = {
+                originalQuery: parentNode.query,
+                followUps: [
+                  { question: parentFollowUp.question, answer: prompt },
+                ],
+              };
+            }
           }
         }
 
@@ -200,7 +220,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const selectedEntityDcids = getSelectedEntityDcids(selectedShapeIds);
 
         // Create history node in store
-        const nodeId = queryStart(resolvedPrompt, null, parentNodeId);
+        const nodeId = queryStart(prompt, null, parentNodeId, followUpContext);
 
         // Store active query state for the stream handler
         activeQueryRef.current = {
@@ -216,10 +236,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         // Start the SSE stream
         startStream({
-          query: resolvedPrompt,
+          query: prompt,
           atlasContext,
           ancestorChain,
           selectedEntityDcids,
+          followUpContext,
         });
       },
       queryCancel: () => {

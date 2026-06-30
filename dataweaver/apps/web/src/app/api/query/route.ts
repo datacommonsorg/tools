@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
   const selectedEntityDcids = Array.isArray(body?.selectedEntityDcids)
     ? body.selectedEntityDcids
     : [];
+  const followUpContext = body?.followUpContext ?? undefined;
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
@@ -95,16 +96,16 @@ export async function POST(request: NextRequest) {
           query,
           atlasContext,
           ancestorChainLength: ancestorChain.length,
+          followUpContext,
         });
 
         // Resolve places
         let places = parsed.places;
         if (parsed.isFollowUp && places.length === 0) {
-          places =
-            selectedEntityDcids.length > 0 ? selectedEntityDcids : [query];
+          places = selectedEntityDcids.length > 0 ? selectedEntityDcids : [];
         }
-        if (places.length === 0) places = [query];
-        parsed.places = places;
+        const noExplicitPlace = places.length === 0;
+        if (noExplicitPlace) places = ['Earth'];
 
         emit({ type: STREAM_EVENT.parsedQuery, data: parsed });
         if (signal.aborted) {
@@ -152,6 +153,8 @@ export async function POST(request: NextRequest) {
             parsed,
             atlasContext,
             ancestorChain,
+            followUpContext,
+            noExplicitPlace,
             geminiTools,
             signal,
             onToolCall: (e) => {
@@ -248,6 +251,12 @@ export async function POST(request: NextRequest) {
             relatedQueries: parsedResponse.relatedQueries,
             followUp: parsedResponse.followUp,
           };
+
+          // Strip follow-up options when no explicit place was provided —
+          // the question should only ask the user to specify a place.
+          if (noExplicitPlace && discoveryResult.followUp) {
+            discoveryResult.followUp.options = [];
+          }
 
           const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
           discoveryResult.tableHtml = tableHtml;

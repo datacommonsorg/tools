@@ -19,6 +19,7 @@ export interface HistoryNode {
   timestamp: number;
   status: 'pending' | 'complete' | 'error';
   followUp?: FollowUp;
+  followUpContext?: FollowUpContext;
 }
 
 export type CardType = 'loading' | 'table' | 'notes' | 'chart';
@@ -55,6 +56,16 @@ export interface FollowUp {
   summary: string;
   question: string;
   options: string[];
+}
+
+export interface FollowUpEntry {
+  question: string;
+  answer: string;
+}
+
+export interface FollowUpContext {
+  originalQuery: string;
+  followUps: FollowUpEntry[];
 }
 
 export interface QueryResult {
@@ -115,6 +126,7 @@ export interface QueryStreamRequest {
   atlasContext: string;
   ancestorChain: { query: string; topic: string; places: string[] }[];
   selectedEntityDcids: string[];
+  followUpContext?: FollowUpContext;
 }
 
 // --- Status messages ---
