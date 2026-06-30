@@ -11,6 +11,7 @@ import {
 import { toast } from '~/components/foundations/toaster/store';
 import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
+import { buildFollowUpPrompt } from '~/functions/build_follow_up_prompt';
 import type { CardEntry, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
@@ -167,6 +168,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       },
       runPrompt: (prompt: string) => {
         const {
+          nodes,
           queryStart,
           querySetProcessing,
           querySetStatus,
@@ -187,11 +189,24 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           places: node.parsedQuery?.places ?? [],
         }));
 
+        // If the parent node had a followUp, enrich the prompt with the
+        // original query so the model has full context for the selection.
+        let resolvedPrompt = prompt;
+        if (parentNodeId) {
+          const parentNode = nodes[parentNodeId];
+          const parentHadFollowUp = parentNode?.results
+            ? Object.values(parentNode.results).some((r) => r.followUp)
+            : false;
+          if (parentHadFollowUp && parentNode) {
+            resolvedPrompt = buildFollowUpPrompt(parentNode.query, prompt);
+          }
+        }
+
         // Derive selected entity dcids from selected cards via store
         const selectedEntityDcids = getSelectedEntityDcids(selectedShapeIds);
 
         // Create history node in store
-        const nodeId = queryStart(prompt, null, parentNodeId);
+        const nodeId = queryStart(resolvedPrompt, null, parentNodeId);
 
         // Store active query state for the stream handler
         activeQueryRef.current = {
@@ -207,7 +222,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         // Start the SSE stream
         startStream({
-          query: prompt,
+          query: resolvedPrompt,
           atlasContext,
           ancestorChain,
           selectedEntityDcids,
