@@ -30,6 +30,7 @@ interface ToolLoopParams {
   query: string;
   parsed: ParsedQuery;
   atlasContext: string;
+  ancestorChain: { query: string; topic: string; places: string[] }[];
   geminiTools: GeminiTool[];
   signal?: AbortSignal;
   onToolCall?: (event: ToolCallEvent) => void;
@@ -71,6 +72,7 @@ export const runToolLoop = async (
     query,
     parsed,
     atlasContext,
+    ancestorChain,
     geminiTools,
     signal,
     onToolCall,
@@ -97,17 +99,33 @@ export const runToolLoop = async (
   const systemInstruction =
     skill.systemPrompt + atlasClause + dateRangeClause + placeClause;
 
-  // Build messages
-  const messages: Content[] = [
-    {
+  // Build messages with conversation history
+  const messages: Content[] = [];
+  if (ancestorChain.length > 0) {
+    const historyContext = ancestorChain
+      .map(
+        (node) =>
+          `User asked: "${node.query}" (topic: ${node.topic}, places: ${node.places.join(', ')})`,
+      )
+      .join('\n');
+    messages.push({
+      role: 'user',
+      parts: [
+        {
+          text: `CONVERSATION HISTORY:\n${historyContext}\n\nNEW REQUEST: Find statistical variables for "${place}" related to: "${query}"`,
+        },
+      ],
+    });
+  } else {
+    messages.push({
       role: 'user',
       parts: [
         {
           text: `Find statistical variables for "${place}" related to: "${query}"`,
         },
       ],
-    },
-  ];
+    });
+  }
 
   // Tool-calling loop
   let toolCallCount = 0;
@@ -115,7 +133,7 @@ export const runToolLoop = async (
     const response = await genAI.models.generateContent({
       model: config.models.dataDiscovery,
       contents: messages,
-      config: { tools: geminiTools, systemInstruction },
+      config: { tools: geminiTools, systemInstruction, abortSignal: signal },
     });
 
     if (response.functionCalls && response.functionCalls.length > 0) {
@@ -138,11 +156,19 @@ export const runToolLoop = async (
           max: maxToolCalls,
         });
 
-        const toolResult = await callMcp<McpToolCallResult>(
-          'tools/call',
-          { name: fcName, arguments: fc?.args },
-          signal,
-        );
+        let toolResult: McpToolCallResult;
+        try {
+          toolResult = await callMcp<McpToolCallResult>(
+            'tools/call',
+            { name: fcName, arguments: fc?.args },
+            signal,
+          );
+        } catch (err: unknown) {
+          // If the caller aborted, re-throw so the outer loop exits cleanly.
+          if (signal?.aborted) throw err;
+          // Tool call timed out or failed — return empty so the place is skipped.
+          return { text: '', resolvedPlaceDcid };
+        }
 
         // Extract place DCID from search_indicators responses
         if (fcName === 'search_indicators' && !resolvedPlaceDcid) {

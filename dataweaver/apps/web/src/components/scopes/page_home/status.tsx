@@ -3,18 +3,16 @@
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
 import { Button } from '~/components/elements/button';
-import {
-  type Status as StatusType,
-  useQueryActions,
-} from '~/components/scopes/atlas/query_provider';
+import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import s from './status.module.scss';
 
 interface StatusProps {
-  status: StatusType;
+  prompt: string;
+  status: string;
 }
 
-export const Status = ({ status }: StatusProps) => {
-  const { cancelRunningPrompt } = useQueryActions();
+export const Status = ({ prompt, status }: StatusProps) => {
+  const { queryCancel } = useQueryActions();
 
   return (
     <m.aside
@@ -24,16 +22,16 @@ export const Status = ({ status }: StatusProps) => {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
-      <h2 className={s['prompt-value']}>{status.promptValue}</h2>
+      <h2 className={s['prompt-value']}>{prompt}</h2>
 
-      <p className={s['indicator-message']}>{status.indicatorMessage}</p>
+      <p className={s['indicator-message']}>{status}</p>
 
       <Button
         className={s['button-cancel']}
         size="small"
         variant="border"
         tone="subtle"
-        onClick={cancelRunningPrompt}
+        onClick={queryCancel}
       >
         Cancel
       </Button>

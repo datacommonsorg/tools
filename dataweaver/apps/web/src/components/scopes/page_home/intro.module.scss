@@ -2,7 +2,7 @@
   overflow-y: auto;
   overscroll-behavior: none;
   pointer-events: auto;
-  background: rgb(var(--color-query-surface));
+  background: rgb(var(--color-query-surface-raised));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
 }
@@ -64,7 +64,7 @@
   grid-area: notice;
   column-gap: 4px;
   align-items: center;
-  padding: 20px 28px;
+  padding: 18px 28px;
   color: rgb(var(--color-query-content));
   background: rgb(var(--color-query-surface-subtle));
 

@@ -5,16 +5,19 @@ import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
 import type { CardState } from '~/components/elements/card/base';
 import { Skeleton } from '~/components/elements/skeleton';
+import { HtmlParsed } from '~/components/primitives/html_parsed';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
+import { useAtlasStore } from '~/store';
 import s from './text.module.scss';
 
 export interface CardTextProps extends CardState {
   id: TLShapeId;
   title?: string;
+  /** HTML string rendered via `html-react-parser` (sanitized/filtered). */
   body?: string;
   followUp?: string;
 }
@@ -29,6 +32,7 @@ export const CardText = ({
 }: CardTextProps) => {
   const editor = useEditor();
 
+  const { cardRegisterChart } = useAtlasStore.getState();
   const { open: openExport } = useExportActions();
   const { runPrompt } = useQueryActions();
 
@@ -56,10 +60,24 @@ export const CardText = ({
       <div className={s.container}>
         {title && <h2 className={s.title}>{title}</h2>}
 
-        {isLoading ? (
-          <Skeleton />
-        ) : (
-          body && <div className={s.body}>{body}</div>
+        {isLoading && !body && <Skeleton />}
+
+        {body && (
+          <HtmlParsed
+            className={s.body}
+            html={body}
+            // For now we only support actions that are formatted as a href via
+            // '#fetch=VARIABLE&place=PLACE'. Rework if we support more actions
+            onAction={(href) => {
+              const hrefWithoutHash = href.replace(/^#/, '');
+              const params = new URLSearchParams(hrefWithoutHash);
+              const variableDcid = params.get('fetch');
+              const placeDcid = params.get('place');
+              if (!variableDcid || !placeDcid) return;
+
+              cardRegisterChart(id, placeDcid, variableDcid);
+            }}
+          />
         )}
       </div>
 

@@ -20,6 +20,12 @@ export const callMcp = async <T = unknown>(
     params,
   };
 
+  // Combine caller's abort signal with a 30s timeout so MCP calls don't hang.
+  const timeoutMs = 30_000;
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
+
   const res = await fetch(mcpEndpoint, {
     method: 'POST',
     headers: {
@@ -28,7 +34,7 @@ export const callMcp = async <T = unknown>(
       'X-API-Key': apiKey,
     },
     body: JSON.stringify(payload),
-    signal,
+    signal: combinedSignal,
   });
 
   if (!res.ok) {

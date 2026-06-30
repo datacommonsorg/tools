@@ -16,4 +16,62 @@
   @include type-body-medium;
 
   color: rgb(var(--color-card-content));
+
+  h3 {
+    @include type-label-large;
+
+    margin: 16px 0 8px;
+    color: rgb(var(--color-card-content));
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  p {
+    margin: 0 0 12px;
+  }
+
+  ul {
+    padding-left: 20px;
+    margin: 0 0 12px;
+    list-style: disc;
+  }
+
+  li {
+    margin-bottom: 8px;
+  }
+
+  a,
+  button {
+    color: rgb(var(--color-control-accent));
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  table {
+    width: 100%;
+    margin: 12px 0;
+    text-align: left;
+    border-collapse: collapse;
+  }
+
+  th {
+    padding: 8px;
+    color: rgb(var(--color-card-content-muted));
+    border-bottom: 1px solid rgb(var(--color-surface-decorator));
+  }
+
+  td {
+    padding: 8px;
+    vertical-align: top;
+    border-bottom: 1px solid rgb(var(--color-surface-decorator));
+  }
+
+  strong {
+    font-weight: 500;
+  }
 }

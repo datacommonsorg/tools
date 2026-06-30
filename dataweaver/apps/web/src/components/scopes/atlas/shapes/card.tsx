@@ -39,8 +39,19 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     title: T.string.optional(),
     description: T.string.optional(),
     body: T.string.optional(),
-    data: T.arrayOf(
-      T.object({ year: T.number, emissions: T.number }),
+    data: T.arrayOf(T.object({ date: T.string, value: T.number })).optional(),
+    facets: T.arrayOf(
+      T.object({
+        facetId: T.string,
+        source: T.string,
+        sourceUrl: T.string,
+        unit: T.string,
+        earliestDate: T.string,
+        latestDate: T.string,
+        observationCount: T.number,
+        measurementMethod: T.string.optional(),
+        observations: T.arrayOf(T.object({ date: T.string, value: T.number })),
+      }),
     ).optional(),
     isLoading: T.boolean.optional(),
     followUp: T.string.optional(),

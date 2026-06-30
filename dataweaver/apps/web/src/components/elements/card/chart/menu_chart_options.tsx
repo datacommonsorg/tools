@@ -10,6 +10,7 @@ import { IconBarChartHorizontal } from '~/components/primitives/icons/bar_chart_
 import { IconBarChartVertical } from '~/components/primitives/icons/bar_chart_vertical';
 import { IconLineGraphDouble } from '~/components/primitives/icons/line_graph_double';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
+import { useClickOutside } from '~/hooks/use_click_outside';
 import { useFocusTrap } from '~/hooks/use_focus_trap';
 import { useKeydown } from '~/hooks/use_keydown';
 import s from './menu_chart_options.module.scss';
@@ -55,6 +56,8 @@ export const MenuChartOptions = ({
 
   const [selectedValue, setSelectedValue] = useState<ChartStyle>(value);
 
+  useClickOutside(contentContainerRef, onClose);
+
   useKeydown('Escape', onClose);
 
   // TODO: For now this doesn't seem to really work due to TLDraw consuming
@@ -72,8 +75,7 @@ export const MenuChartOptions = ({
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      {/** biome-ignore lint/a11y/useKeyWithClickEvents: This is a backdrop that closes the menu on click. */}
-      <span className={s.backdrop} onClick={onClose} />
+      <span className={s.backdrop} />
 
       <section ref={contentContainerRef} className={s['content-container']}>
         <h2 className={s.title}>Chart options</h2>

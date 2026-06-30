@@ -10,6 +10,7 @@ import {
   useRef,
 } from 'react';
 import { createShapeId, type Editor, type TLShapeId, Tldraw } from 'tldraw';
+import { useAtlasStore } from '~/store';
 import s from './atlas_provider.module.scss';
 import {
   ATLAS_COMPONENTS,
@@ -36,7 +37,7 @@ type ContentForVariant<TVariant extends CardVariant> = Extract<
  * typed against the variant passed to `add`, so updates can only set fields
  * that belong to that variant.
  */
-interface CardHandle<TVariant extends CardVariant> {
+export interface CardHandle<TVariant extends CardVariant> {
   readonly id: TLShapeId;
   readonly variant: TVariant;
   update(props: Partial<Omit<ContentForVariant<TVariant>, 'variant'>>): void;
@@ -46,7 +47,9 @@ interface CardHandle<TVariant extends CardVariant> {
 export interface AtlasContextProps {
   add<TVariant extends CardVariant>(
     content: ContentForVariant<TVariant>,
+    customId?: string,
   ): CardHandle<TVariant>;
+  getSelectedShapeIds(): string[];
 }
 
 const AtlasContext = createContext<AtlasContextProps | null>(null);
@@ -69,6 +72,12 @@ interface AtlasProviderProps {
 }
 
 export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
+  /**
+   * Use this for reads that must return a value now; use `editorReadyRef` for
+   * writes that can wait for mount.
+   */
+  const editorRef = useRef<Editor | null>(null);
+
   /**
    * Resolves with the editor once `tldraw` mounts, so any editor actions work
    * before or after editor has been mounted via promise pattern.
@@ -161,6 +170,9 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       (shape) => {
         if (shape.type !== 'card') return;
 
+        // Sync deletion back to the store so card registry stays consistent.
+        useAtlasStore.getState().cardUnregister(String(shape.id));
+
         const clones = clonesRef.current.get(shape.id);
         if (!clones) return;
 
@@ -172,7 +184,9 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       },
     );
 
-    // Release any canvas writes that were issued before mount
+    // Expose the editor for synchronous reads and release any canvas writes
+    // that were issued before mount
+    editorRef.current = editor;
     editorReadyRef.current.resolve(editor);
 
     // Let the CSS know we're mounted so it can fade the canvas in
@@ -186,6 +200,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       // Swap in a fresh deferred and drop clone tracking tied to this
       // editor, so any future remount starts clean rather than chaining
       // writes onto the editor we just tore down
+      editorRef.current = null;
       editorReadyRef.current = createDeferred<Editor>();
       clonesRef.current.clear();
     };
@@ -193,8 +208,13 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
 
   const providerValue = useMemo<AtlasContextProps>(
     () => ({
-      add: (content) => {
-        const shapeId = createShapeId();
+      getSelectedShapeIds: () => {
+        return editorRef.current
+          ? editorRef.current.getSelectedShapeIds().map(String)
+          : [];
+      },
+      add: (content, customId?) => {
+        const shapeId = customId ? createShapeId(customId) : createShapeId();
 
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)
