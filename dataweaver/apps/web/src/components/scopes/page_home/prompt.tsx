@@ -92,7 +92,7 @@ export const Prompt = ({
         <Button
           className={s['button-submit']}
           type="submit"
-          size="large"
+          size="medium"
           variant="border"
           tone="prominent"
           icon={IconArrowUp}
