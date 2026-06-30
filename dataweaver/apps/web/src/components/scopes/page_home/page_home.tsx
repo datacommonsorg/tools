@@ -3,7 +3,7 @@
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import { type Disambiguation, STATUS } from '~/server/types';
+import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';
 import { Intro } from './intro';
@@ -21,7 +21,7 @@ export const PageHome = () => {
   const query = latestNode?.query ?? '';
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [followUp, setFollowUp] = useState<Disambiguation | null>(null);
+  const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
   const submit = (value = promptValue) => {
@@ -41,17 +41,17 @@ export const PageHome = () => {
     currentStatus !== STATUS.idle;
 
   useEffect(() => {
-    const disambiguations = latestNode?.results
+    const followUps = latestNode?.results
       ? Object.values(latestNode.results)
-          .map((r) => r.disambiguation)
+          .map((r) => r.followUp)
           .filter(Boolean)
       : [];
-    // TODO - we currently can get more than one disambiguation, as the api will return
+    // TODO - we currently can get more than one follow-up, as the api will return
     // one per place in the query. Here I'm just using the first one, but we'll need to figure
     // out a better way to handle this
-    const disambiguation = disambiguations[0];
-    if (latestNode && disambiguation && currentStatus === STATUS.complete) {
-      setFollowUp(disambiguation);
+    const firstFollowUp = followUps[0];
+    if (latestNode && firstFollowUp && currentStatus === STATUS.complete) {
+      setFollowUp(firstFollowUp);
     } else {
       setFollowUp(null);
     }

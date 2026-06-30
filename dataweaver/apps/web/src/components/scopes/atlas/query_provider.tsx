@@ -83,7 +83,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Write the query result data to the history node.
         nodeAddResult(active.nodeId, entityDcid, result);
 
-        if (result.disambiguation) {
+        if (result.followUp) {
           // If the api has returned a follow-up question, we skip card registration here,
           // as the FollowUp component will be rendered instead of new cards
           return;

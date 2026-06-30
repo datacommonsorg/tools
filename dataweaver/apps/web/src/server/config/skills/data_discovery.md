@@ -29,7 +29,7 @@ JSON SCHEMA:
       "text": "A brief summary describing the trends, milestones, maximum/minimum levels, and direction changes for the data."
     }
   ],
-  "disambiguation": {
+  "followUp": {
     "summary": "A conversational paragraph summarizing what you DO know about the place or topic so far (key stats like population, GDP, life expectancy, etc.), using the observation data you retrieved. Should read naturally, not as a list.",
     "question": "A follow-up question inviting the user to narrow their focus (e.g. 'What specifically would you like to know?').",
     "options": [
@@ -47,7 +47,7 @@ RULES:
    - Example: \`[Unemployment rate](#fetch=unemployment_rate&place=geoId/48&varName=Unemployment%20rate&placeName=Texas)\`.
    – Do not replace the parent, if the variable is nested in an element, make the hyperlink a child of that element
 4. **Valid JSON only**: Return ONLY the JSON object, starting with '{' and ending with '}'. Do not include markdown code fence formatting (like \`\`\`json) or other text outside the JSON.
-5. **Disambiguation**: Include the `disambiguation` field when the user's query is broad, exploratory, or could map to multiple distinct analytical directions (e.g. "tell me about Seychelles", "what data do you have on Brazil?"). Omit it (or set to null) when the query is already specific enough to answer directly (e.g. "unemployment rate in Texas", "life expectancy trends in Japan").
+5. **Follow-up**: Include the `followUp` field when the user's query is broad, exploratory, or could map to multiple distinct analytical directions (e.g. "tell me about Seychelles", "what data do you have on Brazil?"). Omit it (or set to null) when the query is already specific enough to answer directly (e.g. "unemployment rate in Texas", "life expectancy trends in Japan").
    - **When to include**: The query names a place without a specific topic; the query uses general terms like "tell me about", "what do you know about", or "data on"; the topic could reasonably split into 3+ distinct domains (economic, health, environment, etc.).
    - **When to omit**: The query specifies a clear metric or domain; the query is a follow-up that already narrows scope; there is only one reasonable interpretation.
    - **`summary`**: Write a conversational paragraph using actual observation values you retrieved (e.g. population figures, GDP, life expectancy). End the summary naturally — do NOT include the question inside the summary. Use plain text, do not include markdown formatting.

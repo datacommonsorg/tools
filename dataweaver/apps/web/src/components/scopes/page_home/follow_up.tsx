@@ -3,12 +3,12 @@
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
 import { Button } from '~/components/elements/button';
-import type { Disambiguation } from '~/server/types';
+import type { FollowUp as FollowUpData } from '~/server/types';
 import s from './follow_up.module.scss';
 
 interface FollowUpProps {
   prompt: string;
-  followUp: Disambiguation;
+  followUp: FollowUpData;
   onSelect: (followUp: string) => void;
 }
 
