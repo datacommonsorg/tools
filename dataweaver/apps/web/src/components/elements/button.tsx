@@ -53,9 +53,7 @@ export const Button = ({
 
   // Icon-only buttons have no visible label, so surface their required
   // `aria-label` as a native tooltip (unless an explicit `title` is provided)
-  const title =
-    !hasChildren && rest.title === undefined ? rest['aria-label'] : rest.title;
-
+  const title = rest.title ?? (!hasChildren ? rest['aria-label'] : undefined);
   return (
     <button
       type="button"
