@@ -14,6 +14,27 @@ import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasStore } from '~/store';
 import s from './text.module.scss';
 
+/**
+ * Tags we provide styles for in `text.module.scss`. Anything else is stripped
+ * during sanitization. (`tr`/`thead`/`tbody` are unstyled but required for the
+ * styled `table`/`th`/`td` to render correctly.)
+ */
+const ALLOWED_BODY_TAGS: string[] = [
+  'h3',
+  'p',
+  'ul',
+  'li',
+  'a',
+  'strong',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'br',
+] as const;
+
 export interface CardTextProps extends CardState {
   id: TLShapeId;
   title?: string;
@@ -66,6 +87,7 @@ export const CardText = ({
           <HtmlParsed
             className={s.body}
             html={body}
+            allowedTags={ALLOWED_BODY_TAGS}
             // For now we only support actions that are formatted as a href via
             // '#fetch=VARIABLE&place=PLACE'. Rework if we support more actions
             onAction={(href) => {

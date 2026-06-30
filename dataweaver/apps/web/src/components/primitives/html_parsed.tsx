@@ -4,17 +4,26 @@ import parse, { domToReact, Element } from 'html-react-parser';
 import { type ComponentPropsWithRef, useMemo } from 'react';
 import { Link } from '~/components/primitives/link';
 
-/** List of disallowed tags for HTML parsing. All other tags will be allowed. */
-const FORBID_TAGS: string[] = ['style'] as const;
-
 interface HtmlParsedProps extends ComponentPropsWithRef<'div'> {
   html: string;
+
+  /**
+   * Allowlist of tags to keep; everything else is stripped.
+   *
+   * @default undefined (all tags are allowed).
+   */
+  allowedTags?: string[];
   onAction: (href: string) => void;
 }
 
-export const HtmlParsed = ({ html, onAction, ...rest }: HtmlParsedProps) => {
+export const HtmlParsed = ({
+  html,
+  onAction,
+  allowedTags,
+  ...rest
+}: HtmlParsedProps) => {
   const parsedHtml = useMemo(() => {
-    return parse(DOMPurify.sanitize(html, { FORBID_TAGS }), {
+    return parse(DOMPurify.sanitize(html, { ALLOWED_TAGS: allowedTags }), {
       replace: (domNode) => {
         if (domNode instanceof Element) {
           switch (domNode.name) {
@@ -50,7 +59,7 @@ export const HtmlParsed = ({ html, onAction, ...rest }: HtmlParsedProps) => {
         }
       },
     });
-  }, [html, onAction]);
+  }, [html, onAction, allowedTags]);
 
   return <div {...rest}>{parsedHtml}</div>;
 };
