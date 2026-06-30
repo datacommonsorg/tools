@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const variables = parsedResponse.variables || [];
-          if (variables.length === 0) {
+          if (variables.length === 0 && !parsedResponse.followUp) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-          if (!entityDcid) {
+          if (!entityDcid && !parsedResponse.followUp) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -219,9 +219,16 @@ export async function POST(request: NextRequest) {
             message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const timeSeries = await Promise.all(
-            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
-          );
+          const timeSeries = entityDcid
+            ? await Promise.all(
+                variables.map((v) =>
+                  fetchTimeSeries(v.dcid, entityDcid, signal),
+                ),
+              )
+            : [];
+          const entities = entityDcid
+            ? [{ dcid: entityDcid, name: parsedResponse.placeName || place }]
+            : [];
           const discoveryResult: QueryResult = {
             id: nanoid(),
             title:
@@ -232,9 +239,7 @@ export async function POST(request: NextRequest) {
               name: v.name,
               rationale: v.rationale,
             })),
-            entities: [
-              { dcid: entityDcid, name: parsedResponse.placeName || place },
-            ],
+            entities,
             timeSeries,
             dateRange: parsed.dateRange,
             introduction: parsedResponse.introduction,
