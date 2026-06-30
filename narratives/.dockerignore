@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+.env.local
+.env.*.local
+.DS_Store
+Archive.zip
+*.log
+screenshots
+figma_*
+.vite
+coverage
