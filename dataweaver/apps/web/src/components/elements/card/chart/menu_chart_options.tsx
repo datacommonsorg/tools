@@ -75,8 +75,6 @@ export const MenuChartOptions = ({
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <span className={s.backdrop} />
-
       <section ref={contentContainerRef} className={s['content-container']}>
         <h2 className={s.title}>Chart options</h2>
 
