@@ -4,6 +4,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  FollowUpContext,
   HistoryNode,
   ParsedQuery,
   QueryResult,
@@ -28,6 +29,7 @@ export interface AtlasStore {
     query: string,
     parsedQuery: ParsedQuery | null,
     parentNodeId: string | null,
+    followUpContext?: FollowUpContext,
   ) => string;
   nodeSetParsedQuery: (nodeId: string, parsedQuery: ParsedQuery) => void;
   nodeAddResult: (
@@ -66,7 +68,7 @@ export const useAtlasStore = create<AtlasStore>()(
         isProcessing: false,
         currentStatus: '',
 
-        queryStart: (query, parsedQuery, parentNodeId) => {
+        queryStart: (query, parsedQuery, parentNodeId, followUpContext) => {
           const id = nanoid();
           const node: HistoryNode = {
             id,
@@ -77,6 +79,7 @@ export const useAtlasStore = create<AtlasStore>()(
             cardIds: [],
             timestamp: Date.now(),
             status: 'pending',
+            followUpContext,
           };
           set(
             (state) => ({

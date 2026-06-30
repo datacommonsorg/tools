@@ -3,6 +3,7 @@ import { getGenAI } from '~/server/clients/gemini';
 import { callMcp } from '~/server/clients/mcp';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
 import type {
+  FollowUpContext,
   McpToolCallResult,
   McpToolsListResult,
   ParsedQuery,
@@ -31,6 +32,9 @@ interface ToolLoopParams {
   parsed: ParsedQuery;
   atlasContext: string;
   ancestorChain: { query: string; topic: string; places: string[] }[];
+  followUpContext?: FollowUpContext;
+  /** When true, no specific place was mentioned — 'Earth' is used as a default. */
+  noExplicitPlace?: boolean;
   geminiTools: GeminiTool[];
   signal?: AbortSignal;
   onToolCall?: (event: ToolCallEvent) => void;
@@ -73,6 +77,7 @@ export const runToolLoop = async (
     parsed,
     atlasContext,
     ancestorChain,
+    followUpContext,
     geminiTools,
     signal,
     onToolCall,
@@ -95,13 +100,31 @@ export const runToolLoop = async (
     ? `\n\nDATE CONSTRAINT: The user wants data limited to ${parsed.dateRange.start && parsed.dateRange.end ? `${parsed.dateRange.start} through ${parsed.dateRange.end}` : parsed.dateRange.start ? `from ${parsed.dateRange.start} onward` : `up to ${parsed.dateRange.end}`}.`
     : '';
 
-  const placeClause = `\n\nTARGET PLACE: "${place}" — all variables MUST be relevant to this location.`;
+  const placeClause = params.noExplicitPlace
+    ? `\n\nTARGET PLACE: The user did not mention a specific place. Default to "Earth" (world-level) to retrieve initial data. You MUST include a followUp in your response asking which specific place or region the user would like to explore. The followUp MUST have an empty "options" array — do NOT suggest options, only provide a summary and question.`
+    : `\n\nTARGET PLACE: "${place}" — all variables MUST be relevant to this location.`;
   const systemInstruction =
     skill.systemPrompt + atlasClause + dateRangeClause + placeClause;
 
   // Build messages with conversation history
   const messages: Content[] = [];
-  if (ancestorChain.length > 0) {
+  if (followUpContext) {
+    // Explicit follow-up disambiguation context takes priority
+    const chain = followUpContext.followUps
+      .map(
+        (f, i) =>
+          `Clarification ${i + 1}: "${f.question}" → User answered: "${f.answer}"`,
+      )
+      .join('\n');
+    messages.push({
+      role: 'user',
+      parts: [
+        {
+          text: `FOLLOW-UP CONTEXT:\nOriginal question: "${followUpContext.originalQuery}"\n${chain}\n\nNEW REQUEST: Find statistical variables for "${place}" related to: "${query}"`,
+        },
+      ],
+    });
+  } else if (ancestorChain.length > 0) {
     const historyContext = ancestorChain
       .map(
         (node) =>
