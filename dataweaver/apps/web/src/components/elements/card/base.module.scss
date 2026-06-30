@@ -8,6 +8,7 @@
 }
 
 .actions-container {
+  z-index: $z-index-behind-content;
   display: flex;
   grid-area: 1 / 1;
   gap: 6px;
@@ -15,13 +16,13 @@
   justify-content: center;
   height: calc(var(--actions-height) + var(--corner-size));
   padding-bottom: calc(var(--corner-size) - var(--border-thickness));
-  margin: var(--actions-height) 2px 0;
+  margin-inline: 2px;
   background: rgb(var(--color-card-surface-selected));
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow: var(--shadow-elevated);
 
   @include prefers-motion {
-    transition: transform 0.5s $ease-out;
+    transition: transform 0.3s $ease-out;
   }
 
   :is([data-selection="single"]) & {
@@ -42,17 +43,11 @@
   box-shadow: var(--shadow-elevated);
 
   @include prefers-motion {
-    transition:
-      transform 0.5s $ease-out,
-      border-color 0.1s $ease-linear;
+    transition: border-color 0.1s $ease-linear;
   }
 
   :is([data-selection="single"], [data-selection="multiple"]) & {
     border-color: rgb(var(--color-card-surface-selected));
-  }
-
-  :is([data-selection="single"]) & {
-    transform: translateY(var(--actions-height));
   }
 }
 
