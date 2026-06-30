@@ -57,10 +57,12 @@ export const PageHome = () => {
         {followUp && !showStatus && (
           <FollowUp key="follow-up" followUp={followUp} onSelect={submit} />
         )}
+
         {showStatus && (
           <Status key="status" prompt={query} status={currentStatus} />
         )}
       </AnimatePresence>
+
       <Prompt
         value={promptValue}
         tags={tags}
