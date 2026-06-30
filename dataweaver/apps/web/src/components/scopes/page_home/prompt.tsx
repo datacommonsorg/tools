@@ -1,24 +1,28 @@
 'use client';
 
-import { EASE_IN_OUT, EASE_LINEAR, EASE_OUT } from '@package/tokens/ts';
+import { EASE_LINEAR } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
 import { useId } from 'react';
 import { Button } from '~/components/elements/button';
 import { Tag } from '~/components/elements/tag';
 import { IconArrowUp } from '~/components/primitives/icons/arrow_up';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
-import type { QueryTag } from '~/components/scopes/atlas/query_provider';
 import s from './prompt.module.scss';
 
 /** Placeholder text for the prompt input. */
 const PROMPT_PLACEHOLDER = 'What data would you like to explore?';
 
+/** A read-only chip shown in the prompt, derived from the canvas selection. */
+export interface PromptTag {
+  id: string;
+  title: string;
+}
+
 interface PromptProps {
   value: string;
-  tags: QueryTag[];
+  tags: PromptTag[];
   onValueChange: (value: string) => void;
   onSubmit: (value: string) => void;
-  onRemoveTag: (id: string) => void;
 }
 
 export const Prompt = ({
@@ -26,7 +30,6 @@ export const Prompt = ({
   tags,
   onValueChange,
   onSubmit,
-  onRemoveTag,
 }: PromptProps) => {
   const inputId = useId();
 
@@ -45,56 +48,6 @@ export const Prompt = ({
         submitted();
       }}
     >
-      <AnimatePresence initial={false}>
-        {tags.length > 0 && (
-          <m.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{
-              height: 'auto',
-              opacity: 1,
-              transition: {
-                height: { duration: 0.5, ease: EASE_OUT },
-
-                // Delay here prevents tag showing over textarea on mount
-                opacity: { duration: 0.1, delay: 0.1, ease: EASE_LINEAR },
-              },
-            }}
-            exit={{
-              height: 0,
-              opacity: 0,
-              transition: {
-                // Ease in out also does same here to persist height a tad
-                height: { duration: 0.5, ease: EASE_IN_OUT },
-                opacity: { duration: 0.1, ease: EASE_LINEAR },
-              },
-            }}
-          >
-            <ul className={s['tags-inner-container']}>
-              <AnimatePresence initial={false}>
-                {tags.map((tag) => (
-                  <m.li
-                    key={tag.id}
-                    layout="position"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      opacity: { duration: 0.1, ease: EASE_LINEAR },
-                      layout: { duration: 0.5, ease: EASE_OUT },
-                    }}
-                  >
-                    <Tag
-                      label={tag.label}
-                      onRemove={() => onRemoveTag(tag.id)}
-                    />
-                  </m.li>
-                ))}
-              </AnimatePresence>
-            </ul>
-          </m.div>
-        )}
-      </AnimatePresence>
-
       <ScreenReaderOnly element="label" htmlFor={inputId}>
         {PROMPT_PLACEHOLDER}
       </ScreenReaderOnly>
@@ -119,16 +72,34 @@ export const Prompt = ({
         }}
       />
 
-      <Button
-        className={s['button-submit']}
-        type="submit"
-        size="large"
-        variant="border"
-        tone="prominent"
-        icon={IconArrowUp}
-        aria-label="Submit prompt"
-        isDisabled={!hasValue}
-      />
+      <div className={s['button-row-container']}>
+        <ul className={s['tags-container']}>
+          <AnimatePresence initial={false} mode="wait">
+            {tags.map((tag) => (
+              <m.li
+                key={tag.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: EASE_LINEAR }}
+              >
+                <Tag label={tag.title} />
+              </m.li>
+            ))}
+          </AnimatePresence>
+        </ul>
+
+        <Button
+          className={s['button-submit']}
+          type="submit"
+          size="large"
+          variant="border"
+          tone="prominent"
+          icon={IconArrowUp}
+          aria-label="Submit prompt"
+          isDisabled={!hasValue}
+        />
+      </div>
     </form>
   );
 };

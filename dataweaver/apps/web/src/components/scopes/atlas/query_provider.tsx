@@ -7,14 +7,13 @@ import {
   useContext,
   useMemo,
   useRef,
-  useState,
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
-import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { CardEntry, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
+import { useAtlas } from './atlas_provider';
 import { useStoreShapeSync } from './sync_store';
 
 export interface Status {
@@ -22,21 +21,7 @@ export interface Status {
   indicatorMessage: string;
 }
 
-export interface QueryTag {
-  id: string;
-  label: string;
-}
-
 interface QueryActionsContextProps {
-  /** List of tags associated with the current query. */
-  tags: QueryTag[];
-
-  /** Add a tag to the current query. */
-  addTag(tag: QueryTag): void;
-
-  /** Remove the tag with the given id from the current query. */
-  removeTag(id: string): void;
-
   /** Run a query for the given prompt, streaming results onto the canvas. */
   runPrompt(prompt: string): void;
 
@@ -60,13 +45,13 @@ interface ActiveQuery {
 }
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
-  const atlas = useAtlas();
+  const { editor } = useAtlas();
+  const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
+
+  // Mount the store→shape sync layer
+  useStoreShapeSync();
+
   const activeQueryRef = useRef<ActiveQuery | null>(null);
-
-  const [tags, setTags] = useState<QueryTag[]>([]);
-
-  // Mount the store→shape sync layer.
-  useStoreShapeSync(atlas);
 
   const store = useAtlasStore;
 
@@ -198,14 +183,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
   const providerValue = useMemo<QueryActionsContextProps>(
     () => ({
-      tags,
-      status,
-      addTag: (tag: QueryTag) => {
-        setTags((current) => [...current, tag]);
-      },
-      removeTag: (id: string) => {
-        setTags((current) => current.filter((t) => t.id !== id));
-      },
       runPrompt: (prompt: string) => {
         const {
           queryStart,
@@ -220,7 +197,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(STATUS.starting);
 
         // Derive context from selected shapes
-        const selectedShapeIds = atlas.getSelectedShapeIds();
         const parentNodeId = getContextNodeId(selectedShapeIds);
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
           query: node.query,
@@ -263,7 +239,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = null;
       },
     }),
-    [atlas, tags, startStream, abortStream],
+    [selectedShapeIds, startStream, abortStream],
   );
 
   return (
