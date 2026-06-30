@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   HTMLContainer,
   type RecordProps,
@@ -5,6 +6,7 @@ import {
   ShapeUtil,
   T,
   type TLShape,
+  useQuickReactor,
 } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
@@ -14,6 +16,7 @@ import { IconBarChart } from '~/components/primitives/icons/bar_chart';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconPencil } from '~/components/primitives/icons/pencil';
+import { CARD_VARIANT_MAX } from '~/components/scopes/atlas/config';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import type {
   CardContentFields,
@@ -22,6 +25,8 @@ import type {
 } from '~/components/scopes/atlas/helpers';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasStore } from '~/store';
+import { useCardAutoHeight } from './use_card_auto_height';
+import { useCardDragHandle } from './use_card_drag_handle';
 
 export const CARD_DATA_ATTRIBUTE = 'data-card';
 
@@ -198,6 +203,36 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   };
 
   override component = (shape: ShapeCard) => {
+    const variant = shape.props.variant;
+    if (!variant) throw new Error('Card shape missing variant.');
+
+    const wasSelectionSingleRef = useRef(false);
+    const contentContainerRef = useRef<HTMLDivElement>(null);
+
+    // Drive the shape's 'h' from the rendered content, capped at the variant's
+    // max. Geometry (hit area) and auto-placement both read 'h', so this keeps
+    // the selectable area and the stacking footprint tight to the content
+    const maxHeight = CARD_VARIANT_MAX[variant].h;
+    useCardAutoHeight(contentContainerRef, this.editor, shape.id, maxHeight);
+
+    // When the card stops being the single (focused) selection, drop any text
+    // the user highlighted inside it
+    useQuickReactor('clear card text selection on blur', () => {
+      // Reads selection reactively - so this re-runs whenever it changes
+      const isSelectionSingle = this.#getSelectionState(shape) === 'single';
+      if (wasSelectionSingleRef.current && !isSelectionSingle) {
+        const activeSelection = window.getSelection();
+        if (activeSelection && !activeSelection.isCollapsed) {
+          activeSelection.removeAllRanges();
+        }
+      }
+
+      wasSelectionSingleRef.current = isSelectionSingle;
+    }, [shape.id]);
+
+    // Support dragging the card by its actions bar
+    const handleActionsPointerDown = useCardDragHandle(this.editor, shape.id);
+
     const isLoading = shape.props.isLoading ?? false;
 
     return (
@@ -212,11 +247,13 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
         }}
       >
         <Card.Base
+          contentContainerRef={contentContainerRef}
           isLoading={isLoading}
           selection={this.#getSelectionState(shape)}
           actions={this.#getActions(shape, isLoading)}
           content={this.#renderContent(shape, isLoading)}
           footer={this.#renderFooter(shape)}
+          onActionsPointerDown={handleActionsPointerDown}
         />
       </HTMLContainer>
     );

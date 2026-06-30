@@ -87,15 +87,19 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
   (_, index) => MIN_ZOOM + (index * (MAX_ZOOM - MIN_ZOOM)) / ZOOM_STEP_COUNT,
 );
 
-/** Per-variant default canvas footprint. */
-export const CARD_VARIANT_SIZE: Record<CardVariant, CardSize> = {
+/**
+ * Per-variant card footprint. `w` is the fixed width; `h` is the *maximum*
+ * height — a card's actual height tracks its rendered content (see
+ * `useCardAutoHeight`) and is capped at this value - larger content scrolls.
+ */
+export const CARD_VARIANT_MAX: Record<CardVariant, CardSize> = {
   text: { w: 420, h: 440 },
   table: { w: 650, h: 500 },
   chart: { w: 420, h: 520 },
 };
 
 /** Minimum gap to keep between a placed card and any other card, in px. */
-export const DISTANCE_FROM_OTHER_CARDS = 40;
+export const DISTANCE_FROM_OTHER_CARDS = 56;
 
 /** Animation used when the camera pans to reveal a freshly placed card. */
 export const KEEP_IN_VIEW_ANIMATION: TLCameraMoveOptions['animation'] = {

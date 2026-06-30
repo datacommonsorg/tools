@@ -2,7 +2,7 @@ import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { CardState } from '~/components/elements/card/base';
 import type { CardChartProps } from '~/components/elements/card/chart/chart';
 import type { CardTextProps } from '~/components/elements/card/text';
-import { CARD_VARIANT_SIZE } from './config';
+import { CARD_VARIANT_MAX } from './config';
 
 interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
   followUp?: string;
@@ -62,7 +62,10 @@ export const contentToShape = (
   };
 
   const shapeProps = {
-    ...CARD_VARIANT_SIZE[content.variant],
+    // Start at the variant's max footprint; 'useCardAutoHeight' then shrinks
+    // 'h' to the real content height once the card has painted. Reserving
+    // worst-case space up front means initial placement never overlaps neighbor
+    ...CARD_VARIANT_MAX[content.variant],
     isLoading: content.isLoading ?? false,
     followUp: content.followUp,
   };
