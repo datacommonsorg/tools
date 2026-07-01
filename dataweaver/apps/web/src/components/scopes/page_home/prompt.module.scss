@@ -22,6 +22,7 @@
   color: rgb(var(--color-query-content));
   caret-color: rgb(var(--color-query-accent));
   outline: none;
+  scrollbar-width: thin;
   field-sizing: content;
 
   // Support manual resizing if content-based sizing isn't supported
