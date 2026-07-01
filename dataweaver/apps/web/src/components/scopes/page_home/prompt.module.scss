@@ -14,7 +14,7 @@
 .input {
   --max-rows: 4;
 
-  @include type-label-large(false);
+  @include type-body-large(500);
 
   width: 100%;
   max-height: calc(var(--max-rows) * 1lh);

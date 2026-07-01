@@ -60,6 +60,7 @@ export const PageHome = () => {
           .map((r) => r.followUp)
           .filter(Boolean)
       : [];
+
     // TODO - we currently can get more than one follow-up, as the api will return
     // one per place in the query. Here I'm just using the first one, but we'll need to figure
     // out a better way to handle this
@@ -88,6 +89,7 @@ export const PageHome = () => {
             prompt={query}
             followUp={followUp}
             onSelect={submitPrompt}
+            onClose={() => setFollowUp(null)}
           />
         )}
 

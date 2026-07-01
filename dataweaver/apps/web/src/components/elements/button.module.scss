@@ -78,53 +78,27 @@
     &[data-size="small"] {
       column-gap: 2px;
       min-height: var(--button-pill-size-small);
+      padding-inline: 12px;
       border-radius: calc(var(--button-pill-size-small) / 2);
-
-      &[data-has-icon="false"] {
-        padding-inline: 16px;
-      }
-
-      &[data-has-icon="true"] {
-        padding-inline: 10px 16px;
-      }
     }
 
     &[data-size="medium"] {
       column-gap: 4px;
       min-height: var(--button-pill-size-medium);
+      padding-inline: 15px;
       border-radius: calc(var(--button-pill-size-medium) / 2);
-
-      &[data-has-icon="false"] {
-        padding-inline: 16px;
-      }
-
-      &[data-has-icon="true"] {
-        padding-inline: 16px 18px;
-      }
     }
 
     &[data-size="large"] {
       column-gap: 6px;
       min-height: var(--button-pill-size-large);
+      padding-inline: 18px;
       border-radius: calc(var(--button-pill-size-large) / 2);
-
-      &[data-has-icon="false"] {
-        padding-inline: 16px;
-      }
-
-      &[data-has-icon="true"] {
-        padding-inline: 22px 24px;
-      }
     }
   }
 
   &[data-shape="circle"] {
     border-radius: 50%;
-
-    &[data-size="extra-small"] {
-      width: var(--button-circle-size-extra-small);
-      height: var(--button-circle-size-extra-small);
-    }
 
     &[data-size="small"] {
       width: var(--button-circle-size-small);
@@ -139,6 +113,11 @@
     &[data-size="large"] {
       width: var(--button-circle-size-large);
       height: var(--button-circle-size-large);
+    }
+
+    &[data-size="extra-large"] {
+      width: var(--button-circle-size-extra-large);
+      height: var(--button-circle-size-extra-large);
     }
   }
 
@@ -174,36 +153,26 @@
 
 .icon {
   flex-shrink: 0;
-
-  [data-size="extra-small"] & {
-    width: 12px;
-    height: 12px;
-  }
-
-  [data-size="small"] &,
-  [data-size="medium"] &,
-  [data-size="large"] & {
-    width: 24px;
-    height: 24px;
-  }
+  width: 20px;
+  height: 20px;
 }
 
 .children {
   [data-size="small"] & {
     @include type-label-small;
 
-    padding-block: 8px;
+    padding-block: 6px;
   }
 
   [data-size="medium"] & {
     @include type-label-medium;
 
-    padding-block: 12px;
+    padding-block: 8px;
   }
 
   [data-size="large"] & {
     @include type-label-large;
 
-    padding-block: 14px;
+    padding-block: 10px;
   }
 }

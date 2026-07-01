@@ -30,7 +30,7 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
         <Button
           className={s['button-close']}
           icon={IconClose}
-          size="medium"
+          size="large"
           variant="flat"
           tone="subtle"
           aria-label="Close"

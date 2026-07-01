@@ -2,6 +2,7 @@
   overflow-y: auto;
   overscroll-behavior: none;
   pointer-events: auto;
+  scrollbar-width: thin;
   background: rgb(var(--color-query-surface-raised));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
@@ -13,20 +14,20 @@
     "content close"
     "notice notice";
   grid-template-columns: 1fr min-content;
-  padding-top: 20px;
+  padding-top: 18px;
 }
 
 .button-close {
   grid-area: close;
-  margin-right: 20px;
+  margin-right: 18px;
 }
 
 .content-container {
   display: flex;
   flex-direction: column;
   grid-area: content;
-  row-gap: 32px;
-  padding: 20px 0 40px 32px;
+  row-gap: 30px;
+  padding: 16px 0 32px 32px;
 
   .title {
     @include type-display;
@@ -64,7 +65,7 @@
   grid-area: notice;
   column-gap: 4px;
   align-items: center;
-  padding: 18px 28px;
+  padding: 16px 28px;
   color: rgb(var(--color-query-content));
   background: rgb(var(--color-query-surface-subtle));
 

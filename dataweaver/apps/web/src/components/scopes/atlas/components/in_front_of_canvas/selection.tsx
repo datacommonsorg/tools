@@ -74,7 +74,7 @@ export const Selection = () => {
           >
             <Button
               icon={IconBarChartOutlined}
-              size="medium"
+              size="large"
               variant="flat"
               tone="card-action"
               aria-label="View chart"
@@ -90,7 +90,7 @@ export const Selection = () => {
             />
             <Button
               icon={IconExport}
-              size="medium"
+              size="large"
               variant="flat"
               tone="card-action"
               aria-label="Export"
@@ -99,7 +99,7 @@ export const Selection = () => {
             />
             <Button
               icon={IconDelete}
-              size="medium"
+              size="large"
               variant="flat"
               tone="card-action"
               aria-label="Delete"

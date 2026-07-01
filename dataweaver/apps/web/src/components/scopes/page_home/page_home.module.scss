@@ -1,5 +1,5 @@
 .container {
-  --gutter: 40px;
+  --gutter: 32px;
   --buffer: 12px;
   --controls-height-with-gutters: calc(
     var(--controls-height) + var(--controls-gutter-outer) * 2
@@ -7,15 +7,22 @@
   --tools-width-with-gutters: calc(
     var(--tools-width) + var(--tools-gutter-outer) * 2
   );
+  --distance-from-right: calc(var(--tools-width-with-gutters) + var(--buffer));
+  --distance-from-left: var(--gutter);
 
   position: fixed;
-  right: calc(var(--tools-width-with-gutters) + var(--buffer));
+  right: var(--distance-from-right);
   bottom: var(--gutter);
+  left: var(--distance-from-left);
   z-index: $z-index-above-content;
   display: flex;
   flex-direction: column;
-  row-gap: var(--gutter);
+  row-gap: 16px;
+  justify-self: flex-end;
   width: 696px;
+  max-width: calc(
+    100% - var(--distance-from-left) - var(--distance-from-right)
+  );
   max-height: calc(
     100dvh - var(--gutter) - var(--controls-height-with-gutters) - var(--buffer)
   );

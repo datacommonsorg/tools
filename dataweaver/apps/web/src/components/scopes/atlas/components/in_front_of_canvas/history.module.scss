@@ -1,6 +1,6 @@
 .container {
   display: flex;
-  column-gap: 10px;
+  column-gap: 8px;
   align-items: center;
   justify-content: space-between;
   height: var(--controls-height);
@@ -13,7 +13,7 @@
 
   .divider {
     width: 1px;
-    height: 30px;
+    height: var(--button-circle-size-medium);
     background: rgb(var(--color-control-divider));
   }
 }
