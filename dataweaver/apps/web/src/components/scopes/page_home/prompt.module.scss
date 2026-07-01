@@ -1,14 +1,65 @@
+@property --border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes border-rotate {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
 .container {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  row-gap: 24px;
+  display: grid;
   width: 100%;
-  padding: 28px 24px 16px;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
+
+  &::before {
+    grid-area: 1 / 1;
+    padding: 1.5px;
+    pointer-events: none;
+    content: "";
+    background: conic-gradient(
+      from var(--border-angle),
+      rgb(var(--color-query-accent)),
+      rgb(var(--color-query-accent-subtle)),
+      rgb(var(--color-query-accent)),
+      rgb(var(--color-query-accent-subtle)),
+      rgb(var(--color-query-accent))
+    );
+    border-radius: inherit;
+    opacity: 0;
+
+    // Punch out the interior so only the 1.5px padding ring shows the gradient
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+
+    @include prefers-motion {
+      transition: opacity 0.2s $ease-linear;
+
+      // Paused while hidden; only runs while the input is focused
+      animation: border-rotate 6s linear infinite paused;
+    }
+  }
+
+  &:has(.input:focus)::before {
+    opacity: 1;
+    animation-play-state: running;
+  }
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  grid-area: 1 / 1;
+  row-gap: 24px;
+  padding: 28px 24px 16px;
 }
 
 .input {

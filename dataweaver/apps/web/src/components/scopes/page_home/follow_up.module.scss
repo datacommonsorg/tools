@@ -1,41 +1,9 @@
-@property --border-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes border-rotate {
-  to {
-    --border-angle: 360deg;
-  }
-}
-
 .outer-container {
   display: grid;
   overflow: clip;
-  background:
-    linear-gradient(
-        rgb(var(--color-query-surface-subtle)),
-        rgb(var(--color-query-surface-subtle))
-      )
-      padding-box,
-    conic-gradient(
-        from var(--border-angle),
-        rgb(var(--color-query-accent)),
-        rgb(var(--color-query-accent-subtle)),
-        rgb(var(--color-query-accent)),
-        rgb(var(--color-query-accent-subtle)),
-        rgb(var(--color-query-accent))
-      )
-      border-box;
-  border: 1.5px solid transparent;
+  background: rgb(var(--color-query-surface-raised));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
-
-  // Animate the registered custom property to rotate the border gradient
-  @include prefers-motion {
-    animation: border-rotate 6s linear infinite;
-  }
 }
 
 .middle-container {
