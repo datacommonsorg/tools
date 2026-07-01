@@ -11,10 +11,8 @@
 }
 
 .outer-container {
-  overflow-y: auto;
-  overscroll-behavior: none;
-  pointer-events: auto;
-  scrollbar-width: thin;
+  display: grid;
+  overflow: clip;
   background:
     linear-gradient(
         rgb(var(--color-query-surface-subtle)),
@@ -38,6 +36,14 @@
   @include prefers-motion {
     animation: border-rotate 6s linear infinite;
   }
+}
+
+.middle-container {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  pointer-events: auto;
+  scrollbar-width: thin;
 }
 
 .inner-container {

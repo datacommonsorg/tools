@@ -35,6 +35,7 @@
   height: fit-content;
   max-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: none;
   scrollbar-width: thin;
   background: rgb(var(--color-card-surface));
   border: var(--border-thickness) solid transparent;

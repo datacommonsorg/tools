@@ -28,39 +28,41 @@ export const FollowUp = ({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
-      <div className={s['inner-container']}>
-        <Button
-          className={s['button-close']}
-          icon={IconClose}
-          size="large"
-          variant="flat"
-          tone="subtle"
-          aria-label="Close"
-          onClick={onClose}
-        />
+      <div className={s['middle-container']}>
+        <div className={s['inner-container']}>
+          <Button
+            className={s['button-close']}
+            icon={IconClose}
+            size="large"
+            variant="flat"
+            tone="subtle"
+            aria-label="Close"
+            onClick={onClose}
+          />
 
-        <div className={s['content-container']}>
-          <p className={s.question}>{prompt}</p>
+          <div className={s['content-container']}>
+            <p className={s.question}>{prompt}</p>
 
-          <div className={s.answer}>{followUp.summary}</div>
-          <div className={s.answer}>{followUp.question}</div>
+            <div className={s.answer}>{followUp.summary}</div>
+            <div className={s.answer}>{followUp.question}</div>
 
-          {followUp?.options?.length > 0 && (
-            <ul className={s['prompts-container']}>
-              {followUp.options.map((option) => (
-                <li key={option}>
-                  <Button
-                    size="medium"
-                    variant="flat"
-                    tone="accent-subtle"
-                    onClick={() => onSelect(option)}
-                  >
-                    {option}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+            {followUp?.options?.length > 0 && (
+              <ul className={s['prompts-container']}>
+                {followUp.options.map((option) => (
+                  <li key={option}>
+                    <Button
+                      size="medium"
+                      variant="flat"
+                      tone="accent-subtle"
+                      onClick={() => onSelect(option)}
+                    >
+                      {option}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </m.section>

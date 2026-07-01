@@ -26,53 +26,55 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
-      <div className={s['inner-container']}>
-        <Button
-          className={s['button-close']}
-          icon={IconClose}
-          size="large"
-          variant="flat"
-          tone="subtle"
-          aria-label="Close"
-          onClick={onClose}
-        />
+      <div className={s['middle-container']}>
+        <div className={s['inner-container']}>
+          <Button
+            className={s['button-close']}
+            icon={IconClose}
+            size="large"
+            variant="flat"
+            tone="subtle"
+            aria-label="Close"
+            onClick={onClose}
+          />
 
-        <div className={s['content-container']}>
-          <h2 className={s.title}>
-            Let's discover what you can do with Data Commons
-          </h2>
+          <div className={s['content-container']}>
+            <h2 className={s.title}>
+              Let's discover what you can do with Data Commons
+            </h2>
 
-          <p className={s.description}>
-            Explore data visually on an infinite canvas with your AI thought
-            partner. Find, visualize, and understand rich data from Data Commons
-            to deepen your research exploration.
+            <p className={s.description}>
+              Explore data visually on an infinite canvas with your AI thought
+              partner. Find, visualize, and understand rich data from Data
+              Commons to deepen your research exploration.
+            </p>
+
+            <p className={s.question}>
+              Ask Data Weaver your research question, or try examples like:
+            </p>
+
+            <ul className={s['examples-container']}>
+              {EXAMPLE_PROMPTS.map((example, index) => (
+                <li key={example}>
+                  <Button
+                    size="medium"
+                    variant="flat"
+                    tone="accent-subtle"
+                    onClick={() => onSelect(example, index)}
+                  >
+                    {example}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p className={s['notice-container']}>
+            <IconInfo className={s['icon-info']} aria-hidden="true" />
+            This tool currently does not save your progress. Please export
+            before closing tab to retain data.
           </p>
-
-          <p className={s.question}>
-            Ask Data Weaver your research question, or try examples like:
-          </p>
-
-          <ul className={s['examples-container']}>
-            {EXAMPLE_PROMPTS.map((example, index) => (
-              <li key={example}>
-                <Button
-                  size="medium"
-                  variant="flat"
-                  tone="accent-subtle"
-                  onClick={() => onSelect(example, index)}
-                >
-                  {example}
-                </Button>
-              </li>
-            ))}
-          </ul>
         </div>
-
-        <p className={s['notice-container']}>
-          <IconInfo className={s['icon-info']} aria-hidden="true" />
-          This tool currently does not save your progress. Please export before
-          closing tab to retain data.
-        </p>
       </div>
     </m.section>
   );

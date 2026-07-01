@@ -11,7 +11,7 @@
   }
 
   *:focus-visible:focus {
-    outline: 2px solid currentcolor;
+    outline: 1.5px solid currentcolor;
     outline-offset: var(--outline-offset);
   }
 }
