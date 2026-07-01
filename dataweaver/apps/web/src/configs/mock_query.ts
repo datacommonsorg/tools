@@ -20,7 +20,7 @@ const MOCK_RESPONSES: MockResponse[] = [
       variant: 'text',
       title: 'Key insights when evaluating greenhouse gas emissions',
       body: 'Emissions per capita remain low relative to other regions, energy access is the dominant driver, and land-use change accounts for a large share of the total.',
-      followUp: 'What are the key drivers of these trends?',
+      relatedQuery: 'What are the key drivers of these trends?',
     },
   },
   {
@@ -48,7 +48,7 @@ const MOCK_RESPONSES: MockResponse[] = [
       variant: 'text',
       title: 'Why European emissions have been falling',
       body: 'A sustained shift away from coal, strong efficiency standards, and rapid renewable deployment have driven emissions down even as the economy has continued to grow.',
-      followUp: 'Which policies drove the steepest cuts?',
+      relatedQuery: 'Which policies drove the steepest cuts?',
     },
   },
   {
@@ -68,7 +68,7 @@ const MOCK_RESPONSES: MockResponse[] = [
         { date: '2018', value: 5614 },
         { date: '2021', value: 5265 },
       ],
-      followUp: 'How does this compare to other regions?',
+      relatedQuery: 'How does this compare to other regions?',
     },
   },
   {
@@ -77,7 +77,7 @@ const MOCK_RESPONSES: MockResponse[] = [
       variant: 'text',
       title: 'What is driving emissions growth in Asia',
       body: 'Rapid industrialisation, rising energy demand, and continued reliance on coal have made the region the largest contributor to global emissions growth over the past two decades.',
-      followUp: 'How might this trajectory change?',
+      relatedQuery: 'How might this trajectory change?',
     },
   },
   {
@@ -97,7 +97,7 @@ const MOCK_RESPONSES: MockResponse[] = [
         { date: '2018', value: 20366 },
         { date: '2021', value: 21521 },
       ],
-      followUp: 'What would a lower-emissions pathway require?',
+      relatedQuery: 'What would a lower-emissions pathway require?',
     },
   },
 ];

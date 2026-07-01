@@ -38,9 +38,10 @@ const ALLOWED_BODY_TAGS: string[] = [
 export interface CardTextProps extends CardState {
   id: TLShapeId;
   title?: string;
+
   /** HTML string rendered via `html-react-parser` (sanitized/filtered). */
   body?: string;
-  followUp?: string;
+  relatedQuery?: string;
 }
 
 export const CardText = ({
@@ -49,7 +50,7 @@ export const CardText = ({
   selection,
   title,
   body,
-  followUp,
+  relatedQuery,
 }: CardTextProps) => {
   const editor = useEditor();
 
@@ -103,7 +104,7 @@ export const CardText = ({
         )}
       </div>
 
-      {followUp && !isLoading && (
+      {relatedQuery && !isLoading && (
         <Card.Footer>
           <Button
             size="small"
@@ -111,9 +112,9 @@ export const CardText = ({
             tone="accent-subtle"
             icon={IconPencil}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => runPrompt(followUp)}
+            onClick={() => runPrompt(relatedQuery)}
           >
-            {followUp}
+            {relatedQuery}
           </Button>
         </Card.Footer>
       )}

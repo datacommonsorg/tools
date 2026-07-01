@@ -18,6 +18,7 @@ export interface HistoryNode {
   cardIds: string[];
   timestamp: number;
   status: 'pending' | 'complete' | 'error';
+  followUp?: FollowUp;
 }
 
 export type CardType = 'loading' | 'table' | 'notes' | 'chart';
@@ -50,6 +51,12 @@ export interface Entity {
   name: string;
 }
 
+export interface FollowUp {
+  summary: string;
+  question: string;
+  options: string[];
+}
+
 export interface QueryResult {
   id: string;
   title: string;
@@ -60,9 +67,10 @@ export interface QueryResult {
   introduction?: string;
   coverage?: string;
   insights?: Insight[];
-  followUps?: string[];
+  relatedQueries?: string[];
   tableHtml?: string;
   notesHtml?: string;
+  followUp?: FollowUp;
 }
 
 export interface FacetInfo {

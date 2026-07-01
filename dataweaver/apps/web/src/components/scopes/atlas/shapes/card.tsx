@@ -54,7 +54,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       }),
     ).optional(),
     isLoading: T.boolean.optional(),
-    followUp: T.string.optional(),
+    relatedQuery: T.string.optional(),
   };
 
   override getDefaultProps = (): ShapeCardProps => {
@@ -79,7 +79,8 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   // Each card variant owns its own actions, content and footer; the shape just
   // hands it the state and content it needs to render itself.
   #renderCard = (shape: ShapeCard) => {
-    const { variant, title, description, body, data, followUp } = shape.props;
+    const { variant, title, description, body, data, relatedQuery } =
+      shape.props;
 
     const isLoading = shape.props.isLoading ?? false;
     const selection = this.#getSelectionState(shape);
@@ -92,7 +93,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           selection={selection}
           title={title}
           body={body}
-          followUp={followUp}
+          relatedQuery={relatedQuery}
         />
       );
     }
@@ -106,7 +107,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           title={title}
           description={description}
           data={data}
-          followUp={followUp}
+          relatedQuery={relatedQuery}
         />
       );
     }

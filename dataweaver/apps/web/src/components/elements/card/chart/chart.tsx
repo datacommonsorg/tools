@@ -37,23 +37,23 @@ export interface CardChartProps extends CardState {
   id: TLShapeId;
   title?: string;
   description?: string;
-  followUp?: string;
 
   // TODO: Atm data rendered within the card is very specific to the emissions
   // dataset. Let's make it more generic once we have real data to work with
   data?: ChartDatum[];
   facets?: FacetInfo[];
+  relatedQuery?: string;
 }
 
 export const CardChart = ({
   id,
   isLoading,
   selection,
-  facets,
   title,
   description,
-  followUp,
   data,
+  facets,
+  relatedQuery,
 }: CardChartProps) => {
   const editor = useEditor();
 
@@ -144,7 +144,7 @@ export const CardChart = ({
         )}
       </div>
 
-      {followUp && !isLoading && (
+      {relatedQuery && !isLoading && (
         <Card.Footer>
           <Button
             size="small"
@@ -152,9 +152,9 @@ export const CardChart = ({
             tone="accent-subtle"
             icon={IconPencil}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => runPrompt(followUp)}
+            onClick={() => runPrompt(relatedQuery)}
           >
-            {followUp}
+            {relatedQuery}
           </Button>
         </Card.Footer>
       )}

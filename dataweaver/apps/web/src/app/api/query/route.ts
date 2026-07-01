@@ -11,6 +11,7 @@ import { parseQuery } from '~/server/steps/parse_query';
 import { renderResultHtml } from '~/server/steps/render_result_html';
 import { checkPromptSafety } from '~/server/steps/safety';
 import {
+  type FollowUp,
   type Insight,
   type QueryResult,
   type QueryStreamRequest,
@@ -26,7 +27,8 @@ interface QueryModelResponse {
   introduction?: string;
   variables?: Array<{ dcid: string; name: string; rationale?: string }>;
   insights?: Insight[];
-  followUps?: string[];
+  relatedQueries?: string[];
+  followUp?: FollowUp;
 }
 
 export async function POST(request: NextRequest) {
@@ -193,7 +195,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const variables = parsedResponse.variables || [];
-          if (variables.length === 0) {
+          if (variables.length === 0 && !parsedResponse.followUp) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -202,7 +204,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-          if (!entityDcid) {
+          if (!entityDcid && !parsedResponse.followUp) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -217,9 +219,16 @@ export async function POST(request: NextRequest) {
             message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const timeSeries = await Promise.all(
-            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
-          );
+          const timeSeries = entityDcid
+            ? await Promise.all(
+                variables.map((v) =>
+                  fetchTimeSeries(v.dcid, entityDcid, signal),
+                ),
+              )
+            : [];
+          const entities = entityDcid
+            ? [{ dcid: entityDcid, name: parsedResponse.placeName || place }]
+            : [];
           const discoveryResult: QueryResult = {
             id: nanoid(),
             title:
@@ -230,15 +239,14 @@ export async function POST(request: NextRequest) {
               name: v.name,
               rationale: v.rationale,
             })),
-            entities: [
-              { dcid: entityDcid, name: parsedResponse.placeName || place },
-            ],
+            entities,
             timeSeries,
             dateRange: parsed.dateRange,
             introduction: parsedResponse.introduction,
             coverage: parsedResponse.coverage,
             insights: parsedResponse.insights,
-            followUps: parsedResponse.followUps,
+            relatedQueries: parsedResponse.relatedQueries,
+            followUp: parsedResponse.followUp,
           };
 
           const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
