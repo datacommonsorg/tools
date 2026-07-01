@@ -33,13 +33,13 @@
   display: flex;
   flex-direction: column;
   grid-area: content;
-  row-gap: 30px;
+  row-gap: 24px;
   padding: 16px 0 32px 24px;
 
   .title {
     @include type-display;
 
-    max-width: 540px;
+    max-width: 420px;
     color: rgb(var(--color-query-content-subtle));
   }
 
