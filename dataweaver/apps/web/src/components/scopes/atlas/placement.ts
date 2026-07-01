@@ -1,5 +1,9 @@
 import type { Box, Editor } from 'tldraw';
-import { DISTANCE_FROM_OTHER_CARDS, KEEP_IN_VIEW_ANIMATION } from './config';
+import {
+  DISTANCE_FROM_OTHER_CARDS,
+  KEEP_IN_VIEW_ANIMATION,
+  MIN_ZOOM,
+} from './config';
 import type { CardBounds, CardPosition, CardSize } from './helpers';
 
 /** Whether two card footprints sit closer than `gap` on both axes. */
@@ -185,8 +189,31 @@ export const placeCard = (
 };
 
 /**
- * Pan the camera to a freshly placed card if not fully visible. Ignores the
- * card if it already is, so filling a row that's on screen doesn't move camera.
+ * Whether `zoomToFit` could frame `bounds` without the fit zoom being clamped
+ * by the min-zoom cap. Mirrors tldraw's own `zoomToBounds` math (inset + base
+ * zoom + min zoom step) so the prediction matches what `zoomToFit` would do.
+ */
+const canFitWithinZoomCap = (editor: Editor, bounds: Box): boolean => {
+  const screen = editor.getViewportScreenBounds();
+  const inset = Math.min(editor.options.zoomToFitPadding, screen.width * 0.28);
+  const fitZoom = Math.min(
+    (screen.width - inset) / bounds.w,
+    (screen.height - inset) / bounds.h,
+  );
+
+  const minZoomStep = editor.getCameraOptions().zoomSteps[0] ?? MIN_ZOOM;
+  const minZoom = minZoomStep * editor.getBaseZoom();
+
+  return fitZoom >= minZoom;
+};
+
+/**
+ * Reveal a freshly placed card. This follows 3 steps:
+ * 1. If it already fits fully in the viewport, leave the camera be.
+ * 2. If we can zoom out to frame every card at once, do that so the new card
+ *    shows up in the context of the whole set
+ * 3. We couldn't fit everything without hitting the min-zoom cap, so just pan
+ *    to the new card so it lands on-screen
  */
 export const keepInView = (editor: Editor, bounds: CardBounds): void => {
   const viewport = editor.getViewportPageBounds();
@@ -197,9 +224,17 @@ export const keepInView = (editor: Editor, bounds: CardBounds): void => {
     bounds.x + bounds.w <= viewport.maxX &&
     bounds.y + bounds.h <= viewport.maxY;
 
-  // Ignore if already fully visible
+  // Already fully on screen — don't move the camera at all
   if (fullyVisible) return;
 
+  // If we can fit everything within the zoom cap - zoom to fit
+  const pageBounds = editor.getCurrentPageBounds();
+  if (pageBounds && canFitWithinZoomCap(editor, pageBounds)) {
+    editor.zoomToFit({ animation: KEEP_IN_VIEW_ANIMATION });
+    return;
+  }
+
+  // Fitting everything would blow past the zoom cap — just move to the new card
   editor.centerOnPoint(
     { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
     { animation: KEEP_IN_VIEW_ANIMATION },
