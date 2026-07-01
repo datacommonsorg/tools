@@ -26,22 +26,21 @@ interface CardAction {
 
   /** @default false */
   isDisabled?: boolean;
+
+  /** @default false */
+  isActive?: boolean;
 }
 
 interface CardProps extends CardState {
   actions: CardAction[];
-  content: ReactNode;
-
-  /** **Note**: This isn't shown while `isLoading`. */
-  footer?: ReactNode;
+  children: ReactNode;
 }
 
 export const CardBase = ({
   isLoading,
   selection,
   actions,
-  content,
-  footer,
+  children,
 }: CardProps) => {
   const getCachedCanScroll = useCachedResizeValues((element: HTMLElement) => {
     return element.scrollHeight > element.clientHeight;
@@ -62,6 +61,7 @@ export const CardBase = ({
             variant="flat"
             tone="card-action"
             aria-label={action.label}
+            aria-pressed={action.isActive}
             // Prevent tldraw from triggering canvas gestures (e.g. dragging)
             onPointerDown={(event) => event.stopPropagation()}
             onClick={action.onClick}
@@ -80,10 +80,7 @@ export const CardBase = ({
           }
         }}
       >
-        <div className={s.content}>{content}</div>
-        <div className={s.footer} inert={isLoading}>
-          {footer}
-        </div>
+        {children}
       </div>
     </article>
   );

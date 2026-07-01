@@ -1,0 +1,227 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/*
+ * Single source of truth for the design system.
+ *
+ * Colors registered here as `--color-*` automatically generate Tailwind v4
+ * utility classes (e.g. `--color-brand-primary-dark` → `bg-brand-primary-dark`,
+ * `text-brand-primary-dark`, `border-brand-primary-dark`, `hover:bg-brand-primary-dark`,
+ * etc.) AND are available as CSS custom properties for use inside `var()`. Edit a
+ * value here and every consumer updates.
+ *
+ * Token names are semantic (describing role, not hue) so a downstream instance
+ * can re-skin the app by editing values here without touching component classes.
+ *
+ * Names mirror the Figma GM3 token vocabulary where possible.
+ */
+@theme {
+  --font-sans: "Google Sans Text", "Inter", system-ui, sans-serif;
+  --font-display: "Google Sans", "Roboto", system-ui, sans-serif;
+
+  /* Brand */
+  --color-brand-primary: var(--brand-primary, #1A73E8);
+  --color-brand-accent: var(--brand-accent, #34A853);
+  --color-brand-primary-dark: #175C75;
+  --color-brand-gradient-start: #65A782;
+  --color-brand-gradient-end: #6FAEC0;
+
+  /* Surfaces */
+  --color-surface-soft: #F9F9F9;
+  --color-surface-blue: #f0f4f9;
+  --color-user-msg: #E8F2F4;
+  --color-button-hover: #e1e5eb;
+
+  /* Lines */
+  --color-line: #C4C7C5;
+
+  /* Text — primary */
+  --color-on-surface: #1B1C1D;
+  --color-on-surface-variant: #444746;
+  --color-muted: #575B5F;
+  --color-subtle: #747775;
+  --color-placeholder: #8E918F;
+
+  /* Text — table */
+  --color-table-data: #191C1B;
+  --color-table-header: #3F4946;
+  --color-table-body: #212529;
+}
+
+:root {
+  /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
+     Consumed by the .text-* utility classes below. */
+  --static-display-small-font: var(--brand-font, "Google Sans");
+  --static-display-small-size: 32px;
+  --static-display-small-line-height: 36px;
+
+  --static-title-large-font: var(--brand-font, "Google Sans");
+  --static-title-large-size: 22px;
+  --static-title-large-line-height: 28px;
+
+  --static-body-large-font: var(--brand-font, "Google Sans Text");
+  --static-body-large-size: 16px;
+  --static-body-large-line-height: 24px;
+
+  --static-body-medium-font: var(--brand-font, "Google Sans Text");
+  --static-body-medium-size: 14px;
+  --static-body-medium-line-height: 20px;
+
+  --static-label-large-font: var(--brand-font, "Google Sans Text");
+  --static-label-large-size: 14px;
+  --static-label-large-line-height: 20px;
+
+  --static-label-small-font: var(--brand-font, "Google Sans Text");
+  --static-label-small-size: 11px;
+  --static-label-small-line-height: 16px;
+
+  --static-caption-font: var(--brand-font, "Google Sans Text");
+  --static-caption-size: 12px;
+  --static-caption-line-height: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-white);
+  color: var(--color-on-surface);
+  margin: 0;
+  padding: 0;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+.text-display-small {
+  font-family: var(--static-display-small-font, "Google Sans");
+  font-size: var(--static-display-small-size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-display-small-line-height, 36px);
+  letter-spacing: 0;
+}
+
+.text-title-large-emphasized {
+  font-family: var(--static-title-large-font, "Google Sans");
+  font-size: var(--static-title-large-size, 22px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-title-large-line-height, 28px);
+  letter-spacing: 0;
+}
+
+.text-body-large {
+  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-size: var(--static-body-large-size, 16px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-body-large-line-height, 24px);
+  letter-spacing: 0;
+}
+
+.text-body-large-emphasized {
+  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-size: var(--static-body-large-size, 16px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-body-large-line-height, 24px);
+  letter-spacing: 0;
+}
+
+.text-body-medium {
+  font-family: var(--static-body-medium-font, "Google Sans Text");
+  font-size: var(--static-body-medium-size, 14px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-body-medium-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-large {
+  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-size: var(--static-label-large-size, 14px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-label-large-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-large-emphasized {
+  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-size: var(--static-label-large-size, 14px);
+  font-style: normal;
+  font-weight: 700;
+  line-height: var(--static-label-large-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-small {
+  font-family: var(--static-label-small-font, "Google Sans Text");
+  font-size: var(--static-label-small-size, 11px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-label-small-line-height, 16px);
+  letter-spacing: 0;
+}
+
+.text-caption {
+  font-family: var(--static-caption-font, "Google Sans Text");
+  font-size: var(--static-caption-size, 12px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-caption-line-height, 16px);
+  letter-spacing: 0;
+}
+
+.text-display-small-gradient {
+  font-family: var(--static-display-small-font, "Google Sans");
+  font-size: var(--static-display-small-size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-display-small-line-height, 36px);
+  letter-spacing: 0;
+  background: linear-gradient(4deg, var(--color-brand-gradient-start) 0%, var(--color-brand-gradient-end) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Print stylesheet: when ExportPdfButton triggers window.print(),
+ * `body[data-print-target]` is set; the AnswerPanel keeps rendering
+ * while everything else (sidebar, header, chat input) is hidden.
+ * ──────────────────────────────────────────────────────────────────── */
+@media print {
+  body[data-print-target] aside,
+  body[data-print-target] header,
+  body[data-print-target] nav,
+  body[data-print-target] [data-non-print="true"] {
+    display: none !important;
+  }
+  body[data-print-target] {
+    background: #ffffff !important;
+  }
+  body[data-print-target] #answer-panel {
+    box-shadow: none !important;
+    border: 0 !important;
+    background: #ffffff !important;
+  }
+  /* Avoid splitting a chart card or table across pages where possible */
+  .dc-chart-card,
+  .markdown-body table,
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3 {
+    break-inside: avoid;
+  }
+}
+
+@keyframes reasoning-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

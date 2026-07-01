@@ -89,6 +89,7 @@
   "card-action-content": "$accent-content",
   "card-action-base-hover": "$surface-raised",
   "card-action-content-hover": "$accent",
+  "card-accent-subtle": "$accent-subtle",
 
   "skeleton-surface": [242, 242, 242],
 

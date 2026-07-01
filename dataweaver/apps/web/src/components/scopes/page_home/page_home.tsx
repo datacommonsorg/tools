@@ -4,9 +4,9 @@ import { AnimatePresence } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAtlasSelectedCards } from '~/components/scopes/atlas/hooks/use_atlas_selected_cards';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import { STATUS } from '~/server/types';
+import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
-import { FollowUp, type QuestionAndAnswers } from './follow_up';
+import { FollowUp } from './follow_up';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
 import { Prompt, type PromptTag } from './prompt';
@@ -17,9 +17,11 @@ const MAX_VISIBLE_TAGS = 2;
 
 export const PageHome = () => {
   const { runPrompt } = useQueryActions();
-
-  const { currentStatus, nodes, latestNodeId } = useAtlasStore();
-  const latestNode = latestNodeId ? nodes[latestNodeId] : null;
+  const currentStatus = useAtlasStore((s) => s.currentStatus);
+  const latestNode = useAtlasStore((s) =>
+    s.latestNodeId ? s.nodes[s.latestNodeId] : null,
+  );
+  const hasNodes = useAtlasStore((s) => Object.keys(s.nodes).length > 0);
   const query = latestNode ? latestNode.query : '';
 
   const selectedCards = useAtlasSelectedCards();
@@ -33,7 +35,7 @@ export const PageHome = () => {
   }, [selectedCards]);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [followUp, setFollowUp] = useState<QuestionAndAnswers | null>(null);
+  const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
   const submitPrompt = (value = promptValue) => {
@@ -44,13 +46,30 @@ export const PageHome = () => {
   };
 
   useEffect(() => {
-    if (Object.values(nodes).length > 0) setIsIntroVisible(false);
-  }, [nodes]);
+    if (hasNodes) setIsIntroVisible(false);
+  }, [hasNodes]);
 
   const isStatusVisible =
     !isIntroVisible &&
     currentStatus !== STATUS.complete &&
     currentStatus !== STATUS.idle;
+
+  useEffect(() => {
+    const followUps = latestNode?.results
+      ? Object.values(latestNode.results)
+          .map((r) => r.followUp)
+          .filter(Boolean)
+      : [];
+    // TODO - we currently can get more than one follow-up, as the api will return
+    // one per place in the query. Here I'm just using the first one, but we'll need to figure
+    // out a better way to handle this
+    const firstFollowUp = followUps[0];
+    if (latestNode && firstFollowUp && currentStatus === STATUS.complete) {
+      setFollowUp(firstFollowUp);
+    } else {
+      setFollowUp(null);
+    }
+  }, [currentStatus, latestNode]);
 
   return (
     <div className={s.container}>
@@ -66,6 +85,7 @@ export const PageHome = () => {
         {followUp && !isStatusVisible && (
           <FollowUp
             key="follow-up"
+            prompt={query}
             followUp={followUp}
             onSelect={submitPrompt}
           />

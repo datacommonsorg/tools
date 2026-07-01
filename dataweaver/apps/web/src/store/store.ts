@@ -45,6 +45,11 @@ export interface AtlasStore {
     variableDcid?: string,
   ) => void;
   cardRegisterBatch: (entries: CardEntry[]) => void;
+  cardRegisterChart: (
+    parentShapeId: string,
+    placeDcid: string,
+    variableDcid: string,
+  ) => void;
   cardUnregister: (shapeId: string) => void;
   queryCancel: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
@@ -206,6 +211,23 @@ export const useAtlasStore = create<AtlasStore>()(
             }),
             undefined,
             'cardRegisterBatch',
+          );
+        },
+
+        cardRegisterChart: (parentShapeId, placeDcid, variableDcid) => {
+          const { cards, cardRegister } = get();
+          const parent = cards[parentShapeId];
+          if (!parent) return;
+
+          const shapeId = `shape:${parent.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
+          if (cards[shapeId]) return;
+
+          cardRegister(
+            shapeId,
+            parent.historyNodeId,
+            'chart',
+            placeDcid,
+            variableDcid,
           );
         },
 

@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+*.tsbuildinfo
+
+# Local env (per-developer; never commit)
+# Holds BACKEND_URL / AGENT_URL pointing at a specific deployed instance.
+# Each developer creates their own.
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vite cache
+.vite
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Coverage
+coverage
+
+# Project-specific (preserved from prior .gitignore)
+figma_*
+screenshots
+.gemini
+.figma_pat
+*.py
+sample.js
+
+# Redundant snapshot of the original AI Studio scaffold
+Archive.zip

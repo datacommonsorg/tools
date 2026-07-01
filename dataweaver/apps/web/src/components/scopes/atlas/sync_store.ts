@@ -30,7 +30,7 @@ export const deriveNotesContent = (result: QueryResult): AtlasContent => ({
   title: `${result.title} • Notes`,
   body: result.notesHtml ?? '',
   isLoading: false,
-  followUp: result.followUps?.[0],
+  relatedQuery: result.relatedQueries?.[0],
 });
 
 /** Derive AtlasContent for a chart card from a QueryResult (first variable's facets). */

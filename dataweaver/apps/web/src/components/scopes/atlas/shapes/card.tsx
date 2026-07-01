@@ -6,22 +6,13 @@ import {
   T,
   type TLShape,
 } from 'tldraw';
-import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
 import type { CardSelection } from '~/components/elements/card/base';
-import { toast } from '~/components/foundations/toaster/store';
-import { IconBarChart } from '~/components/primitives/icons/bar_chart';
-import { IconDelete } from '~/components/primitives/icons/delete';
-import { IconExport } from '~/components/primitives/icons/export';
-import { IconPencil } from '~/components/primitives/icons/pencil';
-import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import type {
   CardContentFields,
   CardSize,
   CardVariant,
 } from '~/components/scopes/atlas/helpers';
-import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import { useAtlasStore } from '~/store';
 
 export const CARD_DATA_ATTRIBUTE = 'data-card';
 
@@ -63,7 +54,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       }),
     ).optional(),
     isLoading: T.boolean.optional(),
-    followUp: T.string.optional(),
+    relatedQuery: T.string.optional(),
   };
 
   override getDefaultProps = (): ShapeCardProps => {
@@ -85,121 +76,47 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     return selectedIds.length > 1 ? 'multiple' : 'single';
   };
 
-  #getActions = (shape: ShapeCard, isLoading: boolean) => {
-    const { open: openExport } = useExportActions();
+  // Each card variant owns its own actions, content and footer; the shape just
+  // hands it the state and content it needs to render itself.
+  #renderCard = (shape: ShapeCard) => {
+    const { variant, title, description, body, data, relatedQuery } =
+      shape.props;
 
-    const deleteAction = {
-      icon: IconDelete,
-      label: 'Delete',
-      onClick: () => this.editor.deleteShapes([shape.id]),
-    };
+    const isLoading = shape.props.isLoading ?? false;
+    const selection = this.#getSelectionState(shape);
 
-    const exportAction = {
-      icon: IconExport,
-      label: 'Export',
-      isDisabled: isLoading,
-      onClick: () => {
-        this.editor.select(shape.id);
-        openExport();
-      },
-    };
-
-    if (shape.props.variant === 'chart') {
-      return [
-        {
-          icon: IconBarChart,
-          label: 'View chart',
-          isDisabled: isLoading,
-
-          // TODO: Support chart options here
-          onClick: () =>
-            toast(
-              'Cart chart options not supported yet',
-              'This feature will be coming in a future release. Stay tuned!',
-            ),
-        },
-        exportAction,
-        deleteAction,
-      ];
-    }
-
-    return [exportAction, deleteAction];
-  };
-
-  #renderContent = (shape: ShapeCard, isLoading: boolean) => {
-    const { variant, title, description, body, data, facets } = shape.props;
-
-    if (variant === 'chart') {
+    if (variant === 'text') {
       return (
-        <Card.Chart
-          title={title}
-          description={description}
-          data={data}
-          facets={facets}
+        <Card.Text
+          id={shape.id}
           isLoading={isLoading}
+          selection={selection}
+          title={title}
+          body={body}
+          relatedQuery={relatedQuery}
         />
       );
     }
 
-    return (
-      <Card.Text
-        title={title}
-        body={body}
-        isLoading={isLoading}
-        onAction={(href) => this.#handleAction(shape, href)}
-      />
-    );
-  };
+    if (variant === 'chart') {
+      return (
+        <Card.Chart
+          id={shape.id}
+          isLoading={isLoading}
+          selection={selection}
+          title={title}
+          description={description}
+          data={data}
+          relatedQuery={relatedQuery}
+        />
+      );
+    }
 
-  #handleAction = (shape: ShapeCard, href: string) => {
-    const params = new URLSearchParams(href.replace(/^#/, ''));
-    const variableDcid = params.get('fetch');
-    const placeDcid = params.get('place');
-    if (!variableDcid || !placeDcid) return;
-
-    const { cards, cardRegister } = useAtlasStore.getState();
-
-    // Find the card entry for this shape to get the historyNodeId.
-    const cardEntry = cards[shape.id];
-    if (!cardEntry) return;
-
-    // Deterministic ID prevents duplicates.
-    const chartShapeId = `shape:${cardEntry.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
-    if (cards[chartShapeId]) return;
-
-    cardRegister(
-      chartShapeId,
-      cardEntry.historyNodeId,
-      'chart',
-      placeDcid,
-      variableDcid,
-    );
-  };
-
-  #renderFooter = (shape: ShapeCard) => {
-    const { runPrompt } = useQueryActions();
-    const { followUp } = shape.props;
-
-    // Only render follow-up button if the card has a follow-up query defined
-    if (!followUp) return null;
-
-    return (
-      <Button
-        size="small"
-        variant="flat"
-        tone="accent-subtle"
-        icon={IconPencil}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => runPrompt(followUp)}
-      >
-        {followUp}
-      </Button>
-    );
+    console.warn(`Unsupported variant given '${variant}'.`);
+    return null;
   };
 
   override component = (shape: ShapeCard) => {
-    const isLoading = shape.props.isLoading ?? false;
-
     return (
       <HTMLContainer
         // Marks the card in the DOM so that we can target it with CSS selectors
@@ -211,13 +128,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           pointerEvents: 'auto',
         }}
       >
-        <Card.Base
-          isLoading={isLoading}
-          selection={this.#getSelectionState(shape)}
-          actions={this.#getActions(shape, isLoading)}
-          content={this.#renderContent(shape, isLoading)}
-          footer={this.#renderFooter(shape)}
-        />
+        {this.#renderCard(shape)}
       </HTMLContainer>
     );
   };

@@ -4,7 +4,7 @@ import { useCallback, useRef } from 'react';
 import { useEditor, useQuickReactor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { toast } from '~/components/foundations/toaster/store';
-import { IconBarChart } from '~/components/primitives/icons/bar_chart';
+import { IconBarChartOutlined } from '~/components/primitives/icons/bar_chart_outlined';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
@@ -73,7 +73,7 @@ export const Selection = () => {
             aria-label="Selection actions"
           >
             <Button
-              icon={IconBarChart}
+              icon={IconBarChartOutlined}
               size="medium"
               variant="flat"
               tone="card-action"
