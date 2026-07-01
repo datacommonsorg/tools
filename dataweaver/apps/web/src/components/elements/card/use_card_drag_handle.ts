@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, useCallback } from 'react';
-import type { Editor, TLShapeId } from 'tldraw';
+import { type TLShapeId, useEditor } from 'tldraw';
 
 /**
  * Returns a `pointerdown` handler that turns an element into a drag handle for
@@ -12,8 +12,10 @@ import type { Editor, TLShapeId } from 'tldraw';
  * space via the zoom) for the duration of the press, using pointer capture so
  * the drag follows the cursor even when it leaves the handle.
  */
-export const useCardDragHandle = (editor: Editor, shapeId: TLShapeId) =>
-  useCallback(
+export const useCardDragHandle = (shapeId: TLShapeId) => {
+  const editor = useEditor();
+
+  return useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       // Ignore if trigger was not primary button drags
       if (event.button !== 0) return;
@@ -64,3 +66,4 @@ export const useCardDragHandle = (editor: Editor, shapeId: TLShapeId) =>
     },
     [editor, shapeId],
   );
+};

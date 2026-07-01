@@ -81,10 +81,6 @@
     margin: unset;
     background: unset;
     border: unset;
-
-    &::backdrop {
-      display: none;
-    }
   }
 
   table {

@@ -1,15 +1,20 @@
 'use client';
 
-import type {
-  ComponentPropsWithRef,
-  ComponentType,
-  PointerEvent,
-  ReactNode,
-  Ref,
+import {
+  type ComponentPropsWithRef,
+  type ComponentType,
+  type ReactNode,
+  useRef,
 } from 'react';
+import type { TLShapeId } from 'tldraw';
 import { Button } from '~/components/elements/button';
+import { CARD_VARIANT_MAX } from '~/components/scopes/atlas/config';
+import type { CardVariant } from '~/components/scopes/atlas/helpers';
 import { useCachedResizeValues } from '~/hooks/use_cached_resize_values';
 import s from './base.module.scss';
+import { useCardAutoHeight } from './use_card_auto_height';
+import { useCardClearTextSelection } from './use_card_clear_text_selection';
+import { useCardDragHandle } from './use_card_drag_handle';
 
 /**
  * How the card is selected on the canvas:
@@ -32,33 +37,34 @@ interface CardAction {
 
   /** @default false */
   isDisabled?: boolean;
+
+  /** @default false */
+  isActive?: boolean;
 }
 
 interface CardProps extends CardState {
-  contentContainerRef: Ref<HTMLDivElement>;
+  id: TLShapeId;
+  variant: CardVariant;
   actions: CardAction[];
-  content: ReactNode;
-
-  /** **Note**: This isn't shown while `isLoading`. */
-  footer?: ReactNode;
-
-  /**
-   * Press handler for the actions bar, which doubles as the card's drag handle.
-   * The bar sits outside the shape's geometry, so the canvas can't drag it
-   * natively — the shape wires this up to move itself instead.
-   */
-  onActionsPointerDown?: (event: PointerEvent<HTMLDivElement>) => void;
+  children: ReactNode;
 }
 
 export const CardBase = ({
-  contentContainerRef,
+  id,
+  variant,
   isLoading,
   selection,
   actions,
-  content,
-  footer,
-  onActionsPointerDown,
+  children,
 }: CardProps) => {
+  const childrenContainerRef = useRef<HTMLDivElement>(null);
+
+  useCardAutoHeight(childrenContainerRef, id, CARD_VARIANT_MAX[variant].h);
+
+  useCardClearTextSelection(childrenContainerRef, id);
+
+  const startDragging = useCardDragHandle(id);
+
   const getCachedCanScroll = useCachedResizeValues((element: HTMLElement) => {
     return element.scrollHeight > element.clientHeight;
   });
@@ -69,10 +75,7 @@ export const CardBase = ({
       data-is-loading={isLoading}
       data-selection={selection}
     >
-      <div
-        className={s['actions-container']}
-        onPointerDown={onActionsPointerDown}
-      >
+      <div className={s['actions-container']} onPointerDown={startDragging}>
         {actions.map((action, index) => (
           <Button
             key={index}
@@ -81,6 +84,7 @@ export const CardBase = ({
             variant="flat"
             tone="card-action"
             aria-label={action.label}
+            aria-pressed={action.isActive}
             // Prevent tldraw from triggering canvas gestures (e.g. dragging)
             onPointerDown={(event) => event.stopPropagation()}
             onClick={action.onClick}
@@ -90,8 +94,8 @@ export const CardBase = ({
       </div>
 
       <div
-        ref={contentContainerRef}
-        className={s['content-container']}
+        ref={childrenContainerRef}
+        className={s['children-container']}
         // TLDraw captures all wheel events; this ensures that cards can be
         // scrolled when children here can scroll
         onWheelCapture={(event) => {
@@ -109,10 +113,7 @@ export const CardBase = ({
             : undefined
         }
       >
-        <div className={s.content}>{content}</div>
-        <div className={s.footer} inert={isLoading}>
-          {footer}
-        </div>
+        {children}
       </div>
     </article>
   );

@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { type Editor, type TLShapeId, useQuickReactor } from 'tldraw';
+import { type TLShapeId, useEditor, useQuickReactor } from 'tldraw';
 
 /**
  * Clears any text the user highlighted inside a card once it stops being the
@@ -12,9 +12,10 @@ import { type Editor, type TLShapeId, useQuickReactor } from 'tldraw';
  */
 export const useCardClearTextSelection = <TElement extends HTMLElement>(
   containerRef: RefObject<TElement | null>,
-  editor: Editor,
   shapeId: TLShapeId,
 ) => {
+  const editor = useEditor();
+
   useQuickReactor('clear card text selection on blur', () => {
     // Reads selection reactively, so this re-runs whenever it changes
     const selectedIds = editor.getSelectedShapeIds();

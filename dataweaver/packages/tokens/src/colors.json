@@ -76,6 +76,9 @@
   "control-content-muted": "$content-muted",
   "control-divider": [22, 23, 24, 0.15],
 
+  "tag-border": "$accent",
+  "tag-content": "$content",
+
   "card-surface": "$surface-raised",
   "card-surface-selected": "$accent",
   "card-content": "$content",
@@ -86,6 +89,7 @@
   "card-action-content": "$accent-content",
   "card-action-base-hover": "$surface-raised",
   "card-action-content-hover": "$accent",
+  "card-accent-subtle": "$accent-subtle",
 
   "skeleton-surface": [242, 242, 242],
 

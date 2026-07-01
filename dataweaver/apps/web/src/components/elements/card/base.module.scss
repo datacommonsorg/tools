@@ -35,7 +35,7 @@
   }
 }
 
-.content-container {
+.children-container {
   display: flex;
   flex-direction: column;
   grid-area: 1 / 1;
@@ -66,22 +66,5 @@
 
   :is([data-selection="single"], [data-selection="multiple"]) & {
     border-color: rgb(var(--color-card-surface-selected));
-  }
-}
-
-.content {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  padding: 28px;
-}
-
-.footer {
-  flex-shrink: 0;
-  padding: 0 28px 18px;
-
-  [data-loading="true"] & {
-    visibility: hidden;
-    pointer-events: none;
   }
 }

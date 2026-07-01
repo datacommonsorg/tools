@@ -1,7 +1,10 @@
 'use client';
 
+import { EASE_LINEAR } from '@package/tokens/ts';
+import { AnimatePresence, m } from 'motion/react';
 import { useId } from 'react';
 import { Button } from '~/components/elements/button';
+import { Tag } from '~/components/elements/tag';
 import { IconArrowUp } from '~/components/primitives/icons/arrow_up';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
 import s from './prompt.module.scss';
@@ -9,13 +12,25 @@ import s from './prompt.module.scss';
 /** Placeholder text for the prompt input. */
 const PROMPT_PLACEHOLDER = 'What data would you like to explore?';
 
+/** A read-only chip shown in the prompt, derived from the canvas selection. */
+export interface PromptTag {
+  id: string;
+  title: string;
+}
+
 interface PromptProps {
   value: string;
+  tags: PromptTag[];
   onValueChange: (value: string) => void;
   onSubmit: (value: string) => void;
 }
 
-export const Prompt = ({ value, onValueChange, onSubmit }: PromptProps) => {
+export const Prompt = ({
+  value,
+  tags,
+  onValueChange,
+  onSubmit,
+}: PromptProps) => {
   const inputId = useId();
 
   const trimmedValue = value.trim();
@@ -57,16 +72,34 @@ export const Prompt = ({ value, onValueChange, onSubmit }: PromptProps) => {
         }}
       />
 
-      <Button
-        className={s['button-submit']}
-        type="submit"
-        size="large"
-        variant="border"
-        tone="prominent"
-        icon={IconArrowUp}
-        aria-label="Submit prompt"
-        isDisabled={!hasValue}
-      />
+      <div className={s['button-row-container']}>
+        <ul className={s['tags-container']}>
+          <AnimatePresence initial={false} mode="wait">
+            {tags.map((tag) => (
+              <m.li
+                key={tag.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: EASE_LINEAR }}
+              >
+                <Tag label={tag.title} />
+              </m.li>
+            ))}
+          </AnimatePresence>
+        </ul>
+
+        <Button
+          className={s['button-submit']}
+          type="submit"
+          size="medium"
+          variant="border"
+          tone="prominent"
+          icon={IconArrowUp}
+          aria-label="Submit prompt"
+          isDisabled={!hasValue}
+        />
+      </div>
     </form>
   );
 };

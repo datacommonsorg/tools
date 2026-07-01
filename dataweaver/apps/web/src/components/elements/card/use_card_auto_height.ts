@@ -1,6 +1,6 @@
 import { useIsomorphicLayoutEffect } from 'motion/react';
 import { type RefObject, useRef } from 'react';
-import type { Editor, TLShapeId } from 'tldraw';
+import { type TLShapeId, useEditor } from 'tldraw';
 
 /** Sub-pixel tolerance, in px, to absorb rounding and avoid feedback loops. */
 const EPSILON = 1;
@@ -18,10 +18,11 @@ const EPSILON = 1;
  */
 export const useCardAutoHeight = <TElement extends HTMLElement>(
   containerRef: RefObject<TElement | null>,
-  editor: Editor,
   shapeId: TLShapeId,
   maxHeight: number,
 ) => {
+  const editor = useEditor();
+
   const lastHeightRef = useRef<number | null>(null);
 
   useIsomorphicLayoutEffect(() => {

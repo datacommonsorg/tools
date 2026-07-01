@@ -1,0 +1,65 @@
+.container {
+  position: absolute;
+  inset: 0;
+  z-index: $z-index-above-content;
+  display: grid;
+  background: rgb(var(--color-card-accent-subtle) / 30%);
+}
+
+.content-container {
+  display: flex;
+  flex-direction: column;
+  place-self: center center;
+  width: 300px;
+  max-width: 100%;
+  background: rgb(var(--color-card-surface));
+  border-radius: var(--corner-size);
+  box-shadow: var(--shadow-elevated);
+}
+
+.title {
+  @include type-title;
+
+  padding: 16px 16px 10px;
+  color: rgb(var(--color-card-content));
+}
+
+.options-container {
+  display: flex;
+  flex-direction: column;
+  row-gap: 2px;
+  padding-inline: 12px;
+
+  .option-container {
+    column-gap: 12px;
+    align-items: center;
+    height: 40px;
+    padding-inline: 12px;
+    border-radius: var(--border-radius-small);
+    transition: background 0.2s $ease-linear;
+
+    @include hover {
+      background: rgb(var(--color-card-accent-subtle));
+    }
+
+    .option-icon {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      color: rgb(var(--color-card-content));
+    }
+
+    .option-label {
+      @include type-body-medium;
+
+      color: rgb(var(--color-card-content));
+    }
+  }
+}
+
+.actions-container {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 32px 18px 20px 0;
+}

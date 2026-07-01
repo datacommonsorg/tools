@@ -21,7 +21,7 @@ interface WithExternalTones {
 
 interface WithIconOnly {
   icon: ComponentType<ComponentPropsWithRef<'svg'>>;
-  size: 'small' | 'medium' | 'large';
+  size: 'extra-small' | 'small' | 'medium' | 'large';
   'aria-label': string;
   children?: never;
 }
@@ -51,10 +51,14 @@ export const Button = ({
   const hasChildren = Boolean(children);
   const shape = hasChildren ? 'pill' : 'circle';
 
+  // Icon-only buttons have no visible label, so surface their required
+  // `aria-label` as a native tooltip (unless an explicit `title` is provided)
+  const title = rest.title ?? (!hasChildren ? rest['aria-label'] : undefined);
   return (
     <button
       type="button"
       {...rest}
+      title={title}
       className={mergeClassNames(s.container, rest.className)}
       data-shape={shape}
       data-size={size}

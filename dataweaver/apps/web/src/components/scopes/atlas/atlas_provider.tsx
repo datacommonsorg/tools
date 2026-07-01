@@ -8,6 +8,7 @@ import {
   useContext,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { createShapeId, type Editor, type TLShapeId, Tldraw } from 'tldraw';
 import { useAtlasStore } from '~/store';
@@ -45,11 +46,12 @@ export interface CardHandle<TVariant extends CardVariant> {
 }
 
 export interface AtlasContextProps {
+  /** The mounted tldraw editor, or `null` before mount. */
+  editor: Editor | null;
   add<TVariant extends CardVariant>(
     content: ContentForVariant<TVariant>,
     customId?: string,
   ): CardHandle<TVariant>;
-  getSelectedShapeIds(): string[];
 }
 
 const AtlasContext = createContext<AtlasContextProps | null>(null);
@@ -76,7 +78,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
    * Use this for reads that must return a value now; use `editorReadyRef` for
    * writes that can wait for mount.
    */
-  const editorRef = useRef<Editor | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
 
   /**
    * Resolves with the editor once `tldraw` mounts, so any editor actions work
@@ -186,7 +188,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
 
     // Expose the editor for synchronous reads and release any canvas writes
     // that were issued before mount
-    editorRef.current = editor;
+    setEditor(editor);
     editorReadyRef.current.resolve(editor);
 
     // Let the CSS know we're mounted so it can fade the canvas in
@@ -200,7 +202,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       // Swap in a fresh deferred and drop clone tracking tied to this
       // editor, so any future remount starts clean rather than chaining
       // writes onto the editor we just tore down
-      editorRef.current = null;
+      setEditor(null);
       editorReadyRef.current = createDeferred<Editor>();
       clonesRef.current.clear();
     };
@@ -208,12 +210,8 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
 
   const providerValue = useMemo<AtlasContextProps>(
     () => ({
-      getSelectedShapeIds: () => {
-        return editorRef.current
-          ? editorRef.current.getSelectedShapeIds().map(String)
-          : [];
-      },
-      add: (content, customId?) => {
+      editor,
+      add: (content, customId) => {
         const shapeId = customId ? createShapeId(customId) : createShapeId();
 
         // First: Create the shape with any immediately available content, once
@@ -264,7 +262,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
         };
       },
     }),
-    [],
+    [editor],
   );
 
   return (
