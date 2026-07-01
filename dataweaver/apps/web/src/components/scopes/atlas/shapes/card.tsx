@@ -63,7 +63,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       }),
     ).optional(),
     isLoading: T.boolean.optional(),
-    followUp: T.string.optional(),
+    relatedQuery: T.string.optional(),
   };
 
   override getDefaultProps = (): ShapeCardProps => {
@@ -178,10 +178,10 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
 
   #renderFooter = (shape: ShapeCard) => {
     const { runPrompt } = useQueryActions();
-    const { followUp } = shape.props;
+    const { relatedQuery } = shape.props;
 
     // Only render follow-up button if the card has a follow-up query defined
-    if (!followUp) return null;
+    if (!relatedQuery) return null;
 
     return (
       <Button
@@ -190,9 +190,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
         tone="accent-subtle"
         icon={IconPencil}
         onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => runPrompt(followUp)}
+        onClick={() => runPrompt(relatedQuery)}
       >
-        {followUp}
+        {relatedQuery}
       </Button>
     );
   };
