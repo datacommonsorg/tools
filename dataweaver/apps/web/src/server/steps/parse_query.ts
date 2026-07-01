@@ -24,7 +24,7 @@ export const parseQuery = async (
 
   const hasHistory = ancestorChainLength > 0;
   const historyHint = hasHistory
-    ? `\nPrevious conversation context exists (${ancestorChainLength} exchanges). The user may be asking a follow-up.`
+    ? `\nPrevious conversation context exists (${ancestorChainLength} exchanges). Only mark isFollowUp=true if the query is clearly a continuation that lacks its own place or topic. If the query explicitly mentions a place or topic, treat it as a new independent query and extract places/topic normally.`
     : '';
   const atlasHint = atlasContext ? `\nAtlas context: ${atlasContext}` : '';
   const systemPrompt = skill.systemPrompt + historyHint + atlasHint;
