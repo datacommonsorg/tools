@@ -101,7 +101,7 @@ export const runToolLoop = async (
     : '';
 
   const placeClause = params.noExplicitPlace
-    ? `\n\nTARGET PLACE: The user did not mention a specific place. Default to "Earth" (world-level) to retrieve initial data. You MUST include a followUp in your response asking which specific place or region the user would like to explore. The followUp MUST have an empty "options" array — do NOT suggest options, only provide a summary and question.`
+    ? `\n\nTARGET PLACE: The user did not mention a specific place. Default to "Earth" (world-level) to retrieve initial data.`
     : `\n\nTARGET PLACE: "${place}" — all variables MUST be relevant to this location.`;
   const systemInstruction =
     skill.systemPrompt + atlasClause + dateRangeClause + placeClause;
