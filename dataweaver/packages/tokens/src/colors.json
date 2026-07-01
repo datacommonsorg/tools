@@ -16,6 +16,7 @@
 
   "shadow": [0, 0, 0],
   "transparent": [0, 0, 0, 0],
+  "outline": [0, 0, 0],
 
   "atlas-surface": "$surface-dimmed",
   "atlas-decorator": "$surface-muted",
