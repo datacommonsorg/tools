@@ -189,22 +189,20 @@ export const placeCard = (
 };
 
 /**
- * Whether `zoomToFit` could frame `bounds` without the fit zoom being clamped
- * by the min-zoom cap. Mirrors tldraw's own `zoomToBounds` math (inset + base
- * zoom + min zoom step) so the prediction matches what `zoomToFit` would do.
+ * Whether a card within given page `bounds` can fit fully on screen without
+ * zooming out past `MIN_ZOOM`. This is used to decide whether to zoom out to
+ * frame all cards when a new card is placed, or just pan to the new card so it
+ * lands on-screen.
  */
 const canFitWithinZoomCap = (editor: Editor, bounds: Box): boolean => {
-  const screen = editor.getViewportScreenBounds();
-  const inset = Math.min(editor.options.zoomToFitPadding, screen.width * 0.28);
+  const screenBounds = editor.getViewportScreenBounds();
+
   const fitZoom = Math.min(
-    (screen.width - inset) / bounds.w,
-    (screen.height - inset) / bounds.h,
+    (screenBounds.width - DISTANCE_FROM_OTHER_CARDS) / bounds.w,
+    (screenBounds.height - DISTANCE_FROM_OTHER_CARDS) / bounds.h,
   );
 
-  const minZoomStep = editor.getCameraOptions().zoomSteps[0] ?? MIN_ZOOM;
-  const minZoom = minZoomStep * editor.getBaseZoom();
-
-  return fitZoom >= minZoom;
+  return fitZoom >= MIN_ZOOM;
 };
 
 /**
@@ -230,7 +228,10 @@ export const keepInView = (editor: Editor, bounds: CardBounds): void => {
   // If we can fit everything within the zoom cap - zoom to fit
   const pageBounds = editor.getCurrentPageBounds();
   if (pageBounds && canFitWithinZoomCap(editor, pageBounds)) {
-    editor.zoomToFit({ animation: KEEP_IN_VIEW_ANIMATION });
+    editor.zoomToBounds(pageBounds, {
+      inset: DISTANCE_FROM_OTHER_CARDS,
+      animation: KEEP_IN_VIEW_ANIMATION,
+    });
     return;
   }
 
