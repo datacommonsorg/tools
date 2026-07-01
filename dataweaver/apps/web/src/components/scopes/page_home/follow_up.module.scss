@@ -62,8 +62,8 @@
   display: flex;
   flex-direction: column;
   grid-area: content;
-  row-gap: 30px;
-  padding: 16px 0 32px 32px;
+  row-gap: 24px;
+  padding: 16px 0 32px 24px;
 
   .question {
     @include type-body-large(500);
