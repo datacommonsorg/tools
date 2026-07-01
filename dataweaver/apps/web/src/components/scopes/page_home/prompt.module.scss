@@ -14,12 +14,14 @@
 .input {
   --max-rows: 4;
 
-  @include type-body-large(500);
+  @include type-body-large;
 
   width: 100%;
   max-height: calc(var(--max-rows) * 1lh);
   overflow-y: auto;
   color: rgb(var(--color-query-content));
+  caret-color: rgb(var(--color-query-accent));
+  outline: none;
   field-sizing: content;
 
   // Support manual resizing if content-based sizing isn't supported
@@ -28,7 +30,7 @@
   }
 
   &::placeholder {
-    color: rgb(var(--color-query-content-subtle));
+    color: rgb(var(--color-query-content-dimmed));
   }
 }
 
