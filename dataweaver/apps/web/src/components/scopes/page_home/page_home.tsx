@@ -1,15 +1,19 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useAtlasSelectedCards } from '~/components/scopes/atlas/hooks/use_atlas_selected_cards';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
-import { Prompt } from './prompt';
+import { Prompt, type PromptTag } from './prompt';
 import { Status } from './status';
+
+/** Show a tag per card up to this many; beyond it, collapse to a count tag. */
+const MAX_VISIBLE_TAGS = 2;
 
 export const PageHome = () => {
   const { runPrompt } = useQueryActions();
@@ -18,13 +22,23 @@ export const PageHome = () => {
     s.latestNodeId ? s.nodes[s.latestNodeId] : null,
   );
   const hasNodes = useAtlasStore((s) => Object.keys(s.nodes).length > 0);
-  const query = latestNode?.query ?? '';
+  const query = latestNode ? latestNode.query : '';
+
+  const selectedCards = useAtlasSelectedCards();
+  const tags: PromptTag[] = useMemo(() => {
+    if (selectedCards.length > MAX_VISIBLE_TAGS) {
+      const selectedTitle = `${selectedCards.length} items selected on canvas`;
+      return [{ id: 'total', title: selectedTitle }];
+    }
+
+    return selectedCards;
+  }, [selectedCards]);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
-  const submit = (value = promptValue) => {
+  const submitPrompt = (value = promptValue) => {
     runPrompt(value);
     setPromptValue('');
     setIsIntroVisible(false);
@@ -35,7 +49,7 @@ export const PageHome = () => {
     if (hasNodes) setIsIntroVisible(false);
   }, [hasNodes]);
 
-  const showStatus =
+  const isStatusVisible =
     !isIntroVisible &&
     currentStatus !== STATUS.complete &&
     currentStatus !== STATUS.idle;
@@ -63,29 +77,30 @@ export const PageHome = () => {
         {isIntroVisible && (
           <Intro
             key="intro"
-            onSelect={(selected) => {
-              submit(selected);
-            }}
+            onSelect={submitPrompt}
             onClose={() => setIsIntroVisible(false)}
           />
         )}
 
-        {followUp && !showStatus && (
+        {followUp && !isStatusVisible && (
           <FollowUp
             key="follow-up"
             prompt={query}
             followUp={followUp}
-            onSelect={submit}
+            onSelect={submitPrompt}
           />
         )}
-        {showStatus && (
+
+        {isStatusVisible && (
           <Status key="status" prompt={query} status={currentStatus} />
         )}
       </AnimatePresence>
+
       <Prompt
         value={promptValue}
+        tags={tags}
         onValueChange={setPromptValue}
-        onSubmit={submit}
+        onSubmit={submitPrompt}
       />
     </div>
   );

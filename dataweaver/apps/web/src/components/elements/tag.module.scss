@@ -1,0 +1,23 @@
+.container {
+  display: flex;
+  column-gap: 8px;
+  align-items: center;
+  height: var(--tag-height);
+  color: rgb(var(--color-tag-content));
+  border: 1px solid rgb(var(--color-tag-border));
+  border-radius: 14px;
+  box-shadow: var(--shadow-subtle);
+
+  &[data-has-icon="false"] {
+    padding-inline: 12px;
+  }
+
+  &[data-has-icon="true"] {
+    // Note: The extra 1px here accounts for the 1px border
+    padding-inline: 12px 4px;
+  }
+}
+
+.label {
+  @include type-label-small;
+}

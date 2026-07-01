@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { CardEntry, CardType, QueryResult } from '~/server/types';
 import { useAtlasStore } from '~/store';
-import type { AtlasContextProps, CardHandle } from './atlas_provider';
+import { type CardHandle, useAtlas } from './atlas_provider';
 import type { AtlasContent, CardVariant } from './helpers';
 
 // --- Derivation functions ---
@@ -126,7 +126,9 @@ export const deriveContentForCard = (
  * When cards are registered/unregistered in the store, this hook creates,
  * updates, or removes the corresponding tldraw shapes via the atlas API.
  */
-export const useStoreShapeSync = (atlas: AtlasContextProps) => {
+export const useStoreShapeSync = () => {
+  const { add } = useAtlas();
+
   const handlesRef = useRef<Map<string, CardHandle<CardVariant>>>(new Map());
   const prevCardsRef = useRef<Record<string, CardEntry>>({});
 
@@ -158,7 +160,7 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
 
           // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
           const rawId = shapeId.replace(/^shape:/, '');
-          const handle = atlas.add(content, rawId);
+          const handle = add(content, rawId);
           handles.set(shapeId, handle);
         }
 
@@ -199,7 +201,7 @@ export const useStoreShapeSync = (atlas: AtlasContextProps) => {
     );
 
     return () => unsubscribe();
-  }, [atlas]);
+  }, [add]);
 
   return handlesRef;
 };

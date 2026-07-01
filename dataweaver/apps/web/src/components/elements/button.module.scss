@@ -121,6 +121,11 @@
   &[data-shape="circle"] {
     border-radius: 50%;
 
+    &[data-size="extra-small"] {
+      width: var(--button-circle-size-extra-small);
+      height: var(--button-circle-size-extra-small);
+    }
+
     &[data-size="small"] {
       width: var(--button-circle-size-small);
       height: var(--button-circle-size-small);
@@ -169,8 +174,18 @@
 
 .icon {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+
+  [data-size="extra-small"] & {
+    width: 12px;
+    height: 12px;
+  }
+
+  [data-size="small"] &,
+  [data-size="medium"] &,
+  [data-size="large"] & {
+    width: 24px;
+    height: 24px;
+  }
 }
 
 .children {

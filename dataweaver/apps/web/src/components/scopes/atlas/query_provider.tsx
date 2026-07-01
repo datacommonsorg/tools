@@ -9,11 +9,11 @@ import {
   useRef,
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
-import { useAtlas } from '~/components/scopes/atlas/atlas_provider';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { CardEntry, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
+import { useAtlas } from './atlas_provider';
 import { useStoreShapeSync } from './sync_store';
 
 export interface Status {
@@ -24,6 +24,7 @@ export interface Status {
 interface QueryActionsContextProps {
   /** Run a query for the given prompt, streaming results onto the canvas. */
   runPrompt(prompt: string): void;
+
   /** Abort the in-flight query, remove its cards, and clean up the store. */
   queryCancel(): void;
 }
@@ -44,11 +45,13 @@ interface ActiveQuery {
 }
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
-  const atlas = useAtlas();
-  const activeQueryRef = useRef<ActiveQuery | null>(null);
+  const { editor } = useAtlas();
+  const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
 
-  // Mount the store→shape sync layer.
-  useStoreShapeSync(atlas);
+  // Mount the store→shape sync layer
+  useStoreShapeSync();
+
+  const activeQueryRef = useRef<ActiveQuery | null>(null);
 
   const store = useAtlasStore;
 
@@ -157,14 +160,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
   const providerValue = useMemo<QueryActionsContextProps>(
     () => ({
-      queryCancel: () => {
-        const active = activeQueryRef.current;
-        if (!active) return;
-
-        abortStream();
-        store.getState().queryCancel(active.nodeId);
-        activeQueryRef.current = null;
-      },
       runPrompt: (prompt: string) => {
         const {
           queryStart,
@@ -179,7 +174,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(STATUS.starting);
 
         // Derive context from selected shapes
-        const selectedShapeIds = atlas.getSelectedShapeIds();
         const parentNodeId = getContextNodeId(selectedShapeIds);
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
           query: node.query,
@@ -213,8 +207,16 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           selectedEntityDcids,
         });
       },
+      queryCancel: () => {
+        const active = activeQueryRef.current;
+        if (!active) return;
+
+        abortStream();
+        store.getState().queryCancel(active.nodeId);
+        activeQueryRef.current = null;
+      },
     }),
-    [atlas, startStream, abortStream],
+    [selectedShapeIds, startStream, abortStream],
   );
 
   return (
