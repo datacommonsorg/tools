@@ -3,9 +3,9 @@
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import { STATUS } from '~/server/types';
+import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
-import { FollowUp, type QuestionAndAnswers } from './follow_up';
+import { FollowUp } from './follow_up';
 import { Intro } from './intro';
 import s from './page_home.module.scss';
 import { Prompt } from './prompt';
@@ -13,12 +13,15 @@ import { Status } from './status';
 
 export const PageHome = () => {
   const { runPrompt } = useQueryActions();
-  const { currentStatus, nodes, latestNodeId } = useAtlasStore();
-  const latestNode = latestNodeId ? nodes[latestNodeId] : null;
+  const currentStatus = useAtlasStore((s) => s.currentStatus);
+  const latestNode = useAtlasStore((s) =>
+    s.latestNodeId ? s.nodes[s.latestNodeId] : null,
+  );
+  const hasNodes = useAtlasStore((s) => Object.keys(s.nodes).length > 0);
   const query = latestNode?.query ?? '';
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
-  const [followUp, setFollowUp] = useState<QuestionAndAnswers | null>(null);
+  const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
   const submit = (value = promptValue) => {
@@ -29,13 +32,30 @@ export const PageHome = () => {
   };
 
   useEffect(() => {
-    if (Object.values(nodes).length > 0) setIsIntroVisible(false);
-  }, [nodes]);
+    if (hasNodes) setIsIntroVisible(false);
+  }, [hasNodes]);
 
   const showStatus =
     !isIntroVisible &&
     currentStatus !== STATUS.complete &&
     currentStatus !== STATUS.idle;
+
+  useEffect(() => {
+    const followUps = latestNode?.results
+      ? Object.values(latestNode.results)
+          .map((r) => r.followUp)
+          .filter(Boolean)
+      : [];
+    // TODO - we currently can get more than one follow-up, as the api will return
+    // one per place in the query. Here I'm just using the first one, but we'll need to figure
+    // out a better way to handle this
+    const firstFollowUp = followUps[0];
+    if (latestNode && firstFollowUp && currentStatus === STATUS.complete) {
+      setFollowUp(firstFollowUp);
+    } else {
+      setFollowUp(null);
+    }
+  }, [currentStatus, latestNode]);
 
   return (
     <div className={s.container}>
@@ -51,7 +71,12 @@ export const PageHome = () => {
         )}
 
         {followUp && !showStatus && (
-          <FollowUp key="follow-up" followUp={followUp} onSelect={submit} />
+          <FollowUp
+            key="follow-up"
+            prompt={query}
+            followUp={followUp}
+            onSelect={submit}
+          />
         )}
         {showStatus && (
           <Status key="status" prompt={query} status={currentStatus} />

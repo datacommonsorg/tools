@@ -3,25 +3,16 @@
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
 import { Button } from '~/components/elements/button';
+import type { FollowUp as FollowUpData } from '~/server/types';
 import s from './follow_up.module.scss';
 
-export interface QuestionAndAnswers {
-  /** The question the user asked, echoed back as a chat bubble. */
-  question: string;
-
-  /** The assistant's answer. Newlines are preserved. */
-  answer: string;
-
-  /** Suggested follow-up prompts, rendered as selectable pills. */
-  prompts: string[];
-}
-
 interface FollowUpProps {
-  followUp: QuestionAndAnswers;
+  prompt: string;
+  followUp: FollowUpData;
   onSelect: (followUp: string) => void;
 }
 
-export const FollowUp = ({ followUp, onSelect }: FollowUpProps) => {
+export const FollowUp = ({ prompt, followUp, onSelect }: FollowUpProps) => {
   return (
     <m.section
       className={s['outer-container']}
@@ -31,21 +22,22 @@ export const FollowUp = ({ followUp, onSelect }: FollowUpProps) => {
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
       <div className={s['inner-container']}>
-        <p className={s.question}>{followUp.question}</p>
+        <p className={s.question}>{prompt}</p>
 
-        <div className={s.answer}>{followUp.answer}</div>
+        <div className={s.answer}>{followUp.summary}</div>
+        <div className={s.answer}>{followUp.question}</div>
 
-        {followUp.prompts.length > 0 && (
+        {followUp?.options?.length > 0 && (
           <ul className={s['prompts-container']}>
-            {followUp.prompts.map((prompt) => (
-              <li key={prompt}>
+            {followUp.options.map((option) => (
+              <li key={option}>
                 <Button
                   size="medium"
                   variant="flat"
                   tone="accent-subtle"
-                  onClick={() => onSelect(prompt)}
+                  onClick={() => onSelect(option)}
                 >
-                  {prompt}
+                  {option}
                 </Button>
               </li>
             ))}

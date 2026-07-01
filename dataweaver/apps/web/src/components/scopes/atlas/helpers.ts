@@ -5,7 +5,7 @@ import type { CardTextProps } from '~/components/elements/card/text';
 import { CARD_VARIANT_SIZE } from './config';
 
 interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
-  followUp?: string;
+  relatedQuery?: string;
 }
 
 interface TextContent
@@ -64,7 +64,7 @@ export const contentToShape = (
   const shapeProps = {
     ...CARD_VARIANT_SIZE[content.variant],
     isLoading: content.isLoading ?? false,
-    followUp: content.followUp,
+    relatedQuery: content.relatedQuery,
   };
 
   if (content.variant === 'chart') {
