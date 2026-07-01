@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
 import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
-import type { CardEntry, StreamEvent } from '~/server/types';
+import type { CardEntry, FollowUpContext, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
@@ -162,6 +162,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
     () => ({
       runPrompt: (prompt: string) => {
         const {
+          nodes,
           queryStart,
           querySetProcessing,
           querySetStatus,
@@ -181,11 +182,44 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           places: node.parsedQuery?.places ?? [],
         }));
 
+        // If the parent node had a followUp, build structured context
+        // instead of concatenating into the query string.
+        let followUpContext: FollowUpContext | undefined;
+        if (parentNodeId) {
+          const parentNode = nodes[parentNodeId];
+          const parentFollowUp = parentNode?.results
+            ? Object.values(parentNode.results)
+                .map((r) => r.followUp)
+                .find(Boolean)
+            : undefined;
+
+          if (parentFollowUp && parentNode) {
+            if (parentNode.followUpContext) {
+              // Extend existing chain
+              followUpContext = {
+                originalQuery: parentNode.followUpContext.originalQuery,
+                followUps: [
+                  ...parentNode.followUpContext.followUps,
+                  { question: parentFollowUp.question, answer: prompt },
+                ],
+              };
+            } else {
+              // Start a new chain
+              followUpContext = {
+                originalQuery: parentNode.query,
+                followUps: [
+                  { question: parentFollowUp.question, answer: prompt },
+                ],
+              };
+            }
+          }
+        }
+
         // Derive selected entity dcids from selected cards via store
         const selectedEntityDcids = getSelectedEntityDcids(selectedShapeIds);
 
         // Create history node in store
-        const nodeId = queryStart(prompt, null, parentNodeId);
+        const nodeId = queryStart(prompt, null, parentNodeId, followUpContext);
 
         // Store active query state for the stream handler
         activeQueryRef.current = {
@@ -205,6 +239,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           atlasContext,
           ancestorChain,
           selectedEntityDcids,
+          followUpContext,
         });
       },
       queryCancel: () => {
