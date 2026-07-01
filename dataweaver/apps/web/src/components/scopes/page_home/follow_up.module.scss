@@ -48,9 +48,7 @@
 
 .inner-container {
   display: grid;
-  grid-template-areas:
-    "content close"
-    "notice notice";
+  grid-template-areas: "content close";
   grid-template-columns: 1fr min-content;
   padding-top: 18px;
 }

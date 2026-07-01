@@ -34,7 +34,7 @@
   flex-direction: column;
   grid-area: content;
   row-gap: 30px;
-  padding: 16px 0 32px 32px;
+  padding: 16px 0 32px 24px;
 
   .title {
     @include type-display;
