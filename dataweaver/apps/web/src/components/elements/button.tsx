@@ -64,7 +64,6 @@ export const Button = ({
       data-size={size}
       data-variant={variant}
       data-tone={tone}
-      data-has-icon={Icon !== undefined}
       disabled={isDisabled}
     >
       {Icon && <Icon className={s.icon} />}
