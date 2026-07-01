@@ -15,7 +15,7 @@ export const History = () => {
     <div className={s.container} role="toolbar" aria-label="History">
       <Button
         icon={IconUndo}
-        size="medium"
+        size="small"
         variant="flat"
         tone="subtle-highlight"
         aria-label="Undo"
@@ -27,7 +27,7 @@ export const History = () => {
 
       <Button
         icon={IconRedo}
-        size="medium"
+        size="small"
         variant="flat"
         tone="subtle-highlight"
         aria-label="Redo"

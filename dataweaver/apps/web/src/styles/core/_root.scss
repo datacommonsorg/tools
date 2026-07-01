@@ -2,9 +2,6 @@
 
 @layer root {
   :root {
-    --outline-offset-default: 2px;
-    --outline-offset-inset: -3px;
-    --outline-offset: var(--outline-offset-default);
     --shadow-elevated:
       0 1px 3px 1px rgb(var(--color-shadow) / 15%),
       0 1px 2px rgb(var(--color-shadow) / 30%);

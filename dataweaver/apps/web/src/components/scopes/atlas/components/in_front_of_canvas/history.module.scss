@@ -1,11 +1,10 @@
 .container {
   display: flex;
-  column-gap: 8px;
+  column-gap: 10px;
   align-items: center;
   justify-content: space-between;
   height: var(--controls-height);
-  padding: 0
-    calc((var(--controls-height) - var(--button-circle-size-medium)) / 2);
+  padding: 0 5px;
   color: rgb(var(--color-control-accent));
   background: rgb(var(--color-control-surface));
   border-radius: calc(var(--controls-height) / 2);

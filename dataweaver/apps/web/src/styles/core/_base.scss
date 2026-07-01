@@ -12,6 +12,6 @@
 
   *:focus-visible:focus {
     outline: 1.5px solid rgb(var(--color-outline));
-    outline-offset: var(--outline-offset);
+    outline-offset: 2px;
   }
 }
