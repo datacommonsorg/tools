@@ -53,11 +53,14 @@ export const useCardDragHandle = (editor: Editor, shapeId: TLShapeId) =>
         target.removeEventListener('pointermove', dragged);
         target.removeEventListener('pointerup', stoppedDragging);
         target.removeEventListener('pointercancel', stoppedDragging);
+        target.removeEventListener('lostpointercapture', stoppedDragging);
+        editor.markHistoryStoppingPoint('drag-card-end');
       };
 
       target.addEventListener('pointermove', dragged);
       target.addEventListener('pointerup', stoppedDragging);
       target.addEventListener('pointercancel', stoppedDragging);
+      target.addEventListener('lostpointercapture', stoppedDragging);
     },
     [editor, shapeId],
   );

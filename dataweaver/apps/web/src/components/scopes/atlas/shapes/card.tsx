@@ -6,7 +6,6 @@ import {
   ShapeUtil,
   T,
   type TLShape,
-  useQuickReactor,
 } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
@@ -26,6 +25,7 @@ import type {
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasStore } from '~/store';
 import { useCardAutoHeight } from './use_card_auto_height';
+import { useCardClearTextSelection } from './use_card_clear_text_selection';
 import { useCardDragHandle } from './use_card_drag_handle';
 
 export const CARD_DATA_ATTRIBUTE = 'data-card';
@@ -206,31 +206,17 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     const variant = shape.props.variant;
     if (!variant) throw new Error('Card shape missing variant.');
 
-    const wasSelectionSingleRef = useRef(false);
     const contentContainerRef = useRef<HTMLDivElement>(null);
 
-    // Drive the shape's 'h' from the rendered content, capped at the variant's
-    // max. Geometry (hit area) and auto-placement both read 'h', so this keeps
-    // the selectable area and the stacking footprint tight to the content
-    const maxHeight = CARD_VARIANT_MAX[variant].h;
-    useCardAutoHeight(contentContainerRef, this.editor, shape.id, maxHeight);
+    useCardAutoHeight(
+      contentContainerRef,
+      this.editor,
+      shape.id,
+      CARD_VARIANT_MAX[variant].h,
+    );
 
-    // When the card stops being the single (focused) selection, drop any text
-    // the user highlighted inside it
-    useQuickReactor('clear card text selection on blur', () => {
-      // Reads selection reactively - so this re-runs whenever it changes
-      const isSelectionSingle = this.#getSelectionState(shape) === 'single';
-      if (wasSelectionSingleRef.current && !isSelectionSingle) {
-        const activeSelection = window.getSelection();
-        if (activeSelection && !activeSelection.isCollapsed) {
-          activeSelection.removeAllRanges();
-        }
-      }
+    useCardClearTextSelection(contentContainerRef, this.editor, shape.id);
 
-      wasSelectionSingleRef.current = isSelectionSingle;
-    }, [shape.id]);
-
-    // Support dragging the card by its actions bar
     const handleActionsPointerDown = useCardDragHandle(this.editor, shape.id);
 
     const isLoading = shape.props.isLoading ?? false;

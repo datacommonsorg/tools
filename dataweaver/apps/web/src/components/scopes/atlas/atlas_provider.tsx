@@ -17,7 +17,7 @@ import {
   ATLAS_OVERLAYS,
   ATLAS_OVERRIDES,
   ATLAS_SHAPES,
-  CARD_VARIANT_SIZE,
+  CARD_VARIANT_MAX,
   ZOOM_STEPS,
 } from './config';
 import { ExportProvider } from './export_provider';
@@ -219,10 +219,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)
         editorReadyRef.current.promise.then((editor) => {
-          const position = placeCard(
-            editor,
-            CARD_VARIANT_SIZE[content.variant],
-          );
+          const position = placeCard(editor, CARD_VARIANT_MAX[content.variant]);
           editor.createShape({
             ...contentToShape(shapeId, content, position),
 

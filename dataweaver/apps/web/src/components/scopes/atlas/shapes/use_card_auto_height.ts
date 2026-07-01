@@ -64,7 +64,7 @@ export const useCardAutoHeight = <TElement extends HTMLElement>(
       // this is a reactive sync, not a user action so don't pollute stack
       editor.run(
         () => {
-          return editor.updateShape({
+          editor.updateShape({
             id: shapeId,
             type: 'card',
             props: { h: newHeight },
