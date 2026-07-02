@@ -15,6 +15,7 @@ import s from './base.module.scss';
 import { useCardAutoHeight } from './use_card_auto_height';
 import { useCardClearTextSelection } from './use_card_clear_text_selection';
 import { useCardDragHandle } from './use_card_drag_handle';
+import { useCardTextClipboard } from './use_card_text_clipboard';
 
 /**
  * How the card is selected on the canvas:
@@ -62,6 +63,8 @@ export const CardBase = ({
   useCardAutoHeight(childrenContainerRef, id, CARD_VARIANT_MAX[variant].h);
 
   useCardClearTextSelection(childrenContainerRef, id);
+
+  useCardTextClipboard(childrenContainerRef);
 
   const startDragging = useCardDragHandle(id);
 
