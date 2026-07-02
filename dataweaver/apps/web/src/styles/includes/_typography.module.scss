@@ -22,9 +22,15 @@
   line-height: 1.2;
 }
 
-@mixin type-headline {
-  font-size: 24px;
-  font-weight: 400;
+$-supported-headline-font-weights: 400, 700;
+
+@mixin type-headline($font-weight: 700) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-headline-font-weights
+  );
+
+  font-size: 20px;
   line-height: 1.2;
 }
 
