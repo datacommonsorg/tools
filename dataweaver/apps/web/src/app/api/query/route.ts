@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
         }
         const noExplicitPlace = places.length === 0;
         if (noExplicitPlace) places = ['Earth'];
+        parsed.places = places;
 
         emit({ type: STREAM_EVENT.parsedQuery, data: parsed });
         if (signal.aborted) {
