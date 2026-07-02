@@ -49,8 +49,6 @@
 }
 
 .button-dismiss {
-  --outline-offset: var(--outline-offset-inset);
-
   grid-area: 1 / 1;
   border-radius: inherit;
 }

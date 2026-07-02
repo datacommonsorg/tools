@@ -1,5 +1,4 @@
 .container {
-  --actions-height: 48px;
   --corner-size: 16px;
   --border-thickness: 2px;
 
@@ -36,6 +35,8 @@
   height: fit-content;
   max-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: thin;
   background: rgb(var(--color-card-surface));
   border: var(--border-thickness) solid transparent;
   border-radius: var(--corner-size);

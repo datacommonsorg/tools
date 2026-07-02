@@ -16,8 +16,8 @@
   gap: 6px;
   align-items: center;
   justify-content: center;
-  height: 50px;
-  padding: 0 50px;
+  height: var(--actions-height);
+  padding: 0 40px;
   pointer-events: auto;
   background: rgb(var(--color-control-accent));
   border-radius: var(--border-radius-medium);

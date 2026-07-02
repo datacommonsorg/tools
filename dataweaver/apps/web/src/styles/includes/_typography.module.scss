@@ -80,7 +80,7 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-large($has-text-box-trim: true) {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 500;
   line-height: 1.4;
 
@@ -90,7 +90,7 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-medium($has-text-box-trim: true) {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
 

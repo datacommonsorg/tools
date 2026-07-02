@@ -1,73 +1,61 @@
-@property --border-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes border-rotate {
-  to {
-    --border-angle: 360deg;
-  }
-}
-
 .outer-container {
-  width: 100%;
+  display: grid;
+  overflow: clip;
+  background: rgb(var(--color-query-surface-raised));
+  border-radius: var(--border-radius-large);
+  box-shadow: var(--shadow-elevated);
+}
+
+.middle-container {
+  height: 100%;
   overflow-y: auto;
   overscroll-behavior: none;
   pointer-events: auto;
-  background:
-    linear-gradient(
-        rgb(var(--color-query-surface-subtle)),
-        rgb(var(--color-query-surface-subtle))
-      )
-      padding-box,
-    conic-gradient(
-        from var(--border-angle),
-        rgb(var(--color-query-accent)),
-        rgb(var(--color-query-accent-subtle)),
-        rgb(var(--color-query-accent)),
-        rgb(var(--color-query-accent-subtle)),
-        rgb(var(--color-query-accent))
-      )
-      border-box;
-  border: 1.5px solid transparent;
-  border-radius: var(--border-radius-large);
-  box-shadow: var(--shadow-elevated);
-
-  // Animate the registered custom property to rotate the border gradient
-  @include prefers-motion {
-    animation: border-rotate 6s linear infinite;
-  }
+  scrollbar-width: thin;
 }
 
 .inner-container {
+  display: grid;
+  grid-template-areas: "content close";
+  grid-template-columns: 1fr min-content;
+  padding-top: 18px;
+}
+
+.button-close {
+  grid-area: close;
+  margin-right: 18px;
+}
+
+.content-container {
   display: flex;
   flex-direction: column;
-  row-gap: 32px;
-  padding: 40px;
-}
+  grid-area: content;
+  row-gap: 24px;
+  padding: 16px 0 32px 24px;
 
-.question {
-  @include type-body-large(500);
+  .question {
+    @include type-body-large(500);
 
-  align-self: flex-end;
-  max-width: 80%;
-  padding: 20px 28px;
-  color: rgb(var(--color-query-content-subtle));
-  background: rgb(var(--color-query-surface-muted));
-  border-radius: var(--border-radius-medium);
-}
+    width: fit-content;
+    max-width: 90%;
+    min-height: 44px;
+    padding: 9px 16px;
+    color: rgb(var(--color-query-content-subtle));
+    background: rgb(var(--color-query-surface-muted));
+    border-radius: 22px;
+  }
 
-.answer {
-  @include type-body-large;
+  .answer {
+    @include type-body-large;
 
-  color: rgb(var(--color-query-content-subtle));
-  white-space: break-spaces;
-}
+    color: rgb(var(--color-query-content-subtle));
+    white-space: break-spaces;
+  }
 
-.prompts-container {
-  display: flex;
-  flex-direction: column;
-  row-gap: 8px;
-  align-items: flex-start;
+  .prompts-container {
+    display: flex;
+    flex-direction: column;
+    row-gap: 8px;
+    align-items: flex-start;
+  }
 }
