@@ -4,6 +4,7 @@ import { AnimatePresence } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasSelectedCards } from '~/components/scopes/atlas/use_atlas_selected_cards';
+
 import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';
@@ -15,7 +16,11 @@ import { Status } from './status';
 /** Show a tag per card up to this many; beyond it, collapse to a count tag. */
 const MAX_VISIBLE_TAGS = 2;
 
-export const PageHome = () => {
+interface PageHomeProps {
+  examplePrompts: string[];
+}
+
+export const PageHome = ({ examplePrompts }: PageHomeProps) => {
   const { runPrompt } = useQueryActions();
   const currentStatus = useAtlasStore((s) => s.currentStatus);
   const latestNode = useAtlasStore((s) =>
@@ -82,6 +87,7 @@ export const PageHome = () => {
             key="intro"
             onSelect={submitPrompt}
             onClose={() => setIsIntroVisible(false)}
+            prompts={examplePrompts}
           />
         )}
 
