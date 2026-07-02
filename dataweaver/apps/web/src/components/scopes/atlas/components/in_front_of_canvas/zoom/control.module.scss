@@ -3,7 +3,7 @@
   gap: 2px;
   align-items: center;
   height: var(--controls-height);
-  padding: 0 8px;
+  padding: 0 5px;
   color: rgb(var(--color-control-accent));
   background: rgb(var(--color-control-surface));
   border-radius: calc(var(--controls-height) / 2);
@@ -12,8 +12,8 @@
   .button-value {
     @include type-label-large;
 
-    width: 60px;
-    height: 28px;
+    width: 48px;
+    height: var(--button-circle-size-small);
     color: rgb(var(--color-control-accent));
     text-align: center;
     border-radius: var(--border-radius-small);

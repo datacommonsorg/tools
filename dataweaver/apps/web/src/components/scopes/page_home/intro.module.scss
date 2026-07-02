@@ -1,10 +1,18 @@
 .outer-container {
-  overflow-y: auto;
-  overscroll-behavior: none;
+  display: grid;
+  overflow: clip;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
   border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
+}
+
+.middle-container {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  pointer-events: auto;
+  scrollbar-width: thin;
 }
 
 .inner-container {
@@ -13,25 +21,25 @@
     "content close"
     "notice notice";
   grid-template-columns: 1fr min-content;
-  padding-top: 20px;
+  padding-top: 18px;
 }
 
 .button-close {
   grid-area: close;
-  margin-right: 20px;
+  margin-right: 18px;
 }
 
 .content-container {
   display: flex;
   flex-direction: column;
   grid-area: content;
-  row-gap: 32px;
-  padding: 20px 0 40px 32px;
+  row-gap: 24px;
+  padding: 16px 0 32px 24px;
 
   .title {
     @include type-display;
 
-    max-width: 540px;
+    max-width: 420px;
     color: rgb(var(--color-query-content-subtle));
   }
 
@@ -64,7 +72,7 @@
   grid-area: notice;
   column-gap: 4px;
   align-items: center;
-  padding: 18px 28px;
+  padding: 16px 28px;
   color: rgb(var(--color-query-content));
   background: rgb(var(--color-query-surface-subtle));
 

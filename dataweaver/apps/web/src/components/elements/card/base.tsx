@@ -80,7 +80,7 @@ export const CardBase = ({
           <Button
             key={index}
             icon={action.icon}
-            size="medium"
+            size="large"
             variant="flat"
             tone="card-action"
             aria-label={action.label}

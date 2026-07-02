@@ -41,8 +41,8 @@
   }
 
   &:focus-visible:focus + .indicator {
-    outline: 1px dashed currentcolor;
-    outline-offset: var(--outline-offset);
+    outline: 1.5px solid rgb(var(--color-outline));
+    outline-offset: 2px;
   }
 }
 

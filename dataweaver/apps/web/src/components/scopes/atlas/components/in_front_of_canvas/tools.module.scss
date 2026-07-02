@@ -4,7 +4,7 @@
   right: var(--tools-gutter-outer);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  row-gap: 16px;
   align-items: center;
   width: var(--tools-width);
   padding: var(--tools-gutter-inner);

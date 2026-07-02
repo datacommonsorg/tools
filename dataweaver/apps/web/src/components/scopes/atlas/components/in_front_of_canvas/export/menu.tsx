@@ -57,7 +57,7 @@ export const Menu = ({ id, onClose }: MenuProps) => {
         <Button
           icon={IconClose}
           className={s['button-close']}
-          size="medium"
+          size="large"
           variant="flat"
           tone="subtle"
           aria-label="Close export"

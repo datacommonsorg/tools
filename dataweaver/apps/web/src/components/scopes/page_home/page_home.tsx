@@ -36,6 +36,12 @@ export const PageHome = () => {
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
+
+  // TODO: Explore if we can drop dismissed node ID by improving how FollowUp
+  // 'onClose' handles the follow-up state. Currently, if a user dismisses a
+  // follow-up and then the same node is re-run, the follow-up will reappear.
+  // This state here is a workaround to prevent that for now
+  const [dismissedNodeId, setDismissedNodeId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
   const submitPrompt = (value = promptValue) => {
@@ -60,16 +66,22 @@ export const PageHome = () => {
           .map((r) => r.followUp)
           .filter(Boolean)
       : [];
+
     // TODO - we currently can get more than one follow-up, as the api will return
     // one per place in the query. Here I'm just using the first one, but we'll need to figure
     // out a better way to handle this
     const firstFollowUp = followUps[0];
-    if (latestNode && firstFollowUp && currentStatus === STATUS.complete) {
+    if (
+      latestNode &&
+      firstFollowUp &&
+      currentStatus === STATUS.complete &&
+      latestNode.id !== dismissedNodeId
+    ) {
       setFollowUp(firstFollowUp);
     } else {
       setFollowUp(null);
     }
-  }, [currentStatus, latestNode]);
+  }, [currentStatus, latestNode, dismissedNodeId]);
 
   return (
     <div className={s.container}>
@@ -88,6 +100,10 @@ export const PageHome = () => {
             prompt={query}
             followUp={followUp}
             onSelect={submitPrompt}
+            onClose={() => {
+              setFollowUp(null);
+              if (latestNode) setDismissedNodeId(latestNode.id);
+            }}
           />
         )}
 
