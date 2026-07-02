@@ -54,6 +54,7 @@ export interface AtlasStore {
   ) => void;
   cardUnregister: (shapeId: string) => void;
   queryCancel: (nodeId: string) => void;
+  nodeDismissFollowUp: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
   querySetStatus: (val: string) => void;
 
@@ -271,6 +272,33 @@ export const useAtlasStore = create<AtlasStore>()(
             },
             undefined,
             'queryCancel',
+          );
+        },
+
+        nodeDismissFollowUp: (nodeId) => {
+          set(
+            (state) => {
+              const node = state.nodes[nodeId];
+              if (!node) return state;
+
+              const { [nodeId]: _, ...remainingNodes } = state.nodes;
+              const remainingCards = Object.fromEntries(
+                Object.entries(state.cards).filter(
+                  ([, card]) => card.historyNodeId !== nodeId,
+                ),
+              );
+
+              return {
+                nodes: remainingNodes,
+                cards: remainingCards,
+                latestNodeId:
+                  state.latestNodeId === nodeId
+                    ? (node.parentId ?? null)
+                    : state.latestNodeId,
+              };
+            },
+            undefined,
+            'nodeDismissFollowUp',
           );
         },
 

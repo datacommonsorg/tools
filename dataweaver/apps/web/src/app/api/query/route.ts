@@ -249,7 +249,8 @@ export async function POST(request: NextRequest) {
             coverage: parsedResponse.coverage,
             insights: parsedResponse.insights,
             relatedQueries: parsedResponse.relatedQueries,
-            followUp: parsedResponse.followUp,
+            followUp:
+              variables.length === 0 ? parsedResponse.followUp : undefined,
           };
 
           // Strip follow-up options when no explicit place was provided —
