@@ -51,6 +51,8 @@ export const FollowUp = ({
 
           <div className={s['content-container']}>
             <p className={s.question}>{prompt}</p>
+            <div className={s.answer}>{followUp.summary}</div>
+            <div className={s.answer}>{followUp.question}</div>
 
             {options.length > 0 && (
               <ul className={s['prompts-container']}>
