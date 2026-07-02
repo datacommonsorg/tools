@@ -7,6 +7,7 @@
 }
 
 .actions-container {
+  z-index: $z-index-behind-content;
   display: flex;
   grid-area: 1 / 1;
   gap: 6px;
@@ -14,13 +15,18 @@
   justify-content: center;
   height: calc(var(--actions-height) + var(--corner-size));
   padding-bottom: calc(var(--corner-size) - var(--border-thickness));
-  margin: var(--actions-height) 2px 0;
+  margin-inline: 2px;
+  cursor: grab;
   background: rgb(var(--color-card-surface-selected));
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow: var(--shadow-elevated);
 
+  &:active {
+    cursor: grabbing;
+  }
+
   @include prefers-motion {
-    transition: transform 0.5s $ease-out;
+    transition: transform 0.3s $ease-out;
   }
 
   :is([data-selection="single"]) & {
@@ -36,23 +42,28 @@
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: none;
-  scrollbar-width: thin;
+
+  // Dragging the card is reserved for the actions bar, so the content is a
+  // freely selectable text surface rather than a drag handle (this overrides
+  // tldraw's default move cursor on shapes)
+  cursor: auto;
+
+  // tldraw forces 'user-select: none' on all nested nodes. This ensures we
+  // allow selecting text when in single selection mode
+  :is([data-selection="single"]) & * {
+    user-select: text;
+  }
+
   background: rgb(var(--color-card-surface));
   border: var(--border-thickness) solid transparent;
   border-radius: var(--corner-size);
   box-shadow: var(--shadow-elevated);
 
   @include prefers-motion {
-    transition:
-      transform 0.5s $ease-out,
-      border-color 0.1s $ease-linear;
+    transition: border-color 0.1s $ease-linear;
   }
 
   :is([data-selection="single"], [data-selection="multiple"]) & {
     border-color: rgb(var(--color-card-surface-selected));
-  }
-
-  :is([data-selection="single"]) & {
-    transform: translateY(var(--actions-height));
   }
 }

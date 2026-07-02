@@ -60,6 +60,8 @@ export const CardText = ({
 
   return (
     <Card.Base
+      id={id}
+      variant="text"
       isLoading={isLoading}
       selection={selection}
       actions={[

@@ -74,6 +74,8 @@ export const CardChart = ({
 
   return (
     <Card.Base
+      id={id}
+      variant="chart"
       isLoading={isLoading}
       selection={selection}
       actions={[

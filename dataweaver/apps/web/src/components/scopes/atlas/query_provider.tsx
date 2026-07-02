@@ -9,12 +9,12 @@ import {
   useRef,
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
-import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
 import type { CardEntry, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
 import { useStoreShapeSync } from './sync_store';
+import { useStreamingQuery } from './use_streaming_query';
 
 export interface Status {
   promptValue: string;

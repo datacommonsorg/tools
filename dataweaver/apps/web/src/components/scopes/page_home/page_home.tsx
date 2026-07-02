@@ -2,8 +2,8 @@
 
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
-import { useAtlasSelectedCards } from '~/components/scopes/atlas/hooks/use_atlas_selected_cards';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
+import { useAtlasSelectedCards } from '~/components/scopes/atlas/use_atlas_selected_cards';
 import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';

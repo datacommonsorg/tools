@@ -117,6 +117,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   };
 
   override component = (shape: ShapeCard) => {
+    const variant = shape.props.variant;
+    if (!variant) throw new Error('Card shape missing variant.');
+
     return (
       <HTMLContainer
         // Marks the card in the DOM so that we can target it with CSS selectors
