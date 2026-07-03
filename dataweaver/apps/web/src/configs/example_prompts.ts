@@ -1,3 +1,4 @@
+// TODO: these are just placeholders, replace these with a list of properly vetted questions
 export const EXAMPLE_PROMPTS = [
   'How access to electricity has changed across countries in Africa?',
   'Which countries have the highest access to mobile phones?',
