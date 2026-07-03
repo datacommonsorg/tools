@@ -123,6 +123,14 @@ export async function POST(request: NextRequest) {
         });
         const geminiTools = await fetchGeminiTools(signal);
 
+        // Accumulator: collect disambiguation/follow-up signals across places.
+        // After the loop we synthesize at most one follow-up for the whole round.
+        const disambiguationEntries: Array<{
+          place: string;
+          followUp: FollowUp;
+        }> = [];
+        let emittedResultCount = 0;
+
         // Process each place
         for (let i = 0; i < places.length; i++) {
           if (signal.aborted) break;
@@ -199,7 +207,18 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const variables = parsedResponse.variables || [];
-          if (variables.length === 0 && !parsedResponse.followUp) {
+
+          // If the model returned a follow-up signal (disambiguation / fallback),
+          // stash it for post-loop synthesis instead of emitting per-place.
+          if (parsedResponse.followUp && variables.length === 0) {
+            disambiguationEntries.push({
+              place,
+              followUp: parsedResponse.followUp,
+            });
+            continue;
+          }
+
+          if (variables.length === 0) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -208,7 +227,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-          if (!entityDcid && !parsedResponse.followUp) {
+          if (!entityDcid) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -223,16 +242,12 @@ export async function POST(request: NextRequest) {
             message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const timeSeries = entityDcid
-            ? await Promise.all(
-                variables.map((v) =>
-                  fetchTimeSeries(v.dcid, entityDcid, signal),
-                ),
-              )
-            : [];
-          const entities = entityDcid
-            ? [{ dcid: entityDcid, name: parsedResponse.placeName || place }]
-            : [];
+          const timeSeries = await Promise.all(
+            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
+          );
+          const entities = [
+            { dcid: entityDcid, name: parsedResponse.placeName || place },
+          ];
           const discoveryResult: QueryResult = {
             id: nanoid(),
             title:
@@ -250,15 +265,7 @@ export async function POST(request: NextRequest) {
             coverage: parsedResponse.coverage,
             insights: parsedResponse.insights,
             relatedQueries: parsedResponse.relatedQueries,
-            followUp:
-              variables.length === 0 ? parsedResponse.followUp : undefined,
           };
-
-          // Strip follow-up options when no explicit place was provided —
-          // the question should only ask the user to specify a place.
-          if (noExplicitPlace && discoveryResult.followUp) {
-            discoveryResult.followUp.options = [];
-          }
 
           const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
           discoveryResult.tableHtml = tableHtml;
@@ -268,6 +275,51 @@ export async function POST(request: NextRequest) {
             type: STREAM_EVENT.queryResult,
             result: discoveryResult,
             place,
+          });
+          emittedResultCount++;
+        }
+
+        // ─── Post-loop: synthesize a single follow-up if needed ──────────
+        const firstDisambiguation = disambiguationEntries[0];
+        if (firstDisambiguation) {
+          // Merge all disambiguation signals into one follow-up.
+          // Use the first entry as the base and combine options.
+          const base = firstDisambiguation.followUp;
+          const mergedFollowUp: FollowUp = {
+            summary: base.summary,
+            question: base.question,
+            options: base.options,
+          };
+
+          // If multiple places triggered disambiguation, merge summaries.
+          if (disambiguationEntries.length > 1) {
+            mergedFollowUp.summary = disambiguationEntries
+              .map((e) => e.followUp.summary)
+              .filter(Boolean)
+              .join(' ');
+            mergedFollowUp.options = disambiguationEntries
+              .flatMap((e) => e.followUp.options)
+              .slice(0, 4);
+          }
+
+          // Strip options when no explicit place was provided —
+          // the question should only ask the user to specify a place.
+          if (noExplicitPlace) {
+            mergedFollowUp.options = [];
+          }
+
+          emit({ type: STREAM_EVENT.followUp, data: mergedFollowUp });
+        } else if (emittedResultCount === 0) {
+          // Invariant: never emit nothing. If no results and no disambiguation,
+          // send a generic fallback follow-up.
+          emit({
+            type: STREAM_EVENT.followUp,
+            data: {
+              summary: '',
+              question:
+                'I wasn\u2019t able to find relevant data for your query. Could you try rephrasing or being more specific about a place or topic?',
+              options: [],
+            },
           });
         }
 

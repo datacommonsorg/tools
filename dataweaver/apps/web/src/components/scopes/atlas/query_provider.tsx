@@ -64,6 +64,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       nodeSetParsedQuery,
       querySetStatus,
       nodeAddResult,
+      nodeSetFollowUp,
       cardRegisterBatch,
       queryComplete,
       queryFail,
@@ -86,12 +87,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         // Write the query result data to the history node.
         nodeAddResult(active.nodeId, entityDcid, result);
-
-        if (result.followUp) {
-          // If the api has returned a follow-up question, we skip card registration here,
-          // as the FollowUp component will be rendered instead of new cards
-          return;
-        }
 
         // Batch-register result cards.
         const resultEntries: CardEntry[] = [
@@ -153,6 +148,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(event.reason);
         break;
       }
+
+      case STREAM_EVENT.followUp: {
+        nodeSetFollowUp(active.nodeId, event.data);
+        break;
+      }
     }
   }, []);
 
@@ -188,11 +188,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         let followUpContext: FollowUpContext | undefined;
         if (parentNodeId) {
           const parentNode = nodes[parentNodeId];
-          const parentFollowUp = parentNode?.results
-            ? Object.values(parentNode.results)
-                .map((r) => r.followUp)
-                .find(Boolean)
-            : undefined;
+          const parentFollowUp = parentNode?.followUp;
 
           if (parentFollowUp && parentNode) {
             if (parentNode.followUpContext) {

@@ -62,18 +62,9 @@ export const PageHome = ({ examplePrompts }: PageHomeProps) => {
     currentStatus !== STATUS.idle;
 
   useEffect(() => {
-    const followUps = latestNode?.results
-      ? Object.values(latestNode.results)
-          .map((r) => r.followUp)
-          .filter(Boolean)
-      : [];
-
-    // TODO - we currently can get more than one follow-up, as the api will return
-    // one per place in the query. Here I'm just using the first one, but we'll need to figure
-    // out a better way to handle this
-    const firstFollowUp = followUps[0];
-    if (latestNode && firstFollowUp && currentStatus === STATUS.complete) {
-      setFollowUp(firstFollowUp);
+    const nodeFollowUp = latestNode?.followUp;
+    if (latestNode && nodeFollowUp && currentStatus === STATUS.complete) {
+      setFollowUp(nodeFollowUp);
     } else {
       setFollowUp(null);
     }

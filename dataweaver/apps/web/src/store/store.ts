@@ -4,6 +4,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  FollowUp,
   FollowUpContext,
   HistoryNode,
   ParsedQuery,
@@ -37,6 +38,7 @@ export interface AtlasStore {
     placeDcid: string,
     result: QueryResult,
   ) => void;
+  nodeSetFollowUp: (nodeId: string, followUp: FollowUp) => void;
   queryComplete: (nodeId: string, cardIds: string[]) => void;
   queryFail: (nodeId: string) => void;
   cardRegister: (
@@ -132,6 +134,23 @@ export const useAtlasStore = create<AtlasStore>()(
             },
             undefined,
             'nodeAddResult',
+          );
+        },
+
+        nodeSetFollowUp: (nodeId, followUp) => {
+          set(
+            (state) => {
+              const node = state.nodes[nodeId];
+              if (!node) return state;
+              return {
+                nodes: {
+                  ...state.nodes,
+                  [nodeId]: { ...node, followUp },
+                },
+              };
+            },
+            undefined,
+            'nodeSetFollowUp',
           );
         },
 

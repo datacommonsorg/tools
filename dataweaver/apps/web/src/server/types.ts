@@ -81,7 +81,6 @@ export interface QueryResult {
   relatedQueries?: string[];
   tableHtml?: string;
   notesHtml?: string;
-  followUp?: FollowUp;
 }
 
 export interface FacetInfo {
@@ -169,6 +168,7 @@ export const STREAM_EVENT = {
   parsedQuery: 'parsed_query',
   toolCall: 'tool_call',
   queryResult: 'query_result',
+  followUp: 'follow_up',
   placeSkipped: 'place_skipped',
   complete: 'complete',
   error: 'error',
@@ -187,6 +187,7 @@ export type StreamEvent =
       result: QueryResult;
       place: string;
     }
+  | { type: typeof STREAM_EVENT.followUp; data: FollowUp }
   | { type: typeof STREAM_EVENT.placeSkipped; place: string; reason: string }
   | { type: typeof STREAM_EVENT.complete; message: string }
   | { type: typeof STREAM_EVENT.error; message: string };
