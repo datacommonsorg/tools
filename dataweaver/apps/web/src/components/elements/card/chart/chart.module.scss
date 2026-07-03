@@ -1,5 +1,14 @@
+.container {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 28px 28px 0;
+}
+
 .header-container {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   row-gap: 8px;
   color: rgb(var(--color-card-content));

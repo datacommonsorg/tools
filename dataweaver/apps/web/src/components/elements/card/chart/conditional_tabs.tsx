@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { AnimatePresence, m } from 'motion/react';
 import type { ComponentPropsWithRef, ComponentType, ReactNode } from 'react';
 import { useId, useState } from 'react';
@@ -59,6 +60,7 @@ export const ConditionalTabs = ({ tabs }: ConditionalTabsProps) => {
           <m.div
             key={activeTab.label}
             role="tabpanel"
+            className={clsx(s.panel)}
             id={panelId(activeIndex)}
             aria-labelledby={tabId(activeIndex)}
             initial={{ opacity: 0 }}
