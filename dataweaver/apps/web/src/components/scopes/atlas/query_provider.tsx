@@ -47,7 +47,6 @@ interface ActiveQuery {
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const { editor } = useAtlas();
-  const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
 
   // Mount the store→shape sync layer
   useStoreShapeSync();
@@ -176,6 +175,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(STATUS.starting);
 
         // Derive context from selected shapes
+        const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
         const parentNodeId = getContextNodeId(selectedShapeIds);
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
           query: node.query,
@@ -248,7 +248,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = null;
       },
     }),
-    [selectedShapeIds, startStream, abortStream],
+    [editor, startStream, abortStream],
   );
 
   return (
