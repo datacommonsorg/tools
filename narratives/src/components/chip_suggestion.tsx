@@ -1,34 +1,32 @@
 /**
- * @fileoverview Suggestion chip — a single clickable starter-question pill
- * shown on the empty Data Agent home screen.
+ * @fileoverview Renders a clickable suggestion chip.
  */
 
-interface ChipSuggestionProps {
+interface SuggestionChipProps {
   text: string;
   onClick?: (text: string) => void;
 }
 
-// Logically grouped Tailwind classes for readability.
+/**
+ * Logically grouped Tailwind classes for high readability.
+ */
 const CHIP_CLASSES = [
   // Layout & dimensions
-  "w-[250px] min-h-[72px] px-4 py-3 flex items-center justify-center sm:justify-start",
+  "w-full sm:w-[250px] min-h-[72px] px-4 py-3 flex items-center justify-center sm:justify-start",
   // Borders & background
   "border border-gray-200 rounded-[20px] bg-white",
-  // Typography & alignment
+  // Typography & text alignment
   "text-body-medium text-on-surface text-left",
   // Motion & transitions
-  "cursor-pointer transition-all duration-200",
+  "transition-all duration-200",
   // Shadow states
   "shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-md",
-  // Interactive hover state
-  "hover:bg-gray-50",
+  // Interactive hover states
+  "hover:bg-gray-50 cursor-pointer",
 ].join(" ");
 
-/**
- * Renders a single suggestion chip. Clicking it forwards the chip text to the
- * optional `onClick` handler so the parent can pre-fill the prompt input.
- */
-export function ChipSuggestion({ text, onClick }: ChipSuggestionProps) {
+/** Renders one clickable prompt-suggestion chip. */
+export function SuggestionChip({ text, onClick }: SuggestionChipProps) {
   return (
     <button
       type="button"

@@ -1,8 +1,13 @@
 /**
- * @fileoverview Generic same-origin iframe wrapper for embedding upstream
- * Custom DC Flask-rendered tool pages (/tools/download, /tools/statvar,
- * /tools/map, …) directly inside our React app without showing upstream's
- * own top nav.
+ * @fileoverview Provides a same-origin iframe wrapper that embeds upstream Custom DC Flask tool pages.
+ */
+
+import { useCallback, useRef } from "react";
+
+/**
+ * Generic same-origin iframe wrapper for embedding upstream Custom DC
+ * Flask-rendered tool pages (/tools/download, /tools/statvar, /tools/map, …)
+ * directly inside our React app without showing upstream's own top nav.
  *
  * How it works:
  *   • iframe src is a relative path — same-origin in dev (Vite proxy →
@@ -19,9 +24,7 @@
  * /tools/download?embed=1) and a template branch that drops the nav.
  */
 
-import { useCallback, useRef } from "react";
-
-interface IframeUpstreamToolProps {
+interface UpstreamToolIframeProps {
   src: string;
   title: string;
   // Optional tool-specific CSS appended after the generic chrome-hider rules.
@@ -29,11 +32,13 @@ interface IframeUpstreamToolProps {
   extraCss?: string;
 }
 
-// CSS targets are derived from probing the deployed upstream pages:
-//   • nav#main-navbar-container — 96px tall "Custom Data Commons / Tools / Docs"
-//   • header#main-header — wrapper around the nav
-//   • div#main — page body wrapper with padding-top:96px baked in to clear
-//     the (now-hidden) fixed nav
+/**
+ * CSS targets are derived from probing the deployed upstream pages:
+ *   • nav#main-navbar-container — 96px tall "Custom Data Commons / Tools / Docs"
+ *   • header#main-header — wrapper around the nav
+ *   • div#main — page body wrapper with padding-top:96px baked in to clear
+ *     the (now-hidden) fixed nav
+ */
 const CHROME_HIDER_CSS = `
   #main-header,
   #main-navbar-container,
@@ -48,15 +53,12 @@ const CHROME_HIDER_CSS = `
 
 const INJECTED_STYLE_ID = "cdc-iframe-chrome-hider";
 
-/**
- * Renders a same-origin iframe for an upstream tool page and strips its nav/
- * header/footer chrome on load so it blends into the host app shell.
- */
-export function IframeUpstreamTool({
+/** Embeds an upstream Flask-rendered tool page in an iframe, hiding its own chrome. */
+export function UpstreamToolIframe({
   src,
   title,
   extraCss,
-}: IframeUpstreamToolProps) {
+}: UpstreamToolIframeProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Fires on every iframe `load` — including internal navigations within the

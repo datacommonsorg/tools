@@ -5,30 +5,41 @@
  * Single source of truth for the design system.
  *
  * Colors registered here as `--color-*` automatically generate Tailwind v4
- * utility classes (e.g. `--color-brand-primary-dark` → `bg-brand-primary-dark`,
- * `text-brand-primary-dark`, `border-brand-primary-dark`, `hover:bg-brand-primary-dark`,
- * etc.) AND are available as CSS custom properties for use inside `var()`. Edit a
- * value here and every consumer updates.
- *
- * Token names are semantic (describing role, not hue) so a downstream instance
- * can re-skin the app by editing values here without touching component classes.
+ * utility classes (e.g. `--color-brand-primary` → `bg-brand-primary`,
+ * `text-brand-primary`, `border-brand-primary`, `hover:bg-brand-primary`,
+ * etc.) AND are available as CSS custom properties for use inside `var()`.
+ * Edit a value here and every consumer updates.
  *
  * Names mirror the Figma GM3 token vocabulary where possible.
+ *
+ * BRAND-DRIVEN TOKENS: tokens below written as `var(--brand-*, <fallback>)` are
+ * recolored at runtime from the instance's branding.json. hooks/use_branding.ts
+ * fetches the config bucket and sets `--brand-primary`, `--brand-accent`,
+ * `--brand-text`, `--brand-text-muted`, `--brand-surface`, `--brand-background`,
+ * `--brand-font`, `--brand-font-body` on :root. The `<fallback>` after the comma
+ * is the shipped design value used when no branding.json is present — keep it in
+ * sync with DEFAULT_BRAND in useBranding.ts. The hero-gradient stops are
+ * brand-driven too (--brand-gradient-start / --brand-gradient-end). The
+ * user-message bubble (--color-user-msg) remains a fixed design token with no
+ * branding.json field.
  */
 @theme {
-  --font-sans: "Google Sans Text", "Inter", system-ui, sans-serif;
-  --font-display: "Google Sans", "Roboto", system-ui, sans-serif;
+  --font-sans: var(--brand-font-body, "Google Sans Text", "Inter", system-ui, sans-serif);
+  --font-display: var(--brand-font, "Google Sans", "Roboto", system-ui, sans-serif);
 
   /* Brand */
-  --color-brand-primary: var(--brand-primary, #1A73E8);
-  --color-brand-accent: var(--brand-accent, #34A853);
-  --color-brand-primary-dark: #175C75;
-  --color-brand-gradient-start: #65A782;
-  --color-brand-gradient-end: #6FAEC0;
+  --color-brand-primary: var(--brand-primary, #175C75);
+  --color-brand-accent: var(--brand-accent, #65A782);
+  /* Hero-gradient stops (the "Data Agent" heading). Brand-driven via
+     branding.json's colors.gradient_start / colors.gradient_end; the literals
+     after the comma are the shipped design fallback (green → teal). */
+  --color-brand-gradient-start: var(--brand-gradient-start, #65A782);
+  --color-brand-gradient-end: var(--brand-gradient-end, #6FAEC0);
 
   /* Surfaces */
-  --color-surface-soft: #F9F9F9;
+  --color-surface-soft: var(--brand-surface, #F9F9F9);
   --color-surface-blue: #f0f4f9;
+  /* User-message bubble — fixed pale-teal design token. */
   --color-user-msg: #E8F2F4;
   --color-button-hover: #e1e5eb;
 
@@ -36,8 +47,8 @@
   --color-line: #C4C7C5;
 
   /* Text — primary */
-  --color-on-surface: #1B1C1D;
-  --color-on-surface-variant: #444746;
+  --color-on-surface: var(--brand-text, #1B1C1D);
+  --color-on-surface-variant: var(--brand-text-muted, #444746);
   --color-muted: #575B5F;
   --color-subtle: #747775;
   --color-placeholder: #8E918F;
@@ -50,42 +61,48 @@
 
 :root {
   /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
-     Consumed by the .text-* utility classes below. */
-  --static-display-small-font: var(--brand-font, "Google Sans");
+     Consumed by the .text-* utility classes below. Font families reference
+     the brand-driven theme fonts (--font-display / --font-sans) so a
+     branding.json font override propagates to every type style. */
+  --static-display-small-font: var(--font-display, "Google Sans");
   --static-display-small-size: 32px;
   --static-display-small-line-height: 36px;
 
-  --static-title-large-font: var(--brand-font, "Google Sans");
+  --static-title-large-font: var(--font-display, "Google Sans");
   --static-title-large-size: 22px;
   --static-title-large-line-height: 28px;
 
-  --static-body-large-font: var(--brand-font, "Google Sans Text");
+  --static-body-large-font: var(--font-sans, "Google Sans Text");
   --static-body-large-size: 16px;
   --static-body-large-line-height: 24px;
 
-  --static-body-medium-font: var(--brand-font, "Google Sans Text");
+  --static-body-medium-font: var(--font-sans, "Google Sans Text");
   --static-body-medium-size: 14px;
   --static-body-medium-line-height: 20px;
 
-  --static-label-large-font: var(--brand-font, "Google Sans Text");
+  --static-label-large-font: var(--font-sans, "Google Sans Text");
   --static-label-large-size: 14px;
   --static-label-large-line-height: 20px;
 
-  --static-label-small-font: var(--brand-font, "Google Sans Text");
+  --static-label-small-font: var(--font-sans, "Google Sans Text");
   --static-label-small-size: 11px;
   --static-label-small-line-height: 16px;
 
-  --static-caption-font: var(--brand-font, "Google Sans Text");
+  --static-caption-font: var(--font-sans, "Google Sans Text");
   --static-caption-size: 12px;
   --static-caption-line-height: 16px;
 }
 
-body {
+html, body {
   font-family: var(--font-sans);
-  background-color: var(--color-white);
+  background-color: var(--brand-background, #ffffff);
   color: var(--color-on-surface);
   margin: 0;
   padding: 0;
+  /* Prevent any rogue fixed-width child from causing a horizontal scrollbar
+     on narrow viewports. Internal scrollable regions (chat list, drawer)
+     handle their own overflow. */
+  overflow-x: hidden;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -192,24 +209,131 @@ body {
 }
 
 /* ────────────────────────────────────────────────────────────────────
- * Print stylesheet: when ExportPdfButton triggers window.print(),
- * `body[data-print-target]` is set; the AnswerPanel keeps rendering
- * while everything else (sidebar, header, chat input) is hidden.
+ * Long inline-code tokens (e.g. StatVar DCIDs like
+ * `Amount_EconomicActivity_GrossDomesticProduction`) have no spaces, so
+ * they never find a break opportunity and force horizontal scroll in the
+ * chat column. Allow them to wrap mid-token. `min-width: 0` on the
+ * markdown containers lets them shrink below their content's intrinsic
+ * width inside the flex layout. Block code (<pre>) keeps its own
+ * overflow-auto scroll and is intentionally excluded.
+ * ──────────────────────────────────────────────────────────────────── */
+.reasoning-markdown,
+.thought-markdown,
+.markdown-body {
+  min-width: 0;
+}
+.reasoning-markdown :not(pre) > code,
+.thought-markdown :not(pre) > code,
+.markdown-body :not(pre) > code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * On-screen chart sizing (mobile fix). Data Commons web-component charts
+ * size their internal SVG to the width of their host element. Custom
+ * elements default to `display: inline`, which does NOT constrain width —
+ * so on narrow viewports the chart's SVG keeps its wider intrinsic size
+ * and overflows the card's right edge (then gets clipped by
+ * body{overflow-x:hidden}, so the right edge of the chart and the title
+ * appear cropped). Force the host elements to fill — and never exceed —
+ * their card width so the component's ResizeObserver redraws the chart at
+ * the actual viewport width. `min-width: 0` lets the card shrink below the
+ * SVG's intrinsic width inside the flex/grid layout. This mirrors the
+ * print rules below, which only apply under body[data-print-target].
+ * ──────────────────────────────────────────────────────────────────── */
+.dc-charts-container {
+  min-width: 0;
+  max-width: 100%;
+}
+.dc-chart-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.dc-chart-card datacommons-line,
+.dc-chart-card datacommons-bar,
+.dc-chart-card datacommons-ranking,
+.dc-chart-card datacommons-map,
+.dc-chart-card datacommons-highlight,
+.dc-chart-card datacommons-gauge,
+.dc-chart-card datacommons-pie,
+.dc-chart-card datacommons-scatter,
+.dc-chart-card datacommons-slider {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Print stylesheet: when the Export PDF action fires (see
+ * utils/printElement.ts), `body[data-print-target]` is set and the
+ * selected answer panel is tagged with `data-print-active`. We then
+ * hide every other element on the page via visibility, so the user gets
+ * a clean PDF of just THAT one Q&A — not the rest of the conversation
+ * and not the chrome (sidebar / header / input bar / other turns).
+ *
+ * `visibility: hidden` (instead of `display: none`) lets the active
+ * subtree keep its ancestors' layout intact, which avoids breaking the
+ * absolute/flex containers around it during the print render pass.
  * ──────────────────────────────────────────────────────────────────── */
 @media print {
-  body[data-print-target] aside,
-  body[data-print-target] header,
-  body[data-print-target] nav,
-  body[data-print-target] [data-non-print="true"] {
-    display: none !important;
-  }
   body[data-print-target] {
     background: #ffffff !important;
   }
-  body[data-print-target] #answer-panel {
+  /* Hide every body descendant that is NOT on the path to the active panel
+     and NOT inside the active subtree. The JS in utils/printElement.ts has
+     marked the path with `data-print-ancestor`; the active panel itself
+     carries `data-print-active`. */
+  body[data-print-target]
+    *:not([data-print-ancestor]):not([data-print-active]):not(
+      [data-print-active] *
+    ) {
+    display: none !important;
+  }
+  /* Even inside the active subtree, hide elements explicitly marked
+     non-printable — e.g. the "Export PDF" buttons themselves, which are
+     UI affordances, not document content. */
+  body[data-print-target] [data-non-print="true"] {
+    display: none !important;
+  }
+  /* Strip card chrome on the active panel so the printed page reads as a
+     clean document, not a UI screenshot. `overflow: visible` is critical:
+     the panel sets `overflow-hidden` on screen to clip rounded corners,
+     but during print that crops content past the first viewport (charts,
+     follow-ups, anything tall). */
+  body[data-print-target] [data-print-active] {
     box-shadow: none !important;
     border: 0 !important;
     background: #ffffff !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  /* Same overflow guarantee for everything inside the active panel — the
+     content body wrapper, ResponseCard etc. all need to let their content
+     flow across page breaks rather than clip to their on-screen frames.
+     Chart cards are exempt: they keep `overflow: hidden` so the Recharts
+     SVG renders within its rounded-corner frame instead of bleeding past
+     the card edges. */
+  body[data-print-target]
+    [data-print-active] *:not(.dc-chart-card):not(.dc-chart-card *) {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  /* Ancestors collapse to plain containers — drop their scroll, padding
+     constraints, and fixed heights so the active panel is the page. */
+  body[data-print-target] [data-print-ancestor] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
   }
   /* Avoid splitting a chart card or table across pages where possible */
   .dc-chart-card,
@@ -219,9 +343,74 @@ body {
   .markdown-body h3 {
     break-inside: avoid;
   }
+  /* Force charts into a single-column stack and clamp every card and the
+     DC web component inside it to the print page width. On screen the
+     container is a 2-column auto-fit grid and each card stretches to its
+     natural column width — in a PDF that's wider than one print page and
+     the chart's SVG (sized in CSS pixels by the DC component) ends up
+     clipped at the right margin. */
+  body[data-print-target] .dc-charts-container {
+    display: block !important;
+    grid-template-columns: 1fr !important;
+  }
+  body[data-print-target] .dc-chart-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 16px !important;
+    page-break-inside: avoid !important;
+    /* Clip anything past the card edge — DC bar/ranking charts size their
+       x-axis labels for the on-screen width and even after the resize
+       nudge the longest place labels can still overhang the page margin.
+       Better a few labels truncated at the card edge than the layout
+       breaking out onto the next page sideways. */
+    overflow: hidden !important;
+  }
+  /* DC web components themselves: force them to fill the card width.
+     The element's clientWidth is what ResizeObserver inside the DC
+     component reads — combined with the beforeprint resize event
+     dispatched in utils/printElement.ts, this prompts the chart to
+     redraw at print-page width before the browser snapshots. */
+  body[data-print-target] .dc-chart-card datacommons-line,
+  body[data-print-target] .dc-chart-card datacommons-bar,
+  body[data-print-target] .dc-chart-card datacommons-ranking,
+  body[data-print-target] .dc-chart-card datacommons-map,
+  body[data-print-target] .dc-chart-card datacommons-highlight,
+  body[data-print-target] .dc-chart-card datacommons-gauge,
+  body[data-print-target] .dc-chart-card datacommons-pie,
+  body[data-print-target] .dc-chart-card datacommons-scatter {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+  /* Any SVG inside the DC component scales to its parent. Setting both
+     width AND height to 100% (rather than height:auto) forces the SVG to
+     fit fully inside the card frame — DC bar charts in particular have
+     labels positioned outside their core viewBox, and height:auto lets
+     those labels push the SVG taller than the card. */
+  body[data-print-target] .dc-chart-card svg {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+  /* Last resort for bar-chart x-axis tick labels that stick out past the
+     SVG viewBox: rotate them so they read vertically (DC components
+     don't expose a prop for this). Targets the standard d3 axis text
+     class produced by DC components. */
+  body[data-print-target] .dc-chart-card datacommons-bar .x.axis text,
+  body[data-print-target] .dc-chart-card datacommons-bar g.x text,
+  body[data-print-target] .dc-chart-card datacommons-bar .axis-label,
+  body[data-print-target] .dc-chart-card datacommons-ranking .x.axis text,
+  body[data-print-target] .dc-chart-card datacommons-ranking g.x text {
+    font-size: 10px !important;
+  }
 }
 
 @keyframes reasoning-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+

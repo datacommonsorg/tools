@@ -1,8 +1,16 @@
 /**
- * @fileoverview Collapsible "Reasoning" block shown above an answer. Header
- * row: a sparkle/loader icon plus the "Reasoning ▾" chip; body: the model's
- * reasoning text, expanded by default. Figma "Sparkle + Extension chip"
- * (node 3427:16720) + "Content" (3427:16723).
+ * @fileoverview Renders the agent's collapsible reasoning/thoughts block for a turn.
+ */
+
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
+
+/**
+ * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
+ * Header row: Gemini sparkle icon (left) + "Reasoning ▾" chip (right of it).
+ * Body: model reasoning text, expanded by default.
  *
  * Tokens:
  *   Header gap 12, items centered
@@ -11,13 +19,8 @@
  *   Default expanded; chevron rotates 180° when collapsed
  */
 
-import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
-
-const COLOR_TEXT = "#1B1C1D";
-const COLOR_CHEVRON = "#444746";
+const COLOR_TEXT = "var(--color-on-surface)";
+const COLOR_CHEVRON = "var(--color-on-surface-variant)";
 const COLOR_SPARKLE = "#1A8C7A";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
@@ -46,14 +49,12 @@ const PLACEHOLDER_DONE =
   "Analyzed the query and retrieved relevant data from Data Commons.";
 
 /**
- * Header label derived from the turn status. The server emits status
+ * Header label is derived from the turn status. Server emits status
  * transitions (`mcp_start` → `mcp_complete` → `synthesis_start` → `done`);
  * these strings are the UI-side copy for each phase.
  */
 function phaseLabel(streaming: boolean, status?: TurnStatus): string {
-  if (!streaming) {
-    return "Reasoning";
-  }
+  if (!streaming) return "Reasoning";
   switch (status) {
     case "mcp":
       return "Querying data tools…";
@@ -66,12 +67,7 @@ function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   }
 }
 
-/**
- * Renders the reasoning section for a chat turn. While streaming it shows a
- * phase-specific label with a loader; once done it shows "Reasoning" with the
- * sparkle icon. Falls back to a short placeholder when the agent emits no
- * thought events, and renders nothing if there is nothing to show at all.
- */
+/** Collapsible "Reasoning" block: sparkle header plus the streamed thinking text. */
 export function ReasoningBlock({
   thoughts,
   defaultOpen = true,
@@ -83,7 +79,7 @@ export function ReasoningBlock({
   const label = phaseLabel(streaming, status);
 
   // Flatten to a single markdown string (newline-separated). Phase grouping
-  // existed in the old PanelThoughts; the new Figma design renders the
+  // existed in the old ThoughtsPanel; the new Figma design renders the
   // reasoning as one continuous block. When the agent emits no thoughts,
   // we render a short status placeholder so the section stays present
   // above the response card per Figma 3427-16715.
@@ -98,9 +94,7 @@ export function ReasoningBlock({
 
   // If we have nothing at all (e.g. error before stream started),
   // skip rendering entirely.
-  if (!joined) {
-    return null;
-  }
+  if (!joined) return null;
 
   return (
     <div className="self-start shrink-0 w-full max-w-4xl">
@@ -169,7 +163,7 @@ export function ReasoningBlock({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:underline"
-                  style={{ color: "#175C75" }}
+                  style={{ color: "var(--color-brand-primary)" }}
                 >
                   {children}
                 </a>
@@ -185,8 +179,8 @@ export function ReasoningBlock({
 }
 
 /**
- * Rotating loader shown while the turn is still streaming. Uses the
- * public/loader.png asset already shipped by the app.
+ * Rotating loader shown while the turn is still streaming.
+ * Uses the public/loader.png asset already shipped by the app.
  */
 function LoaderSpinner() {
   return (
@@ -205,9 +199,9 @@ function LoaderSpinner() {
 }
 
 /**
- * Gemini-style 4-point sparkle icon (fill driven by COLOR_SPARKLE). Matches
- * the icon shown in the Figma screenshot — a four-pointed star with concave
- * sides.
+ * Gemini-style 4-point sparkle, filled with the brand primary color.
+ * Matches the icon shown in the Figma screenshot — a four-pointed star
+ * with concave sides.
  */
 function SparkleIcon() {
   return (
@@ -226,6 +220,7 @@ function SparkleIcon() {
   );
 }
 
+/** Chevron icon for the reasoning header; rotates 180° when collapsed. */
 function ChevronDown({ rotated }: { rotated?: boolean }) {
   return (
     <svg
