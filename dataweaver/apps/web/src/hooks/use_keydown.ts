@@ -47,7 +47,10 @@ const addListener = (
   // If query doesn't exist, create new query
   if (!query) {
     QUERIES.set(eventTarget, { eventHandler, listeners: new Set([listeners]) });
-    eventTarget.addEventListener('keydown', eventHandler);
+
+    // Note: We need to use capture phase here to ensure that we can catch the
+    // event before it's stopped by any other event listener - especially tldraw
+    eventTarget.addEventListener('keydown', eventHandler, true);
     return;
   }
 
@@ -67,7 +70,7 @@ const removeListener = (eventTarget: EventTarget, listener: Listener) => {
   // If there are no more listeners, remove the event listener
   if (listeners.size === 0) {
     QUERIES.delete(eventTarget);
-    eventTarget.removeEventListener('keydown', eventHandler);
+    eventTarget.removeEventListener('keydown', eventHandler, true);
   }
 };
 

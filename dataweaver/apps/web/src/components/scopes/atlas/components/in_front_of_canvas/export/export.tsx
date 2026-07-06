@@ -3,6 +3,7 @@ import { useId, useRef } from 'react';
 import { useExport } from '~/components/scopes/atlas/export_provider';
 import { CARD_DATA_ATTRIBUTE } from '~/components/scopes/atlas/shapes/card';
 import { useClickOutside } from '~/hooks/use_click_outside';
+import { useFocusTrap } from '~/hooks/use_focus_trap';
 import { Control } from './control';
 import s from './export.module.scss';
 import { Menu } from './menu';
@@ -21,6 +22,8 @@ export const Export = () => {
     isEnabled: isOpen,
     ignoreTargets: IGNORE_TARGETS,
   });
+
+  useFocusTrap(containerRef, { isEnabled: isOpen });
 
   return (
     <div ref={containerRef} className={s.container}>

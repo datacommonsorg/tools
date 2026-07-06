@@ -1,0 +1,6 @@
+.container {
+  position: fixed;
+  inset: 0;
+  z-index: $z-index-overlay;
+  pointer-events: none;
+}
