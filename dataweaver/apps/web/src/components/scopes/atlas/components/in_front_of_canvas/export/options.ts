@@ -8,23 +8,21 @@ import { IconShapes } from '~/components/primitives/icons/shapes';
 export const EXPORT_OPTIONS = [
   {
     key: 'api-request-code',
-    title: 'API Request Code',
-    description:
-      'Get the REST V2 API code to access the data from the selected cards in JSON or Python format.',
+    title: 'API request code',
+    description: 'Get the REST V2 API code to query data from selected cards.',
     action: 'Generate API Code',
     icon: IconCopy,
   },
   {
     key: 'csv',
     title: 'CSV',
-    description:
-      'Download the structured raw data from the selected cards as a CSV spreadsheet.',
+    description: 'Download raw data from selected cards as a CSV spreadsheet.',
     action: 'Download CSVs',
     icon: IconDownload,
   },
   {
     key: 'ai-narrative',
-    title: 'AI Narrative',
+    title: 'AI narrative',
     description:
       'Generate a text-based analytical summary from selected cards.',
     action: 'Generate narrative',
@@ -32,9 +30,9 @@ export const EXPORT_OPTIONS = [
   },
   {
     key: 'ai-infographic',
-    title: 'AI Infographic',
+    title: 'AI infographic',
     description:
-      'Transform the data and charts from the selected cards into a structured visual presentation.',
+      'Transform data from selected cards into a visual presentation.',
     action: 'Generate with Gemini',
     icon: IconShapes,
   },
@@ -42,15 +40,14 @@ export const EXPORT_OPTIONS = [
     key: 'svg',
     title: 'SVG',
     description:
-      'Export the selected charts as high-resolution, scalable vector graphics for editing or publishing.',
+      'Export selected charts as vector graphics for editing or publishing.',
     action: 'Download SVGs',
     icon: IconDownload,
   },
   {
     key: 'png',
     title: 'PNG',
-    description:
-      'Download the selected charts as standard image files, optimized for quick sharing and documents.',
+    description: 'Download selected charts as image files for quick sharing.',
     action: 'Download PNGs',
     icon: IconDownload,
   },
