@@ -48,14 +48,14 @@ export const StatusEmpty = () => {
       {totalCards === 0 ? (
         <Card
           icon={IconShapes}
-          title="Create a prompt to begin"
-          description="Once you have data to export, come back to this window."
+          title="No active cards"
+          description="Ask a question below to generate charts and structured data on the canvas. Once cards are added, select items to export."
         />
       ) : (
         <Card
           icon={IconSelect}
           title="No cards selected"
-          description="Please select 1 or more cards to see export options."
+          description="Please select 1 or more cards to see options."
         >
           <button
             type="button"
