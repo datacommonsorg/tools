@@ -8,6 +8,7 @@ import s from './grid.module.scss';
  */
 export const Grid = () => {
   const editor = useEditor();
+
   const { x, y, z } = useValue('camera', () => editor.getCamera(), [editor]);
 
   return (
