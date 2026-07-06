@@ -21,6 +21,8 @@ import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import type { FacetInfo } from '~/server/types';
 import s from './chart.module.scss';
 import { ConditionalTabs } from './conditional_tabs';
+import { DataChartBarHorizontal } from './data_chart_bar_horizontal';
+import { DataChartBarVertical } from './data_chart_bar_vertical';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
@@ -30,9 +32,6 @@ export interface ChartDatum {
   date: string;
   value: number;
 }
-
-/** Width is responsive (fills the resizable card); height stays fixed. */
-const CHART_HEIGHT = 200;
 
 export interface CardChartProps extends CardState {
   id: TLShapeId;
@@ -141,9 +140,14 @@ export const CardChart = ({
                 {
                   icon: IconLineGraphSingle,
                   label: 'Chart',
-                  children: (
-                    <DataChartLine data={chartData} height={CHART_HEIGHT} />
-                  ),
+                  children:
+                    selectedStyle === 'bar-vertical' ? (
+                      <DataChartBarVertical data={chartData} />
+                    ) : selectedStyle === 'bar-horizontal' ? (
+                      <DataChartBarHorizontal data={chartData} />
+                    ) : (
+                      <DataChartLine data={chartData} />
+                    ),
                 },
                 {
                   icon: IconTable,
