@@ -2,6 +2,7 @@ import { EASE_OUT } from '@package/tokens/ts';
 import { m } from 'motion/react';
 import { type ComponentProps, useRef } from 'react';
 import { mergeClassNames } from '~/functions/merge_class_names';
+import { useFocusTrap } from '~/hooks/use_focus_trap';
 import { useKeydown } from '~/hooks/use_keydown';
 import { useMatchMedia } from '~/hooks/use_match_media';
 import s from './menu.module.scss';
@@ -35,6 +36,8 @@ const MenuWithPrefersMotion = ({
   const containerRef = useRef<HTMLDialogElement>(null);
 
   useKeydown('Escape', onClose);
+
+  useFocusTrap(containerRef);
 
   return (
     <m.dialog

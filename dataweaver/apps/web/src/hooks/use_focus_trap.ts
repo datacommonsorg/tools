@@ -8,7 +8,7 @@ const TABBABLE_ELEMENTS = [
   "input:not([tabindex='-1']):not(:disabled)",
   "select:not([tabindex='-1']):not(:disabled)",
   "textarea:not([tabindex='-1']):not(:disabled)",
-  "[tabindex='0']",
+  "[tabindex]:not([tabindex='-1'])",
 ].join(', ');
 
 interface Config {
@@ -109,5 +109,11 @@ export const useFocusTrap = <TElement extends HTMLElement | null>(
     // the edges - so we don't need to do anything
   };
 
-  useKeydown('Tab', keepFocusWithinTarget, { isEnabled: config.isEnabled });
+  useKeydown('Tab', keepFocusWithinTarget, {
+    isEnabled: config.isEnabled,
+
+    // Listen during the capture phase so the trap intercepts `Tab` before a
+    // focused descendant (e.g. tldraw's canvas) can consume it
+    capture: true,
+  });
 };

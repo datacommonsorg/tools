@@ -17,6 +17,16 @@ interface Config {
    * Defaults to `window`.
    */
   target?: Target;
+
+  /**
+   * Listen during the capture phase instead of the bubble phase. This lets the
+   * callback run before the event reaches its target (and before any bubbling
+   * listeners), which is useful for intercepting keys that a descendant might
+   * otherwise handle and `stopPropagation` on.
+   *
+   * @default false
+   */
+  capture?: boolean;
 }
 
 type EventHandler = (event: Event) => void;
@@ -31,7 +41,14 @@ interface Query {
   listeners: Set<Listener>;
 }
 
-const QUERIES = new Map<EventTarget, Query>();
+// Capture-phase and bubble-phase listeners require separate `addEventListener`
+// registrations on the same target, so each phase gets its own registry.
+const BUBBLE_QUERIES = new Map<EventTarget, Query>();
+const CAPTURE_QUERIES = new Map<EventTarget, Query>();
+
+const getQueries = (capture: boolean) => {
+  return capture ? CAPTURE_QUERIES : BUBBLE_QUERIES;
+};
 
 const getEventTargetFromTarget = (target?: Target) => {
   return (target && 'current' in target ? target.current : target) || window;
@@ -41,16 +58,15 @@ const addListener = (
   eventTarget: EventTarget,
   listeners: Listener,
   eventHandler: EventHandler,
+  capture: boolean,
 ) => {
-  const query = QUERIES.get(eventTarget);
+  const queries = getQueries(capture);
+  const query = queries.get(eventTarget);
 
   // If query doesn't exist, create new query
   if (!query) {
-    QUERIES.set(eventTarget, { eventHandler, listeners: new Set([listeners]) });
-
-    // Note: We need to use capture phase here to ensure that we can catch the
-    // event before it's stopped by any other event listener - especially tldraw
-    eventTarget.addEventListener('keydown', eventHandler, true);
+    queries.set(eventTarget, { eventHandler, listeners: new Set([listeners]) });
+    eventTarget.addEventListener('keydown', eventHandler, { capture });
     return;
   }
 
@@ -58,8 +74,13 @@ const addListener = (
   query.listeners.add(listeners);
 };
 
-const removeListener = (eventTarget: EventTarget, listener: Listener) => {
-  const query = QUERIES.get(eventTarget);
+const removeListener = (
+  eventTarget: EventTarget,
+  listener: Listener,
+  capture: boolean,
+) => {
+  const queries = getQueries(capture);
+  const query = queries.get(eventTarget);
   if (!query) return;
 
   const { eventHandler, listeners } = query;
@@ -69,13 +90,17 @@ const removeListener = (eventTarget: EventTarget, listener: Listener) => {
 
   // If there are no more listeners, remove the event listener
   if (listeners.size === 0) {
-    QUERIES.delete(eventTarget);
-    eventTarget.removeEventListener('keydown', eventHandler, true);
+    queries.delete(eventTarget);
+    eventTarget.removeEventListener('keydown', eventHandler, { capture });
   }
 };
 
-const emitCallbacks = (eventTarget: EventTarget, event: KeyboardEvent) => {
-  const query = QUERIES.get(eventTarget);
+const emitCallbacks = (
+  eventTarget: EventTarget,
+  event: KeyboardEvent,
+  capture: boolean,
+) => {
+  const query = getQueries(capture).get(eventTarget);
   if (!query) return;
 
   for (const listener of query.listeners) {
@@ -102,6 +127,7 @@ const emitCallbacks = (eventTarget: EventTarget, event: KeyboardEvent) => {
  * @param config - Optional configuration object.
  * @param config.isEnabled - Lets you specify whether to listen for events or not. Defaults to `true`.
  * @param config.target - Lets you specify a dom node or ref you want to attach the event listener to. Defaults to `window`.
+ * @param config.capture - Lets you listen during the capture phase instead of the bubble phase. Defaults to `false`.
  *
  * @example
  * useKeydown("KeyA", (event) => console.info(event));
@@ -126,14 +152,16 @@ export const useKeydown = (
   useEffect(() => {
     if (config.isEnabled ?? true) {
       const eventTarget = getEventTargetFromTarget(config.target);
+      const capture = config.capture ?? false;
 
       const eventHandler = (event: Event) => {
-        if ('code' in event) emitCallbacks(eventTarget, event as KeyboardEvent);
+        if ('code' in event)
+          emitCallbacks(eventTarget, event as KeyboardEvent, capture);
       };
 
       const listener: Listener = { keyCode, callback };
-      addListener(eventTarget, listener, eventHandler);
-      return () => removeListener(eventTarget, listener);
+      addListener(eventTarget, listener, eventHandler, capture);
+      return () => removeListener(eventTarget, listener, capture);
     }
-  }, [config.isEnabled, config.target, keyCode, callback]);
+  }, [config.isEnabled, config.target, config.capture, keyCode, callback]);
 };
