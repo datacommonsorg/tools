@@ -155,8 +155,9 @@ export const useKeydown = (
       const capture = config.capture ?? false;
 
       const eventHandler = (event: Event) => {
-        if ('code' in event)
+        if ('code' in event) {
           emitCallbacks(eventTarget, event as KeyboardEvent, capture);
+        }
       };
 
       const listener: Listener = { keyCode, callback };
