@@ -2,8 +2,14 @@ import type { RefObject } from 'react';
 
 import { useKeydown } from './use_keydown';
 
-const TABBABLE_ELEMENTS =
-  "a[href]:not([tabindex='-1']), button:not([tabindex='-1']), [tabindex='0']";
+export const TABBABLE_ELEMENTS = [
+  "a[href]:not([tabindex='-1'])",
+  "button:not([tabindex='-1']):not(:disabled)",
+  "input:not([tabindex='-1']):not(:disabled)",
+  "select:not([tabindex='-1']):not(:disabled)",
+  "textarea:not([tabindex='-1']):not(:disabled)",
+  "[tabindex]:not([tabindex='-1'])",
+].join(', ');
 
 interface Config {
   /**
@@ -67,7 +73,9 @@ export const useFocusTrap = <TElement extends HTMLElement | null>(
       return;
     }
 
-    const activeElement = document.activeElement as HTMLElement | null;
+    // Ignore if active element isn't a HTMLElement
+    const { activeElement } = document;
+    if (!(activeElement instanceof HTMLElement)) return;
 
     // Check if active element is within any target and if it's not, focus
     // respective first or last focusable element

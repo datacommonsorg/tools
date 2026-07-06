@@ -25,6 +25,7 @@ import { ExportProvider } from './export_provider';
 import { type AtlasContent, type CardVariant, contentToShape } from './helpers';
 import { keepInView, placeCard } from './placement';
 import { QueryProvider } from './query_provider';
+import { registerCardTabNavigation } from './register_card_tab_navigation';
 
 /** The content shape that corresponds to a given card variant. */
 type ContentForVariant<TVariant extends CardVariant> = Extract<
@@ -186,6 +187,10 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       },
     );
 
+    // Support tab navigation; prevent tldraw consuming tab events and manage
+    // focus ourselves so we can step through card content
+    const cleanupTabNavigation = registerCardTabNavigation(editor);
+
     // Expose the editor for synchronous reads and release any canvas writes
     // that were issued before mount
     setEditor(editor);
@@ -198,6 +203,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       cleanupBeforeCreate();
       cleanupAfterCreate();
       cleanupAfterDelete();
+      cleanupTabNavigation();
 
       // Swap in a fresh deferred and drop clone tracking tied to this
       // editor, so any future remount starts clean rather than chaining
