@@ -90,8 +90,22 @@ export const useCardAutoHeight = (
 
     sync();
 
-    const observer = new ResizeObserver(sync);
-    observer.observe(content);
-    return () => observer.disconnect();
+    // --- ResizeObserver: catches size changes of the container itself ---
+    const resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(container);
+
+    // --- MutationObserver: catches async child content insertion ---
+    // Recharts' ResponsiveContainer (and similar libraries) render chart SVGs
+    // asynchronously after measuring their parent width. Once useCardAutoHeight
+    // writes a smaller `h`, the container's box is max-height-capped so the
+    // ResizeObserver won't fire when new children appear (the box doesn't
+    // grow). A MutationObserver detects these insertions and re-measures.
+    const mutationObserver = new MutationObserver(sync);
+    mutationObserver.observe(container, { childList: true, subtree: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
   }, [editor, shapeId, maxHeight]);
 };
