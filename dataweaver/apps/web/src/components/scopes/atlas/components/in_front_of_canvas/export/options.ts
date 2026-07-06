@@ -10,7 +10,7 @@ export const EXPORT_OPTIONS = [
     key: 'api-request-code',
     title: 'API request code',
     description: 'Get the REST V2 API code to query data from selected cards.',
-    action: 'Generate API Code',
+    action: 'Generate API code',
     icon: IconCopy,
   },
   {
