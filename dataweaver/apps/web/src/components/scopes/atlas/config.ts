@@ -13,7 +13,10 @@ import { ShapeCardUtil } from './shapes/card';
  */
 export const ATLAS_COMPONENTS = {
   ContextMenu,
-  Grid,
+
+  // Rendered through the canvas `Background` slot (not the `Grid` slot) so the
+  // dot grid shows without enabling grid mode
+  Background: Grid,
   InFrontOfTheCanvas,
 } as const satisfies TLComponents;
 
