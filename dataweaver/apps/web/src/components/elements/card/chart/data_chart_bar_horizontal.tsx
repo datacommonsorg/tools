@@ -31,7 +31,7 @@ export const DataChartBarHorizontal = ({ data }: ChartProps) => {
   return (
     <ResponsiveContainer
       width="100%"
-      aspect={1.78}
+      aspect={0.75}
       style={{ paddingBottom: '28px' }}
     >
       <BarChart
@@ -51,7 +51,7 @@ export const DataChartBarHorizontal = ({ data }: ChartProps) => {
         <YAxis
           type="category"
           dataKey="date"
-          width={60}
+          width={'auto'}
           tickLine={false}
           axisLine={{ stroke: AXIS_COLOR }}
           tick={{ fontSize: 10, fill: AXIS_COLOR }}
