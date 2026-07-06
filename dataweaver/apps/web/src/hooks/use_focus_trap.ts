@@ -5,7 +5,7 @@ import { useKeydown } from './use_keydown';
 export const TABBABLE_ELEMENTS = [
   "a[href]:not([tabindex='-1'])",
   "button:not([tabindex='-1']):not(:disabled)",
-  "input:not([tabindex='-1']):not(:disabled)",
+  "input:not([type='hidden']):not([tabindex='-1']):not(:disabled)",
   "select:not([tabindex='-1']):not(:disabled)",
   "textarea:not([tabindex='-1']):not(:disabled)",
   "[tabindex]:not([tabindex='-1'])",

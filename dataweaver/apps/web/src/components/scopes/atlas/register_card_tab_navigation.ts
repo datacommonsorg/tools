@@ -27,12 +27,14 @@ const getCardFocusables = (editor: Editor): CardFocusable[] => {
       .map((shape) => ({ shape, bounds: editor.getShapePageBounds(shape.id) }))
 
       // Sort by page bounds (top-to-bottom, left-to-right) so we tab in order
-      // of appearance rather than draw order
-      .sort((a, b) =>
-        a.bounds && b.bounds
-          ? a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x
-          : 0,
-      )
+      // of appearance rather than draw order. Shapes without bounds sink to the
+      // end, so the comparator stays a strict weak ordering
+      .sort((a, b) => {
+        if (!a.bounds && !b.bounds) return 0;
+        if (!a.bounds) return 1;
+        if (!b.bounds) return -1;
+        return a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x;
+      })
 
       // For each card, find its element and read the tabbable elements inside
       .flatMap(({ shape }) => {
@@ -73,12 +75,14 @@ const getTargetIndex = (
     return (currentIndex + step + focusables.length) % focusables.length;
   }
 
-  // Entering from the canvas with a card selected: dive into that card's first
-  // focusable, so tab enters whichever card you just clicked
+  // Entering from the canvas with a card selected: dive into that card — its
+  // first focusable when tabbing forward, its last when tabbing backward — so
+  // tab enters whichever card you just clicked
   if (selectedId) {
-    const selectedCardIndex = focusables.findIndex(
-      (focusable) => focusable.shapeId === selectedId,
-    );
+    const shapeIds = focusables.map((focusable) => focusable.shapeId);
+    const selectedCardIndex = pressedShiftKey
+      ? shapeIds.lastIndexOf(selectedId)
+      : shapeIds.indexOf(selectedId);
     if (selectedCardIndex !== -1) return selectedCardIndex;
   }
 
@@ -105,12 +109,19 @@ export const registerCardTabNavigation = (editor: Editor) => {
     // Leave tldraw's own text editing alone
     if (editor.getEditingShapeId()) return;
 
-    // A dialog / menu runs its own focus trap — stay out of its way
-    if (container.querySelector('dialog[open]')) return;
-
     // Ignore if the active element isn't an HTMLElement
     const { activeElement } = document;
     if (!(activeElement instanceof HTMLElement)) return;
+
+    // A dialog / menu runs its own focus trap — stay out of its way. Covers the
+    // native <dialog> plus ARIA widgets (menu, listbox, dialog) whose own
+    // keyboard handling we'd otherwise clobber from the capture phase
+    if (
+      container.querySelector('dialog[open]') ||
+      activeElement.closest('[role="dialog"], [role="menu"], [role="listbox"]')
+    ) {
+      return;
+    }
 
     // Only handle tab events from the canvas itself (e.g. right after clicking
     // a card to select it) or from inside a card
