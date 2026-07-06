@@ -49,7 +49,7 @@ export const StatusEmpty = () => {
         <Card
           icon={IconShapes}
           title="No active cards"
-          description="Ask a question below to generate charts and structured data on the canvas. Once cards are added, select items to export."
+          description="Ask a question to generate charts and structured data on the canvas. Once cards are added, select items to export."
         />
       ) : (
         <Card
