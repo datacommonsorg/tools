@@ -87,20 +87,11 @@ const getTargetIndex = (
 };
 
 /**
- * Lets tab / shift+tab reach the focusable content inside cards.
- *
- * Tab steps through a flat ring of every card's focusables (action bar then
- * content, in document order), crossing card boundaries seamlessly and wrapping
- * at the ends. It never selects a card or stops on the card as a whole — only on
- * the focusables within it. (The action bar is hidden until the card is selected
- * or focused; CSS reveals it on `:focus-within` so it can be tabbed to.)
- *
- * We do this ourselves because tldraw swallows Tab to cycle shape selection (see
- * its `useDocumentEvents` handler). Listening in the capture phase lets us run
- * before tldraw's container handler; `markEventAsHandled` then makes tldraw skip
- * the event.
- *
- * @returns A cleanup function that removes the listener.
+ * Enable tab / shift+tab to reach the focusable content inside cards. Under the
+ * hood we listen for tab presses and override tldraw's own shape-cycling
+ * behavior to instead cycle through the focusable elements inside cards in
+ * reading order (top-to-bottom, left-to-right). This allows users to tab into a
+ * card's content and then tab out of it to the next card seamlessly.
  */
 export const registerCardTabNavigation = (editor: Editor) => {
   const container = editor.getContainer();
