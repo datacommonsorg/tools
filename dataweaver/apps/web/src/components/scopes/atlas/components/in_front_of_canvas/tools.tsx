@@ -42,9 +42,10 @@ export const Tools = () => {
           icon={tool.Icon}
           size="large"
           variant="flat"
+          tone="subtle"
+          isActive={activeToolName === name}
           aria-label={tool.label}
           aria-pressed={activeToolName === name}
-          tone={activeToolName === name ? 'accent' : 'subtle'}
           onClick={() => editor.setCurrentTool(name)}
         />
       ))}
