@@ -4,6 +4,8 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  FollowUp,
+  FollowUpContext,
   HistoryNode,
   ParsedQuery,
   QueryResult,
@@ -28,6 +30,7 @@ export interface AtlasStore {
     query: string,
     parsedQuery: ParsedQuery | null,
     parentNodeId: string | null,
+    followUpContext?: FollowUpContext,
   ) => string;
   nodeSetParsedQuery: (nodeId: string, parsedQuery: ParsedQuery) => void;
   nodeAddResult: (
@@ -35,6 +38,7 @@ export interface AtlasStore {
     placeDcid: string,
     result: QueryResult,
   ) => void;
+  nodeSetFollowUp: (nodeId: string, followUp: FollowUp) => void;
   queryComplete: (nodeId: string, cardIds: string[]) => void;
   queryFail: (nodeId: string) => void;
   cardRegister: (
@@ -52,6 +56,7 @@ export interface AtlasStore {
   ) => void;
   cardUnregister: (shapeId: string) => void;
   queryCancel: (nodeId: string) => void;
+  nodeDismissFollowUp: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
   querySetStatus: (val: string) => void;
 
@@ -71,7 +76,7 @@ export const useAtlasStore = create<AtlasStore>()(
         isProcessing: false,
         currentStatus: '',
 
-        queryStart: (query, parsedQuery, parentNodeId) => {
+        queryStart: (query, parsedQuery, parentNodeId, followUpContext) => {
           const id = nanoid();
           const node: HistoryNode = {
             id,
@@ -82,6 +87,7 @@ export const useAtlasStore = create<AtlasStore>()(
             cardIds: [],
             timestamp: Date.now(),
             status: 'pending',
+            followUpContext,
           };
           set(
             (state) => ({
@@ -128,6 +134,23 @@ export const useAtlasStore = create<AtlasStore>()(
             },
             undefined,
             'nodeAddResult',
+          );
+        },
+
+        nodeSetFollowUp: (nodeId, followUp) => {
+          set(
+            (state) => {
+              const node = state.nodes[nodeId];
+              if (!node) return state;
+              return {
+                nodes: {
+                  ...state.nodes,
+                  [nodeId]: { ...node, followUp },
+                },
+              };
+            },
+            undefined,
+            'nodeSetFollowUp',
           );
         },
 
@@ -268,6 +291,33 @@ export const useAtlasStore = create<AtlasStore>()(
             },
             undefined,
             'queryCancel',
+          );
+        },
+
+        nodeDismissFollowUp: (nodeId) => {
+          set(
+            (state) => {
+              const node = state.nodes[nodeId];
+              if (!node) return state;
+
+              const { [nodeId]: _, ...remainingNodes } = state.nodes;
+              const remainingCards = Object.fromEntries(
+                Object.entries(state.cards).filter(
+                  ([, card]) => card.historyNodeId !== nodeId,
+                ),
+              );
+
+              return {
+                nodes: remainingNodes,
+                cards: remainingCards,
+                latestNodeId:
+                  state.latestNodeId === nodeId
+                    ? (node.parentId ?? null)
+                    : state.latestNodeId,
+              };
+            },
+            undefined,
+            'nodeDismissFollowUp',
           );
         },
 

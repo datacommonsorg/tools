@@ -4,7 +4,10 @@
 
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
+import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
+import { deduplicateStrings } from '~/functions/deduplicate_strings';
 import { extractJson } from '~/functions/extract_json';
+import { shuffleArray } from '~/functions/shuffle_array';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
 import { fetchTimeSeries } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
@@ -51,6 +54,7 @@ export async function POST(request: NextRequest) {
   const selectedEntityDcids = Array.isArray(body?.selectedEntityDcids)
     ? body.selectedEntityDcids
     : [];
+  const followUpContext = body?.followUpContext ?? undefined;
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
@@ -81,10 +85,15 @@ export async function POST(request: NextRequest) {
         const safetyResult = await checkPromptSafety(query);
         if (!safetyResult.allowed) {
           emit({
-            type: STREAM_EVENT.error,
-            message:
-              safetyResult.reason || 'Query was blocked by safety filter.',
+            type: STREAM_EVENT.followUp,
+            data: {
+              summary: "I'm not able to answer that question.",
+              question:
+                'Try one of these suggestions, or type a new question about data.',
+              options: shuffleArray(EXAMPLE_PROMPTS).slice(0, 4),
+            },
           });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
           controller.close();
           return;
         }
@@ -95,19 +104,28 @@ export async function POST(request: NextRequest) {
           query,
           atlasContext,
           ancestorChainLength: ancestorChain.length,
+          followUpContext,
         });
 
         // Resolve places
         let places = parsed.places;
         if (parsed.isFollowUp && places.length === 0) {
-          places =
-            selectedEntityDcids.length > 0 ? selectedEntityDcids : [query];
+          places = selectedEntityDcids.length > 0 ? selectedEntityDcids : [];
         }
-        if (places.length === 0) places = [query];
+        const noExplicitPlace = places.length === 0;
+        if (noExplicitPlace) places = ['Earth'];
         parsed.places = places;
 
         emit({ type: STREAM_EVENT.parsedQuery, data: parsed });
         if (signal.aborted) {
+          controller.close();
+          return;
+        }
+
+        // ─── Early exit: parse_query returned a followUp ─────────────────────
+        if (parsed.followUp) {
+          emit({ type: STREAM_EVENT.followUp, data: parsed.followUp });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
           controller.close();
           return;
         }
@@ -120,6 +138,14 @@ export async function POST(request: NextRequest) {
           message: STATUS.fetchingTools,
         });
         const geminiTools = await fetchGeminiTools(signal);
+
+        // Accumulator: collect disambiguation/follow-up signals across places.
+        // After the loop we synthesize at most one follow-up for the whole round.
+        const disambiguationEntries: Array<{
+          place: string;
+          followUp: FollowUp;
+        }> = [];
+        let emittedResultCount = 0;
 
         // Process each place
         for (let i = 0; i < places.length; i++) {
@@ -152,6 +178,8 @@ export async function POST(request: NextRequest) {
             parsed,
             atlasContext,
             ancestorChain,
+            followUpContext,
+            noExplicitPlace,
             geminiTools,
             signal,
             onToolCall: (e) => {
@@ -195,7 +223,18 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const variables = parsedResponse.variables || [];
-          if (variables.length === 0 && !parsedResponse.followUp) {
+
+          // If the model returned a follow-up signal (disambiguation / fallback),
+          // stash it for post-loop synthesis instead of emitting per-place.
+          if (parsedResponse.followUp && variables.length === 0) {
+            disambiguationEntries.push({
+              place,
+              followUp: parsedResponse.followUp,
+            });
+            continue;
+          }
+
+          if (variables.length === 0) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -204,7 +243,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
           const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-          if (!entityDcid && !parsedResponse.followUp) {
+          if (!entityDcid) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -219,16 +258,12 @@ export async function POST(request: NextRequest) {
             message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const timeSeries = entityDcid
-            ? await Promise.all(
-                variables.map((v) =>
-                  fetchTimeSeries(v.dcid, entityDcid, signal),
-                ),
-              )
-            : [];
-          const entities = entityDcid
-            ? [{ dcid: entityDcid, name: parsedResponse.placeName || place }]
-            : [];
+          const timeSeries = await Promise.all(
+            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
+          );
+          const entities = [
+            { dcid: entityDcid, name: parsedResponse.placeName || place },
+          ];
           const discoveryResult: QueryResult = {
             id: nanoid(),
             title:
@@ -246,7 +281,6 @@ export async function POST(request: NextRequest) {
             coverage: parsedResponse.coverage,
             insights: parsedResponse.insights,
             relatedQueries: parsedResponse.relatedQueries,
-            followUp: parsedResponse.followUp,
           };
 
           const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
@@ -257,6 +291,52 @@ export async function POST(request: NextRequest) {
             type: STREAM_EVENT.queryResult,
             result: discoveryResult,
             place,
+          });
+          emittedResultCount++;
+        }
+
+        // ─── Post-loop: synthesize a single follow-up if needed ──────────
+        const firstDisambiguation = disambiguationEntries[0];
+        if (firstDisambiguation) {
+          // Merge all disambiguation signals into one follow-up.
+          // Use the first entry as the base and combine options.
+          const base = firstDisambiguation.followUp;
+          const mergedFollowUp: FollowUp = {
+            summary: base.summary,
+            question: base.question,
+            options: base.options,
+          };
+
+          // If multiple places triggered disambiguation, merge summaries.
+          if (disambiguationEntries.length > 1) {
+            mergedFollowUp.summary = deduplicateStrings(
+              disambiguationEntries
+                .map((e) => e.followUp.summary)
+                .filter(Boolean),
+            ).join(' ');
+            mergedFollowUp.options = deduplicateStrings(
+              disambiguationEntries.flatMap((e) => e.followUp.options),
+            ).slice(0, 4);
+          }
+
+          // Strip options when no explicit place was provided —
+          // the question should only ask the user to specify a place.
+          if (noExplicitPlace) {
+            mergedFollowUp.options = [];
+          }
+
+          emit({ type: STREAM_EVENT.followUp, data: mergedFollowUp });
+        } else if (emittedResultCount === 0) {
+          // Invariant: never emit nothing. If no results and no disambiguation,
+          // send a generic fallback follow-up.
+          emit({
+            type: STREAM_EVENT.followUp,
+            data: {
+              summary: '',
+              question:
+                'I wasn\u2019t able to find relevant data for your query. Could you try rephrasing or being more specific about a place or topic?',
+              options: [],
+            },
           });
         }
 
