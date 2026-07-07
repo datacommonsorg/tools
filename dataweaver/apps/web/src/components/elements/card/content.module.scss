@@ -1,0 +1,34 @@
+.container {
+  display: flex;
+  flex-grow: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.header-container {
+  flex-shrink: 0;
+  padding: 28px 28px 16px;
+  border-bottom: 1px solid transparent;
+
+  @include prefers-motion {
+    transition: border-color 0.1s $ease-linear;
+  }
+
+  [data-has-scrolled="true"] & {
+    border-bottom-color: rgb(var(--color-card-divider));
+  }
+}
+
+.content-outer-container {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: thin;
+}
+
+.content-inner-container {
+  display: flex;
+  flex-direction: column;
+  padding: 0 28px 28px;
+}

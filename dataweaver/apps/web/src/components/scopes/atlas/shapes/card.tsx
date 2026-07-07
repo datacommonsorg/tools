@@ -2,12 +2,15 @@ import {
   HTMLContainer,
   type RecordProps,
   Rectangle2d,
+  resizeBox,
   ShapeUtil,
   T,
+  type TLResizeInfo,
   type TLShape,
 } from 'tldraw';
 import { Card } from '~/components/elements/card';
 import type { CardSelection } from '~/components/elements/card/base';
+import { CARD_SIZE_MIN } from '~/components/scopes/atlas/config';
 import type {
   CardContentFields,
   CardSize,
@@ -18,6 +21,12 @@ export const CARD_DATA_ATTRIBUTE = 'data-card';
 
 interface ShapeCardProps extends CardContentFields, CardSize {
   variant?: CardVariant;
+
+  /**
+   * Set once the user drags a resize handle. While true, `useCardAutoHeight`
+   * stops syncing `h` to the content so the manual size sticks.
+   */
+  isManuallyResized?: boolean;
 }
 
 // Register the custom shape within tldraw
@@ -55,6 +64,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     ).optional(),
     isLoading: T.boolean.optional(),
     relatedQuery: T.string.optional(),
+    isManuallyResized: T.boolean.optional(),
   };
 
   override getDefaultProps = (): ShapeCardProps => {
@@ -136,11 +146,18 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     );
   };
 
-  // Disable default TLDraw events
-  override canResize = () => false;
-  override hideResizeHandles = () => true;
   override hideRotateHandle = () => true;
   override hideSelectionBoundsBg = () => true;
   override hideSelectionBoundsFg = () => true;
   override getIndicatorPath = () => undefined;
+
+  override onResize = (shape: ShapeCard, info: TLResizeInfo<ShapeCard>) => {
+    const resized = resizeBox(shape, info, {
+      minWidth: CARD_SIZE_MIN.w,
+      minHeight: CARD_SIZE_MIN.h,
+    });
+
+    // Flag the card as manually sized so auto-height stops overriding `h`
+    return { ...resized, props: { ...resized.props, isManuallyResized: true } };
+  };
 }

@@ -7,12 +7,21 @@ import { SelectionForegroundOverlayUtil } from 'tldraw';
  * that case. This is also what blocks rotation of a multi-selection: with no
  * rotate handle there's no way to start a rotation.
  *
- * Single-shape selection keeps the default behavior; the card shape util
- * already renders nothing for (`hideSelectionBoundsFg` / `hideRotateHandle`).
+ * For a single card we keep the overlay *active* — the inherited
+ * `getOverlays`/`getGeometry`/`getCursor` still hit-test the card's edges and
+ * corners, which is what swaps the cursor to the resize arrows and lets a drag
+ * start a resize — but `render` is a no-op, so none of that selection UI (frame
+ * or handles) is ever drawn. The card's own CSS handles the selected look.
  */
 export class AtlasSelectionForegroundOverlayUtil extends SelectionForegroundOverlayUtil {
   override isActive() {
     if (this.editor.getSelectedShapeIds().length > 1) return false;
     return super.isActive();
+  }
+
+  override render() {
+    // Intentionally draw nothing: resize is cursor-only, with no visible
+    // handles or selection frame. Hit-testing/cursors come from the inherited
+    // overlay geometry, which is unaffected by skipping the visuals here
   }
 }
