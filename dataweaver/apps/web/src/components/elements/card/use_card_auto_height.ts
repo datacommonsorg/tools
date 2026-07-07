@@ -100,12 +100,23 @@ export const useCardAutoHeight = (
     // writes a smaller `h`, the container's box is max-height-capped so the
     // ResizeObserver won't fire when new children appear (the box doesn't
     // grow). A MutationObserver detects these insertions and re-measures.
-    const mutationObserver = new MutationObserver(sync);
+    // Debounced via rAF to avoid layout thrashing from rapid subtree mutations
+    // (e.g. tooltips appearing/disappearing on hover).
+    let mutationFrameId: number | null = null;
+    const syncOnMutation = () => {
+      if (mutationFrameId !== null) return;
+      mutationFrameId = requestAnimationFrame(() => {
+        mutationFrameId = null;
+        sync();
+      });
+    };
+    const mutationObserver = new MutationObserver(syncOnMutation);
     mutationObserver.observe(container, { childList: true, subtree: true });
 
     return () => {
       resizeObserver.disconnect();
       mutationObserver.disconnect();
+      if (mutationFrameId !== null) cancelAnimationFrame(mutationFrameId);
     };
   }, [editor, shapeId, maxHeight]);
 };
