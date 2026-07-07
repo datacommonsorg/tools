@@ -24,12 +24,16 @@
   &[data-tone="subtle-highlight"] {
     --color-button-base: var(--color-button-subtle-highlight-base);
     --color-button-base-hover: var(--color-button-subtle-highlight-base-hover);
-    --color-button-base-active: var(--color-button-subtle-base-active);
+    --color-button-base-active: var(
+      --color-button-subtle-highlight-base-active
+    );
     --color-button-content: var(--color-button-subtle-highlight-content);
     --color-button-content-hover: var(
       --color-button-subtle-highlight-content-hover
     );
-    --color-button-content-active: var(--color-button-subtle-content-active);
+    --color-button-content-active: var(
+      --color-button-subtle-highlight-content-active
+    );
     --color-button-border: var(--color-button-subtle-highlight-border);
     --color-button-border-hover: var(
       --color-button-subtle-highlight-border-hover

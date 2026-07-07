@@ -6,12 +6,16 @@ import s from './button.module.scss';
 interface WithInternalTones {
   variant: 'flat' | 'border';
   tone: 'subtle' | 'subtle-highlight' | 'accent' | 'accent-subtle';
+
+  /** @default false */
+  isActive?: boolean;
 }
 
 /** These inherit from the parent element based on use case. */
 interface WithExternalTones {
   variant: 'flat';
   tone: 'control' | 'card-action';
+  isActive?: never;
 }
 
 interface WithIconOnly {
@@ -30,9 +34,6 @@ interface WithChildrenAndOptionalIcon {
 type ButtonProps = {
   /** @default false */
   isDisabled?: boolean;
-
-  /** @default false */
-  isActive?: boolean;
 } & Omit<ComponentPropsWithRef<'button'>, 'disabled' | 'children'> &
   (WithInternalTones | WithExternalTones) &
   (WithIconOnly | WithChildrenAndOptionalIcon);
