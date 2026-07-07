@@ -5,6 +5,7 @@
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
 import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
+import { deduplicateStrings } from '~/functions/deduplicate_strings';
 import { extractJson } from '~/functions/extract_json';
 import { shuffleArray } from '~/functions/shuffle_array';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
@@ -308,13 +309,14 @@ export async function POST(request: NextRequest) {
 
           // If multiple places triggered disambiguation, merge summaries.
           if (disambiguationEntries.length > 1) {
-            mergedFollowUp.summary = disambiguationEntries
-              .map((e) => e.followUp.summary)
-              .filter(Boolean)
-              .join(' ');
-            mergedFollowUp.options = disambiguationEntries
-              .flatMap((e) => e.followUp.options)
-              .slice(0, 4);
+            mergedFollowUp.summary = deduplicateStrings(
+              disambiguationEntries
+                .map((e) => e.followUp.summary)
+                .filter(Boolean),
+            ).join(' ');
+            mergedFollowUp.options = deduplicateStrings(
+              disambiguationEntries.flatMap((e) => e.followUp.options),
+            ).slice(0, 4);
           }
 
           // Strip options when no explicit place was provided —
