@@ -11,11 +11,6 @@ const TOOLS = {
   text: { label: 'Text', Icon: IconInsertText },
 } as const;
 
-type ToolName = keyof typeof TOOLS;
-
-/** Type guard to ensure a given string is a valid ToolName. */
-const isToolName = (name: string): name is ToolName => name in TOOLS;
-
 /**
  * Editor-bound wrapper rendered through tldraw's `InFrontOfTheCanvas` slot so
  * it can read live tool / zoom state via `useEditor`.
@@ -23,11 +18,9 @@ const isToolName = (name: string): name is ToolName => name in TOOLS;
 export const Tools = () => {
   const editor = useEditor();
 
-  const tool = useValue('tool', () => editor.getCurrentToolId(), [editor]);
-
-  // Here we map the tldraw tool to one of our supported ones. If it's not found
-  // we fallback to default 'select' tool
-  const activeToolName: ToolName = isToolName(tool) ? tool : 'select';
+  const activeToolName = useValue('tool', () => {
+    return editor.getCurrentToolId();
+  }, [editor]);
 
   return (
     <div
