@@ -23,21 +23,24 @@ interface ChartProps {
   data: ChartDatum[];
 }
 
-const compactFormatter = new Intl.NumberFormat('en', { notation: 'compact' });
+const compactFormatter = new Intl.NumberFormat(undefined, {
+  notation: 'compact',
+});
 
 const CustomCursor = (props: {
   x?: number;
   y?: number;
   width?: number;
   height?: number;
+  top?: number;
 }) => {
-  const { x = 0, width = 0, height = 0 } = props;
+  const { x = 0, width = 0, height = 0, top = 0 } = props;
   return (
     <rect
       x={x}
       y={0}
       width={width}
-      height={height}
+      height={height + top}
       fill={GRID_COLOR}
       opacity={0.4}
     />

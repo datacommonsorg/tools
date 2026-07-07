@@ -1,6 +1,6 @@
 import styles from './custom_tooltip.module.scss';
 
-const tooltipFormatter = new Intl.NumberFormat('en', {
+const tooltipFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2,
   notation: 'standard',
 });

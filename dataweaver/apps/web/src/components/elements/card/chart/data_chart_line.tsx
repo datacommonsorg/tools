@@ -24,7 +24,9 @@ interface ChartProps {
   data: ChartDatum[];
 }
 
-const compactFormatter = new Intl.NumberFormat('en', { notation: 'compact' });
+const compactFormatter = new Intl.NumberFormat(undefined, {
+  notation: 'compact',
+});
 
 const CustomCursor = (props: {
   points?: { x: number; y: number }[];

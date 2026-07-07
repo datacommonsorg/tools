@@ -93,9 +93,12 @@ export const CardBase = ({
         onWheelCapture={(event) => {
           let el = event.target as HTMLElement | null;
           while (el && el !== event.currentTarget.parentElement) {
-            if (el.scrollHeight > el.clientHeight) {
-              event.stopPropagation();
-              return;
+            const style = window.getComputedStyle(el);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+              if (el.scrollHeight > el.clientHeight) {
+                event.stopPropagation();
+                return;
+              }
             }
             el = el.parentElement;
           }

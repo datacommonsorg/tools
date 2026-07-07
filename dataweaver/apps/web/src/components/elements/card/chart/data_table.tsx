@@ -5,7 +5,9 @@ interface DataTableProps {
   data: ChartDatum[];
 }
 
-const compactFormatter = new Intl.NumberFormat('en', { notation: 'standard' });
+const compactFormatter = new Intl.NumberFormat(undefined, {
+  notation: 'standard',
+});
 
 export const DataTable = ({ data }: DataTableProps) => {
   return (
