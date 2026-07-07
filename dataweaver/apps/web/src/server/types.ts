@@ -6,6 +6,7 @@ export interface ParsedQuery {
   titles: Record<string, string>;
   dateRange?: { start?: string; end?: string };
   isFollowUp: boolean;
+  followUp?: FollowUp;
 }
 
 export interface HistoryNode {

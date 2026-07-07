@@ -114,6 +114,14 @@ export async function POST(request: NextRequest) {
           return;
         }
 
+        // ─── Early exit: parse_query returned a followUp ─────────────────────
+        if (parsed.followUp) {
+          emit({ type: STREAM_EVENT.followUp, data: parsed.followUp });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
+          controller.close();
+          return;
+        }
+
         // ─── Data Discovery ──────────────────────────────────────────────────
 
         // Fetch tools

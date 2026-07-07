@@ -1,7 +1,7 @@
 import { extractJson } from '~/functions/extract_json';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
-import type { FollowUpContext, ParsedQuery } from '~/server/types';
+import type { FollowUp, FollowUpContext, ParsedQuery } from '~/server/types';
 
 interface ParseQueryParams {
   query: string;
@@ -49,7 +49,9 @@ export const parseQuery = async (
 
   const responseText = response.text || '';
 
-  const parsed = extractJson<ParsedQuery>(responseText);
+  const parsed = extractJson<ParsedQuery & { followUp?: FollowUp }>(
+    responseText,
+  );
 
   return parsed
     ? {
@@ -58,6 +60,7 @@ export const parseQuery = async (
         titles: parsed.titles || {},
         isFollowUp: !!parsed.isFollowUp || !!followUpContext,
         dateRange: parsed.dateRange || undefined,
+        followUp: parsed.followUp || undefined,
       }
     : {
         places: [query],
