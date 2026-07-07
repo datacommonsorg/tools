@@ -19,7 +19,7 @@ const getVariablesWithData = (result: QueryResult): Set<string> => {
  */
 const stripNoDataLinks = (md: string, withData: Set<string>): string => {
   return md.replace(
-    /\[([^\]]+)\]\(#fetch=([^&]+)&.*?placeName=[^)]*\)/g,
+    /\[([^\]]+)\]\(#fetch=([^&)]+)[^)]*\)/g,
     (match, label: string, dcid: string) => {
       return withData.has(dcid) ? match : label;
     },
