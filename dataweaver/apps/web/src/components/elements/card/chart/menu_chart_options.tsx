@@ -60,6 +60,9 @@ export const MenuChartOptions = ({
 
   useKeydown('Escape', onClose);
 
+  // TODO: For now this doesn't seem to really work due to TLDraw consuming
+  // tab events. Review focus trap implementation once we review how TLDraw
+  // handles focus and keyboard events in general, and adjust as needed
   useFocusTrap(contentContainerRef);
 
   return (
