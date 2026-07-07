@@ -140,8 +140,8 @@ export const STATUS = {
   // Static messages
   starting: 'Starting query...',
   connecting: 'Connecting...',
-  checkingSafety: 'Checking query safety...',
-  parsingQuery: 'Parsing query...',
+  checkingSafety: 'Reading query...',
+  parsingQuery: 'Understanding query...',
   fetchingTools: 'Fetching available tools...',
   noResponseBody: 'No response body',
 
