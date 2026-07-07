@@ -4,7 +4,9 @@
 
 import { nanoid } from 'nanoid';
 import type { NextRequest } from 'next/server';
+import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
 import { extractJson } from '~/functions/extract_json';
+import { shuffleArray } from '~/functions/shuffle_array';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
 import { fetchTimeSeries } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
@@ -82,10 +84,15 @@ export async function POST(request: NextRequest) {
         const safetyResult = await checkPromptSafety(query);
         if (!safetyResult.allowed) {
           emit({
-            type: STREAM_EVENT.error,
-            message:
-              safetyResult.reason || 'Query was blocked by safety filter.',
+            type: STREAM_EVENT.followUp,
+            data: {
+              summary: "I'm not able to answer that question.",
+              question:
+                'Try one of these suggestions, or type a new question about data.',
+              options: shuffleArray(EXAMPLE_PROMPTS).slice(0, 4),
+            },
           });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
           controller.close();
           return;
         }
