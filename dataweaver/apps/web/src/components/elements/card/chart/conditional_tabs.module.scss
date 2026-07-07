@@ -39,6 +39,8 @@
 }
 
 .panel {
+  font-weight: 500;
+
   &:has(table) {
     overflow-y: auto;
 

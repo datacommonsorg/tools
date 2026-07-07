@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 
 import type { ChartDatum } from './chart';
+import { CustomTooltip } from './custom_tooltip';
 
 const BAR_COLOR = `rgb(${COLORS['card-surface-selected']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
@@ -23,10 +24,6 @@ interface ChartProps {
 }
 
 const compactFormatter = new Intl.NumberFormat('en', { notation: 'compact' });
-const tooltipFormatter = new Intl.NumberFormat('en', {
-  maximumFractionDigits: 2,
-  notation: 'standard',
-});
 
 const CustomCursor = (props: {
   x?: number;
@@ -97,10 +94,7 @@ export const DataChartBarVertical = ({ data }: ChartProps) => {
           tickFormatter={(value) => compactFormatter.format(Number(value))}
         />
         <FullWidthAxisLine />
-        <Tooltip
-          cursor={<CustomCursor />}
-          formatter={(value) => tooltipFormatter.format(Number(value))}
-        />
+        <Tooltip cursor={<CustomCursor />} content={<CustomTooltip />} />
         <Bar dataKey="value" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>

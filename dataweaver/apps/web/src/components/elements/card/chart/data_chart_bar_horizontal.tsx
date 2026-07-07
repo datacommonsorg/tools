@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 
 import type { ChartDatum } from './chart';
+import { CustomTooltip } from './custom_tooltip';
 
 const BAR_COLOR = `rgb(${COLORS['card-surface-selected']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
@@ -22,10 +23,6 @@ interface ChartProps {
 }
 
 const compactFormatter = new Intl.NumberFormat('en', { notation: 'compact' });
-const tooltipFormatter = new Intl.NumberFormat('en', {
-  maximumFractionDigits: 2,
-  notation: 'standard',
-});
 
 export const DataChartBarHorizontal = ({ data }: ChartProps) => {
   return (
@@ -58,7 +55,7 @@ export const DataChartBarHorizontal = ({ data }: ChartProps) => {
         />
         <Tooltip
           cursor={{ fill: GRID_COLOR, opacity: 0.4 }}
-          formatter={(value) => tooltipFormatter.format(Number(value))}
+          content={<CustomTooltip />}
         />
         <Bar dataKey="value" fill={BAR_COLOR} radius={[0, 2, 2, 0]} />
       </BarChart>
