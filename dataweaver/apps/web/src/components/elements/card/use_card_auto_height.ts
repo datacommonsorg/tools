@@ -91,7 +91,7 @@ export const useCardAutoHeight = (
     sync();
 
     const observer = new ResizeObserver(sync);
-    observer.observe(container);
+    observer.observe(content);
     return () => observer.disconnect();
   }, [editor, shapeId, maxHeight]);
 };
