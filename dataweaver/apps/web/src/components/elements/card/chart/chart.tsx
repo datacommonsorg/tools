@@ -81,7 +81,6 @@ export const CardChart = ({
   // Derive chart data from selected facet if facets are available
   const currentFacet = facets?.find((f) => f.facetId === selectedFacetId);
   const chartData = currentFacet?.observations ?? data;
-
   return (
     <Card.Base
       id={id}

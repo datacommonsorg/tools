@@ -89,7 +89,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   // Each card variant owns its own actions, content and footer; the shape just
   // hands it the state and content it needs to render itself.
   #renderCard = (shape: ShapeCard) => {
-    const { variant, title, description, body, data, relatedQueries } =
+    const { variant, title, description, body, data, facets, relatedQueries } =
       shape.props;
 
     const isLoading = shape.props.isLoading ?? false;
@@ -117,6 +117,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           title={title}
           description={description}
           data={data}
+          facets={facets}
           relatedQueries={relatedQueries}
         />
       );
