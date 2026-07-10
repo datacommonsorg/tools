@@ -53,17 +53,17 @@ export function SourcesList({ sources }: SourcesListProps) {
           color: COLOR_BODY,
         }}
       >
-        {sources.map((s, i) => {
-          const n = i + 1;
+        {sources.map((source, index) => {
+          const position = index + 1;
           return (
             <li
-              key={`${s.url}-${i}`}
-              id={`source-${n}`}
+              key={`${source.url}-${index}`}
+              id={`source-${position}`}
               className="flex items-baseline gap-1.5"
             >
-              <span aria-hidden="true">[{n}]</span>
+              <span aria-hidden="true">[{position}]</span>
               <a
-                href={s.url}
+                href={source.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline"
@@ -77,7 +77,7 @@ export function SourcesList({ sources }: SourcesListProps) {
                   wordBreak: "break-word",
                 }}
               >
-                {s.name || s.url}
+                {source.name || source.url}
               </a>
             </li>
           );

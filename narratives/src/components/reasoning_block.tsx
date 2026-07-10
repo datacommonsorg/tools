@@ -85,7 +85,7 @@ export function ReasoningBlock({
   // above the response card per Figma 3427-16715.
   const joined =
     thoughts.length > 0
-      ? thoughts.map((t) => t.text).join("\n\n")
+      ? thoughts.map((thought) => thought.text).join("\n\n")
       : streaming
         ? PLACEHOLDER_STREAMING
         : done

@@ -4,7 +4,7 @@
 
 import { useHashRoute } from "../hooks/use_hash_route";
 import { useChatSession } from "../hooks/chat_session_context";
-import { NewChatIcon, ChatsIcon } from "./icons";
+import { NewChatIcon, ChatsIcon } from "./Icons";
 
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)

@@ -3,7 +3,11 @@
  */
 
 import type { ChartConfig, ChartItem, ProvenanceItem } from "../hooks/use_sse_chat";
-import { API_ROOT, DC, type DCTag } from "../utils/dc_component";
+import {
+  API_ROOT,
+  DataCommonsComponent,
+  type DataCommonsComponentTagName,
+} from "../utils/datacommons_component";
 
 /**
  * Chart renderer for chat answers.
@@ -72,8 +76,8 @@ export function ChartTile({ config }: ChartTileProps) {
 
 /** Renders one chart as a Data Commons web component inside the card wrapper. */
 function ChartCard({ chart }: { chart: ChartItem }) {
-  const tag = dcTagFor(chart.vizType);
-  const attrs = dcAttrsFor(chart);
+  const tag = getDcComponentTag(chart.vizType);
+  const attrs = getDcComponentAttributes(chart);
   // The DC web component renders its own bordered card (Source caption,
   // chart, footer with "About this data" + "API code"). Wrapping it in
   // another bordered div produced a double-border look. We keep just a
@@ -81,7 +85,7 @@ function ChartCard({ chart }: { chart: ChartItem }) {
   // (.dc-chart-card) still target the card.
   return (
     <div className="dc-chart-card">
-      <DC tag={tag} apiroot={API_ROOT} {...attrs} />
+      <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
     </div>
   );
 }
@@ -91,7 +95,9 @@ function ChartCard({ chart }: { chart: ChartItem }) {
  * explicit mapping falls back to line, which is the most forgiving
  * renderer (single variable + single place is always valid).
  */
-function dcTagFor(viz: ChartItem["vizType"]): DCTag {
+function getDcComponentTag(
+  viz: ChartItem["vizType"],
+): DataCommonsComponentTagName {
   switch (viz) {
     case "bar":
       return "datacommons-bar";
@@ -119,7 +125,9 @@ function dcTagFor(viz: ChartItem["vizType"]): DCTag {
  * and the DC components accept space-separated strings for list-shaped
  * attributes (variables, places).
  */
-function dcAttrsFor(chart: ChartItem): Record<string, string | undefined> {
+function getDcComponentAttributes(
+  chart: ChartItem,
+): Record<string, string | undefined> {
   const attrs: Record<string, string | undefined> = {
     header: chart.title ?? "",
     variables: chart.variableDcids.join(" "),

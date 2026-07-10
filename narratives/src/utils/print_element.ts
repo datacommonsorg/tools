@@ -15,7 +15,18 @@
  * conversation, each must be exportable in isolation.
  */
 export function printElement(target: HTMLElement | null) {
-  if (!target) return;
+  // Bail if the element is missing, has been detached by a concurrent React
+  // re-render, or a print sequence is already in flight. The last guard makes
+  // this atomic: a double-click, or clicking Export on two panels in quick
+  // succession, would otherwise tag BOTH subtrees before the first
+  // requestAnimationFrame fires and print them together.
+  if (
+    !target ||
+    !target.isConnected ||
+    document.body.dataset.printTarget === "true"
+  ) {
+    return;
+  }
 
   // Walk up the DOM marking each ancestor with `data-print-ancestor`. The
   // print stylesheet hides every element that is neither an ancestor nor
@@ -45,12 +56,22 @@ export function printElement(target: HTMLElement | null) {
   window.addEventListener("beforeprint", onBeforePrint);
 
   // Defer so any state-driven class updates (e.g. focus rings) flush first,
-  // then trigger the platform print dialog.
+  // then trigger the platform print dialog. The cleanup runs in `finally` so
+  // the print-state tags are always removed even if window.print() throws —
+  // otherwise the printTarget guard above would wedge and block every
+  // subsequent print.
   requestAnimationFrame(() => {
-    window.print();
-    window.removeEventListener("beforeprint", onBeforePrint);
-    delete document.body.dataset.printTarget;
-    delete target.dataset.printActive;
-    for (const a of ancestors) delete a.dataset.printAncestor;
+    try {
+      window.print();
+    } finally {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      delete document.body.dataset.printTarget;
+      delete target.dataset.printActive;
+      for (const ancestor of ancestors) delete ancestor.dataset.printAncestor;
+      // Now that the print-only @media rules no longer apply, tell the DC
+      // components to redraw their SVGs back to the on-screen width they had
+      // before the resize we dispatched in `beforeprint`.
+      window.dispatchEvent(new Event("resize"));
+    }
   });
 }

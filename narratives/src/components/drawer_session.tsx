@@ -4,7 +4,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Trash2, X, ArrowRight, ArrowLeft } from "lucide-react";
-import { NewChatIcon, ChatsIcon } from "./icons";
+import { NewChatIcon, ChatsIcon } from "./Icons";
 import {
   formatRelativeTime,
   useChatSession,
@@ -61,7 +61,9 @@ export function SessionDrawer() {
   // Hide empty drafts from the history list — the active empty session is
   // already represented by the Data Agent InitialView, so a duplicate row
   // here just looks like clutter ("New chat", "New chat", "New chat").
-  const visibleSessions = sessions.filter((s) => s.turns.length > 0);
+  const visibleSessions = sessions.filter(
+    (session) => session.turns.length > 0,
+  );
 
   const handleNewChat = () => {
     newSession();
@@ -223,15 +225,15 @@ function SessionList({
 }>) {
   return (
     <ul className="flex-1 overflow-y-auto no-scrollbar list-none p-0 m-0">
-      {sessions.map((s) => {
-        const active = s.id === currentSessionId;
+      {sessions.map((session) => {
+        const active = session.id === currentSessionId;
         return (
           <li
-            key={s.id}
+            key={session.id}
             className={`group relative flex items-start gap-2 px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors ${
               active ? "bg-surface-blue" : "hover:bg-gray-50"
             }`}
-            onClick={() => onSelect(s.id)}
+            onClick={() => onSelect(session.id)}
           >
             <div className="flex-1 min-w-0">
               <div
@@ -243,17 +245,17 @@ function SessionList({
                   fontWeight: active ? 500 : 400,
                   color: "var(--color-on-surface)",
                 }}
-                title={s.title}
+                title={session.title}
               >
-                {s.title}
+                {session.title}
               </div>
               <div className="text-caption text-subtle mt-1">
-                {formatRelativeTime(s.updatedAt)}
-                {s.turns.length > 0 && (
+                {formatRelativeTime(session.updatedAt)}
+                {session.turns.length > 0 && (
                   <>
                     {" · "}
-                    {s.turns.length}{" "}
-                    {s.turns.length === 1 ? "message" : "messages"}
+                    {session.turns.length}{" "}
+                    {session.turns.length === 1 ? "message" : "messages"}
                   </>
                 )}
               </div>
@@ -262,10 +264,10 @@ function SessionList({
                 the session we're deleting. */}
             <button
               type="button"
-              aria-label={`Delete chat: ${s.title}`}
+              aria-label={`Delete chat: ${session.title}`}
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(s.id);
+                onDelete(session.id);
               }}
               className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-red-600 p-1"
             >

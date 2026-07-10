@@ -18,7 +18,7 @@
  * `--brand-text`, `--brand-text-muted`, `--brand-surface`, `--brand-background`,
  * `--brand-font`, `--brand-font-body` on :root. The `<fallback>` after the comma
  * is the shipped design value used when no branding.json is present — keep it in
- * sync with DEFAULT_BRAND in useBranding.ts. The hero-gradient stops are
+ * sync with DEFAULT_BRAND in use_branding.ts. The hero-gradient stops are
  * brand-driven too (--brand-gradient-start / --brand-gradient-end). The
  * user-message bubble (--color-user-msg) remains a fixed design token with no
  * branding.json field.
@@ -268,7 +268,7 @@ html, body {
 
 /* ────────────────────────────────────────────────────────────────────
  * Print stylesheet: when the Export PDF action fires (see
- * utils/printElement.ts), `body[data-print-target]` is set and the
+ * utils/print_element.ts), `body[data-print-target]` is set and the
  * selected answer panel is tagged with `data-print-active`. We then
  * hide every other element on the page via visibility, so the user gets
  * a clean PDF of just THAT one Q&A — not the rest of the conversation
@@ -283,7 +283,7 @@ html, body {
     background: #ffffff !important;
   }
   /* Hide every body descendant that is NOT on the path to the active panel
-     and NOT inside the active subtree. The JS in utils/printElement.ts has
+     and NOT inside the active subtree. The JS in utils/print_element.ts has
      marked the path with `data-print-ancestor`; the active panel itself
      carries `data-print-active`. */
   body[data-print-target]
@@ -368,7 +368,7 @@ html, body {
   /* DC web components themselves: force them to fill the card width.
      The element's clientWidth is what ResizeObserver inside the DC
      component reads — combined with the beforeprint resize event
-     dispatched in utils/printElement.ts, this prompts the chart to
+     dispatched in utils/print_element.ts, this prompts the chart to
      redraw at print-page width before the browser snapshots. */
   body[data-print-target] .dc-chart-card datacommons-line,
   body[data-print-target] .dc-chart-card datacommons-bar,

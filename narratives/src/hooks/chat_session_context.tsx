@@ -153,19 +153,21 @@ function loadPersisted(): ChatSessionStore {
       const parsed = JSON.parse(raw) as PersistedV2;
       if (parsed.version === 2 && Array.isArray(parsed.sessions)) {
         const cleaned = parsed.sessions
-          .map((s) => ({ ...s, turns: cleanTurns(s.turns) }))
-          .filter((s) => s.id);
+          .map((session) => ({ ...session, turns: cleanTurns(session.turns) }))
+          .filter((session) => session.id);
         // Collapse stale empty sessions left over from earlier visits down
         // to at most one. Keeps the drawer tidy for users who accumulated
         // empties before the dedup logic shipped.
-        const nonEmpty = cleaned.filter((s) => s.turns.length > 0);
-        const empties = cleaned.filter((s) => s.turns.length === 0);
+        const nonEmpty = cleaned.filter((session) => session.turns.length > 0);
+        const empties = cleaned.filter((session) => session.turns.length === 0);
         const collapsed =
           empties.length > 0
             ? [...nonEmpty, empties[0]]
             : nonEmpty;
         if (collapsed.length > 0) {
-          const currentId = collapsed.some((s) => s.id === parsed.currentId)
+          const currentId = collapsed.some(
+            (session) => session.id === parsed.currentId,
+          )
             ? parsed.currentId
             : collapsed[0].id;
           return { sessions: collapsed, currentId };
@@ -229,7 +231,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   // missing session (e.g., stale tab after delete in another tab), fall back
   // to sessions[0].
   const currentSession =
-    store.sessions.find((s) => s.id === store.currentId) ?? store.sessions[0];
+    store.sessions.find((session) => session.id === store.currentId) ??
+    store.sessions[0];
 
   const turns = currentSession.turns;
   const sessionId = currentSession.serverSessionId;
@@ -286,7 +289,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       // than create a second one. Keeps the drawer free of stale "New chat"
       // rows when the user repeatedly clicks "+ New" or bounces between
       // tabs (ChatResetOnTabChange also funnels through here).
-      const existingEmpty = prev.sessions.find((s) => s.turns.length === 0);
+      const existingEmpty = prev.sessions.find(
+        (session) => session.turns.length === 0,
+      );
       if (existingEmpty) {
         if (prev.currentId === existingEmpty.id) return prev;
         return { ...prev, currentId: existingEmpty.id };
@@ -302,7 +307,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
   const switchSession = useCallback((id: string) => {
     setStore((prev) => {
-      if (!prev.sessions.some((s) => s.id === id)) return prev;
+      if (!prev.sessions.some((session) => session.id === id)) return prev;
       if (prev.currentId === id) return prev;
       return { ...prev, currentId: id };
     });
@@ -311,7 +316,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
   const deleteSession = useCallback((id: string) => {
     setStore((prev) => {
-      const remaining = prev.sessions.filter((s) => s.id !== id);
+      const remaining = prev.sessions.filter((session) => session.id !== id);
       if (remaining.length === prev.sessions.length) return prev;
       let nextCurrent = prev.currentId;
       if (nextCurrent === id) {
@@ -389,17 +394,21 @@ export function useChatSession(): ChatSessionContextValue {
   return ctx;
 }
 
+const MS_PER_MINUTE = 60_000;
+const MS_PER_HOUR = 60 * MS_PER_MINUTE;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
+
 /**
  * Light helper for the drawer UI. Exported so the drawer can reuse the same
  * relative-time format if we want to tweak it in one place.
  */
 export function formatRelativeTime(ts: number): string {
   const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`;
-  if (diff < 172_800_000) return "yesterday";
-  const days = Math.floor(diff / 86_400_000);
+  if (diff < MS_PER_MINUTE) return "just now";
+  if (diff < MS_PER_HOUR) return `${Math.floor(diff / MS_PER_MINUTE)} min ago`;
+  if (diff < MS_PER_DAY) return `${Math.floor(diff / MS_PER_HOUR)} hr ago`;
+  if (diff < 2 * MS_PER_DAY) return "yesterday";
+  const days = Math.floor(diff / MS_PER_DAY);
   if (days < 7) return `${days} days ago`;
   return new Date(ts).toLocaleDateString("en-US", {
     month: "short",

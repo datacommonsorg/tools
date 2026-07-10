@@ -284,9 +284,10 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
     async (message: string) => {
       // One stream at a time: a follow-up click or double-submit while a
       // response is streaming would open a second SSE connection and corrupt
-      // the turns array.
+      // the turns array. Empty/whitespace-only input is rejected upstream by
+      // the prompt component (see data_agent.tsx handleSend), so we don't
+      // re-validate the message text here.
       if (isStreaming) return;
-      if (!message.trim()) return;
       const baseTurn = newTurn(message);
       let turnIndex = -1;
       setTurns((prev) => {
@@ -439,7 +440,7 @@ function applyEvent(turn: ChatTurn, evt: SseEvent): ChatTurn {
     (Array.isArray(evt.kb_sources) ? evt.kb_sources : null) ??
     (Array.isArray(evt.provenance) ? evt.provenance : null);
   if (sourceList) {
-    const seen = new Set(next.provenance.map((p) => p.url));
+    const seen = new Set(next.provenance.map((item) => item.url));
     const merged = [...next.provenance];
     for (const source of sourceList) {
       if (source && source.url && !seen.has(source.url)) {

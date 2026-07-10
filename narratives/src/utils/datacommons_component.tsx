@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 
 /**
- * <DC> — render a Data Commons web component (`<datacommons-*>`).
+ * <DataCommonsComponent> — render a Data Commons web component (`<datacommons-*>`).
  *
  * Why a ref-driven imperative mount instead of `dangerouslySetInnerHTML`:
  *
@@ -39,7 +39,7 @@ import { useEffect, useRef } from "react";
  */
 
 /** The Data Commons web-component tag names the UI can render. */
-export type DCTag =
+export type DataCommonsComponentTagName =
   | "datacommons-line"
   | "datacommons-bar"
   | "datacommons-map"
@@ -51,19 +51,25 @@ export type DCTag =
   | "datacommons-slider";
 
 /** Attribute bag for one <datacommons-*> element; values are stringified into HTML attributes. */
-export type DCAttrs = Record<string, string | number | boolean | undefined>;
+export type DataCommonsComponentAttributes = Record<
+  string,
+  string | number | boolean | undefined
+>;
 
 /** API root the DC components fetch from — the page origin, per upstream homepage.html. */
 export const API_ROOT =
   typeof window !== "undefined" ? window.location.origin : "";
 
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
-export function DC({ tag, ...attrs }: { tag: DCTag } & DCAttrs) {
+export function DataCommonsComponent({
+  tag,
+  ...attrs
+}: { tag: DataCommonsComponentTagName } & DataCommonsComponentAttributes) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Track the last attribute snapshot so re-renders can diff and only
   // touch attributes that actually changed — `setAttribute` triggers DC's
   // attributeChangedCallback and re-fetches, so we want it called rarely.
-  const lastAttrsRef = useRef<DCAttrs | null>(null);
+  const lastAttrsRef = useRef<DataCommonsComponentAttributes | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;

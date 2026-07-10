@@ -248,9 +248,10 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
         if (!brandResp.ok) {
           throw new Error(`/agent/brand HTTP ${brandResp.status}`);
         }
-        const { brand_config_url, branding: directBranding } =
+        // Map the snake_case wire field to a camelCase local at the boundary.
+        const { brand_config_url: brandConfigUrl, branding: directBranding } =
           (await brandResp.json()) as BrandConfigResponse;
-        const baseUrl = brand_config_url ?? "";
+        const baseUrl = brandConfigUrl ?? "";
 
         // 2a. Private-bucket path: the agent already proxied branding.json
         // (read server-side with a service-account token). Use it directly so
@@ -268,7 +269,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
           return;
         }
 
-        if (!brand_config_url) {
+        if (!brandConfigUrl) {
           // Configured intentionally empty => use DEFAULT_BRAND.
           if (!cancelled) {
             applyCssVars(DEFAULT_BRAND);
@@ -279,7 +280,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
 
         // 2b. Public-bucket path: fetch branding.json directly from the bucket.
         const brandingConfigResponse = await fetch(
-          `${brand_config_url}/branding.json`,
+          `${brandConfigUrl}/branding.json`,
           {
             // 15s: cross-origin GCS fetches on a cold connection can take
             // 5-10s — earlier 5s timeout was firing falsely, falling back to
@@ -289,7 +290,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
         );
         if (!brandingConfigResponse.ok) {
           throw new Error(
-            `branding.json HTTP ${brandingConfigResponse.status} from ${brand_config_url}`,
+            `branding.json HTTP ${brandingConfigResponse.status} from ${brandConfigUrl}`,
           );
         }
         const raw = (await brandingConfigResponse.json()) as RawBranding;

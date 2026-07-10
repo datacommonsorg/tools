@@ -33,10 +33,10 @@ export function DataAgent() {
   // state — setState is async, so chaining setQuery → handleSend in one tick
   // would otherwise send an empty string.
   const handleSend = async (override?: string) => {
-    const m = (override ?? query).trim();
-    if (!m || isStreaming) return;
+    const message = (override ?? query).trim();
+    if (!message || isStreaming) return;
     setQuery("");
-    await send(m);
+    await send(message);
   };
 
   useEffect(() => {

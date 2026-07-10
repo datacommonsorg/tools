@@ -43,7 +43,7 @@ export function CitationChip({ n }: { n: number }) {
  * this helper to apply citation styling consistently inside p, li, td,
  * strong, em, etc.
  */
-export function withCitationChips(
+export function renderWithCitations(
   children: React.ReactNode,
 ): React.ReactNode {
   if (children == null) return children;

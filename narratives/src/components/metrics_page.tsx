@@ -5,7 +5,12 @@
 import { useState } from "react";
 import { useBrand } from "../hooks/branding_context";
 import type { MetricsTab, MetricsTile } from "../types/metrics";
-import { API_ROOT, DC, type DCAttrs, type DCTag } from "../utils/dc_component";
+import {
+  API_ROOT,
+  DataCommonsComponent,
+  type DataCommonsComponentAttributes,
+  type DataCommonsComponentTagName,
+} from "../utils/datacommons_component";
 
 /**
  * Key Metrics Dashboard.
@@ -253,10 +258,10 @@ function TilesGrid({ tiles }: { tiles: MetricsTile[] }) {
         const { type, title, ...attrs } = tile;
         return (
           <Tile key={index} title={title}>
-            <DC
-              tag={`datacommons-${type}` as DCTag}
+            <DataCommonsComponent
+              tag={`datacommons-${type}` as DataCommonsComponentTagName}
               apiroot={API_ROOT}
-              {...(attrs as DCAttrs)}
+              {...(attrs as DataCommonsComponentAttributes)}
             />
           </Tile>
         );

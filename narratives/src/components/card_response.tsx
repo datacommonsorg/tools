@@ -4,7 +4,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { withCitationChips } from "./chip_citation";
+import { renderWithCitations } from "./chip_citation";
 
 interface ResponseCardProps {
   title: string;
@@ -76,7 +76,7 @@ function ReactMarkdownInner({
           components={{
             p: ({ children }) => (
               <p className="text-body-large mb-3 last:mb-0">
-                {withCitationChips(children)}
+                {renderWithCitations(children)}
               </p>
             ),
             h1: ({ children }) => (
@@ -99,7 +99,7 @@ function ReactMarkdownInner({
               <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
             ),
             li: ({ children }) => (
-              <li className="leading-relaxed">{withCitationChips(children)}</li>
+              <li className="leading-relaxed">{renderWithCitations(children)}</li>
             ),
             a: ({ children, href }) => (
               <a
@@ -150,17 +150,17 @@ function ReactMarkdownInner({
             ),
             th: ({ children }) => (
               <th className="border border-gray-200 px-3 py-2 text-left font-medium">
-                {withCitationChips(children)}
+                {renderWithCitations(children)}
               </th>
             ),
             td: ({ children }) => (
               <td className="border border-gray-200 px-3 py-2">
-                {withCitationChips(children)}
+                {renderWithCitations(children)}
               </td>
             ),
             strong: ({ children }) => (
               <strong className="font-semibold">
-                {withCitationChips(children)}
+                {renderWithCitations(children)}
               </strong>
             ),
             hr: () => <hr className="my-4 border-gray-200" />,

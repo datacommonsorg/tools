@@ -45,7 +45,8 @@ export type ChartRow = Record<string, string | number | undefined> & {
 
 /**
  * Base origin for API URLs — the current page's origin in the browser
- * (the instance proxies /api itself), empty during SSR/tests.
+ * (the instance proxies /api itself), empty during server-side rendering
+ * (SSR) or testing.
  */
 const ORIGIN =
   typeof window !== "undefined" ? window.location.origin : "";
