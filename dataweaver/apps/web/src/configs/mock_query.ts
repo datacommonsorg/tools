@@ -20,7 +20,10 @@ const MOCK_RESPONSES: MockResponse[] = [
       variant: 'text',
       title: 'Key insights when evaluating greenhouse gas emissions',
       body: 'Emissions per capita remain low relative to other regions, energy access is the dominant driver, and land-use change accounts for a large share of the total.',
-      relatedQuery: 'What are the key drivers of these trends?',
+      relatedQueries: [
+        'What are the key drivers of these trends?',
+        'How does energy access compare across Africa?',
+      ],
     },
   },
   {
@@ -48,7 +51,10 @@ const MOCK_RESPONSES: MockResponse[] = [
       variant: 'text',
       title: 'Why European emissions have been falling',
       body: 'A sustained shift away from coal, strong efficiency standards, and rapid renewable deployment have driven emissions down even as the economy has continued to grow.',
-      relatedQuery: 'Which policies drove the steepest cuts?',
+      relatedQueries: [
+        'Which policies drove the steepest cuts?',
+        'How has renewable energy grown in Europe?',
+      ],
     },
   },
   {
@@ -68,7 +74,7 @@ const MOCK_RESPONSES: MockResponse[] = [
         { date: '2018', value: 5614 },
         { date: '2021', value: 5265 },
       ],
-      relatedQuery: 'How does this compare to other regions?',
+      relatedQueries: ['How does this compare to other regions?'],
     },
   },
   {
@@ -77,7 +83,10 @@ const MOCK_RESPONSES: MockResponse[] = [
       variant: 'text',
       title: 'What is driving emissions growth in Asia',
       body: 'Rapid industrialisation, rising energy demand, and continued reliance on coal have made the region the largest contributor to global emissions growth over the past two decades.',
-      relatedQuery: 'How might this trajectory change?',
+      relatedQueries: [
+        'How might this trajectory change?',
+        'What is coal dependency in Asia?',
+      ],
     },
   },
   {
@@ -97,7 +106,7 @@ const MOCK_RESPONSES: MockResponse[] = [
         { date: '2018', value: 20366 },
         { date: '2021', value: 21521 },
       ],
-      relatedQuery: 'What would a lower-emissions pathway require?',
+      relatedQueries: ['What would a lower-emissions pathway require?'],
     },
   },
 ];

@@ -5,19 +5,13 @@ import { IconClose } from '~/components/primitives/icons/close';
 import { IconInfo } from '~/components/primitives/icons/info';
 import s from './intro.module.scss';
 
-export const EXAMPLE_PROMPTS = [
-  'How access to electricity has changed across countries in Africa?',
-  'Which countries have the highest access to mobile phones?',
-  'Compare GDP and population growth globally over the last 50 years.',
-  'What fraction of the world is forest?',
-] as const;
-
 interface IntroProps {
   onSelect: (example: string, index: number) => void;
   onClose: () => void;
+  prompts: string[];
 }
 
-export const Intro = ({ onSelect, onClose }: IntroProps) => {
+export const Intro = ({ onSelect, onClose, prompts }: IntroProps) => {
   return (
     <m.section
       className={s['outer-container']}
@@ -54,7 +48,7 @@ export const Intro = ({ onSelect, onClose }: IntroProps) => {
             </p>
 
             <ul className={s['examples-container']}>
-              {EXAMPLE_PROMPTS.map((example, index) => (
+              {prompts.map((example, index) => (
                 <li key={example}>
                   <Button
                     size="medium"
