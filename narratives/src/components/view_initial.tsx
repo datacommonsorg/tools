@@ -66,17 +66,17 @@ export function InitialView({ query, setQuery, onSend, textareaRef }: InitialVie
           virtual keyboard / browser chrome; from sm: up they dock to the bottom
           of the hero per the Figma spec. */}
       <div className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6">
-        {suggestions.map((text, i) => (
+        {suggestions.map((text, index) => (
           <SuggestionChip
-            key={i}
+            key={index}
             text={text}
             // Clicking a chip submits immediately — saves the user a second
             // click on the send button. We still mirror the text into the
             // input briefly so the question is visible while the request
             // kicks off and the InitialView is replaced by the chat surface.
-            onClick={(t) => {
-              setQuery(t);
-              onSend(t);
+            onClick={(suggestion) => {
+              setQuery(suggestion);
+              onSend(suggestion);
             }}
           />
         ))}
