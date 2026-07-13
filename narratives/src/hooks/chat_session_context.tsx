@@ -105,7 +105,7 @@ function emptySession(): ChatSession {
 function cleanTurns(turns: ChatTurn[]): ChatTurn[] {
   if (!Array.isArray(turns)) return [];
   return turns.filter(
-    (t) => t && (t.status === "done" || t.status === "error"),
+    (turn) => turn && (turn.status === "done" || turn.status === "error"),
   );
 }
 
@@ -241,7 +241,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const setTurns = useCallback(
     (updater: (prev: ChatTurn[]) => ChatTurn[]) => {
       setStore((prev) => {
-        const idx = prev.sessions.findIndex((s) => s.id === prev.currentId);
+        const idx = prev.sessions.findIndex(
+        (session) => session.id === prev.currentId,
+      );
         if (idx < 0) return prev;
         const nextTurns = updater(prev.sessions[idx].turns);
         if (nextTurns === prev.sessions[idx].turns) return prev;
@@ -265,7 +267,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
   const setSessionId = useCallback((id: string | undefined) => {
     setStore((prev) => {
-      const idx = prev.sessions.findIndex((s) => s.id === prev.currentId);
+      const idx = prev.sessions.findIndex(
+        (session) => session.id === prev.currentId,
+      );
       if (idx < 0) return prev;
       if (prev.sessions[idx].serverSessionId === id) return prev;
       const sessions = prev.sessions.slice();
@@ -331,7 +335,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const toggleDrawer = useCallback(() => setIsDrawerOpen((v) => !v), []);
+  const toggleDrawer = useCallback(() => setIsDrawerOpen((prev) => !prev), []);
   const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
 
   // Sessions list passed to consumers is sorted newest-updated first.

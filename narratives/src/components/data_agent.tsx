@@ -123,7 +123,7 @@ export function DataAgent() {
               index={i}
               isLast={i === turns.length - 1}
               isStreaming={isStreaming && i === turns.length - 1}
-              onAsk={(q) => send(q)}
+              onAsk={(question) => send(question)}
             />
           ))}
           {error && turns.length === 0 && (

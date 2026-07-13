@@ -100,7 +100,7 @@ export function ReasoningBlock({
     <div className="self-start shrink-0 w-full max-w-4xl">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((prev) => !prev)}
         className="inline-flex items-center gap-3 bg-transparent border-0 p-0 cursor-pointer"
         aria-expanded={open}
       >
