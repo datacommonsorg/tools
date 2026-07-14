@@ -1,0 +1,23 @@
+// TODO: these are just placeholders, replace these with a list of properly vetted questions
+export const EXAMPLE_PROMPTS = [
+  'How access to electricity has changed across countries in Africa?',
+  'Which countries have the highest access to mobile phones?',
+  'Compare GDP and population growth globally over the last 50 years.',
+  'What fraction of the world is forest?',
+  'How has life expectancy changed in Japan since 1960?',
+  'What are the unemployment rates across European countries?',
+  'How does CO2 emissions per capita compare between the US and China?',
+  'What is the literacy rate trend in India over the last 30 years?',
+  'Which countries have the highest renewable energy consumption?',
+  'How has infant mortality declined in sub-Saharan Africa?',
+  'What percentage of the population has internet access in South America?',
+  'Compare poverty rates across Southeast Asian countries.',
+  'How has water access improved in rural areas of Bangladesh?',
+  'What are the trends in agricultural land use in Brazil?',
+  'How does healthcare spending compare across G7 nations?',
+  'What is the trend in primary school enrollment in Nigeria?',
+  'How has the fertility rate changed globally since 1970?',
+  'Which countries emit the most methane per capita?',
+  'What are the obesity rates across OECD countries?',
+  'How has trade as a percentage of GDP changed in Germany?',
+] as const;
