@@ -5,7 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  ResponsiveContainer,
   Tooltip,
   usePlotArea,
   XAxis,
@@ -13,6 +12,7 @@ import {
 } from 'recharts';
 
 import type { ChartDatum } from './chart';
+import { ChartContainer } from './chart_container';
 import { CustomTooltip } from './custom_tooltip';
 
 const BAR_COLOR = `rgb(${COLORS['card-surface-selected']})`;
@@ -65,41 +65,41 @@ const FullWidthAxisLine = () => {
 
 export const DataChartBarVertical = ({ data }: ChartProps) => {
   return (
-    <ResponsiveContainer
-      width="100%"
-      aspect={1.78}
-      style={{ paddingBottom: '28px' }}
-    >
-      <BarChart
-        data={data}
-        margin={{ top: 32, right: 0, bottom: 0, left: 0 }}
-        style={{ overflow: 'hidden' }}
-      >
-        <CartesianGrid
-          stroke={GRID_COLOR}
-          vertical={false}
-          x={0}
-          width={9999}
-        />
-        <XAxis
-          dataKey="date"
-          tickLine={{ stroke: AXIS_COLOR }}
-          axisLine={false}
-          tick={{ fontSize: 10, fill: AXIS_COLOR }}
-          tickMargin={6}
-          padding={{ left: 0, right: 4 }}
-        />
-        <YAxis
-          width="auto"
-          tickLine={false}
-          axisLine={false}
-          tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-          tickFormatter={(value) => compactFormatter.format(Number(value))}
-        />
-        <FullWidthAxisLine />
-        <Tooltip cursor={<CustomCursor />} content={<CustomTooltip />} />
-        <Bar dataKey="value" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
+    <ChartContainer aspect={1.78}>
+      {(width, height) => (
+        <BarChart
+          data={data}
+          width={width}
+          height={height}
+          margin={{ top: 32, right: 0, bottom: 0, left: 0 }}
+          style={{ overflow: 'hidden' }}
+        >
+          <CartesianGrid
+            stroke={GRID_COLOR}
+            vertical={false}
+            x={0}
+            width={9999}
+          />
+          <XAxis
+            dataKey="date"
+            tickLine={{ stroke: AXIS_COLOR }}
+            axisLine={false}
+            tick={{ fontSize: 10, fill: AXIS_COLOR }}
+            tickMargin={6}
+            padding={{ left: 0, right: 4 }}
+          />
+          <YAxis
+            width="auto"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
+            tickFormatter={(value) => compactFormatter.format(Number(value))}
+          />
+          <FullWidthAxisLine />
+          <Tooltip cursor={<CustomCursor />} content={<CustomTooltip />} />
+          <Bar dataKey="value" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
+        </BarChart>
+      )}
+    </ChartContainer>
   );
 };
