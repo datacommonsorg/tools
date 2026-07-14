@@ -1,11 +1,16 @@
 'use client';
 
-import { type ReactNode, type RefObject, useRef, useState } from 'react';
-import { useCachedResizeValues } from '~/hooks/use_cached_resize_values';
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import s from './content.module.scss';
 
 interface CardContentProps {
-  contentContainerRef: RefObject<HTMLDivElement | null>;
+  childrenInnerContainerRef: RefObject<HTMLDivElement | null>;
   title: ReactNode;
   children: ReactNode;
 }
@@ -15,17 +20,28 @@ interface CardContentProps {
  * while the children scroll beneath it.
  */
 export const CardContent = ({
-  contentContainerRef,
+  childrenInnerContainerRef,
   title,
   children,
 }: CardContentProps) => {
-  const contentOuterContainerRef = useRef<HTMLDivElement>(null);
+  const childrenOuterContainerRef = useRef<HTMLDivElement>(null);
+  const canScrollRef = useRef(false);
 
   const [hasScrolled, setHasScrolled] = useState(false);
 
-  const getCachedCanScroll = useCachedResizeValues((element: HTMLElement) => {
-    return element.scrollHeight > element.clientHeight;
-  });
+  useEffect(() => {
+    const childrenOuterContainer = childrenOuterContainerRef.current;
+    const childrenInnerContainer = childrenInnerContainerRef.current;
+    if (!childrenOuterContainer || !childrenInnerContainer) return;
+
+    const observer = new ResizeObserver(() => {
+      canScrollRef.current =
+        childrenOuterContainer.scrollHeight >
+        childrenOuterContainer.clientHeight;
+    });
+    observer.observe(childrenInnerContainer);
+    return () => observer.disconnect();
+  }, [childrenInnerContainerRef]);
 
   return (
     <div
@@ -35,23 +51,23 @@ export const CardContent = ({
       // scrolled by a wheel gesture anywhere over the card (title included),
       // not just directly over the scroll area
       onWheelCapture={(event) => {
-        const content = contentOuterContainerRef.current;
-        if (content && getCachedCanScroll(false, content)) {
-          event.stopPropagation();
-        }
+        if (canScrollRef.current) event.stopPropagation();
       }}
     >
       {title && <header className={s['header-container']}>{title}</header>}
 
       <div
-        ref={contentOuterContainerRef}
-        className={s['content-outer-container']}
+        ref={childrenOuterContainerRef}
+        className={s['children-outer-container']}
         onScroll={(event) => {
           const scrolled = event.currentTarget.scrollTop > 0;
           setHasScrolled(scrolled);
         }}
       >
-        <div ref={contentContainerRef} className={s['content-inner-container']}>
+        <div
+          ref={childrenInnerContainerRef}
+          className={s['children-inner-container']}
+        >
           {children}
         </div>
       </div>

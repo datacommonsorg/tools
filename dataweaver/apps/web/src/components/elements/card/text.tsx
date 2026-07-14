@@ -61,20 +61,20 @@ export const CardText = ({
   const { open: openExport } = useExportActions();
   const { runPrompt } = useQueryActions();
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const contentContainerRef = useRef<HTMLDivElement>(null);
+  const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
+  const contentChildrenInnerContainerRef = useRef<HTMLDivElement>(null);
 
   useCardAutoHeight(
     id,
-    containerRef,
-    contentContainerRef,
+    baseChildrenContainerRef,
+    contentChildrenInnerContainerRef,
     CARD_VARIANT_SIZE_DEFAULT.text.h,
   );
 
   return (
     <Card.Base
       id={id}
-      childrenContainerRef={containerRef}
+      childrenContainerRef={baseChildrenContainerRef}
       isLoading={isLoading}
       selection={selection}
       actions={[
@@ -95,7 +95,7 @@ export const CardText = ({
       ]}
     >
       <Card.Content
-        contentContainerRef={contentContainerRef}
+        childrenInnerContainerRef={contentChildrenInnerContainerRef}
         title={title && <h2 className={s.title}>{title}</h2>}
       >
         {isLoading && !body && <Skeleton />}

@@ -61,13 +61,13 @@ export const CardChart = ({
   const { open: openExport } = useExportActions();
   const { runPrompt } = useQueryActions();
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const contentContainerRef = useRef<HTMLDivElement>(null);
+  const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
+  const contentChildrenInnerContainerRef = useRef<HTMLDivElement>(null);
 
   useCardAutoHeight(
     id,
-    containerRef,
-    contentContainerRef,
+    baseChildrenContainerRef,
+    contentChildrenInnerContainerRef,
     CARD_VARIANT_SIZE_DEFAULT.chart.h,
   );
 
@@ -86,7 +86,7 @@ export const CardChart = ({
   return (
     <Card.Base
       id={id}
-      childrenContainerRef={containerRef}
+      childrenContainerRef={baseChildrenContainerRef}
       isLoading={isLoading}
       selection={selection}
       actions={[
@@ -114,7 +114,7 @@ export const CardChart = ({
       ]}
     >
       <Card.Content
-        contentContainerRef={contentContainerRef}
+        childrenInnerContainerRef={contentChildrenInnerContainerRef}
         title={
           (title || description) && (
             <div className={s['header-container']}>

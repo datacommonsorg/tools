@@ -19,7 +19,7 @@
   }
 }
 
-.content-outer-container {
+.children-outer-container {
   flex-grow: 1;
   min-height: 0;
   overflow-y: auto;
@@ -27,7 +27,7 @@
   scrollbar-width: thin;
 }
 
-.content-inner-container {
+.children-inner-container {
   display: flex;
   flex-direction: column;
   padding: 0 28px 28px;
