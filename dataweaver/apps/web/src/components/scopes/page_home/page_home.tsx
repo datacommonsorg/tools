@@ -4,6 +4,7 @@ import { AnimatePresence } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasSelectedCards } from '~/components/scopes/atlas/use_atlas_selected_cards';
+
 import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';
@@ -15,7 +16,11 @@ import { Status } from './status';
 /** Show a tag per card up to this many; beyond it, collapse to a count tag. */
 const MAX_VISIBLE_TAGS = 2;
 
-export const PageHome = () => {
+interface PageHomeProps {
+  examplePrompts: string[];
+}
+
+export const PageHome = ({ examplePrompts }: PageHomeProps) => {
   const { runPrompt } = useQueryActions();
   const currentStatus = useAtlasStore((s) => s.currentStatus);
   const latestNode = useAtlasStore((s) =>
@@ -34,14 +39,10 @@ export const PageHome = () => {
     return selectedCards;
   }, [selectedCards]);
 
+  const nodeDismissFollowUp = useAtlasStore((s) => s.nodeDismissFollowUp);
+
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
-
-  // TODO: Explore if we can drop dismissed node ID by improving how FollowUp
-  // 'onClose' handles the follow-up state. Currently, if a user dismisses a
-  // follow-up and then the same node is re-run, the follow-up will reappear.
-  // This state here is a workaround to prevent that for now
-  const [dismissedNodeId, setDismissedNodeId] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState('');
 
   const submitPrompt = (value = promptValue) => {
@@ -61,27 +62,13 @@ export const PageHome = () => {
     currentStatus !== STATUS.idle;
 
   useEffect(() => {
-    const followUps = latestNode?.results
-      ? Object.values(latestNode.results)
-          .map((r) => r.followUp)
-          .filter(Boolean)
-      : [];
-
-    // TODO - we currently can get more than one follow-up, as the api will return
-    // one per place in the query. Here I'm just using the first one, but we'll need to figure
-    // out a better way to handle this
-    const firstFollowUp = followUps[0];
-    if (
-      latestNode &&
-      firstFollowUp &&
-      currentStatus === STATUS.complete &&
-      latestNode.id !== dismissedNodeId
-    ) {
-      setFollowUp(firstFollowUp);
+    const nodeFollowUp = latestNode?.followUp;
+    if (latestNode && nodeFollowUp && currentStatus === STATUS.complete) {
+      setFollowUp(nodeFollowUp);
     } else {
       setFollowUp(null);
     }
-  }, [currentStatus, latestNode, dismissedNodeId]);
+  }, [currentStatus, latestNode]);
 
   return (
     <div className={s.container}>
@@ -91,6 +78,7 @@ export const PageHome = () => {
             key="intro"
             onSelect={submitPrompt}
             onClose={() => setIsIntroVisible(false)}
+            prompts={examplePrompts}
           />
         )}
 
@@ -102,7 +90,7 @@ export const PageHome = () => {
             onSelect={submitPrompt}
             onClose={() => {
               setFollowUp(null);
-              if (latestNode) setDismissedNodeId(latestNode.id);
+              if (latestNode) nodeDismissFollowUp(latestNode.id);
             }}
           />
         )}

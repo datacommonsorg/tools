@@ -41,7 +41,7 @@ export interface CardTextProps extends CardState {
 
   /** HTML string rendered via `html-react-parser` (sanitized/filtered). */
   body?: string;
-  relatedQuery?: string;
+  relatedQueries?: string[];
 }
 
 export const CardText = ({
@@ -50,7 +50,7 @@ export const CardText = ({
   selection,
   title,
   body,
-  relatedQuery,
+  relatedQueries,
 }: CardTextProps) => {
   const editor = useEditor();
 
@@ -106,18 +106,21 @@ export const CardText = ({
         )}
       </div>
 
-      {relatedQuery && !isLoading && (
+      {relatedQueries && relatedQueries.length > 0 && !isLoading && (
         <Card.Footer>
-          <Button
-            size="small"
-            variant="flat"
-            tone="accent-subtle"
-            icon={IconPencil}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => runPrompt(relatedQuery)}
-          >
-            {relatedQuery}
-          </Button>
+          {relatedQueries.map((query) => (
+            <Button
+              key={query}
+              size="small"
+              variant="flat"
+              tone="accent-subtle"
+              icon={IconPencil}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => runPrompt(query)}
+            >
+              {query}
+            </Button>
+          ))}
         </Card.Footer>
       )}
     </Card.Base>

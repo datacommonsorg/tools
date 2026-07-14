@@ -6,6 +6,7 @@ export interface ParsedQuery {
   titles: Record<string, string>;
   dateRange?: { start?: string; end?: string };
   isFollowUp: boolean;
+  followUp?: FollowUp;
 }
 
 export interface HistoryNode {
@@ -19,6 +20,7 @@ export interface HistoryNode {
   timestamp: number;
   status: 'pending' | 'complete' | 'error';
   followUp?: FollowUp;
+  followUpContext?: FollowUpContext;
 }
 
 export type CardType = 'loading' | 'table' | 'notes' | 'chart';
@@ -57,6 +59,16 @@ export interface FollowUp {
   options: string[];
 }
 
+export interface FollowUpEntry {
+  question: string;
+  answer: string;
+}
+
+export interface FollowUpContext {
+  originalQuery: string;
+  followUps: FollowUpEntry[];
+}
+
 export interface QueryResult {
   id: string;
   title: string;
@@ -70,7 +82,6 @@ export interface QueryResult {
   relatedQueries?: string[];
   tableHtml?: string;
   notesHtml?: string;
-  followUp?: FollowUp;
 }
 
 export interface FacetInfo {
@@ -115,6 +126,7 @@ export interface QueryStreamRequest {
   atlasContext: string;
   ancestorChain: { query: string; topic: string; places: string[] }[];
   selectedEntityDcids: string[];
+  followUpContext?: FollowUpContext;
 }
 
 // --- Status messages ---
@@ -128,8 +140,8 @@ export const STATUS = {
   // Static messages
   starting: 'Starting query...',
   connecting: 'Connecting...',
-  checkingSafety: 'Checking query safety...',
-  parsingQuery: 'Parsing query...',
+  checkingSafety: 'Reading query...',
+  parsingQuery: 'Understanding query...',
   fetchingTools: 'Fetching available tools...',
   noResponseBody: 'No response body',
 
@@ -157,6 +169,7 @@ export const STREAM_EVENT = {
   parsedQuery: 'parsed_query',
   toolCall: 'tool_call',
   queryResult: 'query_result',
+  followUp: 'follow_up',
   placeSkipped: 'place_skipped',
   complete: 'complete',
   error: 'error',
@@ -175,6 +188,7 @@ export type StreamEvent =
       result: QueryResult;
       place: string;
     }
+  | { type: typeof STREAM_EVENT.followUp; data: FollowUp }
   | { type: typeof STREAM_EVENT.placeSkipped; place: string; reason: string }
   | { type: typeof STREAM_EVENT.complete; message: string }
   | { type: typeof STREAM_EVENT.error; message: string };
