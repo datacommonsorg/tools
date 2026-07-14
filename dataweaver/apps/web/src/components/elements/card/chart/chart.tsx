@@ -43,7 +43,7 @@ export interface CardChartProps extends CardState {
   // dataset. Let's make it more generic once we have real data to work with
   data?: ChartDatum[];
   facets?: FacetInfo[];
-  relatedQuery?: string;
+  relatedQueries?: string[];
 }
 
 export const CardChart = ({
@@ -54,7 +54,7 @@ export const CardChart = ({
   description,
   data,
   facets,
-  relatedQuery,
+  relatedQueries,
 }: CardChartProps) => {
   const editor = useEditor();
 
@@ -155,18 +155,21 @@ export const CardChart = ({
           </>
         )}
 
-        {relatedQuery && !isLoading && (
+        {relatedQueries && relatedQueries.length > 0 && !isLoading && (
           <Card.Footer>
-            <Button
-              size="small"
-              variant="flat"
-              tone="accent-subtle"
-              icon={IconPencil}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => runPrompt(relatedQuery)}
-            >
-              {relatedQuery}
-            </Button>
+            {relatedQueries.map((query) => (
+              <Button
+                key={query}
+                size="small"
+                variant="flat"
+                tone="accent-subtle"
+                icon={IconPencil}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => runPrompt(query)}
+              >
+                {query}
+              </Button>
+            ))}
           </Card.Footer>
         )}
       </Card.Content>

@@ -5,7 +5,7 @@ import type { CardTextProps } from '~/components/elements/card/text';
 import { CARD_VARIANT_SIZE_DEFAULT } from './config';
 
 interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
-  relatedQuery?: string;
+  relatedQueries?: string[];
 }
 
 interface TextContent
@@ -67,7 +67,7 @@ export const contentToShape = (
     // worst-case space up front means initial placement never overlaps neighbor
     ...CARD_VARIANT_SIZE_DEFAULT[content.variant],
     isLoading: content.isLoading ?? false,
-    relatedQuery: content.relatedQuery,
+    relatedQueries: content.relatedQueries,
   };
 
   if (content.variant === 'chart') {
