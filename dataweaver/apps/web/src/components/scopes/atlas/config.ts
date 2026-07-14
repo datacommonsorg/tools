@@ -30,6 +30,10 @@ const DISABLED_ACTION_IDS = [
   'flatten-to-image',
   'toggle-lock',
 
+  // Flip selection (Shift+H / Shift+V)
+  'flip-horizontal',
+  'flip-vertical',
+
   // Export as… (also lives in our own toolbar UI)
   'export-as-svg',
   'export-as-png',
@@ -44,11 +48,20 @@ const DISABLED_ACTION_IDS = [
   'move-to-new-page',
 ] as const;
 
+/**
+ * List of tools we don't want to support.
+ */
+const DISABLED_TOOL_IDS = ['frame'] as const;
+
 /** UI behaviour overrides for tldraw. */
 export const ATLAS_OVERRIDES: TLUiOverrides = {
   actions(_editor, actions) {
     for (const id of DISABLED_ACTION_IDS) delete actions[id];
     return actions;
+  },
+  tools(_editor, tools) {
+    for (const id of DISABLED_TOOL_IDS) delete tools[id];
+    return tools;
   },
 };
 
