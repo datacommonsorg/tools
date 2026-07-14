@@ -21,21 +21,11 @@ import {
  * new state instance changes its dashboards by editing branding.json in its
  * config bucket, no image rebuild needed.
  *
- * IMPORTANT — why we use dangerouslySetInnerHTML for the DC components:
- *
- * React 19's custom-element handler sets non-`apiroot` props as JS properties
- * on the element instance (e.g. `element.variables = "Count_Person"`), instead
- * of HTML attributes. The DC components' property setters don't always parse
- * string input — e.g. <datacommons-line>'s `variables` setter stores the string
- * as-is, then `this.variables.map(...)` crashes inside the render.
- *
- * Upstream `server/templates/custom_dc/custom/homepage.html` (renderDCComponent,
- * line 4076) builds the elements as HTML strings and injects via innerHTML.
- * That path hits setAttribute() + connectedCallback, which the components
- * handle correctly. We mirror that pattern via <DC> below.
- *
- * apiroot is set to window.location.origin per upstream:
- *   homepage.html:4076 — `const apiRoot = window.location.origin;`
+ * DC components are rendered via the shared <DataCommonsComponent> wrapper
+ * (see utils/datacommons_component.tsx), which imperatively mounts each
+ * <datacommons-*> element and sets attributes rather than JS properties —
+ * working around React 19's custom-element property-setter behavior. `apiroot`
+ * is the page origin, per upstream homepage.html.
  */
 const FONT_DISPLAY = "var(--font-display)";
 

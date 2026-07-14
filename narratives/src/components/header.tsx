@@ -3,7 +3,7 @@
  */
 
 import { ChevronDown } from "lucide-react";
-import { MenuIcon } from "./Icons";
+import { MenuIcon } from "./icons";
 import { NAV_CONFIG } from "../config/nav_config";
 import { useHashRoute } from "../hooks/use_hash_route";
 import { useChatSession } from "../hooks/chat_session_context";

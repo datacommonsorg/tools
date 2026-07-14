@@ -4,7 +4,7 @@
 
 /** A single primary-navigation entry rendered as a header tab. */
 export interface NavItem {
-  /** Route id — matches the hash route in App.tsx (`agent` is the default view). */
+  /** Route id — matches the hash route in app.tsx (`agent` is the default view). */
   id: string;
   /** Human-readable tab label shown in the header. */
   label: string;

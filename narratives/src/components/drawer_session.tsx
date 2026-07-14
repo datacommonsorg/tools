@@ -4,7 +4,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Trash2, X, ArrowRight, ArrowLeft } from "lucide-react";
-import { NewChatIcon, ChatsIcon } from "./Icons";
+import { NewChatIcon, ChatsIcon } from "./icons";
 import {
   formatRelativeTime,
   useChatSession,

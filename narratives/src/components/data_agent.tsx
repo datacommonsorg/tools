@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { InitialView } from "./view_initial";
 import { SkeletonCard } from "./card_skeleton";
-import { ReasoningBlock } from "./reasoning_block";
+import { ReasoningBlock } from "./block_reasoning";
 import { AnswerPanel } from "./panel_answer";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { useChatSession } from "../hooks/chat_session_context";
@@ -16,7 +16,7 @@ import { useChatSession } from "../hooks/chat_session_context";
  */
 export function DataAgent() {
   const [query, setQuery] = useState("");
-  // Pulled from the Context (ChatSessionProvider in App.tsx) so turns
+  // Pulled from the Context (ChatSessionProvider in app.tsx) so turns
   // survive when the user navigates to another SPA tab and back, and across
   // browser refreshes (persisted to localStorage).
   const { turns, isStreaming, error, send, stop } = useChatSession();
@@ -217,10 +217,6 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
         {turn.userMessage}
       </div>
 
-      {/* Phase loader removed — ReasoningBlock below is the sole progress
-          indicator. Showing both was redundant ("Querying data tools…"
-          duplicated "Searching Data Commons for relevant indicators…"). */}
-
       {/* Tool-call chips hidden — loader + phase message convey progress
           on their own. The raw search_indicators(...) / get_observations(...)
           text was leaking into the answer area. */}
@@ -238,8 +234,7 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
       {/* Skeleton while the turn is streaming but no synthesis text has
           arrived yet. Covers the full pre-text window: mcp (tools running),
           kb (knowledge base lookup), and synthesis (model thinking before
-          first token). Previously this only checked `mcp`, leaving a ~3s
-          blank gap between mcp_complete and the first text chunk. */}
+          first token). */}
       {!turn.text &&
         (turn.status === "mcp" ||
           turn.status === "kb" ||
