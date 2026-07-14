@@ -109,7 +109,7 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
  * `useCardAutoHeight`) and is capped at this value - larger content scrolls.
  */
 export const CARD_VARIANT_MAX: Record<CardVariant, CardSize> = {
-  text: { w: 420, h: 440 },
+  text: { w: 650, h: 440 },
   table: { w: 650, h: 500 },
   chart: { w: 420, h: 520 },
 };
