@@ -1,4 +1,4 @@
-import type { Editor, TLShapeId } from 'tldraw';
+import { type Editor, react, type TLShapeId } from 'tldraw';
 import { TABBABLE_ELEMENTS } from '~/hooks/use_focus_trap';
 import { CARD_DATA_ATTRIBUTE } from './shapes/card';
 
@@ -100,6 +100,38 @@ const getTargetIndex = (
 export const registerCardTabNavigation = (editor: Editor) => {
   const container = editor.getContainer();
 
+  // The focusables list only changes when the canvas does, so cache it between
+  // tab presses instead of rebuilding it on every keydown
+  let cachedFocusables: CardFocusable[] | null = null;
+
+  // Track the exact store state the list derives from: the current page's
+  // shape records (existence, position, size — anything affecting reading
+  // order) and the culled set. This effect only runs if those change and not
+  // if the store changes in ways that don't affect the list (e.g. hover,
+  // pointer, camera pans etc.
+  const cleanupStoreReactor = react('invalidate card focusables cache', () => {
+    editor.getCurrentPageShapes();
+    editor.getCulledShapes();
+    cachedFocusables = null;
+  });
+
+  // DOM changes cover card content re-rendering without a store change. Only
+  // mutations inside a card can affect the list
+  const observer = new MutationObserver((mutations) => {
+    const touchesCard = mutations.some(
+      (mutation) =>
+        mutation.target instanceof HTMLElement &&
+        mutation.target.closest(CARD_SELECTOR),
+    );
+    if (touchesCard) cachedFocusables = null;
+  });
+  observer.observe(container, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['tabindex', 'disabled', 'href', 'type'],
+  });
+
   const pressedKey = (event: KeyboardEvent) => {
     // Ignore non-tab keys and modifier combos (alt+tab, ctrl+tab, etc).
     if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
@@ -129,7 +161,9 @@ export const registerCardTabNavigation = (editor: Editor) => {
       return;
     }
 
-    const focusables = getCardFocusables(editor);
+    // Build the focusables list if we don't have a cached one yet
+    cachedFocusables ??= getCardFocusables(editor);
+    const focusables = cachedFocusables;
     if (focusables.length === 0) return;
 
     const targetIndex = getTargetIndex(
@@ -152,5 +186,7 @@ export const registerCardTabNavigation = (editor: Editor) => {
   container.addEventListener('keydown', pressedKey, { capture: true });
   return () => {
     container.removeEventListener('keydown', pressedKey, { capture: true });
+    observer.disconnect();
+    cleanupStoreReactor();
   };
 };
