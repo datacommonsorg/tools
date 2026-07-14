@@ -246,7 +246,7 @@ skip layout/paint).
   adding `padding: 0` / `border: 0` / `background: none`.
 - Typography mixins live in `~/styles/typography.module.scss` — `@use` it where
   needed (it isn't part of the auto-injected includes).
-- Cascade layers, low → high: `reset, root, base, primitive` (`~/styles/layers.css`).
+- Cascade layers, low → high: `reset, root, primitive, base` (`~/styles/layers.css`).
 
 ---
 
