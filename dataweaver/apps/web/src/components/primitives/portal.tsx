@@ -21,14 +21,17 @@ export const Portal = ({ className, children }: PortalProps) => {
 
   useEffect(() => {
     const element = document.createElement('div');
-    if (className) element.className = className;
     document.body.appendChild(element);
     setMountedElement(element);
     return () => {
       element.remove();
       setMountedElement(null);
     };
-  }, [className]);
+  }, []);
+
+  useEffect(() => {
+    if (mountedElement) mountedElement.className = className || '';
+  }, [mountedElement, className]);
 
   return mountedElement ? createPortal(children, mountedElement) : null;
 };

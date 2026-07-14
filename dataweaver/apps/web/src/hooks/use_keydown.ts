@@ -43,8 +43,8 @@ interface Query {
 
 // Capture-phase and bubble-phase listeners require separate `addEventListener`
 // registrations on the same target, so each phase gets its own registry.
-const BUBBLE_QUERIES = new Map<EventTarget, Query>();
-const CAPTURE_QUERIES = new Map<EventTarget, Query>();
+const BUBBLE_QUERIES = new WeakMap<EventTarget, Query>();
+const CAPTURE_QUERIES = new WeakMap<EventTarget, Query>();
 
 const getQueries = (capture: boolean) => {
   return capture ? CAPTURE_QUERIES : BUBBLE_QUERIES;
