@@ -5,18 +5,17 @@ import s from './button.module.scss';
 /** These are the main button styles - unique based on the button's purpose. */
 interface WithInternalTones {
   variant: 'flat' | 'border';
-  tone:
-    | 'prominent'
-    | 'subtle'
-    | 'subtle-highlight'
-    | 'accent'
-    | 'accent-subtle';
+  tone: 'subtle' | 'subtle-highlight' | 'accent' | 'accent-subtle';
+
+  /** @default false */
+  isActive?: boolean;
 }
 
 /** These inherit from the parent element based on use case. */
 interface WithExternalTones {
   variant: 'flat';
   tone: 'control' | 'card-action';
+  isActive?: never;
 }
 
 interface WithIconOnly {
@@ -46,6 +45,7 @@ export const Button = ({
   variant,
   tone,
   isDisabled = false,
+  isActive = false,
   ...rest
 }: ButtonProps) => {
   const hasChildren = Boolean(children);
@@ -64,6 +64,7 @@ export const Button = ({
       data-size={size}
       data-variant={variant}
       data-tone={tone}
+      data-is-active={isActive}
       disabled={isDisabled}
     >
       {Icon && <Icon className={s.icon} />}
