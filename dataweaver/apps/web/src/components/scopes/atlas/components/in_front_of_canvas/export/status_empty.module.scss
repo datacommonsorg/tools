@@ -28,6 +28,10 @@
     color: rgb(var(--color-control-content-muted));
   }
 
+  &[data-has-max-width="true"] .card-description {
+    max-width: 200px;
+  }
+
   .button-select-all {
     display: flex;
     flex-direction: column;
