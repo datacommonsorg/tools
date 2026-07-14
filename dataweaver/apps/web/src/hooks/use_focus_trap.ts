@@ -22,7 +22,10 @@ interface Config {
   /**
    * By default this hook will only trap focus of the following elements:
    * - `a[href]:not([tabindex='-1'])`
-   * - `button:not([disabled])`
+   * - `button:not([tabindex='-1']):not(:disabled)`
+   * - `input:not([tabindex='-1']):not(:disabled)`
+   * - `select:not([tabindex='-1']):not(:disabled)`
+   * - `textarea:not([tabindex='-1']):not(:disabled)`
    * - `[tabindex='0']`
    *
    * If you want to change the list of focusable elements, you can pass a custom
@@ -82,7 +85,10 @@ export const useFocusTrap = <TElement extends HTMLElement | null>(
     if (!validTargets.some((target) => target.contains(activeElement))) {
       // The element wasn't in the focus trap, so focus the next element
       // relative to the direction of the tab key
-      (event.shiftKey ? lastFocusableElement : firstFocusableElement).focus();
+      const targetElement = event.shiftKey
+        ? lastFocusableElement
+        : firstFocusableElement;
+      targetElement.focus();
       event.preventDefault();
       return;
     }
@@ -100,7 +106,16 @@ export const useFocusTrap = <TElement extends HTMLElement | null>(
       event.preventDefault();
       return;
     }
+
+    // If we got here, the active element is within the focus trap and not at
+    // the edges - so we don't need to do anything
   };
 
-  useKeydown('Tab', keepFocusWithinTarget, { isEnabled: config.isEnabled });
+  useKeydown('Tab', keepFocusWithinTarget, {
+    isEnabled: config.isEnabled,
+
+    // Listen during the capture phase so the trap intercepts `Tab` before a
+    // focused descendant (e.g. tldraw's canvas) can consume it
+    capture: true,
+  });
 };

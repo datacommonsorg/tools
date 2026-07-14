@@ -115,7 +115,7 @@ export const MenuChartOptions = ({
             tone="subtle-highlight"
             onClick={() => onConfirmSelectionChange(selectedValue)}
           >
-            Update chart style
+            Update
           </Button>
         </div>
       </section>

@@ -94,9 +94,6 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   const clonesRef = useRef<Map<TLShapeId, Set<TLShapeId>>>(new Map());
 
   const mounted = useCallback((editor: Editor) => {
-    // Render the dot grid (camera-tracked via the 'Grid' component slot)
-    editor.updateInstanceState({ isGridMode: true });
-
     // Define camera zoom levels
     editor.setCameraOptions({ zoomSteps: [...ZOOM_STEPS] });
 
