@@ -25,9 +25,7 @@ export const CardContent = ({
 
   const getCachedCanScroll = useCachedResizeValues(
     childrenOuterContainerRef,
-    (element: HTMLElement) => {
-      return element.scrollHeight > element.clientHeight;
-    },
+    (element: HTMLDivElement) => element.scrollHeight > element.clientHeight,
   );
 
   return (
