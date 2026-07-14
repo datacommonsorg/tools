@@ -1,13 +1,8 @@
 'use client';
 
-import {
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { type ReactNode, type RefObject, useRef, useState } from 'react';
 import s from './content.module.scss';
+import { useCachedResizeValues } from './use_cached_resize_values';
 
 interface CardContentProps {
   childrenInnerContainerRef: RefObject<HTMLDivElement | null>;
@@ -25,23 +20,15 @@ export const CardContent = ({
   children,
 }: CardContentProps) => {
   const childrenOuterContainerRef = useRef<HTMLDivElement>(null);
-  const canScrollRef = useRef(false);
 
   const [hasScrolled, setHasScrolled] = useState(false);
 
-  useEffect(() => {
-    const childrenOuterContainer = childrenOuterContainerRef.current;
-    const childrenInnerContainer = childrenInnerContainerRef.current;
-    if (!childrenOuterContainer || !childrenInnerContainer) return;
-
-    const observer = new ResizeObserver(() => {
-      canScrollRef.current =
-        childrenOuterContainer.scrollHeight >
-        childrenOuterContainer.clientHeight;
-    });
-    observer.observe(childrenInnerContainer);
-    return () => observer.disconnect();
-  }, [childrenInnerContainerRef]);
+  const getCachedCanScroll = useCachedResizeValues(
+    childrenInnerContainerRef,
+    (element: HTMLElement) => {
+      return element.scrollHeight > element.clientHeight;
+    },
+  );
 
   return (
     <div
@@ -51,7 +38,10 @@ export const CardContent = ({
       // scrolled by a wheel gesture anywhere over the card (title included),
       // not just directly over the scroll area
       onWheelCapture={(event) => {
-        if (canScrollRef.current) event.stopPropagation();
+        const container = childrenOuterContainerRef.current;
+        if (container && getCachedCanScroll(container)) {
+          event.stopPropagation();
+        }
       }}
     >
       {title && <header className={s['header-container']}>{title}</header>}
