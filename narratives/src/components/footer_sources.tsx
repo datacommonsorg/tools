@@ -1,20 +1,18 @@
 /**
- * @fileoverview Compact footer list of sources — the import_name +
- * provenance_url pairs extracted from get_observations source_metadata by the
- * agent backend.
+ * @fileoverview Renders a compact footer list of answer sources.
  */
 
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
-interface FooterSourcesProps {
+interface SourcesFooterProps {
   sources: ProvenanceItem[];
 }
 
 /**
- * Renders the footer-style sources list. Returns nothing when there are no
- * sources.
+ * Renders the list of import_name + provenance_url pairs extracted from
+ * get_observations source_metadata by the agent backend.
  */
-export function FooterSources({ sources }: FooterSourcesProps) {
+export function SourcesFooter({ sources }: SourcesFooterProps) {
   if (sources.length === 0) return null;
   return (
     <div className="mt-2 flex flex-col gap-1">
@@ -28,7 +26,7 @@ export function FooterSources({ sources }: FooterSourcesProps) {
                 href={source.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline hover:text-brand-primary-dark"
+                className="underline hover:text-brand-primary"
               >
                 {source.name || source.url}
               </a>

@@ -1,53 +1,49 @@
 /**
- * @fileoverview Filled "Export PDF" button. Triggers `window.print()` against
- * a print stylesheet that hides the chat input + side panels and keeps just
- * the PanelAnswer visible. This is the cheapest reliable PDF export — works in
- * every browser with no extra dependency. A future enhancement could swap in
- * html2pdf.js or jspdf for a non-print path, but for V1 print-to-PDF matches
- * Figma's "Export PDF" affordance (node 3427-16783) exactly.
+ * @fileoverview Renders a button that exports the answer panel to PDF via the browser print flow.
  */
 
 import { useRef } from "react";
+import { printElement } from "../utils/print_element";
 
-interface ButtonExportPdfProps {
+/**
+ * Figma node 3427-16783 "Button" → Type=Round, Size=Small, Style=Filled.
+ *   - filled: AI Dark Blue #175C75
+ *   - pill: border-radius 100px
+ *   - padding 10px 16px, gap 8px
+ *   - height 48 (Round Small height 40, but the wrapper "Content" frame is 48)
+ *   - leading icon: Google Symbols 20px (figma puts "edit" as a placeholder;
+ *     we use a download/picture-as-pdf icon since the label says "Export PDF")
+ *   - label: Google Sans Text Medium 14/20, color #FFFFFF
+ *
+ * Behaviour: triggers `window.print()` against a print stylesheet that
+ * hides chat input + side panels and keeps just the AnswerPanel visible.
+ * This is the cheapest reliable PDF export — works in every browser, no
+ * extra dependency. A future enhancement could swap in html2pdf.js or
+ * jspdf for a non-print path, but for V1 print-to-PDF matches Figma's
+ * "Export PDF" affordance exactly.
+ */
+
+interface ExportPdfButtonProps {
   targetRef?: React.RefObject<HTMLElement | null>;
   label?: string;
 }
 
-const COLOR_FILL = "#175C75";
+const COLOR_FILL = "var(--color-brand-primary)";
 const COLOR_TEXT = "#FFFFFF";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-/**
- * Renders the filled Export-PDF pill. When `targetRef` is supplied, the
- * referenced element is marked as the print target so the print stylesheet
- * isolates it; otherwise it falls back to the `#answer-panel` container.
- */
-export function ButtonExportPdf({
+/** Filled "Export PDF" pill that prints the enclosing answer panel to PDF. */
+export function ExportPdfButton({
   targetRef,
   label = "Export PDF",
-}: ButtonExportPdfProps) {
+}: ExportPdfButtonProps) {
   const internalRef = useRef<HTMLButtonElement>(null);
 
-  const onExport = () => {
-    // If a target is supplied, briefly mark the document body so the
-    // print stylesheet hides everything except that container.
-    const target = targetRef?.current;
-    if (target) {
-      document.body.dataset.printTarget = target.id || "answer-panel";
-      // Ensure target has an id we can reference from CSS:
-      if (!target.id) target.id = "answer-panel";
-    }
-    // Defer to next frame so any state-driven class updates flush first.
-    requestAnimationFrame(() => {
-      window.print();
-      delete document.body.dataset.printTarget;
-    });
-  };
+  const onExport = () => printElement(targetRef?.current ?? null);
 
   return (
-    <div className="flex items-center" style={{ height: 48 }}>
+    <div className="flex items-center" style={{ height: 48 }} data-non-print="true">
       <button
         ref={internalRef}
         type="button"

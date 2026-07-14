@@ -1,27 +1,29 @@
 /**
- * @fileoverview Follow-up questions block shown under an answer. Lists
- * clickable suggested questions (Figma node 3427-16785 heading + 3427-16786
- * body); selecting one re-submits it via the supplied `onAsk` callback.
+ * @fileoverview Renders clickable follow-up questions that resubmit the query via the onAsk callback.
  */
 
-const COLOR_HEADING = "#1B1C1D";
-const COLOR_LINK = "#175C75";
+/**
+ * Figma node 3427-16785 (heading "Follow up questions") + 3427-16786
+ * (text block listing three suggestions, each in #175C75, body-large-
+ * emphasized 16/24). Each suggestion is clickable — selecting it
+ * re-submits the question via the supplied onAsk callback.
+ */
+
+const COLOR_HEADING = "var(--color-on-surface)";
+const COLOR_LINK = "var(--color-brand-primary)";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-interface QuestionsFollowUpProps {
+interface FollowUpQuestionsProps {
   questions: string[];
   onAsk?: (question: string) => void;
 }
 
-/**
- * Renders the list of follow-up question buttons. Returns nothing when there
- * are no questions to show.
- */
-export function QuestionsFollowUp({
+/** Clickable follow-up question suggestions shown after a completed answer. */
+export function FollowUpQuestions({
   questions,
   onAsk,
-}: QuestionsFollowUpProps) {
+}: FollowUpQuestionsProps) {
   if (!questions || questions.length === 0) return null;
 
   return (

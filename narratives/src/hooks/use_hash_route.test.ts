@@ -1,6 +1,5 @@
 /**
- * @fileoverview Unit tests for the useHashRoute hook — covers default routing,
- * standard route parsing, query-parameter stripping, and nested hash paths.
+ * @fileoverview Tests for the useHashRoute hook.
  */
 
 import { renderHook, act } from "@testing-library/react";
