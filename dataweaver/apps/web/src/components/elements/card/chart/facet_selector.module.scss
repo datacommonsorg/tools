@@ -1,6 +1,7 @@
 .container {
   position: relative;
   display: flex;
+  flex-shrink: 0;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -8,6 +9,10 @@
 .prefix {
   @include type-label-small;
 
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  align-items: flex-start;
   font-weight: 500;
   color: rgb(var(--color-card-content-muted));
 }
@@ -33,7 +38,10 @@
 }
 
 .arrow {
-  font-size: 12px;
+  flex-shrink: 0;
+  place-self: start;
+  font-size: 14px;
+  line-height: 16.4px;
 }
 
 .dropdown {
@@ -41,6 +49,7 @@
   top: 100%;
   left: 0;
   z-index: 100;
+  width: 100%;
   min-width: 280px;
   margin-top: 4px;
   overflow: hidden;
