@@ -15,9 +15,9 @@ import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
 import { TooltipCustom } from './tooltip_custom';
 
-const BAR_COLOR = `rgb(${COLORS['card-surface-selected']})`;
+const BAR_COLOR = `rgb(${COLORS['card-chart-bar']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
-const AXIS_COLOR = `rgb(${COLORS['card-content-muted']})`;
+const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
 
 interface ChartProps {
   data: ChartDatum[];
