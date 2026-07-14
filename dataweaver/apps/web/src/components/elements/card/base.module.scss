@@ -29,7 +29,8 @@
     transition: transform 0.3s $ease-out;
   }
 
-  :is([data-selection="single"]) & {
+  [data-selection="single"] &,
+  &:focus-within {
     transform: translateY(calc(var(--actions-height) * -1));
   }
 }
@@ -48,7 +49,7 @@
 
   // tldraw forces 'user-select: none' on all nested nodes. This ensures we
   // allow selecting text when in single selection mode
-  :is([data-selection="single"]) & * {
+  [data-selection="single"] & * {
     user-select: text;
   }
 
@@ -61,7 +62,8 @@
     transition: border-color 0.1s $ease-linear;
   }
 
-  :is([data-selection="single"], [data-selection="multiple"]) & {
+  [data-selection="single"] &,
+  [data-selection="multiple"] & {
     border-color: rgb(var(--color-card-surface-selected));
   }
 }
