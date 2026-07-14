@@ -15,9 +15,19 @@ interface CardProps {
   children?: ReactNode;
 }
 
-const Card = ({ icon: Icon, title, description, children }: CardProps) => {
+const Card = ({
+  icon: Icon,
+  title,
+  description,
+  children,
+  includeMaxWidth,
+}: CardProps & { includeMaxWidth?: boolean }) => {
   return (
-    <div className={s['card-container']} role="status">
+    <div
+      className={s['card-container']}
+      role="status"
+      data-has-max-width={includeMaxWidth}
+    >
       <Icon className={s['icon-status']} />
       <p className={s['card-title']}>{title}</p>
       <p className={s['card-description']}>{description}</p>
@@ -48,14 +58,15 @@ export const StatusEmpty = () => {
       {totalCards === 0 ? (
         <Card
           icon={IconShapes}
-          title="Create a prompt to begin"
-          description="Once you have data to export, come back to this window."
+          title="No active cards"
+          description="Ask a question to generate charts and structured data on the canvas. Once cards are added, select items to export."
         />
       ) : (
         <Card
           icon={IconSelect}
-          title="No cards selected"
-          description="Please select 1 or more cards to see export options."
+          title="Enable"
+          description="Please select 1 or more cards to enable export options."
+          includeMaxWidth
         >
           <button
             type="button"
