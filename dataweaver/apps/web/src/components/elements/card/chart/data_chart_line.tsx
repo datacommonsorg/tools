@@ -13,7 +13,7 @@ import {
 
 import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
-import { CustomTooltip } from './custom_tooltip';
+import { TooltipCustom } from './tooltip_custom';
 
 const LINE_COLOR = `rgb(${COLORS['card-surface-selected']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
@@ -98,7 +98,7 @@ export const DataChartLine = ({ data }: ChartProps) => {
             tickFormatter={(value) => compactFormatter.format(Number(value))}
           />
           <FullWidthAxisLine />
-          <Tooltip cursor={<CustomCursor />} content={<CustomTooltip />} />
+          <Tooltip cursor={<CustomCursor />} content={<TooltipCustom />} />
           <Line
             type="monotone"
             dataKey="value"

@@ -69,8 +69,10 @@
     background: rgb(var(--color-control-accent) / 12%);
   }
 
-  &:hover:not([data-is-selected="true"]) {
-    background: rgb(var(--color-control-accent) / 6%);
+  &:not([data-is-selected="true"]) {
+    @include hover {
+      background: rgb(var(--color-control-accent) / 6%);
+    }
   }
 }
 

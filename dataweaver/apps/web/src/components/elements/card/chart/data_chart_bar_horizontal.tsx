@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 
 import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
-import { CustomTooltip } from './custom_tooltip';
+import { TooltipCustom } from './tooltip_custom';
 
 const BAR_COLOR = `rgb(${COLORS['card-surface-selected']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
@@ -49,7 +49,7 @@ export const DataChartBarHorizontal = ({ data }: ChartProps) => {
           />
           <Tooltip
             cursor={{ fill: GRID_COLOR, opacity: 0.4 }}
-            content={<CustomTooltip />}
+            content={<TooltipCustom />}
           />
           <Bar dataKey="value" fill={BAR_COLOR} radius={[0, 2, 2, 0]} />
         </BarChart>

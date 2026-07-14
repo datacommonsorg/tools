@@ -5,7 +5,7 @@ interface DataTableProps {
   data: ChartDatum[];
 }
 
-const compactFormatter = new Intl.NumberFormat(undefined, {
+const numberFormatter = new Intl.NumberFormat(undefined, {
   notation: 'standard',
 });
 
@@ -22,7 +22,7 @@ export const DataTable = ({ data }: DataTableProps) => {
         {data.map(({ date, value }) => (
           <tr key={date}>
             <td>{date}</td>
-            <td>{compactFormatter.format(value)}</td>
+            <td>{numberFormatter.format(value)}</td>
           </tr>
         ))}
       </tbody>

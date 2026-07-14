@@ -1,11 +1,11 @@
-import styles from './custom_tooltip.module.scss';
+import styles from './tooltip_custom.module.scss';
 
 const tooltipFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2,
   notation: 'standard',
 });
 
-export const CustomTooltip = ({
+export const TooltipCustom = ({
   active,
   payload,
   label,
