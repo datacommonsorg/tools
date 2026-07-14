@@ -8,31 +8,31 @@ import { IconShapes } from '~/components/primitives/icons/shapes';
 export const EXPORT_OPTIONS = [
   {
     key: 'api-request-code',
-    title: 'API Request Code',
-    description:
-      'Your JSON code will appear here once you add content to your canvas.',
-    action: 'Generate API Code',
+    title: 'API request code',
+    description: 'Get the REST V2 API code to query data from selected cards.',
+    action: 'Generate API code',
     icon: IconCopy,
   },
   {
     key: 'csv',
     title: 'CSV',
-    description:
-      "You'll get a separate file for every card that contains data.",
+    description: 'Download raw data from selected cards as a CSV spreadsheet.',
     action: 'Download CSVs',
     icon: IconDownload,
   },
   {
     key: 'ai-narrative',
-    title: 'AI Narrative',
-    description: 'Gemini will summarize your canvas into a narrative.',
+    title: 'AI narrative',
+    description:
+      'Generate a text-based analytical summary from selected cards.',
     action: 'Generate narrative',
     icon: IconNarrative,
   },
   {
     key: 'ai-infographic',
-    title: 'AI Infographic',
-    description: 'Gemini can generate a visual infographic from your canvas.',
+    title: 'AI infographic',
+    description:
+      'Transform data from selected cards into a visual presentation.',
     action: 'Generate with Gemini',
     icon: IconShapes,
   },
@@ -40,15 +40,14 @@ export const EXPORT_OPTIONS = [
     key: 'svg',
     title: 'SVG',
     description:
-      "You'll receive a separated vector svg file for each of your selected cards.",
+      'Export selected charts as vector graphics for editing or publishing.',
     action: 'Download SVGs',
     icon: IconDownload,
   },
   {
     key: 'png',
     title: 'PNG',
-    description:
-      "You'll receive a separated raster png file for each of your selected cards.",
+    description: 'Download selected charts as image files for quick sharing.',
     action: 'Download PNGs',
     icon: IconDownload,
   },
