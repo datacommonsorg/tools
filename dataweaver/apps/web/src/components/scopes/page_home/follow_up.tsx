@@ -2,8 +2,11 @@
 
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
+import { useMemo } from 'react';
 import { Button } from '~/components/elements/button';
 import { IconClose } from '~/components/primitives/icons/close';
+import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
+import { shuffleArray } from '~/functions/shuffle_array';
 import type { FollowUp as FollowUpData } from '~/server/types';
 import s from './follow_up.module.scss';
 
@@ -20,6 +23,12 @@ export const FollowUp = ({
   onSelect,
   onClose,
 }: FollowUpProps) => {
+  const options = useMemo(() => {
+    return followUp?.options?.length
+      ? followUp.options
+      : shuffleArray(EXAMPLE_PROMPTS).slice(0, 4);
+  }, [followUp?.options]);
+
   return (
     <m.section
       className={s['outer-container']}
@@ -42,13 +51,12 @@ export const FollowUp = ({
 
           <div className={s['content-container']}>
             <p className={s.question}>{prompt}</p>
-
             <div className={s.answer}>{followUp.summary}</div>
             <div className={s.answer}>{followUp.question}</div>
 
-            {followUp?.options?.length > 0 && (
+            {options.length > 0 && (
               <ul className={s['prompts-container']}>
-                {followUp.options.map((option) => (
+                {options.map((option) => (
                   <li key={option}>
                     <Button
                       size="medium"
