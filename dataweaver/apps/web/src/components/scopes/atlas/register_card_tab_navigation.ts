@@ -117,15 +117,16 @@ export const registerCardTabNavigation = (editor: Editor) => {
 
   // DOM changes cover card content re-rendering without a store change. Only
   // mutations inside a card can affect the list
-  const observer = new MutationObserver((mutations) => {
-    const touchesCard = mutations.some(
-      (mutation) =>
+  const mutationObserver = new MutationObserver((mutations) => {
+    const touchesCard = mutations.some((mutation) => {
+      return (
         mutation.target instanceof HTMLElement &&
-        mutation.target.closest(CARD_SELECTOR),
-    );
+        mutation.target.closest(CARD_SELECTOR)
+      );
+    });
     if (touchesCard) cachedFocusables = null;
   });
-  observer.observe(container, {
+  mutationObserver.observe(container, {
     childList: true,
     subtree: true,
     attributes: true,
@@ -186,7 +187,7 @@ export const registerCardTabNavigation = (editor: Editor) => {
   container.addEventListener('keydown', pressedKey, { capture: true });
   return () => {
     container.removeEventListener('keydown', pressedKey, { capture: true });
-    observer.disconnect();
+    mutationObserver.disconnect();
     cleanupStoreReactor();
   };
 };
