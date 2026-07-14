@@ -1,3 +1,10 @@
+.container {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .tabs-container {
   display: flex;
   flex-shrink: 0;
@@ -39,10 +46,14 @@
 }
 
 .panel {
+  flex: 1;
+  min-height: 0;
   font-weight: 500;
 
   &:has(table) {
     overflow-y: auto;
+    overscroll-behavior: none;
+    scrollbar-width: thin;
 
     thead {
       position: sticky;

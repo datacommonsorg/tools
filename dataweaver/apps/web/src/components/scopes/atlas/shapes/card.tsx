@@ -158,7 +158,10 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       minHeight: CARD_SIZE_MIN.h,
     });
 
-    // Flag the card as manually sized so auto-height stops overriding `h`
+    // Chart cards always snap back to their content height after resize, so
+    // don't flag them as manually sized. Text cards keep the user's height.
+    if (shape.props.variant === 'chart') return resized;
+
     return { ...resized, props: { ...resized.props, isManuallyResized: true } };
   };
 }
