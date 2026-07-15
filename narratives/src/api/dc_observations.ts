@@ -1,23 +1,19 @@
 /**
- * Typed access to the Custom Data Commons observation endpoints.
- * We use these directly so charts render inside our own Recharts layer —
- * no DC web components, full Figma fidelity.
+ * @fileoverview Fetches Data Commons observations via the instance's own /api proxy.
  *
- * TODO: Add unit tests for all exported functions in this file (fetchSeries,
- * fetchPoint, pivotSeriesToRows, pivotPointToRowsByPlace, pickSourceFromFacets,
- * getPrettyPlaceName, getPrettyVariableName).
+ * Typed access to the Custom Data Commons observation endpoints. We use these
+ * directly so charts render inside our own Recharts layer — no DC web
+ * components, full Figma fidelity.
  */
 
-/**
- * Represents a single observation point in a timeseries.
- */
-export interface SeriesPoint {
-  date: string;
-  value: number;
-}
+// TODO: Add unit tests for all exported functions in this file.
+
+/** One dated observation, matching an /api/observations/series entry. */
+export interface SeriesPoint { date: string; value: number }
 
 /**
- * Represents the response structure returned by the /api/observations/series endpoint.
+ * Response shape of /api/observations/series: values keyed by variable DCID,
+ * then entity DCID, plus the facet (source) metadata for attribution.
  */
 export interface SeriesResponse {
   data: Record<string, Record<string, { series: SeriesPoint[] } | undefined>>;
@@ -28,7 +24,8 @@ export interface SeriesResponse {
 }
 
 /**
- * Represents the response structure returned by the /api/observations/point endpoint.
+ * Response shape of /api/observations/point: a single dated value keyed by
+ * variable DCID then entity DCID, plus facet (source) metadata.
  */
 export interface PointResponse {
   data: Record<
@@ -41,21 +38,20 @@ export interface PointResponse {
   >;
 }
 
-/**
- * Recharts dataset row: { date: "2020", "<dcid1>": 42, "<dcid2>": 7, ... }
- */
-export interface ChartRow {
+/** Recharts dataset row: { date: "2020", "<dcid1>": 42, "<dcid2>": 7, ... } */
+export type ChartRow = Record<string, string | number | undefined> & {
   date: string;
-  [key: string]: string | number | undefined;
-}
+};
 
 /**
- * Represents the page's host origin, dynamically set to window.location.origin
- * in the browser, or fallback empty string in node/test environments.
+ * Base origin for API URLs — the current page's origin in the browser
+ * (the instance proxies /api itself), empty during server-side rendering
+ * (SSR) or testing.
  */
 const ORIGIN =
   typeof window !== "undefined" ? window.location.origin : "";
 
+/** Builds the /api/observations/series URL for the given variables and entities. */
 function buildSeriesUrl(
   variableDcids: string[],
   entityDcids: string[],
@@ -70,6 +66,7 @@ function buildSeriesUrl(
   return url.toString();
 }
 
+/** Builds the /api/observations/point URL for the given variables, entities, and date. */
 function buildPointUrl(
   variableDcids: string[],
   entityDcids: string[],
@@ -82,15 +79,11 @@ function buildPointUrl(
   for (const entityDcid of entityDcids) {
     url.searchParams.append("entities", entityDcid);
   }
-  if (date) {
-    url.searchParams.set("date", date);
-  }
+  if (date) url.searchParams.set("date", date);
   return url.toString();
 }
 
-/**
- * Fetches series observations for the given variables and entities.
- */
+/** Fetches observation time series for the given variables and entities. */
 export async function fetchSeries(
   variableDcids: string[],
   entityDcids: string[],
@@ -103,9 +96,7 @@ export async function fetchSeries(
   return (await res.json()) as SeriesResponse;
 }
 
-/**
- * Fetches point observations for the given variables and entities on a specific date.
- */
+/** Fetches single-date observation points for the given variables and entities. */
 export async function fetchPoint(
   variableDcids: string[],
   entityDcids: string[],
@@ -120,8 +111,9 @@ export async function fetchPoint(
 }
 
 /**
- * Pivots the time-series API response into one row per date, with each variable as a
- * column. Variables that don't have a value on a given date are omitted
+ * Pivots a series response into the time-series chart shape (line/bar over
+ * time, single place per variable): one row per date, with each variable as
+ * a column. Variables that don't have a value on a given date are omitted
  * from that row.
  */
 export function pivotSeriesToRows(
@@ -147,7 +139,8 @@ export function pivotSeriesToRows(
 }
 
 /**
- * Pivots the point API response into rows keyed by place DCID for a single variable.
+ * Pivots a point response into the bar-by-place chart shape (single variable,
+ * single date, one row per place): rows keyed by place DCID.
  */
 export function pivotPointToRowsByPlace(
   response: PointResponse,
@@ -164,16 +157,14 @@ export function pivotPointToRowsByPlace(
 }
 
 /**
- * Tries to derive a primary source from the facets section of a response.
+ * Derives a primary source from the facets section of a response.
  * Falls back to undefined if nothing usable is present.
  */
 export function pickSourceFromFacets(
   response: SeriesResponse | PointResponse,
 ): { name: string; url: string } | undefined {
   const facets = response?.facets;
-  if (!facets) {
-    return undefined;
-  }
+  if (!facets) return undefined;
   for (const facet of Object.values(facets)) {
     if (facet?.provenanceUrl) {
       return {
@@ -186,27 +177,25 @@ export function pickSourceFromFacets(
 }
 
 /**
- * Gets a shorter display label for a place DCID by stripping the "country/",
- * "geoId/", "dc/" prefix. Falls back to the full DCID if no prefix is found.
+ * Gets a shorter display label for a place DCID.
+ *
+ * Strips the "country/", "geoId/", "dc/" prefix to get a shorter display
+ * label. Falls back to the full DCID if no prefix.
  */
 export function getPrettyPlaceName(dcid: string): string {
-  const index = dcid.indexOf("/");
-  return index >= 0 ? dcid.slice(index + 1) : dcid;
+  const slashIndex = dcid.indexOf("/");
+  return slashIndex >= 0 ? dcid.slice(slashIndex + 1) : dcid;
 }
 
 /**
- * Generates a heuristic readable name for a variable DCID when we don't have its
- * canonical title from the upstream catalog. Splits on both underscores and
- * forward slashes, and title-cases the first segment.
+ * Gets a heuristic readable name for a variable DCID when its canonical
+ * title from the upstream catalog is unavailable. Splits on underscores and
+ * forward slashes, then title-cases the first segment.
  */
 export function getPrettyVariableName(dcid: string): string {
-  if (!dcid) {
-    return "";
-  }
+  if (!dcid) return "";
   // dc/abc123 → "dc abc123" → tidied
   const cleaned = dcid.replace(/[_/]/g, " ").trim();
-  if (!cleaned) {
-    return dcid;
-  }
+  if (!cleaned) return dcid;
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }

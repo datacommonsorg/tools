@@ -1,6 +1,10 @@
 /**
- * @fileoverview Disclaimer note shown beneath an answer — an info icon, body
- * text, and a thin divider. Figma node 3427-16777 "Disclaimer" → 3427-16778.
+ * @fileoverview Renders the AI-generated-content disclaimer note.
+ */
+
+/**
+ * Figma node 3427-16777 "Disclaimer" → 3427-16778 "DisclaimerNote".
+ * Info icon + body text + thin divider below.
  * Token "ts5" (the \_ space character) maps to color #F9F9F9, used only
  * inside the text — we collapse it back to a regular space.
  */
@@ -10,18 +14,15 @@ const COLOR_DIVIDER = "#E3E3E3";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-interface NoteDisclaimerProps {
+interface DisclaimerNoteProps {
   text?: string;
 }
 
 const DEFAULT_TEXT =
   "This data overview was crafted using Gemini to help you navigate the statistical variables available in Data Commons. Think of it as a starting point for your exploration, not an exhaustive answer. We encourage you to always double-check your findings against the original data linked on each chart.";
 
-/**
- * Renders the standard AI-generated-content disclaimer. Accepts optional
- * override `text`, defaulting to the Gemini/Data Commons disclaimer copy.
- */
-export function NoteDisclaimer({ text = DEFAULT_TEXT }: NoteDisclaimerProps) {
+/** Small AI-generated-content disclaimer shown under each answer. */
+export function DisclaimerNote({ text = DEFAULT_TEXT }: DisclaimerNoteProps) {
   return (
     <section
       className="flex flex-col gap-1.5"
@@ -39,7 +40,7 @@ export function NoteDisclaimer({ text = DEFAULT_TEXT }: NoteDisclaimerProps) {
             fontFamily: FONT_STACK,
             fontSize: 16,
             lineHeight: "24px",
-            fontWeight: 500,
+            fontWeight: 400,
             color: COLOR_TEXT,
           }}
         >
@@ -51,8 +52,10 @@ export function NoteDisclaimer({ text = DEFAULT_TEXT }: NoteDisclaimerProps) {
   );
 }
 
-// Google Symbols 'info' rounded — 14×14 to match Figma's small icon
-// (token layout_5IS08A: 14×14, fill #5C5F5E).
+/**
+ * Google Symbols 'info' rounded — 14×14 to match Figma's small icon
+ * (token layout_5IS08A: 14×14, fill #5C5F5E).
+ */
 function InfoIcon() {
   return (
     <svg

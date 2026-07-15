@@ -1,39 +1,37 @@
 /**
- * @fileoverview Response card that renders the agent's streamed synthesis as
- * markdown (bold, italics, lists, links, tables, code spans, citations).
+ * @fileoverview Renders streamed agent markdown with inline citations.
  */
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { withChipCitations } from "./chip_citation";
+import { renderWithCitations } from "./chip_citation";
 
-interface CardResponseProps {
+interface ResponseCardProps {
   title: string;
   body: string;
-  // When true, the response is still being streamed in: shows a pulsing
-  // "streaming" badge in the title bar and a blinking cursor after the body.
   streaming?: boolean;
   // When true, renders the markdown body only — no outer card, no title
-  // bar. Used inside PanelAnswer's "Side panel" card where the user's
+  // bar. Used inside AnswerPanel's "Side panel" card where the user's
   // question is already shown in the toolbar.
   bare?: boolean;
 }
 
-const LINK_COLOR = "#175C75"; // Figma "AI Dark Blue"
-
 /**
- * Renders the agent's streamed synthesis as markdown. Bold, italics, lists,
- * links, tables, code spans, and backslash-escaped underscores (e.g.
- * `average\_annual\_wage`) all parse correctly; GFM enables tables, autolinks,
- * and strikethrough. When `bare` is true, only the markdown body is rendered
- * (no outer card or title bar) — used inside PanelAnswer's side-panel card.
+ * Renders the agent's streamed synthesis as actual markdown. Bold,
+ * italics, lists, links, tables, code spans, and backslash-escaped
+ * underscores (e.g. `average\_annual\_wage`) all parse correctly.
+ * GFM enables tables + autolinks + strikethrough.
  */
-export function CardResponse({
+
+const LINK_COLOR = "var(--color-brand-primary)"; // Figma "AI Dark Blue" (brand primary)
+
+/** Renders the agent's answer text as markdown, with citation chips and streaming cursor. */
+export function ResponseCard({
   title,
   body,
   streaming,
   bare = false,
-}: CardResponseProps) {
+}: ResponseCardProps) {
   const markdown = (
     <div className={bare ? "markdown-body" : "px-[56px] py-6 text-on-surface markdown-body"}>
       <ReactMarkdownInner body={body} streaming={streaming} />
@@ -50,7 +48,7 @@ export function CardResponse({
         <h3 className="text-label-large text-on-surface">{title}</h3>
         {streaming && (
           <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-brand-primary-dark animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
             streaming
           </span>
         )}
@@ -60,8 +58,10 @@ export function CardResponse({
   );
 }
 
-// Markdown rendering body extracted so both `bare` and chrome'd modes
-// share the same component overrides (citation chips, table styling).
+/**
+ * Markdown rendering body extracted so both `bare` and chrome'd modes
+ * share the same component overrides (citation chips, table styling).
+ */
 function ReactMarkdownInner({
   body,
   streaming,
@@ -76,7 +76,7 @@ function ReactMarkdownInner({
           components={{
             p: ({ children }) => (
               <p className="text-body-large mb-3 last:mb-0">
-                {withChipCitations(children)}
+                {renderWithCitations(children)}
               </p>
             ),
             h1: ({ children }) => (
@@ -99,7 +99,7 @@ function ReactMarkdownInner({
               <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
             ),
             li: ({ children }) => (
-              <li className="leading-relaxed">{withChipCitations(children)}</li>
+              <li className="leading-relaxed">{renderWithCitations(children)}</li>
             ),
             a: ({ children, href }) => (
               <a
@@ -150,17 +150,17 @@ function ReactMarkdownInner({
             ),
             th: ({ children }) => (
               <th className="border border-gray-200 px-3 py-2 text-left font-medium">
-                {withChipCitations(children)}
+                {renderWithCitations(children)}
               </th>
             ),
             td: ({ children }) => (
               <td className="border border-gray-200 px-3 py-2">
-                {withChipCitations(children)}
+                {renderWithCitations(children)}
               </td>
             ),
             strong: ({ children }) => (
               <strong className="font-semibold">
-                {withChipCitations(children)}
+                {renderWithCitations(children)}
               </strong>
             ),
             hr: () => <hr className="my-4 border-gray-200" />,

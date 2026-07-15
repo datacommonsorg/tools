@@ -1,28 +1,29 @@
 /**
- * @fileoverview Sources list rendered beneath an answer (Figma node 3427-16738
- * heading + 3427-16739 numbered body). Each source is a numbered line — the
- * number stays in the default body color, the source name is rendered in
- * #175C75 (AI Dark Blue, token "ts4") as a hyperlink. Each row receives
- * id="source-N" so inline ChipCitations can anchor to it.
+ * @fileoverview Renders the list of provenance sources for an answer.
  */
 
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
-const COLOR_TITLE = "#1B1C1D";
-const COLOR_BODY = "#1B1C1D";
-const COLOR_LINK = "#175C75";
+/**
+ * Figma node 3427-16738 ("Sources" heading) + 3427-16739 ("Body" with the
+ * numbered list). Each source is a numbered line — the number stays in
+ * the default body color, the source name itself is rendered in
+ * #175C75 (AI Dark Blue, token "ts4") as a hyperlink to provenanceUrl.
+ * Each row receives id="source-N" so inline CitationChips can anchor.
+ */
+
+const COLOR_TITLE = "var(--color-on-surface)";
+const COLOR_BODY = "var(--color-on-surface)";
+const COLOR_LINK = "var(--color-brand-primary)";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-interface ListSourcesProps {
+interface SourcesListProps {
   sources: ProvenanceItem[];
 }
 
-/**
- * Renders the numbered, linked list of provenance sources for an answer.
- * Returns nothing when there are no sources.
- */
-export function ListSources({ sources }: ListSourcesProps) {
+/** Numbered list of source links matching the [n] citation chips in the answer. */
+export function SourcesList({ sources }: SourcesListProps) {
   if (!sources || sources.length === 0) return null;
 
   return (
@@ -66,7 +67,15 @@ export function ListSources({ sources }: ListSourcesProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline"
-                style={{ color: COLOR_LINK }}
+                style={{
+                  color: COLOR_LINK,
+                  // Long source names/URLs often have no spaces; allow them
+                  // to break mid-string. `minWidth: 0` lets this flex child
+                  // shrink below its content width instead of overflowing.
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                }}
               >
                 {source.name || source.url}
               </a>

@@ -1,5 +1,7 @@
 /**
- * @fileoverview Type declarations for Data Commons web components loaded via
+ * @fileoverview Declares TypeScript types for the Data Commons custom elements used in JSX.
+ *
+ * Type declarations for Data Commons web components loaded via
  * https://datacommons.org/datacommons.js.
  *
  * At runtime these are plain HTMLElements. We augment React's existing JSX
@@ -13,6 +15,7 @@
 
 import type { DetailedHTMLProps, HTMLAttributes } from "react";
 
+/** Attributes accepted by every datacommons-* element, named after React's HTMLAttributes convention. */
 interface DataCommonsAttributes
   extends DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> {
   // Common
