@@ -16,6 +16,8 @@ export interface HistoryNode {
   parsedQuery: ParsedQuery | null;
   /** Query results keyed by entity (place) DCID. */
   results: Record<string, QueryResult>;
+  /** Cross-place comparison result (populated when 2+ places return data). */
+  comparison?: ComparisonResult;
   cardIds: string[];
   timestamp: number;
   status: 'pending' | 'complete' | 'error';
@@ -81,6 +83,16 @@ export interface QueryResult {
   insights?: Insight[];
   relatedQueries?: string[];
   tableHtml?: string;
+  notesHtml?: string;
+}
+
+export interface ComparisonResult {
+  id: string;
+  title: string;
+  coverage?: string;
+  introduction?: string;
+  insights?: Insight[];
+  relatedQueries?: string[];
   notesHtml?: string;
 }
 
@@ -159,6 +171,7 @@ export const STATUS = {
     `Could not resolve a valid DCID for ${place}, skipping...`,
   loadingTimeSeries: (place: string, varCount: number) =>
     `Loading time-series data for ${place} (${varCount} variables)...`,
+  comparingPlaces: 'Comparing data across places...',
   apiError: (status: number, body: string) => `API error: ${status} ${body}`,
 } as const;
 
@@ -169,6 +182,7 @@ export const STREAM_EVENT = {
   parsedQuery: 'parsed_query',
   toolCall: 'tool_call',
   queryResult: 'query_result',
+  comparisonResult: 'comparison_result',
   followUp: 'follow_up',
   placeSkipped: 'place_skipped',
   complete: 'complete',
@@ -187,6 +201,10 @@ export type StreamEvent =
       type: typeof STREAM_EVENT.queryResult;
       result: QueryResult;
       place: string;
+    }
+  | {
+      type: typeof STREAM_EVENT.comparisonResult;
+      result: ComparisonResult;
     }
   | { type: typeof STREAM_EVENT.followUp; data: FollowUp }
   | { type: typeof STREAM_EVENT.placeSkipped; place: string; reason: string }

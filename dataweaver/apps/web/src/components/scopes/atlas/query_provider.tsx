@@ -63,6 +63,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       nodeSetParsedQuery,
       querySetStatus,
       nodeAddResult,
+      nodeSetComparison,
       nodeSetFollowUp,
       cardRegisterBatch,
       queryComplete,
@@ -96,13 +97,19 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
             type: 'table',
             placeDcid: entityDcid,
           },
-          {
+        ];
+
+        // Only register a per-place notes card when notesHtml is present.
+        // Multi-place queries omit notesHtml — a single comparison card is
+        // registered via the comparisonResult event instead.
+        if (result.notesHtml) {
+          resultEntries.push({
             shapeId: `shape:${active.nodeId}__${entityDcid}__notes`,
             historyNodeId: active.nodeId,
             type: 'notes',
             placeDcid: entityDcid,
-          },
-        ];
+          });
+        }
 
         const firstTimeSeries = result.timeSeries[0];
         const firstFacet = firstTimeSeries?.facets[0];
@@ -117,6 +124,25 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         cardRegisterBatch(resultEntries);
         active.cardIds.push(...resultEntries.map((e) => e.shapeId));
+
+        break;
+      }
+
+      case STREAM_EVENT.comparisonResult: {
+        const { result } = event;
+
+        // Store the comparison on the history node.
+        nodeSetComparison(active.nodeId, result);
+
+        // Register a single comparison notes card.
+        const comparisonEntry: CardEntry = {
+          shapeId: `shape:${active.nodeId}__comparison__notes`,
+          historyNodeId: active.nodeId,
+          type: 'notes',
+          placeDcid: '__comparison',
+        };
+        cardRegisterBatch([comparisonEntry]);
+        active.cardIds.push(comparisonEntry.shapeId);
 
         break;
       }

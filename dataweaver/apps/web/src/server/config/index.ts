@@ -31,6 +31,8 @@ export interface ServiceConfig {
     parseQuery: string;
     /** Model for discovering relevant data variables. Override: `MODEL_DATA_DISCOVERY`. */
     dataDiscovery: string;
+    /** Model for cross-place comparison analysis. Override: `MODEL_COMPARISON`. */
+    comparison: string;
     /** Model for content-safety classification. Override: `MODEL_SAFETY`. */
     safety: string;
     /** Model for image generation. Override: `MODEL_IMAGE`. */
@@ -90,6 +92,7 @@ export const getServiceConfig = (): ServiceConfig => {
       parseQuery: process.env.MODEL_PARSE_QUERY || raw.models.parseQuery,
       dataDiscovery:
         process.env.MODEL_DATA_DISCOVERY || raw.models.dataDiscovery,
+      comparison: process.env.MODEL_COMPARISON || raw.models.comparison,
       safety: process.env.MODEL_SAFETY || raw.models.safety,
       image: process.env.MODEL_IMAGE || raw.models.image,
     },

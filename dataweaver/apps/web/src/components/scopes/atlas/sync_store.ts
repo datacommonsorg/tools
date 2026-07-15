@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { CardEntry, CardType, QueryResult } from '~/server/types';
+import type {
+  CardEntry,
+  CardType,
+  ComparisonResult,
+  QueryResult,
+} from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { type CardHandle, useAtlas } from './atlas_provider';
 import type { AtlasContent, CardVariant } from './helpers';
@@ -31,6 +36,17 @@ export const deriveNotesContent = (result: QueryResult): AtlasContent => ({
   body: result.notesHtml ?? '',
   isLoading: false,
   relatedQueries: result.relatedQueries,
+});
+
+/** Derive AtlasContent for a cross-place comparison card. */
+export const deriveComparisonContent = (
+  comparison: ComparisonResult,
+): AtlasContent => ({
+  variant: 'text',
+  title: comparison.title,
+  body: comparison.notesHtml ?? '',
+  isLoading: false,
+  relatedQueries: comparison.relatedQueries,
 });
 
 /** Derive AtlasContent for a chart card from a QueryResult (first variable's facets). */
@@ -102,9 +118,14 @@ export const deriveContentForCard = (
   result: QueryResult | undefined,
   placeholderTitle?: string,
   variableDcid?: string,
+  comparison?: ComparisonResult,
 ): AtlasContent | null => {
   if (type === 'loading') {
     return deriveLoadingContent(placeholderTitle ?? '');
+  }
+  // Comparison cards read from the dedicated comparison field.
+  if (comparison && type === 'notes') {
+    return deriveComparisonContent(comparison);
   }
   if (!result) return null;
   switch (type) {
@@ -146,7 +167,11 @@ export const useStoreShapeSync = () => {
           if (prevCards[shapeId]) continue;
 
           const node = nodes[card.historyNodeId];
-          const result = node?.results[card.placeDcid];
+          const isComparison = card.placeDcid === '__comparison';
+          const result = isComparison
+            ? undefined
+            : node?.results[card.placeDcid];
+          const comparison = isComparison ? node?.comparison : undefined;
           const title =
             node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
 
@@ -155,6 +180,7 @@ export const useStoreShapeSync = () => {
             result,
             title,
             card.variableDcid,
+            comparison,
           );
           if (!content) continue;
 
@@ -170,12 +196,17 @@ export const useStoreShapeSync = () => {
           if (!prevCard || prevCard.type === card.type) continue;
 
           const node = nodes[card.historyNodeId];
-          const result = node?.results[card.placeDcid];
+          const isComparison = card.placeDcid === '__comparison';
+          const result = isComparison
+            ? undefined
+            : node?.results[card.placeDcid];
+          const comparison = isComparison ? node?.comparison : undefined;
           const content = deriveContentForCard(
             card.type,
             result,
             undefined,
             card.variableDcid,
+            comparison,
           );
           if (!content) continue;
 

@@ -4,6 +4,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  ComparisonResult,
   FollowUp,
   FollowUpContext,
   HistoryNode,
@@ -38,6 +39,7 @@ export interface AtlasStore {
     placeDcid: string,
     result: QueryResult,
   ) => void;
+  nodeSetComparison: (nodeId: string, result: ComparisonResult) => void;
   nodeSetFollowUp: (nodeId: string, followUp: FollowUp) => void;
   queryComplete: (nodeId: string, cardIds: string[]) => void;
   queryFail: (nodeId: string) => void;
@@ -134,6 +136,23 @@ export const useAtlasStore = create<AtlasStore>()(
             },
             undefined,
             'nodeAddResult',
+          );
+        },
+
+        nodeSetComparison: (nodeId, comparison) => {
+          set(
+            (state) => {
+              const node = state.nodes[nodeId];
+              if (!node) return state;
+              return {
+                nodes: {
+                  ...state.nodes,
+                  [nodeId]: { ...node, comparison },
+                },
+              };
+            },
+            undefined,
+            'nodeSetComparison',
           );
         },
 
