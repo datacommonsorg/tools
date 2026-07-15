@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactElement, useEffect, useRef, useState } from 'react';
-import s from './chart_container.module.scss'
+import s from './chart_container.module.scss';
 
 interface ChartContainerProps {
   aspect: number;
@@ -28,7 +28,9 @@ export const ChartContainer = ({ aspect, children }: ChartContainerProps) => {
       if (!entry) return;
       const width = entry.contentRect.width;
       if (width > 0) {
-        setSize({ width, height: width / aspect });
+        setSize((prev) =>
+          prev?.width === width ? prev : { width, height: width / aspect },
+        );
       }
     });
 
