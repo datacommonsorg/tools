@@ -195,6 +195,9 @@ export const placeCard = (
  * lands on-screen.
  */
 const canFitWithinZoomCap = (editor: Editor, bounds: Box): boolean => {
+  // Degenerate bounds would divide to Infinity below and wrongly report a fit
+  if (bounds.w <= 0 || bounds.h <= 0) return false;
+
   const screenBounds = editor.getViewportScreenBounds();
 
   const fitZoom = Math.min(
