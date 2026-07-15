@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '~/components/elements/button';
 import { Radio } from '~/components/elements/radio';
+import { toast } from '~/components/foundations/toaster/store';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
 import { EXPORT_OPTIONS } from './options';
 import s from './status_selected.module.scss';
@@ -44,6 +45,8 @@ export const StatusSelected = () => {
         // TODO: Implement PNG export flow
         break;
     }
+
+    toast('Unsupported export format', "Feature hasn't been implemented yet.");
   };
 
   return (
