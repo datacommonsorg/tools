@@ -54,7 +54,7 @@
   margin-top: 4px;
   overflow: hidden;
   background: rgb(var(--color-card-surface));
-  border-radius: 8px;
+  border-radius: var(--border-radius-small);
   box-shadow: var(--shadow-elevated);
 }
 
