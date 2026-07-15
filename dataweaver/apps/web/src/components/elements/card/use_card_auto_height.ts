@@ -25,12 +25,17 @@ const measureContentHeight = (
 /**
  * Keeps a card shape's `h` prop equal to its rendered content height. After
  * user manually resizes card - syncing stops and the new height is preserved.
+ *
+ * When `enabled` is `false`, syncing is paused — the card keeps its current
+ * height. Useful when the visible content (e.g. a table tab) shouldn't drive
+ * the card's height.
  */
 export const useCardAutoHeight = (
   shapeId: TLShapeId,
   containerRef: RefObject<HTMLElement | null>,
   contentRef: RefObject<HTMLElement | null>,
   maxHeight: number,
+  enabled = true,
 ) => {
   const editor = useEditor();
 
@@ -41,7 +46,20 @@ export const useCardAutoHeight = (
     const content = contentRef.current;
     if (!container || !content) return;
 
+    // Track whether async content (e.g. Recharts SVG) has been inserted.
+    // Until it has, only allow the card to GROW — never shrink — so a
+    // freshly-created card doesn't collapse to header-only height before the
+    // chart renders.
+    let contentSettled = false;
+
     const sync = () => {
+      if (!enabled) return;
+
+      // Skip while the user is actively dragging a resize handle — avoids
+      // fighting with tldraw's resize logic. The pending ResizeObserver
+      // callback after pointer-up will re-trigger sync once the editor is idle.
+      if (editor.isIn('select.resizing')) return;
+
       const shape = editor.getShape(shapeId);
 
       // Ignore if the shape isn't found or isn't a card
@@ -60,6 +78,10 @@ export const useCardAutoHeight = (
 
       const contentHeight = measureContentHeight(container, content);
       const newHeight = Math.round(Math.min(contentHeight, maxHeight));
+
+      // Before async content has settled, only allow growing the card so it
+      // doesn't shrink to a tiny size while waiting for the chart SVG.
+      if (!contentSettled && newHeight < shape.props.h) return;
 
       // Avoid feedback loops: If the new height is within distance of the last
       if (
@@ -90,8 +112,37 @@ export const useCardAutoHeight = (
 
     sync();
 
-    const observer = new ResizeObserver(sync);
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [editor, shapeId, maxHeight]);
+    // --- ResizeObserver: catches size changes of the container itself ---
+    const resizeObserver = new ResizeObserver(() => {
+      contentSettled = true;
+      sync();
+    });
+    resizeObserver.observe(container);
+
+    // --- MutationObserver: catches async child content insertion ---
+    // Recharts' ResponsiveContainer (and similar libraries) render chart SVGs
+    // asynchronously after measuring their parent width. Once useCardAutoHeight
+    // writes a smaller `h`, the container's box is max-height-capped so the
+    // ResizeObserver won't fire when new children appear (the box doesn't
+    // grow). A MutationObserver detects these insertions and re-measures.
+    // Debounced via rAF to avoid layout thrashing from rapid subtree mutations
+    // (e.g. tooltips appearing/disappearing on hover).
+    let mutationFrameId: number | null = null;
+    const syncOnMutation = () => {
+      if (mutationFrameId !== null) return;
+      mutationFrameId = requestAnimationFrame(() => {
+        mutationFrameId = null;
+        contentSettled = true;
+        sync();
+      });
+    };
+    const mutationObserver = new MutationObserver(syncOnMutation);
+    mutationObserver.observe(container, { childList: true, subtree: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      if (mutationFrameId !== null) cancelAnimationFrame(mutationFrameId);
+    };
+  }, [editor, shapeId, maxHeight, enabled]);
 };
