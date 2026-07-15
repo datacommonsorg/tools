@@ -30,7 +30,7 @@
     }
 
     .label {
-      @include type-label-medium;
+      @include type-label-large;
 
       color: rgb(var(--color-control-content));
     }

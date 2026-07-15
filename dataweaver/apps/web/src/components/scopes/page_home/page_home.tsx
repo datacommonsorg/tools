@@ -2,8 +2,9 @@
 
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
-import { useAtlasSelectedCards } from '~/components/scopes/atlas/hooks/use_atlas_selected_cards';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
+import { useAtlasSelectedCards } from '~/components/scopes/atlas/use_atlas_selected_cards';
+
 import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';
@@ -15,7 +16,11 @@ import { Status } from './status';
 /** Show a tag per card up to this many; beyond it, collapse to a count tag. */
 const MAX_VISIBLE_TAGS = 2;
 
-export const PageHome = () => {
+interface PageHomeProps {
+  examplePrompts: string[];
+}
+
+export const PageHome = ({ examplePrompts }: PageHomeProps) => {
   const { runPrompt } = useQueryActions();
   const currentStatus = useAtlasStore((s) => s.currentStatus);
   const latestNode = useAtlasStore((s) =>
@@ -33,6 +38,8 @@ export const PageHome = () => {
 
     return selectedCards;
   }, [selectedCards]);
+
+  const nodeDismissFollowUp = useAtlasStore((s) => s.nodeDismissFollowUp);
 
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [followUp, setFollowUp] = useState<FollowUpData | null>(null);
@@ -55,17 +62,9 @@ export const PageHome = () => {
     currentStatus !== STATUS.idle;
 
   useEffect(() => {
-    const followUps = latestNode?.results
-      ? Object.values(latestNode.results)
-          .map((r) => r.followUp)
-          .filter(Boolean)
-      : [];
-    // TODO - we currently can get more than one follow-up, as the api will return
-    // one per place in the query. Here I'm just using the first one, but we'll need to figure
-    // out a better way to handle this
-    const firstFollowUp = followUps[0];
-    if (latestNode && firstFollowUp && currentStatus === STATUS.complete) {
-      setFollowUp(firstFollowUp);
+    const nodeFollowUp = latestNode?.followUp;
+    if (latestNode && nodeFollowUp && currentStatus === STATUS.complete) {
+      setFollowUp(nodeFollowUp);
     } else {
       setFollowUp(null);
     }
@@ -79,6 +78,7 @@ export const PageHome = () => {
             key="intro"
             onSelect={submitPrompt}
             onClose={() => setIsIntroVisible(false)}
+            prompts={examplePrompts}
           />
         )}
 
@@ -88,6 +88,10 @@ export const PageHome = () => {
             prompt={query}
             followUp={followUp}
             onSelect={submitPrompt}
+            onClose={() => {
+              setFollowUp(null);
+              if (latestNode) nodeDismissFollowUp(latestNode.id);
+            }}
           />
         )}
 

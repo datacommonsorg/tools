@@ -1,21 +1,20 @@
 /**
- * @fileoverview Inline panel that renders the model's streamed "thinking" text
- * (emitted with thinkingConfig.includeThoughts=true), grouped by phase.
+ * @fileoverview Groups and renders agent thoughts by phase.
  */
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ThoughtEvent } from "../hooks/use_sse_chat";
 
-interface PanelThoughtsProps {
+interface ThoughtsPanelProps {
   thoughts: ThoughtEvent[];
 }
 
 /**
- * Renders the streamed thoughts inline, always expanded — no collapse/expand
- * toggle and no header. Returns nothing when there are no thoughts.
+ * Streamed "thinking" text the model emits with thinkingConfig.includeThoughts=true.
+ * Rendered inline, always expanded — no collapse/expand toggle, no header.
  */
-export function PanelThoughts({ thoughts }: PanelThoughtsProps) {
+export function ThoughtsPanel({ thoughts }: ThoughtsPanelProps) {
   if (thoughts.length === 0) return null;
 
   const grouped = groupByPhase(thoughts);
@@ -88,7 +87,7 @@ export function PanelThoughts({ thoughts }: PanelThoughtsProps) {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="hover:underline"
-                          style={{ color: "#175C75" }}
+                          style={{ color: "var(--color-brand-primary)" }}
                         >
                           {children}
                         </a>
@@ -106,16 +105,19 @@ export function PanelThoughts({ thoughts }: PanelThoughtsProps) {
   );
 }
 
+/** Groups thoughts by pipeline phase, in fixed mcp → kb → synthesis order. */
 function groupByPhase(
   thoughts: ThoughtEvent[],
 ): Array<[ThoughtEvent["phase"], ThoughtEvent[]]> {
   const order: ThoughtEvent["phase"][] = ["mcp", "kb", "synthesis"];
   const map = new Map<ThoughtEvent["phase"], ThoughtEvent[]>();
-  for (const t of thoughts) {
-    if (!map.has(t.phase)) map.set(t.phase, []);
-    map.get(t.phase)!.push(t);
+  for (const thought of thoughts) {
+    if (!map.has(thought.phase)) map.set(thought.phase, []);
+    map.get(thought.phase)!.push(thought);
   }
   return order
-    .filter((p) => map.has(p))
-    .map((p) => [p, map.get(p)!] as [ThoughtEvent["phase"], ThoughtEvent[]]);
+    .filter((phase) => map.has(phase))
+    .map(
+      (phase) => [phase, map.get(phase)!] as [ThoughtEvent["phase"], ThoughtEvent[]],
+    );
 }

@@ -1,14 +1,6 @@
-.container {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  padding: 28px;
-}
-
 .title {
-  @include type-title;
+  @include type-headline;
 
-  margin-bottom: 16px;
   color: rgb(var(--color-card-content));
 }
 
@@ -18,28 +10,14 @@
   color: rgb(var(--color-card-content));
 
   h3 {
-    @include type-label-large;
+    @include type-title;
 
-    margin: 16px 0 8px;
     color: rgb(var(--color-card-content));
-
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-
-  p {
-    margin: 0 0 12px;
   }
 
   ul {
     padding-left: 20px;
-    margin: 0 0 12px;
     list-style: disc;
-  }
-
-  li {
-    margin-bottom: 8px;
   }
 
   a,
@@ -54,24 +32,54 @@
 
   table {
     width: 100%;
-    margin: 12px 0;
     text-align: left;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border: 1px solid rgb(var(--color-card-divider));
+    border-radius: 4px;
+  }
+
+  th,
+  td {
+    padding: 12px 16px;
+    vertical-align: top;
+    border-bottom: 1px solid rgb(var(--color-card-divider));
+  }
+
+  tbody tr:last-child {
+    th,
+    td {
+      border-bottom: none;
+    }
   }
 
   th {
-    padding: 8px;
+    font-weight: 500;
     color: rgb(var(--color-card-content-muted));
-    border-bottom: 1px solid rgb(var(--color-surface-decorator));
-  }
-
-  td {
-    padding: 8px;
-    vertical-align: top;
-    border-bottom: 1px solid rgb(var(--color-surface-decorator));
   }
 
   strong {
     font-weight: 500;
+  }
+
+  p,
+  ul,
+  table {
+    &:not(:first-child) {
+      margin-top: 12px;
+    }
+  }
+
+  h3:not(:first-child) {
+    margin-top: 24px;
+
+    + p,
+    + ul,
+    + table {
+      margin-top: 8px;
+    }
+  }
+
+  li:not(:first-child) {
+    margin-top: 8px;
   }
 }

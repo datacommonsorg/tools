@@ -244,11 +244,9 @@ skip layout/paint).
 - **Don't restate the reset.** `styles/core/_reset.scss` already neutralises
   margins, `button` chrome, `a` decoration, list bullets, etc. Check it before
   adding `padding: 0` / `border: 0` / `background: none`.
-- Override focus offset via `--outline-offset` (`-default` 2px / `-inset` -3px);
-  never override `outline` itself.
 - Typography mixins live in `~/styles/typography.module.scss` — `@use` it where
   needed (it isn't part of the auto-injected includes).
-- Cascade layers, low → high: `reset, root, base, primitive` (`~/styles/layers.css`).
+- Cascade layers, low → high: `reset, root, primitive, base` (`~/styles/layers.css`).
 
 ---
 

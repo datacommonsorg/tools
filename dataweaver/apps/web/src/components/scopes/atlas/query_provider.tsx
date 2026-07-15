@@ -9,12 +9,13 @@ import {
   useRef,
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
-import { useStreamingQuery } from '~/components/scopes/atlas/hooks/use_streaming_query';
-import type { CardEntry, StreamEvent } from '~/server/types';
+
+import type { CardEntry, FollowUpContext, StreamEvent } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
 import { useStoreShapeSync } from './sync_store';
+import { useStreamingQuery } from './use_streaming_query';
 
 export interface Status {
   promptValue: string;
@@ -46,7 +47,6 @@ interface ActiveQuery {
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const { editor } = useAtlas();
-  const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
 
   // Mount the store→shape sync layer
   useStoreShapeSync();
@@ -63,6 +63,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       nodeSetParsedQuery,
       querySetStatus,
       nodeAddResult,
+      nodeSetFollowUp,
       cardRegisterBatch,
       queryComplete,
       queryFail,
@@ -85,12 +86,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         // Write the query result data to the history node.
         nodeAddResult(active.nodeId, entityDcid, result);
-
-        if (result.followUp) {
-          // If the api has returned a follow-up question, we skip card registration here,
-          // as the FollowUp component will be rendered instead of new cards
-          return;
-        }
 
         // Batch-register result cards.
         const resultEntries: CardEntry[] = [
@@ -152,6 +147,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(event.reason);
         break;
       }
+
+      case STREAM_EVENT.followUp: {
+        nodeSetFollowUp(active.nodeId, event.data);
+        break;
+      }
     }
   }, []);
 
@@ -162,6 +162,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
     () => ({
       runPrompt: (prompt: string) => {
         const {
+          nodes,
           queryStart,
           querySetProcessing,
           querySetStatus,
@@ -174,6 +175,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         querySetStatus(STATUS.starting);
 
         // Derive context from selected shapes
+        const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
         const parentNodeId = getContextNodeId(selectedShapeIds);
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
           query: node.query,
@@ -181,11 +183,40 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           places: node.parsedQuery?.places ?? [],
         }));
 
+        // If the parent node had a followUp, build structured context
+        // instead of concatenating into the query string.
+        let followUpContext: FollowUpContext | undefined;
+        if (parentNodeId) {
+          const parentNode = nodes[parentNodeId];
+          const parentFollowUp = parentNode?.followUp;
+
+          if (parentFollowUp && parentNode) {
+            if (parentNode.followUpContext) {
+              // Extend existing chain
+              followUpContext = {
+                originalQuery: parentNode.followUpContext.originalQuery,
+                followUps: [
+                  ...parentNode.followUpContext.followUps,
+                  { question: parentFollowUp.question, answer: prompt },
+                ],
+              };
+            } else {
+              // Start a new chain
+              followUpContext = {
+                originalQuery: parentNode.query,
+                followUps: [
+                  { question: parentFollowUp.question, answer: prompt },
+                ],
+              };
+            }
+          }
+        }
+
         // Derive selected entity dcids from selected cards via store
         const selectedEntityDcids = getSelectedEntityDcids(selectedShapeIds);
 
         // Create history node in store
-        const nodeId = queryStart(prompt, null, parentNodeId);
+        const nodeId = queryStart(prompt, null, parentNodeId, followUpContext);
 
         // Store active query state for the stream handler
         activeQueryRef.current = {
@@ -205,6 +236,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           atlasContext,
           ancestorChain,
           selectedEntityDcids,
+          followUpContext,
         });
       },
       queryCancel: () => {
@@ -216,7 +248,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = null;
       },
     }),
-    [selectedShapeIds, startStream, abortStream],
+    [editor, startStream, abortStream],
   );
 
   return (

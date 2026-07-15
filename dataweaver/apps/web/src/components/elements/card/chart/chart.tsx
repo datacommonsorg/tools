@@ -1,12 +1,13 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
 
 import type { CardState } from '~/components/elements/card/base';
+import { useCardAutoHeight } from '~/components/elements/card/use_card_auto_height';
 import { Skeleton } from '~/components/elements/skeleton';
 import { IconBarChartOutlined } from '~/components/primitives/icons/bar_chart_outlined';
 import { IconDelete } from '~/components/primitives/icons/delete';
@@ -14,6 +15,7 @@ import { IconExport } from '~/components/primitives/icons/export';
 import { IconLineGraphSingle } from '~/components/primitives/icons/line_graph_single';
 import { IconPencil } from '~/components/primitives/icons/pencil';
 import { IconTable } from '~/components/primitives/icons/table';
+import { CARD_VARIANT_SIZE_DEFAULT } from '~/components/scopes/atlas/config';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import type { FacetInfo } from '~/server/types';
@@ -29,8 +31,7 @@ export interface ChartDatum {
   value: number;
 }
 
-// TODO: Get dynamically instead of hard coding here
-const CHART_WIDTH = 356;
+/** Width is responsive (fills the resizable card); height stays fixed. */
 const CHART_HEIGHT = 200;
 
 export interface CardChartProps extends CardState {
@@ -42,7 +43,7 @@ export interface CardChartProps extends CardState {
   // dataset. Let's make it more generic once we have real data to work with
   data?: ChartDatum[];
   facets?: FacetInfo[];
-  relatedQuery?: string;
+  relatedQueries?: string[];
 }
 
 export const CardChart = ({
@@ -53,12 +54,22 @@ export const CardChart = ({
   description,
   data,
   facets,
-  relatedQuery,
+  relatedQueries,
 }: CardChartProps) => {
   const editor = useEditor();
 
   const { open: openExport } = useExportActions();
   const { runPrompt } = useQueryActions();
+
+  const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
+  const contentChildrenInnerContainerRef = useRef<HTMLDivElement>(null);
+
+  useCardAutoHeight(
+    id,
+    baseChildrenContainerRef,
+    contentChildrenInnerContainerRef,
+    CARD_VARIANT_SIZE_DEFAULT.chart.h,
+  );
 
   // TODO: Support the different chart styles (for now we always show bar chart)
   const [selectedStyle, setSelectedStyle] =
@@ -74,6 +85,8 @@ export const CardChart = ({
 
   return (
     <Card.Base
+      id={id}
+      childrenContainerRef={baseChildrenContainerRef}
       isLoading={isLoading}
       selection={selection}
       actions={[
@@ -100,14 +113,17 @@ export const CardChart = ({
         },
       ]}
     >
-      <div className={s.container}>
-        {(title || description) && (
-          <div className={s['header-container']}>
-            {title && <h2 className={s.title}>{title}</h2>}
-            {description && <p className={s.description}>{description}</p>}
-          </div>
-        )}
-
+      <Card.Content
+        childrenInnerContainerRef={contentChildrenInnerContainerRef}
+        title={
+          (title || description) && (
+            <div className={s['header-container']}>
+              {title && <h2 className={s.title}>{title}</h2>}
+              {description && <p className={s.description}>{description}</p>}
+            </div>
+          )
+        }
+      >
         {isLoading || !chartData ? (
           <Skeleton />
         ) : (
@@ -126,11 +142,7 @@ export const CardChart = ({
                   icon: IconLineGraphSingle,
                   label: 'Chart',
                   children: (
-                    <DataChartLine
-                      data={chartData}
-                      width={CHART_WIDTH}
-                      height={CHART_HEIGHT}
-                    />
+                    <DataChartLine data={chartData} height={CHART_HEIGHT} />
                   ),
                 },
                 {
@@ -142,22 +154,25 @@ export const CardChart = ({
             />
           </>
         )}
-      </div>
 
-      {relatedQuery && !isLoading && (
-        <Card.Footer>
-          <Button
-            size="small"
-            variant="flat"
-            tone="accent-subtle"
-            icon={IconPencil}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => runPrompt(relatedQuery)}
-          >
-            {relatedQuery}
-          </Button>
-        </Card.Footer>
-      )}
+        {relatedQueries && relatedQueries.length > 0 && !isLoading && (
+          <Card.Footer>
+            {relatedQueries.map((query) => (
+              <Button
+                key={query}
+                size="small"
+                variant="flat"
+                tone="accent-subtle"
+                icon={IconPencil}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => runPrompt(query)}
+              >
+                {query}
+              </Button>
+            ))}
+          </Card.Footer>
+        )}
+      </Card.Content>
 
       <AnimatePresence>
         {isStyleMenuOpen && (

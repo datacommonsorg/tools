@@ -1,42 +1,31 @@
 /**
- * @fileoverview Hook offering lightweight, client-side hash routing state management
- * which parses path segments and strips tracking query parameters.
+ * @fileoverview Lightweight hash-based router hook. We deliberately avoid
+ * react-router-dom (the codebase intentionally has no router — see
+ * implementation-reference.md §7.3). Hash navigation works without server-side
+ * rewrites and survives reloads, while the nginx SPA fallback handles deep paths.
  */
 
 import { useEffect, useState } from "react";
 
 /**
- * Normalizes and extracts the active route token from window.location.hash,
- * stripping leading hash symbols, slashes, and query parameters.
+ * Reads the current route token from the location hash.
+ *
+ * Empty hash (`""` / `"#"` / `"#/"`) resolves to `""` (the default / agent view).
+ *
+ * @warning `window.location.hash` is attacker-controllable input. The returned
+ * token must never be fed unvalidated into redirects, `href`s, or other DOM
+ * sinks. Any `?query` suffix is stripped so it cannot ride along into matching.
+ * @returns The route token, e.g. `""` | `"metrics"` | `"download"` | `"statvar"`.
  */
 function readRoute(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  const path = window.location.hash.replace(/^#\/?/, "");
-  return path.split("?")[0];
+  if (typeof window === "undefined") return "";
+  return window.location.hash.replace(/^#\/?/, "").split("?")[0];
 }
 
 /**
- * Lightweight hash-based router hook. We deliberately avoid react-router-dom
- * (the codebase intentionally has no router — see implementation-reference.md
- * §7.3). Hash navigation works without server-side rewrites and survives
- * reloads, while the nginx SPA fallback already handles deep paths.
+ * Subscribes to hash changes and returns the current route token.
  *
- * Subscribes to the window `hashchange` event and returns the active
- * normalized route segment as a single-item array tuple. An empty hash
- * (`""` / `"#"` / `"#/"`) resolves to `""` (treated as the default / agent
- * view).
- *
- * @example
- * ```tsx
- * const [route] = useHashRoute();   // "" | "metrics" | "explorer" | ...
- * <a href="#/metrics">Metrics</a>   // browsers handle the navigation
- * ```
- *
- * @returns The active route segment (untrusted user input from window.location).
- * @warning The returned string is user-controlled. Do not pass it directly to
- *          location redirects or anchor href attributes without validation.
+ * @returns A single-element tuple holding the current route token.
  */
 export function useHashRoute(): [string] {
   const [route, setRoute] = useState<string>(readRoute);

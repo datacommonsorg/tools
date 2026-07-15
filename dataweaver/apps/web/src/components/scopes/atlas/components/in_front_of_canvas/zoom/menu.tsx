@@ -26,18 +26,6 @@ interface ZoomAction {
  */
 const ZOOM_ACTIONS: readonly ZoomAction[] = [
   {
-    id: 'in',
-    label: 'Zoom in',
-    shortcut: { modifier: 'primary', key: IconPlus },
-    run: (editor) => editor.zoomIn(),
-  },
-  {
-    id: 'out',
-    label: 'Zoom out',
-    shortcut: { modifier: 'primary', key: IconMinus },
-    run: (editor) => editor.zoomOut(),
-  },
-  {
     id: 'reset',
     label: 'Zoom to 100%',
     shortcut: { modifier: 'shift', key: '0' },
@@ -54,6 +42,18 @@ const ZOOM_ACTIONS: readonly ZoomAction[] = [
     label: 'Zoom to selection',
     shortcut: { modifier: 'shift', key: '2' },
     run: (editor) => editor.zoomToSelection(),
+  },
+  {
+    id: 'in',
+    label: 'Zoom in',
+    shortcut: { modifier: 'primary', key: IconPlus },
+    run: (editor) => editor.zoomIn(),
+  },
+  {
+    id: 'out',
+    label: 'Zoom out',
+    shortcut: { modifier: 'primary', key: IconMinus },
+    run: (editor) => editor.zoomOut(),
   },
 ] as const;
 

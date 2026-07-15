@@ -48,57 +48,59 @@ export const Prompt = ({
         submitted();
       }}
     >
-      <ScreenReaderOnly element="label" htmlFor={inputId}>
-        {PROMPT_PLACEHOLDER}
-      </ScreenReaderOnly>
+      <div className={s['content-container']}>
+        <ScreenReaderOnly element="label" htmlFor={inputId}>
+          {PROMPT_PLACEHOLDER}
+        </ScreenReaderOnly>
 
-      <textarea
-        id={inputId}
-        className={s.input}
-        value={value}
-        rows={1}
-        placeholder={PROMPT_PLACEHOLDER}
-        onChange={(event) => onValueChange(event.target.value)}
-        onKeyDown={(event) => {
-          // Submit if enter is pressed without shift or during IME composition
-          if (
-            event.key === 'Enter' &&
-            !event.shiftKey &&
-            !event.nativeEvent.isComposing
-          ) {
-            event.preventDefault();
-            submitted();
-          }
-        }}
-      />
-
-      <div className={s['button-row-container']}>
-        <ul className={s['tags-container']}>
-          <AnimatePresence initial={false} mode="wait">
-            {tags.map((tag) => (
-              <m.li
-                key={tag.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2, ease: EASE_LINEAR }}
-              >
-                <Tag label={tag.title} />
-              </m.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-
-        <Button
-          className={s['button-submit']}
-          type="submit"
-          size="medium"
-          variant="border"
-          tone="prominent"
-          icon={IconArrowUp}
-          aria-label="Submit prompt"
-          isDisabled={!hasValue}
+        <textarea
+          id={inputId}
+          className={s.input}
+          value={value}
+          rows={1}
+          placeholder={PROMPT_PLACEHOLDER}
+          onChange={(event) => onValueChange(event.target.value)}
+          onKeyDown={(event) => {
+            // Submit if enter is pressed without shift or during IME composition
+            if (
+              event.key === 'Enter' &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              submitted();
+            }
+          }}
         />
+
+        <div className={s['button-row-container']}>
+          <ul className={s['tags-container']}>
+            <AnimatePresence initial={false} mode="wait">
+              {tags.map((tag) => (
+                <m.li
+                  key={tag.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2, ease: EASE_LINEAR }}
+                >
+                  <Tag label={tag.title} />
+                </m.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+
+          <Button
+            className={s['button-submit']}
+            type="submit"
+            size="extra-large"
+            variant={hasValue ? 'flat' : 'border'}
+            tone={hasValue ? 'accent' : 'subtle'}
+            icon={IconArrowUp}
+            aria-label="Submit prompt"
+            isDisabled={!hasValue}
+          />
+        </div>
       </div>
     </form>
   );

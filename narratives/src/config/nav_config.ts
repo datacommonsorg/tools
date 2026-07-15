@@ -1,31 +1,22 @@
 /**
- * @fileoverview Defines top-level navigation layout configurations and routing metadata
- * for the custom Narratives client application.
+ * @fileoverview Defines the static navigation configuration for the header tabs.
  */
 
-/**
- * Represents an item in the top navigation bar.
- */
+/** A single primary-navigation entry rendered as a header tab. */
 export interface NavItem {
-  /**
-   * Route ID matching the hash route value in App.tsx.
-   */
+  /** Route id — matches the hash route in app.tsx (`agent` is the default view). */
   id: string;
-
-  /**
-   * Human-readable label displayed in the UI. Consistently formatted in sentence case.
-   */
+  /** Human-readable tab label shown in the header. */
   label: string;
-
-  /**
-   * Target URL or hash link.
-   */
+  /** Hash href the tab links to, e.g. `#/metrics`. */
   href: string;
 }
 
 /**
- * Top navigation configuration representing all application tabs.
- * Ordered matching the Figma reference (AppbarDataAgent).
+ * Primary navigation tabs, in Figma display order. Nav matches Figma node
+ * 3427:16789 (`AppbarDataAgent`) of file kQtUhlVo9eCBoeqvdfAwpz — all four
+ * tabs in Figma order: Data Agent → Key metrics dashboard → Data Download
+ * Tool → Statistical Variable Explorer.
  */
 export const NAV_CONFIG: NavItem[] = [
   { id: "agent", label: "Data Agent", href: "#/agent" },

@@ -18,13 +18,14 @@ import {
   ATLAS_OVERLAYS,
   ATLAS_OVERRIDES,
   ATLAS_SHAPES,
-  CARD_VARIANT_SIZE,
+  CARD_VARIANT_SIZE_DEFAULT,
   ZOOM_STEPS,
 } from './config';
 import { ExportProvider } from './export_provider';
 import { type AtlasContent, type CardVariant, contentToShape } from './helpers';
 import { keepInView, placeCard } from './placement';
 import { QueryProvider } from './query_provider';
+import { registerCardTabNavigation } from './register_card_tab_navigation';
 
 /** The content shape that corresponds to a given card variant. */
 type ContentForVariant<TVariant extends CardVariant> = Extract<
@@ -93,9 +94,6 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   const clonesRef = useRef<Map<TLShapeId, Set<TLShapeId>>>(new Map());
 
   const mounted = useCallback((editor: Editor) => {
-    // Render the dot grid (camera-tracked via the 'Grid' component slot)
-    editor.updateInstanceState({ isGridMode: true });
-
     // Define camera zoom levels
     editor.setCameraOptions({ zoomSteps: [...ZOOM_STEPS] });
 
@@ -186,6 +184,10 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       },
     );
 
+    // Support tab navigation; prevent tldraw consuming tab events and manage
+    // focus ourselves so we can step through card content
+    const cleanupTabNavigation = registerCardTabNavigation(editor);
+
     // Expose the editor for synchronous reads and release any canvas writes
     // that were issued before mount
     setEditor(editor);
@@ -198,6 +200,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       cleanupBeforeCreate();
       cleanupAfterCreate();
       cleanupAfterDelete();
+      cleanupTabNavigation();
 
       // Swap in a fresh deferred and drop clone tracking tied to this
       // editor, so any future remount starts clean rather than chaining
@@ -219,7 +222,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
         editorReadyRef.current.promise.then((editor) => {
           const position = placeCard(
             editor,
-            CARD_VARIANT_SIZE[content.variant],
+            CARD_VARIANT_SIZE_DEFAULT[content.variant],
           );
           editor.createShape({
             ...contentToShape(shapeId, content, position),

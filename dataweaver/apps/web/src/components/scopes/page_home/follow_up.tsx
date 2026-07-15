@@ -2,7 +2,11 @@
 
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
+import { useMemo } from 'react';
 import { Button } from '~/components/elements/button';
+import { IconClose } from '~/components/primitives/icons/close';
+import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
+import { shuffleArray } from '~/functions/shuffle_array';
 import type { FollowUp as FollowUpData } from '~/server/types';
 import s from './follow_up.module.scss';
 
@@ -10,9 +14,21 @@ interface FollowUpProps {
   prompt: string;
   followUp: FollowUpData;
   onSelect: (followUp: string) => void;
+  onClose: () => void;
 }
 
-export const FollowUp = ({ prompt, followUp, onSelect }: FollowUpProps) => {
+export const FollowUp = ({
+  prompt,
+  followUp,
+  onSelect,
+  onClose,
+}: FollowUpProps) => {
+  const options = useMemo(() => {
+    return followUp?.options?.length
+      ? followUp.options
+      : shuffleArray(EXAMPLE_PROMPTS).slice(0, 4);
+  }, [followUp?.options]);
+
   return (
     <m.section
       className={s['outer-container']}
@@ -21,28 +37,41 @@ export const FollowUp = ({ prompt, followUp, onSelect }: FollowUpProps) => {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.1, ease: EASE_LINEAR }}
     >
-      <div className={s['inner-container']}>
-        <p className={s.question}>{prompt}</p>
+      <div className={s['middle-container']}>
+        <div className={s['inner-container']}>
+          <Button
+            className={s['button-close']}
+            icon={IconClose}
+            size="large"
+            variant="flat"
+            tone="subtle"
+            aria-label="Close"
+            onClick={onClose}
+          />
 
-        <div className={s.answer}>{followUp.summary}</div>
-        <div className={s.answer}>{followUp.question}</div>
+          <div className={s['content-container']}>
+            <p className={s.question}>{prompt}</p>
+            <div className={s.answer}>{followUp.summary}</div>
+            <div className={s.answer}>{followUp.question}</div>
 
-        {followUp?.options?.length > 0 && (
-          <ul className={s['prompts-container']}>
-            {followUp.options.map((option) => (
-              <li key={option}>
-                <Button
-                  size="medium"
-                  variant="flat"
-                  tone="accent-subtle"
-                  onClick={() => onSelect(option)}
-                >
-                  {option}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
+            {options.length > 0 && (
+              <ul className={s['prompts-container']}>
+                {options.map((option) => (
+                  <li key={option}>
+                    <Button
+                      size="medium"
+                      variant="flat"
+                      tone="accent-subtle"
+                      onClick={() => onSelect(option)}
+                    >
+                      {option}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </m.section>
   );

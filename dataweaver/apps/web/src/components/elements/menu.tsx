@@ -12,41 +12,54 @@ interface MenuProps
   onClose: () => void;
 }
 
-export const Menu = ({ className, children, onClose, ...rest }: MenuProps) => {
-  const containerRef = useRef<HTMLDialogElement>(null);
-
+export const Menu = (props: MenuProps) => {
   const prefersMotion = useMatchMedia('prefers-motion', { defaultValue: null });
-
-  useKeydown('Escape', onClose);
-
-  // TODO: For now this doesn't seem to really work due to TLDraw consuming
-  // tab events. Review focus trap implementation once we review how TLDraw
-  // handles focus and keyboard events in general, and adjust as needed
-  useFocusTrap(containerRef);
 
   return (
     prefersMotion !== null && (
-      <m.dialog
-        {...rest}
-        ref={containerRef}
-        className={mergeClassNames(s.container, className)}
-        open
-        initial={{
-          opacity: 0,
-          ...(prefersMotion && { transform: 'translateY(-8px)' }),
-        }}
-        animate={{
-          opacity: 1,
-          ...(prefersMotion && { transform: 'translateY(0px)' }),
-        }}
-        exit={{
-          opacity: 0,
-          ...(prefersMotion && { transform: 'translateY(-8px)' }),
-        }}
-        transition={{ duration: 0.2, ease: EASE_OUT }}
-      >
-        {children}
-      </m.dialog>
+      <MenuWithPrefersMotion {...props} prefersMotion={prefersMotion} />
     )
+  );
+};
+
+interface MenuWithPrefersMotionProps extends MenuProps {
+  prefersMotion: boolean;
+}
+
+const MenuWithPrefersMotion = ({
+  className,
+  prefersMotion,
+  children,
+  onClose,
+  ...rest
+}: MenuWithPrefersMotionProps) => {
+  const containerRef = useRef<HTMLDialogElement>(null);
+
+  useKeydown('Escape', onClose);
+
+  useFocusTrap(containerRef);
+
+  return (
+    <m.dialog
+      {...rest}
+      ref={containerRef}
+      className={mergeClassNames(s.container, className)}
+      open
+      initial={{
+        opacity: 0,
+        ...(prefersMotion && { transform: 'translateY(-8px)' }),
+      }}
+      animate={{
+        opacity: 1,
+        ...(prefersMotion && { transform: 'translateY(0px)' }),
+      }}
+      exit={{
+        opacity: 0,
+        ...(prefersMotion && { transform: 'translateY(-8px)' }),
+      }}
+      transition={{ duration: 0.2, ease: EASE_OUT }}
+    >
+      {children}
+    </m.dialog>
   );
 };

@@ -1,4 +1,8 @@
 .container {
+  display: flex;
   flex-shrink: 0;
-  padding: 0 28px 18px;
+  flex-flow: column;
+  row-gap: 8px;
+  align-items: flex-start;
+  padding-top: 18px;
 }

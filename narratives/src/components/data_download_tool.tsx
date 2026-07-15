@@ -1,12 +1,16 @@
-import React from "react";
+/**
+ * @fileoverview Hosts the upstream Data Commons Download tool via a same-origin iframe.
+ */
+
+import { UpstreamToolIframe } from "./iframe_upstream_tool";
 
 /**
- * Placeholder component for the Data Download Tool page.
+ * Embeds upstream Custom DC's Data Download Tool (Flask /tools/download).
+ * All the iframe + chrome-hiding logic lives in UpstreamToolIframe; this
+ * component just supplies the route and title.
  */
 export function DataDownloadTool() {
   return (
-    <div className="flex-1 flex items-center justify-center text-on-surface-variant font-medium">
-      Data Download Tool Placeholder
-    </div>
+    <UpstreamToolIframe src="/tools/download" title="Data Download Tool" />
   );
 }
