@@ -111,7 +111,7 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
 export const CARD_VARIANT_SIZE_DEFAULT: Record<CardVariant, CardSize> = {
   text: { w: 650, h: 440 },
   table: { w: 650, h: 500 },
-  chart: { w: 420, h: 520 },
+  chart: { w: 420, h: 720 },
 };
 
 /** Smallest size a card may resized to. */
