@@ -1,14 +1,6 @@
-.container {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  padding: 28px;
-}
-
 .title {
   @include type-headline;
 
-  margin-bottom: 16px;
   color: rgb(var(--color-card-content));
 }
 
@@ -20,26 +12,12 @@
   h3 {
     @include type-title;
 
-    margin: 24px 0 8px;
     color: rgb(var(--color-card-content));
-
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-
-  p {
-    margin: 0 0 12px;
   }
 
   ul {
     padding-left: 20px;
-    margin: 0 0 12px;
     list-style: disc;
-  }
-
-  li {
-    margin-bottom: 8px;
   }
 
   a,
@@ -54,7 +32,6 @@
 
   table {
     width: 100%;
-    margin: 12px 0;
     text-align: left;
     border-collapse: separate;
     border: 1px solid rgb(var(--color-card-divider));
@@ -68,8 +45,11 @@
     border-bottom: 1px solid rgb(var(--color-card-divider));
   }
 
-  tbody tr:last-child :is(th, td) {
-    border-bottom: none;
+  tbody tr:last-child {
+    th,
+    td {
+      border-bottom: none;
+    }
   }
 
   th {
@@ -79,5 +59,27 @@
 
   strong {
     font-weight: 500;
+  }
+
+  p,
+  ul,
+  table {
+    &:not(:first-child) {
+      margin-top: 12px;
+    }
+  }
+
+  h3:not(:first-child) {
+    margin-top: 24px;
+
+    + p,
+    + ul,
+    + table {
+      margin-top: 8px;
+    }
+  }
+
+  li:not(:first-child) {
+    margin-top: 8px;
   }
 }

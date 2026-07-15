@@ -104,15 +104,18 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
 );
 
 /**
- * Per-variant card footprint. `w` is the fixed width; `h` is the *maximum*
- * height — a card's actual height tracks its rendered content (see
- * `useCardAutoHeight`) and is capped at this value - larger content scrolls.
+ * Per-variant card footprint. `w` is the 'fixed' default width (unless user
+ * resizes); `h` is the default *maximum* height — a card's actual height tracks
+ * its rendered content (see `useCardAutoHeight`).
  */
-export const CARD_VARIANT_MAX: Record<CardVariant, CardSize> = {
+export const CARD_VARIANT_SIZE_DEFAULT: Record<CardVariant, CardSize> = {
   text: { w: 650, h: 440 },
   table: { w: 650, h: 500 },
   chart: { w: 420, h: 520 },
 };
+
+/** Smallest size a card may resized to. */
+export const CARD_SIZE_MIN = { w: 300, h: 220 } as const;
 
 /** Minimum gap to keep between a placed card and any other card, in px. */
 export const DISTANCE_FROM_OTHER_CARDS = 56;

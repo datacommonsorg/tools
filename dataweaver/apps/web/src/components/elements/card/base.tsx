@@ -1,18 +1,14 @@
 'use client';
 
-import {
-  type ComponentPropsWithRef,
-  type ComponentType,
-  type ReactNode,
-  useRef,
+import type {
+  ComponentPropsWithRef,
+  ComponentType,
+  ReactNode,
+  RefObject,
 } from 'react';
 import type { TLShapeId } from 'tldraw';
 import { Button } from '~/components/elements/button';
-import { CARD_VARIANT_MAX } from '~/components/scopes/atlas/config';
-import type { CardVariant } from '~/components/scopes/atlas/helpers';
-import { useCachedResizeValues } from '~/hooks/use_cached_resize_values';
 import s from './base.module.scss';
-import { useCardAutoHeight } from './use_card_auto_height';
 import { useCardClearTextSelection } from './use_card_clear_text_selection';
 import { useCardDragHandle } from './use_card_drag_handle';
 import { useCardTextClipboard } from './use_card_text_clipboard';
@@ -45,32 +41,24 @@ interface CardAction {
 
 interface CardProps extends CardState {
   id: TLShapeId;
-  variant: CardVariant;
+  childrenContainerRef: RefObject<HTMLDivElement | null>;
   actions: CardAction[];
   children: ReactNode;
 }
 
 export const CardBase = ({
   id,
-  variant,
+  childrenContainerRef,
   isLoading,
   selection,
   actions,
   children,
 }: CardProps) => {
-  const childrenContainerRef = useRef<HTMLDivElement>(null);
-
-  useCardAutoHeight(childrenContainerRef, id, CARD_VARIANT_MAX[variant].h);
-
   useCardClearTextSelection(childrenContainerRef, id);
 
   useCardTextClipboard(childrenContainerRef);
 
   const startDragging = useCardDragHandle(id);
-
-  const getCachedCanScroll = useCachedResizeValues((element: HTMLElement) => {
-    return element.scrollHeight > element.clientHeight;
-  });
 
   return (
     <article
@@ -99,13 +87,6 @@ export const CardBase = ({
       <div
         ref={childrenContainerRef}
         className={s['children-container']}
-        // TLDraw captures all wheel events; this ensures that cards can be
-        // scrolled when children here can scroll
-        onWheelCapture={(event) => {
-          if (getCachedCanScroll(false, event.currentTarget)) {
-            event.stopPropagation();
-          }
-        }}
         // Once the card is the single selection, reserve dragging for the
         // actions bar: stop the canvas from starting a gesture so the content
         // stays selectable/highlightable. While unselected or multi-selected we

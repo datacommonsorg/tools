@@ -39,10 +39,8 @@
   display: flex;
   flex-direction: column;
   grid-area: 1 / 1;
-  height: fit-content;
-  max-height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: none;
+  height: 100%;
+  overflow: clip;
 
   // Dragging the card is reserved for the actions bar, so the content is a
   // freely selectable text surface rather than a drag handle (this overrides

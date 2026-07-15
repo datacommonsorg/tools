@@ -6,19 +6,30 @@ import { type TLShapeId, useEditor } from 'tldraw';
 const EPSILON = 1;
 
 /**
- * Keeps a card shape's `h` prop equal to its rendered content height, capped at
- * `maxHeight`. Uses given ref whose *natural* (uncapped) height should drive
- * the card — its `scrollHeight` is read, so the element may itself be clamped
- * and scrollable without throwing the measurement off.
- *
- * Because the shape's geometry (and therefore its hit area and the auto
- * placement footprint) is derived from `h`, syncing `h` to the content makes
- * clicking the empty space below a short card no longer select it, and makes
- * the next card stack just below the real card height.
+ * Measures the content height of a card, including any fixed 'chrome' (title
+ * bar, padding, etc.) that is outside the scrollable body. The returned value
+ * is the total height of the card's content.
  */
-export const useCardAutoHeight = <TElement extends HTMLElement>(
-  containerRef: RefObject<TElement | null>,
+const measureContentHeight = (
+  container: HTMLElement,
+  content: HTMLElement,
+): number => {
+  const contentParent = content.parentElement;
+  if (!contentParent) return content.offsetHeight;
+
+  const chromeAroundContent =
+    container.offsetHeight - contentParent.clientHeight;
+  return content.offsetHeight + chromeAroundContent;
+};
+
+/**
+ * Keeps a card shape's `h` prop equal to its rendered content height. After
+ * user manually resizes card - syncing stops and the new height is preserved.
+ */
+export const useCardAutoHeight = (
   shapeId: TLShapeId,
+  containerRef: RefObject<HTMLElement | null>,
+  contentRef: RefObject<HTMLElement | null>,
   maxHeight: number,
 ) => {
   const editor = useEditor();
@@ -27,9 +38,19 @@ export const useCardAutoHeight = <TElement extends HTMLElement>(
 
   useIsomorphicLayoutEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const content = contentRef.current;
+    if (!container || !content) return;
 
     const sync = () => {
+      const shape = editor.getShape(shapeId);
+
+      // Ignore if the shape isn't found or isn't a card
+      if (!shape || shape.type !== 'card') return;
+
+      // Only sync if user hasn't manually resized - once they do stop syncing
+      // and use the new height as is
+      if (shape.props.isManuallyResized) return;
+
       // tldraw culls off-screen shapes with 'display: none', which collapses
       // the element to 0 and fires the observer. Ignore those measurements so
       // we never write 'h = 0'
@@ -37,10 +58,7 @@ export const useCardAutoHeight = <TElement extends HTMLElement>(
         return;
       }
 
-      // 'scrollHeight' reports the natural content height even while the
-      // element is clamped by 'max-height'; it excludes borders, so include it
-      const bordersHeight = container.offsetHeight - container.clientHeight;
-      const contentHeight = container.scrollHeight + bordersHeight;
+      const contentHeight = measureContentHeight(container, content);
       const newHeight = Math.round(Math.min(contentHeight, maxHeight));
 
       // Avoid feedback loops: If the new height is within distance of the last
@@ -50,11 +68,6 @@ export const useCardAutoHeight = <TElement extends HTMLElement>(
       ) {
         return;
       }
-
-      const shape = editor.getShape(shapeId);
-
-      // Ignore if the shape is isn't found or not a card
-      if (!shape || shape.type !== 'card') return;
 
       lastHeightRef.current = newHeight;
 
@@ -76,8 +89,9 @@ export const useCardAutoHeight = <TElement extends HTMLElement>(
     };
 
     sync();
+
     const observer = new ResizeObserver(sync);
-    observer.observe(container);
+    observer.observe(content);
     return () => observer.disconnect();
   }, [editor, shapeId, maxHeight]);
 };
