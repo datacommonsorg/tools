@@ -15,12 +15,13 @@ import { IconExport } from '~/components/primitives/icons/export';
 import { IconLineGraphSingle } from '~/components/primitives/icons/line_graph_single';
 import { IconPencil } from '~/components/primitives/icons/pencil';
 import { IconTable } from '~/components/primitives/icons/table';
-import { CARD_VARIANT_SIZE_DEFAULT } from '~/components/scopes/atlas/config';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import type { FacetInfo } from '~/server/types';
 import s from './chart.module.scss';
 import { ConditionalTabs } from './conditional_tabs';
+import { DataChartBarHorizontal } from './data_chart_bar_horizontal';
+import { DataChartBarVertical } from './data_chart_bar_vertical';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
@@ -30,9 +31,6 @@ export interface ChartDatum {
   date: string;
   value: number;
 }
-
-/** Width is responsive (fills the resizable card); height stays fixed. */
-const CHART_HEIGHT = 200;
 
 export interface CardChartProps extends CardState {
   id: TLShapeId;
@@ -62,27 +60,30 @@ export const CardChart = ({
   const { runPrompt } = useQueryActions();
 
   const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
-  const contentChildrenInnerContainerRef = useRef<HTMLDivElement>(null);
-
-  useCardAutoHeight(
-    id,
-    baseChildrenContainerRef,
-    contentChildrenInnerContainerRef,
-    CARD_VARIANT_SIZE_DEFAULT.chart.h,
-  );
+  const contentInnerRef = useRef<HTMLDivElement>(null);
 
   // TODO: Support the different chart styles (for now we always show bar chart)
   const [selectedStyle, setSelectedStyle] =
     useState<ChartStyle>('bar-vertical');
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedFacetId, setSelectedFacetId] = useState<string>(
     facets?.[0]?.facetId ?? '',
+  );
+
+  // Only auto-height when the chart tab is active — table tab should scroll
+  // within the card at its current (chart-determined) height.
+  useCardAutoHeight(
+    id,
+    baseChildrenContainerRef,
+    contentInnerRef,
+    Infinity,
+    activeTabIndex === 0,
   );
 
   // Derive chart data from selected facet if facets are available
   const currentFacet = facets?.find((f) => f.facetId === selectedFacetId);
   const chartData = currentFacet?.observations ?? data;
-
   return (
     <Card.Base
       id={id}
@@ -113,66 +114,72 @@ export const CardChart = ({
         },
       ]}
     >
-      <Card.Content
-        childrenInnerContainerRef={contentChildrenInnerContainerRef}
-        title={
-          (title || description) && (
+      <div className={s['content-outer']}>
+        <div ref={contentInnerRef} className={s['content-inner']}>
+          {(title || description) && (
             <div className={s['header-container']}>
               {title && <h2 className={s.title}>{title}</h2>}
               {description && <p className={s.description}>{description}</p>}
             </div>
-          )
-        }
-      >
-        {isLoading || !chartData ? (
-          <Skeleton />
-        ) : (
-          <>
-            {facets && facets.length > 0 && (
-              <FacetSelector
-                facets={facets}
-                selectedFacetId={selectedFacetId}
-                onSelect={setSelectedFacetId}
+          )}
+
+          {isLoading || !chartData ? (
+            <Skeleton />
+          ) : (
+            <>
+              {facets && facets.length > 0 && (
+                <FacetSelector
+                  facets={facets}
+                  selectedFacetId={selectedFacetId}
+                  onSelect={setSelectedFacetId}
+                />
+              )}
+
+              <ConditionalTabs
+                activeIndex={activeTabIndex}
+                onActiveIndexChange={setActiveTabIndex}
+                tabs={[
+                  {
+                    icon: IconLineGraphSingle,
+                    label: 'Chart',
+                    children:
+                      selectedStyle === 'bar-vertical' ? (
+                        <DataChartBarVertical data={chartData} />
+                      ) : selectedStyle === 'bar-horizontal' ? (
+                        <DataChartBarHorizontal data={chartData} />
+                      ) : (
+                        <DataChartLine data={chartData} />
+                      ),
+                  },
+                  {
+                    icon: IconTable,
+                    label: 'Table',
+                    children: <DataTable data={chartData} />,
+                  },
+                ]}
               />
-            )}
+            </>
+          )}
 
-            <ConditionalTabs
-              tabs={[
-                {
-                  icon: IconLineGraphSingle,
-                  label: 'Chart',
-                  children: (
-                    <DataChartLine data={chartData} height={CHART_HEIGHT} />
-                  ),
-                },
-                {
-                  icon: IconTable,
-                  label: 'Table',
-                  children: <DataTable data={chartData} />,
-                },
-              ]}
-            />
-          </>
-        )}
-
-        {relatedQueries && relatedQueries.length > 0 && !isLoading && (
-          <Card.Footer>
-            {relatedQueries.map((query) => (
-              <Button
-                key={query}
-                size="small"
-                variant="flat"
-                tone="accent-subtle"
-                icon={IconPencil}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => runPrompt(query)}
-              >
-                {query}
-              </Button>
-            ))}
-          </Card.Footer>
-        )}
-      </Card.Content>
+          {relatedQueries && relatedQueries.length > 0 && !isLoading && (
+            <Card.Footer>
+              {relatedQueries.map((query) => (
+                <Button
+                  key={query}
+                  size="small"
+                  variant="flat"
+                  tone="accent-subtle"
+                  icon={IconPencil}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => runPrompt(query)}
+                >
+                  {query}
+                </Button>
+              ))}
+            </Card.Footer>
+          )}
+        </div>
+      </div>
 
       <AnimatePresence>
         {isStyleMenuOpen && (
@@ -181,6 +188,11 @@ export const CardChart = ({
             onConfirmSelectionChange={(newStyle) => {
               setSelectedStyle(newStyle);
               setIsStyleMenuOpen(false);
+              editor.updateShape({
+                id,
+                type: 'card',
+                props: { isManuallyResized: false },
+              });
             }}
             onClose={() => setIsStyleMenuOpen(false)}
           />

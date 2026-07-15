@@ -1,5 +1,36 @@
+// Outer overflow wrapper — clips content without adding a scrollbar.
+// Needed so `.content-inner`'s `offsetHeight` reflects its natural content
+// height (used by `useCardAutoHeight` for measurement).
+.content-outer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: clip;
+}
+
+// Inner content container — natural height when chart is active (for
+// auto-height measurement), constrained when table is active (so the table
+// panel can scroll within the card's fixed height).
+// `flex-shrink: 0` is critical: without it, the flex parent caps
+// `offsetHeight` at its own height, preventing `useCardAutoHeight` from
+// detecting that content has grown (e.g. after a chart style change or
+// re-render from loading state).
+.content-inner {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  padding: 28px 28px 0;
+
+  &:has(table) {
+    flex-shrink: 1;
+    height: 100%;
+  }
+}
+
 .header-container {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   row-gap: 8px;
   color: rgb(var(--color-card-content));
