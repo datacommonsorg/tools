@@ -2,7 +2,6 @@ import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { CardState } from '~/components/elements/card/base';
 import type { CardChartProps } from '~/components/elements/card/chart/chart';
 import type { CardTextProps } from '~/components/elements/card/text';
-import { CARD_VARIANT_SIZE_DEFAULT } from './config';
 
 interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
   relatedQueries?: string[];
@@ -48,12 +47,16 @@ export interface CardSize {
 /** A card's position and size together. */
 export type CardBounds = CardPosition & CardSize;
 
+/** The card shape as stored on the tldraw canvas. */
+export type CardShape = TLShape<'card'>;
+
 /** Convert card content into `TLShape` for placement on the canvas. */
 export const contentToShape = (
   shapeId: TLShapeId,
   content: AtlasContent,
   position: CardPosition,
-): TLCreateShapePartial<TLShape<'card'>> => {
+  size: CardSize,
+): TLCreateShapePartial<CardShape> => {
   const baseProps = {
     id: shapeId,
     x: position.x,
@@ -62,10 +65,7 @@ export const contentToShape = (
   };
 
   const shapeProps = {
-    // Start at the variant's max footprint; 'useCardAutoHeight' then shrinks
-    // 'h' to the real content height once the card has painted. Reserving
-    // worst-case space up front means initial placement never overlaps neighbor
-    ...CARD_VARIANT_SIZE_DEFAULT[content.variant],
+    ...size,
     isLoading: content.isLoading ?? false,
     relatedQueries: content.relatedQueries,
   };
