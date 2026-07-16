@@ -28,6 +28,7 @@ export const FacetSelector = ({
   if (!currentFacet || facets.length <= 1) {
     return currentFacet ? (
       <div className={clsx(s.label, s.container)}>
+        <span className={s.prefix}>Facet</span>
         {formatFacetLabel(currentFacet)}
       </div>
     ) : null;
@@ -35,7 +36,7 @@ export const FacetSelector = ({
 
   return (
     <div className={s.container}>
-      <span className={s.prefix}>Facet:</span>
+      <span className={s.prefix}>Facet</span>
       <button
         type="button"
         className={s.trigger}
@@ -62,13 +63,7 @@ export const FacetSelector = ({
                 setIsOpen(false);
               }}
             >
-              <span className={s['option-source']}>{facet.source}</span>
-              <span className={s['option-meta']}>
-                {facet.earliestDate}–{facet.latestDate},{' '}
-                {facet.unit.toLowerCase() === 'dimensionless'
-                  ? 'Dimensionless'
-                  : facet.unit}
-              </span>
+              {formatFacetLabel(facet)}
             </button>
           ))}
         </div>

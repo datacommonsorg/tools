@@ -104,6 +104,10 @@
   "card-action-content-hover": "$accent",
   "card-accent-subtle": "$accent-subtle",
 
+  "facet-selector-surface": "$card-surface",
+  "facet-selector-border": [196, 199, 197],
+  "facet-selector-color": "$card-content",
+
   "skeleton-surface": [242, 242, 242],
 
   "menu-surface": "$surface-dimmed",

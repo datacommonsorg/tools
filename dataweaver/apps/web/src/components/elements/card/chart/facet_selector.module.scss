@@ -3,43 +3,51 @@
   display: flex;
   flex-shrink: 0;
   gap: 8px;
-  margin-block: 12px;
+  margin-block: 18px;
+  background: rgb(var(--color-facet-selector-surface));
+  border-radius: var(--border-radius-extra-small);
+  box-shadow: 0 0 0 1px rgb(var(--color-facet-selector-border));
 }
 
 .prefix {
-  @include type-label-small;
+  @include type-body-small;
 
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   flex-shrink: 0;
   gap: 0;
   align-items: flex-start;
   font-weight: 500;
   color: rgb(var(--color-card-content-muted));
+  background: rgb(var(--color-facet-selector-surface));
+  box-shadow: 0 0 0 3px rgb(var(--color-facet-selector-surface));
+  transform: translate(16px, -50%);
 }
 
+.trigger,
 .label {
-  @include type-label-small;
+  @include type-body-medium;
 
-  color: rgb(var(--color-card-content-muted));
-}
-
-.trigger {
-  @include type-label-small;
-
-  display: inline-flex;
-  gap: 4px;
+  display: flex;
+  gap: 16px;
   align-items: center;
-  padding: 0;
-  font-weight: 500;
-  color: rgb(var(--color-card-base-selected));
-  cursor: pointer;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  color: rgb(var(--color-facet-selector-color));
   background: none;
   border: none;
 }
 
+.trigger {
+  cursor: pointer;
+}
+
 .arrow {
   flex-shrink: 0;
-  place-self: start;
+  place-self: center end;
   font-size: 14px;
   line-height: 16.4px;
 }
@@ -51,49 +59,33 @@
   z-index: 100;
   width: 100%;
   min-width: 280px;
-  margin-top: 4px;
+  margin-top: 5px;
   overflow: hidden;
-  background: rgb(var(--color-card-surface));
-  border-radius: var(--border-radius-small);
+  background: rgb(var(--color-facet-selector-surface));
+  border-radius: var(--border-radius-extra-small);
   box-shadow: var(--shadow-elevated);
 }
 
 .option {
+  @include type-body-medium;
+
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 12px 16px;
+  color: rgb(var(--color-facet-selector-color));
   text-align: left;
   cursor: pointer;
   background: transparent;
-  border: none;
-  border-bottom: 1px solid rgb(var(--color-surface-decorator));
-
-  &:last-child {
-    border-bottom: none;
-  }
 
   &[data-is-selected="true"] {
-    background: rgb(var(--color-control-accent) / 12%);
+    background: rgb(var(--color-button-accent-subtle-base));
   }
 
   &:not([data-is-selected="true"]) {
     @include hover {
-      background: rgb(var(--color-control-accent) / 6%);
+      background: rgb(var(--color-button-accent-subtle-base-hover));
     }
   }
-}
-
-.option-source {
-  @include type-label-small;
-
-  font-weight: 500;
-  color: rgb(var(--color-card-content));
-}
-
-.option-meta {
-  @include type-label-small;
-
-  color: rgb(var(--color-card-content-muted));
 }
