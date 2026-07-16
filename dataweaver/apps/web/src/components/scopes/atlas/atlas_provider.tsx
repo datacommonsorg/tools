@@ -11,7 +11,6 @@ import {
   useState,
 } from 'react';
 import { createShapeId, type Editor, type TLShapeId, Tldraw } from 'tldraw';
-import { useAtlasStore } from '~/store';
 import s from './atlas_provider.module.scss';
 import {
   ATLAS_COMPONENTS,
@@ -23,8 +22,14 @@ import {
 } from './config';
 import { ExportProvider } from './export_provider';
 import { type AtlasContent, type CardVariant, contentToShape } from './helpers';
-import { keepInView, placeCard } from './placement';
 import { QueryProvider } from './query_provider';
+import { type CardClones, registerCardClones } from './register_card_clones';
+import {
+  type CardPlacement,
+  fitCardSize,
+  registerCardPlacement,
+} from './register_card_placement';
+import { registerCardStoreSync } from './register_card_store_sync';
 import { registerCardTabNavigation } from './register_card_tab_navigation';
 
 /** The content shape that corresponds to a given card variant. */
@@ -57,6 +62,13 @@ export interface AtlasContextProps {
 
 const AtlasContext = createContext<AtlasContextProps | null>(null);
 
+/** The mounted tldraw editor together with its registered card systems. */
+interface AtlasCanvas {
+  editor: Editor;
+  placeCard: CardPlacement['place'];
+  cloneMirrorUpdate: CardClones['mirrorUpdate'];
+}
+
 /** A promise paired with its resolver, so it can be settled imperatively. */
 interface Deferred<T> {
   promise: Promise<T>;
@@ -76,22 +88,16 @@ interface AtlasProviderProps {
 
 export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   /**
-   * Use this for reads that must return a value now; use `editorReadyRef` for
+   * Use this for reads that must return a value now; use `canvasReadyRef` for
    * writes that can wait for mount.
    */
   const [editor, setEditor] = useState<Editor | null>(null);
 
   /**
-   * Resolves with the editor once `tldraw` mounts, so any editor actions work
-   * before or after editor has been mounted via promise pattern.
+   * Resolves with the editor and its placement system once `tldraw` mounts,
+   * so any canvas actions work before or after mount via promise pattern.
    */
-  const editorReadyRef = useRef(createDeferred<Editor>());
-
-  /**
-   * Track clones of cards that are created outside of the 'add' flow (copy /
-   * paste, duplicate) so we can mirror updates and manage their lifecycle.
-   */
-  const clonesRef = useRef<Map<TLShapeId, Set<TLShapeId>>>(new Map());
+  const canvasReadyRef = useRef(createDeferred<AtlasCanvas>());
 
   const mounted = useCallback((editor: Editor) => {
     // Define camera zoom levels
@@ -107,107 +113,36 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       return themes;
     });
 
-    // Cards that appear outside of 'add' (copy/paste, duplicate) are clones:
-    // Reposition them as they're created + mirror updates if loading
-    const cleanupBeforeCreate = editor.sideEffects.registerBeforeCreateHandler(
-      'shape',
-      (shape) => {
-        const originId = shape.meta.originId as TLShapeId | undefined;
-        if (shape.type !== 'card' || originId === shape.id) return shape;
-
-        const clonePosition = placeCard(
-          editor,
-          { w: shape.props.w, h: shape.props.h },
-
-          // Use original shape as anchor point for clone
-          { x: shape.x, y: shape.y },
-        );
-
-        // If original shape is still loading - clone its props and track
-        // the clone so we can mirror updates to it as they arrive
-        const originShape =
-          shape.props.isLoading && originId
-            ? editor.getShape(originId)
-            : undefined;
-        if (originShape && originShape.type === 'card') {
-          const clones =
-            clonesRef.current.get(originShape.id) ?? new Set<TLShapeId>();
-          clones.add(shape.id);
-          clonesRef.current.set(originShape.id, clones);
-
-          return {
-            ...shape,
-            ...clonePosition,
-            props: { ...originShape.props },
-          };
-        }
-
-        // For all other clones - just reposition them and return as is
-        return { ...shape, ...clonePosition };
-      },
-    );
-
-    // Whenever a card is placed (new or clone), pan the camera so it stays in
-    // view if it landed off-screen
-    const cleanupAfterCreate = editor.sideEffects.registerAfterCreateHandler(
-      'shape',
-      (shape) => {
-        if (shape.type !== 'card') return;
-
-        keepInView(editor, {
-          x: shape.x,
-          y: shape.y,
-          w: shape.props.w,
-          h: shape.props.h,
-        });
-      },
-    );
-
-    // If a still-loading shape is deleted - delete its clones too (they'll
-    // never resolve into real content)
-    const cleanupAfterDelete = editor.sideEffects.registerAfterDeleteHandler(
-      'shape',
-      (shape) => {
-        if (shape.type !== 'card') return;
-
-        // Sync deletion back to the store so card registry stays consistent.
-        useAtlasStore.getState().cardUnregister(String(shape.id));
-
-        const clones = clonesRef.current.get(shape.id);
-        if (!clones) return;
-
-        for (const cloneId of clones) {
-          if (editor.getShape(cloneId)) editor.deleteShapes([cloneId]);
-        }
-
-        clonesRef.current.delete(shape.id);
-      },
-    );
-
-    // Support tab navigation; prevent tldraw consuming tab events and manage
-    // focus ourselves so we can step through card content
+    // Register our custom card placement, clone tracking, store syncing and tab
+    // navigation systems respectively
+    const placement = registerCardPlacement(editor);
+    const clones = registerCardClones(editor);
+    const cleanupStoreSync = registerCardStoreSync(editor);
     const cleanupTabNavigation = registerCardTabNavigation(editor);
 
     // Expose the editor for synchronous reads and release any canvas writes
     // that were issued before mount
     setEditor(editor);
-    editorReadyRef.current.resolve(editor);
+    canvasReadyRef.current.resolve({
+      editor,
+      placeCard: placement.place,
+      cloneMirrorUpdate: clones.mirrorUpdate,
+    });
 
     // Let the CSS know we're mounted so it can fade the canvas in
     editor.getContainer().dataset.isMounted = 'true';
 
     return () => {
-      cleanupBeforeCreate();
-      cleanupAfterCreate();
-      cleanupAfterDelete();
+      placement.cleanup();
+      clones.cleanup();
+      cleanupStoreSync();
       cleanupTabNavigation();
 
-      // Swap in a fresh deferred and drop clone tracking tied to this
-      // editor, so any future remount starts clean rather than chaining
-      // writes onto the editor we just tore down
+      // Swap in a fresh deferred tied to this editor, so any future remount
+      // starts clean rather than chaining writes onto the editor we just
+      // tore down
       setEditor(null);
-      editorReadyRef.current = createDeferred<Editor>();
-      clonesRef.current.clear();
+      canvasReadyRef.current = createDeferred<AtlasCanvas>();
     };
   }, []);
 
@@ -219,13 +154,17 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
 
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)
-        editorReadyRef.current.promise.then((editor) => {
-          const position = placeCard(
+        canvasReadyRef.current.promise.then(({ editor, placeCard }) => {
+          // Cap the default footprint to the grid's column width so the
+          // breakpoint's card count actually fits side by side (and cards
+          // stack on narrow mobile screens)
+          const size = fitCardSize(
             editor,
             CARD_VARIANT_SIZE_DEFAULT[content.variant],
           );
+          const position = placeCard(shapeId, size);
           editor.createShape({
-            ...contentToShape(shapeId, content, position),
+            ...contentToShape(shapeId, content, position, size),
 
             // Stamp the origin ID so clones (copy/paste) can trace back to the
             // card they came from and mirror its streamed updates
@@ -237,31 +176,20 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
           id: shapeId,
           variant: content.variant,
           update(props) {
-            editorReadyRef.current.promise.then((editor) => {
-              // The shape may have been deleted before an async update resolves
-              if (!editor.getShape(shapeId)) return;
+            canvasReadyRef.current.promise.then(
+              ({ editor, cloneMirrorUpdate }) => {
+                // The shape may have been deleted before an async update resolves
+                if (!editor.getShape(shapeId)) return;
 
-              // Update the card with the new content
-              editor.updateShape({ id: shapeId, type: 'card', props });
-
-              // If this card has clones, mirror the update to them too
-              const clones = clonesRef.current.get(shapeId);
-              if (!clones) return;
-
-              for (const cloneId of clones) {
-                if (editor.getShape(cloneId)) {
-                  editor.updateShape({ id: cloneId, type: 'card', props });
-                }
-              }
-
-              // Once resolved, no further updates arrive so stop following
-              if (props.isLoading === false) {
-                clonesRef.current.delete(shapeId);
-              }
-            });
+                // Update the card with the new content, and mirror it to any
+                // clones still following this card
+                editor.updateShape({ id: shapeId, type: 'card', props });
+                cloneMirrorUpdate(shapeId, props);
+              },
+            );
           },
           remove() {
-            editorReadyRef.current.promise.then((editor) =>
+            canvasReadyRef.current.promise.then(({ editor }) =>
               editor.deleteShapes([shapeId]),
             );
           },
