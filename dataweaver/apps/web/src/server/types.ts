@@ -86,6 +86,12 @@ export interface QueryResult {
   notesHtml?: string;
 }
 
+export interface ComparisonChart {
+  variableDcid: string;
+  title: string;
+  description: string;
+}
+
 export interface ComparisonResult {
   id: string;
   title: string;
@@ -93,6 +99,7 @@ export interface ComparisonResult {
   introduction?: string;
   insights?: Insight[];
   relatedQueries?: string[];
+  charts?: ComparisonChart[];
   notesHtml?: string;
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type { ChartSeries } from '~/components/elements/card/chart/chart';
 import type {
   CardEntry,
   CardType,
@@ -48,6 +49,45 @@ export const deriveComparisonContent = (
   isLoading: false,
   relatedQueries: comparison.relatedQueries,
 });
+
+/** Derive AtlasContent for a comparison chart card (multi-series, one variable across places). */
+export const deriveComparisonChartContent = (
+  comparison: ComparisonResult,
+  variableDcid: string,
+  allResults: Record<string, QueryResult>,
+): AtlasContent | null => {
+  const chartMeta = comparison.charts?.find(
+    (c) => c.variableDcid === variableDcid,
+  );
+  if (!chartMeta) return null;
+
+  const series: ChartSeries[] = [];
+
+  for (const result of Object.values(allResults)) {
+    const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
+    const observations = ts?.facets[0]?.observations;
+    if (!observations || observations.length === 0) continue;
+
+    const placeName = result.entities[0]?.name ?? result.entities[0]?.dcid;
+    const placeDcid = result.entities[0]?.dcid ?? '';
+
+    series.push({
+      key: placeDcid,
+      label: placeName ?? placeDcid,
+      data: observations,
+    });
+  }
+
+  if (series.length === 0) return null;
+
+  return {
+    variant: 'chart',
+    title: chartMeta.title,
+    description: chartMeta.description,
+    series,
+    isLoading: false,
+  };
+};
 
 /** Derive AtlasContent for a chart card from a QueryResult (first variable's facets). */
 export const deriveChartContent = (
@@ -119,6 +159,7 @@ export const deriveContentForCard = (
   placeholderTitle?: string,
   variableDcid?: string,
   comparison?: ComparisonResult,
+  allResults?: Record<string, QueryResult>,
 ): AtlasContent | null => {
   if (type === 'loading') {
     return deriveLoadingContent(placeholderTitle ?? '');
@@ -126,6 +167,9 @@ export const deriveContentForCard = (
   // Comparison cards read from the dedicated comparison field.
   if (comparison && type === 'notes') {
     return deriveComparisonContent(comparison);
+  }
+  if (comparison && type === 'chart' && variableDcid && allResults) {
+    return deriveComparisonChartContent(comparison, variableDcid, allResults);
   }
   if (!result) return null;
   switch (type) {
@@ -181,6 +225,7 @@ export const useStoreShapeSync = () => {
             title,
             card.variableDcid,
             comparison,
+            isComparison ? node?.results : undefined,
           );
           if (!content) continue;
 
@@ -207,6 +252,7 @@ export const useStoreShapeSync = () => {
             undefined,
             card.variableDcid,
             comparison,
+            isComparison ? node?.results : undefined,
           );
           if (!content) continue;
 

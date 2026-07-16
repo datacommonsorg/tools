@@ -22,6 +22,13 @@ JSON SCHEMA:
   ],
   "relatedQueries": [
     "1 to 3 short natural-language questions (~7–8 words each) suggesting what the user could explore next across these places. Should reference the same places but different topics, or the same topic in related places."
+  ],
+  "charts": [
+    {
+      "variableDcid": "The Data Commons variable DCID (from the summaries) to chart.",
+      "title": "A descriptive chart title (~60 chars max) that names the variable and places, e.g. 'Population Growth: USA vs India (2000–2023)'. Include date range if known.",
+      "description": "1–2 sentences describing what the chart reveals — key trends, crossover points, or divergences visible in the time series."
+    }
   ]
 }
 
@@ -39,3 +46,4 @@ RULES:
 7. **Handle mismatched variables**: If not all places share the same set of variables, acknowledge which comparisons are limited and focus on variables that overlap.
 8. **Insights ordering**: Lead with the most striking or important comparison. Aim for 3–5 insights.
 9. **Related queries**: Must reference the same set of places but suggest different analytical angles or adjacent topics.
+10. **Charts**: Produce one `charts` entry per variable that has time-series observations for at least 2 places. Use the exact `dcid` from the summaries as `variableDcid`. The title should name the variable and places concisely; the description should summarize what comparing these time series reveals (trends, gaps, convergence).

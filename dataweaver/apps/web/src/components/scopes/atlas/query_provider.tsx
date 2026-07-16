@@ -111,15 +111,22 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           });
         }
 
-        const firstTimeSeries = result.timeSeries[0];
-        const firstFacet = firstTimeSeries?.facets[0];
-        if (firstFacet && firstFacet.observations.length > 0) {
-          resultEntries.push({
-            shapeId: `shape:${active.nodeId}__${entityDcid}__chart`,
-            historyNodeId: active.nodeId,
-            type: 'chart',
-            placeDcid: entityDcid,
-          });
+        // Register a per-place chart card only for single-place queries.
+        // Multi-place queries get a combined comparison chart instead.
+        const node = store.getState().nodes[active.nodeId];
+        const isMultiPlace = (node?.parsedQuery?.places.length ?? 0) > 1;
+
+        if (!isMultiPlace) {
+          const firstTimeSeries = result.timeSeries[0];
+          const firstFacet = firstTimeSeries?.facets[0];
+          if (firstFacet && firstFacet.observations.length > 0) {
+            resultEntries.push({
+              shapeId: `shape:${active.nodeId}__${entityDcid}__chart`,
+              historyNodeId: active.nodeId,
+              type: 'chart',
+              placeDcid: entityDcid,
+            });
+          }
         }
 
         cardRegisterBatch(resultEntries);
@@ -135,14 +142,30 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         nodeSetComparison(active.nodeId, result);
 
         // Register a single comparison notes card.
-        const comparisonEntry: CardEntry = {
-          shapeId: `shape:${active.nodeId}__comparison__notes`,
-          historyNodeId: active.nodeId,
-          type: 'notes',
-          placeDcid: '__comparison',
-        };
-        cardRegisterBatch([comparisonEntry]);
-        active.cardIds.push(comparisonEntry.shapeId);
+        const comparisonEntries: CardEntry[] = [
+          {
+            shapeId: `shape:${active.nodeId}__comparison__notes`,
+            historyNodeId: active.nodeId,
+            type: 'notes',
+            placeDcid: '__comparison',
+          },
+        ];
+
+        // Register one comparison chart card per variable with chart metadata.
+        if (result.charts) {
+          for (const chart of result.charts) {
+            comparisonEntries.push({
+              shapeId: `shape:${active.nodeId}__comparison__chart__${chart.variableDcid}`,
+              historyNodeId: active.nodeId,
+              type: 'chart',
+              placeDcid: '__comparison',
+              variableDcid: chart.variableDcid,
+            });
+          }
+        }
+
+        cardRegisterBatch(comparisonEntries);
+        active.cardIds.push(...comparisonEntries.map((e) => e.shapeId));
 
         break;
       }

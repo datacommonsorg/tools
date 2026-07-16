@@ -2,7 +2,12 @@ import { nanoid } from 'nanoid';
 import { extractJson } from '~/functions/extract_json';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
-import type { ComparisonResult, Insight, QueryResult } from '~/server/types';
+import type {
+  ComparisonChart,
+  ComparisonResult,
+  Insight,
+  QueryResult,
+} from '~/server/types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +40,7 @@ interface ComparisonModelResponse {
   introduction?: string;
   insights?: Insight[];
   relatedQueries?: string[];
+  charts?: ComparisonChart[];
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -132,5 +138,6 @@ ${JSON.stringify(summaries, null, 2)}`;
     introduction: parsed?.introduction || undefined,
     insights: parsed?.insights || undefined,
     relatedQueries: parsed?.relatedQueries || undefined,
+    charts: parsed?.charts || undefined,
   };
 };
