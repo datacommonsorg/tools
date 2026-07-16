@@ -49,6 +49,14 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     description: T.string.optional(),
     body: T.string.optional(),
     data: T.arrayOf(T.object({ date: T.string, value: T.number })).optional(),
+    series: T.arrayOf(
+      T.object({
+        key: T.string,
+        label: T.string,
+        data: T.arrayOf(T.object({ date: T.string, value: T.number })),
+        connectNulls: T.boolean.optional(),
+      }),
+    ).optional(),
     facets: T.arrayOf(
       T.object({
         facetId: T.string,
@@ -89,8 +97,16 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   // Each card variant owns its own actions, content and footer; the shape just
   // hands it the state and content it needs to render itself.
   #renderCard = (shape: ShapeCard) => {
-    const { variant, title, description, body, data, facets, relatedQueries } =
-      shape.props;
+    const {
+      variant,
+      title,
+      description,
+      body,
+      data,
+      series,
+      facets,
+      relatedQueries,
+    } = shape.props;
 
     const isLoading = shape.props.isLoading ?? false;
     const selection = this.#getSelectionState(shape);
@@ -117,6 +133,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           title={title}
           description={description}
           data={data}
+          series={series}
           facets={facets}
           relatedQueries={relatedQueries}
         />

@@ -15,7 +15,33 @@
   .label {
     @include type-label-small(false);
 
-    margin-bottom: 2px;
-    color: rgb(var(--color-card-chart-tooltip-date));
+    margin-bottom: 4px;
+  }
+
+  .entry {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+
+    & + & {
+      margin-top: 2px;
+    }
+  }
+
+  .swatch {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+  }
+
+  .name {
+    @include type-label-small;
+
+    color: rgb(var(--color-card-content-muted));
+  }
+
+  .value {
+    @include type-label-large;
   }
 }

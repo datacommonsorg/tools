@@ -25,11 +25,22 @@ import { DataChartBarVertical } from './data_chart_bar_vertical';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
+import { generateTestSeries } from './generate_test_series';
 import { type ChartStyle, MenuChartOptions } from './menu_chart_options';
+
+// Toggle to true to inject dummy multi-series data for dev testing.
+const USE_TEST_DATA = false;
 
 export interface ChartDatum {
   date: string;
   value: number;
+}
+
+export interface ChartSeries {
+  key: string;
+  label: string;
+  data: ChartDatum[];
+  connectNulls?: boolean;
 }
 
 export interface CardChartProps extends CardState {
@@ -37,9 +48,10 @@ export interface CardChartProps extends CardState {
   title?: string;
   description?: string;
 
-  // TODO: Atm data rendered within the card is very specific to the emissions
-  // dataset. Let's make it more generic once we have real data to work with
+  // Legacy single-series prop (backwards-compatible shorthand).
   data?: ChartDatum[];
+  // Multi-series prop — takes priority over `data` when provided.
+  series?: ChartSeries[];
   facets?: FacetInfo[];
   relatedQueries?: string[];
 }
@@ -51,6 +63,7 @@ export const CardChart = ({
   title,
   description,
   data,
+  series: seriesProp,
   facets,
   relatedQueries,
 }: CardChartProps) => {
@@ -84,6 +97,19 @@ export const CardChart = ({
   // Derive chart data from selected facet if facets are available
   const currentFacet = facets?.find((f) => f.facetId === selectedFacetId);
   const chartData = currentFacet?.observations ?? data;
+
+  // Normalize to multi-series: explicit `series` prop takes priority,
+  // otherwise wrap legacy single-series `chartData` into a one-element array.
+  const baseSeries: ChartSeries[] | undefined =
+    seriesProp ??
+    (chartData
+      ? [{ key: 'default', label: title ?? 'Value', data: chartData }]
+      : undefined);
+
+  // Dev-only: augment with random dummy series to test multi-series rendering.
+  const chartSeries = USE_TEST_DATA
+    ? generateTestSeries(baseSeries, { count: 3, mode: 'places' })
+    : baseSeries;
   return (
     <Card.Base
       id={id}
@@ -123,7 +149,7 @@ export const CardChart = ({
             </div>
           )}
 
-          {isLoading || !chartData ? (
+          {isLoading || !chartSeries ? (
             <Skeleton />
           ) : (
             <>
@@ -144,26 +170,17 @@ export const CardChart = ({
                     label: 'Chart',
                     children:
                       selectedStyle === 'bar-vertical' ? (
-                        <DataChartBarVertical
-                          data={chartData}
-                          unit={currentFacet?.unit}
-                        />
+                        <DataChartBarVertical series={chartSeries} />
                       ) : selectedStyle === 'bar-horizontal' ? (
-                        <DataChartBarHorizontal
-                          data={chartData}
-                          unit={currentFacet?.unit}
-                        />
+                        <DataChartBarHorizontal series={chartSeries} />
                       ) : (
-                        <DataChartLine
-                          data={chartData}
-                          unit={currentFacet?.unit}
-                        />
+                        <DataChartLine series={chartSeries} />
                       ),
                   },
                   {
                     icon: IconTable,
                     label: 'Table',
-                    children: <DataTable data={chartData} />,
+                    children: <DataTable data={chartSeries[0]?.data ?? []} />,
                   },
                 ]}
               />
