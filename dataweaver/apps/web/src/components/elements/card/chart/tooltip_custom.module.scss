@@ -1,0 +1,19 @@
+.tooltip {
+  @include type-label-large;
+
+  padding: 10px 12px;
+  color: rgb(var(--color-card-content));
+  background-color: rgb(var(--color-card-surface));
+  border-radius: 8px;
+  box-shadow: var(--shadow-elevated);
+
+  p {
+    margin: 0;
+  }
+
+  .label {
+    @include type-label-small;
+
+    margin-bottom: 2px;
+  }
+}

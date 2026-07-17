@@ -2,9 +2,9 @@
 
 import { COLORS } from '@package/tokens/ts';
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
-  Line,
-  LineChart,
   Tooltip,
   usePlotArea,
   XAxis,
@@ -15,10 +15,9 @@ import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
 import { TooltipCustom } from './tooltip_custom';
 
-const LINE_COLOR = `rgb(${COLORS['card-chart-line']})`;
+const BAR_COLOR = `rgb(${COLORS['card-chart-bar']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
-const DOT_COLOR = `rgb(${COLORS['card-surface']})`;
 
 interface ChartProps {
   data: ChartDatum[];
@@ -29,22 +28,21 @@ const compactFormatter = new Intl.NumberFormat(undefined, {
 });
 
 const CustomCursor = (props: {
-  points?: { x: number; y: number }[];
-  top?: number;
+  x?: number;
+  y?: number;
+  width?: number;
   height?: number;
+  top?: number;
 }) => {
-  const { points, top = 0 } = props;
-  const point = points?.[0];
-  if (!point) return null;
-  const x = point.x;
+  const { x = 0, width = 0, height = 0, top = 0 } = props;
   return (
-    <line
-      x1={x}
-      y1={0}
-      x2={x}
-      y2={top + ((props.height ?? 0) - 1)}
-      stroke={GRID_COLOR}
-      strokeWidth={1}
+    <rect
+      x={x}
+      y={0}
+      width={width}
+      height={height + top}
+      fill={GRID_COLOR}
+      opacity={0.4}
     />
   );
 };
@@ -65,11 +63,11 @@ const FullWidthAxisLine = () => {
   );
 };
 
-export const DataChartLine = ({ data }: ChartProps) => {
+export const DataChartBarVertical = ({ data }: ChartProps) => {
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
-        <LineChart
+        <BarChart
           data={data}
           width={width}
           height={height}
@@ -88,7 +86,7 @@ export const DataChartLine = ({ data }: ChartProps) => {
             axisLine={false}
             tick={{ fontSize: 10, fill: AXIS_COLOR }}
             tickMargin={6}
-            padding={{ left: 0, right: 10 }}
+            padding={{ left: 0, right: 4 }}
           />
           <YAxis
             width="auto"
@@ -99,26 +97,8 @@ export const DataChartLine = ({ data }: ChartProps) => {
           />
           <FullWidthAxisLine />
           <Tooltip cursor={<CustomCursor />} content={<TooltipCustom />} />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={LINE_COLOR}
-            strokeWidth={1}
-            dot={
-              data.length > 15
-                ? false
-                : {
-                    r: 3,
-                    fill: DOT_COLOR,
-                  }
-            }
-            activeDot={{
-              fill: LINE_COLOR,
-              stroke: LINE_COLOR,
-              strokeWidth: 1,
-            }}
-          />
-        </LineChart>
+          <Bar dataKey="value" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
+        </BarChart>
       )}
     </ChartContainer>
   );

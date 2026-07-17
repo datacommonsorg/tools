@@ -1,6 +1,6 @@
 import { AnimatePresence, m } from 'motion/react';
 import type { ComponentPropsWithRef, ComponentType, ReactNode } from 'react';
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import s from './conditional_tabs.module.scss';
 
 interface Tab {
@@ -13,13 +13,17 @@ interface Tab {
 
 interface ConditionalTabsProps {
   tabs: Tab[];
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
 }
 
 // TODO: Animate line between tab changes
-export const ConditionalTabs = ({ tabs }: ConditionalTabsProps) => {
+export const ConditionalTabs = ({
+  tabs,
+  activeIndex,
+  onActiveIndexChange,
+}: ConditionalTabsProps) => {
   const baseId = useId();
-
-  const [activeIndex, setActiveIndex] = useState(0);
 
   const tabId = (index: number) => `${baseId}-tab-${index}`;
 
@@ -28,7 +32,7 @@ export const ConditionalTabs = ({ tabs }: ConditionalTabsProps) => {
   const activeTab = tabs[activeIndex];
 
   return (
-    <>
+    <div className={s.container}>
       <div role="tablist" className={s['tabs-container']}>
         {tabs.map((tab, index) => {
           const isActive = index === activeIndex;
@@ -45,7 +49,7 @@ export const ConditionalTabs = ({ tabs }: ConditionalTabsProps) => {
               data-is-active={isActive}
               // Prevent tldraw from trigger drag event on click
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => onActiveIndexChange(index)}
             >
               <tab.icon className={s.icon} />
               <span>{tab.label}</span>
@@ -59,6 +63,7 @@ export const ConditionalTabs = ({ tabs }: ConditionalTabsProps) => {
           <m.div
             key={activeTab.label}
             role="tabpanel"
+            className={s.panel}
             id={panelId(activeIndex)}
             aria-labelledby={tabId(activeIndex)}
             initial={{ opacity: 0 }}
@@ -70,6 +75,6 @@ export const ConditionalTabs = ({ tabs }: ConditionalTabsProps) => {
           </m.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 };
