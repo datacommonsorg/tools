@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '~/components/elements/button';
 import { Radio } from '~/components/elements/radio';
+import { toast } from '~/components/foundations/toaster/store';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
 import { EXPORT_OPTIONS } from './options';
 import s from './status_selected.module.scss';
@@ -21,27 +22,16 @@ export const StatusSelected = () => {
   const exportSelectedCards = (format: ExportKey) => {
     switch (format) {
       case 'api-request-code':
-        // TODO: Implement API request code flow
-        break;
-
       case 'csv':
-        // TODO: Implement CSV export flow
-        break;
-
       case 'ai-narrative':
-        // TODO: Implement AI narrative export flow
-        break;
-
       case 'ai-infographic':
-        // TODO: Implement AI infographic export flow
-        break;
-
       case 'svg':
-        // TODO: Implement SVG export flow
-        break;
-
       case 'png':
-        // TODO: Implement PNG export flow
+        // TODO: Implement missing export flow
+        toast(
+          'Unsupported export format',
+          "Feature hasn't been implemented yet.",
+        );
         break;
     }
   };
