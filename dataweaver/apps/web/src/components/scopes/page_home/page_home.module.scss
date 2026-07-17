@@ -4,11 +4,10 @@
   --controls-height-with-gutters: calc(
     var(--controls-height) + var(--controls-gutter-outer) * 2
   );
-  --tools-width-with-gutters: calc(
-    var(--tools-width) + var(--tools-gutter-outer) * 2
+  --distance-from-right: calc(
+    var(--tools-gutter-outer) + var(--tools-width) / 2
   );
-  --distance-from-right: calc(var(--tools-width-with-gutters) + var(--buffer));
-  --distance-from-left: var(--gutter);
+  --distance-from-left: var(--distance-from-right);
 
   position: fixed;
   right: var(--distance-from-right);
@@ -27,4 +26,11 @@
     100dvh - var(--gutter) - var(--controls-height-with-gutters) - var(--buffer)
   );
   pointer-events: none;
+
+  @include breakpoint(tablet) {
+    --distance-from-right: calc(
+      var(--tools-width) + var(--tools-gutter-outer) * 2 + var(--buffer)
+    );
+    --distance-from-left: var(--gutter);
+  }
 }
