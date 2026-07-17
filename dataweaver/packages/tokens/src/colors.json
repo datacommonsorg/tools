@@ -104,12 +104,19 @@
   "card-action-content-hover": "$accent",
   "card-accent-subtle": "$accent-subtle",
 
-  "facet-selector-surface": "$card-surface",
-  "facet-selector-border": [196, 199, 197],
-  "facet-selector-color": "$card-content",
-  "facet-selector-prefix": "$content-muted",
-  "facet-selector-option-selected": "$accent-subtle",
-  "facet-selector-option-hover": "$accent-subtle-strong",
+  "select-surface": "$card-surface",
+  "select-border": [196, 199, 197],
+  "select-content": "$card-content",
+  "select-prefix": "$content-muted",
+  "select-option-selected": "$accent-subtle",
+  "select-option-hover": "$accent-subtle-strong",
+
+  "facet-selector-surface": "$select-surface",
+  "facet-selector-border": "$select-border",
+  "facet-selector-color": "$select-content",
+  "facet-selector-prefix": "$select-prefix",
+  "facet-selector-option-selected": "$select-option-selected",
+  "facet-selector-option-hover": "$select-option-hover",
 
   "skeleton-surface": [242, 242, 242],
 

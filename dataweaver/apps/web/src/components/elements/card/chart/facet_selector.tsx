@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Select } from '~/components/elements/select';
 import type { FacetInfo } from '~/server/types';
 import s from './facet_selector.module.scss';
 
@@ -21,7 +21,6 @@ export const FacetSelector = ({
   selectedFacetId,
   onSelect,
 }: FacetSelectorProps) => {
-  const [isOpen, setIsOpen] = useState(false);
   const currentFacet = facets.find((f) => f.facetId === selectedFacetId);
 
   if (!currentFacet || facets.length <= 1) {
@@ -34,39 +33,15 @@ export const FacetSelector = ({
   }
 
   return (
-    <div className={s.container}>
-      <span className={s.prefix}>Facet</span>
-      <button
-        type="button"
-        className={s.trigger}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span>{formatFacetLabel(currentFacet)}</span>
-        <span className={s.arrow}>▾</span>
-      </button>
-
-      {isOpen && (
-        <div className={s.dropdown}>
-          {facets.map((facet) => (
-            <button
-              key={facet.facetId}
-              type="button"
-              className={s.option}
-              data-is-selected={facet.facetId === selectedFacetId}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => {
-                onSelect(facet.facetId);
-                setIsOpen(false);
-              }}
-            >
-              {formatFacetLabel(facet)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Select
+      className={s.container}
+      options={facets}
+      value={currentFacet}
+      onSelect={(facet) => onSelect(facet.facetId)}
+      getKey={(facet) => facet.facetId}
+      renderOption={formatFacetLabel}
+      label="Facet"
+      aria-label="Select data facet"
+    />
   );
 };
