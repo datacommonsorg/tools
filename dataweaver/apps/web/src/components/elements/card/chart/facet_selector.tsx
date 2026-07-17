@@ -1,6 +1,5 @@
 'use client';
 
-import clsx from 'clsx';
 import { useState } from 'react';
 import type { FacetInfo } from '~/server/types';
 import s from './facet_selector.module.scss';
@@ -27,9 +26,9 @@ export const FacetSelector = ({
 
   if (!currentFacet || facets.length <= 1) {
     return currentFacet ? (
-      <div className={clsx(s.label, s.container)}>
+      <div className={s.container}>
         <span className={s.prefix}>Facet</span>
-        {formatFacetLabel(currentFacet)}
+        <span className={s.label}>{formatFacetLabel(currentFacet)}</span>
       </div>
     ) : null;
   }

@@ -107,6 +107,9 @@
   "facet-selector-surface": "$card-surface",
   "facet-selector-border": [196, 199, 197],
   "facet-selector-color": "$card-content",
+  "facet-selector-prefix": "$content-muted",
+  "facet-selector-option-selected": "$accent-subtle",
+  "facet-selector-option-hover": "$accent-subtle-strong",
 
   "skeleton-surface": [242, 242, 242],
 
