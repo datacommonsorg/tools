@@ -1,4 +1,8 @@
-import { EASE_OUT } from '@package/tokens/ts';
+import {
+  BREAKPOINT_LAPTOP,
+  BREAKPOINT_TABLET,
+  EASE_OUT,
+} from '@package/tokens/ts';
 import { cubicBezier } from 'motion';
 import type { TLCameraMoveOptions, TLComponents, TLUiOverrides } from 'tldraw';
 import { ContextMenu } from './components/context_menu';
@@ -111,14 +115,18 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
 export const CARD_VARIANT_SIZE_DEFAULT: Record<CardVariant, CardSize> = {
   text: { w: 650, h: 440 },
   table: { w: 650, h: 500 },
-  chart: { w: 420, h: 520 },
+  chart: { w: 420, h: 720 },
 };
 
 /** Smallest size a card may resized to. */
 export const CARD_SIZE_MIN = { w: 300, h: 220 } as const;
 
-/** Minimum gap to keep between a placed card and any other card, in px. */
-export const DISTANCE_FROM_OTHER_CARDS = 56;
+/** The card grid layout for each breakpoint. */
+export const CARD_GRID = {
+  laptop: { breakpoint: BREAKPOINT_LAPTOP, columns: 3, gutter: 56 },
+  tablet: { breakpoint: BREAKPOINT_TABLET, columns: 2, gutter: 48 },
+  mobile: { columns: 1, gutter: 32 },
+} as const;
 
 /** Animation used when the camera pans to reveal a freshly placed card. */
 export const KEEP_IN_VIEW_ANIMATION: TLCameraMoveOptions['animation'] = {

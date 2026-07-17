@@ -2,10 +2,27 @@
   @include type-label-small;
 
   width: 100%;
+  margin-bottom: 16px;
   text-align: left;
+
+  tr {
+    &:nth-child(even) {
+      background-color: rgb(var(--color-card-table-row-even));
+    }
+
+    &:nth-child(odd) {
+      background-color: rgb(var(--color-card-table-row-odd));
+    }
+  }
 }
 
 .table th,
 .table td {
   padding: 4px 8px;
+}
+
+.table th {
+  padding-top: 16px;
+  background-color: rgb(var(--color-card-table-head));
+  box-shadow: inset 0 -1px 0 rgb(var(--color-card-divider));
 }
