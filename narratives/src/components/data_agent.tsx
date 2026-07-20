@@ -127,7 +127,7 @@ export function DataAgent() {
             />
           ))}
           {error && turns.length === 0 && (
-            <div className="self-start px-4 py-3 rounded-2xl bg-red-50 text-red-700 text-body-large">
+            <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large">
               {error}
             </div>
           )}
@@ -150,8 +150,8 @@ export function DataAgent() {
 
       {/* Follow-up input — flush against the fade (no top margin) so the
           gradient reads as a continuous merge rather than a separator. */}
-      <div className="w-full flex flex-col items-center gap-3 bg-white pb-4 sm:pb-6">
-        <div className="w-full max-w-[720px] min-h-[64px] bg-white border border-gray-200 rounded-[24px] p-4 flex flex-col justify-between shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-300">
+      <div className="w-full flex flex-col items-center gap-3 bg-surface pb-4 sm:pb-6">
+        <div className="w-full max-w-[720px] min-h-[64px] bg-surface border border-outline rounded-[24px] p-4 flex flex-col justify-between shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-300">
           <textarea
             ref={textareaRef}
             value={query}
@@ -251,7 +251,7 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
 
       {/* Error */}
       {turn.status === "error" && turn.error && (
-        <div className="self-start px-4 py-3 rounded-2xl bg-red-50 text-red-700 text-body-large max-w-4xl">
+        <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large max-w-4xl">
           {turn.error}
         </div>
       )}

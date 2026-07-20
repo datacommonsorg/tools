@@ -53,7 +53,7 @@ export function Header() {
           );
         })}
 
-        <div className="hidden sm:block h-4 w-px bg-gray-300 mx-1 shrink-0"></div>
+        <div className="hidden sm:block h-4 w-px bg-divider mx-1 shrink-0"></div>
 
         {/* TODO(i18n): language is hardcoded to English; move to branding config
             or wire up localization before exposing more languages. */}
@@ -83,7 +83,7 @@ export function Header() {
               : "hover:bg-button-hover text-on-surface-variant"
           }`}
         >
-          <MenuIcon size={24} />
+          <MenuIcon size="lg" />
         </button>
       )}
     </header>

@@ -34,7 +34,7 @@ export function InitialView({ query, setQuery, onSend, textareaRef }: InitialVie
 
       {/* GM3 Search Box */}
       <div
-        className={`w-full max-w-[720px] bg-white border border-gray-200 shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-300 flex ${
+        className={`w-full max-w-[720px] bg-surface border border-outline shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-300 flex ${
           isExpanded
           ? "min-h-[64px] rounded-[24px] flex-col p-4 justify-between"
             : "h-[56px] rounded-full items-center px-4 flex-row"

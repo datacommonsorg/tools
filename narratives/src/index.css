@@ -37,14 +37,27 @@
   --color-brand-gradient-end: var(--brand-gradient-end, #6FAEC0);
 
   /* Surfaces */
+  --color-surface: #ffffff;
   --color-surface-soft: var(--brand-surface, #F9F9F9);
+  --color-surface-muted: #f3f4f6;
   --color-surface-blue: #f0f4f9;
   /* User-message bubble — fixed pale-teal design token. */
   --color-user-msg: #E8F2F4;
   --color-button-hover: #e1e5eb;
 
-  /* Lines */
+  /* Lines / borders */
   --color-line: #C4C7C5;
+  --color-outline: #e5e7eb;
+  --color-outline-variant: #f3f4f6;
+  --color-divider: #d1d5db;
+
+  /* State — error */
+  --color-error: #dc2626;
+  --color-error-strong: #b91c1c;
+  --color-error-surface: #fef2f2;
+
+  /* Scrim — click-outside backdrop */
+  --color-scrim: #000000;
 
   /* Text — primary */
   --color-on-surface: var(--brand-text, #1B1C1D);
