@@ -39,7 +39,7 @@ export function App() {
     <BrandingProvider>
       <ChatSessionProvider>
         <ChatResetOnTabChange route={route} />
-        <div className="flex h-screen w-full bg-white overflow-hidden relative">
+        <div className="flex h-screen w-full bg-surface overflow-hidden relative">
           <Sidebar />
           <SessionDrawer />
           <main className="flex-1 flex flex-col h-full relative min-w-0">

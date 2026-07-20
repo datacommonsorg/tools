@@ -6,8 +6,6 @@
  * components, full Figma fidelity.
  */
 
-// TODO: Add unit tests for all exported functions in this file.
-
 /** One dated observation, matching an /api/observations/series entry. */
 export interface SeriesPoint { date: string; value: number }
 
