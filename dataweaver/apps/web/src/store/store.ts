@@ -24,6 +24,7 @@ export interface AtlasStore {
   // --- UI state ---
   isProcessing: boolean;
   currentStatus: string;
+  focusTarget: string | null;
 
   // --- Actions ---
   queryStart: (
@@ -55,6 +56,7 @@ export interface AtlasStore {
     variableDcid: string,
   ) => void;
   cardUnregister: (shapeId: string) => void;
+  cardClearFocusTarget: () => void;
   queryCancel: (nodeId: string) => void;
   nodeDismissFollowUp: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
@@ -75,6 +77,7 @@ export const useAtlasStore = create<AtlasStore>()(
         cards: {},
         isProcessing: false,
         currentStatus: '',
+        focusTarget: null,
 
         queryStart: (query, parsedQuery, parentNodeId, followUpContext) => {
           const id = nanoid();
@@ -238,12 +241,32 @@ export const useAtlasStore = create<AtlasStore>()(
         },
 
         cardRegisterChart: (parentShapeId, placeDcid, variableDcid) => {
-          const { cards, cardRegister } = get();
+          const { cards, nodes, cardRegister } = get();
           const parent = cards[parentShapeId];
           if (!parent) return;
 
           const shapeId = `shape:${parent.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
-          if (cards[shapeId]) return;
+          if (cards[shapeId]) {
+            set({ focusTarget: shapeId }, undefined, 'cardFocusTarget');
+            return;
+          }
+
+          // Check whether the generic chart (created with the initial query)
+          // already shows this variable (it displays the first time series).
+          const genericChartId = `shape:${parent.historyNodeId}__${placeDcid}__chart`;
+          if (cards[genericChartId]) {
+            const node = nodes[parent.historyNodeId];
+            const result = node?.results[placeDcid];
+            const firstVariable = result?.timeSeries[0]?.variableDcid;
+            if (firstVariable === variableDcid) {
+              set(
+                { focusTarget: genericChartId },
+                undefined,
+                'cardFocusTarget',
+              );
+              return;
+            }
+          }
 
           cardRegister(
             shapeId,
@@ -252,6 +275,7 @@ export const useAtlasStore = create<AtlasStore>()(
             placeDcid,
             variableDcid,
           );
+          set({ focusTarget: shapeId }, undefined, 'cardFocusTarget');
         },
 
         cardUnregister: (shapeId) => {
@@ -263,6 +287,10 @@ export const useAtlasStore = create<AtlasStore>()(
             undefined,
             'cardUnregister',
           );
+        },
+
+        cardClearFocusTarget: () => {
+          set({ focusTarget: null }, undefined, 'cardClearFocusTarget');
         },
 
         queryCancel: (nodeId) => {
