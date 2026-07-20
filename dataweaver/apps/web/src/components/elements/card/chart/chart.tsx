@@ -78,9 +78,9 @@ export const CardChart = ({
   const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
   const contentInnerRef = useRef<HTMLDivElement>(null);
 
-  // TODO: Support the different chart styles (for now we always show bar chart)
-  const [selectedStyle, setSelectedStyle] =
-    useState<ChartStyle>('bar-vertical');
+  const [selectedStyleOverride, setSelectedStyleOverride] = useState<
+    ChartStyle | undefined
+  >(undefined);
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedFacetId, setSelectedFacetId] = useState<string>(
@@ -149,6 +149,13 @@ export const CardChart = ({
   const chartSeries = USE_TEST_DATA
     ? generateTestSeries(baseSeries, { count: 3, mode: 'places' })
     : baseSeries;
+
+  // Default to line chart when data has many points; allow manual override.
+  const totalPoints = chartSeries
+    ? chartSeries.reduce((sum, s) => sum + s.data.length, 0)
+    : 0;
+  const defaultStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
+  const selectedStyle = selectedStyleOverride ?? defaultStyle;
   return (
     <Card.Base
       id={id}
@@ -282,7 +289,7 @@ export const CardChart = ({
           <MenuChartOptions
             value={selectedStyle}
             onConfirmSelectionChange={(newStyle) => {
-              setSelectedStyle(newStyle);
+              setSelectedStyleOverride(newStyle);
               setIsStyleMenuOpen(false);
               editor.updateShape({
                 id,
