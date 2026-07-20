@@ -52,6 +52,10 @@ steps in [contributing.md](contributing.md).
 
 Wait for approval of the Pull Request and merge the change.
 
+## Coding Standards
+
+Developers and AI agents contributing to frontend applications in this repository must follow the [Frontend Conventions and Best Practices](FRONTEND_CONVENTIONS.md). All submissions are expected to adhere to these rules and include comprehensive tests.
+
 ## Support
 
 For general questions or issues about tool development, please open an issue
