@@ -40,22 +40,32 @@ export const CardContent = ({
 
   useEffect(() => {
     const childrenOuterContainer = childrenOuterContainerRef.current;
-    if (!childrenOuterContainer) return;
+    const childrenInnerContainer = childrenInnerContainerRef.current;
+    if (!childrenOuterContainer || !childrenInnerContainer) return;
 
     const checkIfCanScroll = () => {
       const scrollableArea =
         childrenOuterContainer.scrollHeight -
         childrenOuterContainer.clientHeight;
-      setCanScroll(scrollableArea >= SCROLL_THRESHOLD_PX);
+      const isScrollable = scrollableArea >= SCROLL_THRESHOLD_PX;
+      setCanScroll(isScrollable);
+
+      // Clear the stale scrolled state when the region can no longer scroll,
+      // otherwise the header divider stays visible after content shrinks
+      if (!isScrollable) setHasScrolled(false);
     };
 
     // Sync on mount
     checkIfCanScroll();
 
+    // Observe both containers: the outer for viewport resizes and the inner so
+    // dynamic content growth/shrink (which doesn't change the outer's size) is
+    // still detected
     const observer = new ResizeObserver(checkIfCanScroll);
     observer.observe(childrenOuterContainer);
+    observer.observe(childrenInnerContainer);
     return () => observer.disconnect();
-  }, []);
+  }, [childrenInnerContainerRef]);
 
   return (
     <div
