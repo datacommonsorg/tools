@@ -1,14 +1,10 @@
-import { type ChangeEvent, useRef } from 'react';
+import { type ChangeEvent, type DragEvent, useRef, useState } from 'react';
 import { Button } from '~/components/elements/button';
 import { Menu as MenuElement } from '~/components/elements/menu';
 import { toast } from '~/components/foundations/toaster/store';
 import { IconClose } from '~/components/primitives/icons/close';
 import { IconImport } from '~/components/primitives/icons/import';
-import {
-  ImportError,
-  importState,
-  STATE_VERSION,
-} from '~/store/serialization';
+import { ImportError, importState, STATE_VERSION } from '~/store/serialization';
 import s from './menu.module.scss';
 
 interface MenuProps {
@@ -19,13 +15,23 @@ interface MenuProps {
 export const Menu = ({ id, onClose }: MenuProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const selectFile = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     const file = files === null ? undefined : files[0];
-
-    // Reset so the same file can be re-imported
     event.target.value = '';
+    importFile(file);
+  };
 
+  const dropFile = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingOver(false);
+    importFile(event.dataTransfer.files[0]);
+  };
+
+  const importFile = async (file: File | undefined) => {
     if (!file) {
       toast('Import failed', 'No file was selected for import.');
       return;
@@ -86,13 +92,27 @@ export const Menu = ({ id, onClose }: MenuProps) => {
         <button
           type="button"
           className={s['button-browse']}
+          data-is-dragging-over={isDraggingOver}
           onClick={() => {
             const fileInput = fileInputRef.current;
             if (fileInput) fileInput.click();
           }}
+          // Here we 'preventDefault' to prevent browser opening early
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={() => setIsDraggingOver(false)}
+          onDrop={dropFile}
         >
           <IconImport className={s['icon-import']} />
-          <span className={s['browse-label']}>Browse file</span>
+          <span className={s['browse-label']}>
+            {isDraggingOver ? 'Drop to import' : 'Browse or drop file'}
+          </span>
           <span className={s['browse-format']}>JSON format</span>
         </button>
 
@@ -101,7 +121,7 @@ export const Menu = ({ id, onClose }: MenuProps) => {
           type="file"
           accept=".json,application/json"
           hidden
-          onChange={importFile}
+          onChange={selectFile}
         />
       </div>
     </MenuElement>

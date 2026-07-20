@@ -52,6 +52,18 @@
       }
     }
 
+    &[data-is-dragging-over="true"] {
+      outline: 1px dashed rgb(var(--color-control-accent));
+      outline-offset: -2px;
+
+      // Prevent children from firing events while dragging over button
+      > .icon-import,
+      > .browse-label,
+      > .browse-format {
+        pointer-events: none;
+      }
+    }
+
     .icon-import {
       width: 24px;
       height: 24px;
