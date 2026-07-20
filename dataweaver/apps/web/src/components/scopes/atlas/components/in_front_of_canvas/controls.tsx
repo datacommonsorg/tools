@@ -1,5 +1,4 @@
 import s from './controls.module.scss';
-import { DevPanel } from './dev_panel';
 import { Export } from './export/export';
 import { History } from './history';
 import { Import } from './import/import';
@@ -14,7 +13,6 @@ export const Controls = () => {
   return (
     <div className={s.container}>
       <History />
-      <DevPanel />
       <Zoom />
       <Import />
       <Export />
