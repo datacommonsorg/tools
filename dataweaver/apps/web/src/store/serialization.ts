@@ -1,8 +1,22 @@
 import { STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store';
 
+/** Current version of the serialized state format. */
+export const STATE_VERSION = 1;
+
+/** Import failure with enough detail for the UI to explain what went wrong. */
+export class ImportError extends Error {
+  constructor(
+    readonly reason: 'malformed' | 'version-mismatch',
+    readonly fileVersion?: number,
+  ) {
+    super(reason);
+    this.name = 'ImportError';
+  }
+}
+
 interface StateEnvelope {
-  version: 1;
+  version: typeof STATE_VERSION;
   exportedAt: string;
   state: {
     nodes: ReturnType<typeof useAtlasStore.getState>['nodes'];
@@ -16,7 +30,7 @@ export const exportState = (): void => {
   const { nodes, latestNodeId, cards } = useAtlasStore.getState();
 
   const envelope: StateEnvelope = {
-    version: 1,
+    version: STATE_VERSION,
     exportedAt: new Date().toISOString(),
     state: { nodes, latestNodeId, cards },
   };
@@ -36,33 +50,52 @@ export const exportState = (): void => {
 /** Import a previously-exported JSON file and replace the current store state. */
 export const importState = async (file: File): Promise<void> => {
   const text = await file.text();
-  const envelope: unknown = JSON.parse(text);
 
-  if (!isValidEnvelope(envelope)) {
-    throw new Error('Invalid state file: missing required fields or version.');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new ImportError('malformed');
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new ImportError('malformed');
+  }
+
+  const parsedVersion =
+    'version' in parsed && typeof parsed.version === 'number'
+      ? parsed.version
+      : undefined;
+
+  // Catch version mismatch
+  if (parsedVersion !== STATE_VERSION) {
+    throw new ImportError('version-mismatch', parsedVersion);
+  }
+
+  if (!hasValidState(parsed)) {
+    throw new ImportError('malformed');
   }
 
   // Clear transient UI and replace persistent slices atomically.
   useAtlasStore.setState({
-    nodes: envelope.state.nodes,
-    latestNodeId: envelope.state.latestNodeId,
-    cards: envelope.state.cards,
+    nodes: parsed.state.nodes,
+    latestNodeId: parsed.state.latestNodeId,
+    cards: parsed.state.cards,
     isProcessing: false,
     currentStatus: STATUS.complete,
   });
 };
 
-const isValidEnvelope = (value: unknown): value is StateEnvelope => {
-  if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  if (obj.version !== 1) return false;
-  if (typeof obj.state !== 'object' || obj.state === null) return false;
-  const state = obj.state as Record<string, unknown>;
+/** Shape check for the payload; the version is validated separately. */
+const hasValidState = (value: object): value is StateEnvelope => {
+  const state = (value as Record<string, unknown>).state;
+  if (typeof state !== 'object' || state === null) return false;
+  const slices = state as Record<string, unknown>;
   return (
-    typeof state.nodes === 'object' &&
-    state.nodes !== null &&
-    typeof state.cards === 'object' &&
-    state.cards !== null &&
-    'latestNodeId' in state
+    typeof slices.nodes === 'object' &&
+    slices.nodes !== null &&
+    typeof slices.cards === 'object' &&
+    slices.cards !== null &&
+    'latestNodeId' in slices
   );
 };

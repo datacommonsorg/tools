@@ -2,11 +2,13 @@ import s from './controls.module.scss';
 import { DevPanel } from './dev_panel';
 import { Export } from './export/export';
 import { History } from './history';
+import { Import } from './import/import';
 import { Zoom } from './zoom/zoom';
 
 /**
  * Editor-bound controls rendered through tldraw's `InFrontOfTheCanvas` slot:
- * the undo / redo history control, the zoom menu and the export menu.
+ * the undo / redo history control, the zoom menu and the import / export
+ * menus.
  */
 export const Controls = () => {
   return (
@@ -14,6 +16,7 @@ export const Controls = () => {
       <History />
       <DevPanel />
       <Zoom />
+      <Import />
       <Export />
     </div>
   );

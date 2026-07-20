@@ -1,0 +1,34 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 148px;
+  padding: 8px 20px;
+  text-align: center;
+  background: rgb(var(--color-control-surface-raised));
+  border-radius: var(--border-radius-small);
+}
+
+.icon-status {
+  width: 24px;
+  height: 24px;
+  color: rgb(var(--color-control-content));
+}
+
+.title {
+  @include type-title(500);
+
+  margin-top: 8px;
+  color: rgb(var(--color-control-content));
+}
+
+.description {
+  @include type-body-medium;
+
+  color: rgb(var(--color-control-content-muted));
+
+  [data-has-max-width="true"] & {
+    max-width: 200px;
+  }
+}

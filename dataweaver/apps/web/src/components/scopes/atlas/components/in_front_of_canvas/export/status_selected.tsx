@@ -3,10 +3,14 @@ import { Button } from '~/components/elements/button';
 import { Radio } from '~/components/elements/radio';
 import { toast } from '~/components/foundations/toaster/store';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
-import { EXPORT_OPTIONS } from './options';
+import { exportState } from '~/store/serialization';
+import { EXPORT_OPTION_CANVAS, EXPORT_OPTIONS } from './options';
 import s from './status_selected.module.scss';
 
-type ExportKey = (typeof EXPORT_OPTIONS)[number]['key'];
+/** Every selectable format — the per-card ones plus the canvas export. */
+const ALL_OPTIONS = [...EXPORT_OPTIONS, EXPORT_OPTION_CANVAS] as const;
+
+type ExportKey = (typeof ALL_OPTIONS)[number]['key'];
 
 /** We default to first option in list. */
 const DEFAULT_KEY = EXPORT_OPTIONS[0];
@@ -17,7 +21,7 @@ export const StatusSelected = () => {
   // Find the selected option from the list of export options - if not found
   // we just default to the default option
   const selectedOption =
-    EXPORT_OPTIONS.find((option) => option.key === selectedKey) ?? DEFAULT_KEY;
+    ALL_OPTIONS.find((option) => option.key === selectedKey) ?? DEFAULT_KEY;
 
   const exportSelectedCards = (format: ExportKey) => {
     switch (format) {
@@ -32,6 +36,10 @@ export const StatusSelected = () => {
           'Unsupported export format',
           "Feature hasn't been implemented yet.",
         );
+        break;
+
+      case 'canvas':
+        exportState();
         break;
     }
   };
@@ -52,7 +60,7 @@ export const StatusSelected = () => {
                 checked={selectedKey === option.key}
                 onChange={() => setSelectedKey(option.key)}
               >
-                <span className={s['option-text-container']}>
+                <span className={s['option-container']} data-has-max-width>
                   <span className={s['option-title']}>{option.title}</span>
                   <span className={s['option-description']}>
                     {option.description}
@@ -62,6 +70,24 @@ export const StatusSelected = () => {
             </li>
           ))}
         </ul>
+
+        <div className={s['canvas-container']}>
+          <Radio
+            name="export-format"
+            value={EXPORT_OPTION_CANVAS.key}
+            checked={selectedKey === EXPORT_OPTION_CANVAS.key}
+            onChange={() => setSelectedKey(EXPORT_OPTION_CANVAS.key)}
+          >
+            <span className={s['option-container']}>
+              <span className={s['option-title']}>
+                {EXPORT_OPTION_CANVAS.title}
+              </span>
+              <span className={s['option-description']}>
+                {EXPORT_OPTION_CANVAS.description}
+              </span>
+            </span>
+          </Radio>
+        </div>
       </fieldset>
 
       <Button
