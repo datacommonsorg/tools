@@ -77,7 +77,7 @@ export function ThoughtsPanel({ thoughts }: ThoughtsPanelProps) {
                         </ol>
                       ),
                       code: ({ children }) => (
-                        <code className="px-1 rounded bg-gray-100 text-[0.92em] font-mono">
+                        <code className="px-1 rounded bg-surface-muted text-[0.92em] font-mono">
                           {children}
                         </code>
                       ),

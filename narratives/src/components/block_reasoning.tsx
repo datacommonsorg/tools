@@ -5,6 +5,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChevronDownIcon } from "./icons";
 import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
 
 /**
@@ -20,7 +21,6 @@ import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
  */
 
 const COLOR_TEXT = "var(--color-on-surface)";
-const COLOR_CHEVRON = "var(--color-on-surface-variant)";
 const COLOR_SPARKLE = "#1A8C7A";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
@@ -116,7 +116,11 @@ export function ReasoningBlock({
           }}
         >
           {label}
-          <ChevronDown rotated={!open} />
+          <ChevronDownIcon
+            className={`text-on-surface-variant transition-transform duration-150 ${
+              open ? "rotate-0" : "-rotate-90"
+            }`}
+          />
         </span>
       </button>
       {open && (
@@ -220,21 +224,3 @@ function SparkleIcon() {
   );
 }
 
-/** Chevron icon for the reasoning header; rotates 180° when collapsed. */
-function ChevronDown({ rotated }: { rotated?: boolean }) {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill={COLOR_CHEVRON}
-      aria-hidden="true"
-      style={{
-        transition: "transform 150ms ease",
-        transform: rotated ? "rotate(-90deg)" : "rotate(0deg)",
-      }}
-    >
-      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
-    </svg>
-  );
-}

@@ -43,8 +43,8 @@ export function ResponseCard({
   }
 
   return (
-    <div className="self-start w-full border border-gray-200 rounded-[24px] overflow-hidden shadow-sm bg-surface-soft">
-      <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white">
+    <div className="self-start w-full border border-outline rounded-[24px] overflow-hidden shadow-sm bg-surface-soft">
+      <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface">
         <h3 className="text-label-large text-on-surface">{title}</h3>
         {streaming && (
           <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
@@ -121,7 +121,7 @@ function ReactMarkdownInner({
                 )
               );
               return inline ? (
-                <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
+                <code className="px-1 py-0.5 rounded bg-surface-muted text-[0.92em] font-mono">
                   {children}
                 </code>
               ) : (
@@ -129,12 +129,12 @@ function ReactMarkdownInner({
               );
             },
             pre: ({ children }) => (
-              <pre className="bg-gray-50 border border-gray-200 rounded-md p-3 overflow-auto text-sm mb-3">
+              <pre className="bg-surface-soft border border-outline rounded-md p-3 overflow-auto text-sm mb-3">
                 {children}
               </pre>
             ),
             blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-gray-200 pl-4 italic text-on-surface-variant mb-3">
+              <blockquote className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3">
                 {children}
               </blockquote>
             ),
@@ -146,15 +146,15 @@ function ReactMarkdownInner({
               </div>
             ),
             thead: ({ children }) => (
-              <thead className="bg-gray-50">{children}</thead>
+              <thead className="bg-surface-soft">{children}</thead>
             ),
             th: ({ children }) => (
-              <th className="border border-gray-200 px-3 py-2 text-left font-medium">
+              <th className="border border-outline px-3 py-2 text-left font-medium">
                 {renderWithCitations(children)}
               </th>
             ),
             td: ({ children }) => (
-              <td className="border border-gray-200 px-3 py-2">
+              <td className="border border-outline px-3 py-2">
                 {renderWithCitations(children)}
               </td>
             ),
@@ -163,7 +163,7 @@ function ReactMarkdownInner({
                 {renderWithCitations(children)}
               </strong>
             ),
-            hr: () => <hr className="my-4 border-gray-200" />,
+            hr: () => <hr className="my-4 border-outline" />,
           }}
         >
           {body}
