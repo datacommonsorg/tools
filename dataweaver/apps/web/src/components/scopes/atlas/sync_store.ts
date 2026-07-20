@@ -6,6 +6,7 @@ import type {
   CardEntry,
   CardType,
   ComparisonResult,
+  FacetInfo,
   QueryResult,
 } from '~/server/types';
 import { useAtlasStore } from '~/store';
@@ -62,6 +63,7 @@ export const deriveComparisonChartContent = (
   if (!chartMeta) return null;
 
   const series: ChartSeries[] = [];
+  const seriesFacets: Record<string, FacetInfo[]> = {};
 
   for (const result of Object.values(allResults)) {
     const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
@@ -76,6 +78,10 @@ export const deriveComparisonChartContent = (
       label: placeName ?? placeDcid,
       data: observations,
     });
+
+    if (ts.facets.length > 1) {
+      seriesFacets[placeDcid] = ts.facets;
+    }
   }
 
   if (series.length === 0) return null;
@@ -85,6 +91,7 @@ export const deriveComparisonChartContent = (
     title: chartMeta.title,
     description: chartMeta.description,
     series,
+    ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
     isLoading: false,
   };
 };

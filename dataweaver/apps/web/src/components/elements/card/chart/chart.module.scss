@@ -28,6 +28,13 @@
   }
 }
 
+.facet-selectors-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-block: 18px;
+}
+
 .header-container {
   display: flex;
   flex-shrink: 0;

@@ -70,6 +70,24 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
         observations: T.arrayOf(T.object({ date: T.string, value: T.number })),
       }),
     ).optional(),
+    seriesFacets: T.dict(
+      T.string,
+      T.arrayOf(
+        T.object({
+          facetId: T.string,
+          source: T.string,
+          sourceUrl: T.string,
+          unit: T.string,
+          earliestDate: T.string,
+          latestDate: T.string,
+          observationCount: T.number,
+          measurementMethod: T.string.optional(),
+          observations: T.arrayOf(
+            T.object({ date: T.string, value: T.number }),
+          ),
+        }),
+      ),
+    ).optional(),
     isLoading: T.boolean.optional(),
     isManuallyResized: T.boolean.optional(),
     relatedQueries: T.arrayOf(T.string).optional(),
@@ -105,6 +123,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       data,
       series,
       facets,
+      seriesFacets,
       relatedQueries,
     } = shape.props;
 
@@ -135,6 +154,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           data={data}
           series={series}
           facets={facets}
+          seriesFacets={seriesFacets}
           relatedQueries={relatedQueries}
         />
       );

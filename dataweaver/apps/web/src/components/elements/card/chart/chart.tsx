@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
@@ -53,6 +53,8 @@ export interface CardChartProps extends CardState {
   // Multi-series prop — takes priority over `data` when provided.
   series?: ChartSeries[];
   facets?: FacetInfo[];
+  /** Per-series facets, keyed by series `key` (e.g. placeDcid). */
+  seriesFacets?: Record<string, FacetInfo[]>;
   relatedQueries?: string[];
 }
 
@@ -65,6 +67,7 @@ export const CardChart = ({
   data,
   series: seriesProp,
   facets,
+  seriesFacets,
   relatedQueries,
 }: CardChartProps) => {
   const editor = useEditor();
@@ -84,6 +87,21 @@ export const CardChart = ({
     facets?.[0]?.facetId ?? '',
   );
 
+  // Per-series facet selections for multi-dataset charts.
+  const [selectedSeriesFacetIds, setSelectedSeriesFacetIds] = useState<
+    Record<string, string>
+  >(() => {
+    if (!seriesFacets) return {};
+    const initial: Record<string, string> = {};
+    for (const [key, facetList] of Object.entries(seriesFacets)) {
+      const firstFacet = facetList[0];
+      if (firstFacet) {
+        initial[key] = firstFacet.facetId;
+      }
+    }
+    return initial;
+  });
+
   // Only auto-height when the chart tab is active — table tab should scroll
   // within the card at its current (chart-determined) height.
   useCardAutoHeight(
@@ -99,12 +117,33 @@ export const CardChart = ({
   const chartData = currentFacet?.observations ?? data;
 
   // Normalize to multi-series: explicit `series` prop takes priority,
-  // otherwise wrap legacy single-series `chartData` into a one-element array.
-  const baseSeries: ChartSeries[] | undefined =
-    seriesProp ??
-    (chartData
-      ? [{ key: 'default', label: title ?? 'Value', data: chartData }]
-      : undefined);
+  // otherwise wrap legacy single-series `chartData` into a one-element
+  // array.
+  const baseSeries: ChartSeries[] | undefined = useMemo(() => {
+    if (seriesProp && seriesFacets) {
+      // Apply per-series facet selections to override series data.
+      return seriesProp.map((entry) => {
+        const facetList = seriesFacets[entry.key];
+        const selectedId = selectedSeriesFacetIds[entry.key];
+        if (!facetList || !selectedId) return entry;
+        const facet = facetList.find((f) => f.facetId === selectedId);
+        if (!facet) return entry;
+        return { ...entry, data: facet.observations };
+      });
+    }
+    return (
+      seriesProp ??
+      (chartData
+        ? [
+            {
+              key: 'default',
+              label: title ?? 'Value',
+              data: chartData,
+            },
+          ]
+        : undefined)
+    );
+  }, [seriesProp, seriesFacets, selectedSeriesFacetIds, chartData, title]);
 
   // Dev-only: augment with random dummy series to test multi-series rendering.
   const chartSeries = USE_TEST_DATA
@@ -154,11 +193,42 @@ export const CardChart = ({
           ) : (
             <>
               {facets && facets.length > 0 && (
-                <FacetSelector
-                  facets={facets}
-                  selectedFacetId={selectedFacetId}
-                  onSelect={setSelectedFacetId}
-                />
+                <div className={s['facet-selectors-container']}>
+                  <FacetSelector
+                    facets={facets}
+                    selectedFacetId={selectedFacetId}
+                    onSelect={setSelectedFacetId}
+                  />
+                </div>
+              )}
+
+              {seriesFacets && seriesProp && (
+                <div className={s['facet-selectors-container']}>
+                  {seriesProp.map((entry) => {
+                    const facetList = seriesFacets[entry.key];
+                    if (!facetList || facetList.length < 2) {
+                      return null;
+                    }
+                    return (
+                      <FacetSelector
+                        key={entry.key}
+                        facets={facetList}
+                        selectedFacetId={
+                          selectedSeriesFacetIds[entry.key] ??
+                          facetList[0]?.facetId ??
+                          ''
+                        }
+                        onSelect={(facetId) =>
+                          setSelectedSeriesFacetIds((prev) => ({
+                            ...prev,
+                            [entry.key]: facetId,
+                          }))
+                        }
+                        label={entry.label}
+                      />
+                    );
+                  })}
+                </div>
               )}
 
               <ConditionalTabs

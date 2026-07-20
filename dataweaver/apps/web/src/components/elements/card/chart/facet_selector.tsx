@@ -8,6 +8,7 @@ interface FacetSelectorProps {
   facets: FacetInfo[];
   selectedFacetId: string;
   onSelect: (facetId: string) => void;
+  label?: string;
 }
 
 const formatFacetLabel = (facet: FacetInfo): string => {
@@ -20,13 +21,14 @@ export const FacetSelector = ({
   facets,
   selectedFacetId,
   onSelect,
+  label = 'Facet',
 }: FacetSelectorProps) => {
   const currentFacet = facets.find((f) => f.facetId === selectedFacetId);
 
   if (!currentFacet || facets.length <= 1) {
     return currentFacet ? (
       <div className={s.container}>
-        <span className={s.prefix}>Facet</span>
+        <span className={s.prefix}>{label}</span>
         <span className={s.label}>{formatFacetLabel(currentFacet)}</span>
       </div>
     ) : null;
@@ -40,8 +42,8 @@ export const FacetSelector = ({
       onSelect={(facet) => onSelect(facet.facetId)}
       getKey={(facet) => facet.facetId}
       renderOption={formatFacetLabel}
-      label="Facet"
-      aria-label="Select data facet"
+      label={label}
+      aria-label={`Select data facet for ${label}`}
     />
   );
 };
