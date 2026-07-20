@@ -5,21 +5,29 @@ const tooltipFormatter = new Intl.NumberFormat(undefined, {
   notation: 'standard',
 });
 
+interface TooltipCustomProps {
+  active?: boolean;
+  payload?: { value: number }[];
+  label?: string;
+  unit?: string;
+}
+
 export const TooltipCustom = ({
   active,
   payload,
   label,
-}: {
-  active?: boolean;
-  payload?: { value: number }[];
-  label?: string;
-}) => {
+  unit,
+}: TooltipCustomProps) => {
   if (active && payload && payload.length) {
+    const unitLower = unit?.toLowerCase() ?? '';
+    const isPercent = unitLower.includes('percent');
+    const isUSD = unitLower === 'usd' || unitLower.includes('dollar');
     const value = tooltipFormatter.format(Number(payload?.[0]?.value));
+    const formatted = isUSD ? `$${value}` : isPercent ? `${value}%` : value;
     return (
       <div className={styles.tooltip}>
-        <p className={styles.label}>{`${label}`}</p>
-        <p className={styles.value}>{`${value}`}</p>
+        <p className={styles.value}>{formatted}</p>
+        <p className={styles.label}>in {`${label}`}</p>
       </div>
     );
   }

@@ -13,13 +13,19 @@ const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
 
 interface ChartProps {
   data: ChartDatum[];
+  unit?: string;
 }
 
 const compactFormatter = new Intl.NumberFormat(undefined, {
   notation: 'compact',
 });
 
-export const DataChartBarHorizontal = ({ data }: ChartProps) => {
+export const DataChartBarHorizontal = ({ data, unit }: ChartProps) => {
+  const unitLower = unit?.toLowerCase() ?? '';
+  const isPercent = unitLower.includes('percent');
+  const isUSD = unitLower === 'usd' || unitLower.includes('dollar');
+  const formatSuffix = isPercent ? '%' : '';
+  const formatPrefix = isUSD ? '$' : '';
   return (
     <ChartContainer aspect={0.75}>
       {(width, height) => (
@@ -36,7 +42,9 @@ export const DataChartBarHorizontal = ({ data }: ChartProps) => {
             tickLine={{ stroke: AXIS_COLOR }}
             axisLine={{ stroke: AXIS_COLOR }}
             tick={{ fontSize: 10, fill: AXIS_COLOR }}
-            tickFormatter={(value) => compactFormatter.format(value)}
+            tickFormatter={(value) =>
+              `${formatPrefix}${compactFormatter.format(value)}${formatSuffix}`
+            }
             tickMargin={6}
           />
           <YAxis
@@ -49,7 +57,7 @@ export const DataChartBarHorizontal = ({ data }: ChartProps) => {
           />
           <Tooltip
             cursor={{ fill: GRID_COLOR, opacity: 0.4 }}
-            content={<TooltipCustom />}
+            content={<TooltipCustom unit={unit} />}
           />
           <Bar dataKey="value" fill={BAR_COLOR} radius={[0, 2, 2, 0]} />
         </BarChart>

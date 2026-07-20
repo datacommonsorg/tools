@@ -95,6 +95,7 @@
   "card-chart-bar": "$accent",
   "card-chart-line": "$accent",
   "card-chart-axis": "$content-muted",
+  "card-chart-tooltip-date": "$content-dimmed",
   "card-table-row-even": "$card-surface",
   "card-table-row-odd": "$skeleton-surface",
   "card-table-head": "$card-surface",

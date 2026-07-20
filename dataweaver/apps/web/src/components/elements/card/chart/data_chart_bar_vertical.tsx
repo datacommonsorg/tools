@@ -21,6 +21,7 @@ const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
 
 interface ChartProps {
   data: ChartDatum[];
+  unit?: string;
 }
 
 const compactFormatter = new Intl.NumberFormat(undefined, {
@@ -63,7 +64,12 @@ const FullWidthAxisLine = () => {
   );
 };
 
-export const DataChartBarVertical = ({ data }: ChartProps) => {
+export const DataChartBarVertical = ({ data, unit }: ChartProps) => {
+  const unitLower = unit?.toLowerCase() ?? '';
+  const isPercent = unitLower.includes('percent');
+  const isUSD = unitLower === 'usd' || unitLower.includes('dollar');
+  const formatSuffix = isPercent ? '%' : '';
+  const formatPrefix = isUSD ? '$' : '';
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
@@ -93,10 +99,15 @@ export const DataChartBarVertical = ({ data }: ChartProps) => {
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-            tickFormatter={(value) => compactFormatter.format(Number(value))}
+            tickFormatter={(value) =>
+              `${formatPrefix}${compactFormatter.format(Number(value))}${formatSuffix}`
+            }
           />
           <FullWidthAxisLine />
-          <Tooltip cursor={<CustomCursor />} content={<TooltipCustom />} />
+          <Tooltip
+            cursor={<CustomCursor />}
+            content={<TooltipCustom unit={unit} />}
+          />
           <Bar dataKey="value" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
         </BarChart>
       )}
