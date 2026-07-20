@@ -16,7 +16,7 @@
   width: 100%;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
-  border-radius: var(--border-radius-large);
+  border-radius: var(--border-radius-medium);
   box-shadow: var(--shadow-elevated);
 
   &::before {
@@ -89,6 +89,7 @@
 
 .button-row-container {
   display: flex;
+  column-gap: 12px;
 
   .tags-container {
     display: flex;

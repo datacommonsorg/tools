@@ -87,6 +87,22 @@ export const CardBase = ({
       <div
         ref={childrenContainerRef}
         className={s['children-container']}
+        // TLDraw captures all wheel events; walk from the event target up to
+        // this container — if any element in the chain is scrollable, reserve
+        // the wheel event for it instead of letting tldraw zoom/pan.
+        onWheelCapture={(event) => {
+          let el = event.target as HTMLElement | null;
+          while (el && el !== event.currentTarget.parentElement) {
+            const style = window.getComputedStyle(el);
+            if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+              if (el.scrollHeight > el.clientHeight) {
+                event.stopPropagation();
+                return;
+              }
+            }
+            el = el.parentElement;
+          }
+        }}
         // Once the card is the single selection, reserve dragging for the
         // actions bar: stop the canvas from starting a gesture so the content
         // stays selectable/highlightable. While unselected or multi-selected we

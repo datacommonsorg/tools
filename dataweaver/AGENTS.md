@@ -57,7 +57,9 @@ elements compose primitives); `foundations` wrap the whole tree from the root.
 - **`scopes/`** — feature- or page-scoped compositions that assemble primitives
   and elements into a specific view. A scope **owns its sub-components**: pieces
   used only by that scope live in its folder, not in `elements/`. _e.g._
-  `scopes/page_home` and `scopes/atlas`.
+  `scopes/page_home` and `scopes/atlas`. Complex scope subsystems are
+  documented in place — e.g. how Atlas cards are positioned and the camera
+  follows them: [`scopes/atlas/PLACEMENT.md`](apps/web/src/components/scopes/atlas/PLACEMENT.md).
 - **`foundations/`** — app-level infrastructure and cross-cutting providers /
   services that the rest of the tree depends on but that render little or no UI
   of their own: context providers, motion / scroll providers, analytics, global
