@@ -3,6 +3,7 @@
  */
 
 import { useRef } from "react";
+import { ExportIcon } from "./icons";
 import { printElement } from "../utils/print_element";
 
 /**
@@ -66,24 +67,5 @@ export function ExportPdfButton({
         <span>{label}</span>
       </button>
     </div>
-  );
-}
-
-/**
- * Material Symbols "edit" (pencil) — 20×20 to match Figma's leading-icon
- * slot (layout_MOYZ4B). Verified by downloading node 3427:16783 from
- * Figma at 4× and inspecting the rendered glyph.
- */
-function ExportIcon() {
-  return (
-    <svg
-      width={20}
-      height={20}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-    </svg>
   );
 }

@@ -32,7 +32,7 @@ export function ToolCallChip({ toolCall }: ToolCallChipProps) {
   return (
     <span
       className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-label-large ${
-        failed ? "bg-red-50 text-red-700" : "bg-surface-blue text-brand-primary"
+        failed ? "bg-error-surface text-error-strong" : "bg-surface-blue text-brand-primary"
       }`}
       title={JSON.stringify(args)}
     >
