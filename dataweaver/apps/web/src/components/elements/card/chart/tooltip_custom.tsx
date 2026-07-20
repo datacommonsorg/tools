@@ -1,9 +1,6 @@
-import styles from './tooltip_custom.module.scss';
+import { formatChartValue } from '~/functions/format_chart_value';
 
-const tooltipFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 2,
-  notation: 'standard',
-});
+import styles from './tooltip_custom.module.scss';
 
 interface TooltipCustomProps {
   active?: boolean;
@@ -19,11 +16,11 @@ export const TooltipCustom = ({
   unit,
 }: TooltipCustomProps) => {
   if (active && payload && payload.length) {
-    const unitLower = unit?.toLowerCase() ?? '';
-    const isPercent = unitLower.includes('percent');
-    const isUSD = unitLower === 'usd' || unitLower.includes('dollar');
-    const value = tooltipFormatter.format(Number(payload?.[0]?.value));
-    const formatted = isUSD ? `$${value}` : isPercent ? `${value}%` : value;
+    const formatted = formatChartValue(
+      Number(payload?.[0]?.value),
+      unit,
+      'standard',
+    );
     return (
       <div className={styles.tooltip}>
         <p className={styles.value}>{formatted}</p>

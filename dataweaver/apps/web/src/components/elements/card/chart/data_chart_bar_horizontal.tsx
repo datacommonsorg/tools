@@ -3,6 +3,8 @@
 import { COLORS } from '@package/tokens/ts';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { formatChartValue } from '~/functions/format_chart_value';
+
 import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
 import { TooltipCustom } from './tooltip_custom';
@@ -16,16 +18,7 @@ interface ChartProps {
   unit?: string;
 }
 
-const compactFormatter = new Intl.NumberFormat(undefined, {
-  notation: 'compact',
-});
-
 export const DataChartBarHorizontal = ({ data, unit }: ChartProps) => {
-  const unitLower = unit?.toLowerCase() ?? '';
-  const isPercent = unitLower.includes('percent');
-  const isUSD = unitLower === 'usd' || unitLower.includes('dollar');
-  const formatSuffix = isPercent ? '%' : '';
-  const formatPrefix = isUSD ? '$' : '';
   return (
     <ChartContainer aspect={0.75}>
       {(width, height) => (
@@ -42,9 +35,7 @@ export const DataChartBarHorizontal = ({ data, unit }: ChartProps) => {
             tickLine={{ stroke: AXIS_COLOR }}
             axisLine={{ stroke: AXIS_COLOR }}
             tick={{ fontSize: 10, fill: AXIS_COLOR }}
-            tickFormatter={(value) =>
-              `${formatPrefix}${compactFormatter.format(value)}${formatSuffix}`
-            }
+            tickFormatter={(value) => formatChartValue(value, unit)}
             tickMargin={6}
           />
           <YAxis
