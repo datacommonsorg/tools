@@ -76,21 +76,21 @@ export function SessionDrawer() {
           full-width content); transparent on desktop where it just needs a
           click capture. */}
       <div
-        className="fixed inset-0 z-10 bg-black/30 lg:bg-transparent"
+        className="fixed inset-0 z-10 bg-scrim/30 lg:bg-transparent"
         onClick={close}
         aria-hidden="true"
       />
 
       {/* ─── Desktop: single-level list, anchored left beside the rail ─── */}
       <aside
-        className="hidden lg:flex absolute top-0 left-[72px] h-full bg-white border-r border-gray-200 shadow-lg z-20 flex-col"
+        className="hidden lg:flex absolute top-0 left-[72px] h-full bg-surface border-r border-outline shadow-lg z-20 flex-col"
         style={{
           // Cap at PANEL_WIDTH, but never exceed the viewport left of the rail.
           width: `min(${DESKTOP_PANEL_WIDTH}px, calc(100vw - ${SIDEBAR_OFFSET}px))`,
         }}
         aria-label="Chat sessions"
       >
-        <header className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-outline-variant">
           <h2
             className="m-0"
             style={{
@@ -116,7 +116,7 @@ export function SessionDrawer() {
 
       {/* ─── Mobile: two-level slide-in panel, anchored right ─── */}
       <aside
-        className="lg:hidden absolute top-0 right-0 h-full bg-white border-l border-gray-200 shadow-lg z-20 overflow-hidden"
+        className="lg:hidden absolute top-0 right-0 h-full bg-surface border-l border-outline shadow-lg z-20 overflow-hidden"
         style={{
           // Cap at PANEL_WIDTH but always leave a peek of the content behind.
           width: `min(${MOBILE_PANEL_WIDTH}px, calc(100vw - 48px))`,
@@ -146,16 +146,16 @@ export function SessionDrawer() {
               </button>
             </div>
 
-            <div className="border-t border-gray-200 shrink-0" />
+            <div className="border-t border-outline shrink-0" />
 
             <nav className="flex flex-col py-2 shrink-0">
               <MenuItem
-                icon={<NewChatIcon size={22} />}
+                icon={<NewChatIcon size="md" />}
                 label="New chat"
                 onClick={handleNewChat}
               />
               <MenuItem
-                icon={<ChatsIcon size={22} />}
+                icon={<ChatsIcon size="md" />}
                 label="Chats"
                 onClick={() => setView("chats")}
               />
@@ -189,7 +189,7 @@ export function SessionDrawer() {
               </h2>
             </div>
 
-            <div className="border-t border-gray-200 shrink-0" />
+            <div className="border-t border-outline shrink-0" />
 
             <SessionList
               sessions={visibleSessions}
@@ -230,8 +230,8 @@ function SessionList({
         return (
           <li
             key={session.id}
-            className={`group relative flex items-start gap-2 px-4 py-3 border-b border-gray-50 cursor-pointer transition-colors ${
-              active ? "bg-surface-blue" : "hover:bg-gray-50"
+            className={`group relative flex items-start gap-2 px-4 py-3 border-b border-outline-variant cursor-pointer transition-colors ${
+              active ? "bg-surface-blue" : "hover:bg-surface-soft"
             }`}
             onClick={() => onSelect(session.id)}
           >
@@ -269,7 +269,7 @@ function SessionList({
                 e.stopPropagation();
                 onDelete(session.id);
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-red-600 p-1"
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-error p-1"
             >
               <Trash2 size={16} strokeWidth={1.5} />
             </button>
@@ -302,7 +302,7 @@ function MenuItem({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left bg-transparent border-0 cursor-pointer hover:bg-gray-50 transition-colors"
+      className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left bg-transparent border-0 cursor-pointer hover:bg-surface-soft transition-colors"
     >
       <span className="flex items-center gap-3" style={{ color: COLOR_LABEL }}>
         {icon}

@@ -9,8 +9,8 @@ interface SkeletonCardProps {
 /** Loading placeholder card shown while the agent works on `query`. */
 export function SkeletonCard({ query }: SkeletonCardProps) {
   return (
-    <div className="w-full border border-gray-200 rounded-[24px] overflow-hidden shadow-sm bg-surface-soft">
-      <div className="px-6 py-4 border-b border-gray-100 text-body-large-emphasized text-on-surface bg-white">
+    <div className="w-full border border-outline rounded-[24px] overflow-hidden shadow-sm bg-surface-soft">
+      <div className="px-6 py-4 border-b border-outline-variant text-body-large-emphasized text-on-surface bg-surface">
         {query}
       </div>
       <div className="px-4 sm:px-[56px] py-6 flex flex-col gap-4">
