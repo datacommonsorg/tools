@@ -1,4 +1,4 @@
-import { Box, createShapeId, type Editor, type TLShapeId } from 'tldraw';
+import { Box, type Editor, type TLShapeId } from 'tldraw';
 import { mapRange } from '~/functions/map_range';
 import { useAtlasStore } from '~/store';
 import {
@@ -63,7 +63,7 @@ export const registerCardFocus = (editor: Editor): (() => void) => {
 
       if (canFitWithinZoomCap(editor, combined, gutter)) {
         // Compute the zoom that fits both cards with gutter padding on
-        // each side, then cap so the displayed zoom never exceeds 150%.
+        // each side, then cap so the displayed zoom never exceeds {FOCUS_ZOOM_DISPLAY_CAP}%.
         const maxZoom = mapRange(
           FOCUS_ZOOM_DISPLAY_CAP,
           ZOOM_DISPLAY_RANGE[0],
@@ -102,26 +102,30 @@ export const registerCardFocus = (editor: Editor): (() => void) => {
       cleanupAfterCreate?.();
       cleanupAfterCreate = null;
 
-      const targetRawId = focusTarget.shapeId.replace(/^shape:/, '');
-      const targetId = createShapeId(targetRawId);
-      const sourceRawId = focusTarget.sourceShapeId.replace(/^shape:/, '');
-      const sourceId = createShapeId(sourceRawId);
+      const targetId = focusTarget.shapeId as TLShapeId;
+      const sourceId = focusTarget.sourceShapeId as TLShapeId;
 
       if (editor.getShapePageBounds(targetId)) {
         // Shape already exists — focus immediately
         focusOnShape(targetId, sourceId);
       } else {
+        let isDisposed = false;
+        let cleanup: (() => void) | null = null;
         // Shape not yet on canvas — wait for it to be created
-        cleanupAfterCreate = editor.sideEffects.registerAfterCreateHandler(
+        cleanup = editor.sideEffects.registerAfterCreateHandler(
           'shape',
           (shape) => {
-            if (shape.id === targetId) {
-              cleanupAfterCreate?.();
-              cleanupAfterCreate = null;
+            if (shape.id === targetId && !isDisposed) {
+              isDisposed = true;
+              cleanup?.();
               focusOnShape(targetId, sourceId);
             }
           },
         );
+        cleanupAfterCreate = () => {
+          isDisposed = true;
+          cleanup?.();
+        };
       }
 
       useAtlasStore.getState().cardClearFocusTarget();
