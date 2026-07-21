@@ -144,11 +144,20 @@ export const CardChart = ({
                     label: 'Chart',
                     children:
                       selectedStyle === 'bar-vertical' ? (
-                        <DataChartBarVertical data={chartData} />
+                        <DataChartBarVertical
+                          data={chartData}
+                          unit={currentFacet?.unit}
+                        />
                       ) : selectedStyle === 'bar-horizontal' ? (
-                        <DataChartBarHorizontal data={chartData} />
+                        <DataChartBarHorizontal
+                          data={chartData}
+                          unit={currentFacet?.unit}
+                        />
                       ) : (
-                        <DataChartLine data={chartData} />
+                        <DataChartLine
+                          data={chartData}
+                          unit={currentFacet?.unit}
+                        />
                       ),
                   },
                   {
