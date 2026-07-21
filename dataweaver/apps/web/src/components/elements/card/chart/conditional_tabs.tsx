@@ -64,12 +64,8 @@ export const ConditionalTabs = ({
               data-is-active={isActive}
               // Prevent tldraw from trigger drag event on click
               onPointerDown={(event) => event.stopPropagation()}
-              // On touch the synthesized 'click' only lands on the svg icon —
-              // taps on the label/padding lose it - this ensures click isn't
-              // swallowed by tldraw's canvas gesture handlers
-              onPointerUp={(event) => {
-                if (event.pointerType === 'touch') onActiveIndexChange(index);
-              }}
+              // Prevent tldraw from intercepting pointerup and swallowing the click
+              onPointerUp={(event) => event.stopPropagation()}
               onClick={() => onActiveIndexChange(index)}
             >
               <tab.icon className={s.icon} />
