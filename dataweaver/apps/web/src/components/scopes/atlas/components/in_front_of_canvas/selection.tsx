@@ -1,5 +1,3 @@
-import { EASE_LINEAR } from '@package/tokens/ts';
-import { AnimatePresence, m } from 'motion/react';
 import { useCallback, useRef } from 'react';
 import { useEditor, useQuickReactor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
@@ -55,42 +53,33 @@ export const Selection = () => {
   );
 
   return (
-    <AnimatePresence>
-      {hasMultipleSelected && (
-        <m.div
-          ref={setContainer}
-          className={s.container}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.1, ease: EASE_LINEAR }}
+    hasMultipleSelected && (
+      <div ref={setContainer} className={s.container}>
+        <div
+          className={s['actions-container']}
+          role="toolbar"
+          aria-label="Selection actions"
         >
-          <div
-            className={s['actions-container']}
-            role="toolbar"
-            aria-label="Selection actions"
-          >
-            <Button
-              icon={IconExport}
-              size="large"
-              variant="flat"
-              tone="card-action"
-              aria-label="Export"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={openExport}
-            />
-            <Button
-              icon={IconDelete}
-              size="large"
-              variant="flat"
-              tone="card-action"
-              aria-label="Delete"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => editor.deleteShapes(editor.getSelectedShapeIds())}
-            />
-          </div>
-        </m.div>
-      )}
-    </AnimatePresence>
+          <Button
+            icon={IconExport}
+            size="large"
+            variant="flat"
+            tone="card-action"
+            aria-label="Export"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={openExport}
+          />
+          <Button
+            icon={IconDelete}
+            size="large"
+            variant="flat"
+            tone="card-action"
+            aria-label="Delete"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => editor.deleteShapes(editor.getSelectedShapeIds())}
+          />
+        </div>
+      </div>
+    )
   );
 };
