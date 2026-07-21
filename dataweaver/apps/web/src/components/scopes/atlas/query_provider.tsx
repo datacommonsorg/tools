@@ -10,7 +10,12 @@ import {
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
 
-import type { CardEntry, FollowUpContext, StreamEvent } from '~/server/types';
+import type {
+  CardEntry,
+  CombineStreamRequest,
+  FollowUpContext,
+  StreamEvent,
+} from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
@@ -44,6 +49,13 @@ interface ActiveQuery {
   nodeId: string;
   cardIds: string[];
 }
+
+const COMBINE_KEYWORDS =
+  /\b(combine|merge|put together|into one|single chart|one chart|unified chart|together in one)\b/i;
+
+/** Detect whether the prompt intends to combine selected charts. */
+const isCombineIntent = (prompt: string): boolean =>
+  COMBINE_KEYWORDS.test(prompt);
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const { editor } = useAtlas();
@@ -219,6 +231,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           getAncestorChain,
           getContextNodeId,
           getSelectedEntityDcids,
+          getResultsForSelectedCards,
+          nodeAddResult,
         } = store.getState();
 
         querySetProcessing(true);
@@ -227,6 +241,34 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Derive context from selected shapes
         const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
         const parentNodeId = getContextNodeId(selectedShapeIds);
+
+        // ─── Combine flow ───────────────────────────────────────────────
+        // When 2+ chart cards are selected and the prompt suggests combining,
+        // skip the full query pipeline and run only the comparison step.
+        const selectedResults = getResultsForSelectedCards(selectedShapeIds);
+        if (selectedResults.length >= 2 && isCombineIntent(prompt)) {
+          const nodeId = queryStart(prompt, null, parentNodeId);
+
+          // Pre-populate the node with per-place results so that
+          // deriveComparisonChartContent can build chart series.
+          for (const result of selectedResults) {
+            const entityDcid = result.entities[0]?.dcid;
+            if (entityDcid) {
+              nodeAddResult(nodeId, entityDcid, result);
+            }
+          }
+
+          activeQueryRef.current = { nodeId, cardIds: [] };
+
+          const combineRequest: CombineStreamRequest = {
+            query: prompt,
+            results: selectedResults,
+          };
+          startStream(combineRequest, '/api/combine');
+          return;
+        }
+
+        // ─── Standard query flow ────────────────────────────────────────
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
           query: node.query,
           topic: node.parsedQuery?.topic ?? '',

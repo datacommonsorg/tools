@@ -66,6 +66,7 @@ export interface AtlasStore {
   getAncestorChain: (nodeId: string | null) => HistoryNode[];
   getContextNodeId: (selectedShapeIds: string[]) => string | null;
   getSelectedEntityDcids: (selectedShapeIds: string[]) => string[];
+  getResultsForSelectedCards: (selectedShapeIds: string[]) => QueryResult[];
 }
 
 export const useAtlasStore = create<AtlasStore>()(
@@ -403,6 +404,40 @@ export const useAtlasStore = create<AtlasStore>()(
             }
           }
           return Array.from(dcids);
+        },
+
+        getResultsForSelectedCards: (selectedShapeIds) => {
+          const { cards, nodes } = get();
+          const seen = new Set<string>();
+          const results: QueryResult[] = [];
+
+          for (const shapeId of selectedShapeIds) {
+            const card = cards[shapeId];
+            if (!card || card.type !== 'chart') continue;
+
+            const node = nodes[card.historyNodeId];
+            if (!node) continue;
+
+            if (card.placeDcid === '__comparison') {
+              // Comparison chart — extract all per-place results from the node.
+              for (const result of Object.values(node.results)) {
+                const entityDcid = result.entities[0]?.dcid;
+                if (!entityDcid || seen.has(entityDcid)) continue;
+                seen.add(entityDcid);
+                results.push(result);
+              }
+            } else {
+              // Regular chart — extract the single place result.
+              const result = node.results[card.placeDcid];
+              if (!result) continue;
+              const entityDcid = result.entities[0]?.dcid;
+              if (!entityDcid || seen.has(entityDcid)) continue;
+              seen.add(entityDcid);
+              results.push(result);
+            }
+          }
+
+          return results;
         },
       }),
       { name: 'AtlasStore' },

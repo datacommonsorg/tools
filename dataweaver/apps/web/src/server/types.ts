@@ -148,6 +148,12 @@ export interface QueryStreamRequest {
   followUpContext?: FollowUpContext;
 }
 
+/** Request the frontend sends to /api/combine to merge existing chart data. */
+export interface CombineStreamRequest {
+  query: string;
+  results: QueryResult[];
+}
+
 // --- Status messages ---
 
 export const STATUS = {
