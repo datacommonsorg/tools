@@ -2,7 +2,7 @@
 
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
-import { useId } from 'react';
+import { Fragment, useId } from 'react';
 import { Button } from '~/components/elements/button';
 import { Tag } from '~/components/elements/tag';
 import { IconArrowUp } from '~/components/primitives/icons/arrow_up';
@@ -76,17 +76,25 @@ export const Prompt = ({
         <div className={s['button-row-container']}>
           <ul className={s['tags-container']}>
             <AnimatePresence initial={false} mode="wait">
-              {tags.map((tag) => (
-                <m.li
-                  key={tag.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, ease: EASE_LINEAR }}
-                >
-                  <Tag label={tag.title} />
-                </m.li>
-              ))}
+              {/*
+               * Keyed by the first tag so a full selection change swaps the
+               * whole group (fade old out, then new in — no jump/overlap).
+               * Appending/removing later tags keeps the key stable, so those
+               * chips animate individually inside the same group.
+               */}
+              <Fragment key={tags[0] ? tags[0].id : 'empty'}>
+                {tags.map((tag) => (
+                  <m.li
+                    key={tag.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2, ease: EASE_LINEAR }}
+                  >
+                    <Tag label={tag.title} />
+                  </m.li>
+                ))}
+              </Fragment>
             </AnimatePresence>
           </ul>
 
