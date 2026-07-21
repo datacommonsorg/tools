@@ -1,58 +1,21 @@
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
-import { useCallback, useRef } from 'react';
-import { useEditor, useQuickReactor, useValue } from 'tldraw';
+import { useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import s from './selection.module.scss';
-
-/** Screen-space margin the selection box extends past the cards, in pixels. */
-const INSET_SIDES_AND_BOTTOM = 16;
-
-/** Larger top margin, leaving room to seat the action panel above the cards. */
-const INSET_TOP = 60;
+import { useSelectionDragHandle } from './use_selection_drag_handle';
+import { useSelectionPosition } from './use_selection_position';
 
 export const Selection = () => {
   const editor = useEditor();
   const { open: openExport } = useExportActions();
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { hasMultipleSelected, setContainer } = useSelectionPosition();
 
-  const hasMultipleSelected = useValue('multi-selection-active', () => {
-    return editor.getSelectedShapeIds().length > 1;
-  }, [editor]);
-
-  const position = useCallback(() => {
-    const bounds = editor.getSelectionPageBounds();
-    const { z: zoom } = editor.getCamera();
-
-    const container = containerRef.current;
-    if (!container || !bounds) return;
-
-    const origin = editor.pageToViewport({ x: bounds.x, y: bounds.y });
-    const left = origin.x - INSET_SIDES_AND_BOTTOM;
-    const top = origin.y - INSET_TOP;
-    const width = bounds.width * zoom + INSET_SIDES_AND_BOTTOM * 2;
-    const height = bounds.height * zoom + INSET_TOP + INSET_SIDES_AND_BOTTOM;
-
-    container.style.transform = `translate(${left}px, ${top}px)`;
-    container.style.width = `${width}px`;
-    container.style.height = `${height}px`;
-  }, [editor]);
-
-  // Keep the box tracking the canvas while it's mounted
-  useQuickReactor('position multi-selection', position, [position]);
-
-  // On mount; set container + position to ensure it's always correctly placed.
-  const setContainer = useCallback(
-    (container: HTMLDivElement | null) => {
-      containerRef.current = container;
-      position();
-    },
-    [position],
-  );
+  const startDragging = useSelectionDragHandle();
 
   return (
     <AnimatePresence>
@@ -69,6 +32,7 @@ export const Selection = () => {
             className={s['actions-container']}
             role="toolbar"
             aria-label="Selection actions"
+            onPointerDown={startDragging}
           >
             <Button
               icon={IconExport}
