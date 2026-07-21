@@ -84,5 +84,9 @@
     width: 24px;
     height: 24px;
     margin-top: -5px;
+
+    @include breakpoint(tablet) {
+      margin-top: -2px;
+    }
   }
 }
