@@ -83,6 +83,8 @@
     flex-shrink: 0;
     width: 24px;
     height: 24px;
+
+    // Align vertically with text
     margin-top: -5px;
 
     @include breakpoint(tablet) {
