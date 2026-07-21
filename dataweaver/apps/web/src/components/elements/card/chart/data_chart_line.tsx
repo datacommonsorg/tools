@@ -15,16 +15,11 @@ import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import { ChartLegend } from './chart_legend';
 import { getSeriesColor } from './chart_palette';
-import {
-  detectAxisAssignment,
-  type MergedRow,
-  mergeSeriesData,
-} from './merge_series_data';
+import { type MergedRow, mergeSeriesData } from './merge_series_data';
 import { TooltipCustom } from './tooltip_custom';
 
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
-const AXIS_SECONDARY_COLOR = `rgb(${COLORS['card-chart-axis-secondary']})`;
 const DOT_COLOR = `rgb(${COLORS['card-surface']})`;
 
 interface ChartProps {
@@ -74,8 +69,6 @@ const compactFormatter = new Intl.NumberFormat(undefined, {
 
 export const DataChartLine = ({ series }: ChartProps) => {
   const mergedData: MergedRow[] = mergeSeriesData(series);
-  const axisAssignment = detectAxisAssignment(series);
-  const hasRightAxis = axisAssignment.includes('right');
   const totalPoints = series.reduce((sum, s) => sum + s.data.length, 0);
 
   return (
@@ -88,7 +81,7 @@ export const DataChartLine = ({ series }: ChartProps) => {
             height={height}
             margin={{
               top: 32,
-              right: hasRightAxis ? 8 : 0,
+              right: 0,
               bottom: 0,
               left: 0,
             }}
@@ -110,31 +103,12 @@ export const DataChartLine = ({ series }: ChartProps) => {
               padding={{ left: 0, right: 10 }}
             />
             <YAxis
-              yAxisId="left"
               width="auto"
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
               tickFormatter={(value) => compactFormatter.format(Number(value))}
             />
-            {hasRightAxis && (
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                width="auto"
-                tickLine={false}
-                axisLine={false}
-                tick={{
-                  fontSize: 10,
-                  dy: -7,
-                  fill: AXIS_SECONDARY_COLOR,
-                  textAnchor: 'start',
-                }}
-                tickFormatter={(value) =>
-                  compactFormatter.format(Number(value))
-                }
-              />
-            )}
             <FullWidthAxisLine />
             <Tooltip
               cursor={<CustomCursor />}
@@ -147,7 +121,6 @@ export const DataChartLine = ({ series }: ChartProps) => {
                   key={s.key}
                   type="monotone"
                   dataKey={`value_${i}`}
-                  yAxisId={axisAssignment[i]}
                   name={s.label}
                   stroke={color}
                   strokeWidth={1}

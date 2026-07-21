@@ -37,32 +37,3 @@ export const mergeSeriesData = (series: ChartSeries[]): MergedRow[] => {
 
   return rows;
 };
-
-/**
- * Detects whether dual Y-axes are needed by comparing the max absolute values
- * of each series. Returns axis assignment per series index.
- * If the ratio between the largest and smallest max exceeds `threshold` (default 10),
- * the smaller-scale series are assigned to the right axis.
- */
-export const detectAxisAssignment = (
-  series: ChartSeries[],
-  threshold = 10,
-): ('left' | 'right')[] => {
-  if (series.length <= 1) return series.map(() => 'left');
-
-  const maxValues = series.map((s) => {
-    let max = 0;
-    for (const d of s.data) {
-      const abs = Math.abs(d.value);
-      if (abs > max) max = abs;
-    }
-    return max;
-  });
-
-  const globalMax = Math.max(...maxValues);
-  if (globalMax === 0) return series.map(() => 'left');
-
-  return maxValues.map((max) =>
-    max > 0 && globalMax / max >= threshold ? 'right' : 'left',
-  );
-};
