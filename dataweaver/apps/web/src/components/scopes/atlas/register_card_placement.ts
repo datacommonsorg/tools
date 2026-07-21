@@ -17,7 +17,7 @@ import type { CardBounds, CardPosition, CardShape, CardSize } from './helpers';
  * between them. Screen px, never the zoomed page — layout tracks the device,
  * not the camera.
  */
-const resolveGrid = (editor: Editor) => {
+export const resolveGrid = (editor: Editor) => {
   const screenWidth = editor.getViewportScreenBounds().width;
 
   const breakpoint =
@@ -205,7 +205,7 @@ const nextSlot = (
 };
 
 /** Whether `bounds` can fit fully on screen without zooming past `MIN_ZOOM`. */
-const canFitWithinZoomCap = (
+export const canFitWithinZoomCap = (
   editor: Editor,
   bounds: Box,
   gutter: number,

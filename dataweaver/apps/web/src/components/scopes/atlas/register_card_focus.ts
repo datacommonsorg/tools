@@ -1,26 +1,96 @@
-import { createShapeId, type Editor } from 'tldraw';
+import { Box, createShapeId, type Editor, type TLShapeId } from 'tldraw';
+import { mapRange } from '~/functions/map_range';
 import { useAtlasStore } from '~/store';
-import { KEEP_IN_VIEW_ANIMATION } from './config';
+import {
+  FOCUS_ZOOM_DISPLAY_CAP,
+  KEEP_IN_VIEW_ANIMATION,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  ZOOM_DISPLAY_RANGE,
+} from './config';
+import { canFitWithinZoomCap, resolveGrid } from './register_card_placement';
 
 /**
- * When the store's `focusTarget` is set, pan the camera to that shape and
- * select it. If the shape doesn't exist yet (new chart still being created
- * through the async sync pipeline), wait for it to appear via a one-shot
- * afterCreate handler.
+ * When the store's `focusTarget` is set, move the camera so both the source
+ * card (that triggered the action) and the target card are visible, then
+ * select the target. If the target is already fully in view, just select it
+ * without moving the camera.
+ *
+ * If the shape doesn't exist yet (new chart still being created through the
+ * async sync pipeline), wait for it to appear via a one-shot afterCreate
+ * handler.
+ *
  * Returns the cleanup that unsubscribes the watcher.
  */
 export const registerCardFocus = (editor: Editor): (() => void) => {
   let cleanupAfterCreate: (() => void) | null = null;
 
-  const focusOnShape = (shapeId: ReturnType<typeof createShapeId>) => {
+  const isFullyInView = (shapeId: TLShapeId): boolean => {
     const bounds = editor.getShapePageBounds(shapeId);
-    if (!bounds) return;
+    if (!bounds) return false;
+    const viewport = editor.getViewportPageBounds();
+    return (
+      bounds.minX >= viewport.minX &&
+      bounds.minY >= viewport.minY &&
+      bounds.maxX <= viewport.maxX &&
+      bounds.maxY <= viewport.maxY
+    );
+  };
 
-    editor.centerOnPoint(bounds.center, {
+  const focusOnShape = (targetId: TLShapeId, sourceId: TLShapeId) => {
+    const targetBounds = editor.getShapePageBounds(targetId);
+    if (!targetBounds) return;
+
+    // If the target is already fully visible, just select — no camera move
+    if (isFullyInView(targetId)) {
+      editor.select(targetId);
+      return;
+    }
+
+    const sourceBounds = editor.getShapePageBounds(sourceId);
+    const gutter = resolveGrid(editor).gutter;
+
+    if (sourceBounds) {
+      // Compute bounding box that contains both source and target
+      const combined = new Box(
+        Math.min(sourceBounds.minX, targetBounds.minX),
+        Math.min(sourceBounds.minY, targetBounds.minY),
+        Math.max(sourceBounds.maxX, targetBounds.maxX) -
+          Math.min(sourceBounds.minX, targetBounds.minX),
+        Math.max(sourceBounds.maxY, targetBounds.maxY) -
+          Math.min(sourceBounds.minY, targetBounds.minY),
+      );
+
+      if (canFitWithinZoomCap(editor, combined, gutter)) {
+        // Compute the zoom that fits both cards with gutter padding on
+        // each side, then cap so the displayed zoom never exceeds 150%.
+        const maxZoom = mapRange(
+          FOCUS_ZOOM_DISPLAY_CAP,
+          ZOOM_DISPLAY_RANGE[0],
+          ZOOM_DISPLAY_RANGE[1],
+          MIN_ZOOM,
+          MAX_ZOOM,
+        );
+        const screenBounds = editor.getViewportScreenBounds();
+        const fitZoom = Math.min(
+          (screenBounds.width - gutter * 2) / combined.w,
+          (screenBounds.height - gutter * 2) / combined.h,
+        );
+
+        editor.zoomToBounds(combined, {
+          animation: KEEP_IN_VIEW_ANIMATION,
+          targetZoom: Math.min(fitZoom, maxZoom),
+        });
+        editor.select(targetId);
+        return;
+      }
+    }
+
+    // Fallback: source missing or combined box too large for zoom cap
+    editor.centerOnPoint(targetBounds.center, {
       animation: KEEP_IN_VIEW_ANIMATION,
     });
-
-    editor.select(shapeId);
+    editor.select(targetId);
   };
 
   const unsubscribe = useAtlasStore.subscribe(
@@ -32,21 +102,23 @@ export const registerCardFocus = (editor: Editor): (() => void) => {
       cleanupAfterCreate?.();
       cleanupAfterCreate = null;
 
-      const rawId = focusTarget.replace(/^shape:/, '');
-      const shapeId = createShapeId(rawId);
+      const targetRawId = focusTarget.shapeId.replace(/^shape:/, '');
+      const targetId = createShapeId(targetRawId);
+      const sourceRawId = focusTarget.sourceShapeId.replace(/^shape:/, '');
+      const sourceId = createShapeId(sourceRawId);
 
-      if (editor.getShapePageBounds(shapeId)) {
+      if (editor.getShapePageBounds(targetId)) {
         // Shape already exists — focus immediately
-        focusOnShape(shapeId);
+        focusOnShape(targetId, sourceId);
       } else {
         // Shape not yet on canvas — wait for it to be created
         cleanupAfterCreate = editor.sideEffects.registerAfterCreateHandler(
           'shape',
           (shape) => {
-            if (shape.id === shapeId) {
+            if (shape.id === targetId) {
               cleanupAfterCreate?.();
               cleanupAfterCreate = null;
-              focusOnShape(shapeId);
+              focusOnShape(targetId, sourceId);
             }
           },
         );
