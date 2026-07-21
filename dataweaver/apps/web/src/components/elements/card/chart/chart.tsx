@@ -213,7 +213,7 @@ export const CardChart = ({
                 <div className={s['facet-selectors-container']}>
                   {seriesProp.map((entry) => {
                     const facetList = seriesFacets[entry.key];
-                    if (!facetList || facetList.length < 2) {
+                    if (!facetList || facetList.length === 0) {
                       return null;
                     }
                     return (

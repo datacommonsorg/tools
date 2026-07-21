@@ -85,7 +85,6 @@ export const DataChartLine = ({ series }: ChartProps) => {
               bottom: 0,
               left: 0,
             }}
-            }}
             style={{ overflow: 'hidden' }}
           >
             <CartesianGrid

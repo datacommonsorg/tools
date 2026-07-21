@@ -79,9 +79,7 @@ export const deriveComparisonChartContent = (
       data: observations,
     });
 
-    if (ts.facets.length > 1) {
-      seriesFacets[placeDcid] = ts.facets;
-    }
+    seriesFacets[placeDcid] = ts.facets;
   }
 
   if (series.length === 0) return null;
