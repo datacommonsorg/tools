@@ -1,6 +1,6 @@
 import { AnimatePresence, m } from 'motion/react';
 import type { ComponentPropsWithRef, ComponentType, ReactNode } from 'react';
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import s from './conditional_tabs.module.scss';
 
 interface Tab {
@@ -25,6 +25,21 @@ export const ConditionalTabs = ({
 }: ConditionalTabsProps) => {
   const baseId = useId();
 
+  const tablistRef = useRef<HTMLDivElement>(null);
+
+  // tldraw registers a bubble-phase `touchstart` listener on its container that
+  // calls preventDefault to block browser edge-swipe. Near the screen edge that
+  // fires a passive-listener warning and can swallow the tap. Stop the native
+  // touch event here so it never reaches tldraw's listener
+  useEffect(() => {
+    const tablist = tablistRef.current;
+    if (!tablist) return;
+
+    const fixBubbling = (event: TouchEvent) => event.stopPropagation();
+    tablist.addEventListener('touchstart', fixBubbling);
+    return () => tablist.removeEventListener('touchstart', fixBubbling);
+  }, []);
+
   const tabId = (index: number) => `${baseId}-tab-${index}`;
 
   const panelId = (index: number) => `${baseId}-tabpanel-${index}`;
@@ -33,7 +48,7 @@ export const ConditionalTabs = ({
 
   return (
     <div className={s.container}>
-      <div role="tablist" className={s['tabs-container']}>
+      <div ref={tablistRef} role="tablist" className={s['tabs-container']}>
         {tabs.map((tab, index) => {
           const isActive = index === activeIndex;
 
@@ -49,6 +64,12 @@ export const ConditionalTabs = ({
               data-is-active={isActive}
               // Prevent tldraw from trigger drag event on click
               onPointerDown={(event) => event.stopPropagation()}
+              // On touch the synthesized 'click' only lands on the svg icon —
+              // taps on the label/padding lose it - this ensures click isn't
+              // swallowed by tldraw's canvas gesture handlers
+              onPointerUp={(event) => {
+                if (event.pointerType === 'touch') onActiveIndexChange(index);
+              }}
               onClick={() => onActiveIndexChange(index)}
             >
               <tab.icon className={s.icon} />
