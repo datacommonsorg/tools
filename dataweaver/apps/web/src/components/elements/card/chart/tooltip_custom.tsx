@@ -24,7 +24,7 @@ export const TooltipCustom = ({
     return (
       <div className={styles.tooltip}>
         <p className={styles.value}>{formatted}</p>
-        <p className={styles.label}>in {`${label}`}</p>
+        {label && <p className={styles.label}>in {`${label}`}</p>}
       </div>
     );
   }

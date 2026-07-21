@@ -30,7 +30,7 @@ export const formatChartValue = (
 ): string => {
   const unitLower = unit?.toLowerCase() ?? '';
   const isPercent = unitLower.includes('percent');
-  const isUSD = unitLower === 'usd' || unitLower.includes('dollar');
+  const isUSD = unitLower.includes('usd');
 
   if (isUSD) {
     return notation === 'compact'

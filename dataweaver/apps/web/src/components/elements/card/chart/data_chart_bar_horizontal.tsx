@@ -35,7 +35,7 @@ export const DataChartBarHorizontal = ({ data, unit }: ChartProps) => {
             tickLine={{ stroke: AXIS_COLOR }}
             axisLine={{ stroke: AXIS_COLOR }}
             tick={{ fontSize: 10, fill: AXIS_COLOR }}
-            tickFormatter={(value) => formatChartValue(value, unit)}
+            tickFormatter={(value) => formatChartValue(Number(value), unit)}
             tickMargin={6}
           />
           <YAxis
