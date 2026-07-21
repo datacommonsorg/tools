@@ -25,15 +25,11 @@ export const useShapeDragHandle = (
       // Prevent the event from bubbling to the canvas
       event.stopPropagation();
 
-      const origins = getShapeIds()
-        .map((id) => editor.getShape(id))
-        .filter((shape) => shape != null)
-        .map((shape) => ({
-          id: shape.id,
-          type: shape.type,
-          x: shape.x,
-          y: shape.y,
-        }));
+      const origins = getShapeIds().flatMap((id) => {
+        const shape = editor.getShape(id);
+        if (!shape) return [];
+        return [{ id: shape.id, type: shape.type, x: shape.x, y: shape.y }];
+      });
       if (origins.length === 0) return;
 
       editor.markHistoryStoppingPoint(historyLabel);
