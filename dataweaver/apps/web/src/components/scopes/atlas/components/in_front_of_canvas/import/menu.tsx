@@ -4,7 +4,7 @@ import { Menu as MenuElement } from '~/components/elements/menu';
 import { toast } from '~/components/foundations/toaster/store';
 import { IconClose } from '~/components/primitives/icons/close';
 import { IconImport } from '~/components/primitives/icons/import';
-import { ImportError, importState, STATE_VERSION } from '~/store/serialization';
+import { ImportError, importState } from '~/store/serialization';
 import s from './menu.module.scss';
 
 interface MenuProps {
@@ -41,20 +41,12 @@ export const Menu = ({ id, onClose }: MenuProps) => {
       await importState(file);
       onClose();
     } catch (error) {
-      if (error instanceof ImportError && error.reason === 'version-mismatch') {
-        const found =
-          error.fileVersion === undefined
-            ? 'an unknown version'
-            : `version ${error.fileVersion}`;
-
-        toast(
-          'Import failed',
-          `This file was exported from ${found}. The canvas expects version ${STATE_VERSION}.`,
-        );
-        return;
-      }
-
-      toast('Import failed', 'The selected file is not a valid canvas export.');
+      toast(
+        'Import failed',
+        error instanceof ImportError
+          ? error.message
+          : 'An unexpected error occurred during import.',
+      );
     }
   };
 

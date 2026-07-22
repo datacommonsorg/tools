@@ -8,9 +8,9 @@ export const STATE_VERSION = 1;
 export class ImportError extends Error {
   constructor(
     readonly reason: 'malformed' | 'version-mismatch',
-    readonly fileVersion?: number,
+    message: string,
   ) {
-    super(reason);
+    super(message);
     this.name = 'ImportError';
   }
 }
@@ -55,32 +55,41 @@ export const importState = async (file: File): Promise<void> => {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new ImportError('malformed');
+    throw new ImportError('malformed', 'File is not valid JSON.');
   }
 
   if (typeof parsed !== 'object' || parsed === null) {
-    throw new ImportError('malformed');
+    throw new ImportError('malformed', 'Parsed JSON is not an object.');
   }
 
+  const parsedObject = parsed as Record<string, unknown>;
   const parsedVersion =
-    'version' in parsed && typeof parsed.version === 'number'
-      ? parsed.version
-      : undefined;
+    typeof parsedObject.version === 'number' ? parsedObject.version : undefined;
 
-  // Catch version mismatch
-  if (parsedVersion !== STATE_VERSION) {
-    throw new ImportError('version-mismatch', parsedVersion);
+  // A missing/non-numeric version is malformed JSON, not a genuine mismatch.
+  if (parsedVersion === undefined) {
+    throw new ImportError('malformed', 'Export is missing a numeric version.');
   }
 
-  if (!hasValidState(parsed)) {
-    throw new ImportError('malformed');
+  if (parsedVersion !== STATE_VERSION) {
+    throw new ImportError(
+      'version-mismatch',
+      `This file was exported from version ${parsedVersion}. The canvas expects version ${STATE_VERSION}.`,
+    );
+  }
+
+  if (!hasValidState(parsedObject)) {
+    throw new ImportError(
+      'malformed',
+      'State payload is missing required slices.',
+    );
   }
 
   // Clear transient UI and replace persistent slices atomically.
   useAtlasStore.setState({
-    nodes: parsed.state.nodes,
-    latestNodeId: parsed.state.latestNodeId,
-    cards: parsed.state.cards,
+    nodes: parsedObject.state.nodes,
+    latestNodeId: parsedObject.state.latestNodeId,
+    cards: parsedObject.state.cards,
     isProcessing: false,
     currentStatus: STATUS.complete,
   });
@@ -96,6 +105,6 @@ const hasValidState = (value: object): value is StateEnvelope => {
     slices.nodes !== null &&
     typeof slices.cards === 'object' &&
     slices.cards !== null &&
-    'latestNodeId' in slices
+    (slices.latestNodeId === null || typeof slices.latestNodeId === 'string')
   );
 };
