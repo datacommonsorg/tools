@@ -3,6 +3,8 @@
 import { COLORS } from '@package/tokens/ts';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { formatChartValue } from '~/functions/format_chart_value';
+
 import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import { ChartLegend } from './chart_legend';
@@ -17,12 +19,9 @@ interface ChartProps {
   series: ChartSeries[];
 }
 
-const compactFormatter = new Intl.NumberFormat(undefined, {
-  notation: 'compact',
-});
-
 export const DataChartBarHorizontal = ({ series }: ChartProps) => {
   const mergedData = mergeSeriesData(series);
+  const unit = series[0]?.unit;
 
   return (
     <ChartContainer aspect={0.75}>
@@ -41,7 +40,7 @@ export const DataChartBarHorizontal = ({ series }: ChartProps) => {
               tickLine={{ stroke: AXIS_COLOR }}
               axisLine={{ stroke: AXIS_COLOR }}
               tick={{ fontSize: 10, fill: AXIS_COLOR }}
-              tickFormatter={(value) => compactFormatter.format(value)}
+              tickFormatter={(value) => formatChartValue(Number(value), unit)}
               tickMargin={6}
             />
             <YAxis
@@ -54,7 +53,7 @@ export const DataChartBarHorizontal = ({ series }: ChartProps) => {
             />
             <Tooltip
               cursor={{ fill: GRID_COLOR, opacity: 0.4 }}
-              content={<TooltipCustom series={series} />}
+              content={<TooltipCustom series={series} unit={unit} />}
             />
             {series.map((s, i) => (
               <Bar

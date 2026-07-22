@@ -41,6 +41,7 @@ export interface ChartSeries {
   label: string;
   data: ChartDatum[];
   connectNulls?: boolean;
+  unit?: string;
 }
 
 export interface CardChartProps extends CardState {
@@ -128,7 +129,7 @@ export const CardChart = ({
         if (!facetList || !selectedId) return entry;
         const facet = facetList.find((f) => f.facetId === selectedId);
         if (!facet) return entry;
-        return { ...entry, data: facet.observations };
+        return { ...entry, data: facet.observations, unit: facet.unit };
       });
     }
     return (
@@ -139,11 +140,19 @@ export const CardChart = ({
               key: 'default',
               label: title ?? 'Value',
               data: chartData,
+              unit: currentFacet?.unit,
             },
           ]
         : undefined)
     );
-  }, [seriesProp, seriesFacets, selectedSeriesFacetIds, chartData, title]);
+  }, [
+    seriesProp,
+    seriesFacets,
+    selectedSeriesFacetIds,
+    chartData,
+    title,
+    currentFacet?.unit,
+  ]);
 
   // Dev-only: augment with random dummy series to test multi-series rendering.
   const chartSeries = USE_TEST_DATA

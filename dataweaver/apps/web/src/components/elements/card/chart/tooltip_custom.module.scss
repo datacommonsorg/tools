@@ -16,6 +16,7 @@
     @include type-label-small(false);
 
     margin-bottom: 4px;
+    color: rgb(var(--color-card-chart-tooltip-date));
   }
 
   .entry {
@@ -36,12 +37,12 @@
   }
 
   .name {
-    @include type-label-small;
+    @include type-label-small(false);
 
     color: rgb(var(--color-card-content-muted));
   }
 
   .value {
-    @include type-label-large;
+    @include type-label-medium(false);
   }
 }

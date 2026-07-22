@@ -11,6 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 
+import { formatChartValue } from '~/functions/format_chart_value';
+
 import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import { ChartLegend } from './chart_legend';
@@ -63,13 +65,10 @@ const FullWidthAxisLine = () => {
   );
 };
 
-const compactFormatter = new Intl.NumberFormat(undefined, {
-  notation: 'compact',
-});
-
 export const DataChartLine = ({ series }: ChartProps) => {
   const mergedData: MergedRow[] = mergeSeriesData(series);
   const totalPoints = series.reduce((sum, s) => sum + s.data.length, 0);
+  const unit = series[0]?.unit;
 
   return (
     <ChartContainer aspect={1.78}>
@@ -106,12 +105,12 @@ export const DataChartLine = ({ series }: ChartProps) => {
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-              tickFormatter={(value) => compactFormatter.format(Number(value))}
+              tickFormatter={(value) => formatChartValue(Number(value), unit)}
             />
             <FullWidthAxisLine />
             <Tooltip
               cursor={<CustomCursor />}
-              content={<TooltipCustom series={series} />}
+              content={<TooltipCustom series={series} unit={unit} />}
             />
             {series.map((s, i) => {
               const color = getSeriesColor(i);
