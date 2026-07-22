@@ -5,7 +5,7 @@ import { Button } from '~/components/elements/button';
 import { Menu as MenuElement } from '~/components/elements/menu';
 import { IconClose } from '~/components/primitives/icons/close';
 import s from './menu.module.scss';
-import { StatusEmpty } from './status_empty';
+import { StatusEmpty } from './status_empty/status_empty';
 import { StatusSelected } from './status_selected';
 
 interface MenuProps {
