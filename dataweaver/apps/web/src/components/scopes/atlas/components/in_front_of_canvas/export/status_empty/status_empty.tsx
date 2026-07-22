@@ -1,40 +1,16 @@
-import type { ComponentPropsWithRef, ComponentType, ReactNode } from 'react';
 import { useEditor, useValue } from 'tldraw';
+import { Button } from '~/components/elements/button';
+import { Radio } from '~/components/elements/radio';
 import { IconSelect } from '~/components/primitives/icons/select';
 import { IconShapes } from '~/components/primitives/icons/shapes';
+import {
+  EXPORT_OPTION_CANVAS,
+  EXPORT_OPTIONS,
+} from '~/components/scopes/atlas/components/in_front_of_canvas/export/options';
 import { IS_APPLE } from '~/configs/environment_client';
-import { EXPORT_OPTIONS } from './options';
+import { exportState } from '~/store/serialization';
+import { Card } from './card';
 import s from './status_empty.module.scss';
-
-type IconComponent = ComponentType<ComponentPropsWithRef<'svg'>>;
-
-interface CardProps {
-  icon: IconComponent;
-  title: string;
-  description: string;
-  children?: ReactNode;
-}
-
-const Card = ({
-  icon: Icon,
-  title,
-  description,
-  children,
-  includeMaxWidth,
-}: CardProps & { includeMaxWidth?: boolean }) => {
-  return (
-    <div
-      className={s['card-container']}
-      role="status"
-      data-has-max-width={includeMaxWidth}
-    >
-      <Icon className={s['icon-status']} />
-      <p className={s['card-title']}>{title}</p>
-      <p className={s['card-description']}>{description}</p>
-      {children}
-    </div>
-  );
-};
 
 export const StatusEmpty = () => {
   const editor = useEditor();
@@ -86,12 +62,58 @@ export const StatusEmpty = () => {
 
         <ul className={s['options-container']}>
           {EXPORT_OPTIONS.map((option) => (
-            <li key={option.title} className={s['option-container']}>
+            <li
+              key={option.title}
+              className={s['option-container']}
+              data-has-max-width
+            >
               <h4 className={s['option-title']}>{option.title}</h4>
               <p className={s['option-description']}>{option.description}</p>
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className={s['canvas-container']} aria-label="Export canvas">
+        {totalCards === 0 ? (
+          <div className={s['option-container']}>
+            <h3 className={s['option-title']}>Export canvas</h3>
+            <p className={s['option-description']}>
+              {EXPORT_OPTION_CANVAS.description}
+            </p>
+          </div>
+        ) : (
+          <>
+            <Radio
+              name="export-format"
+              value={EXPORT_OPTION_CANVAS.key}
+              // In this state we have cards but none are selected so given this
+              // is only option available we can show it as selected by default
+              checked
+              readOnly
+            >
+              <span className={s['option-container']}>
+                <span className={s['option-title']}>
+                  {EXPORT_OPTION_CANVAS.title}
+                </span>
+                <span className={s['option-description']}>
+                  {EXPORT_OPTION_CANVAS.description}
+                </span>
+              </span>
+            </Radio>
+
+            <Button
+              className={s['button-canvas']}
+              size="large"
+              variant="border"
+              tone="subtle-highlight"
+              icon={EXPORT_OPTION_CANVAS.icon}
+              onClick={exportState}
+            >
+              {EXPORT_OPTION_CANVAS.action}
+            </Button>
+          </>
+        )}
       </section>
     </>
   );

@@ -1,5 +1,6 @@
 import { IconCopy } from '~/components/primitives/icons/copy';
 import { IconDownload } from '~/components/primitives/icons/download';
+import { IconExport } from '~/components/primitives/icons/export';
 import { IconNarrative } from '~/components/primitives/icons/narrative';
 import { IconShapes } from '~/components/primitives/icons/shapes';
 
@@ -52,3 +53,17 @@ export const EXPORT_OPTIONS = [
     icon: IconDownload,
   },
 ] as const;
+
+/**
+ * Full-workspace export — unlike the per-card formats above it doesn't need a
+ * selection, so it's offered whenever the canvas has content. Its download
+ * pairs with the import menu, which restores the workspace from the file.
+ */
+export const EXPORT_OPTION_CANVAS = {
+  key: 'canvas',
+  title: 'Export full canvas',
+  description:
+    'Export the full workspace to restore and resume exploration on the canvas later.',
+  action: 'Export canvas',
+  icon: IconExport,
+} as const;
