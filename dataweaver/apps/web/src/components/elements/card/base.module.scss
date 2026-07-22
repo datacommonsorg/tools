@@ -21,11 +21,6 @@
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow: var(--shadow-elevated);
 
-  &:active {
-    // Note: This matches TLDraw dragging cursor
-    cursor: all-scroll;
-  }
-
   @include prefers-motion {
     transition: transform 0.3s $ease-out;
   }
