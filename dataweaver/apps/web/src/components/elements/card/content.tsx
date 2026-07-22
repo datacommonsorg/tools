@@ -1,8 +1,22 @@
 'use client';
 
-import { type ReactNode, type RefObject, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import s from './content.module.scss';
-import { useCachedResizeValues } from './use_cached_resize_values';
+
+/**
+ * Minimum vertical overflow (px) before the region is treated as scrollable.
+ * Below this the scrollbar is hidden and wheel gestures fall through to TLDraw,
+ * so a few clipped pixels don't hijack scrolling or show a stub scrollbar.
+ *
+ * This matches padding-bottom on the inner container.
+ */
+const SCROLL_THRESHOLD_PX = 28;
 
 interface CardContentProps {
   childrenInnerContainerRef: RefObject<HTMLDivElement | null>;
@@ -21,12 +35,37 @@ export const CardContent = ({
 }: CardContentProps) => {
   const childrenOuterContainerRef = useRef<HTMLDivElement>(null);
 
+  const [canScroll, setCanScroll] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
 
-  const getCachedCanScroll = useCachedResizeValues(
-    childrenOuterContainerRef,
-    (element: HTMLDivElement) => element.scrollHeight > element.clientHeight,
-  );
+  useEffect(() => {
+    const childrenOuterContainer = childrenOuterContainerRef.current;
+    const childrenInnerContainer = childrenInnerContainerRef.current;
+    if (!childrenOuterContainer || !childrenInnerContainer) return;
+
+    const checkIfCanScroll = () => {
+      const scrollableArea =
+        childrenOuterContainer.scrollHeight -
+        childrenOuterContainer.clientHeight;
+      const isScrollable = scrollableArea >= SCROLL_THRESHOLD_PX;
+      setCanScroll(isScrollable);
+
+      // Clear the stale scrolled state when the region can no longer scroll,
+      // otherwise the header divider stays visible after content shrinks
+      if (!isScrollable) setHasScrolled(false);
+    };
+
+    // Sync on mount
+    checkIfCanScroll();
+
+    // Observe both containers: the outer for viewport resizes and the inner so
+    // dynamic content growth/shrink (which doesn't change the outer's size) is
+    // still detected
+    const observer = new ResizeObserver(checkIfCanScroll);
+    observer.observe(childrenOuterContainer);
+    observer.observe(childrenInnerContainer);
+    return () => observer.disconnect();
+  }, [childrenInnerContainerRef]);
 
   return (
     <div
@@ -36,10 +75,7 @@ export const CardContent = ({
       // scrolled by a wheel gesture anywhere over the card (title included),
       // not just directly over the scroll area
       onWheelCapture={(event) => {
-        const container = childrenOuterContainerRef.current;
-        if (container && getCachedCanScroll(container)) {
-          event.stopPropagation();
-        }
+        if (canScroll) event.stopPropagation();
       }}
     >
       {title && <header className={s['header-container']}>{title}</header>}
@@ -47,6 +83,7 @@ export const CardContent = ({
       <div
         ref={childrenOuterContainerRef}
         className={s['children-outer-container']}
+        data-can-scroll={canScroll}
         onScroll={(event) => {
           const scrolled = event.currentTarget.scrollTop > 0;
           setHasScrolled(scrolled);
