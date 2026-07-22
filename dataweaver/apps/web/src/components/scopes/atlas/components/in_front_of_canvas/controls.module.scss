@@ -3,7 +3,10 @@
   top: var(--controls-gutter-outer);
   right: var(--controls-gutter-outer);
   display: flex;
-  column-gap: var(--controls-gutter-outer);
+  flex-wrap: wrap;
+  gap: var(--controls-gutter-outer);
   align-items: center;
+  justify-content: flex-end;
+  max-width: calc(100% - var(--controls-gutter-outer) * 2);
   pointer-events: auto;
 }

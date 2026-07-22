@@ -1,25 +1,30 @@
+import { formatChartValue } from '~/functions/format_chart_value';
+
 import styles from './tooltip_custom.module.scss';
 
-const tooltipFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 2,
-  notation: 'standard',
-});
+interface TooltipCustomProps {
+  active?: boolean;
+  payload?: { value: number }[];
+  label?: string;
+  unit?: string;
+}
 
 export const TooltipCustom = ({
   active,
   payload,
   label,
-}: {
-  active?: boolean;
-  payload?: { value: number }[];
-  label?: string;
-}) => {
+  unit,
+}: TooltipCustomProps) => {
   if (active && payload && payload.length) {
-    const value = tooltipFormatter.format(Number(payload?.[0]?.value));
+    const formatted = formatChartValue(
+      Number(payload?.[0]?.value),
+      unit,
+      'standard',
+    );
     return (
       <div className={styles.tooltip}>
-        <p className={styles.label}>{`${label}`}</p>
-        <p className={styles.value}>{`${value}`}</p>
+        <p className={styles.value}>{formatted}</p>
+        {label && <p className={styles.label}>in {`${label}`}</p>}
       </div>
     );
   }

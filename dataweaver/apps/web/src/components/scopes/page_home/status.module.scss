@@ -1,13 +1,17 @@
 .container {
   display: grid;
   grid-template-columns: 1fr min-content;
-  gap: 28px 16px;
+  gap: 22px 16px;
   width: 100%;
   padding: 26px 24px;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-subtle));
   border-radius: var(--border-radius-large) var(--border-radius-medium);
   box-shadow: var(--shadow-elevated);
+
+  @include breakpoint(tablet) {
+    row-gap: 28px;
+  }
 }
 
 .prompt-value {
