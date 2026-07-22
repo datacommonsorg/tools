@@ -25,4 +25,9 @@
 
   // Center horizontally and straddle the selection's top edge
   transform: translate(-50%, -50%);
+
+  &:active {
+    // Note: This matches TLDraw dragging cursor
+    cursor: all-scroll;
+  }
 }

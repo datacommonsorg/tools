@@ -11,6 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 
+import { formatChartValue } from '~/functions/format_chart_value';
+
 import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
 import { TooltipCustom } from './tooltip_custom';
@@ -21,11 +23,8 @@ const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
 
 interface ChartProps {
   data: ChartDatum[];
+  unit?: string;
 }
-
-const compactFormatter = new Intl.NumberFormat(undefined, {
-  notation: 'compact',
-});
 
 const CustomCursor = (props: {
   x?: number;
@@ -63,7 +62,7 @@ const FullWidthAxisLine = () => {
   );
 };
 
-export const DataChartBarVertical = ({ data }: ChartProps) => {
+export const DataChartBarVertical = ({ data, unit }: ChartProps) => {
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
@@ -93,10 +92,13 @@ export const DataChartBarVertical = ({ data }: ChartProps) => {
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-            tickFormatter={(value) => compactFormatter.format(Number(value))}
+            tickFormatter={(value) => formatChartValue(Number(value), unit)}
           />
           <FullWidthAxisLine />
-          <Tooltip cursor={<CustomCursor />} content={<TooltipCustom />} />
+          <Tooltip
+            cursor={<CustomCursor />}
+            content={<TooltipCustom unit={unit} />}
+          />
           <Bar dataKey="value" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
         </BarChart>
       )}
