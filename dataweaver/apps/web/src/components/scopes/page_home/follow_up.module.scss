@@ -30,8 +30,12 @@
   display: flex;
   flex-direction: column;
   grid-area: content;
-  row-gap: 24px;
+  row-gap: 18px;
   padding: 16px 0 32px 24px;
+
+  @include breakpoint(tablet) {
+    row-gap: 24px;
+  }
 
   .question {
     @include type-body-large(500);

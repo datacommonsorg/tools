@@ -21,10 +21,6 @@
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow: var(--shadow-elevated);
 
-  &:active {
-    cursor: grabbing;
-  }
-
   @include prefers-motion {
     transition: transform 0.3s $ease-out;
   }

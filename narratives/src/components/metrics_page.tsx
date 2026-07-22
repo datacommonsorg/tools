@@ -214,7 +214,7 @@ function SubTabs({
     <div
       role="tablist"
       aria-label="Metrics categories"
-      className="flex gap-1 border-b border-gray-200 mb-6"
+      className="flex gap-1 border-b border-outline mb-6"
     >
       {tabs.map((tab) => {
         const active = tab.id === activeId;
@@ -269,8 +269,8 @@ function Tile({
   children: React.ReactNode;
 }) {
   return (
-    <section className="bg-white rounded-[16px] border border-gray-200 overflow-hidden shadow-sm">
-      <header className="px-5 py-3 border-b border-gray-100">
+    <section className="bg-surface rounded-[16px] border border-outline overflow-hidden shadow-sm">
+      <header className="px-5 py-3 border-b border-outline-variant">
         <h3
           style={{
             fontFamily: FONT_DISPLAY,

@@ -84,6 +84,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const { result, place } = event;
         const entityDcid = result.entities[0]?.dcid ?? place;
 
+        console.log('EVENT', event);
         // Write the query result data to the history node.
         nodeAddResult(active.nodeId, entityDcid, result);
 
