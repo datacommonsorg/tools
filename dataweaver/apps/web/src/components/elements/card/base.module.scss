@@ -21,6 +21,12 @@
   border-radius: var(--corner-size) var(--corner-size) 0 0;
   box-shadow: var(--shadow-elevated);
 
+  // Safari-only ghosting fix. When selected, this bar translates up beyond the
+  // card outside 'contain: size layout' box tldraw draws. Deleting the card
+  // while selected can cause the bug. By forcing it to have its own composited
+  // layer makes WebKit track and discard on removal, clearing the ghost
+  will-change: transform;
+
   @include prefers-motion {
     transition: transform 0.3s $ease-out;
   }
