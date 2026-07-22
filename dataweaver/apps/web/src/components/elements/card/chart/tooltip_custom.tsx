@@ -34,6 +34,7 @@ export const TooltipCustom = ({
     <div className={styles.tooltip}>
       {payload.map((entry, index) => {
         const color = isMulti ? getSeriesColor(index) : entry.color;
+        const entryUnit = series?.[index]?.unit ?? unit;
         return (
           <div key={entry.dataKey ?? index} className={styles.entry}>
             {isMulti && color && (
@@ -43,7 +44,7 @@ export const TooltipCustom = ({
               />
             )}
             <span className={styles.value}>
-              {formatChartValue(Number(entry.value), unit, 'standard')}
+              {formatChartValue(Number(entry.value), entryUnit, 'standard')}
             </span>
           </div>
         );
