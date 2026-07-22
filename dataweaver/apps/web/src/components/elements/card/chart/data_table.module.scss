@@ -1,3 +1,8 @@
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
 .table {
   @include type-label-small;
 
@@ -22,7 +27,23 @@
 }
 
 .table th {
-  padding-top: 16px;
+  padding-top: 17px;
   background-color: rgb(var(--color-card-table-head));
   box-shadow: inset 0 -1px 0 rgb(var(--color-card-border-divider));
+}
+
+.table.is-multi {
+  th {
+    padding-top: 4px;
+  }
+
+  .place-name {
+    @include type-label-medium(false);
+
+    padding: 17px 8px 8px;
+    font-weight: 700;
+    text-align: left;
+    background-color: rgb(var(--color-card-table-head));
+    box-shadow: inset 0 -1px 0 rgb(var(--color-card-border-divider));
+  }
 }

@@ -29,6 +29,8 @@
 }
 
 .facet-selectors-container {
+  position: relative;
+  z-index: $z-index-overlay;
   display: flex;
   flex-direction: column;
   gap: 18px;

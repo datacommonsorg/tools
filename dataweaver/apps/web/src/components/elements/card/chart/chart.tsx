@@ -266,7 +266,7 @@ export const CardChart = ({
                   {
                     icon: IconTable,
                     label: 'Table',
-                    children: <DataTable data={chartSeries[0]?.data ?? []} />,
+                    children: <DataTable series={chartSeries} />,
                   },
                 ]}
               />

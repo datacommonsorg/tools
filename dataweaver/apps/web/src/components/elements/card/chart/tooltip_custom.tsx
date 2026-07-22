@@ -34,7 +34,6 @@ export const TooltipCustom = ({
     <div className={styles.tooltip}>
       {payload.map((entry, index) => {
         const color = isMulti ? getSeriesColor(index) : entry.color;
-        const name = isMulti ? series[index]?.label : undefined;
         return (
           <div key={entry.dataKey ?? index} className={styles.entry}>
             {isMulti && color && (
