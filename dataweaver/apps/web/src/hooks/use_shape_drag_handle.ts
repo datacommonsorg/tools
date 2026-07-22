@@ -19,11 +19,11 @@ export const useShapeDragHandle = (
 
   return useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      // Ignore if trigger was not primary button drags
-      if (event.button !== 0) return;
-
       // Prevent the event from bubbling to the canvas
       event.stopPropagation();
+
+      // Ignore if trigger was not primary button drags
+      if (event.button !== 0) return;
 
       const origins = getShapeIds().flatMap((id) => {
         const shape = editor.getShape(id);
@@ -40,6 +40,11 @@ export const useShapeDragHandle = (
 
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
+
+      // Show the dragging cursor during drag. Note: we're matching the cursor
+      // TLDraw uses for its own drag handles
+      const previousCursor = target.style.cursor;
+      target.style.cursor = 'all-scroll';
 
       const dragged = (moveEvent: PointerEvent) => {
         moveEvent.stopPropagation();
@@ -60,6 +65,9 @@ export const useShapeDragHandle = (
         if (target.hasPointerCapture(endEvent.pointerId)) {
           target.releasePointerCapture(endEvent.pointerId);
         }
+
+        // Restore the cursor to what it was before the drag started
+        target.style.cursor = previousCursor;
 
         target.removeEventListener('pointermove', dragged);
         target.removeEventListener('pointerup', stoppedDragging);
