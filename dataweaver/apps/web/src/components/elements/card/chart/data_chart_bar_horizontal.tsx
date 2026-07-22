@@ -1,14 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
-
 import { COLORS } from '@package/tokens/ts';
+import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { formatChartValue } from '~/functions/format_chart_value';
 
 import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
+import s from './chart_container.module.scss';
 import { ChartLegend } from './chart_legend';
 import { getSeriesColor } from './chart_palette';
 import { type MergedRow, mergeSeriesData } from './merge_series_data';
@@ -21,10 +21,7 @@ const AXIS_FONT = '10px sans-serif';
 const AXIS_PADDING = 12;
 const MAX_Y_AXIS_RATIO = 0.35;
 
-function measureYAxisWidth(
-  data: MergedRow[],
-  chartWidth: number,
-): number {
+function measureYAxisWidth(data: MergedRow[], chartWidth: number): number {
   if (data.length === 0) return 60;
   let maxWidth = 0;
   if (typeof document !== 'undefined') {
@@ -129,6 +126,14 @@ const DataChartBarHorizontalInner = ({
           />
         ))}
       </BarChart>
+      {unit && (
+        <div
+          className={s['axis-label-bottom']}
+          style={{ paddingLeft: yAxisWidth }}
+        >
+          {unit}
+        </div>
+      )}
       {series.length > 1 && <ChartLegend series={series} />}
     </>
   );

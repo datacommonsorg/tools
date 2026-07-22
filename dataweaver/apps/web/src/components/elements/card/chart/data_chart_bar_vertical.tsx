@@ -15,6 +15,7 @@ import { formatChartValue } from '~/functions/format_chart_value';
 
 import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
+import s from './chart_container.module.scss';
 import { ChartLegend } from './chart_legend';
 import { getSeriesColor } from './chart_palette';
 import { mergeSeriesData } from './merge_series_data';
@@ -71,48 +72,51 @@ export const DataChartBarVertical = ({ series }: ChartProps) => {
     <ChartContainer aspect={1.78}>
       {(width, height) => (
         <>
-          <BarChart
-            data={mergedData}
-            width={width}
-            height={height}
-            margin={{ top: 32, right: 0, bottom: 0, left: 0 }}
-          >
-            <CartesianGrid
-              stroke={GRID_COLOR}
-              vertical={false}
-              x={0}
+          <div style={{ position: 'relative' }}>
+            <BarChart
+              data={mergedData}
               width={width}
-            />
-            <XAxis
-              dataKey="date"
-              tickLine={{ stroke: AXIS_COLOR }}
-              axisLine={false}
-              tick={{ fontSize: 10, fill: AXIS_COLOR }}
-              tickMargin={6}
-              padding={{ left: 0, right: 4 }}
-            />
-            <YAxis
-              width="auto"
-              tickLine={false}
-              axisLine={false}
-              tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-              tickFormatter={(value) => formatChartValue(Number(value), unit)}
-            />
-            <FullWidthAxisLine />
-            <Tooltip
-              cursor={<CustomCursor />}
-              content={<TooltipCustom series={series} unit={unit} />}
-            />
-            {series.map((s, i) => (
-              <Bar
-                key={s.key}
-                dataKey={`value_${i}`}
-                name={s.label}
-                fill={getSeriesColor(i)}
-                radius={[2, 2, 0, 0]}
+              height={height}
+              margin={{ top: 32, right: 0, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid
+                stroke={GRID_COLOR}
+                vertical={false}
+                x={0}
+                width={width}
               />
-            ))}
-          </BarChart>
+              <XAxis
+                dataKey="date"
+                tickLine={{ stroke: AXIS_COLOR }}
+                axisLine={false}
+                tick={{ fontSize: 10, fill: AXIS_COLOR }}
+                tickMargin={6}
+                padding={{ left: 0, right: 4 }}
+              />
+              <YAxis
+                width="auto"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
+                tickFormatter={(value) => formatChartValue(Number(value), unit)}
+              />
+              <FullWidthAxisLine />
+              <Tooltip
+                cursor={<CustomCursor />}
+                content={<TooltipCustom series={series} unit={unit} />}
+              />
+              {series.map((s, i) => (
+                <Bar
+                  key={s.key}
+                  dataKey={`value_${i}`}
+                  name={s.label}
+                  fill={getSeriesColor(i)}
+                  radius={[2, 2, 0, 0]}
+                />
+              ))}
+            </BarChart>
+            {unit && <span className={s['axis-label-left']}>{unit}</span>}
+          </div>
           {series.length > 1 && <ChartLegend series={series} />}
         </>
       )}

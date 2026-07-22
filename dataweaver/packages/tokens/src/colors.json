@@ -112,6 +112,7 @@
   "card-action-base-hover": "$surface-raised",
   "card-action-content-hover": "$accent",
   "card-accent-subtle": "$accent-subtle",
+  "card-chart-axis-label": "$content-dimmed",
 
   "select-surface": "$card-surface",
   "select-border": [196, 199, 197],
