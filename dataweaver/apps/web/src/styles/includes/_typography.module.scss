@@ -1,4 +1,5 @@
 @use "sass:list";
+@use "./breakpoints.module" as breakpoints;
 
 @mixin -font-weight-google-sans($font-weight, $supportedFontWeights) {
   @if not list.index($supportedFontWeights, $font-weight) {
@@ -17,9 +18,13 @@
 }
 
 @mixin type-display {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 500;
   line-height: 1.2;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 32px;
+  }
 }
 
 $-supported-headline-font-weights: 400, 700;
@@ -30,8 +35,12 @@ $-supported-headline-font-weights: 400, 700;
     $-supported-headline-font-weights
   );
 
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.2;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 20px;
+  }
 }
 
 $-supported-title-font-weights: 500, 700;
@@ -42,8 +51,12 @@ $-supported-title-font-weights: 500, 700;
     $-supported-title-font-weights
   );
 
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.4;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 16px;
+  }
 }
 
 $-supported-body-font-weights: 400, 500;
@@ -54,8 +67,12 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.4;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 18px;
+  }
 }
 
 @mixin type-body-medium($font-weight: 400) {
@@ -64,8 +81,12 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.4;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 14px;
+  }
 }
 
 @mixin type-body-small($font-weight: 400) {
@@ -80,9 +101,13 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-large($has-text-box-trim: true) {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 16px;
+  }
 
   @if $has-text-box-trim {
     text-box: trim-both cap alphabetic;
@@ -90,9 +115,13 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-medium($has-text-box-trim: true) {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 14px;
+  }
 
   @if $has-text-box-trim {
     text-box: trim-both cap alphabetic;

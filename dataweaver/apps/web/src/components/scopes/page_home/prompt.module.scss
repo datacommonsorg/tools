@@ -59,8 +59,12 @@
   display: flex;
   flex-direction: column;
   grid-area: 1 / 1;
-  row-gap: 24px;
+  row-gap: 18px;
   padding: 28px 24px 16px;
+
+  @include breakpoint(tablet) {
+    row-gap: 24px;
+  }
 }
 
 .input {

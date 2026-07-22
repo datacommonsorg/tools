@@ -177,8 +177,13 @@
 
 .icon {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+
+  @include breakpoint(tablet) {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 .children {
