@@ -44,6 +44,10 @@
   height: 100%;
   overflow: clip;
 
+  &.allow-overflow {
+    overflow: visible;
+  }
+
   // Dragging the card is reserved for the actions bar, so the content is a
   // freely selectable text surface rather than a drag handle (this overrides
   // tldraw's default move cursor on shapes)

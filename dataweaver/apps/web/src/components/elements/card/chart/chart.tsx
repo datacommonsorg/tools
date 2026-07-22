@@ -7,6 +7,7 @@ import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
 
 import type { CardState } from '~/components/elements/card/base';
+import baseStyles from '~/components/elements/card/base.module.scss';
 import { useCardAutoHeight } from '~/components/elements/card/use_card_auto_height';
 import { Skeleton } from '~/components/elements/skeleton';
 import { IconBarChartOutlined } from '~/components/primitives/icons/bar_chart_outlined';
@@ -169,6 +170,7 @@ export const CardChart = ({
     <Card.Base
       id={id}
       childrenContainerRef={baseChildrenContainerRef}
+      childrenClassName={baseStyles['allow-overflow']}
       isLoading={isLoading}
       selection={selection}
       actions={[

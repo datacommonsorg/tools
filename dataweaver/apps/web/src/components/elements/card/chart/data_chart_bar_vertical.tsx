@@ -76,13 +76,12 @@ export const DataChartBarVertical = ({ series }: ChartProps) => {
             width={width}
             height={height}
             margin={{ top: 32, right: 0, bottom: 0, left: 0 }}
-            style={{ overflow: 'hidden' }}
           >
             <CartesianGrid
               stroke={GRID_COLOR}
               vertical={false}
               x={0}
-              width={9999}
+              width={width}
             />
             <XAxis
               dataKey="date"
