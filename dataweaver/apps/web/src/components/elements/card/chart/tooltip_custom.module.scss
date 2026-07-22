@@ -1,7 +1,8 @@
 .tooltip {
-  @include type-label-large;
+  @include type-label-medium(false);
 
   padding: 10px 12px;
+  font-weight: 700;
   color: rgb(var(--color-card-content));
   background-color: rgb(var(--color-card-surface));
   border-radius: 8px;
@@ -12,8 +13,9 @@
   }
 
   .label {
-    @include type-label-small;
+    @include type-label-small(false);
 
     margin-bottom: 2px;
+    color: rgb(var(--color-card-chart-tooltip-date));
   }
 }
