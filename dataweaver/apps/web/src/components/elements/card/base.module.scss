@@ -22,7 +22,8 @@
   box-shadow: var(--shadow-elevated);
 
   &:active {
-    cursor: grabbing;
+    // Note: This matches TLDraw dragging cursor
+    cursor: all-scroll;
   }
 
   @include prefers-motion {

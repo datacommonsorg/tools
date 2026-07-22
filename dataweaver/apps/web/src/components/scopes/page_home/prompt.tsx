@@ -76,17 +76,28 @@ export const Prompt = ({
         <div className={s['button-row-container']}>
           <ul className={s['tags-container']}>
             <AnimatePresence initial={false} mode="wait">
-              {tags.map((tag) => (
-                <m.li
-                  key={tag.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, ease: EASE_LINEAR }}
-                >
-                  <Tag label={tag.title} />
-                </m.li>
-              ))}
+              <m.ul
+                key={tags[0] ? tags[0].id : 'empty'}
+                className={s['tags-container']}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: EASE_LINEAR }}
+              >
+                <AnimatePresence>
+                  {tags.map((tag) => (
+                    <m.li
+                      key={tag.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2, ease: EASE_LINEAR }}
+                    >
+                      <Tag label={tag.title} />
+                    </m.li>
+                  ))}
+                </AnimatePresence>
+              </m.ul>
             </AnimatePresence>
           </ul>
 

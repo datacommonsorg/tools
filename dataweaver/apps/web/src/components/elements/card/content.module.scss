@@ -15,16 +15,23 @@
   }
 
   [data-has-scrolled="true"] & {
-    border-bottom-color: rgb(var(--color-card-divider));
+    border-bottom-color: rgb(var(--color-card-scroll-divider));
   }
 }
 
 .children-outer-container {
   flex-grow: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: none;
-  scrollbar-width: thin;
+
+  &[data-can-scroll="false"] {
+    overflow-y: hidden;
+  }
+
+  &[data-can-scroll="true"] {
+    overflow-y: auto;
+    overscroll-behavior: none;
+    scrollbar-width: thin;
+  }
 }
 
 .children-inner-container {

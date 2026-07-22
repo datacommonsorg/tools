@@ -1,10 +1,5 @@
 import { useCallback, useRef } from 'react';
 import { useEditor, useQuickReactor, useValue } from 'tldraw';
-import { Button } from '~/components/elements/button';
-import { IconDelete } from '~/components/primitives/icons/delete';
-import { IconExport } from '~/components/primitives/icons/export';
-import { useExportActions } from '~/components/scopes/atlas/export_provider';
-import s from './selection.module.scss';
 
 /** Screen-space margin the selection box extends past the cards, in pixels. */
 const INSET_SIDES_AND_BOTTOM = 16;
@@ -12,15 +7,20 @@ const INSET_SIDES_AND_BOTTOM = 16;
 /** Larger top margin, leaving room to seat the action panel above the cards. */
 const INSET_TOP = 60;
 
-export const Selection = () => {
+/**
+ * Tracks the multi-selection box: whether it should show (more than one shape
+ * selected) and where. Returns a ref callback that seats the box over the
+ * selection and keeps it there as the canvas pans/zooms.
+ */
+export const useSelectionPosition = () => {
   const editor = useEditor();
-  const { open: openExport } = useExportActions();
-
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const hasMultipleSelected = useValue('multi-selection-active', () => {
-    return editor.getSelectedShapeIds().length > 1;
-  }, [editor]);
+  const hasMultipleSelected = useValue(
+    'multi-selection-active',
+    () => editor.getSelectedShapeIds().length > 1,
+    [editor],
+  );
 
   const position = useCallback(() => {
     const bounds = editor.getSelectionPageBounds();
@@ -52,34 +52,5 @@ export const Selection = () => {
     [position],
   );
 
-  return (
-    hasMultipleSelected && (
-      <div ref={setContainer} className={s.container}>
-        <div
-          className={s['actions-container']}
-          role="toolbar"
-          aria-label="Selection actions"
-        >
-          <Button
-            icon={IconExport}
-            size="large"
-            variant="flat"
-            tone="card-action"
-            aria-label="Export"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={openExport}
-          />
-          <Button
-            icon={IconDelete}
-            size="large"
-            variant="flat"
-            tone="card-action"
-            aria-label="Delete"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => editor.deleteShapes(editor.getSelectedShapeIds())}
-          />
-        </div>
-      </div>
-    )
-  );
+  return { hasMultipleSelected, setContainer };
 };

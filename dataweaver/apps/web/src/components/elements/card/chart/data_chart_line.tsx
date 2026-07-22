@@ -11,6 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 
+import { formatChartValue } from '~/functions/format_chart_value';
+
 import type { ChartDatum } from './chart';
 import { ChartContainer } from './chart_container';
 import { TooltipCustom } from './tooltip_custom';
@@ -22,11 +24,8 @@ const DOT_COLOR = `rgb(${COLORS['card-surface']})`;
 
 interface ChartProps {
   data: ChartDatum[];
+  unit?: string;
 }
-
-const compactFormatter = new Intl.NumberFormat(undefined, {
-  notation: 'compact',
-});
 
 const CustomCursor = (props: {
   points?: { x: number; y: number }[];
@@ -65,7 +64,7 @@ const FullWidthAxisLine = () => {
   );
 };
 
-export const DataChartLine = ({ data }: ChartProps) => {
+export const DataChartLine = ({ data, unit }: ChartProps) => {
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
@@ -95,10 +94,13 @@ export const DataChartLine = ({ data }: ChartProps) => {
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-            tickFormatter={(value) => compactFormatter.format(Number(value))}
+            tickFormatter={(value) => formatChartValue(Number(value), unit)}
           />
           <FullWidthAxisLine />
-          <Tooltip cursor={<CustomCursor />} content={<TooltipCustom />} />
+          <Tooltip
+            cursor={<CustomCursor />}
+            content={<TooltipCustom unit={unit} />}
+          />
           <Line
             type="monotone"
             dataKey="value"
