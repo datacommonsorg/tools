@@ -8,10 +8,17 @@ import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
 import { deduplicateStrings } from '~/functions/deduplicate_strings';
 import { extractJson } from '~/functions/extract_json';
 import { shuffleArray } from '~/functions/shuffle_array';
+import {
+  buildPlaceSummaries,
+  comparePlaces,
+} from '~/server/steps/compare_places';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
 import { fetchTimeSeries } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
-import { renderResultHtml } from '~/server/steps/render_result_html';
+import {
+  renderComparisonHtml,
+  renderResultHtml,
+} from '~/server/steps/render_result_html';
 import { checkPromptSafety } from '~/server/steps/safety';
 import {
   type FollowUp,
@@ -146,6 +153,8 @@ export async function POST(request: NextRequest) {
           followUp: FollowUp;
         }> = [];
         let emittedResultCount = 0;
+        const isMultiPlace = places.length > 1;
+        const collectedResults: QueryResult[] = [];
 
         // Process each place
         for (let i = 0; i < places.length; i++) {
@@ -285,7 +294,12 @@ export async function POST(request: NextRequest) {
 
           const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
           discoveryResult.tableHtml = tableHtml;
-          discoveryResult.notesHtml = notesHtml;
+
+          // For multi-place queries, omit per-place notesHtml — a single
+          // comparison card will be generated in the post-loop step instead.
+          if (!isMultiPlace) {
+            discoveryResult.notesHtml = notesHtml;
+          }
 
           emit({
             type: STREAM_EVENT.queryResult,
@@ -293,6 +307,33 @@ export async function POST(request: NextRequest) {
             place,
           });
           emittedResultCount++;
+          collectedResults.push(discoveryResult);
+        }
+
+        // ─── Post-loop: cross-place comparison ─────────────────────────
+        if (collectedResults.length > 1 && !signal.aborted) {
+          emit({
+            type: STREAM_EVENT.status,
+            message: STATUS.comparingPlaces,
+          });
+
+          try {
+            const summaries = buildPlaceSummaries(collectedResults);
+            const comparisonResult = await comparePlaces({
+              query,
+              topic: parsed.topic,
+              summaries,
+            });
+            comparisonResult.notesHtml = renderComparisonHtml(comparisonResult);
+
+            emit({
+              type: STREAM_EVENT.comparisonResult,
+              result: comparisonResult,
+            });
+          } catch (err: unknown) {
+            // Comparison is non-critical — log and continue without it.
+            console.warn('[comparison] Cross-place comparison failed:', err);
+          }
         }
 
         // ─── Post-loop: synthesize a single follow-up if needed ──────────

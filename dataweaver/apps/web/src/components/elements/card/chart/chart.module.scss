@@ -6,7 +6,6 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  overflow: clip;
 }
 
 // Inner content container — natural height when chart is active (for
@@ -26,6 +25,15 @@
     flex-shrink: 1;
     height: 100%;
   }
+}
+
+.facet-selectors-container {
+  position: relative;
+  z-index: $z-index-overlay;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-block: 18px;
 }
 
 .header-container {

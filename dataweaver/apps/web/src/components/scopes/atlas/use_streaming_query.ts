@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  type CombineStreamRequest,
   type QueryStreamRequest,
   STATUS,
   STREAM_EVENT,
@@ -70,124 +71,130 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
     };
   }, []);
 
-  const start = useCallback(async (params: QueryStreamRequest) => {
-    setState({
-      status: STATUS.connecting,
-      isComplete: false,
-      error: null,
-    });
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const res = await fetch('/api/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-        signal: controller.signal,
+  const start = useCallback(
+    async (
+      params: QueryStreamRequest | CombineStreamRequest,
+      endpoint = '/api/query',
+    ) => {
+      setState({
+        status: STATUS.connecting,
+        isComplete: false,
+        error: null,
       });
 
-      if (controller.signal.aborted) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(STATUS.apiError(res.status, errBody));
-      }
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+          signal: controller.signal,
+        });
 
-      const reader = res.body?.getReader();
-      if (!reader) {
-        throw new Error(STATUS.noResponseBody);
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      let isTerminalReached = false;
-      const handleEvent = (event: StreamEvent) => {
         if (controller.signal.aborted) return;
 
-        switch (event.type) {
-          case STREAM_EVENT.status:
-            setState((prev) => ({ ...prev, status: event.message }));
-            break;
-          case STREAM_EVENT.complete:
-            isTerminalReached = true;
-            setState((prev) => ({
-              ...prev,
-              status: STATUS.complete,
-              isComplete: true,
-            }));
-            break;
-          case STREAM_EVENT.error:
-            isTerminalReached = true;
-            setState((prev) => ({
-              ...prev,
-              error: event.message,
-              isComplete: true,
-            }));
-            break;
+        if (!res.ok) {
+          const errBody = await res.text();
+          throw new Error(STATUS.apiError(res.status, errBody));
         }
-        // Forward every event to the caller
-        onEventRef.current?.(event);
-      };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done || controller.signal.aborted) break;
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error(STATUS.noResponseBody);
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-        const { events, remainder } = parseSSEChunk(buffer);
-        buffer = remainder;
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-        for (const event of events) {
-          handleEvent(event);
+        let isTerminalReached = false;
+        const handleEvent = (event: StreamEvent) => {
+          if (controller.signal.aborted) return;
+
+          switch (event.type) {
+            case STREAM_EVENT.status:
+              setState((prev) => ({ ...prev, status: event.message }));
+              break;
+            case STREAM_EVENT.complete:
+              isTerminalReached = true;
+              setState((prev) => ({
+                ...prev,
+                status: STATUS.complete,
+                isComplete: true,
+              }));
+              break;
+            case STREAM_EVENT.error:
+              isTerminalReached = true;
+              setState((prev) => ({
+                ...prev,
+                error: event.message,
+                isComplete: true,
+              }));
+              break;
+          }
+          // Forward every event to the caller
+          onEventRef.current?.(event);
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || controller.signal.aborted) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const { events, remainder } = parseSSEChunk(buffer);
+          buffer = remainder;
+
+          for (const event of events) {
+            handleEvent(event);
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim() && !controller.signal.aborted) {
+          const { events } = parseSSEChunk(`${buffer}\n\n`);
+          for (const event of events) {
+            handleEvent(event);
+          }
+        }
+
+        if (!controller.signal.aborted && !isTerminalReached) {
+          onEventRef.current?.({
+            type: STREAM_EVENT.complete,
+            message: STATUS.complete,
+          });
+          setState((prev) => ({
+            ...prev,
+            status: STATUS.complete,
+            isComplete: true,
+          }));
+        }
+      } catch (err: unknown) {
+        const error =
+          err instanceof Error
+            ? {
+                name: err.name,
+                message: err.message,
+              }
+            : null;
+
+        if (error && error.name !== 'AbortError') {
+          // Synthesize an error event so the provider can clean up store state.
+          onEventRef.current?.({
+            type: STREAM_EVENT.error,
+            message: error.message,
+          });
+          setState((prev) => ({
+            ...prev,
+            error: error.message,
+            isComplete: true,
+          }));
         }
       }
-
-      // Process any remaining buffer
-      if (buffer.trim() && !controller.signal.aborted) {
-        const { events } = parseSSEChunk(`${buffer}\n\n`);
-        for (const event of events) {
-          handleEvent(event);
-        }
-      }
-
-      if (!controller.signal.aborted && !isTerminalReached) {
-        onEventRef.current?.({
-          type: STREAM_EVENT.complete,
-          message: STATUS.complete,
-        });
-        setState((prev) => ({
-          ...prev,
-          status: STATUS.complete,
-          isComplete: true,
-        }));
-      }
-    } catch (err: unknown) {
-      const error =
-        err instanceof Error
-          ? {
-              name: err.name,
-              message: err.message,
-            }
-          : null;
-
-      if (error && error.name !== 'AbortError') {
-        // Synthesize an error event so the provider can clean up store state.
-        onEventRef.current?.({
-          type: STREAM_EVENT.error,
-          message: error.message,
-        });
-        setState((prev) => ({
-          ...prev,
-          error: error.message,
-          isComplete: true,
-        }));
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   const abort = useCallback(() => {
     abortRef.current?.abort();

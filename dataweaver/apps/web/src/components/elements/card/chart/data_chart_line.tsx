@@ -13,18 +13,20 @@ import {
 
 import { formatChartValue } from '~/functions/format_chart_value';
 
-import type { ChartDatum } from './chart';
+import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
+import s from './chart_container.module.scss';
+import { ChartLegend } from './legend';
+import { type MergedRow, mergeSeriesData } from './merge_series_data';
+import { getSeriesColor } from './palette';
 import { TooltipCustom } from './tooltip_custom';
 
-const LINE_COLOR = `rgb(${COLORS['card-chart-line']})`;
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
 const DOT_COLOR = `rgb(${COLORS['card-surface']})`;
 
 interface ChartProps {
-  data: ChartDatum[];
-  unit?: string;
+  series: ChartSeries[];
 }
 
 const CustomCursor = (props: {
@@ -64,63 +66,82 @@ const FullWidthAxisLine = () => {
   );
 };
 
-export const DataChartLine = ({ data, unit }: ChartProps) => {
+export const DataChartLine = ({ series }: ChartProps) => {
+  const mergedData: MergedRow[] = mergeSeriesData(series);
+  const totalPoints = series.reduce((sum, entry) => sum + entry.data.length, 0);
+  const unit = series[0]?.unit;
+
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
-        <LineChart
-          data={data}
-          width={width}
-          height={height}
-          margin={{ top: 32, right: 0, bottom: 0, left: 0 }}
-          style={{ overflow: 'hidden' }}
-        >
-          <CartesianGrid
-            stroke={GRID_COLOR}
-            vertical={false}
-            x={0}
-            width={9999}
-          />
-          <XAxis
-            dataKey="date"
-            tickLine={{ stroke: AXIS_COLOR }}
-            axisLine={false}
-            tick={{ fontSize: 10, fill: AXIS_COLOR }}
-            tickMargin={6}
-            padding={{ left: 0, right: 10 }}
-          />
-          <YAxis
-            width="auto"
-            tickLine={false}
-            axisLine={false}
-            tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
-            tickFormatter={(value) => formatChartValue(Number(value), unit)}
-          />
-          <FullWidthAxisLine />
-          <Tooltip
-            cursor={<CustomCursor />}
-            content={<TooltipCustom unit={unit} />}
-          />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={LINE_COLOR}
-            strokeWidth={1}
-            dot={
-              data.length > 15
-                ? false
-                : {
-                    r: 3,
-                    fill: DOT_COLOR,
-                  }
-            }
-            activeDot={{
-              fill: LINE_COLOR,
-              stroke: LINE_COLOR,
-              strokeWidth: 1,
-            }}
-          />
-        </LineChart>
+        <>
+          <div className={s['chart-wrapper']}>
+            <LineChart
+              data={mergedData}
+              width={width}
+              height={height}
+              margin={{
+                top: 32,
+                right: 0,
+                bottom: 0,
+                left: 0,
+              }}
+            >
+              <CartesianGrid
+                stroke={GRID_COLOR}
+                vertical={false}
+                x={0}
+                width={width}
+              />
+              <XAxis
+                dataKey="date"
+                tickLine={{ stroke: AXIS_COLOR }}
+                axisLine={false}
+                tick={{ fontSize: 10, fill: AXIS_COLOR }}
+                tickMargin={6}
+                padding={{ left: 0, right: 10 }}
+              />
+              <YAxis
+                width="auto"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}
+                tickFormatter={(value) => formatChartValue(Number(value), unit)}
+              />
+              <FullWidthAxisLine />
+              <Tooltip
+                cursor={<CustomCursor />}
+                content={<TooltipCustom series={series} unit={unit} />}
+              />
+              {series.map((entry, i) => {
+                const color = getSeriesColor(i);
+                return (
+                  <Line
+                    key={entry.key}
+                    type="monotone"
+                    dataKey={`value_${i}`}
+                    name={entry.label}
+                    stroke={color}
+                    strokeWidth={1}
+                    connectNulls={entry.connectNulls ?? false}
+                    dot={
+                      totalPoints / series.length > 15
+                        ? false
+                        : { r: 3, fill: DOT_COLOR }
+                    }
+                    activeDot={{
+                      fill: color,
+                      stroke: color,
+                      strokeWidth: 1,
+                    }}
+                  />
+                );
+              })}
+            </LineChart>
+            {unit && <span className={s['axis-label-left']}>{unit}</span>}
+          </div>
+          {series.length > 1 && <ChartLegend series={series} />}
+        </>
       )}
     </ChartContainer>
   );
