@@ -21,12 +21,16 @@ const AXIS_FONT = '10px sans-serif';
 const AXIS_PADDING = 12;
 const MAX_Y_AXIS_RATIO = 0.35;
 
+let memoizedCanvas: HTMLCanvasElement | null = null;
+
 function measureYAxisWidth(data: MergedRow[], chartWidth: number): number {
   if (data.length === 0) return 60;
   let maxWidth = 0;
   if (typeof document !== 'undefined') {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    if (!memoizedCanvas) {
+      memoizedCanvas = document.createElement('canvas');
+    }
+    const ctx = memoizedCanvas.getContext('2d');
     if (ctx) {
       ctx.font = AXIS_FONT;
       for (const row of data) {

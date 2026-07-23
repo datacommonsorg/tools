@@ -44,7 +44,9 @@ export const TooltipCustom = ({
               />
             )}
             <span className={styles.value}>
-              {formatChartValue(Number(entry.value), entryUnit, 'standard')}
+              {entry.value !== null && entry.value !== undefined
+                ? formatChartValue(Number(entry.value), entryUnit, 'standard')
+                : '—'}
             </span>
           </div>
         );

@@ -70,12 +70,13 @@ export const deriveComparisonChartContent = (
     const observations = ts?.facets[0]?.observations;
     if (!observations || observations.length === 0) continue;
 
-    const placeName = result.entities[0]?.name ?? result.entities[0]?.dcid;
-    const placeDcid = result.entities[0]?.dcid ?? '';
+    const entity = result.entities[0];
+    const placeDcid = entity?.dcid ?? result.id;
+    const placeName = entity?.name ?? entity?.dcid ?? result.title;
 
     series.push({
       key: placeDcid,
-      label: placeName ?? placeDcid,
+      label: placeName,
       data: observations,
     });
 
