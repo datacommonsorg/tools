@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { QueryResult } from '~/server/types';
+import type { ComparisonResult, QueryResult } from '~/server/types';
 
 /**
  * Build a set of variable DCIDs that have time-series data in the result.
@@ -92,4 +92,25 @@ export const renderResultHtml = (
     tableHtml: buildTableHtml(result),
     notesHtml: buildNotesHtml(result),
   };
+};
+
+/** Render comparison notes HTML from a ComparisonResult. */
+export const renderComparisonHtml = (comparison: ComparisonResult): string => {
+  let md = '';
+
+  if (comparison.coverage) {
+    md += `${comparison.coverage}\n\n`;
+  }
+  if (comparison.introduction) {
+    md += `${comparison.introduction}\n\n`;
+  }
+
+  if (comparison.insights && comparison.insights.length > 0) {
+    md += '### Comparative insights\n\n';
+    for (const insight of comparison.insights) {
+      md += `- **${insight.title}**: ${insight.text}\n`;
+    }
+  }
+
+  return marked.parse(md) as string;
 };

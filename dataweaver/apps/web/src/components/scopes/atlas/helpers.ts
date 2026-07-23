@@ -21,7 +21,10 @@ interface TableContent
 
 interface ChartContent
   extends BaseContent,
-    Pick<CardChartProps, 'title' | 'description' | 'data' | 'facets'> {
+    Pick<
+      CardChartProps,
+      'title' | 'description' | 'data' | 'series' | 'facets' | 'seriesFacets'
+    > {
   variant: 'chart';
 }
 
@@ -79,7 +82,9 @@ export const contentToShape = (
         title: content.title,
         description: content.description,
         data: content.data,
+        series: content.series,
         facets: content.facets,
+        seriesFacets: content.seriesFacets,
       },
     };
   }

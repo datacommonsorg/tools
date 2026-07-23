@@ -49,6 +49,14 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     description: T.string.optional(),
     body: T.string.optional(),
     data: T.arrayOf(T.object({ date: T.string, value: T.number })).optional(),
+    series: T.arrayOf(
+      T.object({
+        key: T.string,
+        label: T.string,
+        data: T.arrayOf(T.object({ date: T.string, value: T.number })),
+        connectNulls: T.boolean.optional(),
+      }),
+    ).optional(),
     facets: T.arrayOf(
       T.object({
         facetId: T.string,
@@ -61,6 +69,24 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
         measurementMethod: T.string.optional(),
         observations: T.arrayOf(T.object({ date: T.string, value: T.number })),
       }),
+    ).optional(),
+    seriesFacets: T.dict(
+      T.string,
+      T.arrayOf(
+        T.object({
+          facetId: T.string,
+          source: T.string,
+          sourceUrl: T.string,
+          unit: T.string,
+          earliestDate: T.string,
+          latestDate: T.string,
+          observationCount: T.number,
+          measurementMethod: T.string.optional(),
+          observations: T.arrayOf(
+            T.object({ date: T.string, value: T.number }),
+          ),
+        }),
+      ),
     ).optional(),
     isLoading: T.boolean.optional(),
     isManuallyResized: T.boolean.optional(),
@@ -89,8 +115,17 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   // Each card variant owns its own actions, content and footer; the shape just
   // hands it the state and content it needs to render itself.
   #renderCard = (shape: ShapeCard) => {
-    const { variant, title, description, body, data, facets, relatedQueries } =
-      shape.props;
+    const {
+      variant,
+      title,
+      description,
+      body,
+      data,
+      series,
+      facets,
+      seriesFacets,
+      relatedQueries,
+    } = shape.props;
 
     const isLoading = shape.props.isLoading ?? false;
     const selection = this.#getSelectionState(shape);
@@ -117,7 +152,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           title={title}
           description={description}
           data={data}
+          series={series}
           facets={facets}
+          seriesFacets={seriesFacets}
           relatedQueries={relatedQueries}
         />
       );

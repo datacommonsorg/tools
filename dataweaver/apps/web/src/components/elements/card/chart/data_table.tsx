@@ -1,31 +1,41 @@
-import type { ChartDatum } from './chart';
+import { formatChartValue } from '~/functions/format_chart_value';
+import type { ChartSeries } from './chart';
 import s from './data_table.module.scss';
 
 interface DataTableProps {
-  data: ChartDatum[];
+  series: ChartSeries[];
 }
 
-const numberFormatter = new Intl.NumberFormat(undefined, {
-  notation: 'standard',
-});
+export const DataTable = ({ series }: DataTableProps) => {
+  const isMulti = series.length > 1;
 
-export const DataTable = ({ data }: DataTableProps) => {
   return (
-    <table className={s.table}>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Value</th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.map(({ date, value }) => (
-          <tr key={date}>
-            <td>{date}</td>
-            <td>{numberFormatter.format(value)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className={s.container}>
+      {series.map((entry) => (
+        <table key={entry.key} className={s.table} data-is-multi={isMulti}>
+          <thead>
+            {isMulti && (
+              <tr>
+                <th colSpan={2} className={s['place-name']}>
+                  {entry.label}
+                </th>
+              </tr>
+            )}
+            <tr>
+              <th>Date</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entry.data.map(({ date, value }) => (
+              <tr key={date}>
+                <td>{date}</td>
+                <td>{formatChartValue(value, entry.unit, 'standard')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </div>
   );
 };

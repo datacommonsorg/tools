@@ -1,7 +1,7 @@
 .container {
   position: absolute;
   inset: 0;
-  z-index: $z-index-above-content;
+  z-index: $z-index-overlay;
   display: grid;
   background: rgb(var(--color-card-accent-subtle) / 30%);
 }

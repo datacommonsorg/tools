@@ -10,7 +10,12 @@ import {
 } from 'react';
 import { toast } from '~/components/foundations/toaster/store';
 
-import type { CardEntry, FollowUpContext, StreamEvent } from '~/server/types';
+import type {
+  CardEntry,
+  CombineStreamRequest,
+  FollowUpContext,
+  StreamEvent,
+} from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
@@ -45,6 +50,13 @@ interface ActiveQuery {
   cardIds: string[];
 }
 
+const COMBINE_KEYWORDS =
+  /\b(combine|merge|put together|into one|single chart|one chart|unified chart|together in one)\b/i;
+
+/** Detect whether the prompt intends to combine selected charts. */
+const isCombineIntent = (prompt: string): boolean =>
+  COMBINE_KEYWORDS.test(prompt);
+
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const { editor } = useAtlas();
 
@@ -63,6 +75,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       nodeSetParsedQuery,
       querySetStatus,
       nodeAddResult,
+      nodeSetComparison,
       nodeSetFollowUp,
       cardRegisterBatch,
       queryComplete,
@@ -84,7 +97,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const { result, place } = event;
         const entityDcid = result.entities[0]?.dcid ?? place;
 
-        console.log('EVENT', event);
         // Write the query result data to the history node.
         nodeAddResult(active.nodeId, entityDcid, result);
 
@@ -96,27 +108,75 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
             type: 'table',
             placeDcid: entityDcid,
           },
-          {
+        ];
+
+        // Only register a per-place notes card when notesHtml is present.
+        // Multi-place queries omit notesHtml — a single comparison card is
+        // registered via the comparisonResult event instead.
+        if (result.notesHtml) {
+          resultEntries.push({
             shapeId: `shape:${active.nodeId}__${entityDcid}__notes`,
             historyNodeId: active.nodeId,
             type: 'notes',
             placeDcid: entityDcid,
-          },
-        ];
-
-        const firstTimeSeries = result.timeSeries[0];
-        const firstFacet = firstTimeSeries?.facets[0];
-        if (firstFacet && firstFacet.observations.length > 0) {
-          resultEntries.push({
-            shapeId: `shape:${active.nodeId}__${entityDcid}__chart`,
-            historyNodeId: active.nodeId,
-            type: 'chart',
-            placeDcid: entityDcid,
           });
+        }
+
+        // Register a per-place chart card only for single-place queries.
+        // Multi-place queries get a combined comparison chart instead.
+        const node = store.getState().nodes[active.nodeId];
+        const isMultiPlace = (node?.parsedQuery?.places.length ?? 0) > 1;
+
+        if (!isMultiPlace) {
+          const firstTimeSeries = result.timeSeries[0];
+          const firstFacet = firstTimeSeries?.facets[0];
+          if (firstFacet && firstFacet.observations.length > 0) {
+            resultEntries.push({
+              shapeId: `shape:${active.nodeId}__${entityDcid}__chart`,
+              historyNodeId: active.nodeId,
+              type: 'chart',
+              placeDcid: entityDcid,
+            });
+          }
         }
 
         cardRegisterBatch(resultEntries);
         active.cardIds.push(...resultEntries.map((e) => e.shapeId));
+
+        break;
+      }
+
+      case STREAM_EVENT.comparisonResult: {
+        const { result } = event;
+
+        // Store the comparison on the history node.
+        nodeSetComparison(active.nodeId, result);
+
+        // Register a single comparison notes card.
+        const comparisonEntries: CardEntry[] = [
+          {
+            shapeId: `shape:${active.nodeId}__comparison__notes`,
+            historyNodeId: active.nodeId,
+            type: 'notes',
+            placeDcid: '__comparison',
+          },
+        ];
+
+        // Register one comparison chart card per variable with chart metadata.
+        if (result.charts) {
+          for (const chart of result.charts) {
+            comparisonEntries.push({
+              shapeId: `shape:${active.nodeId}__comparison__chart__${chart.variableDcid}`,
+              historyNodeId: active.nodeId,
+              type: 'chart',
+              placeDcid: '__comparison',
+              variableDcid: chart.variableDcid,
+            });
+          }
+        }
+
+        cardRegisterBatch(comparisonEntries);
+        active.cardIds.push(...comparisonEntries.map((e) => e.shapeId));
 
         break;
       }
@@ -170,6 +230,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           getAncestorChain,
           getContextNodeId,
           getSelectedEntityDcids,
+          getResultsForSelectedCards,
+          nodeAddResult,
         } = store.getState();
 
         querySetProcessing(true);
@@ -178,6 +240,34 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Derive context from selected shapes
         const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
         const parentNodeId = getContextNodeId(selectedShapeIds);
+
+        // ─── Combine flow ───────────────────────────────────────────────
+        // When 2+ chart cards are selected and the prompt suggests combining,
+        // skip the full query pipeline and run only the comparison step.
+        const selectedResults = getResultsForSelectedCards(selectedShapeIds);
+        if (selectedResults.length >= 2 && isCombineIntent(prompt)) {
+          const nodeId = queryStart(prompt, null, parentNodeId);
+
+          // Pre-populate the node with per-place results so that
+          // deriveComparisonChartContent can build chart series.
+          for (const result of selectedResults) {
+            const entityDcid = result.entities[0]?.dcid;
+            if (entityDcid) {
+              nodeAddResult(nodeId, entityDcid, result);
+            }
+          }
+
+          activeQueryRef.current = { nodeId, cardIds: [] };
+
+          const combineRequest: CombineStreamRequest = {
+            query: prompt,
+            results: selectedResults,
+          };
+          startStream(combineRequest, '/api/combine');
+          return;
+        }
+
+        // ─── Standard query flow ────────────────────────────────────────
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
           query: node.query,
           topic: node.parsedQuery?.topic ?? '',
