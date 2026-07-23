@@ -20,4 +20,13 @@ export const EXAMPLE_PROMPTS = [
   'Which countries emit the most methane per capita?',
   'What are the obesity rates across OECD countries?',
   'How has trade as a percentage of GDP changed in Germany?',
+  'What are the most common bachelor’s majors in Texas?',
+  'What is the racial distribution of the USA?',
+  'Which state in the US has the most Tamil speakers?',
+  'How has the fertility rate changed globally in the last 10 years?',
+  'How has infant mortality changed in India?',
+  'What are the trends in forest area protection in Brazil?',
+  'How has access to electricity changed in Sudan?',
+  'How has the count of “no cash rent” housing units shifted in the past decade in NY?',
+  'What are the unemployment rates in Spain, France, and Germany?',
 ] as const;
