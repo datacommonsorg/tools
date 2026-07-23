@@ -8,6 +8,7 @@
   "models": {
     "parseQuery": "gemini-3.1-flash-lite",
     "dataDiscovery": "gemini-3.1-flash-lite",
+    "comparison": "gemini-3.1-flash-lite",
     "safety": "gemini-3.1-flash-lite",
     "image": "gemini-2.5-flash-image"
   },

@@ -1,12 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  type QueryStreamRequest,
-  STATUS,
-  STREAM_EVENT,
-  type StreamEvent,
-} from '~/server/types';
+import { STATUS, STREAM_EVENT, type StreamEvent } from '~/server/types';
 
 export interface StreamingQueryState {
   status: string;
@@ -70,7 +65,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
     };
   }, []);
 
-  const start = useCallback(async (params: QueryStreamRequest) => {
+  const start = useCallback(async (params: object, endpoint = '/api/query') => {
     setState({
       status: STATUS.connecting,
       isComplete: false,
@@ -82,7 +77,7 @@ export const useStreamingQuery = (onEvent?: StreamEventHandler) => {
     abortRef.current = controller;
 
     try {
-      const res = await fetch('/api/query', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
