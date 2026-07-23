@@ -17,7 +17,8 @@ import { IconPencil } from '~/components/primitives/icons/pencil';
 import { IconTable } from '~/components/primitives/icons/table';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
-import type { FacetInfo } from '~/server/types';
+import type { ChartStyle, FacetInfo } from '~/server/types';
+import { useAtlasStore } from '~/store';
 import s from './chart.module.scss';
 import { ConditionalTabs } from './conditional_tabs';
 import { DataChartBarHorizontal } from './data_chart_bar_horizontal';
@@ -25,7 +26,7 @@ import { DataChartBarVertical } from './data_chart_bar_vertical';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
-import { type ChartStyle, MenuChartOptions } from './menu_chart_options';
+import { MenuChartOptions } from './menu_chart_options';
 
 export interface ChartDatum {
   date: string;
@@ -53,6 +54,8 @@ export interface CardChartProps extends CardState {
   /** Per-series facets, keyed by series `key` (e.g. placeDcid). */
   seriesFacets?: Record<string, FacetInfo[]>;
   relatedQueries?: string[];
+  /** Persisted chart style from the store (survives export/import). */
+  chartStyle?: ChartStyle;
 }
 
 export const CardChart = ({
@@ -66,11 +69,13 @@ export const CardChart = ({
   facets,
   seriesFacets,
   relatedQueries,
+  chartStyle,
 }: CardChartProps) => {
   const editor = useEditor();
 
   const { open: openExport } = useExportActions();
   const { runPrompt } = useQueryActions();
+  const cardSetChartStyle = useAtlasStore((s) => s.cardSetChartStyle);
 
   const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
   const contentInnerRef = useRef<HTMLDivElement>(null);
@@ -157,7 +162,7 @@ export const CardChart = ({
     ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
     : 0;
   const defaultStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
-  const selectedStyle = selectedStyleOverride ?? defaultStyle;
+  const selectedStyle = chartStyle ?? selectedStyleOverride ?? defaultStyle;
   return (
     <Card.Base
       id={id}
@@ -294,10 +299,11 @@ export const CardChart = ({
             onConfirmSelectionChange={(newStyle) => {
               setSelectedStyleOverride(newStyle);
               setIsStyleMenuOpen(false);
+              cardSetChartStyle(id, newStyle);
               editor.updateShape({
                 id,
                 type: 'card',
-                props: { isManuallyResized: false },
+                props: { chartStyle: newStyle, isManuallyResized: false },
               });
             }}
             onClose={() => setIsStyleMenuOpen(false)}

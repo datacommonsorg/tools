@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
+import type { TLShapeId } from 'tldraw';
 import { toast } from '~/components/foundations/toaster/store';
 
 import type {
@@ -20,6 +21,7 @@ import type {
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
+import { extractChartStyle } from './parse_chart_intent';
 import { useStoreShapeSync } from './sync_store';
 import { useStreamingQuery } from './use_streaming_query';
 
@@ -225,6 +227,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       runPrompt: (prompt: string) => {
         const {
           nodes,
+          latestNodeId,
           queryStart,
           querySetProcessing,
           querySetStatus,
@@ -233,6 +236,10 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           getSelectedEntityDcids,
           getResultsForSelectedCards,
           nodeAddResult,
+          cardSetChartStyle,
+          nodeSetFollowUp,
+          nodeDismissFollowUp,
+          queryComplete,
         } = store.getState();
 
         querySetProcessing(true);
@@ -241,6 +248,63 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Derive context from selected shapes
         const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
         const parentNodeId = getContextNodeId(selectedShapeIds);
+
+        // ─── Chart style change flow ──────────────────────────────────────
+        // When chart card(s) are selected and the prompt requests a style
+        // change, apply it directly without any server call.
+        const chartShapeIds = editor
+          ? selectedShapeIds.filter((id) => {
+              const shape = editor.getShape(id);
+              return (
+                shape?.type === 'card' &&
+                (shape.props as { variant?: string }).variant === 'chart'
+              );
+            })
+          : [];
+        const hasChartSelection = chartShapeIds.length > 0;
+        const targetStyle = extractChartStyle(prompt, hasChartSelection);
+        if (targetStyle !== null && hasChartSelection && editor) {
+          if (targetStyle === 'unsupported') {
+            // Show a follow-up with supported options
+            const nodeId = queryStart(prompt, null, parentNodeId);
+            nodeSetFollowUp(nodeId, {
+              summary: "That chart type isn't supported yet.",
+              question: 'Choose one of the supported chart types below.',
+              options: [
+                'Make this a bar chart',
+                'Make this a horizontal bar chart',
+                'Make this a line chart',
+              ],
+            });
+            queryComplete(nodeId, []);
+            querySetProcessing(false);
+            querySetStatus(STATUS.complete);
+            return;
+          }
+
+          // Apply the valid style to all selected chart cards
+          for (const shapeId of chartShapeIds) {
+            cardSetChartStyle(shapeId, targetStyle);
+            editor.updateShape({
+              id: shapeId as TLShapeId,
+              type: 'card',
+              props: { chartStyle: targetStyle, isManuallyResized: false },
+            });
+          }
+
+          // Dismiss any pending follow-up node (e.g. the "unsupported style"
+          // follow-up the user just responded to).
+          if (latestNodeId) {
+            const latestNode = nodes[latestNodeId];
+            if (latestNode?.followUp) {
+              nodeDismissFollowUp(latestNodeId);
+            }
+          }
+
+          querySetProcessing(false);
+          querySetStatus(STATUS.idle);
+          return;
+        }
 
         // ─── Combine flow ───────────────────────────────────────────────
         // When 2+ chart cards are selected and the prompt suggests combining,

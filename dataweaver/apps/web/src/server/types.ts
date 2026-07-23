@@ -27,6 +27,8 @@ export interface HistoryNode {
 
 export type CardType = 'loading' | 'table' | 'notes' | 'chart';
 
+export type ChartStyle = 'bar-vertical' | 'bar-horizontal' | 'line';
+
 export interface Insight {
   title: string;
   text: string;
@@ -40,6 +42,8 @@ export interface CardEntry {
   placeDcid: string;
   /** When set, the chart card targets this specific variable instead of the first. */
   variableDcid?: string;
+  /** Persisted chart style override (survives export/import). */
+  chartStyle?: ChartStyle;
 }
 
 // --- Data Commons identity types ---
