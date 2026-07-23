@@ -28,6 +28,12 @@
   [data-selection="single"] &,
   &:focus-within {
     transform: translateY(calc(var(--actions-height) * -1));
+
+    // Safari-only ghosting fix. When selected, this bar translates up beyond the
+    // card outside 'contain: size layout' box tldraw draws. Deleting the card
+    // while selected can cause the bug. By forcing it to have its own composited
+    // layer makes WebKit track and discard on removal, clearing the ghost
+    will-change: transform;
   }
 }
 
