@@ -84,6 +84,20 @@ export const CardContent = ({
         ref={childrenOuterContainerRef}
         className={s['children-outer-container']}
         data-can-scroll={canScroll}
+        // A press on the native scrollbar targets this scroll container itself
+        // (scrollbars have no child node) and lands beyond the content box.
+        // Stop it here so it never reaches tldraw: on an unselected card the
+        // press would otherwise arm a canvas drag that, once the scrollbar
+        // capture releases outside the card, snaps the shape to the pointer
+        onPointerDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+
+          const container = event.currentTarget;
+          const onScrollbar =
+            event.nativeEvent.offsetX > container.clientWidth ||
+            event.nativeEvent.offsetY > container.clientHeight;
+          if (onScrollbar) event.stopPropagation();
+        }}
         onScroll={(event) => {
           const scrolled = event.currentTarget.scrollTop > 0;
           setHasScrolled(scrolled);
