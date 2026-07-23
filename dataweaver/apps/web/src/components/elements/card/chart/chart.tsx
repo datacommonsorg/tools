@@ -7,7 +7,6 @@ import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
 
 import type { CardState } from '~/components/elements/card/base';
-import baseStyles from '~/components/elements/card/base.module.scss';
 import { useCardAutoHeight } from '~/components/elements/card/use_card_auto_height';
 import { Skeleton } from '~/components/elements/skeleton';
 import { IconBarChartOutlined } from '~/components/primitives/icons/bar_chart_outlined';
@@ -26,11 +25,7 @@ import { DataChartBarVertical } from './data_chart_bar_vertical';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
-import { generateTestSeries } from './generate_test_series';
 import { type ChartStyle, MenuChartOptions } from './menu_chart_options';
-
-// Toggle to true to inject dummy multi-series data for dev testing.
-const USE_TEST_DATA = false;
 
 export interface ChartDatum {
   date: string;
@@ -155,14 +150,11 @@ export const CardChart = ({
     currentFacet?.unit,
   ]);
 
-  // Dev-only: augment with random dummy series to test multi-series rendering.
-  const chartSeries = USE_TEST_DATA
-    ? generateTestSeries(baseSeries, { count: 3, mode: 'places' })
-    : baseSeries;
+  const chartSeries = baseSeries;
 
   // Default to line chart when data has many points; allow manual override.
   const totalPoints = chartSeries
-    ? chartSeries.reduce((sum, s) => sum + s.data.length, 0)
+    ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
     : 0;
   const defaultStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
   const selectedStyle = selectedStyleOverride ?? defaultStyle;
@@ -170,7 +162,7 @@ export const CardChart = ({
     <Card.Base
       id={id}
       childrenContainerRef={baseChildrenContainerRef}
-      childrenClassName={baseStyles['allow-overflow']}
+      allowOverflow
       isLoading={isLoading}
       selection={selection}
       actions={[

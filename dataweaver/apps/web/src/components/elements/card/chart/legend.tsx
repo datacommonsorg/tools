@@ -1,6 +1,6 @@
 import type { ChartSeries } from './chart';
-import s from './chart_legend.module.scss';
-import { getSeriesColor } from './chart_palette';
+import s from './legend.module.scss';
+import { getSeriesColor } from './palette';
 
 interface ChartLegendProps {
   series: ChartSeries[];

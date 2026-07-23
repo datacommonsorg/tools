@@ -16,9 +16,9 @@ import { formatChartValue } from '~/functions/format_chart_value';
 import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import s from './chart_container.module.scss';
-import { ChartLegend } from './chart_legend';
-import { getSeriesColor } from './chart_palette';
+import { ChartLegend } from './legend';
 import { type MergedRow, mergeSeriesData } from './merge_series_data';
+import { getSeriesColor } from './palette';
 import { TooltipCustom } from './tooltip_custom';
 
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
@@ -68,14 +68,14 @@ const FullWidthAxisLine = () => {
 
 export const DataChartLine = ({ series }: ChartProps) => {
   const mergedData: MergedRow[] = mergeSeriesData(series);
-  const totalPoints = series.reduce((sum, s) => sum + s.data.length, 0);
+  const totalPoints = series.reduce((sum, entry) => sum + entry.data.length, 0);
   const unit = series[0]?.unit;
 
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
         <>
-          <div style={{ position: 'relative' }}>
+          <div className={s['chart-wrapper']}>
             <LineChart
               data={mergedData}
               width={width}
@@ -113,17 +113,17 @@ export const DataChartLine = ({ series }: ChartProps) => {
                 cursor={<CustomCursor />}
                 content={<TooltipCustom series={series} unit={unit} />}
               />
-              {series.map((s, i) => {
+              {series.map((entry, i) => {
                 const color = getSeriesColor(i);
                 return (
                   <Line
-                    key={s.key}
+                    key={entry.key}
                     type="monotone"
                     dataKey={`value_${i}`}
-                    name={s.label}
+                    name={entry.label}
                     stroke={color}
                     strokeWidth={1}
-                    connectNulls={s.connectNulls ?? false}
+                    connectNulls={entry.connectNulls ?? false}
                     dot={
                       totalPoints / series.length > 15
                         ? false

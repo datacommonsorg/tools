@@ -1,5 +1,4 @@
 import { formatChartValue } from '~/functions/format_chart_value';
-import { mergeClassNames } from '~/functions/merge_class_names';
 import type { ChartSeries } from './chart';
 import s from './data_table.module.scss';
 
@@ -13,10 +12,7 @@ export const DataTable = ({ series }: DataTableProps) => {
   return (
     <div className={s.container}>
       {series.map((entry) => (
-        <table
-          key={entry.key}
-          className={mergeClassNames(s.table, isMulti && s['is-multi'])}
-        >
+        <table key={entry.key} className={s.table} data-is-multi={isMulti}>
           <thead>
             {isMulti && (
               <tr>

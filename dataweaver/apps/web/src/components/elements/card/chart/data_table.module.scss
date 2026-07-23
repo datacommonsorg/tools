@@ -32,7 +32,7 @@
   box-shadow: inset 0 -1px 0 rgb(var(--color-card-border-divider));
 }
 
-.table.is-multi {
+.table[data-is-multi="true"] {
   th {
     padding-top: 4px;
   }

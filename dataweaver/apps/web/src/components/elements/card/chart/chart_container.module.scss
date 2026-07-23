@@ -3,6 +3,10 @@
   padding-bottom: 28px;
 }
 
+.chart-wrapper {
+  position: relative;
+}
+
 .axis-label-left {
   @include type-body-small(500);
 

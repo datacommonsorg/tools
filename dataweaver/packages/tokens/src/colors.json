@@ -97,7 +97,6 @@
   "card-chart-line": "$accent",
   "card-chart-axis": "$content-muted",
   "card-chart-tooltip-date": "$content-dimmed",
-  "card-chart-axis-secondary": "$content-muted",
   "card-chart-series-0": "$accent",
   "card-chart-series-1": [234, 67, 53],
   "card-chart-series-2": [52, 168, 83],

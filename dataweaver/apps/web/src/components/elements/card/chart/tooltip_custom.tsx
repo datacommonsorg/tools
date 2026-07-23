@@ -1,7 +1,7 @@
 import { formatChartValue } from '~/functions/format_chart_value';
 
 import type { ChartSeries } from './chart';
-import { getSeriesColor } from './chart_palette';
+import { getSeriesColor } from './palette';
 import styles from './tooltip_custom.module.scss';
 
 interface TooltipEntry {

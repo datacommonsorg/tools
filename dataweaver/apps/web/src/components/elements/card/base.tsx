@@ -8,7 +8,6 @@ import type {
 } from 'react';
 import type { TLShapeId } from 'tldraw';
 import { Button } from '~/components/elements/button';
-import { mergeClassNames } from '~/functions/merge_class_names';
 import s from './base.module.scss';
 import { useCardClearTextSelection } from './use_card_clear_text_selection';
 import { useCardDragHandle } from './use_card_drag_handle';
@@ -43,7 +42,7 @@ interface CardAction {
 interface CardProps extends CardState {
   id: TLShapeId;
   childrenContainerRef: RefObject<HTMLDivElement | null>;
-  childrenClassName?: string;
+  allowOverflow?: boolean;
   actions: CardAction[];
   children: ReactNode;
 }
@@ -51,7 +50,7 @@ interface CardProps extends CardState {
 export const CardBase = ({
   id,
   childrenContainerRef,
-  childrenClassName,
+  allowOverflow,
   isLoading,
   selection,
   actions,
@@ -89,7 +88,8 @@ export const CardBase = ({
 
       <div
         ref={childrenContainerRef}
-        className={mergeClassNames(s['children-container'], childrenClassName)}
+        className={s['children-container']}
+        data-allow-overflow={allowOverflow ?? false}
         // TLDraw captures all wheel events; walk from the event target up to
         // this container — if any element in the chain is scrollable, reserve
         // the wheel event for it instead of letting tldraw zoom/pan.

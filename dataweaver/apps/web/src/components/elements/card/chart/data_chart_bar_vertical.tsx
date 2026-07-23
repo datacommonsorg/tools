@@ -16,9 +16,9 @@ import { formatChartValue } from '~/functions/format_chart_value';
 import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import s from './chart_container.module.scss';
-import { ChartLegend } from './chart_legend';
-import { getSeriesColor } from './chart_palette';
+import { ChartLegend } from './legend';
 import { mergeSeriesData } from './merge_series_data';
+import { getSeriesColor } from './palette';
 import { TooltipCustom } from './tooltip_custom';
 
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
@@ -72,7 +72,7 @@ export const DataChartBarVertical = ({ series }: ChartProps) => {
     <ChartContainer aspect={1.78}>
       {(width, height) => (
         <>
-          <div style={{ position: 'relative' }}>
+          <div className={s['chart-wrapper']}>
             <BarChart
               data={mergedData}
               width={width}
@@ -105,11 +105,11 @@ export const DataChartBarVertical = ({ series }: ChartProps) => {
                 cursor={<CustomCursor />}
                 content={<TooltipCustom series={series} unit={unit} />}
               />
-              {series.map((s, i) => (
+              {series.map((entry, i) => (
                 <Bar
-                  key={s.key}
+                  key={entry.key}
                   dataKey={`value_${i}`}
-                  name={s.label}
+                  name={entry.label}
                   fill={getSeriesColor(i)}
                   radius={[2, 2, 0, 0]}
                 />
