@@ -8,6 +8,7 @@ export interface ParsedQuery {
   isFollowUp: boolean;
   followUp?: FollowUp;
   chartStyleIntent?: { targetStyle: ChartStyle };
+  combineIntent?: boolean;
 }
 
 export interface HistoryNode {
@@ -152,6 +153,8 @@ export interface QueryStreamRequest {
   selectedEntityDcids: string[];
   followUpContext?: FollowUpContext;
   hasChartSelection?: boolean;
+  chartSelectionCount?: number;
+  selectedResults?: QueryResult[];
 }
 
 /** Request the frontend sends to /api/combine to merge existing chart data. */

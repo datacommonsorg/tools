@@ -14,6 +14,7 @@ interface ParseQueryParams {
   ancestorChainLength: number;
   followUpContext?: FollowUpContext;
   hasChartSelection?: boolean;
+  selectedResultsSummary?: string;
 }
 
 /**
@@ -29,6 +30,7 @@ export const parseQuery = async (
     ancestorChainLength,
     followUpContext,
     hasChartSelection,
+    selectedResultsSummary,
   } = params;
   const config = getServiceConfig();
   const skill = getSkillConfig('parse_query');
@@ -42,7 +44,11 @@ export const parseQuery = async (
   const chartHint = hasChartSelection
     ? '\nCharts selected: The user currently has chart card(s) selected on the canvas.'
     : '';
-  const systemPrompt = skill.systemPrompt + historyHint + atlasHint + chartHint;
+  const combineHint = selectedResultsSummary
+    ? `\nMultiple chart cards selected with data: ${selectedResultsSummary}`
+    : '';
+  const systemPrompt =
+    skill.systemPrompt + historyHint + atlasHint + chartHint + combineHint;
 
   // When followUpContext is present, include the original query and Q&A chain
   // so the model can extract places/topic from the full conversation.
@@ -74,6 +80,7 @@ export const parseQuery = async (
     ParsedQuery & {
       followUp?: FollowUp;
       chartStyleIntent?: { targetStyle: string };
+      combineIntent?: boolean;
     }
   >(responseText);
 
@@ -103,5 +110,6 @@ export const parseQuery = async (
     dateRange: parsed.dateRange || undefined,
     followUp: parsed.followUp || undefined,
     chartStyleIntent,
+    combineIntent: !!parsed.combineIntent || undefined,
   };
 };

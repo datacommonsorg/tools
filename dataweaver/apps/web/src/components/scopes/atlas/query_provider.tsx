@@ -13,7 +13,6 @@ import { toast } from '~/components/foundations/toaster/store';
 
 import type {
   CardEntry,
-  CombineStreamRequest,
   FollowUpContext,
   QueryResult,
   StreamEvent,
@@ -51,14 +50,8 @@ interface ActiveQuery {
   nodeId: string;
   cardIds: string[];
   chartShapeIds: string[];
+  selectedResults: QueryResult[];
 }
-
-const COMBINE_KEYWORDS =
-  /\b(combine|merge|put together|into one|single chart|one chart|unified chart|together in one)\b/i;
-
-/** Detect whether the prompt intends to combine selected charts. */
-const isCombineIntent = (prompt: string): boolean =>
-  COMBINE_KEYWORDS.test(prompt);
 
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   const { editor } = useAtlas();
@@ -158,6 +151,51 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
       case STREAM_EVENT.comparisonResult: {
         const { result } = event;
+
+        // When this is a combine intent (selectedResults pre-stored on
+        // activeQueryRef), populate the node with per-place results so
+        // deriveComparisonChartContent can build chart series.
+        // When multiple results share the same entity (same-place,
+        // different-variable), merge their variables and timeSeries
+        // into a single result so nothing gets overwritten.
+        if (active.selectedResults.length > 0) {
+          const merged = new Map<string, QueryResult>();
+          for (const r of active.selectedResults) {
+            const entityDcid = r.entities[0]?.dcid;
+            if (!entityDcid) continue;
+            const existing = merged.get(entityDcid);
+            if (existing) {
+              const existingVars = existing.variables;
+              const existingTs = existing.timeSeries;
+              existing.variables = [
+                ...existingVars,
+                ...r.variables.filter(
+                  (variable) =>
+                    !existingVars.some(
+                      (existingVar) => existingVar.dcid === variable.dcid,
+                    ),
+                ),
+              ];
+              existing.timeSeries = [
+                ...existingTs,
+                ...r.timeSeries.filter(
+                  (timeSeries) =>
+                    !existingTs.some(
+                      (existingEntry) =>
+                        existingEntry.variableDcid ===
+                          timeSeries.variableDcid &&
+                        existingEntry.entityDcid === timeSeries.entityDcid,
+                    ),
+                ),
+              ];
+            } else {
+              merged.set(entityDcid, { ...r });
+            }
+          }
+          for (const [entityDcid, mergedResult] of merged) {
+            nodeAddResult(active.nodeId, entityDcid, mergedResult);
+          }
+        }
 
         // Store the comparison on the history node.
         nodeSetComparison(active.nodeId, result);
@@ -265,7 +303,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           getContextNodeId,
           getSelectedEntityDcids,
           getResultsForSelectedCards,
-          nodeAddResult,
         } = store.getState();
 
         querySetProcessing(true);
@@ -287,68 +324,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           : [];
         const hasChartSelection = chartShapeIds.length > 0;
 
-        // ─── Combine flow ───────────────────────────────────────────────
-        // When 2+ chart cards are selected and the prompt suggests combining,
-        // skip the full query pipeline and run only the comparison step.
+        // Gather selected chart results for potential combine/compare intent.
         const selectedResults = getResultsForSelectedCards(selectedShapeIds);
-        if (selectedResults.length >= 2 && isCombineIntent(prompt)) {
-          const nodeId = queryStart(prompt, null, parentNodeId);
-
-          // Pre-populate the node with results so that
-          // deriveComparisonChartContent can build chart series.
-          // When multiple results share the same entity (same-place,
-          // different-variable), merge their variables and timeSeries
-          // into a single result so nothing gets overwritten.
-          const merged = new Map<string, QueryResult>();
-          for (const result of selectedResults) {
-            const entityDcid = result.entities[0]?.dcid;
-            if (!entityDcid) continue;
-            const existing = merged.get(entityDcid);
-            if (existing) {
-              const existingVars = existing.variables;
-              const existingTs = existing.timeSeries;
-              existing.variables = [
-                ...existingVars,
-                ...result.variables.filter(
-                  (variable) =>
-                    !existingVars.some(
-                      (existingVar) => existingVar.dcid === variable.dcid,
-                    ),
-                ),
-              ];
-              existing.timeSeries = [
-                ...existingTs,
-                ...result.timeSeries.filter(
-                  (timeSeries) =>
-                    !existingTs.some(
-                      (existingEntry) =>
-                        existingEntry.variableDcid ===
-                          timeSeries.variableDcid &&
-                        existingEntry.entityDcid === timeSeries.entityDcid,
-                    ),
-                ),
-              ];
-            } else {
-              merged.set(entityDcid, { ...result });
-            }
-          }
-          for (const [entityDcid, result] of merged) {
-            nodeAddResult(nodeId, entityDcid, result);
-          }
-
-          activeQueryRef.current = {
-            nodeId,
-            cardIds: [],
-            chartShapeIds: [],
-          };
-
-          const combineRequest: CombineStreamRequest = {
-            query: prompt,
-            results: selectedResults,
-          };
-          startStream(combineRequest, '/api/combine');
-          return;
-        }
 
         // ─── Standard query flow ────────────────────────────────────────
         const ancestorChain = getAncestorChain(parentNodeId).map((node) => ({
@@ -397,6 +374,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           nodeId,
           cardIds: [],
           chartShapeIds,
+          selectedResults,
         };
 
         // Build atlas context description for the API
@@ -413,6 +391,9 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           selectedEntityDcids,
           followUpContext,
           hasChartSelection,
+          chartSelectionCount: chartShapeIds.length,
+          selectedResults:
+            selectedResults.length > 0 ? selectedResults : undefined,
         });
       },
       queryCancel: () => {
