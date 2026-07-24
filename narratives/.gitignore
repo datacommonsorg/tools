@@ -40,6 +40,8 @@ screenshots
 .gemini
 .figma_pat
 *.py
+# ...but the agent sidecar is Python and must stay tracked.
+!agent/*.py
 sample.js
 
 # Redundant snapshot of the original AI Studio scaffold
