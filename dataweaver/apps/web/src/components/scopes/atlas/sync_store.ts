@@ -65,22 +65,54 @@ export const deriveComparisonChartContent = (
   const series: ChartSeries[] = [];
   const seriesFacets: Record<string, FacetInfo[]> = {};
 
-  for (const result of Object.values(allResults)) {
-    const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
-    const observations = ts?.facets[0]?.observations;
-    if (!observations || observations.length === 0) continue;
+  const resultEntries = Object.values(allResults);
+  const allPlaces = new Set(
+    resultEntries.map((r) => r.entities[0]?.dcid).filter(Boolean),
+  );
+  const isSamePlace = allPlaces.size === 1;
 
-    const entity = result.entities[0];
-    const placeDcid = entity?.dcid ?? result.id;
-    const placeName = entity?.name ?? entity?.dcid ?? result.title;
+  if (isSamePlace) {
+    // Same-place, different-variable: overlay ALL variables in the merged
+    // result as separate series. The chart represents a variable comparison
+    // within one place, so we always show every time series regardless of
+    // which variableDcid the chart metadata references.
+    const result = resultEntries[0];
+    if (!result) return null;
 
-    series.push({
-      key: placeDcid,
-      label: placeName,
-      data: observations,
-    });
+    for (const ts of result.timeSeries) {
+      const observations = ts.facets[0]?.observations;
+      if (!observations || observations.length === 0) continue;
 
-    seriesFacets[placeDcid] = ts.facets;
+      const variable = result.variables.find((v) => v.dcid === ts.variableDcid);
+      const label = variable?.name ?? ts.variableDcid;
+
+      series.push({
+        key: ts.variableDcid,
+        label,
+        data: observations,
+      });
+
+      seriesFacets[ts.variableDcid] = ts.facets;
+    }
+  } else {
+    // Different-place: build one series per place (original behavior).
+    for (const result of resultEntries) {
+      const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
+      const observations = ts?.facets[0]?.observations;
+      if (!observations || observations.length === 0) continue;
+
+      const entity = result.entities[0];
+      const placeDcid = entity?.dcid ?? result.id;
+      const placeName = entity?.name ?? entity?.dcid ?? result.title;
+
+      series.push({
+        key: placeDcid,
+        label: placeName,
+        data: observations,
+      });
+
+      seriesFacets[placeDcid] = ts.facets;
+    }
   }
 
   if (series.length === 0) return null;

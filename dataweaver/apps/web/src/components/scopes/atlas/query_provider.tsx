@@ -14,6 +14,7 @@ import type {
   CardEntry,
   CombineStreamRequest,
   FollowUpContext,
+  QueryResult,
   StreamEvent,
 } from '~/server/types';
 import { STATUS, STREAM_EVENT } from '~/server/types';
@@ -248,13 +249,42 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         if (selectedResults.length >= 2 && isCombineIntent(prompt)) {
           const nodeId = queryStart(prompt, null, parentNodeId);
 
-          // Pre-populate the node with per-place results so that
+          // Pre-populate the node with results so that
           // deriveComparisonChartContent can build chart series.
+          // When multiple results share the same entity (same-place,
+          // different-variable), merge their variables and timeSeries
+          // into a single result so nothing gets overwritten.
+          const merged = new Map<string, QueryResult>();
           for (const result of selectedResults) {
             const entityDcid = result.entities[0]?.dcid;
-            if (entityDcid) {
-              nodeAddResult(nodeId, entityDcid, result);
+            if (!entityDcid) continue;
+            const existing = merged.get(entityDcid);
+            if (existing) {
+              const existingVars = existing.variables;
+              const existingTs = existing.timeSeries;
+              existing.variables = [
+                ...existingVars,
+                ...result.variables.filter(
+                  (v) => !existingVars.some((ev) => ev.dcid === v.dcid),
+                ),
+              ];
+              existing.timeSeries = [
+                ...existingTs,
+                ...result.timeSeries.filter(
+                  (ts) =>
+                    !existingTs.some(
+                      (ets) =>
+                        ets.variableDcid === ts.variableDcid &&
+                        ets.entityDcid === ts.entityDcid,
+                    ),
+                ),
+              ];
+            } else {
+              merged.set(entityDcid, { ...result });
             }
+          }
+          for (const [entityDcid, result] of merged) {
+            nodeAddResult(nodeId, entityDcid, result);
           }
 
           activeQueryRef.current = { nodeId, cardIds: [] };
