@@ -67,7 +67,7 @@ export const deriveComparisonChartContent = (
 
   const resultEntries = Object.values(allResults);
   const allPlaces = new Set(
-    resultEntries.map((r) => r.entities[0]?.dcid).filter(Boolean),
+    resultEntries.map((result) => result.entities[0]?.dcid).filter(Boolean),
   );
   const isSamePlace = allPlaces.size === 1;
 
@@ -83,7 +83,9 @@ export const deriveComparisonChartContent = (
       const observations = ts.facets[0]?.observations;
       if (!observations || observations.length === 0) continue;
 
-      const variable = result.variables.find((v) => v.dcid === ts.variableDcid);
+      const variable = result.variables.find(
+        (entry) => entry.dcid === ts.variableDcid,
+      );
       const label = variable?.name ?? ts.variableDcid;
 
       series.push({

@@ -265,17 +265,21 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
               existing.variables = [
                 ...existingVars,
                 ...result.variables.filter(
-                  (v) => !existingVars.some((ev) => ev.dcid === v.dcid),
+                  (variable) =>
+                    !existingVars.some(
+                      (existingVar) => existingVar.dcid === variable.dcid,
+                    ),
                 ),
               ];
               existing.timeSeries = [
                 ...existingTs,
                 ...result.timeSeries.filter(
-                  (ts) =>
+                  (timeSeries) =>
                     !existingTs.some(
-                      (ets) =>
-                        ets.variableDcid === ts.variableDcid &&
-                        ets.entityDcid === ts.entityDcid,
+                      (existingEntry) =>
+                        existingEntry.variableDcid ===
+                          timeSeries.variableDcid &&
+                        existingEntry.entityDcid === timeSeries.entityDcid,
                     ),
                 ),
               ];
