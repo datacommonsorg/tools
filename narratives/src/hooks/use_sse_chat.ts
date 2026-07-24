@@ -320,16 +320,17 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       setError(null);
 
       // History sent to the agent excludes the current turn. The proxy
-      // expects a Gemini-format list (role + parts.text).
-      const history = turns.flatMap((turn) => {
-        const items: Array<{ role: string; parts: Array<{ text: string }> }> = [
+      // expects a Gemini-format list of strictly alternating user/model roles.
+      // Only completed turns that produced model text are included: a stopped
+      // or errored turn (especially one aborted before any text arrived) would
+      // otherwise emit a lone `user` entry, producing consecutive `user`
+      // messages that Gemini rejects with a 400.
+      const history = turns
+        .filter((turn) => !turn.stopped && turn.status === "done" && turn.text)
+        .flatMap((turn) => [
           { role: "user", parts: [{ text: turn.userMessage }] },
-        ];
-        if (turn.text) {
-          items.push({ role: "model", parts: [{ text: turn.text }] });
-        }
-        return items;
-      });
+          { role: "model", parts: [{ text: turn.text }] },
+        ]);
 
       // Applies a mutation to the in-flight turn, leaving other turns intact.
       const patch = (mutate: (turn: ChatTurn) => ChatTurn) =>

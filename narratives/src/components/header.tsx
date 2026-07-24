@@ -11,11 +11,11 @@ import type { TokenUsage } from "../hooks/use_sse_chat";
 import { useBrand } from "../hooks/branding_context";
 
 /**
- * Temporary cost-instrumentation flag. When the page is opened with
- * `?debug=tokens`, the header shows per-query Gemini token usage. Off by
- * default so it never appears for normal users. Read once at module load.
+ * Reports whether the temporary token-usage readout is enabled — i.e. the page
+ * was opened with `?debug=tokens`. Evaluated per render (not at module load) so
+ * it reacts to client-side navigation and stays safe under SSR/tests.
  */
-const TOKEN_DEBUG_ENABLED =
+const isTokenDebugEnabled = () =>
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("debug") === "tokens";
 
@@ -28,7 +28,7 @@ export function Header() {
   const { toggleDrawer, isDrawerOpen, turns } = useChatSession();
 
   // Latest turn that reported usage wins (later turns override earlier ones).
-  const latestUsage = TOKEN_DEBUG_ENABLED
+  const latestUsage = isTokenDebugEnabled()
     ? turns.reduce<TokenUsage | undefined>((acc, turn) => turn.usage ?? acc, undefined)
     : undefined;
 
