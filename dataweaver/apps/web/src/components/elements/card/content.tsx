@@ -90,12 +90,15 @@ export const CardContent = ({
         // press would otherwise arm a canvas drag that, once the scrollbar
         // capture releases outside the card, snaps the shape to the pointer
         onPointerDown={(event) => {
+          if (!canScroll) return;
           if (event.target !== event.currentTarget) return;
 
           const container = event.currentTarget;
-          const onScrollbar =
-            event.nativeEvent.offsetX > container.clientWidth ||
-            event.nativeEvent.offsetY > container.clientHeight;
+          const isRtl = window.getComputedStyle(container).direction === 'rtl';
+          const onScrollbar = isRtl
+            ? event.nativeEvent.offsetX < container.offsetWidth - container.clientWidth
+            : event.nativeEvent.offsetX > container.clientWidth;
+
           if (onScrollbar) event.stopPropagation();
         }}
         onScroll={(event) => {
