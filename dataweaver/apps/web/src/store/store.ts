@@ -485,10 +485,10 @@ export const useAtlasStore = create<AtlasStore>()(
               // combine API receives per-variable data.
               if (card.variableDcid) {
                 const variable = result.variables.find(
-                  (v) => v.dcid === card.variableDcid,
+                  (entry) => entry.dcid === card.variableDcid,
                 );
                 const timeSeries = result.timeSeries.filter(
-                  (ts) => ts.variableDcid === card.variableDcid,
+                  (entry) => entry.variableDcid === card.variableDcid,
                 );
                 results.push({
                   ...result,
