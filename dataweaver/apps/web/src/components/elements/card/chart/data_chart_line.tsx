@@ -1,6 +1,7 @@
 'use client';
 
 import { COLORS } from '@package/tokens/ts';
+import { useMemo } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -17,6 +18,7 @@ import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import s from './chart_container.module.scss';
 import { ChartLegend } from './legend';
+import { measureAxisWidth } from './measure_axis_width';
 import { type MergedRow, mergeSeriesData } from './merge_series_data';
 import { getSeriesColor } from './palette';
 import { TooltipCustom } from './tooltip_custom';
@@ -66,10 +68,44 @@ const FullWidthAxisLine = () => {
   );
 };
 
+/** Round to the nearest "nice" number (same style Recharts picks for ticks). */
+function niceNum(value: number): number {
+  if (value === 0) return 0;
+  const abs = Math.abs(value);
+  const exp = 10 ** Math.floor(Math.log10(abs));
+  return Math.sign(value) * Math.ceil(abs / exp) * exp;
+}
+
+function numericAxisLabels(
+  data: MergedRow[],
+  seriesCount: number,
+  unit: string | undefined,
+): string[] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const row of data) {
+    for (let i = 0; i < seriesCount; i++) {
+      const v = row[`value_${i}`];
+      if (typeof v === 'number') {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+  }
+  if (!Number.isFinite(min)) return [];
+  const candidates = [0, niceNum(min), niceNum(max)];
+  return candidates.map((v) => formatChartValue(v, unit));
+}
+
 export const DataChartLine = ({ series }: ChartProps) => {
   const mergedData: MergedRow[] = mergeSeriesData(series);
   const totalPoints = series.reduce((sum, entry) => sum + entry.data.length, 0);
   const unit = series[0]?.unit;
+
+  const yAxisWidth = useMemo(
+    () => measureAxisWidth(numericAxisLabels(mergedData, series.length, unit)),
+    [mergedData, series.length, unit],
+  );
 
   return (
     <ChartContainer aspect={1.78}>
@@ -102,7 +138,7 @@ export const DataChartLine = ({ series }: ChartProps) => {
                 padding={{ left: 0, right: 10 }}
               />
               <YAxis
-                width="auto"
+                width={yAxisWidth}
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}

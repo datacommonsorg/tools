@@ -10,42 +10,13 @@ import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import s from './chart_container.module.scss';
 import { ChartLegend } from './legend';
+import { measureAxisWidth } from './measure_axis_width';
 import { type MergedRow, mergeSeriesData } from './merge_series_data';
 import { getSeriesColor } from './palette';
 import { TooltipCustom } from './tooltip_custom';
 
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
-
-const AXIS_FONT = '10px sans-serif';
-const AXIS_PADDING = 12;
-const MAX_Y_AXIS_RATIO = 0.35;
-
-let memoizedCanvas: HTMLCanvasElement | null = null;
-
-function measureYAxisWidth(data: MergedRow[], chartWidth: number): number {
-  if (data.length === 0) return 60;
-  let maxWidth = 0;
-  if (typeof document !== 'undefined') {
-    if (!memoizedCanvas) {
-      memoizedCanvas = document.createElement('canvas');
-    }
-    const ctx = memoizedCanvas.getContext('2d');
-    if (ctx) {
-      ctx.font = AXIS_FONT;
-      for (const row of data) {
-        const w = ctx.measureText(String(row.date)).width;
-        if (w > maxWidth) maxWidth = w;
-      }
-    }
-  } else {
-    for (const row of data) {
-      const w = String(row.date).length * 6;
-      if (w > maxWidth) maxWidth = w;
-    }
-  }
-  return Math.min(maxWidth + AXIS_PADDING, chartWidth * MAX_Y_AXIS_RATIO);
-}
 
 interface ChartProps {
   series: ChartSeries[];
@@ -86,8 +57,8 @@ const DataChartBarHorizontalInner = ({
   height,
 }: InnerProps) => {
   const yAxisWidth = useMemo(
-    () => measureYAxisWidth(data, width),
-    [data, width],
+    () => measureAxisWidth(data.map((row) => String(row.date))),
+    [data],
   );
 
   return (
