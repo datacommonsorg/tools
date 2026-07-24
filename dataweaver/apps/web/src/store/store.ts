@@ -4,6 +4,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  ComparisonResult,
   FollowUp,
   FollowUpContext,
   HistoryNode,
@@ -38,6 +39,7 @@ export interface AtlasStore {
     placeDcid: string,
     result: QueryResult,
   ) => void;
+  nodeSetComparison: (nodeId: string, result: ComparisonResult) => void;
   nodeSetFollowUp: (nodeId: string, followUp: FollowUp) => void;
   queryComplete: (nodeId: string, cardIds: string[]) => void;
   queryFail: (nodeId: string) => void;
@@ -64,6 +66,7 @@ export interface AtlasStore {
   getAncestorChain: (nodeId: string | null) => HistoryNode[];
   getContextNodeId: (selectedShapeIds: string[]) => string | null;
   getSelectedEntityDcids: (selectedShapeIds: string[]) => string[];
+  getResultsForSelectedCards: (selectedShapeIds: string[]) => QueryResult[];
 }
 
 export const useAtlasStore = create<AtlasStore>()(
@@ -134,6 +137,23 @@ export const useAtlasStore = create<AtlasStore>()(
             },
             undefined,
             'nodeAddResult',
+          );
+        },
+
+        nodeSetComparison: (nodeId, comparison) => {
+          set(
+            (state) => {
+              const node = state.nodes[nodeId];
+              if (!node) return state;
+              return {
+                nodes: {
+                  ...state.nodes,
+                  [nodeId]: { ...node, comparison },
+                },
+              };
+            },
+            undefined,
+            'nodeSetComparison',
           );
         },
 
@@ -384,6 +404,40 @@ export const useAtlasStore = create<AtlasStore>()(
             }
           }
           return Array.from(dcids);
+        },
+
+        getResultsForSelectedCards: (selectedShapeIds) => {
+          const { cards, nodes } = get();
+          const seen = new Set<string>();
+          const results: QueryResult[] = [];
+
+          for (const shapeId of selectedShapeIds) {
+            const card = cards[shapeId];
+            if (!card || card.type !== 'chart') continue;
+
+            const node = nodes[card.historyNodeId];
+            if (!node) continue;
+
+            if (card.placeDcid === '__comparison') {
+              // Comparison chart — extract all per-place results from the node.
+              for (const result of Object.values(node.results)) {
+                const entityDcid = result.entities[0]?.dcid;
+                if (!entityDcid || seen.has(entityDcid)) continue;
+                seen.add(entityDcid);
+                results.push(result);
+              }
+            } else {
+              // Regular chart — extract the single place result.
+              const result = node.results[card.placeDcid];
+              if (!result) continue;
+              const entityDcid = result.entities[0]?.dcid;
+              if (!entityDcid || seen.has(entityDcid)) continue;
+              seen.add(entityDcid);
+              results.push(result);
+            }
+          }
+
+          return results;
         },
       }),
       { name: 'AtlasStore' },

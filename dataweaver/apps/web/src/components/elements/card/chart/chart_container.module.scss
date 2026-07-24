@@ -2,3 +2,26 @@
   width: 100%;
   padding-bottom: 28px;
 }
+
+.chart-wrapper {
+  position: relative;
+}
+
+.axis-label-left {
+  @include type-body-small(500);
+
+  position: absolute;
+  bottom: 26px;
+  left: 0;
+  color: rgb(var(--color-card-chart-axis-label));
+  transform: rotate(-90deg);
+  transform-origin: left bottom;
+}
+
+.axis-label-bottom {
+  @include type-body-small(500);
+
+  padding-bottom: 12px;
+  color: rgb(var(--color-card-chart-axis-label));
+  text-align: left;
+}

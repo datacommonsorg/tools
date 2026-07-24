@@ -1,0 +1,25 @@
+.container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.label {
+  @include type-label-small;
+
+  color: rgb(var(--color-card-content-muted));
+}

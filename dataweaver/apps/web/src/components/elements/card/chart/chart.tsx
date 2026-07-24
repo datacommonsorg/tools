@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { Card } from '~/components/elements/card';
@@ -32,15 +32,26 @@ export interface ChartDatum {
   value: number;
 }
 
+export interface ChartSeries {
+  key: string;
+  label: string;
+  data: ChartDatum[];
+  connectNulls?: boolean;
+  unit?: string;
+}
+
 export interface CardChartProps extends CardState {
   id: TLShapeId;
   title?: string;
   description?: string;
 
-  // TODO: Atm data rendered within the card is very specific to the emissions
-  // dataset. Let's make it more generic once we have real data to work with
+  // Legacy single-series prop (backwards-compatible shorthand).
   data?: ChartDatum[];
+  // Multi-series prop — takes priority over `data` when provided.
+  series?: ChartSeries[];
   facets?: FacetInfo[];
+  /** Per-series facets, keyed by series `key` (e.g. placeDcid). */
+  seriesFacets?: Record<string, FacetInfo[]>;
   relatedQueries?: string[];
 }
 
@@ -51,7 +62,9 @@ export const CardChart = ({
   title,
   description,
   data,
+  series: seriesProp,
   facets,
+  seriesFacets,
   relatedQueries,
 }: CardChartProps) => {
   const editor = useEditor();
@@ -62,14 +75,29 @@ export const CardChart = ({
   const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
   const contentInnerRef = useRef<HTMLDivElement>(null);
 
-  // TODO: Support the different chart styles (for now we always show bar chart)
-  const [selectedStyle, setSelectedStyle] =
-    useState<ChartStyle>('bar-vertical');
+  const [selectedStyleOverride, setSelectedStyleOverride] = useState<
+    ChartStyle | undefined
+  >(undefined);
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedFacetId, setSelectedFacetId] = useState<string>(
     facets?.[0]?.facetId ?? '',
   );
+
+  // Per-series facet selections for multi-dataset charts.
+  const [selectedSeriesFacetIds, setSelectedSeriesFacetIds] = useState<
+    Record<string, string>
+  >(() => {
+    if (!seriesFacets) return {};
+    const initial: Record<string, string> = {};
+    for (const [key, facetList] of Object.entries(seriesFacets)) {
+      const firstFacet = facetList[0];
+      if (firstFacet) {
+        initial[key] = firstFacet.facetId;
+      }
+    }
+    return initial;
+  });
 
   // Only auto-height when the chart tab is active — table tab should scroll
   // within the card at its current (chart-determined) height.
@@ -84,10 +112,57 @@ export const CardChart = ({
   // Derive chart data from selected facet if facets are available
   const currentFacet = facets?.find((f) => f.facetId === selectedFacetId);
   const chartData = currentFacet?.observations ?? data;
+
+  // Normalize to multi-series: explicit `series` prop takes priority,
+  // otherwise wrap legacy single-series `chartData` into a one-element
+  // array.
+  const baseSeries: ChartSeries[] | undefined = useMemo(() => {
+    if (seriesProp && seriesFacets) {
+      // Apply per-series facet selections to override series data.
+      return seriesProp.map((entry) => {
+        const facetList = seriesFacets[entry.key];
+        const selectedId = selectedSeriesFacetIds[entry.key];
+        if (!facetList || !selectedId) return entry;
+        const facet = facetList.find((f) => f.facetId === selectedId);
+        if (!facet) return entry;
+        return { ...entry, data: facet.observations, unit: facet.unit };
+      });
+    }
+    return (
+      seriesProp ??
+      (chartData
+        ? [
+            {
+              key: 'default',
+              label: title ?? 'Value',
+              data: chartData,
+              unit: currentFacet?.unit,
+            },
+          ]
+        : undefined)
+    );
+  }, [
+    seriesProp,
+    seriesFacets,
+    selectedSeriesFacetIds,
+    chartData,
+    title,
+    currentFacet?.unit,
+  ]);
+
+  const chartSeries = baseSeries;
+
+  // Default to line chart when data has many points; allow manual override.
+  const totalPoints = chartSeries
+    ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
+    : 0;
+  const defaultStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
+  const selectedStyle = selectedStyleOverride ?? defaultStyle;
   return (
     <Card.Base
       id={id}
       childrenContainerRef={baseChildrenContainerRef}
+      allowOverflow
       isLoading={isLoading}
       selection={selection}
       actions={[
@@ -123,16 +198,47 @@ export const CardChart = ({
             </div>
           )}
 
-          {isLoading || !chartData ? (
+          {isLoading || !chartSeries ? (
             <Skeleton />
           ) : (
             <>
               {facets && facets.length > 0 && (
-                <FacetSelector
-                  facets={facets}
-                  selectedFacetId={selectedFacetId}
-                  onSelect={setSelectedFacetId}
-                />
+                <div className={s['facet-selectors-container']}>
+                  <FacetSelector
+                    facets={facets}
+                    selectedFacetId={selectedFacetId}
+                    onSelect={setSelectedFacetId}
+                  />
+                </div>
+              )}
+
+              {seriesFacets && seriesProp && (
+                <div className={s['facet-selectors-container']}>
+                  {seriesProp.map((entry) => {
+                    const facetList = seriesFacets[entry.key];
+                    if (!facetList || facetList.length === 0) {
+                      return null;
+                    }
+                    return (
+                      <FacetSelector
+                        key={entry.key}
+                        facets={facetList}
+                        selectedFacetId={
+                          selectedSeriesFacetIds[entry.key] ??
+                          facetList[0]?.facetId ??
+                          ''
+                        }
+                        onSelect={(facetId) =>
+                          setSelectedSeriesFacetIds((prev) => ({
+                            ...prev,
+                            [entry.key]: facetId,
+                          }))
+                        }
+                        label={entry.label}
+                      />
+                    );
+                  })}
+                </div>
               )}
 
               <ConditionalTabs
@@ -144,26 +250,17 @@ export const CardChart = ({
                     label: 'Chart',
                     children:
                       selectedStyle === 'bar-vertical' ? (
-                        <DataChartBarVertical
-                          data={chartData}
-                          unit={currentFacet?.unit}
-                        />
+                        <DataChartBarVertical series={chartSeries} />
                       ) : selectedStyle === 'bar-horizontal' ? (
-                        <DataChartBarHorizontal
-                          data={chartData}
-                          unit={currentFacet?.unit}
-                        />
+                        <DataChartBarHorizontal series={chartSeries} />
                       ) : (
-                        <DataChartLine
-                          data={chartData}
-                          unit={currentFacet?.unit}
-                        />
+                        <DataChartLine series={chartSeries} />
                       ),
                   },
                   {
                     icon: IconTable,
                     label: 'Table',
-                    children: <DataTable data={chartData} />,
+                    children: <DataTable series={chartSeries} />,
                   },
                 ]}
               />
@@ -195,7 +292,7 @@ export const CardChart = ({
           <MenuChartOptions
             value={selectedStyle}
             onConfirmSelectionChange={(newStyle) => {
-              setSelectedStyle(newStyle);
+              setSelectedStyleOverride(newStyle);
               setIsStyleMenuOpen(false);
               editor.updateShape({
                 id,

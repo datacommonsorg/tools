@@ -42,6 +42,7 @@ interface CardAction {
 interface CardProps extends CardState {
   id: TLShapeId;
   childrenContainerRef: RefObject<HTMLDivElement | null>;
+  allowOverflow?: boolean;
   actions: CardAction[];
   children: ReactNode;
 }
@@ -49,6 +50,7 @@ interface CardProps extends CardState {
 export const CardBase = ({
   id,
   childrenContainerRef,
+  allowOverflow,
   isLoading,
   selection,
   actions,
@@ -87,6 +89,7 @@ export const CardBase = ({
       <div
         ref={childrenContainerRef}
         className={s['children-container']}
+        data-allow-overflow={allowOverflow ?? false}
         // TLDraw captures all wheel events; walk from the event target up to
         // this container — if any element in the chain is scrollable, reserve
         // the wheel event for it instead of letting tldraw zoom/pan.

@@ -1,7 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { CardEntry, CardType, QueryResult } from '~/server/types';
+import type { ChartSeries } from '~/components/elements/card/chart/chart';
+import type {
+  CardEntry,
+  CardType,
+  ComparisonResult,
+  FacetInfo,
+  QueryResult,
+} from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { type CardHandle, useAtlas } from './atlas_provider';
 import type { AtlasContent, CardVariant } from './helpers';
@@ -32,6 +39,61 @@ export const deriveNotesContent = (result: QueryResult): AtlasContent => ({
   isLoading: false,
   relatedQueries: result.relatedQueries,
 });
+
+/** Derive AtlasContent for a cross-place comparison card. */
+export const deriveComparisonContent = (
+  comparison: ComparisonResult,
+): AtlasContent => ({
+  variant: 'text',
+  title: comparison.title,
+  body: comparison.notesHtml ?? '',
+  isLoading: false,
+  relatedQueries: comparison.relatedQueries,
+});
+
+/** Derive AtlasContent for a comparison chart card (multi-series, one variable across places). */
+export const deriveComparisonChartContent = (
+  comparison: ComparisonResult,
+  variableDcid: string,
+  allResults: Record<string, QueryResult>,
+): AtlasContent | null => {
+  const chartMeta = comparison.charts?.find(
+    (c) => c.variableDcid === variableDcid,
+  );
+  if (!chartMeta) return null;
+
+  const series: ChartSeries[] = [];
+  const seriesFacets: Record<string, FacetInfo[]> = {};
+
+  for (const result of Object.values(allResults)) {
+    const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
+    const observations = ts?.facets[0]?.observations;
+    if (!observations || observations.length === 0) continue;
+
+    const entity = result.entities[0];
+    const placeDcid = entity?.dcid ?? result.id;
+    const placeName = entity?.name ?? entity?.dcid ?? result.title;
+
+    series.push({
+      key: placeDcid,
+      label: placeName,
+      data: observations,
+    });
+
+    seriesFacets[placeDcid] = ts.facets;
+  }
+
+  if (series.length === 0) return null;
+
+  return {
+    variant: 'chart',
+    title: chartMeta.title,
+    description: chartMeta.description,
+    series,
+    ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
+    isLoading: false,
+  };
+};
 
 /** Derive AtlasContent for a chart card from a QueryResult (first variable's facets). */
 export const deriveChartContent = (
@@ -102,9 +164,18 @@ export const deriveContentForCard = (
   result: QueryResult | undefined,
   placeholderTitle?: string,
   variableDcid?: string,
+  comparison?: ComparisonResult,
+  allResults?: Record<string, QueryResult>,
 ): AtlasContent | null => {
   if (type === 'loading') {
     return deriveLoadingContent(placeholderTitle ?? '');
+  }
+  // Comparison cards read from the dedicated comparison field.
+  if (comparison && type === 'notes') {
+    return deriveComparisonContent(comparison);
+  }
+  if (comparison && type === 'chart' && variableDcid && allResults) {
+    return deriveComparisonChartContent(comparison, variableDcid, allResults);
   }
   if (!result) return null;
   switch (type) {
@@ -146,7 +217,11 @@ export const useStoreShapeSync = () => {
           if (prevCards[shapeId]) continue;
 
           const node = nodes[card.historyNodeId];
-          const result = node?.results[card.placeDcid];
+          const isComparison = card.placeDcid === '__comparison';
+          const result = isComparison
+            ? undefined
+            : node?.results[card.placeDcid];
+          const comparison = isComparison ? node?.comparison : undefined;
           const title =
             node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
 
@@ -155,6 +230,8 @@ export const useStoreShapeSync = () => {
             result,
             title,
             card.variableDcid,
+            comparison,
+            isComparison ? node?.results : undefined,
           );
           if (!content) continue;
 
@@ -170,12 +247,18 @@ export const useStoreShapeSync = () => {
           if (!prevCard || prevCard.type === card.type) continue;
 
           const node = nodes[card.historyNodeId];
-          const result = node?.results[card.placeDcid];
+          const isComparison = card.placeDcid === '__comparison';
+          const result = isComparison
+            ? undefined
+            : node?.results[card.placeDcid];
+          const comparison = isComparison ? node?.comparison : undefined;
           const content = deriveContentForCard(
             card.type,
             result,
             undefined,
             card.variableDcid,
+            comparison,
+            isComparison ? node?.results : undefined,
           );
           if (!content) continue;
 
