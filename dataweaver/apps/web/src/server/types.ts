@@ -7,6 +7,7 @@ export interface ParsedQuery {
   dateRange?: { start?: string; end?: string };
   isFollowUp: boolean;
   followUp?: FollowUp;
+  chartStyleIntent?: { targetStyle: ChartStyle };
 }
 
 export interface HistoryNode {
@@ -150,6 +151,7 @@ export interface QueryStreamRequest {
   ancestorChain: { query: string; topic: string; places: string[] }[];
   selectedEntityDcids: string[];
   followUpContext?: FollowUpContext;
+  hasChartSelection?: boolean;
 }
 
 /** Request the frontend sends to /api/combine to merge existing chart data. */
@@ -201,6 +203,7 @@ export const STREAM_EVENT = {
   queryResult: 'query_result',
   comparisonResult: 'comparison_result',
   followUp: 'follow_up',
+  chartStyleChange: 'chart_style_change',
   placeSkipped: 'place_skipped',
   complete: 'complete',
   error: 'error',
@@ -224,6 +227,10 @@ export type StreamEvent =
       result: ComparisonResult;
     }
   | { type: typeof STREAM_EVENT.followUp; data: FollowUp }
+  | {
+      type: typeof STREAM_EVENT.chartStyleChange;
+      style: ChartStyle;
+    }
   | { type: typeof STREAM_EVENT.placeSkipped; place: string; reason: string }
   | { type: typeof STREAM_EVENT.complete; message: string }
   | { type: typeof STREAM_EVENT.error; message: string };

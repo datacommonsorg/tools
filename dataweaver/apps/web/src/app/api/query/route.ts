@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     ? body.selectedEntityDcids
     : [];
   const followUpContext = body?.followUpContext ?? undefined;
+  const hasChartSelection = !!body?.hasChartSelection;
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
           atlasContext,
           ancestorChainLength: ancestorChain.length,
           followUpContext,
+          hasChartSelection,
         });
 
         // Resolve places
@@ -132,6 +134,17 @@ export async function POST(request: NextRequest) {
         // ─── Early exit: parse_query returned a followUp ─────────────────────
         if (parsed.followUp) {
           emit({ type: STREAM_EVENT.followUp, data: parsed.followUp });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
+          controller.close();
+          return;
+        }
+
+        // ─── Early exit: chart style change intent ───────────────────────────
+        if (parsed.chartStyleIntent) {
+          emit({
+            type: STREAM_EVENT.chartStyleChange,
+            style: parsed.chartStyleIntent.targetStyle,
+          });
           emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
           controller.close();
           return;
