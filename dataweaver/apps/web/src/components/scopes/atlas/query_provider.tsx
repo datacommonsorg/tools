@@ -21,7 +21,6 @@ import type {
 import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
-import { extractChartStyle } from './parse_chart_intent';
 import { useStoreShapeSync } from './sync_store';
 import { useStreamingQuery } from './use_streaming_query';
 
@@ -51,6 +50,7 @@ interface QueryProviderProps {
 interface ActiveQuery {
   nodeId: string;
   cardIds: string[];
+  chartShapeIds: string[];
 }
 
 const COMBINE_KEYWORDS =
@@ -68,6 +68,9 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
   const activeQueryRef = useRef<ActiveQuery | null>(null);
 
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+
   const store = useAtlasStore;
 
   const handleStreamEvent = useCallback((event: StreamEvent) => {
@@ -84,6 +87,10 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       queryComplete,
       queryFail,
       querySetProcessing,
+      cardSetChartStyle,
+      nodeDismissFollowUp,
+      nodes,
+      latestNodeId,
     } = store.getState();
 
     switch (event.type) {
@@ -216,6 +223,30 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         nodeSetFollowUp(active.nodeId, event.data);
         break;
       }
+
+      case STREAM_EVENT.chartStyleChange: {
+        const currentEditor = editorRef.current;
+        if (currentEditor) {
+          for (const shapeId of active.chartShapeIds) {
+            cardSetChartStyle(shapeId, event.style);
+            currentEditor.updateShape({
+              id: shapeId as TLShapeId,
+              type: 'card',
+              props: { chartStyle: event.style, isManuallyResized: false },
+            });
+          }
+        }
+
+        // Dismiss any pending follow-up (e.g. the "unsupported style"
+        // follow-up the user just responded to).
+        if (latestNodeId) {
+          const latestNode = nodes[latestNodeId];
+          if (latestNode?.followUp) {
+            nodeDismissFollowUp(latestNodeId);
+          }
+        }
+        break;
+      }
     }
   }, []);
 
@@ -227,7 +258,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
       runPrompt: (prompt: string) => {
         const {
           nodes,
-          latestNodeId,
           queryStart,
           querySetProcessing,
           querySetStatus,
@@ -236,10 +266,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           getSelectedEntityDcids,
           getResultsForSelectedCards,
           nodeAddResult,
-          cardSetChartStyle,
-          nodeSetFollowUp,
-          nodeDismissFollowUp,
-          queryComplete,
         } = store.getState();
 
         querySetProcessing(true);
@@ -249,9 +275,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const selectedShapeIds = editor ? editor.getSelectedShapeIds() : [];
         const parentNodeId = getContextNodeId(selectedShapeIds);
 
-        // ─── Chart style change flow ──────────────────────────────────────
-        // When chart card(s) are selected and the prompt requests a style
-        // change, apply it directly without any server call.
+        // Identify selected chart shapes for downstream intent handling.
         const chartShapeIds = editor
           ? selectedShapeIds.filter((id) => {
               const shape = editor.getShape(id);
@@ -262,49 +286,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
             })
           : [];
         const hasChartSelection = chartShapeIds.length > 0;
-        const targetStyle = extractChartStyle(prompt, hasChartSelection);
-        if (targetStyle !== null && hasChartSelection && editor) {
-          if (targetStyle === 'unsupported') {
-            // Show a follow-up with supported options
-            const nodeId = queryStart(prompt, null, parentNodeId);
-            nodeSetFollowUp(nodeId, {
-              summary: "That chart type isn't supported yet.",
-              question: 'Choose one of the supported chart types below.',
-              options: [
-                'Make this a bar chart',
-                'Make this a horizontal bar chart',
-                'Make this a line chart',
-              ],
-            });
-            queryComplete(nodeId, []);
-            querySetProcessing(false);
-            querySetStatus(STATUS.complete);
-            return;
-          }
-
-          // Apply the valid style to all selected chart cards
-          for (const shapeId of chartShapeIds) {
-            cardSetChartStyle(shapeId, targetStyle);
-            editor.updateShape({
-              id: shapeId as TLShapeId,
-              type: 'card',
-              props: { chartStyle: targetStyle, isManuallyResized: false },
-            });
-          }
-
-          // Dismiss any pending follow-up node (e.g. the "unsupported style"
-          // follow-up the user just responded to).
-          if (latestNodeId) {
-            const latestNode = nodes[latestNodeId];
-            if (latestNode?.followUp) {
-              nodeDismissFollowUp(latestNodeId);
-            }
-          }
-
-          querySetProcessing(false);
-          querySetStatus(STATUS.idle);
-          return;
-        }
 
         // ─── Combine flow ───────────────────────────────────────────────
         // When 2+ chart cards are selected and the prompt suggests combining,
@@ -355,7 +336,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
             nodeAddResult(nodeId, entityDcid, result);
           }
 
-          activeQueryRef.current = { nodeId, cardIds: [] };
+          activeQueryRef.current = {
+            nodeId,
+            cardIds: [],
+            chartShapeIds: [],
+          };
 
           const combineRequest: CombineStreamRequest = {
             query: prompt,
@@ -411,6 +396,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         activeQueryRef.current = {
           nodeId,
           cardIds: [],
+          chartShapeIds,
         };
 
         // Build atlas context description for the API
@@ -426,6 +412,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           ancestorChain,
           selectedEntityDcids,
           followUpContext,
+          hasChartSelection,
         });
       },
       queryCancel: () => {
