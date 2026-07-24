@@ -152,11 +152,10 @@ export function ReasoningBlock({
   const [open, setOpen] = useState(defaultOpen);
   const label = phaseLabel(streaming, status);
 
-  // Flatten to a single markdown string (newline-separated). Phase grouping
-  // existed in the old ThoughtsPanel; the new Figma design renders the
-  // reasoning as one continuous block. When the agent emits no thoughts,
-  // we render a short status placeholder so the section stays present
-  // above the response card per Figma 3427-16715.
+  // Flatten to a single markdown string (newline-separated): the reasoning
+  // renders as one continuous block, not grouped per phase. When the agent
+  // emits no thoughts, we render a short status placeholder so the section
+  // stays present above the response card per Figma 3427-16715.
   const joined =
     thoughts.length > 0
       ? thoughts.map((thought) => thought.text).join("\n\n")
