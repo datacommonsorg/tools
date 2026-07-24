@@ -153,6 +153,20 @@ export type TurnStatus =
   | "done"
   | "error";
 
+/**
+ * Gemini token usage for one query, summed across every model call the agent
+ * made (MCP tool loop, KB, synthesis, chart config). `output` includes thinking
+ * tokens. Temporary cost instrumentation — surfaced only under ?debug=tokens.
+ */
+export interface TokenUsage {
+  /** Prompt (input) tokens billed. */
+  input: number;
+  /** Candidate + thinking (output) tokens billed. */
+  output: number;
+  /** Total tokens billed for the query. */
+  total: number;
+}
+
 /** Accumulated UI state for one user message and its streamed response. */
 export interface ChatTurn {
   userMessage: string;
@@ -165,7 +179,14 @@ export interface ChatTurn {
   provenance: ProvenanceItem[];
   /** Self-contained follow-up questions emitted by the agent after `done`. */
   followUps?: string[];
+  /** Token usage for this query; present once the agent emits its `usage` event. */
+  usage?: TokenUsage;
   error?: string;
+  /**
+   * Set when the user aborts the turn via Stop. Drives the "Stopped per your
+   * request" note in place of the (now-irrelevant) reasoning/answer chrome.
+   */
+  stopped?: boolean;
 }
 
 /**
@@ -189,6 +210,7 @@ interface SseEvent {
   mcp_sources?: ProvenanceItem[];
   kb_sources?: ProvenanceItem[];
   provenance?: ProvenanceItem[];
+  usage?: TokenUsage;
   done?: boolean;
   error?: string;
 }
@@ -355,9 +377,10 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         }
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
-          // User clicked Stop — keep whatever partial content arrived and
-          // mark the turn as done rather than errored.
-          patch((turn) => ({ ...turn, status: "done" }));
+          // User clicked Stop — mark the turn done and flag it stopped so the
+          // UI shows a clear "Stopped per your request" note instead of the
+          // half-finished reasoning/answer.
+          patch((turn) => ({ ...turn, status: "done", stopped: true }));
         } else {
           const msg = e instanceof Error ? e.message : String(e);
           patch((turn) => ({ ...turn, status: "error", error: msg }));
@@ -449,6 +472,10 @@ function applyEvent(turn: ChatTurn, evt: SseEvent): ChatTurn {
       }
     }
     next = { ...next, provenance: merged };
+  }
+
+  if (evt.usage) {
+    next = { ...next, usage: evt.usage };
   }
 
   if (evt.done) {
