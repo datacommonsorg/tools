@@ -128,6 +128,12 @@ export const CARD_GRID = {
   mobile: { columns: 1, gutter: 32 },
 } as const;
 
+/**
+ * The display-zoom percentage cap applied when focusing a pair of cards.
+ * Prevents the camera from zooming in too far when both cards are close.
+ */
+export const FOCUS_ZOOM_DISPLAY_CAP = 125;
+
 /** Animation used when the camera pans to reveal a freshly placed card. */
 export const KEEP_IN_VIEW_ANIMATION: TLCameraMoveOptions['animation'] = {
   duration: 500,

@@ -25,6 +25,7 @@ import { type AtlasContent, type CardVariant, contentToShape } from './helpers';
 import { QueryProvider } from './query_provider';
 import { registerCardBringToFront } from './register_card_bring_to_front';
 import { type CardClones, registerCardClones } from './register_card_clones';
+import { registerCardFocus } from './register_card_focus';
 import {
   type CardPlacement,
   fitCardSize,
@@ -121,6 +122,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
     const cleanupStoreSync = registerCardStoreSync(editor);
     const cleanupTabNavigation = registerCardTabNavigation(editor);
     const cleanupBringToFront = registerCardBringToFront(editor);
+    const cleanupFocus = registerCardFocus(editor);
 
     // Expose the editor for synchronous reads and release any canvas writes
     // that were issued before mount
@@ -140,6 +142,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
       cleanupStoreSync();
       cleanupTabNavigation();
       cleanupBringToFront();
+      cleanupFocus();
 
       // Swap in a fresh deferred tied to this editor, so any future remount
       // starts clean rather than chaining writes onto the editor we just
