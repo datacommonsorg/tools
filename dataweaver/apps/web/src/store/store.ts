@@ -4,6 +4,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  ChartStyle,
   ComparisonResult,
   FollowUp,
   FollowUpContext,
@@ -59,6 +60,7 @@ export interface AtlasStore {
   ) => void;
   cardUnregister: (shapeId: string) => void;
   cardClearFocusTarget: () => void;
+  cardSetChartStyle: (shapeId: string, chartStyle: ChartStyle) => void;
   queryCancel: (nodeId: string) => void;
   nodeDismissFollowUp: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
@@ -354,6 +356,23 @@ export const useAtlasStore = create<AtlasStore>()(
           set({ focusTarget: null }, undefined, 'cardClearFocusTarget');
         },
 
+        cardSetChartStyle: (shapeId, chartStyle) => {
+          set(
+            (state) => {
+              const card = state.cards[shapeId];
+              if (!card) return state;
+              return {
+                cards: {
+                  ...state.cards,
+                  [shapeId]: { ...card, chartStyle },
+                },
+              };
+            },
+            undefined,
+            'cardSetChartStyle',
+          );
+        },
+
         queryCancel: (nodeId) => {
           set(
             (state) => {
@@ -467,10 +486,37 @@ export const useAtlasStore = create<AtlasStore>()(
               // Regular chart — extract the single place result.
               const result = node.results[card.placeDcid];
               if (!result) continue;
+
+              // Use a composite key so that different variables for the same
+              // place are treated as distinct results (e.g. selecting
+              // "Female Life Expectancy in Japan" and "Male Life Expectancy
+              // in Japan" should produce 2 results, not 1).
               const entityDcid = result.entities[0]?.dcid;
-              if (!entityDcid || seen.has(entityDcid)) continue;
-              seen.add(entityDcid);
-              results.push(result);
+              if (!entityDcid) continue;
+              const dedupeKey = card.variableDcid
+                ? `${entityDcid}::${card.variableDcid}`
+                : entityDcid;
+              if (seen.has(dedupeKey)) continue;
+              seen.add(dedupeKey);
+
+              // When the card targets a specific variable, return a narrowed
+              // result containing only that variable's time series so the
+              // combine API receives per-variable data.
+              if (card.variableDcid) {
+                const variable = result.variables.find(
+                  (entry) => entry.dcid === card.variableDcid,
+                );
+                const timeSeries = result.timeSeries.filter(
+                  (entry) => entry.variableDcid === card.variableDcid,
+                );
+                results.push({
+                  ...result,
+                  variables: variable ? [variable] : result.variables,
+                  timeSeries,
+                });
+              } else {
+                results.push(result);
+              }
             }
           }
 

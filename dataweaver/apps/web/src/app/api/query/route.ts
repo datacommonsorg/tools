@@ -62,6 +62,14 @@ export async function POST(request: NextRequest) {
     ? body.selectedEntityDcids
     : [];
   const followUpContext = body?.followUpContext ?? undefined;
+  const hasChartSelection = !!body?.hasChartSelection;
+  const chartSelectionCount =
+    typeof body?.chartSelectionCount === 'number'
+      ? body.chartSelectionCount
+      : 0;
+  const selectedResults: QueryResult[] = Array.isArray(body?.selectedResults)
+    ? body.selectedResults
+    : [];
 
   if (typeof query !== 'string' || !query.trim()) {
     return new Response(JSON.stringify({ error: 'Missing or invalid query' }), {
@@ -107,11 +115,39 @@ export async function POST(request: NextRequest) {
 
         // ─── Analyze query ────────────────────────────────────────────────
         emit({ type: STREAM_EVENT.status, message: STATUS.parsingQuery });
+
+        // Build a summary of selected results for the LLM context
+        let selectedResultsSummary: string | undefined;
+        if (selectedResults.length >= 2) {
+          selectedResultsSummary = selectedResults
+            .map((r) => {
+              const place = r.entities[0]?.name ?? r.title;
+              const vars = r.variables.map((v) => v.name).join(', ');
+              return `${place} (${vars})`;
+            })
+            .join('; ');
+        } else if (chartSelectionCount >= 2) {
+          // Multiple chart cards selected but results were deduplicated
+          // (e.g. same place, different variables). Still tell the LLM.
+          const summary = selectedResults
+            .map((r) => {
+              const place = r.entities[0]?.name ?? r.title;
+              const vars = r.variables.map((v) => v.name).join(', ');
+              return `${place} (${vars})`;
+            })
+            .join('; ');
+          selectedResultsSummary = summary
+            ? `${chartSelectionCount} charts selected — ${summary}`
+            : `${chartSelectionCount} charts selected`;
+        }
+
         const parsed = await parseQuery({
           query,
           atlasContext,
           ancestorChainLength: ancestorChain.length,
           followUpContext,
+          hasChartSelection,
+          selectedResultsSummary,
         });
 
         // Resolve places
@@ -132,6 +168,73 @@ export async function POST(request: NextRequest) {
         // ─── Early exit: parse_query returned a followUp ─────────────────────
         if (parsed.followUp) {
           emit({ type: STREAM_EVENT.followUp, data: parsed.followUp });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
+          controller.close();
+          return;
+        }
+
+        // ─── Early exit: chart style change intent ───────────────────────────
+        if (parsed.chartStyleIntent) {
+          emit({
+            type: STREAM_EVENT.chartStyleChange,
+            style: parsed.chartStyleIntent.targetStyle,
+          });
+          emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
+          controller.close();
+          return;
+        }
+
+        // ─── Early exit: combine/compare intent ─────────────────────────────
+        if (parsed.combineIntent) {
+          if (selectedResults.length < 1) {
+            // No results available to compare — send a follow-up
+            emit({
+              type: STREAM_EVENT.followUp,
+              data: {
+                summary:
+                  'To compare data, select 2 or more chart cards on the canvas first.',
+                question:
+                  'Select multiple chart cards and try again, or ask a new data question.',
+                options: [],
+              },
+            });
+            emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
+            controller.close();
+            return;
+          }
+
+          emit({
+            type: STREAM_EVENT.status,
+            message: STATUS.comparingPlaces,
+          });
+
+          try {
+            const variableNames = [
+              ...new Set(
+                selectedResults.flatMap((r) => r.variables.map((v) => v.name)),
+              ),
+            ];
+            const topic = variableNames.join(', ') || 'Data comparison';
+            const summaries = buildPlaceSummaries(selectedResults);
+            const comparisonResult = await comparePlaces({
+              query,
+              topic,
+              summaries,
+            });
+            comparisonResult.notesHtml = renderComparisonHtml(comparisonResult);
+
+            emit({
+              type: STREAM_EVENT.comparisonResult,
+              result: comparisonResult,
+            });
+          } catch (err: unknown) {
+            const message =
+              err instanceof Error ? err.message : 'Unknown error';
+            emit({ type: STREAM_EVENT.error, message });
+            controller.close();
+            return;
+          }
+
           emit({ type: STREAM_EVENT.complete, message: STATUS.complete });
           controller.close();
           return;

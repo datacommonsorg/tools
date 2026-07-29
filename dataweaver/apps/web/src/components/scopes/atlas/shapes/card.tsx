@@ -16,6 +16,7 @@ import type {
   CardSize,
   CardVariant,
 } from '~/components/scopes/atlas/helpers';
+import type { ChartStyle } from '~/server/types';
 
 export const CARD_DATA_ATTRIBUTE = 'data-card';
 
@@ -27,6 +28,9 @@ interface ShapeCardProps extends CardContentFields, CardSize {
    * stops syncing `h` to the content so the manual size sticks.
    */
   isManuallyResized?: boolean;
+
+  /** Persisted chart style override. */
+  chartStyle?: ChartStyle;
 }
 
 // Register the custom shape within tldraw
@@ -90,6 +94,11 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     ).optional(),
     isLoading: T.boolean.optional(),
     isManuallyResized: T.boolean.optional(),
+    chartStyle: T.literalEnum(
+      'bar-vertical',
+      'bar-horizontal',
+      'line',
+    ).optional(),
     relatedQueries: T.arrayOf(T.string).optional(),
   };
 
@@ -125,6 +134,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       facets,
       seriesFacets,
       relatedQueries,
+      chartStyle,
     } = shape.props;
 
     const isLoading = shape.props.isLoading ?? false;
@@ -156,6 +166,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           facets={facets}
           seriesFacets={seriesFacets}
           relatedQueries={relatedQueries}
+          chartStyle={chartStyle}
         />
       );
     }

@@ -1,13 +1,20 @@
 import { extractJson } from '~/functions/extract_json';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
-import type { FollowUp, FollowUpContext, ParsedQuery } from '~/server/types';
+import type {
+  ChartStyle,
+  FollowUp,
+  FollowUpContext,
+  ParsedQuery,
+} from '~/server/types';
 
 interface ParseQueryParams {
   query: string;
   atlasContext: string;
   ancestorChainLength: number;
   followUpContext?: FollowUpContext;
+  hasChartSelection?: boolean;
+  selectedResultsSummary?: string;
 }
 
 /**
@@ -17,7 +24,14 @@ interface ParseQueryParams {
 export const parseQuery = async (
   params: ParseQueryParams,
 ): Promise<ParsedQuery> => {
-  const { query, atlasContext, ancestorChainLength, followUpContext } = params;
+  const {
+    query,
+    atlasContext,
+    ancestorChainLength,
+    followUpContext,
+    hasChartSelection,
+    selectedResultsSummary,
+  } = params;
   const config = getServiceConfig();
   const skill = getSkillConfig('parse_query');
   const genAI = getGenAI();
@@ -27,7 +41,14 @@ export const parseQuery = async (
     ? `\nPrevious conversation context exists (${ancestorChainLength} exchanges). Only mark isFollowUp=true if the query is clearly a continuation that lacks its own place or topic. If the query explicitly mentions a place or topic, treat it as a new independent query and extract places/topic normally.`
     : '';
   const atlasHint = atlasContext ? `\nAtlas context: ${atlasContext}` : '';
-  const systemPrompt = skill.systemPrompt + historyHint + atlasHint;
+  const chartHint = hasChartSelection
+    ? '\nCharts selected: The user currently has chart card(s) selected on the canvas.'
+    : '';
+  const combineHint = selectedResultsSummary
+    ? `\nMultiple chart cards selected with data: ${selectedResultsSummary}`
+    : '';
+  const systemPrompt =
+    skill.systemPrompt + historyHint + atlasHint + chartHint + combineHint;
 
   // When followUpContext is present, include the original query and Q&A chain
   // so the model can extract places/topic from the full conversation.
@@ -49,23 +70,46 @@ export const parseQuery = async (
 
   const responseText = response.text || '';
 
-  const parsed = extractJson<ParsedQuery & { followUp?: FollowUp }>(
-    responseText,
-  );
+  const VALID_CHART_STYLES: ChartStyle[] = [
+    'bar-vertical',
+    'bar-horizontal',
+    'line',
+  ];
 
-  return parsed
-    ? {
-        places: Array.isArray(parsed.places) ? parsed.places : [query],
-        topic: parsed.topic || query,
-        titles: parsed.titles || {},
-        isFollowUp: !!parsed.isFollowUp || !!followUpContext,
-        dateRange: parsed.dateRange || undefined,
-        followUp: parsed.followUp || undefined,
-      }
-    : {
-        places: [query],
-        topic: query,
-        titles: {},
-        isFollowUp: !!followUpContext,
-      };
+  const parsed = extractJson<
+    ParsedQuery & {
+      followUp?: FollowUp;
+      chartStyleIntent?: { targetStyle: string };
+      combineIntent?: boolean;
+    }
+  >(responseText);
+
+  if (!parsed) {
+    return {
+      places: [query],
+      topic: query,
+      titles: {},
+      isFollowUp: !!followUpContext,
+    };
+  }
+
+  // Validate chartStyleIntent if present
+  const chartStyleIntent =
+    parsed.chartStyleIntent?.targetStyle &&
+    VALID_CHART_STYLES.includes(
+      parsed.chartStyleIntent.targetStyle as ChartStyle,
+    )
+      ? { targetStyle: parsed.chartStyleIntent.targetStyle as ChartStyle }
+      : undefined;
+
+  return {
+    places: Array.isArray(parsed.places) ? parsed.places : [query],
+    topic: parsed.topic || query,
+    titles: parsed.titles || {},
+    isFollowUp: !!parsed.isFollowUp || !!followUpContext,
+    dateRange: parsed.dateRange || undefined,
+    followUp: parsed.followUp || undefined,
+    chartStyleIntent,
+    combineIntent: !!parsed.combineIntent || undefined,
+  };
 };
