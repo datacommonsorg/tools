@@ -23,10 +23,18 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Run as a dedicated non-root user. /app is owned by that user so the config
+# bootstrap can write config.json there at startup without root.
+RUN groupadd -g 10001 appuser \
+    && useradd -u 10001 -g appuser -m -s /sbin/nologin appuser
+
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
 COPY mcp_proxy_only.py ./
+
+RUN chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 5001
 

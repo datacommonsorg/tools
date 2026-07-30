@@ -39,8 +39,9 @@ figma_*
 screenshots
 .gemini
 .figma_pat
+# Ignore stray Python scripts at the project root, but keep the agent
+# sidecar's source (agent/*.py) tracked — it is part of the app.
 *.py
-# ...but the agent sidecar is Python and must stay tracked.
 !agent/*.py
 sample.js
 
