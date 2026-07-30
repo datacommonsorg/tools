@@ -31,7 +31,8 @@ RUN groupadd -g 10001 appuser \
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-COPY mcp_proxy_only.py ./
+COPY main.py ./
+COPY src/ ./src/
 
 RUN chown -R appuser:appuser /app
 USER appuser
@@ -41,4 +42,4 @@ EXPOSE 5001
 # Cloud Run health probes hit the agent on PROXY_PORT; the agent is the
 # sidecar container, so the ingress container's nginx reverse-proxies
 # /agent/* to 127.0.0.1:${PROXY_PORT}.
-CMD ["python", "-u", "mcp_proxy_only.py"]
+CMD ["python", "-u", "main.py"]

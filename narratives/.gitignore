@@ -40,9 +40,9 @@ screenshots
 .gemini
 .figma_pat
 # Ignore stray Python scripts at the project root, but keep the agent
-# sidecar's source (agent/*.py) tracked — it is part of the app.
+# sidecar's source (agent/ and its subpackages) tracked — it is part of the app.
 *.py
-!agent/*.py
+!agent/**/*.py
 sample.js
 
 # Redundant snapshot of the original AI Studio scaffold
