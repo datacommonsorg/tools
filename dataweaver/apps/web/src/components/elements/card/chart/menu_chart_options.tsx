@@ -13,9 +13,8 @@ import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
 import { useClickOutside } from '~/hooks/use_click_outside';
 import { useFocusTrap } from '~/hooks/use_focus_trap';
 import { useKeydown } from '~/hooks/use_keydown';
+import type { ChartStyle } from '~/server/types';
 import s from './menu_chart_options.module.scss';
-
-export type ChartStyle = 'bar-vertical' | 'bar-horizontal' | 'line';
 
 interface ChartStyleOption {
   key: ChartStyle;

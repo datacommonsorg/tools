@@ -96,7 +96,8 @@ export const CardContent = ({
           const container = event.currentTarget;
           const isRtl = window.getComputedStyle(container).direction === 'rtl';
           const onScrollbar = isRtl
-            ? event.nativeEvent.offsetX < container.offsetWidth - container.clientWidth
+            ? event.nativeEvent.offsetX <
+              container.offsetWidth - container.clientWidth
             : event.nativeEvent.offsetX > container.clientWidth;
 
           if (onScrollbar) event.stopPropagation();
