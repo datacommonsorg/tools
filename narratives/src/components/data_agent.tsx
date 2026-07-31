@@ -211,7 +211,9 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
           and out-classes the Tailwind `leading-*` helper in source order. */}
       <div
         data-turn-index={index}
-        className="self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-6 py-3 sm:py-4 rounded-[24px] text-body-large shadow-sm bg-user-msg text-on-surface break-words scroll-mt-4"
+        className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-6 py-3 sm:py-4 rounded-[24px] text-body-large shadow-sm bg-user-msg text-on-surface break-words scroll-mt-4${
+          index > 0 ? " mt-3" : ""
+        }`}
         style={{ lineHeight: "28px" }}
       >
         {turn.userMessage}
@@ -223,30 +225,41 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
 
       {/* Reasoning block — sparkle + "Reasoning" header, expanded by default.
           Always renders above the response card per Figma 3427-16715;
-          falls back to a status placeholder when the agent emits no thoughts. */}
-      <ReasoningBlock
-        thoughts={turn.thoughts}
-        streaming={isStreaming && turn.status !== "done" && turn.status !== "error"}
-        done={turn.status === "done"}
-        status={turn.status}
-      />
+          falls back to a status placeholder when the agent emits no thoughts.
+          Suppressed when the turn was stopped — we replace the half-finished
+          reasoning with the "Stopped per your request" note below. */}
+      {!turn.stopped && (
+        <ReasoningBlock
+          thoughts={turn.thoughts}
+          streaming={isStreaming && turn.status !== "done" && turn.status !== "error"}
+          done={turn.status === "done"}
+          status={turn.status}
+        />
+      )}
 
-      {/* Skeleton while the turn is streaming but no synthesis text has
-          arrived yet. Covers the full pre-text window: mcp (tools running),
-          kb (knowledge base lookup), and synthesis (model thinking before
-          first token). */}
-      {!turn.text &&
-        (turn.status === "mcp" ||
-          turn.status === "kb" ||
-          turn.status === "synthesis") && (
-          <div className="self-start w-full max-w-4xl">
-            <SkeletonCard query={turn.userMessage} />
-          </div>
-        )}
+      {/* Narrative loading box — only once the agent starts constructing the
+          narrative (the `synthesis` phase), not during mcp (tools running) or
+          kb (knowledge base lookup). Through those earlier phases the user
+          sees just the reasoning; the narrative box appears with its loading
+          state when synthesis begins, then fills in as text streams. */}
+      {!turn.text && turn.status === "synthesis" && (
+        <div className="self-start w-full max-w-4xl">
+          <SkeletonCard query={turn.userMessage} />
+        </div>
+      )}
 
-      {/* Streaming + final answer — full Figma AnswerPanel */}
-      {turn.text && (
+      {/* Streaming + final answer — full Figma AnswerPanel. Hidden when the
+          turn was stopped so we don't show a truncated partial answer. */}
+      {turn.text && !turn.stopped && (
         <AnswerPanel turn={turn} isStreaming={isStreaming} onAsk={onAsk} />
+      )}
+
+      {/* Stopped note — shown in place of the reasoning/answer when the user
+          aborts the turn via the Stop button. */}
+      {turn.stopped && (
+        <div className="self-start shrink-0 w-full max-w-4xl text-body-large text-on-surface-variant">
+          Stopped per your request
+        </div>
       )}
 
       {/* Error */}

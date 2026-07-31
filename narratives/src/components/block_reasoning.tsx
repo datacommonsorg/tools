@@ -2,7 +2,7 @@
  * @fileoverview Renders the agent's collapsible reasoning/thoughts block for a turn.
  */
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDownIcon } from "./icons";
@@ -21,9 +21,83 @@ import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
  */
 
 const COLOR_TEXT = "var(--color-on-surface)";
+/** Reasoning body reads as a muted aside — one step softer than the response. */
+const COLOR_REASONING = "var(--color-on-surface-variant)";
 const COLOR_SPARKLE = "#1A8C7A";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
+
+// The reasoning aside's left bar. The bar lives on the content blocks — both
+// headings and body (paragraphs, lists) — so each heading + its following body
+// share one continuous bar. Consecutive blocks have no vertical margin so their
+// borders touch; a heading's top margin opens a gap with no border, which is
+// what breaks the bar before the *next* heading.
+const BAR_WIDTH = 2;
+const BAR_PAD = 16;
+const BAR_INSET = BAR_WIDTH + BAR_PAD; // left offset of body text (border + pad)
+const BAR_COLOR = "var(--color-border, #E3E3E3)";
+// The reasoning icon (sparkle/loader) is ICON_SIZE wide and starts at the
+// aside's left edge, so its horizontal centre is at ICON_SIZE / 2. Shift the
+// content right so the bar is centred under that icon centre.
+const ICON_SIZE = 20;
+const BAR_CENTER_LEFT = ICON_SIZE / 2 - BAR_WIDTH / 2;
+
+/**
+ * Body blocks: the barred, italic detail text. margin:0 + internal padding so
+ * adjacent blocks' bars join seamlessly.
+ */
+const BODY_BLOCK_STYLE: CSSProperties = {
+  margin: 0,
+  borderLeft: `${BAR_WIDTH}px solid ${BAR_COLOR}`,
+  paddingLeft: BAR_PAD,
+  paddingTop: 2,
+  paddingBottom: 2,
+};
+
+/**
+ * Headings: bold, upright (not italic like the body), and barred like the body
+ * so the section reads as one unit. marginTop opens the gap that breaks the bar
+ * before this heading; marginBottom stays 0 so the heading joins its own body.
+ */
+const HEADING_STYLE: CSSProperties = {
+  ...BODY_BLOCK_STYLE,
+  marginTop: 14,
+  paddingTop: 4,
+  fontStyle: "normal",
+  fontWeight: 600,
+  fontSize: 16,
+  lineHeight: "24px",
+};
+
+/** Renders a reasoning section heading — bold, upright, barred (HEADING_STYLE). */
+const ReasoningHeading = ({ children }: { children?: React.ReactNode }) => (
+  <h3 style={HEADING_STYLE}>{children}</h3>
+);
+
+/** Minimal shape of the hast node react-markdown hands each renderer. */
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  children?: HastNode[];
+}
+
+/**
+ * Reports whether a paragraph node is really a standalone bold line the model
+ * wrote as a heading — e.g. `**Plan**` arrives as `<p><strong>…</strong></p>`,
+ * not a real heading. We treat those as headings so the bar breaks at them
+ * (models rarely emit `##` here).
+ */
+function isBoldOnlyParagraph(node?: HastNode): boolean {
+  const kids = (node?.children ?? []).filter(
+    (child) => !(child.type === "text" && !(child.value ?? "").trim()),
+  );
+  return (
+    kids.length === 1 &&
+    kids[0].type === "element" &&
+    kids[0].tagName === "strong"
+  );
+}
 
 interface ReasoningBlockProps {
   thoughts: ThoughtEvent[];
@@ -54,7 +128,7 @@ const PLACEHOLDER_DONE =
  * these strings are the UI-side copy for each phase.
  */
 function phaseLabel(streaming: boolean, status?: TurnStatus): string {
-  if (!streaming) return "Reasoning";
+  if (!streaming) return "Reasoning details";
   switch (status) {
     case "mcp":
       return "Querying data tools…";
@@ -78,11 +152,10 @@ export function ReasoningBlock({
   const [open, setOpen] = useState(defaultOpen);
   const label = phaseLabel(streaming, status);
 
-  // Flatten to a single markdown string (newline-separated). Phase grouping
-  // existed in the old ThoughtsPanel; the new Figma design renders the
-  // reasoning as one continuous block. When the agent emits no thoughts,
-  // we render a short status placeholder so the section stays present
-  // above the response card per Figma 3427-16715.
+  // Flatten to a single markdown string (newline-separated): the reasoning
+  // renders as one continuous block, not grouped per phase. When the agent
+  // emits no thoughts, we render a short status placeholder so the section
+  // stays present above the response card per Figma 3427-16715.
   const joined =
     thoughts.length > 0
       ? thoughts.map((thought) => thought.text).join("\n\n")
@@ -118,7 +191,7 @@ export function ReasoningBlock({
           {label}
           <ChevronDownIcon
             className={`text-on-surface-variant transition-transform duration-150 ${
-              open ? "rotate-0" : "-rotate-90"
+              open ? "rotate-180" : "rotate-0"
             }`}
           />
         </span>
@@ -127,18 +200,35 @@ export function ReasoningBlock({
         <div
           className="mt-2 reasoning-markdown"
           style={{
+            marginLeft: BAR_CENTER_LEFT,
             fontFamily: FONT_LABEL,
             fontSize: 16,
             lineHeight: "28px",
-            color: COLOR_TEXT,
+            // Softer than the response body + italic + a left bar with
+            // indentation, so the reasoning reads as an aside distinct from
+            // the actual answer.
+            color: COLOR_REASONING,
+            fontStyle: "italic",
           }}
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              p: ({ children }) => (
-                <p className="m-0 mb-2 last:mb-0">{children}</p>
-              ),
+              // Headings break the left bar (see HEADING_STYLE).
+              h1: ReasoningHeading,
+              h2: ReasoningHeading,
+              h3: ReasoningHeading,
+              h4: ReasoningHeading,
+              h5: ReasoningHeading,
+              h6: ReasoningHeading,
+              // A lone-bold paragraph is really a section heading (breaks the
+              // bar); everything else is a barred body paragraph.
+              p: ({ node, children }) =>
+                isBoldOnlyParagraph(node as unknown as HastNode) ? (
+                  <h3 style={HEADING_STYLE}>{children}</h3>
+                ) : (
+                  <p style={BODY_BLOCK_STYLE}>{children}</p>
+                ),
               strong: ({ children }) => (
                 <strong style={{ fontWeight: 600 }}>{children}</strong>
               ),
@@ -146,10 +236,18 @@ export function ReasoningBlock({
                 <em style={{ fontStyle: "italic" }}>{children}</em>
               ),
               ul: ({ children }) => (
-                <ul className="list-disc pl-5 mb-2 space-y-0.5">{children}</ul>
+                <ul
+                  className="list-disc space-y-0.5"
+                  style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
+                >
+                  {children}
+                </ul>
               ),
               ol: ({ children }) => (
-                <ol className="list-decimal pl-5 mb-2 space-y-0.5">
+                <ol
+                  className="list-decimal space-y-0.5"
+                  style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
+                >
                   {children}
                 </ol>
               ),
