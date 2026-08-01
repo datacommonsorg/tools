@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -245,6 +245,8 @@ def get_api_keys(demo_mode: bool = False) -> list:
 def get_query_param_key() -> str:
     """Get the secret key for query param overrides from config."""
     config = load_config()
+    # TODO: replace the instance-specific "AISummit2026" fallback with a more
+    # generic default, or require query_param_key to be configured explicitly.
     return config.get("query_param_key", "AISummit2026")  # Default fallback
 
 

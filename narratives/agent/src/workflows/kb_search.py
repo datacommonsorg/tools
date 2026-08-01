@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,6 +54,8 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
 
     kb_prompt = config.get("prompts", {}).get("kb", "")
     kb_model = config.get("gemini", {}).get("kb_model", "gemini-3-flash-preview")
+    kb_temperature = kb_config.get("temperature", 0.3)
+    kb_dynamic_threshold = kb_config.get("dynamic_threshold", 0.3)
 
     # Get API key -> filestore mapping (demo or regular based on mode)
     key_filestore_map = get_api_key_filestore_mapping(demo_mode=demo_mode)
@@ -91,13 +93,13 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
             "contents": [{"role": "user", "parts": [{"text": user_message}]}],
             "systemInstruction": {"parts": [{"text": inject_datetime(kb_prompt)}]},
             "generationConfig": {
-                "temperature": 0.3,
+                "temperature": kb_temperature,
             },
             "tools": [{
                 "fileSearch": {
                     "dynamicFileSearchConfig": {
                         "mode": "MODE_DYNAMIC",
-                        "dynamicThreshold": 0.3
+                        "dynamicThreshold": kb_dynamic_threshold
                     }
                 }
             }],

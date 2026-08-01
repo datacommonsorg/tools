@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,9 @@ from src.gemini.client import gemini_request
 from src.gemini.schemas import CHART_CONFIG_SCHEMA, DATA_VALIDATION_SCHEMA
 
 logger = logging.getLogger(__name__)
+
+# Max characters of the synthesis text sent to the data-validation check.
+SYNTHESIS_PREVIEW_LENGTH = 2000
 
 
 def get_chart_config(mcp_results: str, user_message: str) -> dict:
@@ -91,7 +94,7 @@ def validate_data_response(synthesis_text: str, user_message: str) -> bool:
     prompt = f"""User asked: {user_message}
 
 Response given:
-{synthesis_text[:2000]}
+{synthesis_text[:SYNTHESIS_PREVIEW_LENGTH]}
 
 Did this response contain actual data/statistics that answer the user's question?
 Return false if the response says data is "not available", "not found", "doesn't exist", or similar."""

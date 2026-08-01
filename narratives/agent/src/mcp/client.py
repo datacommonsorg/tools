@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 import requests
 
+from src.config import load_config
 from src.mcp.schema import fix_tool_arguments
 from src.session_logger import SessionLogger
 
@@ -132,10 +133,14 @@ def initialize_mcp() -> bool:
 
     logger.info("Initializing MCP session...")
 
+    mcp_config = load_config().get("mcp", {})
     result = mcp_request("initialize", {
-        "protocolVersion": "2024-11-05",
+        "protocolVersion": mcp_config.get("protocol_version", "2024-11-05"),
         "capabilities": {"roots": {"listChanged": True}},
-        "clientInfo": {"name": "dc-mcp-proxy", "version": "1.0.0"}
+        "clientInfo": {
+            "name": mcp_config.get("client_name", "dc-mcp-proxy"),
+            "version": mcp_config.get("client_version", "1.0.0"),
+        },
     })
 
     if "error" in result:

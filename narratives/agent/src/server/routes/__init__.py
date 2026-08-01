@@ -13,17 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+from src.server.routes.brand import brand_bp
+from src.server.routes.system import system_bp
+from src.server.routes.tools import tools_bp
+from src.server.routes.chat import chat_bp
 
-from flask import Flask
-from flask_cors import CORS
 
-# Configuration
-PROXY_PORT = int(os.environ.get("PROXY_PORT", 5001))
-
-# Flask app
-app = Flask(__name__)
-# Scoped CORS. ALLOWED_ORIGIN defaults to "*" so dev still works
-# without configuration; production sets this to the Cloud Run service URL
-# (comma-separated for multiple origins).
-CORS(app, origins=os.environ.get("ALLOWED_ORIGIN", "*").split(","))
+def register_all(app):
+    """Register every route blueprint on the Flask app."""
+    for bp in (brand_bp, system_bp, tools_bp, chat_bp):
+        app.register_blueprint(bp)

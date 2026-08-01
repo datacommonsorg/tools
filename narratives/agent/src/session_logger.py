@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,10 @@ from datetime import datetime
 from typing import Any, Optional
 
 from src.config import AGENT_ROOT
+
+# Max characters of the final response text kept as a preview in the log
+# (the full text_length is recorded separately).
+MAX_TEXT_PREVIEW_LENGTH = 500
 
 
 # ============================================================
@@ -131,7 +135,7 @@ class SessionLogger:
         self.log("GEMINI_RESPONSE", {
             "model": model,
             "duration_ms": round(duration_ms, 2),
-            "response": self._truncate_response(response)
+            "response": response
         })
 
     def log_mcp_tool_call(self, tool_name: str, arguments: dict):
@@ -170,7 +174,11 @@ class SessionLogger:
         """Log the final response sent to user."""
         self.log("FINAL_RESPONSE", {
             "text_length": len(text),
-            "text_preview": text[:500] + "..." if len(text) > 500 else text,
+            "text_preview": (
+                text[:MAX_TEXT_PREVIEW_LENGTH] + "..."
+                if len(text) > MAX_TEXT_PREVIEW_LENGTH
+                else text
+            ),
             "chart_config": chart_config,
             "total_duration_ms": round(total_duration_ms, 2) if total_duration_ms else None
         })
@@ -182,7 +190,3 @@ class SessionLogger:
             "error_message": str(error_message),
             "context": context or {}
         })
-
-    def _truncate_response(self, response: dict) -> dict:
-        """Return full response for logging (no truncation)."""
-        return response

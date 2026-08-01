@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2024 Google LLC
+# Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,9 @@ Usage:
 from src.config import _bootstrap_config_from_url
 from src.mcp.client import get_tools, initialize_mcp, MCP_PORT
 from src.server.app import app, PROXY_PORT
-import src.server.routes  # noqa: F401 (registers routes)
+from src.server.routes import register_all
+
+register_all(app)
 
 
 def main():
