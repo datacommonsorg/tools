@@ -4,6 +4,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import type {
   CardEntry,
   CardType,
+  ChartStyle,
   ComparisonResult,
   FollowUp,
   FollowUpContext,
@@ -25,6 +26,7 @@ export interface AtlasStore {
   // --- UI state ---
   isProcessing: boolean;
   currentStatus: string;
+  focusTarget: { shapeId: string; sourceShapeId: string } | null;
 
   // --- Actions ---
   queryStart: (
@@ -57,6 +59,8 @@ export interface AtlasStore {
     variableDcid: string,
   ) => void;
   cardUnregister: (shapeId: string) => void;
+  cardClearFocusTarget: () => void;
+  cardSetChartStyle: (shapeId: string, chartStyle: ChartStyle) => void;
   queryCancel: (nodeId: string) => void;
   nodeDismissFollowUp: (nodeId: string) => void;
   querySetProcessing: (val: boolean) => void;
@@ -69,6 +73,34 @@ export interface AtlasStore {
   getResultsForSelectedCards: (selectedShapeIds: string[]) => QueryResult[];
 }
 
+/**
+ * Remove a node and its associated cards from state. Returns the partial
+ * state update, or `null` if the node doesn't exist.
+ */
+const removeNode = (
+  state: AtlasStore,
+  nodeId: string,
+): Pick<AtlasStore, 'nodes' | 'cards' | 'latestNodeId'> | null => {
+  const node = state.nodes[nodeId];
+  if (!node) return null;
+
+  const { [nodeId]: _, ...remainingNodes } = state.nodes;
+  const remainingCards = Object.fromEntries(
+    Object.entries(state.cards).filter(
+      ([, card]) => card.historyNodeId !== nodeId,
+    ),
+  );
+
+  return {
+    nodes: remainingNodes,
+    cards: remainingCards,
+    latestNodeId:
+      state.latestNodeId === nodeId
+        ? (node.parentId ?? null)
+        : state.latestNodeId,
+  };
+};
+
 export const useAtlasStore = create<AtlasStore>()(
   subscribeWithSelector(
     devtools(
@@ -78,6 +110,7 @@ export const useAtlasStore = create<AtlasStore>()(
         cards: {},
         isProcessing: false,
         currentStatus: '',
+        focusTarget: null,
 
         queryStart: (query, parsedQuery, parentNodeId, followUpContext) => {
           const id = nanoid();
@@ -258,12 +291,41 @@ export const useAtlasStore = create<AtlasStore>()(
         },
 
         cardRegisterChart: (parentShapeId, placeDcid, variableDcid) => {
-          const { cards, cardRegister } = get();
+          const { cards, nodes, cardRegister } = get();
           const parent = cards[parentShapeId];
           if (!parent) return;
 
           const shapeId = `shape:${parent.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
-          if (cards[shapeId]) return;
+          if (cards[shapeId]) {
+            set(
+              { focusTarget: { shapeId, sourceShapeId: parentShapeId } },
+              undefined,
+              'cardFocusTarget',
+            );
+            return;
+          }
+
+          // Check whether the generic chart (created with the initial query)
+          // already shows this variable (it displays the first time series).
+          const genericChartId = `shape:${parent.historyNodeId}__${placeDcid}__chart`;
+          if (cards[genericChartId]) {
+            const node = nodes[parent.historyNodeId];
+            const result = node?.results[placeDcid];
+            const firstVariable = result?.timeSeries[0]?.variableDcid;
+            if (firstVariable === variableDcid) {
+              set(
+                {
+                  focusTarget: {
+                    shapeId: genericChartId,
+                    sourceShapeId: parentShapeId,
+                  },
+                },
+                undefined,
+                'cardFocusTarget',
+              );
+              return;
+            }
+          }
 
           cardRegister(
             shapeId,
@@ -271,6 +333,11 @@ export const useAtlasStore = create<AtlasStore>()(
             'chart',
             placeDcid,
             variableDcid,
+          );
+          set(
+            { focusTarget: { shapeId, sourceShapeId: parentShapeId } },
+            undefined,
+            'cardFocusTarget',
           );
         },
 
@@ -285,26 +352,34 @@ export const useAtlasStore = create<AtlasStore>()(
           );
         },
 
+        cardClearFocusTarget: () => {
+          set({ focusTarget: null }, undefined, 'cardClearFocusTarget');
+        },
+
+        cardSetChartStyle: (shapeId, chartStyle) => {
+          set(
+            (state) => {
+              const card = state.cards[shapeId];
+              if (!card) return state;
+              return {
+                cards: {
+                  ...state.cards,
+                  [shapeId]: { ...card, chartStyle },
+                },
+              };
+            },
+            undefined,
+            'cardSetChartStyle',
+          );
+        },
+
         queryCancel: (nodeId) => {
           set(
             (state) => {
-              const node = state.nodes[nodeId];
-              if (!node) return state;
-
-              const { [nodeId]: _, ...remainingNodes } = state.nodes;
-              const remainingCards = Object.fromEntries(
-                Object.entries(state.cards).filter(
-                  ([, card]) => card.historyNodeId !== nodeId,
-                ),
-              );
-
+              const base = removeNode(state, nodeId);
+              if (!base) return state;
               return {
-                nodes: remainingNodes,
-                cards: remainingCards,
-                latestNodeId:
-                  state.latestNodeId === nodeId
-                    ? (node.parentId ?? null)
-                    : state.latestNodeId,
+                ...base,
                 isProcessing: false,
                 currentStatus: '',
               };
@@ -316,26 +391,7 @@ export const useAtlasStore = create<AtlasStore>()(
 
         nodeDismissFollowUp: (nodeId) => {
           set(
-            (state) => {
-              const node = state.nodes[nodeId];
-              if (!node) return state;
-
-              const { [nodeId]: _, ...remainingNodes } = state.nodes;
-              const remainingCards = Object.fromEntries(
-                Object.entries(state.cards).filter(
-                  ([, card]) => card.historyNodeId !== nodeId,
-                ),
-              );
-
-              return {
-                nodes: remainingNodes,
-                cards: remainingCards,
-                latestNodeId:
-                  state.latestNodeId === nodeId
-                    ? (node.parentId ?? null)
-                    : state.latestNodeId,
-              };
-            },
+            (state) => removeNode(state, nodeId) ?? state,
             undefined,
             'nodeDismissFollowUp',
           );
@@ -430,10 +486,37 @@ export const useAtlasStore = create<AtlasStore>()(
               // Regular chart — extract the single place result.
               const result = node.results[card.placeDcid];
               if (!result) continue;
+
+              // Use a composite key so that different variables for the same
+              // place are treated as distinct results (e.g. selecting
+              // "Female Life Expectancy in Japan" and "Male Life Expectancy
+              // in Japan" should produce 2 results, not 1).
               const entityDcid = result.entities[0]?.dcid;
-              if (!entityDcid || seen.has(entityDcid)) continue;
-              seen.add(entityDcid);
-              results.push(result);
+              if (!entityDcid) continue;
+              const dedupeKey = card.variableDcid
+                ? `${entityDcid}::${card.variableDcid}`
+                : entityDcid;
+              if (seen.has(dedupeKey)) continue;
+              seen.add(dedupeKey);
+
+              // When the card targets a specific variable, return a narrowed
+              // result containing only that variable's time series so the
+              // combine API receives per-variable data.
+              if (card.variableDcid) {
+                const variable = result.variables.find(
+                  (entry) => entry.dcid === card.variableDcid,
+                );
+                const timeSeries = result.timeSeries.filter(
+                  (entry) => entry.variableDcid === card.variableDcid,
+                );
+                results.push({
+                  ...result,
+                  variables: variable ? [variable] : result.variables,
+                  timeSeries,
+                });
+              } else {
+                results.push(result);
+              }
             }
           }
 

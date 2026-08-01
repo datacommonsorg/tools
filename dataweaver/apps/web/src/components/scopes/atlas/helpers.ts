@@ -2,6 +2,7 @@ import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { CardState } from '~/components/elements/card/base';
 import type { CardChartProps } from '~/components/elements/card/chart/chart';
 import type { CardTextProps } from '~/components/elements/card/text';
+import type { ChartStyle } from '~/server/types';
 
 interface BaseContent extends Partial<Pick<CardState, 'isLoading'>> {
   relatedQueries?: string[];
@@ -26,6 +27,7 @@ interface ChartContent
       'title' | 'description' | 'data' | 'series' | 'facets' | 'seriesFacets'
     > {
   variant: 'chart';
+  chartStyle?: ChartStyle;
 }
 
 export type AtlasContent = TextContent | TableContent | ChartContent;
@@ -85,6 +87,7 @@ export const contentToShape = (
         series: content.series,
         facets: content.facets,
         seriesFacets: content.seriesFacets,
+        chartStyle: content.chartStyle,
       },
     };
   }

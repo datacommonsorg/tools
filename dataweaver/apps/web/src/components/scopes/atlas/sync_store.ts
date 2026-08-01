@@ -5,6 +5,7 @@ import type { ChartSeries } from '~/components/elements/card/chart/chart';
 import type {
   CardEntry,
   CardType,
+  ChartStyle,
   ComparisonResult,
   FacetInfo,
   QueryResult,
@@ -65,22 +66,56 @@ export const deriveComparisonChartContent = (
   const series: ChartSeries[] = [];
   const seriesFacets: Record<string, FacetInfo[]> = {};
 
-  for (const result of Object.values(allResults)) {
-    const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
-    const observations = ts?.facets[0]?.observations;
-    if (!observations || observations.length === 0) continue;
+  const resultEntries = Object.values(allResults);
+  const allPlaces = new Set(
+    resultEntries.map((result) => result.entities[0]?.dcid).filter(Boolean),
+  );
+  const isSamePlace = allPlaces.size === 1;
 
-    const entity = result.entities[0];
-    const placeDcid = entity?.dcid ?? result.id;
-    const placeName = entity?.name ?? entity?.dcid ?? result.title;
+  if (isSamePlace) {
+    // Same-place, different-variable: overlay ALL variables in the merged
+    // result as separate series. The chart represents a variable comparison
+    // within one place, so we always show every time series regardless of
+    // which variableDcid the chart metadata references.
+    const result = resultEntries[0];
+    if (!result) return null;
 
-    series.push({
-      key: placeDcid,
-      label: placeName,
-      data: observations,
-    });
+    for (const ts of result.timeSeries) {
+      const observations = ts.facets[0]?.observations;
+      if (!observations || observations.length === 0) continue;
 
-    seriesFacets[placeDcid] = ts.facets;
+      const variable = result.variables.find(
+        (entry) => entry.dcid === ts.variableDcid,
+      );
+      const label = variable?.name ?? ts.variableDcid;
+
+      series.push({
+        key: ts.variableDcid,
+        label,
+        data: observations,
+      });
+
+      seriesFacets[ts.variableDcid] = ts.facets;
+    }
+  } else {
+    // Different-place: build one series per place (original behavior).
+    for (const result of resultEntries) {
+      const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
+      const observations = ts?.facets[0]?.observations;
+      if (!observations || observations.length === 0) continue;
+
+      const entity = result.entities[0];
+      const placeDcid = entity?.dcid ?? result.id;
+      const placeName = entity?.name ?? entity?.dcid ?? result.title;
+
+      series.push({
+        key: placeDcid,
+        label: placeName,
+        data: observations,
+      });
+
+      seriesFacets[placeDcid] = ts.facets;
+    }
   }
 
   if (series.length === 0) return null;
@@ -166,6 +201,7 @@ export const deriveContentForCard = (
   variableDcid?: string,
   comparison?: ComparisonResult,
   allResults?: Record<string, QueryResult>,
+  chartStyle?: ChartStyle,
 ): AtlasContent | null => {
   if (type === 'loading') {
     return deriveLoadingContent(placeholderTitle ?? '');
@@ -175,7 +211,10 @@ export const deriveContentForCard = (
     return deriveComparisonContent(comparison);
   }
   if (comparison && type === 'chart' && variableDcid && allResults) {
-    return deriveComparisonChartContent(comparison, variableDcid, allResults);
+    return withChartStyle(
+      deriveComparisonChartContent(comparison, variableDcid, allResults),
+      chartStyle,
+    );
   }
   if (!result) return null;
   switch (type) {
@@ -183,11 +222,24 @@ export const deriveContentForCard = (
       return deriveTableContent(result);
     case 'notes':
       return deriveNotesContent(result);
-    case 'chart':
-      return variableDcid
+    case 'chart': {
+      const content = variableDcid
         ? deriveChartContentForVariable(result, variableDcid)
         : deriveChartContent(result);
+      return withChartStyle(content, chartStyle);
+    }
   }
+};
+
+/** Apply a persisted chart style override to derived chart content. */
+const withChartStyle = (
+  content: AtlasContent | null,
+  chartStyle?: ChartStyle,
+): AtlasContent | null => {
+  if (content && chartStyle && content.variant === 'chart') {
+    return { ...content, chartStyle };
+  }
+  return content;
 };
 
 // --- Sync hook ---
@@ -232,6 +284,7 @@ export const useStoreShapeSync = () => {
             card.variableDcid,
             comparison,
             isComparison ? node?.results : undefined,
+            card.chartStyle,
           );
           if (!content) continue;
 
@@ -259,6 +312,7 @@ export const useStoreShapeSync = () => {
             card.variableDcid,
             comparison,
             isComparison ? node?.results : undefined,
+            card.chartStyle,
           );
           if (!content) continue;
 
@@ -266,6 +320,21 @@ export const useStoreShapeSync = () => {
           if (handle) {
             const { variant: _, ...updateProps } = content;
             handle.update(updateProps as Parameters<typeof handle.update>[0]);
+          }
+        }
+
+        // Detect cards whose chartStyle changed
+        for (const [shapeId, card] of Object.entries(cards)) {
+          const prevCard = prevCards[shapeId];
+          if (!prevCard || prevCard.chartStyle === card.chartStyle) continue;
+          // Skip cards already handled by the type-change block above.
+          if (prevCard.type !== card.type) continue;
+
+          const handle = handles.get(shapeId);
+          if (handle) {
+            handle.update({ chartStyle: card.chartStyle } as Parameters<
+              typeof handle.update
+            >[0]);
           }
         }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { COLORS } from '@package/tokens/ts';
+import { useMemo } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -17,6 +18,7 @@ import type { ChartSeries } from './chart';
 import { ChartContainer } from './chart_container';
 import s from './chart_container.module.scss';
 import { ChartLegend } from './legend';
+import { measureAxisWidth, numericAxisLabels } from './measure_axis_width';
 import { type MergedRow, mergeSeriesData } from './merge_series_data';
 import { getSeriesColor } from './palette';
 import { TooltipCustom } from './tooltip_custom';
@@ -71,6 +73,11 @@ export const DataChartLine = ({ series }: ChartProps) => {
   const totalPoints = series.reduce((sum, entry) => sum + entry.data.length, 0);
   const unit = series[0]?.unit;
 
+  const yAxisWidth = useMemo(
+    () => measureAxisWidth(numericAxisLabels(mergedData, series.length, unit)),
+    [mergedData, series.length, unit],
+  );
+
   return (
     <ChartContainer aspect={1.78}>
       {(width, height) => (
@@ -102,7 +109,7 @@ export const DataChartLine = ({ series }: ChartProps) => {
                 padding={{ left: 0, right: 10 }}
               />
               <YAxis
-                width="auto"
+                width={yAxisWidth}
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 10, dy: -7, textAnchor: 'end' }}

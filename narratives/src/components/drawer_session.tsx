@@ -5,6 +5,8 @@
 import { useState, type ReactNode } from "react";
 import { Trash2, X, ArrowRight, ArrowLeft } from "lucide-react";
 import { NewChatIcon, ChatsIcon } from "./icons";
+import { NAV_CONFIG } from "../config/nav_config";
+import { useHashRoute } from "../hooks/use_hash_route";
 import {
   formatRelativeTime,
   useChatSession,
@@ -34,6 +36,19 @@ const FONT_DISPLAY = "var(--font-display)";
  */
 const COLOR_LABEL = "var(--color-subtle)";
 const COLOR_ARROW = "var(--color-on-surface)";
+/**
+ * Active-tab accent — the brand primary color (driven by the instance's brand
+ * config), used for the active tab's dot + text.
+ */
+const COLOR_ACTIVE = "var(--color-brand-primary)";
+/**
+ * Leading-icon column width in the menu rows (NewChatIcon/ChatsIcon render at
+ * 22px). The section-tab dot sits in a box of the same width so tab labels
+ * line up with the "New chat"/"Chats" labels above.
+ */
+const MENU_ICON_WIDTH = 22;
+/** Inactive section-tab label — a touch darker than the menu rows' subtle grey. */
+const COLOR_TAB_INACTIVE = "var(--color-muted)";
 
 /** The chats drawer: desktop left-anchored list and mobile two-level slide-in panel. */
 export function SessionDrawer() {
@@ -50,6 +65,10 @@ export function SessionDrawer() {
   // Which level the MOBILE panel is showing. Reset to "menu" whenever the
   // drawer closes so the next open always starts at the top level.
   const [view, setView] = useState<"menu" | "chats">("menu");
+
+  // Drives the active-tab highlight in the mobile menu's section nav below.
+  const [route] = useHashRoute();
+  const activeId = route || "agent";
 
   if (!isDrawerOpen) return null;
 
@@ -150,15 +169,69 @@ export function SessionDrawer() {
 
             <nav className="flex flex-col py-2 shrink-0">
               <MenuItem
-                icon={<NewChatIcon size="md" />}
-                label="New chat"
-                onClick={handleNewChat}
-              />
-              <MenuItem
                 icon={<ChatsIcon size="md" />}
                 label="Chats"
                 onClick={() => setView("chats")}
               />
+              <MenuItem
+                icon={<NewChatIcon size="md" />}
+                label="New chat"
+                onClick={handleNewChat}
+              />
+            </nav>
+
+            {/* Divider separating the chat controls above from the primary
+                section tabs below. Its left edge starts where the row labels
+                start: px-4 row padding (16) + the icon column (MENU_ICON_WIDTH)
+                + the gap-3 (12) between icon and label. */}
+            <div
+              className="shrink-0"
+              style={{ paddingLeft: 16 + MENU_ICON_WIDTH + 12, paddingRight: 16 }}
+            >
+              <div className="border-t border-outline" />
+            </div>
+
+            {/* Primary section tabs — the same four entries as the header nav
+                (NAV_CONFIG). The active tab gets a brand-primary dot + text.
+                The dot sits in a MENU_ICON_WIDTH box + gap-3, mirroring the
+                icon + gap-3 of the rows above so labels line up. */}
+            <nav className="flex flex-col py-2 shrink-0" aria-label="Sections">
+              {NAV_CONFIG.map((item) => {
+                const active = item.id === activeId;
+                return (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    onClick={close}
+                    className="w-full flex items-center gap-3 px-4 py-3 no-underline bg-transparent cursor-pointer hover:bg-surface-soft transition-colors"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="flex justify-center shrink-0"
+                      style={{ width: MENU_ICON_WIDTH }}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{
+                          background: active ? COLOR_ACTIVE : "transparent",
+                        }}
+                      />
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontSize: 15,
+                        lineHeight: "20px",
+                        fontWeight: 500,
+                        color: active ? COLOR_ACTIVE : COLOR_TAB_INACTIVE,
+                      }}
+                    >
+                      {item.label}
+                    </span>
+                  </a>
+                );
+              })}
             </nav>
           </div>
 
@@ -304,7 +377,10 @@ function MenuItem({
       onClick={onClick}
       className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left bg-transparent border-0 cursor-pointer hover:bg-surface-soft transition-colors"
     >
-      <span className="flex items-center gap-3" style={{ color: COLOR_LABEL }}>
+      <span
+        className="flex items-center gap-3"
+        style={{ color: COLOR_TAB_INACTIVE }}
+      >
         {icon}
         <span
           style={{
