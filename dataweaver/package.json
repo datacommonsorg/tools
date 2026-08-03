@@ -28,6 +28,12 @@
     "stylelint-prettier": "^5.0.3",
     "typescript": "5.9.3"
   },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.35.0",
+      "postcss": "^8.5.18"
+    }
+  },
   "packageManager": "pnpm@10.20.0",
   "engines": {
     "node": ">=22",
