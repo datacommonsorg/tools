@@ -29,7 +29,7 @@ Jinja2==3.1.6
 MarkupSafe==3.0.3
 proto-plus==1.27.0
 protobuf==5.29.5
-pyasn1==0.6.1
+pyasn1==0.6.4
 pyasn1_modules==0.4.2
 pydantic==2.12.5
 pydantic_core==2.41.5
