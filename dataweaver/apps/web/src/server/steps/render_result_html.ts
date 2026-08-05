@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { ComparisonResult, QueryResult } from '~/server/types';
+import type { ComparisonResult, FacetInfo, QueryResult } from '~/server/types';
 
 /**
  * Build a set of variable DCIDs that have time-series data in the result.
@@ -26,6 +26,27 @@ const stripNoDataLinks = (md: string, withData: Set<string>): string => {
   );
 };
 
+const formatFacetBlock = (facet: FacetInfo): string => {
+  const lines: string[] = [];
+  if (facet.source) {
+    lines.push(facet.source);
+  }
+  const dateRange =
+    facet.earliestDate && facet.latestDate
+      ? `${facet.earliestDate} – ${facet.latestDate}`
+      : facet.earliestDate || facet.latestDate || '';
+  if (dateRange) {
+    lines.push(dateRange);
+  }
+  if (facet.measurementMethod) {
+    lines.push(facet.measurementMethod);
+  }
+  if (facet.unit) {
+    lines.push(facet.unit);
+  }
+  return lines.join('<br>');
+};
+
 /** Build the variables table as an HTML string from a query result. */
 const buildTableHtml = (result: QueryResult): string => {
   const entityDcid = result.entities[0]?.dcid ?? '';
@@ -41,10 +62,11 @@ const buildTableHtml = (result: QueryResult): string => {
     const timeSeries = result.timeSeries.find(
       (m) => m.variableDcid === variable.dcid,
     );
-    const firstFacet = timeSeries?.facets[0];
-    const facetCell = firstFacet
-      ? `${firstFacet.source}<br>${firstFacet.earliestDate} – ${firstFacet.latestDate}${firstFacet.unit ? ` · ${firstFacet.unit}` : ''}`
-      : 'No data';
+    const facets = timeSeries?.facets || [];
+    const facetCell =
+      facets.length > 0
+        ? facets.map(formatFacetBlock).join('<br><br>')
+        : 'No data';
 
     const hasData = withData.has(variable.dcid);
     const encodedVar = encodeURIComponent(variable.name);
@@ -63,18 +85,24 @@ const buildTableHtml = (result: QueryResult): string => {
 const buildNotesHtml = (result: QueryResult): string => {
   const withData = getVariablesWithData(result);
 
-  let md = '### About this data\n\n';
-  if (result.coverage) {
-    md += `${stripNoDataLinks(result.coverage, withData)}\n\n`;
-  }
-  if (result.introduction) {
-    md += `${stripNoDataLinks(result.introduction, withData)}\n\n`;
+  let md = '';
+
+  // Insights come first at the top of the card (without bullet points or bold headers)
+  if (result.insights && result.insights.length > 0) {
+    for (const insight of result.insights) {
+      const text = stripNoDataLinks(insight.text, withData);
+      md += `${text}\n\n`;
+    }
   }
 
-  if (result.insights && result.insights.length > 0) {
-    md += '### Relevant insights\n\n';
-    for (const insight of result.insights) {
-      md += `- **${insight.title}**: ${stripNoDataLinks(insight.text, withData)}\n`;
+  // "Notes" section follows below
+  if (result.coverage || result.introduction) {
+    md += '### Notes\n\n';
+    if (result.coverage) {
+      md += `${stripNoDataLinks(result.coverage, withData)}\n\n`;
+    }
+    if (result.introduction) {
+      md += `${stripNoDataLinks(result.introduction, withData)}\n\n`;
     }
   }
 
@@ -98,17 +126,21 @@ export const renderResultHtml = (
 export const renderComparisonHtml = (comparison: ComparisonResult): string => {
   let md = '';
 
-  if (comparison.coverage) {
-    md += `${comparison.coverage}\n\n`;
-  }
-  if (comparison.introduction) {
-    md += `${comparison.introduction}\n\n`;
+  // 1. Comparative insights come FIRST (at the top of the card, without header or bullet points)
+  if (comparison.insights && comparison.insights.length > 0) {
+    for (const insight of comparison.insights) {
+      md += `${insight.text}\n\n`;
+    }
   }
 
-  if (comparison.insights && comparison.insights.length > 0) {
-    md += '### Comparative insights\n\n';
-    for (const insight of comparison.insights) {
-      md += `- **${insight.title}**: ${insight.text}\n`;
+  // 2. "Notes" section follows below
+  if (comparison.coverage || comparison.introduction) {
+    md += '### Notes\n\n';
+    if (comparison.coverage) {
+      md += `${comparison.coverage}\n\n`;
+    }
+    if (comparison.introduction) {
+      md += `${comparison.introduction}\n\n`;
     }
   }
 
