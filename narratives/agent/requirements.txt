@@ -42,6 +42,6 @@ tqdm==4.67.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uritemplate==4.2.0
-urllib3==2.6.2
+urllib3==2.7.0
 websockets==15.0.1
 Werkzeug==3.1.4
