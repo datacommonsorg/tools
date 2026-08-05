@@ -12,9 +12,12 @@ interface FacetSelectorProps {
 }
 
 const formatFacetLabel = (facet: FacetInfo): string => {
-  const unit =
-    facet.unit.toLowerCase() === 'dimensionless' ? 'Dimensionless' : facet.unit;
-  return `${facet.source}, ${facet.earliestDate}–${facet.latestDate}, ${unit}`;
+  const dates =
+    facet.earliestDate && facet.latestDate
+      ? `${facet.earliestDate}–${facet.latestDate}`
+      : facet.earliestDate || facet.latestDate || '';
+  const parts = [facet.source, dates, facet.unit].filter(Boolean);
+  return parts.join(', ');
 };
 
 export const FacetSelector = ({

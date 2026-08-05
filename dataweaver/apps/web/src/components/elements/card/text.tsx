@@ -10,7 +10,6 @@ import { Skeleton } from '~/components/elements/skeleton';
 import { HtmlParsed } from '~/components/primitives/html_parsed';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
-import { IconPencil } from '~/components/primitives/icons/pencil';
 import { CARD_VARIANT_SIZE_DEFAULT } from '~/components/scopes/atlas/config';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
@@ -120,14 +119,13 @@ export const CardText = ({
         )}
 
         {relatedQueries && relatedQueries.length > 0 && !isLoading && (
-          <Card.Footer>
+          <Card.Footer title="Suggested follow-up questions">
             {relatedQueries.map((query) => (
               <Button
                 key={query}
                 size="small"
                 variant="flat"
                 tone="accent-subtle"
-                icon={IconPencil}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => runPrompt(query)}
               >

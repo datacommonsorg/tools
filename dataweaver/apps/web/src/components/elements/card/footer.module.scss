@@ -6,3 +6,18 @@
   align-items: flex-start;
   padding-top: 18px;
 }
+
+.title {
+  @include type-title;
+
+  margin-bottom: 4px;
+  color: rgb(var(--color-card-content));
+}
+
+.items {
+  display: flex;
+  flex-flow: column;
+  row-gap: 8px;
+  align-items: flex-start;
+  width: 100%;
+}

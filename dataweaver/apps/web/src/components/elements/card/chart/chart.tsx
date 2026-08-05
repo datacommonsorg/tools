@@ -13,7 +13,6 @@ import { IconBarChartOutlined } from '~/components/primitives/icons/bar_chart_ou
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
 import { IconLineGraphSingle } from '~/components/primitives/icons/line_graph_single';
-import { IconPencil } from '~/components/primitives/icons/pencil';
 import { IconTable } from '~/components/primitives/icons/table';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
@@ -273,14 +272,13 @@ export const CardChart = ({
           )}
 
           {relatedQueries && relatedQueries.length > 0 && !isLoading && (
-            <Card.Footer>
+            <Card.Footer title="Suggested follow-up questions">
               {relatedQueries.map((query) => (
                 <Button
                   key={query}
                   size="small"
                   variant="flat"
                   tone="accent-subtle"
-                  icon={IconPencil}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => runPrompt(query)}
                 >

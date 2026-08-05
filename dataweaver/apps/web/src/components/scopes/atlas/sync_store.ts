@@ -33,13 +33,20 @@ export const deriveTableContent = (result: QueryResult): AtlasContent => ({
 });
 
 /** Derive AtlasContent for a notes card from a QueryResult. */
-export const deriveNotesContent = (result: QueryResult): AtlasContent => ({
-  variant: 'text',
-  title: `${result.title} • Notes`,
-  body: result.notesHtml ?? '',
-  isLoading: false,
-  relatedQueries: result.relatedQueries,
-});
+export const deriveNotesContent = (result: QueryResult): AtlasContent => {
+  const cleanTitle = result.title.replace(/^Metrics for /i, '');
+  const title = cleanTitle.toLowerCase().startsWith('relevant insights')
+    ? cleanTitle
+    : `Relevant insights on ${cleanTitle}`;
+
+  return {
+    variant: 'text',
+    title,
+    body: result.notesHtml ?? '',
+    isLoading: false,
+    relatedQueries: result.relatedQueries,
+  };
+};
 
 /** Derive AtlasContent for a cross-place comparison card. */
 export const deriveComparisonContent = (
