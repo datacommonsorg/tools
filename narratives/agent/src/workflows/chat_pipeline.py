@@ -43,6 +43,11 @@ from src.workflows.mcp_loop import execute_mcp_tool_loop
 
 logger = logging.getLogger(__name__)
 
+# How long to wait for the background chart-config thread after synthesis has
+# finished streaming. Charts are best-effort: on timeout the turn renders
+# without them rather than holding the response open.
+CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
+
 
 def run_mcp_phase(ctx):
     """Phase 1: run config/MCP setup then execute the MCP tool loop.
@@ -260,7 +265,9 @@ def run_synthesis_phase(ctx):
 
     Reads the MCP/KB results, chart holders and ``request_start_time`` from
     ``ctx``; writes ``full_text`` and ``chart_config`` back into ``ctx``. Sets
-    ``ctx['aborted']`` if the synthesis request returns an error dict."""
+    ``ctx['aborted']`` if the synthesis request returns an error dict or the
+    stream breaks part-way, so chart validation, the ``done`` event and
+    follow-ups are skipped for a response that was never completed."""
     if ctx['aborted']:
         return
     session_logger = ctx['session_logger']
@@ -358,6 +365,13 @@ Please provide a comprehensive response combining all available information."""
         logger.error(f"Synthesis streaming error: {e}")
         session_logger.log_error("SYNTHESIS_STREAM_ERROR", str(e))
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        # A broken stream leaves `full_text` empty or truncated, so chart
+        # validation and follow-up generation would spend two more Gemini
+        # calls judging a partial answer. Abort instead; the frontend treats
+        # `error` as a terminal status, so it does not need the `done` event.
+        ctx['full_text'] = full_text
+        ctx['aborted'] = True
+        return
 
     # Quick validation: should we show charts based on synthesis response?
     show_charts = True
@@ -368,7 +382,7 @@ Please provide a comprehensive response combining all available information."""
 
     # Wait for chart config thread (started after MCP, runs parallel with KB + synthesis)
     if chart_thread[0]:
-        chart_thread[0].join(timeout=5)
+        chart_thread[0].join(timeout=CHART_CONFIG_JOIN_TIMEOUT_SECONDS)
     chart_config = chart_result_holder['config']
 
     # Add hide_charts flag if validation determined no data was found
