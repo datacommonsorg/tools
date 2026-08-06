@@ -58,7 +58,13 @@ interface RawBranding {
   schema_version?: string;
   /** Display name of the instance. */
   instance_name?: string;
-  /** URL/path to the instance logo. */
+  /**
+   * Logo path or URL. A relative value (e.g. "assets/logo.png") is resolved
+   * against the config bucket by {@link resolveAssetUrl}. This is the key
+   * `branding.schema.json` defines.
+   */
+  logo?: string;
+  /** Legacy alias for `logo`, accepted for older branding.json files. */
   logo_url?: string;
   /** Nested palette — the canonical shape shipped in branding.json. */
   colors?: {
@@ -102,14 +108,15 @@ interface RawBranding {
  * domain type. Reads the nested `colors`/`fonts` blocks first, falling back to
  * the legacy flat keys. Only fields present in `raw` are included so the result
  * can be spread over {@link DEFAULT_BRAND} without clobbering defaults with
- * undefined. The legacy `suggestion_chips` key is accepted as an alias for
- * `suggestions`.
+ * undefined. The legacy `suggestion_chips` and `logo_url` keys are accepted as
+ * aliases for `suggestions` and `logo`.
  */
 function mapRawToBranding(raw: RawBranding): Branding {
   const branding: Branding = {};
   if (raw.schema_version !== undefined) branding.schemaVersion = raw.schema_version;
   if (raw.instance_name !== undefined) branding.instanceName = raw.instance_name;
-  if (raw.logo_url !== undefined) branding.logoUrl = raw.logo_url;
+  const logo = raw.logo ?? raw.logo_url;
+  if (logo !== undefined) branding.logoUrl = logo;
 
   const primary = raw.colors?.primary ?? raw.primary_color;
   if (primary !== undefined) branding.primaryColor = primary;
