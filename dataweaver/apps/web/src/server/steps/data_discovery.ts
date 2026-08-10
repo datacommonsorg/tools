@@ -1,6 +1,6 @@
 import type { Content } from '@google/genai';
 import { getGenAI } from '~/server/clients/gemini';
-import { callMcp } from '~/server/clients/mcp';
+import { callMcp, fetchMcpSkillPlaybook } from '~/server/clients/mcp';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
 import type {
   FollowUpContext,
@@ -88,6 +88,12 @@ export const runToolLoop = async (
   const genAI = getGenAI();
   const maxToolCalls = skill.maxToolCalls || 10;
 
+  // Fetch remote MCP skill playbook (gracefully falls back to null if unavailable)
+  const mcpSkillPlaybook = await fetchMcpSkillPlaybook(
+    'data-commons-researcher',
+    signal,
+  );
+
   // Track place DCID from tool responses
   let resolvedPlaceDcid: string | null = null;
 
@@ -103,8 +109,17 @@ export const runToolLoop = async (
   const placeClause = params.noExplicitPlace
     ? `\n\nTARGET PLACE: The user did not mention a specific place. Default to "Earth" (world-level) to retrieve initial data.`
     : `\n\nTARGET PLACE: "${place}" — all variables MUST be relevant to this location.`;
+
+  const mcpPlaybookClause = mcpSkillPlaybook
+    ? `\n\nDATA COMMONS MCP PLAYBOOK:\n${mcpSkillPlaybook}`
+    : '';
+
   const systemInstruction =
-    skill.systemPrompt + atlasClause + dateRangeClause + placeClause;
+    skill.systemPrompt +
+    atlasClause +
+    dateRangeClause +
+    placeClause +
+    mcpPlaybookClause;
 
   // Build messages with conversation history
   const messages: Content[] = [];

@@ -1,5 +1,32 @@
 import { fetchObservations } from '~/server/clients/dc_api';
+import { callMcp } from '~/server/clients/mcp';
 import type { FacetInfo, TimeSeries } from '~/server/types';
+
+interface McpMetadataResult {
+  content?: Array<{ text: string }>;
+  structuredContent?: {
+    status?: string;
+    variables?: Record<
+      string,
+      {
+        facets?: Array<{
+          id: string;
+          provenanceId?: string;
+        }>;
+      }
+    >;
+    provenances?: Record<
+      string,
+      {
+        properties?: {
+          source?: string;
+          isPartOf?: string;
+          url?: string;
+        };
+      }
+    >;
+  };
+}
 
 /** Fetch time-series observations for a single variable + entity pair. */
 export const fetchTimeSeries = async (
@@ -8,11 +35,52 @@ export const fetchTimeSeries = async (
   signal?: AbortSignal,
 ): Promise<TimeSeries> => {
   try {
-    const obsResponse = await fetchObservations(
-      [variableDcid],
-      [entityDcid],
-      signal,
-    );
+    // Fetch time series data from REST API and structural metadata from MCP concurrently
+    const [obsResponse, metadataResult] = await Promise.all([
+      fetchObservations([variableDcid], [entityDcid], signal),
+      callMcp<McpMetadataResult>(
+        'tools/call',
+        {
+          name: 'get_variable_metadata',
+          arguments: {
+            variable_dcids: [variableDcid],
+            entity_dcids: [entityDcid],
+          },
+        },
+        signal,
+      ).catch(() => null),
+    ]);
+
+    // Parse metadata map (facetId -> { source, url })
+    const metadataMap: Record<string, { source: string; url: string }> = {};
+    if (metadataResult) {
+      let rawMeta = metadataResult.structuredContent;
+      if (!rawMeta && metadataResult.content?.[0]?.text) {
+        try {
+          rawMeta = JSON.parse(metadataResult.content[0].text);
+        } catch {
+          // Ignore JSON parse errors
+        }
+      }
+
+      if (rawMeta?.provenances && rawMeta?.variables?.[variableDcid]?.facets) {
+        const metaFacets = rawMeta.variables[variableDcid].facets || [];
+        for (const mf of metaFacets) {
+          if (mf.id && mf.provenanceId) {
+            const prov = rawMeta.provenances[mf.provenanceId]?.properties;
+            if (prov) {
+              const sourceName = prov.isPartOf || prov.source;
+              if (sourceName) {
+                metadataMap[mf.id] = {
+                  source: sourceName,
+                  url: prov.url || '',
+                };
+              }
+            }
+          }
+        }
+      }
+    }
 
     const varData =
       obsResponse.byVariable?.[variableDcid]?.byEntity?.[entityDcid];
@@ -21,11 +89,12 @@ export const fetchTimeSeries = async (
 
     const facets: FacetInfo[] = orderedFacets.map((f) => {
       const data = facetsMap[f.facetId] || {};
+      const meta = metadataMap[f.facetId];
       return {
         facetId: f.facetId,
-        source: data.importName || 'Data Commons',
-        sourceUrl: data.provenanceUrl || '',
-        unit: data.unit || 'Dimensionless',
+        source: meta?.source || data.importName || '',
+        sourceUrl: meta?.url || data.provenanceUrl || '',
+        unit: data.unit || 'Unit not specified',
         earliestDate: f.earliestDate || '',
         latestDate: f.latestDate || '',
         observationCount: f.observations?.length || 0,
