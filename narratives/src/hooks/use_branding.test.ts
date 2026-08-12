@@ -63,6 +63,53 @@ describe("useBranding", () => {
     expect(result.current.branding.logoUrl).toBe("https://cdn.example.com/logo.svg");
   });
 
+  it("fetches branding.json from the bucket when /agent/brand returns only the URL", async () => {
+    // Public-bucket path: /agent/brand carries no `branding`, so the browser
+    // fetches <bucket>/branding.json itself.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ brand_config_url: BUCKET_URL }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ instance_name: "Public Example", logo: "assets/logo.png" }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useBranding());
+
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/agent/brand", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `${BUCKET_URL}/branding.json`,
+      expect.anything(),
+    );
+    expect(result.current.branding.instanceName).toBe("Public Example");
+    expect(result.current.branding.logoUrl).toBe(`${BUCKET_URL}/assets/logo.png`);
+  });
+
+  it("reports an error when the bucket's branding.json is unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ brand_config_url: BUCKET_URL }),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404 }),
+    );
+
+    const { result } = renderHook(() => useBranding());
+
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.error).toContain("404");
+    expect(result.current.branding.logoUrl).toBe(DEFAULT_BRAND.logoUrl);
+  });
+
   it("falls back to the bundled defaults when /agent/brand fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
 

@@ -68,12 +68,32 @@ agent reads them from its environment:
 
 | Value | Where it comes from |
 |---|---|
+| Gemini API keys | `GEMINI_API_KEYS_SECRET` → Secret Manager |
+| Gemini demo API keys | `GEMINI_DEMO_API_KEYS_SECRET` → Secret Manager |
 | MCP endpoint | `MCP_PORT` — the agent builds `http://localhost:${MCP_PORT}/mcp` |
 | Agent listen port | `PROXY_PORT` |
 | Timezone for `{{CURRENT_DATETIME}}` | `TIMEZONE` |
 | Config bucket URL | `BRAND_CONFIG_URL` |
 
 These are set on the container (see `agent/Dockerfile`), not in this directory.
+
+### API keys are never in this directory
+
+`agent-config.schema.json` defines no field for API keys, and the `gemini` object
+is `additionalProperties: false` — so adding `api_keys` or `api_key` to
+`agent-config.json` is a **schema validation error**, not a supported option.
+That is deliberate: it keeps this file safe to commit and to serve from a config
+bucket, and removes the chance of a key leaking by being pasted into the wrong
+file.
+
+A deployed instance resolves its keys from Secret Manager. Point
+`GEMINI_API_KEYS_SECRET` at a secret whose value is a JSON array of keys; the
+agent rotates across them.
+
+Local development is the one exception, and it does not use this directory: the
+agent still honours a `gemini.api_keys` array in an **uncommitted, local**
+`agent/config.json`. When it falls back to that path it logs a warning, so a
+misconfigured deployment is visible in the logs rather than silent.
 
 ## Every branding key has a consumer
 

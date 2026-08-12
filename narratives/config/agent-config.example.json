@@ -1,17 +1,7 @@
 {
   "$schema": "./agent-config.schema.json",
-  "$comment": "Canonical agent-config.json reference. Copy to agent-config.json, fill in the REPLACE_ME values, and upload to the config bucket root. Secrets should come from Secret Manager rather than being written here. One instance, one file.",
+  "$comment": "Canonical agent-config.json reference. Copy to agent-config.json, fill in the REPLACE_ME values, and upload to the config bucket root. API keys are NOT configured here \u2014 the agent reads them from Secret Manager (see config/README.md). One instance, one file.",
   "gemini": {
-    "api_keys": [
-      "REPLACE_ME_OR_USE_SECRET_MANAGER_1",
-      "REPLACE_ME_OR_USE_SECRET_MANAGER_2",
-      "REPLACE_ME_OR_USE_SECRET_MANAGER_3"
-    ],
-    "demo_api_keys": [
-      "REPLACE_ME_DEMO_KEY_1",
-      "REPLACE_ME_DEMO_KEY_2",
-      "REPLACE_ME_DEMO_KEY_3"
-    ],
     "api_base": "https://generativelanguage.googleapis.com/v1beta/models",
     "mcp_model": "gemini-3-flash-preview",
     "kb_model": "gemini-3-flash-preview",

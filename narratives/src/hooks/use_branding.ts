@@ -13,7 +13,7 @@ import type { MetricsConfig } from "../types/metrics";
 export interface Branding {
   /** Branding schema version string. */
   schemaVersion?: string;
-  /** Display name of the instance, e.g. "India Data Commons". */
+  /** Display name of the instance, e.g. "Example Data Commons". */
   instanceName?: string;
   /** URL/path to the instance logo; empty falls back to the bundled logo. */
   logoUrl?: string;
