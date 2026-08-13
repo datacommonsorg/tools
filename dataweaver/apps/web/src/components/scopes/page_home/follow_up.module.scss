@@ -1,9 +1,12 @@
 .outer-container {
+  position: relative;
   display: grid;
   overflow: clip;
   background: rgb(var(--color-query-surface-raised));
+  border: 1px solid rgb(var(--color-query-surface-muted));
   border-radius: var(--border-radius-large) var(--border-radius-medium);
-  box-shadow: var(--shadow-elevated);
+
+  @include pulsing-background;
 }
 
 .middle-container {

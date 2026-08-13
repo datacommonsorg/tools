@@ -16,7 +16,7 @@
   width: 100%;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
-  border-radius: var(--border-radius-medium);
+  border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
 
   &::before {
@@ -75,7 +75,9 @@
   width: 100%;
   max-height: calc(var(--max-rows) * 1lh);
   overflow-y: auto;
-  color: rgb(var(--color-query-content));
+  font-size: 20px;
+  font-weight: 500;
+  color: rgb(var(--color-query-content-subtle));
   caret-color: rgb(var(--color-query-accent));
   outline: none;
   scrollbar-width: thin;
@@ -87,7 +89,7 @@
   }
 
   &::placeholder {
-    color: rgb(var(--color-query-content-dimmed));
+    color: rgb(var(--color-query-content-subtle));
   }
 }
 

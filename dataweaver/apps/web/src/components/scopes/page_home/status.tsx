@@ -3,6 +3,7 @@
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
 import { Button } from '~/components/elements/button';
+import { IconStatusIndicator } from '~/components/primitives/icons/status_indicator';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import s from './status.module.scss';
 
@@ -24,7 +25,10 @@ export const Status = ({ prompt, status }: StatusProps) => {
     >
       <h2 className={s['prompt-value']}>{prompt}</h2>
 
-      <p className={s['indicator-message']}>{status}</p>
+      <div className={s['indicator-message']} role="status">
+        <IconStatusIndicator aria-hidden="true" />
+        <p>{status}</p>
+      </div>
 
       <Button
         className={s['button-cancel']}

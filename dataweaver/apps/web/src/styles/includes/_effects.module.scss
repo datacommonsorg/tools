@@ -1,0 +1,50 @@
+@use "./z-indices.module" as *;
+@use "./helpers.module" as *;
+
+@keyframes pulse-background {
+  0%,
+  100% {
+    background-size: 100% 100%;
+    opacity: 0.5;
+  }
+
+  50% {
+    background-size: 150% 100%;
+    opacity: 0.3;
+  }
+}
+
+@mixin pulsing-background {
+  &::after {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: $z-index-content;
+    height: 40px;
+    pointer-events: none;
+    content: "";
+    background-image:
+      linear-gradient(
+        180deg,
+        rgb(var(--color-query-surface-raised) / 0%) 0%,
+        rgb(var(--color-query-accent) / 10%) 100%
+      ),
+      radial-gradient(
+        ellipse at 0 100%,
+        rgb(var(--color-query-surface-raised) / 0%) 0%,
+        rgb(var(--color-query-accent) / 10%) 20%,
+        rgb(var(--color-query-accent) / 0%) 50%
+      ),
+      radial-gradient(
+        ellipse at 68% 90%,
+        rgb(var(--color-query-surface-raised) / 0%) 0%,
+        rgb(var(--color-query-accent) / 10%) 20%,
+        rgb(var(--color-query-accent) / 0%) 50%
+      );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+
+    @include prefers-motion {
+      animation: pulse-background 10s ease-in-out infinite alternate;
+    }
+  }
+}
