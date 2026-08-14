@@ -40,6 +40,8 @@ export const Prompt = ({
   const trimmedValue = value.trim();
   const hasValue = Boolean(trimmedValue);
 
+  // isStatusVisible means a query is already in flight (Status panel showing);
+  // block a second submit until it resolves.
   const submitted = () => {
     if (hasValue && !isStatusVisible) onSubmit(trimmedValue);
   };

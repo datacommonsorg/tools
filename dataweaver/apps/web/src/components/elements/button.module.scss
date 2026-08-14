@@ -110,6 +110,8 @@
       border-radius: calc(var(--button-pill-size-large) / 2);
     }
 
+    // "huge" shares large's padding/gap above but wants a fully pill-shaped
+    // (not just large-radius) corner, so override just the radius here.
     &[data-size="huge"] {
       border-radius: 9999px;
     }

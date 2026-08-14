@@ -4,6 +4,10 @@
   }
 }
 
+// Two-layer "in progress" icon: a spinning ring plus a static sparkle,
+// each drawn as a colored gradient clipped to an SVG shape via mask-image.
+// Using mask-image (rather than an inline <svg>) lets each shape be filled
+// with a CSS conic-gradient instead of a flat SVG fill.
 .container {
   position: relative;
   width: 18px;
@@ -21,7 +25,7 @@
     mask-size: 100% 100%;
   }
 
-  // Ring
+  // Ring: rotating conic-gradient masked to a circle outline.
   &::before {
     background: conic-gradient(
       from 0deg at 50% 50%,
@@ -41,7 +45,7 @@
     }
   }
 
-  // Star
+  // Star: static (unlike the ring) conic-gradient masked to a sparkle shape.
   &::after {
     background: conic-gradient(
       from 136.04deg at 49.17% 49.17%,

@@ -18,6 +18,8 @@ export const Status = ({ prompt, status }: StatusProps) => {
   const { queryCancel } = useQueryActions();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
+  // Focus Cancel as soon as this panel mounts, since the prompt textarea
+  // gets disabled underneath it (see Prompt/page_home).
   useAutoFocus(cancelButtonRef);
 
   return (
@@ -30,6 +32,8 @@ export const Status = ({ prompt, status }: StatusProps) => {
     >
       <h2 className={s['prompt-value']}>{prompt}</h2>
 
+      {/* role="status" announces each status update to screen readers; the
+          icon is decorative (its own colors/motion don't carry meaning). */}
       <div className={s['indicator-message']} role="status">
         <IconStatusIndicator aria-hidden="true" />
         <span>{status}</span>
