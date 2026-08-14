@@ -38,7 +38,7 @@ export function Header() {
       <div className="flex items-center select-none shrink-0">
         <img
           src={logoUrl || "/logo.png"}
-          alt={`${instanceName || "People + AI"} logo`}
+          alt={instanceName ? `${instanceName} logo` : "Instance logo"}
           className="h-8 sm:h-10 object-contain"
         />
       </div>
