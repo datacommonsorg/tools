@@ -102,18 +102,19 @@
       border-radius: calc(var(--button-pill-size-medium) / 2);
     }
 
-    &[data-size="large"] {
-      column-gap: 6px;
-      min-height: var(--button-pill-size-large);
-      padding-inline: 18px;
-      border-radius: calc(var(--button-pill-size-large) / 2);
-    }
-
+    &[data-size="large"],
     &[data-size="huge"] {
       column-gap: 6px;
       min-height: var(--button-pill-size-large);
       padding-inline: 18px;
-      border-radius: calc(var(--button-pill-size-large));
+    }
+
+    &[data-size="large"] {
+      border-radius: calc(var(--button-pill-size-large) / 2);
+    }
+
+    &[data-size="huge"] {
+      border-radius: 9999px;
     }
   }
 

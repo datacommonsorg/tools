@@ -2,10 +2,11 @@
 
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { m } from 'motion/react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Button } from '~/components/elements/button';
 import { IconStatusIndicator } from '~/components/primitives/icons/status_indicator';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
+import { useAutoFocus } from '~/hooks/use_auto_focus';
 import s from './status.module.scss';
 
 interface StatusProps {
@@ -17,9 +18,7 @@ export const Status = ({ prompt, status }: StatusProps) => {
   const { queryCancel } = useQueryActions();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    cancelButtonRef.current?.focus();
-  }, []);
+  useAutoFocus(cancelButtonRef);
 
   return (
     <m.aside

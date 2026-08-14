@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasSelectedCards } from '~/components/scopes/atlas/use_atlas_selected_cards';
 
+import { useAutoFocus } from '~/hooks/use_auto_focus';
 import { type FollowUp as FollowUpData, STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store/store';
 import { FollowUp } from './follow_up';
@@ -63,18 +64,17 @@ export const PageHome = ({ examplePrompts }: PageHomeProps) => {
 
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (!isStatusVisible) promptInputRef.current?.focus();
-  }, [isStatusVisible]);
+  const hasFollowUp = Boolean(
+    latestNode?.followUp && currentStatus === STATUS.complete,
+  );
 
   useEffect(() => {
-    const nodeFollowUp = latestNode?.followUp;
-    if (latestNode && nodeFollowUp && currentStatus === STATUS.complete) {
-      setFollowUp(nodeFollowUp);
-    } else {
-      setFollowUp(null);
-    }
-  }, [currentStatus, latestNode]);
+    setFollowUp(hasFollowUp ? (latestNode?.followUp ?? null) : null);
+  }, [hasFollowUp, latestNode]);
+
+  // Don't steal focus into the plain prompt textarea when a FollowUp panel
+  // (with its own interactive options) is about to take its place.
+  useAutoFocus(promptInputRef, !isStatusVisible && !hasFollowUp);
 
   return (
     <div className={s.container}>

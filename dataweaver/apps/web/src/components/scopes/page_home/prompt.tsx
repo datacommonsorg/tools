@@ -41,7 +41,7 @@ export const Prompt = ({
   const hasValue = Boolean(trimmedValue);
 
   const submitted = () => {
-    if (hasValue) onSubmit(trimmedValue);
+    if (hasValue && !isStatusVisible) onSubmit(trimmedValue);
   };
 
   return (
@@ -67,6 +67,7 @@ export const Prompt = ({
           value={value}
           rows={1}
           placeholder={PROMPT_PLACEHOLDER}
+          disabled={isStatusVisible}
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={(event) => {
             // Submit if enter is pressed without shift or during IME composition
@@ -117,7 +118,7 @@ export const Prompt = ({
             tone={hasValue ? 'accent' : 'subtle'}
             icon={IconArrowUp}
             aria-label="Submit prompt"
-            isDisabled={!hasValue}
+            isDisabled={!hasValue || isStatusVisible}
           />
         </div>
       </div>

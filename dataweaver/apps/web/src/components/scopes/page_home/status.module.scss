@@ -1,17 +1,11 @@
 .container {
-  position: relative;
-  display: grid;
   grid-template-columns: 1fr min-content;
   gap: 8px;
   width: 100%;
   padding: 18px 24px;
-  overflow: clip;
   pointer-events: auto;
-  background: rgb(var(--color-query-surface-raised));
-  border: 1px solid rgb(var(--color-query-surface-muted));
-  border-radius: var(--border-radius-large) var(--border-radius-medium);
 
-  @include pulsing-background;
+  @include pulsing-card;
 }
 
 .prompt-value {

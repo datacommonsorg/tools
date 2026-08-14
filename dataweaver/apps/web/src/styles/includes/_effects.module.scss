@@ -14,14 +14,15 @@
   }
 }
 
-@mixin pulsing-background {
+@mixin pulsing-background($bottom-offset: 0, $is-animated: true) {
   &::after {
     position: absolute;
-    inset: auto 0 0;
+    inset: auto 0 $bottom-offset;
     z-index: $z-index-content;
     height: 40px;
     pointer-events: none;
     content: "";
+    opacity: 0.5;
     background-image:
       linear-gradient(
         180deg,
@@ -43,8 +44,22 @@
     background-repeat: no-repeat;
     background-size: 100% 100%;
 
-    @include prefers-motion {
-      animation: pulse-background 10s ease-in-out infinite alternate;
+    @if $is-animated {
+      @include prefers-motion {
+        animation: pulse-background 10s ease-in-out infinite alternate;
+      }
     }
   }
+}
+
+// Shared card shell (status/intro/follow_up) with the pulsing gradient glow.
+@mixin pulsing-card($bottom-offset: 0, $is-animated: true) {
+  position: relative;
+  display: grid;
+  overflow: clip;
+  background: rgb(var(--color-query-surface-raised));
+  border: 1px solid rgb(var(--color-query-surface-muted));
+  border-radius: var(--border-radius-large) var(--border-radius-medium);
+
+  @include pulsing-background($bottom-offset, $is-animated);
 }
