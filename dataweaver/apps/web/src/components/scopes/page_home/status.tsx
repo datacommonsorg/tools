@@ -32,9 +32,8 @@ export const Status = ({ prompt, status }: StatusProps) => {
 
       <div className={s['indicator-message']} role="status">
         <IconStatusIndicator aria-hidden="true" />
-        <p>{status}</p>
+        <span>{status}</span>
       </div>
-
       <Button
         ref={cancelButtonRef}
         className={s['button-cancel']}

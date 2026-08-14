@@ -107,9 +107,6 @@
       column-gap: 6px;
       min-height: var(--button-pill-size-large);
       padding-inline: 18px;
-    }
-
-    &[data-size="large"] {
       border-radius: calc(var(--button-pill-size-large) / 2);
     }
 
