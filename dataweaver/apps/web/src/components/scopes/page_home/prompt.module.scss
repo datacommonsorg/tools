@@ -61,9 +61,14 @@
   grid-area: 1 / 1;
   row-gap: 18px;
   padding: 28px 24px 16px;
+  transition: opacity 0.2s $ease-linear;
 
   @include breakpoint(tablet) {
     row-gap: 24px;
+  }
+
+  &[data-is-status-visible="true"] {
+    opacity: 0.5;
   }
 }
 

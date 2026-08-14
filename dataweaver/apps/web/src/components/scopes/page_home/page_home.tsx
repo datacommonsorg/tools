@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasSelectedCards } from '~/components/scopes/atlas/use_atlas_selected_cards';
 
@@ -61,6 +61,12 @@ export const PageHome = ({ examplePrompts }: PageHomeProps) => {
     currentStatus !== STATUS.complete &&
     currentStatus !== STATUS.idle;
 
+  const promptInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!isStatusVisible) promptInputRef.current?.focus();
+  }, [isStatusVisible]);
+
   useEffect(() => {
     const nodeFollowUp = latestNode?.followUp;
     if (latestNode && nodeFollowUp && currentStatus === STATUS.complete) {
@@ -105,6 +111,8 @@ export const PageHome = ({ examplePrompts }: PageHomeProps) => {
         tags={tags}
         onValueChange={setPromptValue}
         onSubmit={submitPrompt}
+        inputRef={promptInputRef}
+        isStatusVisible={isStatusVisible}
       />
     </div>
   );

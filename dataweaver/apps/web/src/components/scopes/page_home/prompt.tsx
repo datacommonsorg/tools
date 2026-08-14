@@ -2,7 +2,7 @@
 
 import { EASE_LINEAR } from '@package/tokens/ts';
 import { AnimatePresence, m } from 'motion/react';
-import { useId } from 'react';
+import { type Ref, useId } from 'react';
 import { Button } from '~/components/elements/button';
 import { Tag } from '~/components/elements/tag';
 import { IconArrowUp } from '~/components/primitives/icons/arrow_up';
@@ -23,6 +23,8 @@ interface PromptProps {
   tags: PromptTag[];
   onValueChange: (value: string) => void;
   onSubmit: (value: string) => void;
+  inputRef?: Ref<HTMLTextAreaElement>;
+  isStatusVisible?: boolean;
 }
 
 export const Prompt = ({
@@ -30,6 +32,8 @@ export const Prompt = ({
   tags,
   onValueChange,
   onSubmit,
+  inputRef,
+  isStatusVisible = false,
 }: PromptProps) => {
   const inputId = useId();
 
@@ -48,12 +52,16 @@ export const Prompt = ({
         submitted();
       }}
     >
-      <div className={s['content-container']}>
+      <div
+        className={s['content-container']}
+        data-is-status-visible={isStatusVisible}
+      >
         <ScreenReaderOnly element="label" htmlFor={inputId}>
           {PROMPT_PLACEHOLDER}
         </ScreenReaderOnly>
 
         <textarea
+          ref={inputRef}
           id={inputId}
           className={s.input}
           value={value}
