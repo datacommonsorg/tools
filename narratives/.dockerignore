@@ -1,6 +1,13 @@
 node_modules
 dist
 .git
+
+# The services image builds only the React app. These sit inside the build
+# context but contribute nothing to it. Patterns match the context root only,
+# so src/config/ is unaffected.
+agent
+config
+
 .env
 .env.local
 .env.*.local
