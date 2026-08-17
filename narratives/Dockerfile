@@ -31,7 +31,11 @@ COPY . .
 RUN npm run build
 
 # ---- Runtime stage: upstream services + our overlay -------------------------
-FROM --platform=linux/amd64 gcr.io/datcom-ci/datacommons-services:stable
+# The target platform comes from the builder (`build.sh` passes
+# --platform linux/amd64 and then fails if the result is not amd64). Pinning it
+# on the FROM line instead trips BuildKit's FromPlatformFlagConstDisallowed
+# warning and breaks multi-platform builds.
+FROM gcr.io/datcom-ci/datacommons-services:stable
 
 # The React build. nginx serves index.html at / and the hashed bundles from
 # /assets/*; public/ assets (logo.png, loader.png, send.svg) land here too.
