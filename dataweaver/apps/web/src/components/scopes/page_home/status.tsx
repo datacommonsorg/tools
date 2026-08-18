@@ -16,14 +16,16 @@ interface StatusProps {
 
 export const Status = ({ prompt, status }: StatusProps) => {
   const { queryCancel } = useQueryActions();
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
 
-  // Focus Cancel as soon as this panel mounts, since the prompt textarea
-  // gets disabled underneath it (see Prompt/page_home).
-  useAutoFocus(cancelButtonRef);
+  // Focus this panel as soon as it mounts, since the prompt textarea gets
+  // disabled underneath it (see Prompt/page_home).
+  useAutoFocus(containerRef);
 
   return (
     <m.aside
+      ref={containerRef}
+      tabIndex={-1}
       className={s.container}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -33,13 +35,13 @@ export const Status = ({ prompt, status }: StatusProps) => {
       <h2 className={s['prompt-value']}>{prompt}</h2>
 
       {/* role="status" announces each status update to screen readers; the
-          icon is decorative (its own colors/motion don't carry meaning). */}
+          icon is decorative (its own colors/motion don't carry meaning) and
+          hides itself via aria-hidden. */}
       <div className={s['indicator-message']} role="status">
-        <IconStatusIndicator aria-hidden="true" />
+        <IconStatusIndicator />
         <span>{status}</span>
       </div>
       <Button
-        ref={cancelButtonRef}
         className={s['button-cancel']}
         size="small"
         variant="border"

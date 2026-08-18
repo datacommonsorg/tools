@@ -1,7 +1,11 @@
+// Approximate rendered height of .notice-container below, so the glow
+// (anchored to the card's bottom edge) clears it instead of sitting behind it.
+$notice-container-height: 54px;
+
 .outer-container {
   pointer-events: auto;
 
-  @include pulsing-card(54px, false);
+  @include pulsing-card($notice-container-height, false);
 }
 
 .middle-container {

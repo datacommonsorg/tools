@@ -6,6 +6,11 @@
   pointer-events: auto;
 
   @include pulsing-card;
+
+  // Programmatic focus target only (see Status), not part of tab order.
+  &:focus-visible {
+    outline: none;
+  }
 }
 
 .prompt-value {

@@ -102,17 +102,19 @@
       border-radius: calc(var(--button-pill-size-medium) / 2);
     }
 
-    &[data-size="large"],
-    &[data-size="huge"] {
+    &[data-size="large"] {
       column-gap: 6px;
       min-height: var(--button-pill-size-large);
       padding-inline: 18px;
       border-radius: calc(var(--button-pill-size-large) / 2);
     }
 
-    // "huge" shares large's padding/gap above but wants a fully pill-shaped
-    // (not just large-radius) corner, so override just the radius here.
+    // "huge" reuses large's height/padding but always renders as a full pill,
+    // so its radius isn't tied to (and shouldn't scale with) that height.
     &[data-size="huge"] {
+      column-gap: 6px;
+      min-height: var(--button-pill-size-large);
+      padding-inline: 18px;
       border-radius: 9999px;
     }
   }
@@ -213,10 +215,8 @@
   }
 
   [data-size="huge"] & {
-    @include type-label-large;
+    @include type-label-huge;
 
     padding-block: 16px;
-    font-size: 20px;
-    line-height: 22px;
   }
 }
