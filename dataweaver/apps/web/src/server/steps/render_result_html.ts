@@ -67,7 +67,7 @@ const buildTableHtml = (result: QueryResult): string => {
     const facets = timeSeries?.facets || [];
     const facetCell =
       facets.length > 0
-        ? facets.map(formatFacetBlock).join('<br><br>')
+        ? facets.map(formatFacetBlock).join('<br><br>').replace(/\|/g, '\\|')
         : 'No data';
 
     const hasData = withData.has(variable.dcid);
