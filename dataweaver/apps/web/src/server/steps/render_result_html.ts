@@ -77,7 +77,11 @@ const buildTableHtml = (result: QueryResult): string => {
       ? `[${variable.name}](#fetch=${variable.dcid}&place=${entityDcid}&varName=${encodedVar}&placeName=${encodedPlace})`
       : variable.name;
 
-    md += `| ${nameCell} | ${facetCell} | ${variable.rationale ?? '—'} |\n`;
+    const rationaleCell = variable.rationale
+      ? variable.rationale.replace(/\|/g, '\\|')
+      : '—';
+
+    md += `| ${nameCell} | ${facetCell} | ${rationaleCell} |\n`;
   }
 
   return marked.parse(md) as string;
