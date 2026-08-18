@@ -113,7 +113,7 @@ export const readMcpResource = async (
   }
 };
 
-const _mcpSkillCache = new Map<string, string>();
+const _mcpSkillCache = new Map<string, Promise<string | null>>();
 
 /**
  * Fetch and cache an MCP skill playbook (e.g. 'data-commons-researcher').
@@ -123,13 +123,22 @@ export const fetchMcpSkillPlaybook = async (
   skillName: string,
   signal?: AbortSignal,
 ): Promise<string | null> => {
-  const cached = _mcpSkillCache.get(skillName);
-  if (cached) return cached;
+  const cachedPromise = _mcpSkillCache.get(skillName);
+  if (cachedPromise) return cachedPromise;
 
   const uri = `skill://${skillName}/SKILL.md`;
-  const content = await readMcpResource(uri, signal);
-  if (content) {
-    _mcpSkillCache.set(skillName, content);
-  }
-  return content;
+  const fetchPromise = readMcpResource(uri, signal)
+    .then((content) => {
+      if (!content) {
+        _mcpSkillCache.delete(skillName);
+      }
+      return content;
+    })
+    .catch((_err: unknown) => {
+      _mcpSkillCache.delete(skillName);
+      return null;
+    });
+
+  _mcpSkillCache.set(skillName, fetchPromise);
+  return fetchPromise;
 };
