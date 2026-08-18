@@ -195,12 +195,17 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
 
 
 def get_api_keys(demo_mode: bool = False) -> list:
-    """Load API keys from Secret Manager (preferred) or config (fallback).
+    """Load API keys from Secret Manager (preferred) or local config (dev only).
 
-    In `prod` mode the agent reads `GEMINI_API_KEYS_SECRET` (and
-    optionally `GEMINI_DEMO_API_KEYS_SECRET`) and resolves the value via Secret
-    Manager. The on-disk config.json `gemini.api_keys` array is honoured only as
-    a dev fallback. The legacy scalar `gemini.api_key` is rejected outright.
+    A deployed instance sets `GEMINI_API_KEYS_SECRET` (and optionally
+    `GEMINI_DEMO_API_KEYS_SECRET`) and the value is resolved via Secret Manager.
+    `agent-config.schema.json` defines no field for keys, so a config served from
+    the instance's config bucket cannot carry them.
+
+    The on-disk `config.json` `gemini.api_keys` array — and the legacy scalar
+    `gemini.api_key` — remain readable for **local development only**, where the
+    file is uncommitted. Both paths log a warning, so a deployment that is
+    accidentally reading keys from config is visible in the logs.
 
     Args:
         demo_mode: If True, returns demo_api_keys for internal demo usage.
@@ -231,13 +236,26 @@ def get_api_keys(demo_mode: bool = False) -> list:
             return keys
         logger.warning("GEMINI_API_KEYS_SECRET set but returned no keys; falling back to config")
 
+    # Local-development fallback. These fields are not in
+    # agent-config.schema.json, so reaching here in a deployed instance means the
+    # keys came from somewhere they should not have — warn loudly rather than
+    # silently succeeding.
     config = load_config()
     gemini_config = config.get("gemini", {})
     keys = gemini_config.get("api_keys", [])
+    if keys:
+        logger.warning(
+            "Read %d Gemini key(s) from config rather than Secret Manager. This path is "
+            "for local development only; set GEMINI_API_KEYS_SECRET for a deployed instance.",
+            len(keys),
+        )
     if not keys:
         single_key = gemini_config.get("api_key", "")
         if single_key and not single_key.startswith("DEPRECATED"):
-            logger.warning("Using deprecated scalar gemini.api_key; migrate to api_keys[] or Secret Manager")
+            logger.warning(
+                "Using deprecated scalar gemini.api_key from config; migrate to Secret "
+                "Manager via GEMINI_API_KEYS_SECRET."
+            )
             keys = [single_key]
     return keys
 
