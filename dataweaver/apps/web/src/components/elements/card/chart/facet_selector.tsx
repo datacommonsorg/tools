@@ -14,7 +14,9 @@ interface FacetSelectorProps {
 const formatFacetLabel = (facet: FacetInfo): string => {
   const dates =
     facet.earliestDate && facet.latestDate
-      ? `${facet.earliestDate}–${facet.latestDate}`
+      ? facet.earliestDate === facet.latestDate
+        ? facet.earliestDate
+        : `${facet.earliestDate} – ${facet.latestDate}`
       : facet.earliestDate || facet.latestDate || '';
   const parts = [facet.source, dates, facet.unit].filter(Boolean);
   return parts.join(', ');
