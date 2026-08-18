@@ -2,7 +2,7 @@
   display: flex;
   flex-shrink: 0;
   flex-flow: column;
-  row-gap: 8px;
+  row-gap: 12px;
   align-items: flex-start;
   padding-top: 18px;
 }
@@ -10,7 +10,6 @@
 .title {
   @include type-title;
 
-  margin-bottom: 4px;
   color: rgb(var(--color-card-content));
 }
 
