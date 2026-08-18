@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data-commons-deployment/config/branding.schema.json",
+  "title": "Custom Data Commons branding configuration",
+  "description": "Schema for this instance's branding.json (lives at the per-instance config bucket root, served publicly and fetched by the React UI at page load). The UI reads the nested `colors`/`fonts` blocks and applies them as --brand-* CSS variables; see ui/src/hooks/useBranding.ts. One instance, one file.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "hexColor": {
+      "type": "string",
+      "description": "CSS hex color, 3- or 6-digit (e.g. '#175C75').",
+      "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$"
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "href"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "href": {
+          "type": "string"
+        }
+      }
+    },
+    "metricsTile": {
+      "type": "object",
+      "description": "One tile \u2192 one <datacommons-${type}> web component on the Key Metrics dashboard. `title` is the card's chrome header; the rest pass through as attributes.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "title"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "line",
+            "bar",
+            "map",
+            "ranking",
+            "highlight",
+            "scatter",
+            "pie",
+            "gauge",
+            "slider"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "header": {
+          "type": "string"
+        },
+        "variable": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "string",
+          "description": "Space-separated StatVar DCIDs for multi-series tiles."
+        },
+        "place": {
+          "type": "string"
+        },
+        "places": {
+          "type": "string",
+          "description": "Space-separated place DCIDs."
+        },
+        "parentPlace": {
+          "type": "string"
+        },
+        "childPlaceType": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "rankingCount": {
+          "type": "integer"
+        },
+        "showHighestLowest": {
+          "type": "boolean"
+        },
+        "showLowest": {
+          "type": "boolean"
+        },
+        "showPlaceLabels": {
+          "type": "boolean"
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "ascending",
+            "descending",
+            "ascendingPopulation",
+            "descendingPopulation"
+          ]
+        },
+        "colors": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "endDate": {
+          "type": "string"
+        }
+      }
+    },
+    "metricsTab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "tiles"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsTile"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "$comment": {
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "Branding schema version string.",
+      "type": "string"
+    },
+    "instance_name": {
+      "description": "Display name of the instance, e.g. 'Example Data Commons'. Shown in the header/title.",
+      "type": "string"
+    },
+    "logo": {
+      "description": "Path (relative to the config bucket root) or URL to the instance logo.",
+      "type": "string"
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Brand palette. Applied as --brand-* CSS variables; each maps to a design token in ui/src/index.css with a built-in fallback, so omitted keys keep the shipped design value.",
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Primary interactive color: active nav tabs, links, buttons, send button (--brand-primary \u2192 --color-teal)."
+        },
+        "accent": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Accent color (--brand-accent). Currently has no visual consumer in the UI; reserved."
+        },
+        "text": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Primary body text (--brand-text \u2192 --color-on-surface)."
+        },
+        "text_muted": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Secondary/muted text (--brand-text-muted \u2192 --color-on-surface-variant)."
+        },
+        "background": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Page background (--brand-background)."
+        },
+        "surface": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Elevated surface / panel / card background (--brand-surface \u2192 --color-surface-soft)."
+        },
+        "gradient_start": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Hero 'Data Agent' heading gradient start stop (--brand-gradient-start \u2192 --color-brand-green)."
+        },
+        "gradient_end": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Hero 'Data Agent' heading gradient end stop (--brand-gradient-end \u2192 --color-brand-teal)."
+        }
+      }
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "description": "Display/heading font family stack (--brand-font \u2192 --font-display).",
+          "type": "string"
+        },
+        "body": {
+          "description": "Body font family stack (--brand-font-body \u2192 --font-sans).",
+          "type": "string"
+        }
+      }
+    },
+    "navigation": {
+      "description": "Header navigation entries.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "suggestions": {
+      "description": "Starter prompt suggestions on the empty Data Agent screen.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "suggestion_chips": {
+      "description": "DEPRECATED alias for `suggestions`, accepted for older uploaded files.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Key Metrics dashboard composition. When absent, the UI falls back to DEFAULT_METRICS_TABS in ui/src/components/MetricsPage.tsx.",
+      "properties": {
+        "$comment": {
+          "type": "string"
+        },
+        "tabs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsTab"
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Branding contract for one Custom Data Commons instance. The agent serves this file's contents from the instance config bucket via GET /agent/brand; the React UI fetches it at page load and applies colors/fonts as --brand-* CSS variables (src/hooks/use_branding.ts). Omitted keys fall back to the shipped design tokens in src/index.css. Every key defined here is read by the UI \u2014 do not add a key without a consumer."
+}

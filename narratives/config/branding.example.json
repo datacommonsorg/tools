@@ -1,0 +1,72 @@
+{
+  "$schema": "./branding.schema.json",
+  "$comment": "Canonical branding.json reference. Copy to branding.json, edit for your instance, and upload to the config bucket root. The React UI fetches it at page load and applies colors/fonts as --brand-* CSS variables (src/hooks/use_branding.ts). Omitted keys fall back to the shipped design tokens in src/index.css. One instance, one file.",
+  "instance_name": "Example Data Commons",
+  "colors": {
+    "primary": "#175C75",
+    "accent": "#65A782",
+    "text": "#1B1C1D",
+    "text_muted": "#444746",
+    "background": "#FFFFFF",
+    "surface": "#F9F9F9",
+    "gradient_start": "#65A782",
+    "gradient_end": "#6FAEC0"
+  },
+  "fonts": {
+    "primary": "Google Sans, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    "body": "Google Sans Text, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+  },
+  "navigation": [
+    {
+      "label": "Home",
+      "href": "/"
+    },
+    {
+      "label": "Data Agent",
+      "href": "/agent"
+    },
+    {
+      "label": "About",
+      "href": "/about"
+    }
+  ],
+  "suggestions": [
+    "How has average annual wage changed over time in the United States?",
+    "Compare GDP growth across G7 countries",
+    "What is the gender wage gap in OECD countries?"
+  ],
+  "metrics": {
+    "$comment": "Optional Key Metrics dashboard composition. When omitted entirely, the UI uses its built-in DEFAULT_METRICS_TABS. Each tile maps 1:1 to a <datacommons-${type}> web component.",
+    "tabs": [
+      {
+        "id": "population",
+        "label": "Population",
+        "tiles": [
+          {
+            "type": "highlight",
+            "title": "World population",
+            "header": "World population",
+            "variable": "Count_Person",
+            "place": "Earth"
+          },
+          {
+            "type": "line",
+            "title": "Population \u2014 major economies",
+            "header": "Population over time",
+            "variables": "Count_Person",
+            "places": "country/USA country/IND country/CHN"
+          },
+          {
+            "type": "ranking",
+            "title": "Top countries by population",
+            "header": "Most populous countries",
+            "variable": "Count_Person",
+            "parentPlace": "Earth",
+            "childPlaceType": "Country",
+            "rankingCount": 10
+          }
+        ]
+      }
+    ]
+  }
+}
