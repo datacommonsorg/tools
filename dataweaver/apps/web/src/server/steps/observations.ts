@@ -56,56 +56,68 @@ export const fetchTimeSeriesBatch = async (
     // Parse metadata map (facetId -> { source, url }) across all variables
     const metadataMap: Record<string, { source: string; url: string }> = {};
     if (metadataResult) {
-      let rawMeta = metadataResult.structuredContent;
-      if (!rawMeta && metadataResult.content?.[0]?.text) {
-        try {
-          rawMeta = JSON.parse(metadataResult.content[0].text);
-        } catch {
-          // Ignore JSON parse errors
+      try {
+        let rawMetadata = metadataResult.structuredContent;
+        if (!rawMetadata && metadataResult.content?.[0]?.text) {
+          try {
+            rawMetadata = JSON.parse(metadataResult.content[0].text);
+          } catch {
+            // Ignore JSON parse errors
+          }
         }
-      }
 
-      if (rawMeta?.provenances && rawMeta?.variables) {
-        for (const varMeta of Object.values(rawMeta.variables)) {
-          const metaFacets = varMeta?.facets || [];
-          for (const mf of metaFacets) {
-            if (mf.id && mf.provenanceId) {
-              const prov = rawMeta.provenances[mf.provenanceId]?.properties;
-              if (prov) {
-                const sourceName = prov.isPartOf || prov.source;
-                if (sourceName) {
-                  metadataMap[mf.id] = {
-                    source: sourceName,
-                    url: prov.url || '',
-                  };
+        if (
+          rawMetadata?.provenances &&
+          rawMetadata?.variables &&
+          typeof rawMetadata.variables === 'object'
+        ) {
+          for (const variableMetadata of Object.values(rawMetadata.variables)) {
+            const metadataFacets = variableMetadata?.facets;
+            if (Array.isArray(metadataFacets)) {
+              for (const metadataFacet of metadataFacets) {
+                if (metadataFacet?.id && metadataFacet?.provenanceId) {
+                  const provenance =
+                    rawMetadata.provenances[metadataFacet.provenanceId]
+                      ?.properties;
+                  if (provenance) {
+                    const sourceName = provenance.isPartOf || provenance.source;
+                    if (sourceName) {
+                      metadataMap[metadataFacet.id] = {
+                        source: sourceName,
+                        url: provenance.url || '',
+                      };
+                    }
+                  }
                 }
               }
             }
           }
         }
+      } catch (err) {
+        console.warn('[observations] Failed to parse MCP metadata:', err);
       }
     }
 
     const facetsMap = obsResponse.facets || {};
 
     return variableDcids.map((variableDcid) => {
-      const varData =
+      const variableData =
         obsResponse.byVariable?.[variableDcid]?.byEntity?.[entityDcid];
-      const orderedFacets = varData?.orderedFacets || [];
+      const orderedFacets = variableData?.orderedFacets || [];
 
-      const facets: FacetInfo[] = orderedFacets.map((f) => {
-        const data = facetsMap[f.facetId] || {};
-        const meta = metadataMap[f.facetId];
+      const facets: FacetInfo[] = orderedFacets.map((facet) => {
+        const facetData = facetsMap[facet.facetId] || {};
+        const metadata = metadataMap[facet.facetId];
         return {
-          facetId: f.facetId,
-          source: meta?.source || data.importName || '',
-          sourceUrl: meta?.url || data.provenanceUrl || '',
-          unit: data.unit || '',
-          earliestDate: f.earliestDate || '',
-          latestDate: f.latestDate || '',
-          observationCount: f.observations?.length || 0,
-          measurementMethod: data.measurementMethod,
-          observations: f.observations || [],
+          facetId: facet.facetId,
+          source: metadata?.source || facetData.importName || '',
+          sourceUrl: metadata?.url || facetData.provenanceUrl || '',
+          unit: facetData.unit || '',
+          earliestDate: facet.earliestDate || '',
+          latestDate: facet.latestDate || '',
+          observationCount: facet.observations?.length || 0,
+          measurementMethod: facetData.measurementMethod,
+          observations: facet.observations || [],
         };
       });
 
