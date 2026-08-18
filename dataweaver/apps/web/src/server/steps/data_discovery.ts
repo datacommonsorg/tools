@@ -91,7 +91,6 @@ export const runToolLoop = async (
   // Fetch remote MCP skill playbook (gracefully falls back to null if unavailable)
   const mcpSkillPlaybook = await fetchMcpSkillPlaybook(
     'data-commons-researcher',
-    signal,
   );
 
   // Track place DCID from tool responses

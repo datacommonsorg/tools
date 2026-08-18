@@ -100,7 +100,7 @@ export const fetchTimeSeriesBatch = async (
           facetId: f.facetId,
           source: meta?.source || data.importName || '',
           sourceUrl: meta?.url || data.provenanceUrl || '',
-          unit: data.unit || 'Unit not specified',
+          unit: data.unit || '',
           earliestDate: f.earliestDate || '',
           latestDate: f.latestDate || '',
           observationCount: f.observations?.length || 0,

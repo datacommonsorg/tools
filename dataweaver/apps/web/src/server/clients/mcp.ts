@@ -121,13 +121,12 @@ const _mcpSkillCache = new Map<string, Promise<string | null>>();
  */
 export const fetchMcpSkillPlaybook = async (
   skillName: string,
-  signal?: AbortSignal,
 ): Promise<string | null> => {
   const cachedPromise = _mcpSkillCache.get(skillName);
   if (cachedPromise) return cachedPromise;
 
   const uri = `skill://${skillName}/SKILL.md`;
-  const fetchPromise = readMcpResource(uri, signal)
+  const fetchPromise = readMcpResource(uri)
     .then((content) => {
       if (!content) {
         _mcpSkillCache.delete(skillName);
