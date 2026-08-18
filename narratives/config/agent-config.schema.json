@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data-commons-deployment/config/agent-config.schema.json",
+  "title": "Custom Data Commons agent configuration",
+  "description": "Schema for this instance's agent-config.json (lives at the per-instance config bucket root). Mirrors the field surface of upstream config.json.example. Same schema is consumed in dev mode (UI panel) and prod mode (bucket file). One instance, one file \u2014 no overlay model across instances.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "gemini": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api_base": {
+          "description": "Override for regional / vNext Gemini endpoints.",
+          "type": "string",
+          "format": "uri",
+          "default": "https://generativelanguage.googleapis.com/v1beta/models"
+        },
+        "mcp_model": {
+          "description": "Model used for the MCP tool-loop / planner.",
+          "type": "string",
+          "default": "gemini-3-flash-preview"
+        },
+        "kb_model": {
+          "description": "Model used for the File Search / KB phase.",
+          "type": "string",
+          "default": "gemini-3-flash-preview"
+        },
+        "filestores": {
+          "description": "Gemini File Search corpus IDs (one or more; sharded RAG when multiple).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^fileSearchStores/"
+          },
+          "default": []
+        },
+        "demo_filestores": {
+          "description": "Demo corpus pool.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^fileSearchStores/"
+          },
+          "default": []
+        }
+      },
+      "description": "Gemini model and corpus settings. API keys are deliberately NOT part of this file: the agent resolves them from Secret Manager via the GEMINI_API_KEYS_SECRET and GEMINI_DEMO_API_KEYS_SECRET environment variables. `gemini` is additionalProperties:false, so adding an api_keys/api_key field here is a validation error \u2014 that is intentional, and keeps this file safe to commit and to serve from a config bucket."
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Set false to run synthesis-only (no tool loop). Used for chat-only fallback when MCP is down.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "description": "Data Commons MCP server settings. The endpoint itself is NOT configurable here: the agent builds it from the MCP_PORT environment variable as http://localhost:${MCP_PORT}/mcp (src/mcp/client.py). Set MCP_PORT on the container."
+    },
+    "knowledge_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Toggle the File Search RAG phase. False disables the KB pipeline entirely for instances without a corpus.",
+          "type": "boolean",
+          "default": false
+        },
+        "store_id": {
+          "description": "DEPRECATED single-corpus shim. Use gemini.filestores[] instead. Schema accepts it for backward shape compat; agent ignores it.",
+          "type": "string"
+        }
+      }
+    },
+    "thinking": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mcp_level": {
+          "description": "Reasoning budget for the tool-loop / planner. Primary cost/latency dial.",
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium"
+        },
+        "synthesis_level": {
+          "description": "Reasoning budget for the final synthesizer. Primary cost/latency dial.",
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium"
+        }
+      }
+    },
+    "prompts": {
+      "type": "object",
+      "description": "System prompts. Prompt bodies live in config/prompts/*.md and are loaded by the agent at startup; this object can override individual slots inline if desired. The only placeholder the agent substitutes today is {{CURRENT_DATETIME}}.",
+      "additionalProperties": false,
+      "properties": {
+        "mcp": {
+          "type": "string"
+        },
+        "kb": {
+          "type": "string"
+        },
+        "synthesis": {
+          "type": "string"
+        }
+      }
+    },
+    "template_vars": {
+      "type": "object",
+      "description": "Per-instance values intended for substitution into prompts as {{instance.<key>}}. NOT YET IMPLEMENTED: the agent does not read this object, and the shipped prompts contain no {{instance.*}} placeholders. Declared here so instance authors can populate it ahead of the renderer landing. Keys are case-sensitive.",
+      "properties": {
+        "name": {
+          "description": "Display name of the instance (e.g. 'India', 'Karnataka', 'New Jersey').",
+          "type": "string"
+        },
+        "region": {
+          "description": "Default geographic context for ambiguous queries.",
+          "type": "string"
+        },
+        "states_term": {
+          "description": "Local term for sub-national administrative units ('states', 'districts', 'counties', 'provinces').",
+          "type": "string"
+        },
+        "fiscal_year_start": {
+          "description": "Month/day on which the fiscal year starts, MM-DD. E.g. '04-01' for an April start, '01-01' for a calendar year.",
+          "type": "string",
+          "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "query_param_key": {
+      "description": "Soft-gate token for demo links. Appended as ?key=<this> to gate the dev-mode UI panel and the diagnostic endpoints.",
+      "type": "string",
+      "minLength": 4
+    },
+    "proxy_url": {
+      "description": "Legacy: where the agent itself binds. Container env (PROXY_PORT) is the source of truth in the target deployment; schema accepts this key for backward compatibility with upstream config.json.example.",
+      "type": "string",
+      "format": "uri"
+    }
+  }
+}
