@@ -33,7 +33,9 @@ const formatFacetBlock = (facet: FacetInfo): string => {
   }
   const dateRange =
     facet.earliestDate && facet.latestDate
-      ? `${facet.earliestDate} – ${facet.latestDate}`
+      ? facet.earliestDate === facet.latestDate
+        ? facet.earliestDate
+        : `${facet.earliestDate} – ${facet.latestDate}`
       : facet.earliestDate || facet.latestDate || '';
   if (dateRange) {
     lines.push(dateRange);
