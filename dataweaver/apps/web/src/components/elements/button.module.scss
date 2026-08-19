@@ -109,13 +109,13 @@
       border-radius: calc(var(--button-pill-size-large) / 2);
     }
 
-    // "huge" reuses large's height/padding but always renders as a full pill,
+    // "extra-large" reuses large's height/padding but always renders as a full pill,
     // so its radius isn't tied to (and shouldn't scale with) that height.
-    &[data-size="huge"] {
+    &[data-size="extra-large"] {
       column-gap: 6px;
-      min-height: var(--button-pill-size-large);
+      min-height: var(--button-pill-size-extra-large);
       padding-inline: 18px;
-      border-radius: 9999px;
+      border-radius: var(--border-radius-full);
     }
   }
 
@@ -214,7 +214,7 @@
     padding-block: 10px;
   }
 
-  [data-size="huge"] & {
+  [data-size="extra-large"] & {
     @include type-label-huge;
 
     padding-block: 16px;

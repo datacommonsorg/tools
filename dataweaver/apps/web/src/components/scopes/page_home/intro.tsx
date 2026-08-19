@@ -50,7 +50,7 @@ export const Intro = ({ onSelect, onClose, prompts }: IntroProps) => {
               {prompts.map((example, index) => (
                 <li key={example}>
                   <Button
-                    size="huge"
+                    size="extra-large"
                     variant="flat"
                     tone="accent-subtle"
                     onClick={() => onSelect(example, index)}

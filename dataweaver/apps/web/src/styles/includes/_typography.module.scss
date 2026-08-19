@@ -117,7 +117,11 @@ $-supported-body-font-weights: 400, 500;
 @mixin type-label-huge($has-text-box-trim: true) {
   font-size: 20px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 1.1;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 18px;
+  }
 
   @if $has-text-box-trim {
     text-box: trim-both cap alphabetic;
