@@ -1,11 +1,11 @@
-// Approximate rendered height of .notice-container below, so the glow
-// (anchored to the card's bottom edge) clears it instead of sitting behind it.
-$notice-container-height: 54px;
-
 .outer-container {
   pointer-events: auto;
-
-  @include pulsing-card($notice-container-height, false);
+  position: relative;
+  display: grid;
+  overflow: clip;
+  background: rgb(var(--color-query-surface-raised));
+  border: 1px solid rgb(var(--color-query-surface-muted));
+  border-radius: var(--border-radius-large) var(--border-radius-medium);
 }
 
 .middle-container {
@@ -79,6 +79,9 @@ $notice-container-height: 54px;
   padding: 16px 28px;
   color: rgb(var(--color-query-content));
   background: rgb(var(--color-query-surface-subtle));
+
+  position: relative;
+  @include pulsing-background(100%, false);
 
   .icon-info {
     flex-shrink: 0;

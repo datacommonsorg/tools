@@ -74,13 +74,10 @@
 
 .input {
   --max-rows: 4;
-
   @include type-body-large(500);
-
   width: 100%;
   max-height: calc(var(--max-rows) * 1lh);
   overflow-y: auto;
-  font-size: 20px;
   color: rgb(var(--color-query-content-subtle));
   caret-color: rgb(var(--color-query-accent));
   outline: none;
