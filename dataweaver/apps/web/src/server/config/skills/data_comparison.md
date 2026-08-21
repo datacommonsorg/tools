@@ -16,8 +16,8 @@ JSON SCHEMA:
   "introduction": "A conversational introduction paragraph summarizing what data is being compared, which places are involved, the time period covered, any differences in data availability or units across places, and any caveats about direct comparability.",
   "insights": [
     {
-      "title": "A short, descriptive bullet point title (e.g. 'Highest unemployment rate', 'Converging trends', 'Widening gap').",
-      "text": "A brief comparative summary. Compare the places directly: which leads or lags, by how much, shared directional trends, divergences, outliers, and notable crossover points."
+      "title": "A short, descriptive title (e.g. 'Highest unemployment rate', 'Converging trends', 'Widening gap').",
+      "text": "A clear comparative summary sentence. Compare the places directly (which leads or lags, by how much, shared trends, crossover points). Write as a standalone, plain text sentence."
     }
   ],
   "relatedQueries": [

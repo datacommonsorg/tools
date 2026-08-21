@@ -12,9 +12,28 @@ interface FacetSelectorProps {
 }
 
 const formatFacetLabel = (facet: FacetInfo): string => {
-  const unit =
-    facet.unit.toLowerCase() === 'dimensionless' ? 'Dimensionless' : facet.unit;
-  return `${facet.source}, ${facet.earliestDate}–${facet.latestDate}, ${unit}`;
+  const parts: string[] = [];
+  if (facet.source) parts.push(facet.source);
+
+  if (facet.earliestDate && facet.latestDate) {
+    parts.push(
+      facet.earliestDate === facet.latestDate
+        ? facet.earliestDate
+        : `${facet.earliestDate}–${facet.latestDate}`,
+    );
+  } else if (facet.earliestDate || facet.latestDate) {
+    parts.push(facet.earliestDate || facet.latestDate);
+  }
+
+  if (facet.unit) {
+    const unit =
+      facet.unit.toLowerCase() === 'dimensionless'
+        ? 'Dimensionless'
+        : facet.unit;
+    parts.push(unit);
+  }
+
+  return parts.join(', ');
 };
 
 export const FacetSelector = ({

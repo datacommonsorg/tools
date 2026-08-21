@@ -42,9 +42,32 @@ const buildTableHtml = (result: QueryResult): string => {
       (m) => m.variableDcid === variable.dcid,
     );
     const firstFacet = timeSeries?.facets[0];
-    const facetCell = firstFacet
-      ? `${firstFacet.source}<br>${firstFacet.earliestDate} – ${firstFacet.latestDate}${firstFacet.unit ? ` · ${firstFacet.unit}` : ''}`
-      : 'No data';
+    let facetCell = 'No data';
+    if (firstFacet) {
+      const metadataParts: string[] = [];
+
+      if (firstFacet.earliestDate && firstFacet.latestDate) {
+        metadataParts.push(
+          firstFacet.earliestDate === firstFacet.latestDate
+            ? firstFacet.earliestDate
+            : `${firstFacet.earliestDate} – ${firstFacet.latestDate}`,
+        );
+      } else if (firstFacet.earliestDate || firstFacet.latestDate) {
+        metadataParts.push(firstFacet.earliestDate || firstFacet.latestDate);
+      }
+
+      if (firstFacet.unit) {
+        metadataParts.push(firstFacet.unit);
+      }
+
+      const metadata = metadataParts.join(' · ');
+
+      if (firstFacet.source && metadata) {
+        facetCell = `${firstFacet.source}<br>${metadata}`;
+      } else {
+        facetCell = firstFacet.source || metadata || 'No data';
+      }
+    }
 
     const hasData = withData.has(variable.dcid);
     const encodedVar = encodeURIComponent(variable.name);

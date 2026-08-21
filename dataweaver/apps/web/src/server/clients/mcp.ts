@@ -83,3 +83,61 @@ export const callMcp = async <T = unknown>(
 
   return data.result;
 };
+
+export interface McpResourceReadResult {
+  contents: Array<{
+    uri: string;
+    mimeType?: string;
+    text: string;
+  }>;
+}
+
+/**
+ * Read a resource from the MCP server by URI (e.g. `skill://data-commons-researcher/SKILL.md`).
+ * Returns null if the resource cannot be fetched or parsed.
+ */
+export const readMcpResource = async (
+  uri: string,
+  signal?: AbortSignal,
+): Promise<string | null> => {
+  try {
+    const result = await callMcp<McpResourceReadResult>(
+      'resources/read',
+      { uri },
+      signal,
+    );
+    return result?.contents?.[0]?.text ?? null;
+  } catch (err: unknown) {
+    console.warn(`[mcp] Failed to read MCP resource "${uri}":`, err);
+    return null;
+  }
+};
+
+const _mcpSkillCache = new Map<string, Promise<string | null>>();
+
+/**
+ * Fetch and cache an MCP skill playbook (e.g. 'data-commons-researcher').
+ * Returns null if unavailable or on error.
+ */
+export const fetchMcpSkillPlaybook = async (
+  skillName: string,
+): Promise<string | null> => {
+  const cachedPromise = _mcpSkillCache.get(skillName);
+  if (cachedPromise) return cachedPromise;
+
+  const uri = `skill://${skillName}/SKILL.md`;
+  const fetchPromise = readMcpResource(uri)
+    .then((content) => {
+      if (!content) {
+        _mcpSkillCache.delete(skillName);
+      }
+      return content;
+    })
+    .catch((_err: unknown) => {
+      _mcpSkillCache.delete(skillName);
+      return null;
+    });
+
+  _mcpSkillCache.set(skillName, fetchPromise);
+  return fetchPromise;
+};
