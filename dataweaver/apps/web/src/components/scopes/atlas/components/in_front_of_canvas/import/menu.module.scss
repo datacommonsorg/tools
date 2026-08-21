@@ -1,8 +1,8 @@
 .menu {
   --menu-padding: 20px;
 
-  z-index: $z-index-menus;
   right: 0;
+  z-index: $z-index-menus;
   display: flex;
   flex-direction: column;
   width: 370px;
