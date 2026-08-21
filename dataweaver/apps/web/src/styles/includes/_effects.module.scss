@@ -1,0 +1,70 @@
+@use "./z-indices.module" as *;
+@use "./helpers.module" as *;
+
+@keyframes pulse-background {
+  0%,
+  100% {
+    background-size: 100% 100%;
+    opacity: 0.5;
+  }
+
+  50% {
+    background-size: 150% 100%;
+    opacity: 0.3;
+  }
+}
+
+// Decorative gradient glow anchored to the bottom edge of the parent card.
+// $bottom-offset: pushes the glow up so it doesn't sit behind content that
+// hugs the card's bottom edge (e.g. Intro's example-prompt list).
+// $is-animated: opt out of the pulse for cards where a moving background
+// would be distracting (e.g. FollowUp, whose options are the focal point).
+@mixin pulsing-background($bottom-offset: 0, $is-animated: true) {
+  &::after {
+    position: absolute;
+    inset: auto 0 $bottom-offset;
+    z-index: $z-index-content;
+    height: 40px;
+    pointer-events: none;
+    content: "";
+    background-image:
+      linear-gradient(
+        180deg,
+        rgb(var(--color-query-surface-raised) / 0%) 0%,
+        rgb(var(--color-query-accent) / 10%) 100%
+      ),
+      radial-gradient(
+        ellipse at 0 100%,
+        rgb(var(--color-query-surface-raised) / 0%) 0%,
+        rgb(var(--color-query-accent) / 10%) 20%,
+        rgb(var(--color-query-accent) / 0%) 50%
+      ),
+      radial-gradient(
+        ellipse at 68% 90%,
+        rgb(var(--color-query-surface-raised) / 0%) 0%,
+        rgb(var(--color-query-accent) / 10%) 20%,
+        rgb(var(--color-query-accent) / 0%) 50%
+      );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    opacity: 0.5;
+
+    @if $is-animated {
+      @include prefers-motion {
+        animation: pulse-background 10s ease-in-out infinite alternate;
+      }
+    }
+  }
+}
+
+// Shared card shell (status/intro/follow_up) with the pulsing gradient glow.
+@mixin pulsing-card($bottom-offset: 0, $is-animated: true) {
+  position: relative;
+  display: grid;
+  overflow: clip;
+  background: rgb(var(--color-query-surface-raised));
+  border: 1px solid rgb(var(--color-query-surface-muted));
+  border-radius: var(--border-radius-large) var(--border-radius-medium);
+
+  @include pulsing-background($bottom-offset, $is-animated);
+}

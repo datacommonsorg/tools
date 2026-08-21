@@ -114,6 +114,20 @@ $-supported-body-font-weights: 400, 500;
   }
 }
 
+@mixin type-label-extra-large($has-text-box-trim: true) {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.1;
+
+  @include breakpoints.breakpoint(tablet) {
+    font-size: 20px;
+  }
+
+  @if $has-text-box-trim {
+    text-box: trim-both cap alphabetic;
+  }
+}
+
 @mixin type-label-medium($has-text-box-trim: true) {
   font-size: 13px;
   font-weight: 500;
