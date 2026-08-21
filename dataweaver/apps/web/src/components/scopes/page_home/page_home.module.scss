@@ -10,10 +10,10 @@
   --distance-from-left: var(--distance-from-right);
 
   position: fixed;
+  z-index: $z-index-prompts;
   right: var(--distance-from-right);
   bottom: var(--gutter);
   left: var(--distance-from-left);
-  z-index: $z-index-above-content;
   display: flex;
   flex-direction: column;
   row-gap: 16px;

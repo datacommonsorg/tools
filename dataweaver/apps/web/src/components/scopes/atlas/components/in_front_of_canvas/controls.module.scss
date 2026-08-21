@@ -1,5 +1,6 @@
 .container {
-  position: absolute;
+  position: fixed;
+  z-index: $z-index-menus;
   top: var(--controls-gutter-outer);
   right: var(--controls-gutter-outer);
   display: flex;

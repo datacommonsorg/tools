@@ -10,6 +10,7 @@
 
 .actions-container {
   position: absolute;
+  z-index: $z-index-menus;
   top: 0;
   left: 50%;
   display: flex;

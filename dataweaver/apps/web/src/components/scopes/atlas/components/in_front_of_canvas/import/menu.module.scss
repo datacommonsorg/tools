@@ -1,6 +1,7 @@
 .menu {
   --menu-padding: 20px;
 
+  z-index: $z-index-menus;
   right: 0;
   display: flex;
   flex-direction: column;

@@ -4,3 +4,10 @@
   z-index: $z-index-overlay;
   pointer-events: none;
 }
+
+.selection-container {
+  position: fixed;
+  inset: 0;
+  z-index: $z-index-above-content;
+  pointer-events: none;
+}
