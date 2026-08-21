@@ -19,11 +19,12 @@ Run from the root of the `/dataweaver` directory:
 - `corepack enable && pnpm i` — install (the pnpm version is pinned via `packageManager`).
 - `pnpm dev` — run apps in dev mode.
 - `pnpm build` — build all apps.
+- `pnpm test` — run unit tests across packages.
 - `pnpm lint` — type-check + Biome + Stylelint.
 - `pnpm fix` — auto-fix Biome + Stylelint.
 - `pnpm generate:tokens` — regenerate `packages/tokens/dist/` from `packages/tokens/src/*.json`.
 
-Run `pnpm lint` (and `pnpm build` for UI changes) before considering work done.
+Run `pnpm test`, `pnpm lint` (and `pnpm build` for UI changes) before considering work done.
 
 ## Code style
 

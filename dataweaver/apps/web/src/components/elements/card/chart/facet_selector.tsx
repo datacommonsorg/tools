@@ -1,7 +1,7 @@
 'use client';
 
 import { Select } from '~/components/elements/select';
-import { formatDateRange } from '~/functions/format_date_range';
+import { formatFacetLabel } from '~/functions/format_facet';
 import type { FacetInfo } from '~/server/types';
 import s from './facet_selector.module.scss';
 
@@ -11,12 +11,6 @@ interface FacetSelectorProps {
   onSelect: (facetId: string) => void;
   label?: string;
 }
-
-const formatFacetLabel = (facet: FacetInfo): string => {
-  const dates = formatDateRange(facet.earliestDate, facet.latestDate);
-  const parts = [facet.source, dates, facet.unit].filter(Boolean);
-  return parts.join(', ');
-};
 
 export const FacetSelector = ({
   facets,

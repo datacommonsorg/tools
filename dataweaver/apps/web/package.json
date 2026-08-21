@@ -5,7 +5,9 @@
     "dev": "next dev",
     "build": "next build",
     "preview": "next start",
-    "lint:type-check": "tsc --noEmit"
+    "lint:type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
@@ -29,6 +31,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "babel-plugin-react-compiler": "^1.0.0",
-    "sass": "^1.102.0"
+    "sass": "^1.102.0",
+    "vitest": "^4.1.11"
   }
 }

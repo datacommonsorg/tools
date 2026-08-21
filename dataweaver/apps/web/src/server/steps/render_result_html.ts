@@ -1,6 +1,6 @@
 import { marked } from 'marked';
-import { formatDateRange } from '~/functions/format_date_range';
-import type { ComparisonResult, FacetInfo, QueryResult } from '~/server/types';
+import { formatFacetBlock } from '~/functions/format_facet';
+import type { ComparisonResult, QueryResult } from '~/server/types';
 
 /**
  * Build a set of variable DCIDs that have time-series data in the result.
@@ -25,24 +25,6 @@ const stripNoDataLinks = (md: string, withData: Set<string>): string => {
       return withData.has(dcid) ? match : label;
     },
   );
-};
-
-const formatFacetBlock = (facet: FacetInfo): string => {
-  const lines: string[] = [];
-  if (facet.source) {
-    lines.push(facet.source);
-  }
-  const dateRange = formatDateRange(facet.earliestDate, facet.latestDate);
-  if (dateRange) {
-    lines.push(dateRange);
-  }
-  if (facet.measurementMethod) {
-    lines.push(facet.measurementMethod);
-  }
-  if (facet.unit) {
-    lines.push(facet.unit);
-  }
-  return lines.join('<br>');
 };
 
 /** Build the variables table as an HTML string from a query result. */
