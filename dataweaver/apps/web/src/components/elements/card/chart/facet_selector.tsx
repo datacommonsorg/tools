@@ -18,6 +18,7 @@ const formatFacetLabel = (facet: FacetInfo): string => {
         ? facet.earliestDate
         : `${facet.earliestDate} – ${facet.latestDate}`
       : facet.earliestDate || facet.latestDate || '';
+
   const parts = [facet.source, dates, facet.unit].filter(Boolean);
   return parts.join(', ');
 };

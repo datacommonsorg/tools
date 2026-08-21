@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import type { ComparisonResult, FacetInfo, QueryResult } from '~/server/types';
+import type { ComparisonResult, QueryResult } from '~/server/types';
 
 /**
  * Build a set of variable DCIDs that have time-series data in the result.
@@ -26,33 +26,10 @@ const stripNoDataLinks = (md: string, withData: Set<string>): string => {
   );
 };
 
-const formatFacetBlock = (facet: FacetInfo): string => {
-  const lines: string[] = [];
-  if (facet.source) {
-    lines.push(facet.source);
-  }
-  const dateRange =
-    facet.earliestDate && facet.latestDate
-      ? facet.earliestDate === facet.latestDate
-        ? facet.earliestDate
-        : `${facet.earliestDate} – ${facet.latestDate}`
-      : facet.earliestDate || facet.latestDate || '';
-  if (dateRange) {
-    lines.push(dateRange);
-  }
-  if (facet.measurementMethod) {
-    lines.push(facet.measurementMethod);
-  }
-  if (facet.unit) {
-    lines.push(facet.unit);
-  }
-  return lines.join('<br>');
-};
-
 /** Build the variables table as an HTML string from a query result. */
 const buildTableHtml = (result: QueryResult): string => {
-  const entityDcid = result.entities[0]?.dcid ?? '';
-  const placeName = result.entities[0]?.name ?? '';
+  const defaultEntityDcid = result.entities[0]?.dcid ?? '';
+  const defaultPlaceName = result.entities[0]?.name ?? '';
   const intro = result.introduction ?? '';
   const withData = getVariablesWithData(result);
 
@@ -70,6 +47,9 @@ const buildTableHtml = (result: QueryResult): string => {
         ? facets.map(formatFacetBlock).join('<br><br>').replace(/\|/g, '\\|')
         : 'No data';
 
+    const entityDcid = variable.placeDcid || defaultEntityDcid;
+    const placeName = variable.placeName || defaultPlaceName;
+
     const hasData = withData.has(variable.dcid);
     const encodedVar = encodeURIComponent(variable.name);
     const encodedPlace = encodeURIComponent(placeName);
@@ -77,11 +57,7 @@ const buildTableHtml = (result: QueryResult): string => {
       ? `[${variable.name}](#fetch=${variable.dcid}&place=${entityDcid}&varName=${encodedVar}&placeName=${encodedPlace})`
       : variable.name;
 
-    const rationaleCell = variable.rationale
-      ? variable.rationale.replace(/\|/g, '\\|')
-      : '—';
-
-    md += `| ${nameCell} | ${facetCell} | ${rationaleCell} |\n`;
+    md += `| ${nameCell} | ${facetCell} | ${variable.rationale ?? '—'} |\n`;
   }
 
   return marked.parse(md) as string;
@@ -91,24 +67,18 @@ const buildTableHtml = (result: QueryResult): string => {
 const buildNotesHtml = (result: QueryResult): string => {
   const withData = getVariablesWithData(result);
 
-  let md = '';
-
-  // Insights come first at the top of the card (without bullet points or bold headers)
-  if (result.insights && result.insights.length > 0) {
-    for (const insight of result.insights) {
-      const text = stripNoDataLinks(insight.text, withData);
-      md += `${text}\n\n`;
-    }
+  let md = '### About this data\n\n';
+  if (result.coverage) {
+    md += `${stripNoDataLinks(result.coverage, withData)}\n\n`;
+  }
+  if (result.introduction) {
+    md += `${stripNoDataLinks(result.introduction, withData)}\n\n`;
   }
 
-  // "Notes" section follows below
-  if (result.coverage || result.introduction) {
-    md += '### Notes\n\n';
-    if (result.coverage) {
-      md += `${stripNoDataLinks(result.coverage, withData)}\n\n`;
-    }
-    if (result.introduction) {
-      md += `${stripNoDataLinks(result.introduction, withData)}\n\n`;
+  if (result.insights && result.insights.length > 0) {
+    md += '### Relevant insights\n\n';
+    for (const insight of result.insights) {
+      md += `- **${insight.title}**: ${stripNoDataLinks(insight.text, withData)}\n`;
     }
   }
 
@@ -132,21 +102,17 @@ export const renderResultHtml = (
 export const renderComparisonHtml = (comparison: ComparisonResult): string => {
   let md = '';
 
-  // 1. Comparative insights come FIRST (at the top of the card, without header or bullet points)
-  if (comparison.insights && comparison.insights.length > 0) {
-    for (const insight of comparison.insights) {
-      md += `${insight.text}\n\n`;
-    }
+  if (comparison.coverage) {
+    md += `${comparison.coverage}\n\n`;
+  }
+  if (comparison.introduction) {
+    md += `${comparison.introduction}\n\n`;
   }
 
-  // 2. "Notes" section follows below
-  if (comparison.coverage || comparison.introduction) {
-    md += '### Notes\n\n';
-    if (comparison.coverage) {
-      md += `${comparison.coverage}\n\n`;
-    }
-    if (comparison.introduction) {
-      md += `${comparison.introduction}\n\n`;
+  if (comparison.insights && comparison.insights.length > 0) {
+    md += '### Comparative insights\n\n';
+    for (const insight of comparison.insights) {
+      md += `- **${insight.title}**: ${insight.text}\n`;
     }
   }
 

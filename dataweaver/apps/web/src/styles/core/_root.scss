@@ -8,6 +8,7 @@
     --button-pill-size-small: 27px;
     --button-pill-size-medium: 32px;
     --button-pill-size-large: 34px;
+    --button-pill-size-extra-large: 46px;
     --button-circle-size-small: 25px;
     --button-circle-size-medium: 28px;
     --button-circle-size-large: 32px;
@@ -20,6 +21,7 @@
     --tools-width: calc(
       var(--button-circle-size-large) + var(--tools-gutter-inner) * 2
     );
+    --border-radius-full: 9999px;
     --border-radius-large: 28px;
     --border-radius-medium: 16px;
     --border-radius-small: 8px;

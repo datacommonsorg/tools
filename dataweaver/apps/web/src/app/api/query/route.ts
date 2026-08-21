@@ -13,7 +13,7 @@ import {
   comparePlaces,
 } from '~/server/steps/compare_places';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
-import { fetchTimeSeries } from '~/server/steps/observations';
+import { fetchTimeSeriesBatch } from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
 import {
   renderComparisonHtml,
@@ -364,14 +364,16 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Fetch time-series observations for each variable
+          // Fetch time-series observations for all variables
           emit({
             type: STREAM_EVENT.status,
             message: STATUS.loadingTimeSeries(placeLabel, variables.length),
           });
 
-          const timeSeries = await Promise.all(
-            variables.map((v) => fetchTimeSeries(v.dcid, entityDcid, signal)),
+          const timeSeries = await fetchTimeSeriesBatch(
+            variables.map((v) => v.dcid),
+            entityDcid,
+            signal,
           );
           const entities = [
             { dcid: entityDcid, name: parsedResponse.placeName || place },

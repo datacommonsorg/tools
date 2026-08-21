@@ -157,7 +157,8 @@ export const deriveChartContent = (
   return {
     variant: 'chart',
     title,
-    description: result.variables[0]?.rationale ?? firstFacet.source,
+    description:
+      result.variables[0]?.rationale || firstFacet.source || undefined,
     data: firstFacet.observations,
     facets: allFacets,
     isLoading: false,
@@ -193,7 +194,7 @@ export const deriveChartContentForVariable = (
   return {
     variant: 'chart',
     title,
-    description: variable?.rationale ?? firstFacet.source,
+    description: variable?.rationale || firstFacet.source || undefined,
     data: firstFacet.observations,
     facets: allFacets,
     isLoading: false,
