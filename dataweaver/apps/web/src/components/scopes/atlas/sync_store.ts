@@ -34,7 +34,7 @@ export const deriveTableContent = (result: QueryResult): AtlasContent => ({
 
 /** Derive AtlasContent for a notes card from a QueryResult. */
 export const deriveNotesContent = (result: QueryResult): AtlasContent => {
-  // TODO(nick-nlb): Replace this with a cleaner abstraction for title 
+  // TODO(nick-nlb): Replace this with a cleaner abstraction for title
   // generation to avoid fragile string replacements.
   const cleanTitle = result.title.replace(/^Metrics for /i, '');
   const title = cleanTitle.toLowerCase().startsWith('relevant insights')
