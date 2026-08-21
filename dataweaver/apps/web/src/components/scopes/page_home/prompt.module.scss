@@ -16,7 +16,7 @@
   width: 100%;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
-  border-radius: var(--border-radius-medium);
+  border-radius: var(--border-radius-large);
   box-shadow: var(--shadow-elevated);
 
   &::before {
@@ -61,21 +61,26 @@
   grid-area: 1 / 1;
   row-gap: 18px;
   padding: 28px 24px 16px;
+  transition: opacity 0.2s $ease-linear;
 
   @include breakpoint(tablet) {
     row-gap: 24px;
+  }
+
+  &[data-is-status-visible="true"] {
+    opacity: 0.5;
   }
 }
 
 .input {
   --max-rows: 4;
 
-  @include type-body-large;
+  @include type-body-large(500);
 
   width: 100%;
   max-height: calc(var(--max-rows) * 1lh);
   overflow-y: auto;
-  color: rgb(var(--color-query-content));
+  color: rgb(var(--color-query-content-subtle));
   caret-color: rgb(var(--color-query-accent));
   outline: none;
   scrollbar-width: thin;
