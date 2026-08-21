@@ -22,19 +22,12 @@ export const formatFacetLabel = (facet: Partial<FacetInfo>): string => {
  * - Returns an empty string if all formatting fields are absent.
  */
 export const formatFacetBlock = (facet: Partial<FacetInfo>): string => {
-  const lines: string[] = [];
-  if (facet.source) {
-    lines.push(facet.source);
-  }
-  const dateRange = formatDateRange(facet.earliestDate, facet.latestDate);
-  if (dateRange) {
-    lines.push(dateRange);
-  }
-  if (facet.measurementMethod) {
-    lines.push(facet.measurementMethod);
-  }
-  if (facet.unit) {
-    lines.push(facet.unit);
-  }
+  const dates = formatDateRange(facet.earliestDate, facet.latestDate);
+  const lines = [
+    facet.source,
+    dates,
+    facet.measurementMethod,
+    facet.unit,
+  ].filter(Boolean);
   return lines.join('<br>');
 };
