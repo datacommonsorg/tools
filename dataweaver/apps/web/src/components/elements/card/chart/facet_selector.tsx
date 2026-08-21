@@ -1,6 +1,7 @@
 'use client';
 
 import { Select } from '~/components/elements/select';
+import { formatDateRange } from '~/functions/format_date_range';
 import type { FacetInfo } from '~/server/types';
 import s from './facet_selector.module.scss';
 
@@ -12,27 +13,8 @@ interface FacetSelectorProps {
 }
 
 const formatFacetLabel = (facet: FacetInfo): string => {
-  const parts: string[] = [];
-  if (facet.source) parts.push(facet.source);
-
-  if (facet.earliestDate && facet.latestDate) {
-    parts.push(
-      facet.earliestDate === facet.latestDate
-        ? facet.earliestDate
-        : `${facet.earliestDate}–${facet.latestDate}`,
-    );
-  } else if (facet.earliestDate || facet.latestDate) {
-    parts.push(facet.earliestDate || facet.latestDate);
-  }
-
-  if (facet.unit) {
-    const unit =
-      facet.unit.toLowerCase() === 'dimensionless'
-        ? 'Dimensionless'
-        : facet.unit;
-    parts.push(unit);
-  }
-
+  const dates = formatDateRange(facet.earliestDate, facet.latestDate);
+  const parts = [facet.source, dates, facet.unit].filter(Boolean);
   return parts.join(', ');
 };
 
