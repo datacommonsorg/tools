@@ -1,8 +1,8 @@
 .outer-container {
-  pointer-events: auto;
   position: relative;
   display: grid;
   overflow: clip;
+  pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
   border: 1px solid rgb(var(--color-query-surface-muted));
   border-radius: var(--border-radius-large) var(--border-radius-medium);
@@ -73,6 +73,7 @@
 .notice-container {
   @include type-body-medium;
 
+  position: relative;
   display: flex;
   grid-area: notice;
   column-gap: 4px;
@@ -80,7 +81,6 @@
   color: rgb(var(--color-query-content));
   background: rgb(var(--color-query-surface-subtle));
 
-  position: relative;
   @include pulsing-background(100%, false);
 
   .icon-info {
