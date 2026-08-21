@@ -8,6 +8,7 @@ import type { TLCameraMoveOptions, TLComponents, TLUiOverrides } from 'tldraw';
 import { ContextMenu } from './components/context_menu';
 import { Grid } from './components/grid';
 import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
+import { OnTheCanvas } from './components/on_the_canvas';
 import type { CardSize, CardVariant } from './helpers';
 import { AtlasSelectionForegroundOverlayUtil } from './overlays/selection_foreground';
 import { ShapeCardUtil } from './shapes/card';
@@ -22,6 +23,7 @@ export const ATLAS_COMPONENTS = {
   // dot grid shows without enabling grid mode
   Background: Grid,
   InFrontOfTheCanvas,
+  OnTheCanvas,
 } as const satisfies TLComponents;
 
 /**
