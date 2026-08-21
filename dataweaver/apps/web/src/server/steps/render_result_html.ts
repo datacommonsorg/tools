@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import { formatDateRange } from '~/functions/format_date_range';
 import type { ComparisonResult, FacetInfo, QueryResult } from '~/server/types';
 
 /**
@@ -31,12 +32,7 @@ const formatFacetBlock = (facet: FacetInfo): string => {
   if (facet.source) {
     lines.push(facet.source);
   }
-  const dateRange =
-    facet.earliestDate && facet.latestDate
-      ? facet.earliestDate === facet.latestDate
-        ? facet.earliestDate
-        : `${facet.earliestDate} – ${facet.latestDate}`
-      : facet.earliestDate || facet.latestDate || '';
+  const dateRange = formatDateRange(facet.earliestDate, facet.latestDate);
   if (dateRange) {
     lines.push(dateRange);
   }

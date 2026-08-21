@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { extractJson } from '~/functions/extract_json';
+import { formatDateRange } from '~/functions/format_date_range';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
 import type {
@@ -70,10 +71,10 @@ export const buildPlaceSummaries = (results: QueryResult[]): PlaceSummary[] => {
         if (obs.value > maxValue) maxValue = obs.value;
       }
 
-      const earliestDate = ts?.facets[0]?.earliestDate ?? '';
-      const latDate = ts?.facets[0]?.latestDate ?? '';
-      const dateRange =
-        earliestDate && latDate ? `${earliestDate} – ${latDate}` : '';
+      const dateRange = formatDateRange(
+        ts?.facets[0]?.earliestDate,
+        ts?.facets[0]?.latestDate,
+      );
 
       return {
         name: v.name,
