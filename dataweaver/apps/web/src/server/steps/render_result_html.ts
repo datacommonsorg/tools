@@ -1,5 +1,8 @@
 import { marked } from 'marked';
+import { resolvePlaceName } from '~/functions/format_card_title';
 import { formatFacetBlock } from '~/functions/format_facet';
+import { normalizePlaceType } from '~/functions/normalize_place_type';
+import { getResultScopeKey } from '~/functions/scope_key';
 import type { ComparisonResult, QueryResult } from '~/server/types';
 
 /**
@@ -29,8 +32,8 @@ const stripNoDataLinks = (md: string, withData: Set<string>): string => {
 
 /** Build the variables table as an HTML string from a query result. */
 const buildTableHtml = (result: QueryResult): string => {
-  const entityDcid = result.entities[0]?.dcid ?? '';
-  const placeName = result.entities[0]?.name ?? '';
+  const defaultScopeKey = getResultScopeKey(result);
+  const defaultPlaceName = resolvePlaceName(result);
   const intro = result.introduction ?? '';
   const withData = getVariablesWithData(result);
 
@@ -48,11 +51,18 @@ const buildTableHtml = (result: QueryResult): string => {
         ? facets.map(formatFacetBlock).join('<br><br>').replace(/\|/g, '\\|')
         : 'No data';
 
+    const scopeKey = variable.isChildQuery
+      ? variable.parentPlaceDcid || variable.placeDcid
+        ? `${variable.parentPlaceDcid || variable.placeDcid}:${normalizePlaceType(variable.childPlaceType)}`
+        : defaultScopeKey
+      : variable.placeDcid || defaultScopeKey;
+    const placeName = variable.placeName || defaultPlaceName;
+
     const hasData = withData.has(variable.dcid);
     const encodedVar = encodeURIComponent(variable.name);
     const encodedPlace = encodeURIComponent(placeName);
     const nameCell = hasData
-      ? `[${variable.name}](#fetch=${variable.dcid}&place=${entityDcid}&varName=${encodedVar}&placeName=${encodedPlace})`
+      ? `[${variable.name}](#fetch=${variable.dcid}&place=${scopeKey}&varName=${encodedVar}&placeName=${encodedPlace})`
       : variable.name;
 
     const rationaleCell = variable.rationale
