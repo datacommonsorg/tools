@@ -78,6 +78,23 @@ describe('scope_key', () => {
       expect(getResultScopeKey(result)).toBe('country/KEN+country/UGA');
     });
 
+    it('filters out empty or missing entity DCIDs in multi-entity results', () => {
+      const result: QueryResult = {
+        id: 'test-3b',
+        title: 'Comparison',
+        variables: [],
+        entities: [
+          { dcid: 'country/UGA', name: 'Uganda' },
+          { dcid: '', name: 'Empty' },
+          { dcid: undefined as unknown as string, name: 'Missing' },
+          { dcid: 'country/KEN', name: 'Kenya' },
+        ],
+        timeSeries: [],
+      };
+
+      expect(getResultScopeKey(result)).toBe('country/KEN+country/UGA');
+    });
+
     it('falls back to variable placeDcid when entities array is empty', () => {
       const result: QueryResult = {
         id: 'test-4',

@@ -38,10 +38,14 @@ export const getResultScopeKey = (
   }
 
   if (result.entities.length > 1) {
-    return result.entities
-      .map((e) => e.dcid)
-      .sort()
-      .join('+');
+    const validDcids = result.entities
+      .map((e) => e?.dcid)
+      .filter(
+        (dcid): dcid is string => typeof dcid === 'string' && dcid.length > 0,
+      );
+    if (validDcids.length > 0) {
+      return validDcids.sort().join('+');
+    }
   }
 
   if (result.variables[0]?.placeDcid) {
