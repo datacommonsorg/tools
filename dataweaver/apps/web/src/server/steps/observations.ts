@@ -118,7 +118,7 @@ export const fetchTimeSeriesBatch = async (
           // observations array within a facet. Sort ascending by date so downstream
           // consumers (charts, comparisons, latest value lookups) have a guaranteed order.
           const observations = (facet.observations || [])
-            .slice()
+            .filter((obs) => typeof obs?.date === 'string')
             .sort((a, b) => a.date.localeCompare(b.date));
 
           return {
