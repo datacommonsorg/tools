@@ -2,6 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import type { ChartSeries } from '~/components/elements/card/chart/chart';
+import {
+  formatChartCardTitle,
+  formatNotesCardTitle,
+  formatTableCardTitle,
+  resolvePlaceName,
+} from '~/functions/format_card_title';
+import { resolveResultForPlace } from '~/functions/scope_key';
 import type {
   CardEntry,
   CardType,
@@ -25,21 +32,22 @@ export const deriveLoadingContent = (title: string): AtlasContent => ({
 });
 
 /** Derive AtlasContent for a table card from a QueryResult. */
-export const deriveTableContent = (result: QueryResult): AtlasContent => ({
-  variant: 'table',
-  title: result.title,
-  body: result.tableHtml ?? '',
-  isLoading: false,
-});
+export const deriveTableContent = (result: QueryResult): AtlasContent => {
+  const placeName = resolvePlaceName(result);
+  const title =
+    result.title || formatTableCardTitle(placeName, result.isChildQuery);
+  return {
+    variant: 'table',
+    title,
+    body: result.tableHtml ?? '',
+    isLoading: false,
+  };
+};
 
 /** Derive AtlasContent for a notes card from a QueryResult. */
 export const deriveNotesContent = (result: QueryResult): AtlasContent => {
-  // TODO(nick-nlb): Replace this with a cleaner abstraction for title
-  // generation to avoid fragile string replacements.
-  const cleanTitle = result.title.replace(/^Metrics for /i, '');
-  const title = cleanTitle.toLowerCase().startsWith('relevant insights')
-    ? cleanTitle
-    : `Relevant insights on ${cleanTitle}`;
+  const placeName = resolvePlaceName(result);
+  const title = formatNotesCardTitle(placeName);
 
   return {
     variant: 'text',
@@ -77,7 +85,14 @@ export const deriveComparisonChartContent = (
 
   const resultEntries = Object.values(allResults);
   const allPlaces = new Set(
-    resultEntries.map((result) => result.entities[0]?.dcid).filter(Boolean),
+    resultEntries
+      .map(
+        (result) =>
+          result.placeDcid ||
+          result.parentPlaceDcid ||
+          result.entities[0]?.dcid,
+      )
+      .filter(Boolean),
   );
   const isSamePlace = allPlaces.size === 1;
 
@@ -113,9 +128,12 @@ export const deriveComparisonChartContent = (
       const observations = ts?.facets[0]?.observations;
       if (!observations || observations.length === 0) continue;
 
-      const entity = result.entities[0];
-      const placeDcid = entity?.dcid ?? result.id;
-      const placeName = entity?.name ?? entity?.dcid ?? result.title;
+      const placeDcid =
+        result.placeDcid ||
+        result.parentPlaceDcid ||
+        result.entities[0]?.dcid ||
+        result.id;
+      const placeName = resolvePlaceName(result);
 
       series.push({
         key: placeDcid,
@@ -143,6 +161,51 @@ export const deriveComparisonChartContent = (
 export const deriveChartContent = (
   result: QueryResult,
 ): AtlasContent | null => {
+  const placeName = resolvePlaceName(result);
+
+  if (result.entities.length > 1) {
+    const primaryVariableDcid =
+      result.variables[0]?.dcid || result.timeSeries[0]?.variableDcid;
+    if (!primaryVariableDcid) return null;
+
+    const series: ChartSeries[] = [];
+    const seriesFacets: Record<string, FacetInfo[]> = {};
+
+    for (const entity of result.entities) {
+      const ts = result.timeSeries.find(
+        (t) =>
+          t.variableDcid === primaryVariableDcid &&
+          t.entityDcid === entity.dcid,
+      );
+      const observations = ts?.facets[0]?.observations;
+      if (!observations || observations.length === 0) continue;
+
+      series.push({
+        key: entity.dcid,
+        label: entity.name || entity.dcid,
+        data: observations,
+      });
+
+      if (ts?.facets) {
+        seriesFacets[entity.dcid] = ts.facets;
+      }
+    }
+
+    if (series.length === 0) return null;
+
+    const varName = result.variables[0]?.name;
+    const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
+
+    return {
+      variant: 'chart',
+      title,
+      description: result.variables[0]?.rationale || undefined,
+      series,
+      ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
+      isLoading: false,
+    };
+  }
+
   const firstTimeSeries = result.timeSeries[0];
   const allFacets = firstTimeSeries?.facets;
   const firstFacet = allFacets?.[0];
@@ -152,9 +215,7 @@ export const deriveChartContent = (
   }
 
   const varName = result.variables[0]?.name;
-  const placeName = result.entities[0]?.name;
-  const title =
-    varName && placeName ? `${varName} in ${placeName}` : result.title;
+  const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
 
   return {
     variant: 'chart',
@@ -167,12 +228,61 @@ export const deriveChartContent = (
   };
 };
 
-/** Derive AtlasContent for a chart card targeting a specific variable by DCID. */
+/**
+ * Derive AtlasContent for a chart card targeting a specific variable by DCID.
+ * For multi-entity / child results, builds a multi-series comparison across entities.
+ * For single-entity results (or a specific entity), builds a single-series chart with all facets.
+ */
 export const deriveChartContentForVariable = (
   result: QueryResult,
   variableDcid: string,
   entityDcid?: string,
 ): AtlasContent | null => {
+  const isSpecificEntity =
+    entityDcid && result.entities.some((e) => e.dcid === entityDcid);
+  const placeName = resolvePlaceName(result);
+
+  if (result.entities.length > 1 && !isSpecificEntity) {
+    const series: ChartSeries[] = [];
+    const seriesFacets: Record<string, FacetInfo[]> = {};
+
+    for (const entity of result.entities) {
+      const ts = result.timeSeries.find(
+        (t) => t.variableDcid === variableDcid && t.entityDcid === entity.dcid,
+      );
+      const observations = ts?.facets[0]?.observations;
+      if (!observations || observations.length === 0) continue;
+
+      series.push({
+        key: entity.dcid,
+        label: entity.name || entity.dcid,
+        data: observations,
+      });
+
+      if (ts?.facets) {
+        seriesFacets[entity.dcid] = ts.facets;
+      }
+    }
+
+    if (series.length === 0) return null;
+
+    const variable = result.variables.find((v) => v.dcid === variableDcid);
+    const title = formatChartCardTitle(
+      variable?.name,
+      placeName,
+      result.isChildQuery,
+    );
+
+    return {
+      variant: 'chart',
+      title,
+      description: variable?.rationale || undefined,
+      series,
+      ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
+      isLoading: false,
+    };
+  }
+
   const timeSeries = result.timeSeries.find(
     (m) =>
       m.variableDcid === variableDcid &&
@@ -185,13 +295,12 @@ export const deriveChartContentForVariable = (
     return null;
   }
 
+  const specificEntity = isSpecificEntity
+    ? result.entities.find((e) => e.dcid === entityDcid)
+    : undefined;
+  const targetPlaceName = specificEntity?.name || placeName;
   const variable = result.variables.find((v) => v.dcid === variableDcid);
-  const placeName = entityDcid
-    ? result.entities.find((e) => e.dcid === entityDcid)?.name
-    : result.entities[0]?.name;
-  const varName = variable?.name;
-  const title =
-    varName && placeName ? `${varName} in ${placeName}` : result.title;
+  const title = formatChartCardTitle(variable?.name, targetPlaceName, false);
 
   return {
     variant: 'chart',
@@ -282,7 +391,7 @@ export const useStoreShapeSync = () => {
           const isComparison = card.placeDcid === '__comparison';
           const result = isComparison
             ? undefined
-            : node?.results[card.placeDcid];
+            : resolveResultForPlace(node?.results, card.placeDcid);
           const comparison = isComparison ? node?.comparison : undefined;
           const title =
             node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
@@ -313,7 +422,7 @@ export const useStoreShapeSync = () => {
           const isComparison = card.placeDcid === '__comparison';
           const result = isComparison
             ? undefined
-            : node?.results[card.placeDcid];
+            : resolveResultForPlace(node?.results, card.placeDcid);
           const comparison = isComparison ? node?.comparison : undefined;
           const content = deriveContentForCard(
             card.type,

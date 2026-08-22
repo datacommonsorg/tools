@@ -7,13 +7,18 @@ import type { NextRequest } from 'next/server';
 import { EXAMPLE_PROMPTS } from '~/configs/example_prompts';
 import { deduplicateStrings } from '~/functions/deduplicate_strings';
 import { extractJson } from '~/functions/extract_json';
+import { resolvePlaceName } from '~/functions/format_card_title';
+import { normalizePlaceType } from '~/functions/normalize_place_type';
 import { shuffleArray } from '~/functions/shuffle_array';
 import {
   buildPlaceSummaries,
   comparePlaces,
 } from '~/server/steps/compare_places';
 import { fetchGeminiTools, runToolLoop } from '~/server/steps/data_discovery';
-import { fetchTimeSeriesBatch } from '~/server/steps/observations';
+import {
+  fetchChildTimeSeries,
+  fetchTimeSeriesBatch,
+} from '~/server/steps/observations';
 import { parseQuery } from '~/server/steps/parse_query';
 import {
   renderComparisonHtml,
@@ -28,6 +33,7 @@ import {
   STATUS,
   STREAM_EVENT,
   type StreamEvent,
+  type TimeSeries,
 } from '~/server/types';
 
 interface QueryModelResponse {
@@ -35,7 +41,16 @@ interface QueryModelResponse {
   placeName?: string;
   coverage?: string;
   introduction?: string;
-  variables?: Array<{ dcid: string; name: string; rationale?: string }>;
+  variables?: Array<{
+    dcid: string;
+    name: string;
+    placeDcid?: string;
+    placeName?: string;
+    isChildQuery?: boolean;
+    parentPlaceDcid?: string;
+    childPlaceType?: string;
+    rationale?: string;
+  }>;
   insights?: Insight[];
   relatedQueries?: string[];
   followUp?: FollowUp;
@@ -121,7 +136,7 @@ export async function POST(request: NextRequest) {
         if (selectedResults.length >= 2) {
           selectedResultsSummary = selectedResults
             .map((r) => {
-              const place = r.entities[0]?.name ?? r.title;
+              const place = resolvePlaceName(r);
               const vars = r.variables.map((v) => v.name).join(', ');
               return `${place} (${vars})`;
             })
@@ -131,7 +146,7 @@ export async function POST(request: NextRequest) {
           // (e.g. same place, different variables). Still tell the LLM.
           const summary = selectedResults
             .map((r) => {
-              const place = r.entities[0]?.name ?? r.title;
+              const place = resolvePlaceName(r);
               const vars = r.variables.map((v) => v.name).join(', ');
               return `${place} (${vars})`;
             })
@@ -346,7 +361,206 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          if (variables.length === 0) {
+          const defaultEntityDcid =
+            resolvedPlaceDcid || parsedResponse.placeDcid;
+          const defaultPlaceName = parsedResponse.placeName || place;
+
+          // Check if any variable represents a child/sub-region query
+          const childVars = variables.filter(
+            (v) => v.isChildQuery || !!v.childPlaceType,
+          );
+
+          if (childVars.length > 0) {
+            emit({
+              type: STREAM_EVENT.status,
+              message: STATUS.loadingTimeSeries(placeLabel, childVars.length),
+            });
+
+            // Fetch observations across all child entities for each child variable
+            const parentDcid =
+              childVars[0]?.parentPlaceDcid || defaultEntityDcid || place;
+            const childType = normalizePlaceType(childVars[0]?.childPlaceType);
+            const childVariableDcids = childVars.map((v) => v.dcid);
+
+            const { entities: rawEntities, timeSeries: rawTimeSeries } =
+              await fetchChildTimeSeries(
+                childVariableDcids,
+                parentDcid,
+                childType,
+                signal,
+              );
+
+            // Filter to entities that have at least one observation for the primary variable
+            const primaryVariableDcid = childVariableDcids[0];
+            const latestValuesByEntity = new Map<string, number>();
+
+            for (const ts of rawTimeSeries) {
+              if (ts.variableDcid === primaryVariableDcid) {
+                const obs = ts.facets?.[0]?.observations;
+                if (obs && obs.length > 0) {
+                  const latestObs = obs[obs.length - 1];
+                  if (typeof latestObs?.value === 'number') {
+                    latestValuesByEntity.set(ts.entityDcid, latestObs.value);
+                  }
+                }
+              }
+            }
+
+            // Entities with observations for the primary variable
+            const entitiesWithPrimaryData = rawEntities.filter((e) =>
+              latestValuesByEntity.has(e.dcid),
+            );
+
+            const availableEntities =
+              entitiesWithPrimaryData.length > 0
+                ? entitiesWithPrimaryData
+                : rawEntities.filter((e) =>
+                    rawTimeSeries.some(
+                      (ts) =>
+                        ts.entityDcid === e.dcid &&
+                        ts.facets.some((f) => f.observations.length > 0),
+                    ),
+                  );
+
+            if (availableEntities.length === 0) {
+              emit({
+                type: STREAM_EVENT.placeSkipped,
+                place,
+                reason: STATUS.noVariables(placeLabel),
+              });
+              continue;
+            }
+
+            // Sort available entities descending by latest observation value, with deterministic tie-breaker
+            const sortedEntities = [...availableEntities].sort((a, b) => {
+              const valA = latestValuesByEntity.get(a.dcid);
+              const valB = latestValuesByEntity.get(b.dcid);
+              if (valA !== undefined && valB !== undefined) {
+                return valB - valA || a.name.localeCompare(b.name);
+              }
+              if (valA !== undefined) return -1;
+              if (valB !== undefined) return 1;
+              return a.name.localeCompare(b.name);
+            });
+
+            const sortedEntityDcids = new Set(
+              sortedEntities.map((e) => e.dcid),
+            );
+
+            // Filter time-series to include all available sorted entities
+            const childTimeSeries = rawTimeSeries.filter((ts) =>
+              sortedEntityDcids.has(ts.entityDcid),
+            );
+
+            const validVariables = childVars.map((v) => ({
+              dcid: v.dcid,
+              name: v.name,
+              placeDcid: (v.placeDcid || defaultEntityDcid) ?? undefined,
+              placeName: (v.placeName || defaultPlaceName) ?? undefined,
+              isChildQuery: true,
+              parentPlaceDcid:
+                (v.parentPlaceDcid || defaultEntityDcid) ?? undefined,
+              childPlaceType: normalizePlaceType(v.childPlaceType),
+              rationale: v.rationale,
+            }));
+
+            const discoveryResult: QueryResult = {
+              id: nanoid(),
+              title:
+                parsed.titles[place] ||
+                `Metrics across ${defaultPlaceName || placeLabel}`,
+              placeDcid: parentDcid,
+              placeName: defaultPlaceName || placeLabel,
+              isChildQuery: true,
+              parentPlaceDcid: parentDcid,
+              childPlaceType: childType,
+              variables: validVariables,
+              entities: sortedEntities,
+              timeSeries: childTimeSeries,
+              dateRange: parsed.dateRange,
+              introduction: parsedResponse.introduction,
+              coverage: parsedResponse.coverage,
+              insights: parsedResponse.insights,
+              relatedQueries: parsedResponse.relatedQueries,
+            };
+
+            const { tableHtml, notesHtml } = renderResultHtml(discoveryResult);
+            discoveryResult.tableHtml = tableHtml;
+
+            if (!isMultiPlace) {
+              discoveryResult.notesHtml = notesHtml;
+            }
+
+            emit({
+              type: STREAM_EVENT.queryResult,
+              result: discoveryResult,
+              place,
+            });
+            emittedResultCount++;
+            collectedResults.push(discoveryResult);
+            continue;
+          }
+
+          // Standard single-entity or non-child variable flow
+          emit({
+            type: STREAM_EVENT.status,
+            message: STATUS.loadingTimeSeries(placeLabel, variables.length),
+          });
+
+          // Group variables by entity to batch fetch
+          const variablesByEntity = new Map<string, string[]>();
+          for (const v of variables) {
+            const vEntityDcid = v.placeDcid || defaultEntityDcid;
+            if (!vEntityDcid) continue;
+            const existing = variablesByEntity.get(vEntityDcid) || [];
+            existing.push(v.dcid);
+            variablesByEntity.set(vEntityDcid, existing);
+          }
+
+          const timeSeriesResults = await Promise.all(
+            Array.from(variablesByEntity.entries()).map(([eDcid, vDcids]) =>
+              fetchTimeSeriesBatch(vDcids, eDcid, signal),
+            ),
+          );
+
+          const timeSeriesMap = new Map<string, TimeSeries>();
+          for (const tsList of timeSeriesResults) {
+            for (const ts of tsList) {
+              timeSeriesMap.set(`${ts.variableDcid}__${ts.entityDcid}`, ts);
+            }
+          }
+
+          // Filter out variables with zero observations
+          const validVariables: Array<{
+            dcid: string;
+            name: string;
+            placeDcid?: string;
+            placeName?: string;
+            rationale?: string;
+          }> = [];
+          const validTimeSeries: TimeSeries[] = [];
+          const entityMap = new Map<string, string>();
+
+          for (const v of variables) {
+            const vEntityDcid = (v.placeDcid || defaultEntityDcid) ?? undefined;
+            const vPlaceName = (v.placeName || defaultPlaceName) ?? undefined;
+            if (!vEntityDcid) continue;
+
+            const ts = timeSeriesMap.get(`${v.dcid}__${vEntityDcid}`);
+            if (ts && ts.facets.length > 0) {
+              entityMap.set(vEntityDcid, vPlaceName ?? vEntityDcid);
+              validVariables.push({
+                dcid: v.dcid,
+                name: v.name,
+                placeDcid: vEntityDcid,
+                placeName: vPlaceName,
+                rationale: v.rationale,
+              });
+              validTimeSeries.push(ts);
+            }
+          }
+
+          if (validVariables.length === 0 || validTimeSeries.length === 0) {
             emit({
               type: STREAM_EVENT.placeSkipped,
               place,
@@ -354,42 +568,34 @@ export async function POST(request: NextRequest) {
             });
             continue;
           }
-          const entityDcid = parsedResponse.placeDcid || resolvedPlaceDcid;
-          if (!entityDcid) {
-            emit({
-              type: STREAM_EVENT.placeSkipped,
-              place,
-              reason: STATUS.invalidDcid(placeLabel),
+
+          const entities = Array.from(entityMap.entries()).map(
+            ([dcid, name]) => ({
+              dcid,
+              name,
+            }),
+          );
+          if (entities.length === 0 && defaultEntityDcid) {
+            entities.push({
+              dcid: defaultEntityDcid,
+              name: defaultPlaceName,
             });
-            continue;
           }
 
-          // Fetch time-series observations for all variables
-          emit({
-            type: STREAM_EVENT.status,
-            message: STATUS.loadingTimeSeries(placeLabel, variables.length),
-          });
+          const primaryPlaceDcid =
+            entities[0]?.dcid || defaultEntityDcid || undefined;
+          const primaryPlaceName =
+            entities[0]?.name || defaultPlaceName || placeLabel;
 
-          const timeSeries = await fetchTimeSeriesBatch(
-            variables.map((v) => v.dcid),
-            entityDcid,
-            signal,
-          );
-          const entities = [
-            { dcid: entityDcid, name: parsedResponse.placeName || place },
-          ];
           const discoveryResult: QueryResult = {
             id: nanoid(),
-            title:
-              parsed.titles[place] ||
-              `Metrics for ${parsedResponse.placeName || place}`,
-            variables: variables.map((v) => ({
-              dcid: v.dcid,
-              name: v.name,
-              rationale: v.rationale,
-            })),
+            title: parsed.titles[place] || `Metrics for ${primaryPlaceName}`,
+            placeDcid: primaryPlaceDcid,
+            placeName: primaryPlaceName,
+            isChildQuery: false,
+            variables: validVariables,
             entities,
-            timeSeries,
+            timeSeries: validTimeSeries,
             dateRange: parsed.dateRange,
             introduction: parsedResponse.introduction,
             coverage: parsedResponse.coverage,

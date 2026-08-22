@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { extractJson } from '~/functions/extract_json';
+import { resolvePlaceName } from '~/functions/format_card_title';
 import { formatDateRange } from '~/functions/format_date_range';
 import { getGenAI } from '~/server/clients/gemini';
 import { getServiceConfig, getSkillConfig } from '~/server/config';
@@ -49,8 +50,12 @@ interface ComparisonModelResponse {
 /** Serialize QueryResult objects into compact summaries for the comparison prompt. */
 export const buildPlaceSummaries = (results: QueryResult[]): PlaceSummary[] => {
   return results.map((result) => {
-    const placeName = result.entities[0]?.name ?? '';
-    const placeDcid = result.entities[0]?.dcid ?? '';
+    const placeName = resolvePlaceName(result);
+    const placeDcid =
+      result.placeDcid ||
+      result.parentPlaceDcid ||
+      result.entities[0]?.dcid ||
+      '';
 
     const variables = result.variables.map((v) => {
       const ts = result.timeSeries.find((t) => t.variableDcid === v.dcid);
