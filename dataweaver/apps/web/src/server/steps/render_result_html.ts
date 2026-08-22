@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import { resolvePlaceName } from '~/functions/format_card_title';
 import { formatFacetBlock } from '~/functions/format_facet';
+import { normalizePlaceType } from '~/functions/normalize_place_type';
 import { getResultScopeKey } from '~/functions/scope_key';
 import type { ComparisonResult, QueryResult } from '~/server/types';
 
@@ -52,7 +53,7 @@ const buildTableHtml = (result: QueryResult): string => {
 
     const scopeKey = variable.isChildQuery
       ? variable.parentPlaceDcid || variable.placeDcid
-        ? `${variable.parentPlaceDcid || variable.placeDcid}:${variable.childPlaceType || 'Country'}`
+        ? `${variable.parentPlaceDcid || variable.placeDcid}:${normalizePlaceType(variable.childPlaceType)}`
         : defaultScopeKey
       : variable.placeDcid || defaultScopeKey;
     const placeName = variable.placeName || defaultPlaceName;
