@@ -59,7 +59,7 @@ export const FollowUp = ({
                 {options.map((option) => (
                   <li key={option}>
                     <Button
-                      size="medium"
+                      size="large"
                       variant="flat"
                       tone="accent-subtle"
                       onClick={() => onSelect(option)}

@@ -1,6 +1,7 @@
 'use client';
 
 import { Select } from '~/components/elements/select';
+import { formatFacetLabel } from '~/functions/format_facet';
 import type { FacetInfo } from '~/server/types';
 import s from './facet_selector.module.scss';
 
@@ -10,12 +11,6 @@ interface FacetSelectorProps {
   onSelect: (facetId: string) => void;
   label?: string;
 }
-
-const formatFacetLabel = (facet: FacetInfo): string => {
-  const unit =
-    facet.unit.toLowerCase() === 'dimensionless' ? 'Dimensionless' : facet.unit;
-  return `${facet.source}, ${facet.earliestDate}–${facet.latestDate}, ${unit}`;
-};
 
 export const FacetSelector = ({
   facets,

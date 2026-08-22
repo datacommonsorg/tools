@@ -33,13 +33,22 @@ export const deriveTableContent = (result: QueryResult): AtlasContent => ({
 });
 
 /** Derive AtlasContent for a notes card from a QueryResult. */
-export const deriveNotesContent = (result: QueryResult): AtlasContent => ({
-  variant: 'text',
-  title: `${result.title} • Notes`,
-  body: result.notesHtml ?? '',
-  isLoading: false,
-  relatedQueries: result.relatedQueries,
-});
+export const deriveNotesContent = (result: QueryResult): AtlasContent => {
+  // TODO(nick-nlb): Replace this with a cleaner abstraction for title
+  // generation to avoid fragile string replacements.
+  const cleanTitle = result.title.replace(/^Metrics for /i, '');
+  const title = cleanTitle.toLowerCase().startsWith('relevant insights')
+    ? cleanTitle
+    : `Relevant insights on ${cleanTitle}`;
+
+  return {
+    variant: 'text',
+    title,
+    body: result.notesHtml ?? '',
+    isLoading: false,
+    relatedQueries: result.relatedQueries,
+  };
+};
 
 /** Derive AtlasContent for a cross-place comparison card. */
 export const deriveComparisonContent = (
@@ -150,7 +159,8 @@ export const deriveChartContent = (
   return {
     variant: 'chart',
     title,
-    description: result.variables[0]?.rationale ?? firstFacet.source,
+    description:
+      result.variables[0]?.rationale || firstFacet.source || undefined,
     data: firstFacet.observations,
     facets: allFacets,
     isLoading: false,
@@ -186,7 +196,7 @@ export const deriveChartContentForVariable = (
   return {
     variant: 'chart',
     title,
-    description: variable?.rationale ?? firstFacet.source,
+    description: variable?.rationale || firstFacet.source || undefined,
     data: firstFacet.observations,
     facets: allFacets,
     isLoading: false,

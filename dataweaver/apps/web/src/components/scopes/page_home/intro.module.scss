@@ -1,10 +1,11 @@
 .outer-container {
+  position: relative;
   display: grid;
   overflow: clip;
   pointer-events: auto;
   background: rgb(var(--color-query-surface-raised));
+  border: 1px solid rgb(var(--color-query-surface-muted));
   border-radius: var(--border-radius-large) var(--border-radius-medium);
-  box-shadow: var(--shadow-elevated);
 }
 
 .middle-container {
@@ -72,12 +73,15 @@
 .notice-container {
   @include type-body-medium;
 
+  position: relative;
   display: flex;
   grid-area: notice;
   column-gap: 4px;
   padding: 16px 28px;
   color: rgb(var(--color-query-content));
   background: rgb(var(--color-query-surface-subtle));
+
+  @include pulsing-background(100%, false);
 
   .icon-info {
     flex-shrink: 0;

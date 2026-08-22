@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import { formatFacetBlock } from '~/functions/format_facet';
 import type { ComparisonResult, QueryResult } from '~/server/types';
 
 /**
@@ -41,10 +42,11 @@ const buildTableHtml = (result: QueryResult): string => {
     const timeSeries = result.timeSeries.find(
       (m) => m.variableDcid === variable.dcid,
     );
-    const firstFacet = timeSeries?.facets[0];
-    const facetCell = firstFacet
-      ? `${firstFacet.source}<br>${firstFacet.earliestDate} – ${firstFacet.latestDate}${firstFacet.unit ? ` · ${firstFacet.unit}` : ''}`
-      : 'No data';
+    const facets = timeSeries?.facets || [];
+    const facetCell =
+      facets.length > 0
+        ? facets.map(formatFacetBlock).join('<br><br>').replace(/\|/g, '\\|')
+        : 'No data';
 
     const hasData = withData.has(variable.dcid);
     const encodedVar = encodeURIComponent(variable.name);
@@ -53,7 +55,11 @@ const buildTableHtml = (result: QueryResult): string => {
       ? `[${variable.name}](#fetch=${variable.dcid}&place=${entityDcid}&varName=${encodedVar}&placeName=${encodedPlace})`
       : variable.name;
 
-    md += `| ${nameCell} | ${facetCell} | ${variable.rationale ?? '—'} |\n`;
+    const rationaleCell = variable.rationale
+      ? variable.rationale.replace(/\|/g, '\\|')
+      : '—';
+
+    md += `| ${nameCell} | ${facetCell} | ${rationaleCell} |\n`;
   }
 
   return marked.parse(md) as string;
@@ -63,18 +69,24 @@ const buildTableHtml = (result: QueryResult): string => {
 const buildNotesHtml = (result: QueryResult): string => {
   const withData = getVariablesWithData(result);
 
-  let md = '### About this data\n\n';
-  if (result.coverage) {
-    md += `${stripNoDataLinks(result.coverage, withData)}\n\n`;
-  }
-  if (result.introduction) {
-    md += `${stripNoDataLinks(result.introduction, withData)}\n\n`;
+  let md = '';
+
+  // Insights come first at the top of the card (without bullet points or bold headers)
+  if (result.insights && result.insights.length > 0) {
+    for (const insight of result.insights) {
+      const text = stripNoDataLinks(insight.text, withData);
+      md += `${text}\n\n`;
+    }
   }
 
-  if (result.insights && result.insights.length > 0) {
-    md += '### Relevant insights\n\n';
-    for (const insight of result.insights) {
-      md += `- **${insight.title}**: ${stripNoDataLinks(insight.text, withData)}\n`;
+  // "Notes" section follows below
+  if (result.coverage || result.introduction) {
+    md += '### Notes\n\n';
+    if (result.coverage) {
+      md += `${stripNoDataLinks(result.coverage, withData)}\n\n`;
+    }
+    if (result.introduction) {
+      md += `${stripNoDataLinks(result.introduction, withData)}\n\n`;
     }
   }
 
@@ -98,17 +110,21 @@ export const renderResultHtml = (
 export const renderComparisonHtml = (comparison: ComparisonResult): string => {
   let md = '';
 
-  if (comparison.coverage) {
-    md += `${comparison.coverage}\n\n`;
-  }
-  if (comparison.introduction) {
-    md += `${comparison.introduction}\n\n`;
+  // 1. Comparative insights come FIRST (at the top of the card, without header or bullet points)
+  if (comparison.insights && comparison.insights.length > 0) {
+    for (const insight of comparison.insights) {
+      md += `${insight.text}\n\n`;
+    }
   }
 
-  if (comparison.insights && comparison.insights.length > 0) {
-    md += '### Comparative insights\n\n';
-    for (const insight of comparison.insights) {
-      md += `- **${insight.title}**: ${insight.text}\n`;
+  // 2. "Notes" section follows below
+  if (comparison.coverage || comparison.introduction) {
+    md += '### Notes\n\n';
+    if (comparison.coverage) {
+      md += `${comparison.coverage}\n\n`;
+    }
+    if (comparison.introduction) {
+      md += `${comparison.introduction}\n\n`;
     }
   }
 

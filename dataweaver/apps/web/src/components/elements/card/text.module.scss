@@ -9,6 +9,10 @@
 
   color: rgb(var(--color-card-content));
 
+  p:not(h3 ~ p) {
+    @include type-title(500);
+  }
+
   h3 {
     @include type-title;
 
@@ -62,11 +66,14 @@
   }
 
   p,
-  ul,
-  table {
+  ul {
     &:not(:first-child) {
       margin-top: 12px;
     }
+  }
+
+  table:not(:first-child) {
+    margin-top: 20px;
   }
 
   h3:not(:first-child) {

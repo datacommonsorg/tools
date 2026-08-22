@@ -36,6 +36,7 @@ pnpm i
 | --- | --- |
 | `pnpm dev` | Run all apps in dev mode |
 | `pnpm build` | Build all apps |
+| `pnpm test` | Run unit tests across packages |
 | `pnpm preview` | Serve the built apps |
 | `pnpm generate:tokens` | Regenerate `packages/tokens/dist/` (`tokens.css` + `_tokens.scss` + `tokens.ts`) from `packages/tokens/src/*.json` |
 
