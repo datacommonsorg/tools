@@ -1,7 +1,8 @@
 .container {
-  position: absolute;
+  position: fixed;
   top: var(--controls-gutter-outer);
   right: var(--controls-gutter-outer);
+  z-index: $z-index-menus;
   display: flex;
   flex-wrap: wrap;
   gap: var(--controls-gutter-outer);

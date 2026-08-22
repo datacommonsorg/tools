@@ -10,10 +10,14 @@ export const InFrontOfTheCanvas = () => {
   // that traps them below app content (page_home). The 'Portal' lifts their DOM
   // to above that content while keeping them in the editor's React tree
   return (
-    <Portal className={s.container}>
-      <Controls />
-      <Tools />
-      <Selection />
-    </Portal>
+    <>
+      <Portal className={s.container}>
+        <Controls />
+        <Tools />
+      </Portal>
+      <Portal className={s['selection-container']}>
+        <Selection />
+      </Portal>
+    </>
   );
 };

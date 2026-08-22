@@ -13,7 +13,7 @@
   right: var(--distance-from-right);
   bottom: var(--gutter);
   left: var(--distance-from-left);
-  z-index: $z-index-above-content;
+  z-index: $z-index-prompts;
   display: flex;
   flex-direction: column;
   row-gap: 16px;

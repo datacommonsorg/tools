@@ -2,6 +2,7 @@
   --menu-padding: 20px;
 
   right: 0;
+  z-index: $z-index-menus;
   display: flex;
   flex-direction: column;
   width: 370px;
