@@ -3,6 +3,9 @@
  * to official Data Commons schema Place types (PascalCase).
  * Sourced from Data Commons constants and place hierarchies.
  */
+
+//TODO (nick-nlb): move this upstream (possibly to the MCP server), to alleviate long term drift from KG
+
 const PLACE_TYPE_MAP: Record<string, string> = {
   // Global & Continents
   continent: 'Continent',

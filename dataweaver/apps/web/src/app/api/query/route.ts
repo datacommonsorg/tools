@@ -1,4 +1,4 @@
-// TODO(scott): Extract the multi-step query workflow into a
+// TODO(nick-nlb): Extract the multi-step query workflow into a
 // dedicated orchestrator service (e.g., src/server/query_orchestrator.ts),
 // leaving the API route as a minimal HTTP/SSE transport wrapper.
 
