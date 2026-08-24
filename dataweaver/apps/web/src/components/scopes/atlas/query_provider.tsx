@@ -11,13 +11,15 @@ import {
 import type { TLShapeId } from 'tldraw';
 import { toast } from '~/components/foundations/toaster/store';
 
-import type {
-  CardEntry,
-  FollowUpContext,
-  QueryResult,
-  StreamEvent,
+import { getResultScopeKey } from '~/functions/scope_key';
+import {
+  type CardEntry,
+  type FollowUpContext,
+  type QueryResult,
+  STATUS,
+  STREAM_EVENT,
+  type StreamEvent,
 } from '~/server/types';
-import { STATUS, STREAM_EVENT } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { useAtlas } from './atlas_provider';
 import { useStoreShapeSync } from './sync_store';
@@ -98,18 +100,18 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
       case STREAM_EVENT.queryResult: {
         const { result, place } = event;
-        const entityDcid = result.entities[0]?.dcid ?? place;
+        const scopeKey = getResultScopeKey(result, place);
 
         // Write the query result data to the history node.
-        nodeAddResult(active.nodeId, entityDcid, result);
+        nodeAddResult(active.nodeId, scopeKey, result);
 
         // Batch-register result cards.
         const resultEntries: CardEntry[] = [
           {
-            shapeId: `shape:${active.nodeId}__${entityDcid}__table`,
+            shapeId: `shape:${active.nodeId}__${scopeKey}__table`,
             historyNodeId: active.nodeId,
             type: 'table',
-            placeDcid: entityDcid,
+            placeDcid: scopeKey,
           },
         ];
 
@@ -118,10 +120,10 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // registered via the comparisonResult event instead.
         if (result.notesHtml) {
           resultEntries.push({
-            shapeId: `shape:${active.nodeId}__${entityDcid}__notes`,
+            shapeId: `shape:${active.nodeId}__${scopeKey}__notes`,
             historyNodeId: active.nodeId,
             type: 'notes',
-            placeDcid: entityDcid,
+            placeDcid: scopeKey,
           });
         }
 
@@ -135,10 +137,10 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           const firstFacet = firstTimeSeries?.facets[0];
           if (firstFacet && firstFacet.observations.length > 0) {
             resultEntries.push({
-              shapeId: `shape:${active.nodeId}__${entityDcid}__chart`,
+              shapeId: `shape:${active.nodeId}__${scopeKey}__chart`,
               historyNodeId: active.nodeId,
               type: 'chart',
-              placeDcid: entityDcid,
+              placeDcid: scopeKey,
             });
           }
         }
@@ -161,9 +163,9 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         if (active.selectedResults.length > 0) {
           const merged = new Map<string, QueryResult>();
           for (const r of active.selectedResults) {
-            const entityDcid = r.entities[0]?.dcid;
-            if (!entityDcid) continue;
-            const existing = merged.get(entityDcid);
+            const scopeKey = getResultScopeKey(r);
+            if (!scopeKey || scopeKey === 'unknown') continue;
+            const existing = merged.get(scopeKey);
             if (existing) {
               const existingVars = existing.variables;
               const existingTs = existing.timeSeries;
@@ -189,11 +191,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
                 ),
               ];
             } else {
-              merged.set(entityDcid, { ...r });
+              merged.set(scopeKey, { ...r });
             }
           }
-          for (const [entityDcid, mergedResult] of merged) {
-            nodeAddResult(active.nodeId, entityDcid, mergedResult);
+          for (const [scopeKey, mergedResult] of merged) {
+            nodeAddResult(active.nodeId, scopeKey, mergedResult);
           }
         }
 
