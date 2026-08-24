@@ -7,7 +7,9 @@
 
   "surface-raised": [255, 255, 255],
   "surface-dimmed": [247, 252, 255],
+  "surface-faded": [245, 250, 255],
   "surface-subtle": [248, 249, 252],
+  "surface-strong": [249, 250, 252],
   "surface-muted": [227, 231, 237],
 
   "content": [32, 33, 36],
@@ -19,7 +21,7 @@
   "transparent": [0, 0, 0, 0],
   "outline": [0, 0, 0],
 
-  "atlas-surface": "$surface-dimmed",
+  "atlas-surface": "$surface-strong",
   "atlas-decorator": "$surface-muted",
   "atlas-content": "$shadow",
   "atlas-accent": "$accent",
@@ -86,7 +88,7 @@
   "tag-border": "$accent",
   "tag-content": "$content",
 
-  "card-surface": "$surface-raised",
+  "card-surface": "$surface-faded",
   "card-surface-selected": "$accent",
   "card-content": "$content",
   "card-content-muted": "$content-muted",
