@@ -230,14 +230,27 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
   override onResizeEnd = (
     _initial: ShapeCard,
     shape: ShapeCard,
-  ): TLShapePartial<ShapeCard> => ({
-    id: shape.id,
-    type: shape.type,
-    x: snapToGrid(shape.x, GRID_SIZE),
-    y: snapToGrid(shape.y, GRID_SIZE),
-    props: {
-      w: Math.max(CARD_SIZE_MIN.w, snapToGrid(shape.props.w, GRID_SIZE)),
-      h: Math.max(CARD_SIZE_MIN.h, snapToGrid(shape.props.h, GRID_SIZE)),
-    },
-  });
+  ): TLShapePartial<ShapeCard> => {
+    // Chart cards auto-manage `h` via useCardAutoHeight, which snaps it back
+    // to content height post-resize — snapping it here too just adds flicker.
+    const isChart = shape.props.variant === 'chart';
+
+    return {
+      id: shape.id,
+      type: shape.type,
+      x: snapToGrid(shape.x, GRID_SIZE),
+      y: snapToGrid(shape.y, GRID_SIZE),
+      props: {
+        w: Math.max(CARD_SIZE_MIN.w, snapToGrid(shape.props.w, GRID_SIZE)),
+        ...(isChart
+          ? {}
+          : {
+              h: Math.max(
+                CARD_SIZE_MIN.h,
+                snapToGrid(shape.props.h, GRID_SIZE),
+              ),
+            }),
+      },
+    };
+  };
 }

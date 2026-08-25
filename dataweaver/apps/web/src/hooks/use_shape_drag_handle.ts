@@ -74,14 +74,18 @@ export const useShapeDragHandle = (
         const deltaX = (endEvent.clientX - originClientX) / zoom;
         const deltaY = (endEvent.clientY - originClientY) / zoom;
 
-        editor.updateShapes(
-          origins.map((origin) => ({
-            id: origin.id,
-            type: origin.type,
-            x: snapToGrid(origin.x + deltaX, GRID_SIZE),
-            y: snapToGrid(origin.y + deltaY, GRID_SIZE),
-          })),
-        );
+        // Skip the snap on a plain click (no movement) so an off-grid card
+        // doesn't jump when the user just presses the handle without dragging.
+        if (deltaX !== 0 || deltaY !== 0) {
+          editor.updateShapes(
+            origins.map((origin) => ({
+              id: origin.id,
+              type: origin.type,
+              x: snapToGrid(origin.x + deltaX, GRID_SIZE),
+              y: snapToGrid(origin.y + deltaY, GRID_SIZE),
+            })),
+          );
+        }
 
         // Restore the cursor to what it was before the drag started
         target.style.cursor = previousCursor;
