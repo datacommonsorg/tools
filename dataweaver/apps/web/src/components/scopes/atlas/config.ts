@@ -123,6 +123,13 @@ export const CARD_VARIANT_SIZE_DEFAULT: Record<CardVariant, CardSize> = {
 /** Smallest size a card may resized to. */
 export const CARD_SIZE_MIN = { w: 300, h: 220 } as const;
 
+/**
+ * Snap unit (page px at 1:1 zoom) cards drop onto after a drag or resize.
+ * Matches the dot spacing in `grid.module.scss` so drops land on a visible
+ * dot; live dragging/resizing itself stays free of any snapping.
+ */
+export const GRID_SIZE = 20 as const;
+
 /** The card grid layout for each breakpoint. */
 export const CARD_GRID = {
   laptop: { breakpoint: BREAKPOINT_LAPTOP, columns: 3, gutter: 56 },

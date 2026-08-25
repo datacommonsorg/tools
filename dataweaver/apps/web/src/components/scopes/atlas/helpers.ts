@@ -55,6 +55,10 @@ export type CardBounds = CardPosition & CardSize;
 /** The card shape as stored on the tldraw canvas. */
 export type CardShape = TLShape<'card'>;
 
+/** Round `value` to the nearest multiple of `gridSize`. */
+export const snapToGrid = (value: number, gridSize: number): number =>
+  Math.round(value / gridSize) * gridSize;
+
 /** Convert card content into `TLShape` for placement on the canvas. */
 export const contentToShape = (
   shapeId: TLShapeId,
