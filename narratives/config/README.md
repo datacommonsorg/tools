@@ -32,7 +32,41 @@ out of the repo is deliberate.
 2. Copy `agent-config.example.json` → `agent-config.json`. Set the Gemini model
    choices, thinking levels, `gemini.filestores[]` corpus ID, and
    `query_param_key`. Prefer Secret Manager over writing API keys into the file.
-3. Upload the directory to the instance's config bucket. `DEPLOY.md` does this.
+3. **Edit `prompts/*.md` for your instance** — see below.
+4. Upload the directory to the instance's config bucket. `DEPLOY.md` does this.
+
+### Editing the prompts
+
+The prompts shipped here are deliberately generic: they describe how the agent
+should search, cite and format, and they name no country, agency, currency or
+dataset. The agent loads `prompts/<slot>.md` from **your instance's bucket**, so
+every instance keeps its own copy — edit them the same way you edit
+`branding.json`.
+
+They are literal text. The only thing substituted at runtime is
+`{{CURRENT_DATETIME}}`; anything else in braces is sent to the model as-is.
+
+What is usually worth adding:
+
+- **A default place**, if questions that name no place should assume one.
+- **What you call sub-national units** — states, provinces, regions, counties.
+- **Your fiscal year**, if it isn't the calendar year.
+- **Your custom datasets** — the most valuable edit, see below.
+
+#### Tell the agent about your custom data
+
+If you have loaded custom data, list the variables and their DCIDs in
+`prompts/mcp.md`.
+
+This matters more than it looks. The ingest job builds the search index from
+each variable's **description**, not its name — so `search_indicators("average
+annual wage")` may not match a variable literally called *Average Annual Wage*,
+while a phrase resembling its description will. Listing the DCIDs lets the agent
+use them directly instead of guessing at search terms, which is both more
+reliable and far fewer tool calls.
+
+Keep the list short. It is sent on every tool-loop iteration, so it costs tokens
+on each request.
 
 ### Using your own logo (optional)
 

@@ -20,11 +20,5 @@
     "mcp_level": "medium",
     "synthesis_level": "medium"
   },
-  "template_vars": {
-    "name": "Custom Data Commons",
-    "region": "global",
-    "states_term": "regions",
-    "fiscal_year_start": "01-01"
-  },
   "query_param_key": "REPLACE_ME_PER_INSTANCE"
 }

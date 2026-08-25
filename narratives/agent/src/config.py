@@ -17,6 +17,7 @@ import copy
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -52,6 +53,16 @@ AGENT_ROOT = Path(__file__).resolve().parent.parent
 _config_cache = None
 _config_mtime = 0
 
+# Prompt slots the workflows read out of config["prompts"]. Bodies are authored
+# as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
+# `follow_up` is the only slot with an in-code default
+# (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
+# than to no system instruction at all.
+PROMPT_SLOTS = ("mcp", "kb", "synthesis", "follow_up")
+
+# Authoring notes in the .md files must not reach Gemini.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
 
 def _fetch_gcs_url(url: str) -> requests.Response:
     """Fetch from GCS.
@@ -81,7 +92,49 @@ def _fetch_gcs_url(url: str) -> requests.Response:
             logger.debug(
                 "Metadata token fetch skipped/failed (normal if local): %s", e
             )
-    return requests.get(url, headers=headers, timeout=15)
+    response = requests.get(url, headers=headers, timeout=15)
+    # `gcloud storage rsync` uploads .md as text/markdown with no charset, and
+    # requests then guesses the encoding from the bytes. Every file in the config
+    # bucket is UTF-8 by contract, and the prompts carry currency symbols, arrows
+    # and em-dashes, so a wrong guess silently corrupts the text sent to Gemini.
+    response.encoding = "utf-8"
+    return response
+
+
+def _fetch_prompt_bodies(config_url: str) -> dict:
+    """Fetches ``prompts/<slot>.md`` from the config bucket.
+
+    The base is derived from ``CONFIG_URL`` rather than ``BRAND_CONFIG_URL`` so
+    the prompts always come from the same bucket as the config they belong to,
+    even if the two ever disagree.
+
+    A slot that 404s or errors is skipped with a warning instead of failing
+    startup. An absent prompt leaves that phase with no system instruction, which
+    is how the agent behaved before the files were wired up — so a partial fetch
+    degrades to the old behaviour rather than taking the agent down.
+    """
+    base = config_url.rsplit("/", 1)[0]
+    prompts = {}
+    for slot in PROMPT_SLOTS:
+        prompt_url = f"{base}/prompts/{slot}.md"
+        try:
+            response = _fetch_gcs_url(prompt_url)
+            response.raise_for_status()
+            # Strip HTML comments so the .md files can carry authoring notes —
+            # provenance, "keep in sync with X" reminders — without those notes
+            # reaching Gemini as part of the system instruction.
+            body = _HTML_COMMENT_RE.sub("", response.text).strip()
+        except Exception as e:
+            logger.warning("Prompt %r fetch failed (%s): %s", slot, prompt_url, e)
+            continue
+        if not body:
+            logger.warning(
+                "Prompt %r at %s is empty; leaving the slot unset", slot, prompt_url
+            )
+            continue
+        prompts[slot] = body
+        logger.info("Prompt %r loaded: %d bytes", slot, len(body))
+    return prompts
 
 
 def _bootstrap_config_from_url() -> None:
@@ -89,18 +142,64 @@ def _bootstrap_config_from_url() -> None:
     it as config.json so the existing load_config() path finds it. This makes
     the agent compatible with the bucket-driven config model (BRAND_CONFIG_URL +
     CONFIG_URL) without rewriting the upstream loader.
+
+    The prompt bodies are merged in here. ``config/prompts/*.md`` is the
+    authoring format, but the workflows only ever read ``config["prompts"]`` and
+    nothing populated it — so the MCP tool loop, the KB phase and synthesis all
+    ran with an empty system instruction while the .md files sat unread in the
+    bucket. An inline ``prompts`` slot in agent-config.json still wins, as the
+    schema documents.
     """
     url = os.environ.get("CONFIG_URL", "").strip()
     if not url:
         return
     config_path = AGENT_ROOT / "config.json"
     try:
-        r = _fetch_gcs_url(url)
-        r.raise_for_status()
-        config_path.write_text(r.text)
-        logger.info("CONFIG_URL fetched %d bytes from %s", len(r.text), url)
+        response = _fetch_gcs_url(url)
+        response.raise_for_status()
+        raw = response.text
+        logger.info("CONFIG_URL fetched %d bytes from %s", len(raw), url)
     except Exception as e:
         logger.error("CONFIG_URL fetch failed (%s): %s", url, e)
+        return
+
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as e:
+        # Write it through unmodified so the failure surfaces at load_config()
+        # exactly as it did before, rather than becoming a silent no-config.
+        logger.error(
+            "CONFIG_URL is not valid JSON (%s); writing through unmodified", e
+        )
+        config_path.write_text(raw)
+        return
+
+    if not isinstance(config, dict):
+        logger.error(
+            "CONFIG_URL did not contain a JSON object; writing through unmodified"
+        )
+        config_path.write_text(raw)
+        return
+
+    prompts = _fetch_prompt_bodies(url)
+    inline = config.get("prompts")
+    if isinstance(inline, dict):
+        for slot, body in inline.items():
+            if isinstance(body, str) and body.strip():
+                logger.info("Prompt %r overridden inline by agent-config.json", slot)
+                prompts[slot] = body
+    if prompts:
+        config["prompts"] = prompts
+
+    missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
+    if missing:
+        logger.warning(
+            "No prompt body for %s; only follow_up has an in-code default, so the "
+            "rest of those phases run with no system instruction",
+            missing,
+        )
+
+    config_path.write_text(json.dumps(config))
 
 
 def load_config() -> dict:
@@ -153,6 +252,8 @@ def inject_datetime(prompt: str) -> str:
     return prompt.replace('{{CURRENT_DATETIME}}', get_current_datetime_ist())
 
 
+# Secret Manager lookups are cached so a burst of requests doesn't re-fetch the
+# key list on every call.
 _SECRET_MANAGER_CACHE: dict[str, tuple[float, list[str]]] = {}
 _SECRET_MANAGER_TTL_SECONDS = 300
 

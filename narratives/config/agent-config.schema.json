@@ -102,7 +102,7 @@
     },
     "prompts": {
       "type": "object",
-      "description": "System prompts. Prompt bodies live in config/prompts/*.md and are loaded by the agent at startup; this object can override individual slots inline if desired. The only placeholder the agent substitutes today is {{CURRENT_DATETIME}}.",
+      "description": "Inline overrides for the system prompts. Bodies are normally authored as config/prompts/<slot>.md and fetched from this instance's config bucket at startup; a non-empty string here wins over the file for that slot. The only placeholder the agent substitutes is {{CURRENT_DATETIME}} \u2014 everything else in a prompt is literal text, so edit the .md files in your bucket to suit your instance.",
       "additionalProperties": false,
       "properties": {
         "mcp": {
@@ -113,33 +113,10 @@
         },
         "synthesis": {
           "type": "string"
+        },
+        "follow_up": {
+          "type": "string"
         }
-      }
-    },
-    "template_vars": {
-      "type": "object",
-      "description": "Per-instance values intended for substitution into prompts as {{instance.<key>}}. NOT YET IMPLEMENTED: the agent does not read this object, and the shipped prompts contain no {{instance.*}} placeholders. Declared here so instance authors can populate it ahead of the renderer landing. Keys are case-sensitive.",
-      "properties": {
-        "name": {
-          "description": "Display name of the instance (e.g. 'India', 'Karnataka', 'New Jersey').",
-          "type": "string"
-        },
-        "region": {
-          "description": "Default geographic context for ambiguous queries.",
-          "type": "string"
-        },
-        "states_term": {
-          "description": "Local term for sub-national administrative units ('states', 'districts', 'counties', 'provinces').",
-          "type": "string"
-        },
-        "fiscal_year_start": {
-          "description": "Month/day on which the fiscal year starts, MM-DD. E.g. '04-01' for an April start, '01-01' for a calendar year.",
-          "type": "string",
-          "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
-        }
-      },
-      "additionalProperties": {
-        "type": "string"
       }
     },
     "query_param_key": {
