@@ -207,21 +207,59 @@ export const runToolLoop = async (
           return { text: '', resolvedPlaceDcid };
         }
 
-        // Extract place DCID from search_indicators responses
-        if (fcName === 'search_indicators' && !resolvedPlaceDcid) {
+        // Extract place DCID from MCP tool responses and arguments
+        if (!resolvedPlaceDcid) {
           try {
             const resultText = toolResult?.content?.[0]?.text;
             if (resultText) {
               const parsed = JSON.parse(resultText);
-              const placesWithData =
-                parsed.variables?.[0]?.places_with_data ||
-                parsed.topics?.[0]?.places_with_data;
-              if (placesWithData && placesWithData.length > 0) {
-                resolvedPlaceDcid = placesWithData[0];
+              // Check dcidNameMappings (maps DCID -> Name)
+              if (
+                parsed.dcidNameMappings &&
+                typeof parsed.dcidNameMappings === 'object'
+              ) {
+                const mappings = parsed.dcidNameMappings as Record<
+                  string,
+                  unknown
+                >;
+                const keys = Object.keys(mappings);
+                const matchingKey = keys.find((k) => {
+                  const val = mappings[k];
+                  return (
+                    k.toLowerCase() === place.toLowerCase() ||
+                    (typeof val === 'string' &&
+                      val.toLowerCase() === place.toLowerCase())
+                  );
+                });
+                if (matchingKey) {
+                  resolvedPlaceDcid = matchingKey;
+                }
+              }
+
+              // Check places_with_data
+              if (!resolvedPlaceDcid) {
+                const placesWithData =
+                  parsed.variables?.[0]?.places_with_data ||
+                  parsed.topics?.[0]?.places_with_data;
+                if (placesWithData && placesWithData.length > 0) {
+                  resolvedPlaceDcid = placesWithData[0];
+                }
               }
             }
           } catch {
             // Ignore parsing errors — DCID extraction is best-effort
+          }
+
+          // Fallback to tool arguments if a canonical DCID was passed
+          if (!resolvedPlaceDcid) {
+            const args = fc?.args as Record<string, unknown> | undefined;
+            if (typeof args?.parent_place === 'string') {
+              resolvedPlaceDcid = args.parent_place;
+            } else if (typeof args?.parent_place_dcid === 'string') {
+              resolvedPlaceDcid = args.parent_place_dcid;
+            } else if (typeof args?.place_dcid === 'string') {
+              resolvedPlaceDcid = args.place_dcid;
+            }
           }
         }
 

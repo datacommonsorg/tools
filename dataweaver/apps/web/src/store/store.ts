@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
+import { resolveResultForPlace } from '~/functions/scope_key';
 import type {
   CardEntry,
   CardType,
@@ -310,7 +311,7 @@ export const useAtlasStore = create<AtlasStore>()(
           const genericChartId = `shape:${parent.historyNodeId}__${placeDcid}__chart`;
           if (cards[genericChartId]) {
             const node = nodes[parent.historyNodeId];
-            const result = node?.results[placeDcid];
+            const result = resolveResultForPlace(node?.results, placeDcid);
             const firstVariable = result?.timeSeries[0]?.variableDcid;
             if (firstVariable === variableDcid) {
               set(
@@ -453,7 +454,7 @@ export const useAtlasStore = create<AtlasStore>()(
             if (!card) continue;
             const node = nodes[card.historyNodeId];
             if (!node) continue;
-            const result = node.results[card.placeDcid];
+            const result = resolveResultForPlace(node.results, card.placeDcid);
             if (!result) continue;
             for (const entity of result.entities) {
               dcids.add(entity.dcid);
@@ -476,26 +477,34 @@ export const useAtlasStore = create<AtlasStore>()(
 
             if (card.placeDcid === '__comparison') {
               // Comparison chart — extract all per-place results from the node.
-              for (const result of Object.values(node.results)) {
-                const entityDcid = result.entities[0]?.dcid;
-                if (!entityDcid || seen.has(entityDcid)) continue;
-                seen.add(entityDcid);
+              for (const [key, result] of Object.entries(node.results)) {
+                const placeKey =
+                  result.placeDcid ||
+                  (key.includes(':') ? key.split(':')[0] : key) ||
+                  result.entities[0]?.dcid;
+                if (!placeKey || seen.has(placeKey)) continue;
+                seen.add(placeKey);
                 results.push(result);
               }
             } else {
               // Regular chart — extract the single place result.
-              const result = node.results[card.placeDcid];
+              const result = resolveResultForPlace(
+                node.results,
+                card.placeDcid,
+              );
               if (!result) continue;
 
-              // Use a composite key so that different variables for the same
-              // place are treated as distinct results (e.g. selecting
-              // "Female Life Expectancy in Japan" and "Male Life Expectancy
-              // in Japan" should produce 2 results, not 1).
-              const entityDcid = result.entities[0]?.dcid;
-              if (!entityDcid) continue;
+              // Use a composite key based on card/result place scope and variable so that
+              // different variables for the same place/region are treated as distinct results.
+              const placeKey =
+                card.placeDcid ||
+                result.placeDcid ||
+                result.parentPlaceDcid ||
+                result.entities[0]?.dcid;
+              if (!placeKey) continue;
               const dedupeKey = card.variableDcid
-                ? `${entityDcid}::${card.variableDcid}`
-                : entityDcid;
+                ? `${placeKey}::${card.variableDcid}`
+                : placeKey;
               if (seen.has(dedupeKey)) continue;
               seen.add(dedupeKey);
 
