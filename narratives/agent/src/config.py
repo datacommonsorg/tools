@@ -21,6 +21,7 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -113,10 +114,22 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
     is how the agent behaved before the files were wired up — so a partial fetch
     degrades to the old behaviour rather than taking the agent down.
     """
-    base = config_url.rsplit("/", 1)[0]
+    # Split the parsed path, not the raw string: a query with a slash in it
+    # (``?prefix=a/b``) would otherwise be split mid-query and yield a nonsense
+    # base. Query and fragment are dropped because they address the config
+    # object, not the prompt objects — a `generation` or a signed-URL signature
+    # is per-object and would 403 if carried across. Reading a private bucket
+    # goes through the metadata token in _fetch_gcs_url, so nothing here depends
+    # on the query surviving.
+    parsed = urlparse(config_url)
+    base_path = parsed.path.rsplit("/", 1)[0]
     prompts = {}
     for slot in PROMPT_SLOTS:
-        prompt_url = f"{base}/prompts/{slot}.md"
+        prompt_url = urlunparse(
+            parsed._replace(
+                path=f"{base_path}/prompts/{slot}.md", query="", fragment=""
+            )
+        )
         try:
             response = _fetch_gcs_url(prompt_url)
             response.raise_for_status()
@@ -171,14 +184,14 @@ def _bootstrap_config_from_url() -> None:
         logger.error(
             "CONFIG_URL is not valid JSON (%s); writing through unmodified", e
         )
-        config_path.write_text(raw)
+        config_path.write_text(raw, encoding="utf-8")
         return
 
     if not isinstance(config, dict):
         logger.error(
             "CONFIG_URL did not contain a JSON object; writing through unmodified"
         )
-        config_path.write_text(raw)
+        config_path.write_text(raw, encoding="utf-8")
         return
 
     prompts = _fetch_prompt_bodies(url)
@@ -199,7 +212,7 @@ def _bootstrap_config_from_url() -> None:
             missing,
         )
 
-    config_path.write_text(json.dumps(config))
+    config_path.write_text(json.dumps(config), encoding="utf-8")
 
 
 def load_config() -> dict:
@@ -218,7 +231,9 @@ def load_config() -> dict:
         return _config_cache
 
     try:
-        with open(config_path, 'r') as f:
+        # Pinned to match the encoding _bootstrap_config_from_url writes with;
+        # the platform default would decode a non-ASCII config wrongly on Windows.
+        with config_path.open(encoding='utf-8') as f:
             _config_cache = json.load(f)
             _config_mtime = current_mtime
             logger.info("Config loaded/reloaded from config.json")
