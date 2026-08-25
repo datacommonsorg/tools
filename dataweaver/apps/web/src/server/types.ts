@@ -53,6 +53,11 @@ export interface CardEntry {
 export interface StatVar {
   dcid: string;
   name: string;
+  placeDcid?: string;
+  placeName?: string;
+  isChildQuery?: boolean;
+  parentPlaceDcid?: string;
+  childPlaceType?: string;
   rationale?: string;
 }
 
@@ -80,6 +85,11 @@ export interface FollowUpContext {
 export interface QueryResult {
   id: string;
   title: string;
+  placeDcid?: string;
+  placeName?: string;
+  isChildQuery?: boolean;
+  parentPlaceDcid?: string;
+  childPlaceType?: string;
   variables: StatVar[];
   entities: Entity[];
   timeSeries: TimeSeries[];
@@ -124,6 +134,7 @@ export interface FacetInfo {
 export interface TimeSeries {
   variableDcid: string;
   entityDcid: string;
+  entityName?: string;
   facets: FacetInfo[];
 }
 
