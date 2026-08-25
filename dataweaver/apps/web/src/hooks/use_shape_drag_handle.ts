@@ -1,5 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, useCallback } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
+import { GRID_SIZE } from '~/components/scopes/atlas/config';
+import { snapToGrid } from '~/components/scopes/atlas/helpers';
 
 /**
  * Returns a `pointerdown` handler that turns an element into a drag handle for
@@ -65,6 +67,21 @@ export const useShapeDragHandle = (
         if (target.hasPointerCapture(endEvent.pointerId)) {
           target.releasePointerCapture(endEvent.pointerId);
         }
+
+        // This handle bypasses TLDraw's translating state machine (it drives
+        // shapes directly via `editor.updateShapes`), so it doesn't get
+        // `ShapeUtil.onTranslateEnd`'s snap for free - snap explicitly here.
+        const deltaX = (endEvent.clientX - originClientX) / zoom;
+        const deltaY = (endEvent.clientY - originClientY) / zoom;
+
+        editor.updateShapes(
+          origins.map((origin) => ({
+            id: origin.id,
+            type: origin.type,
+            x: snapToGrid(origin.x + deltaX, GRID_SIZE),
+            y: snapToGrid(origin.y + deltaY, GRID_SIZE),
+          })),
+        );
 
         // Restore the cursor to what it was before the drag started
         target.style.cursor = previousCursor;

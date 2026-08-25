@@ -7,14 +7,16 @@ import {
   T,
   type TLResizeInfo,
   type TLShape,
+  type TLShapePartial,
 } from 'tldraw';
 import { Card } from '~/components/elements/card';
 import type { CardSelection } from '~/components/elements/card/base';
-import { CARD_SIZE_MIN } from '~/components/scopes/atlas/config';
-import type {
-  CardContentFields,
-  CardSize,
-  CardVariant,
+import { CARD_SIZE_MIN, GRID_SIZE } from '~/components/scopes/atlas/config';
+import {
+  type CardContentFields,
+  type CardSize,
+  type CardVariant,
+  snapToGrid,
 } from '~/components/scopes/atlas/helpers';
 import type { ChartStyle } from '~/server/types';
 
@@ -212,4 +214,30 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
 
     return { ...resized, props: { ...resized.props, isManuallyResized: true } };
   };
+
+  // Dragging and resizing stay free — only the value at pointer-up snaps to
+  // the grid, so it lands on the same dots the `Grid` background renders.
+  override onTranslateEnd = (
+    _initial: ShapeCard,
+    shape: ShapeCard,
+  ): TLShapePartial<ShapeCard> => ({
+    id: shape.id,
+    type: shape.type,
+    x: snapToGrid(shape.x, GRID_SIZE),
+    y: snapToGrid(shape.y, GRID_SIZE),
+  });
+
+  override onResizeEnd = (
+    _initial: ShapeCard,
+    shape: ShapeCard,
+  ): TLShapePartial<ShapeCard> => ({
+    id: shape.id,
+    type: shape.type,
+    x: snapToGrid(shape.x, GRID_SIZE),
+    y: snapToGrid(shape.y, GRID_SIZE),
+    props: {
+      w: Math.max(CARD_SIZE_MIN.w, snapToGrid(shape.props.w, GRID_SIZE)),
+      h: Math.max(CARD_SIZE_MIN.h, snapToGrid(shape.props.h, GRID_SIZE)),
+    },
+  });
 }
