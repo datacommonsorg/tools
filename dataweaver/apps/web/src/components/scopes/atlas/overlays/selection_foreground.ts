@@ -2,7 +2,7 @@ import { SelectionForegroundOverlayUtil } from 'tldraw';
 
 /**
  * When more than one shape is selected we render our own selection UI (see the
- * `Selection` component in the `InFrontOfTheCanvas` slot), so suppress tldraw's
+ * `Selection` component in the `OnTheCanvas` slot), so suppress tldraw's
  * default selection foreground — its border plus resize and rotate handles — in
  * that case. This is also what blocks rotation of a multi-selection: with no
  * rotate handle there's no way to start a rotation.
