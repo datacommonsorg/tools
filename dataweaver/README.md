@@ -37,6 +37,8 @@ pnpm i
 | `pnpm dev` | Run all apps in dev mode |
 | `pnpm build` | Build all apps |
 | `pnpm test` | Run unit tests across packages |
+| `pnpm lint` | Run type checking, Biome, and Stylelint |
+| `pnpm fix` | Auto-format and fix Biome and Stylelint issues |
 | `pnpm preview` | Serve the built apps |
 | `pnpm generate:tokens` | Regenerate `packages/tokens/dist/` (`tokens.css` + `_tokens.scss` + `tokens.ts`) from `packages/tokens/src/*.json` |
 
@@ -48,18 +50,32 @@ CSS and SCSS follow the [Google HTML/CSS Style Guide](https://google.github.io/s
 
 Where a guideline can't be linted automatically, please follow it by convention.
 
-## Linting
+## Linting and testing
 
-Linting by Biome, TypeScript and Stylelint. To check, run:
+Code quality is enforced using Biome, TypeScript, and Stylelint, along with Vitest for unit testing.
+
+### Linting and type checking
+
+To run type checking (TypeScript), code linting (Biome), and stylesheet linting (Stylelint):
 
 ```bash
-pnpm run lint
+pnpm lint
 ```
 
-To automatically fix _most_ linting errors, run:
+### Auto-formatting and fixing
+
+To format code and automatically fix linting issues:
 
 ```bash
-pnpm run fix
+pnpm fix
+```
+
+### Unit tests
+
+To run unit tests across packages:
+
+```bash
+pnpm test
 ```
 
 ## Dependency Check
@@ -73,3 +89,12 @@ pnpm up --latest --recursive --interactive
 This recursively checks all packages in the repo for outdated dependencies and lets you select which ones to update.
 
 Select the packages you want to update (using the `space` key), then press `enter` to update the selected ones.
+
+## Contributing
+
+Before submitting a Pull Request for review, ensure the following:
+
+- **Coding standards**: All code conforms to the conventions in [`FRONTEND.md`](FRONTEND.md), the repository root [`README.md`](../README.md), and the [Google Style Guides](https://google.github.io/styleguide/) (specifically [TypeScript](https://google.github.io/styleguide/tsguide.html) and [HTML/CSS](https://google.github.io/styleguide/htmlcssguide.html)).
+- **Linting and unit tests**: Run `pnpm lint && pnpm test` to perform type checking, code/style linting, and unit tests.
+- **Build verification**: Ensure the application builds cleanly by running `pnpm build`.
+- **Runtime verification**: Once built, verify the application runs as expected by running `pnpm preview` and visiting the local URL (typically `http://localhost:3000`).
