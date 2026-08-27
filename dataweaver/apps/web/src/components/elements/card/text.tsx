@@ -3,17 +3,18 @@
 import { useRef } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
-import { Card } from '~/components/elements/card';
-import type { CardState } from '~/components/elements/card/base';
 import { useCardAutoHeight } from '~/components/elements/card/use_card_auto_height';
 import { Skeleton } from '~/components/elements/skeleton';
 import { HtmlParsed } from '~/components/primitives/html_parsed';
 import { IconDelete } from '~/components/primitives/icons/delete';
 import { IconExport } from '~/components/primitives/icons/export';
-import { CARD_VARIANT_SIZE_DEFAULT } from '~/components/scopes/atlas/config';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import { useAtlasStore } from '~/store';
+import { CardBase, type CardState } from './base';
+import { CARD_VARIANT_SIZE_DEFAULT } from './config';
+import { CardContent } from './content';
+import { CardFooter } from './footer';
 import s from './text.module.scss';
 
 /**
@@ -71,7 +72,7 @@ export const CardText = ({
   );
 
   return (
-    <Card.Base
+    <CardBase
       id={id}
       childrenContainerRef={baseChildrenContainerRef}
       isLoading={isLoading}
@@ -93,7 +94,7 @@ export const CardText = ({
         },
       ]}
     >
-      <Card.Content
+      <CardContent
         childrenInnerContainerRef={contentChildrenInnerContainerRef}
         title={title && <h2 className={s.title}>{title}</h2>}
       >
@@ -119,7 +120,7 @@ export const CardText = ({
         )}
 
         {relatedQueries && relatedQueries.length > 0 && !isLoading && (
-          <Card.Footer title="Suggested follow-up questions">
+          <CardFooter title="Suggested follow-up questions">
             {relatedQueries.map((query) => (
               <Button
                 key={query}
@@ -132,9 +133,9 @@ export const CardText = ({
                 {query}
               </Button>
             ))}
-          </Card.Footer>
+          </CardFooter>
         )}
-      </Card.Content>
-    </Card.Base>
+      </CardContent>
+    </CardBase>
   );
 };

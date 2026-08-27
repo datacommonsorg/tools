@@ -1,6 +1,7 @@
 import type { TLCreateShapePartial, TLShape, TLShapeId } from 'tldraw';
 import type { CardState } from '~/components/elements/card/base';
 import type { CardChartProps } from '~/components/elements/card/chart/chart';
+import type { CardSize } from '~/components/elements/card/config';
 import type { CardTextProps } from '~/components/elements/card/text';
 import type { ChartStyle } from '~/server/types';
 
@@ -44,10 +45,7 @@ export interface CardPosition {
   y: number;
 }
 
-export interface CardSize {
-  w: number;
-  h: number;
-}
+export type { CardSize };
 
 /** A card's position and size together. */
 export type CardBounds = CardPosition & CardSize;
@@ -55,9 +53,7 @@ export type CardBounds = CardPosition & CardSize;
 /** The card shape as stored on the tldraw canvas. */
 export type CardShape = TLShape<'card'>;
 
-/** Round `value` to the nearest multiple of `gridSize`. */
-export const snapToGrid = (value: number, gridSize: number): number =>
-  Math.round(value / gridSize) * gridSize;
+export { snapToGrid } from '~/functions/snap_to_grid';
 
 /** Convert card content into `TLShape` for placement on the canvas. */
 export const contentToShape = (
