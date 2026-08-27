@@ -4,8 +4,14 @@
  */
 export const GRID_SIZE = 20 as const;
 
-/** Round `value` to the nearest multiple of `gridSize`. */
+/**
+ * Round `value` to the nearest multiple of `gridSize`.
+ * If `gridSize <= 0`, snapping is bypassed and `value` is returned as-is.
+ */
 export const snapToGrid = (
   value: number,
   gridSize: number = GRID_SIZE,
-): number => Math.round(value / gridSize) * gridSize;
+): number => {
+  if (gridSize <= 0) return value;
+  return Math.round(value / gridSize) * gridSize;
+};

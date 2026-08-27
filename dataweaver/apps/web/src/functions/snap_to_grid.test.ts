@@ -23,6 +23,13 @@ describe('snapToGrid', () => {
     expect(snapToGrid(48, 50)).toBe(50);
   });
 
+  it('bypasses snapping when gridSize is zero or negative', () => {
+    expect(snapToGrid(15, 0)).toBe(15);
+    expect(snapToGrid(15, -10)).toBe(15);
+    expect(snapToGrid(-25, 0)).toBe(-25);
+    expect(snapToGrid(-25, -20)).toBe(-25);
+  });
+
   it('exports GRID_SIZE as 20', () => {
     expect(GRID_SIZE).toBe(20);
   });
