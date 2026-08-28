@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# NOTE: Add new app workflows to `ci-final-status.needs` to make them required
+jobs:
+  detect-changes:
+    name: Detect Changed Apps
+    runs-on: ubuntu-latest
+    outputs:
+      dataweaver: ${{ steps.filter.outputs.dataweaver }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            dataweaver:
+              - 'dataweaver/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/dataweaver_ci.yml'
+
+  dataweaver:
+    name: Data Weaver
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dataweaver == 'true'
+    uses: ./.github/workflows/dataweaver_ci.yml
+
+  ci-final-status:
+    name: CI Final Status
+    needs:
+      - detect-changes
+      - dataweaver
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report overall CI status
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || \
+                "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required CI checks failed or were cancelled."
+            exit 1
+          else
+            echo "All CI checks passed (or were skipped because the app was unaffected)."
+            exit 0
+          fi
