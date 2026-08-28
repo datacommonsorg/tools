@@ -2,15 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchChildPlaces, fetchNodes } from './dc_api';
 
 describe('dc_api client', () => {
-  const originalEnv = process.env.DATA_COMMONS_API_KEY;
-
   beforeEach(() => {
-    process.env.DATA_COMMONS_API_KEY = 'test-key';
+    vi.stubEnv('DATA_COMMONS_API_KEY', 'test-key');
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
-    process.env.DATA_COMMONS_API_KEY = originalEnv;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -19,7 +17,7 @@ describe('dc_api client', () => {
     // Situation: DATA_COMMONS_API_KEY is not set in environment.
     // Expectation: fetchNodes throws an error indicating the missing API key.
     it('throws if DATA_COMMONS_API_KEY is not configured', async () => {
-      delete process.env.DATA_COMMONS_API_KEY;
+      vi.stubEnv('DATA_COMMONS_API_KEY', '');
       await expect(
         fetchNodes(['country/FRA'], '->geoJsonCoordinates'),
       ).rejects.toThrow('DATA_COMMONS_API_KEY environment variable is not set');
@@ -41,11 +39,10 @@ describe('dc_api client', () => {
         },
       };
 
-      const fetchMock = vi.fn().mockResolvedValue({
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
-      globalThis.fetch = fetchMock;
+      } as Response);
 
       const result = await fetchNodes(['country/FRA'], '->geoJsonCoordinates');
       expect(result).toEqual(mockResponse);
@@ -86,10 +83,10 @@ describe('dc_api client', () => {
         },
       };
 
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         json: async () => mockResponse,
-      });
+      } as Response);
 
       const children = await fetchChildPlaces('europe');
       expect(children).toEqual([
