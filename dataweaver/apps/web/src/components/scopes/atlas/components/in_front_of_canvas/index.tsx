@@ -1,7 +1,6 @@
 import { Portal } from '~/components/primitives/portal';
 import { Controls } from './controls';
 import s from './index.module.scss';
-import { Selection } from './selection/selection';
 import { Tools } from './tools';
 
 export const InFrontOfTheCanvas = () => {
@@ -13,7 +12,6 @@ export const InFrontOfTheCanvas = () => {
     <Portal className={s.container}>
       <Controls />
       <Tools />
-      <Selection />
     </Portal>
   );
 };

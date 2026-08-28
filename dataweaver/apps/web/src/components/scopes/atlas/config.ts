@@ -8,6 +8,7 @@ import type { TLCameraMoveOptions, TLComponents, TLUiOverrides } from 'tldraw';
 import { ContextMenu } from './components/context_menu';
 import { Grid } from './components/grid';
 import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
+import { OnTheCanvas } from './components/on_the_canvas';
 import type { CardSize, CardVariant } from './helpers';
 import { AtlasSelectionForegroundOverlayUtil } from './overlays/selection_foreground';
 import { ShapeCardUtil } from './shapes/card';
@@ -22,6 +23,7 @@ export const ATLAS_COMPONENTS = {
   // dot grid shows without enabling grid mode
   Background: Grid,
   InFrontOfTheCanvas,
+  OnTheCanvas,
 } as const satisfies TLComponents;
 
 /**
@@ -120,6 +122,13 @@ export const CARD_VARIANT_SIZE_DEFAULT: Record<CardVariant, CardSize> = {
 
 /** Smallest size a card may resized to. */
 export const CARD_SIZE_MIN = { w: 300, h: 220 } as const;
+
+/**
+ * Snap unit (page px at 1:1 zoom) cards drop onto after a drag or resize.
+ * Matches the dot spacing in `grid.module.scss` so drops land on a visible
+ * dot; live dragging/resizing itself stays free of any snapping.
+ */
+export const GRID_SIZE = 20 as const;
 
 /** The card grid layout for each breakpoint. */
 export const CARD_GRID = {
