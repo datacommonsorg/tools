@@ -17,6 +17,7 @@ import copy
 import json
 import logging
 import os
+import posixpath
 import re
 import time
 from datetime import datetime
@@ -102,7 +103,7 @@ def _fetch_gcs_url(url: str) -> requests.Response:
     return response
 
 
-def _fetch_prompt_bodies(config_url: str) -> dict:
+def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     """Fetches ``prompts/<slot>.md`` from the config bucket.
 
     The base is derived from ``CONFIG_URL`` rather than ``BRAND_CONFIG_URL`` so
@@ -114,20 +115,24 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
     is how the agent behaved before the files were wired up — so a partial fetch
     degrades to the old behaviour rather than taking the agent down.
     """
-    # Split the parsed path, not the raw string: a query with a slash in it
-    # (``?prefix=a/b``) would otherwise be split mid-query and yield a nonsense
-    # base. Query and fragment are dropped because they address the config
-    # object, not the prompt objects — a `generation` or a signed-URL signature
-    # is per-object and would 403 if carried across. Reading a private bucket
-    # goes through the metadata token in _fetch_gcs_url, so nothing here depends
-    # on the query surviving.
+    # Take the directory of the parsed path, not of the raw string: a query
+    # containing a slash (``?prefix=a/b``) would otherwise be split mid-query and
+    # yield a nonsense base. Query and fragment are dropped because they address
+    # the config object, not the prompt objects — a `generation` or a signed-URL
+    # signature is per-object and would 403 if carried across. Reading a private
+    # bucket goes through the metadata token in _fetch_gcs_url, so nothing here
+    # depends on the query surviving.
     parsed = urlparse(config_url)
-    base_path = parsed.path.rsplit("/", 1)[0]
+    base_path = posixpath.dirname(parsed.path)
     prompts = {}
     for slot in PROMPT_SLOTS:
+        # posixpath.join, not an f-string: dirname returns "/" for a config at
+        # the host root, which would otherwise give "//prompts/<slot>.md".
         prompt_url = urlunparse(
             parsed._replace(
-                path=f"{base_path}/prompts/{slot}.md", query="", fragment=""
+                path=posixpath.join(base_path, "prompts", f"{slot}.md"),
+                query="",
+                fragment="",
             )
         )
         try:
