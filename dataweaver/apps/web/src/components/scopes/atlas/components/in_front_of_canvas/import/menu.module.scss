@@ -4,11 +4,12 @@
   right: 0;
   display: flex;
   flex-direction: column;
-  width: 370px;
+  width: min(370px, calc(100vw - 30px));
 }
 
 .header-container {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   height: 56px;
@@ -27,6 +28,7 @@
 
 .content-container {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   row-gap: 16px;
   padding: 0 var(--menu-padding) var(--menu-padding);
