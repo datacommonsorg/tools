@@ -1,3 +1,15 @@
+# ==============================================================================
+# Monorepo CI Orchestrator Workflow
+#
+# Orchestrates CI across the monorepo by detecting changed application paths,
+# conditionally executing app-specific workflows, and aggregating status checks
+# into a single required merge gate (`ci-final-status`).
+#
+# For the full architectural overview and instructions on adding CI workflows
+# for new applications, see CONTINUOUS_INTEGRATION.md in the root of the 
+# repository.
+# ==============================================================================
+
 name: CI
 
 on:
@@ -13,7 +25,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-# NOTE: Add new app workflows to `ci-final-status.needs` to make them required
+# NOTE: When adding new app workflows, add them to `ci-final-status.needs` to aggregate their status.
+# See CONTINUOUS_INTEGRATION.md for full step-by-step instructions.
 jobs:
   detect-changes:
     name: Detect Changed Apps
