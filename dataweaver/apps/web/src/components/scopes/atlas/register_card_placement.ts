@@ -4,12 +4,7 @@
  */
 
 import { Box, type Editor, type TLShapeId } from 'tldraw';
-import {
-  CARD_GRID,
-  CARD_SIZE_MIN,
-  KEEP_IN_VIEW_ANIMATION,
-  MIN_ZOOM,
-} from './config';
+import { CARD_GRID, KEEP_IN_VIEW_ANIMATION, MIN_ZOOM } from './config';
 import type { CardBounds, CardPosition, CardShape, CardSize } from './helpers';
 
 /**
@@ -32,17 +27,6 @@ export const resolveGrid = (editor: Editor) => {
     gutter: breakpoint.gutter,
     screenWidth,
   };
-};
-
-/**
- * Get given `size` capped to the grid's column width, so the card actually fits
- * within current screen width without needing to zoom out past the minimum.
- */
-export const fitCardSize = (editor: Editor, size: CardSize): CardSize => {
-  const { columns, gutter, screenWidth } = resolveGrid(editor);
-  const maxWidth = (screenWidth - gutter * (columns + 1)) / columns;
-  const cappedWidth = Math.max(CARD_SIZE_MIN.w, Math.min(size.w, maxWidth));
-  return { w: cappedWidth, h: size.h };
 };
 
 /** A card the cursor tracks: its shape ID plus its footprint at placement. */

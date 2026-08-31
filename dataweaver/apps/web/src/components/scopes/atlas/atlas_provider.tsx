@@ -28,7 +28,6 @@ import { type CardClones, registerCardClones } from './register_card_clones';
 import { registerCardFocus } from './register_card_focus';
 import {
   type CardPlacement,
-  fitCardSize,
   registerCardPlacement,
 } from './register_card_placement';
 import { registerCardStoreSync } from './register_card_store_sync';
@@ -161,13 +160,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)
         canvasReadyRef.current.promise.then(({ editor, placeCard }) => {
-          // Cap the default footprint to the grid's column width so the
-          // breakpoint's card count actually fits side by side (and cards
-          // stack on narrow mobile screens)
-          const size = fitCardSize(
-            editor,
-            CARD_VARIANT_SIZE_DEFAULT[content.variant],
-          );
+          const size = CARD_VARIANT_SIZE_DEFAULT[content.variant];
           const position = placeCard(shapeId, size);
           editor.createShape({
             ...contentToShape(shapeId, content, position, size),
