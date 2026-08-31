@@ -11,7 +11,7 @@ To accommodate this limitation, this repository's CI system implements an **orch
 - **Path Detection**: The `detect-changes` job uses `dorny/paths-filter` to inspect changed files and determine which apps have modifications.
 - **Conditional Execution**: App-specific reusable workflows (e.g., [`.github/workflows/dataweaver_ci.yml`](.github/workflows/dataweaver_ci.yml)) run only when their relevant directory or workflow files change.
 - **Aggregated Status Gate (`ci-final-status`)**: The aggregator job runs unconditionally (`if: always()`). Unaffected or skipped app workflows are treated as passing, while failures or cancellations cause `ci-final-status` to fail.
-- **Single Branch Protection Check**: Only the `CI Final Status` check needs to be configured as a required status check in repository settings. Apps without tests or untouched apps pass automatically without blocking PRs.
+- **Single Branch Protection Check**: Only the `CI Final Status` check needs to be configured as a required status check in repository settings. Apps without tests or untouched by the PR pass automatically without blocking the PR.
 
 ## Adding CI Tests
 
