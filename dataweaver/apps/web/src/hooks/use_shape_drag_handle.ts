@@ -1,7 +1,6 @@
 import { type PointerEvent as ReactPointerEvent, useCallback } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
-import { GRID_SIZE } from '~/components/scopes/atlas/config';
-import { snapToGrid } from '~/components/scopes/atlas/helpers';
+import { GRID_SIZE, snapToGrid } from '~/functions/snap_to_grid';
 
 /**
  * Returns a `pointerdown` handler that turns an element into a drag handle for

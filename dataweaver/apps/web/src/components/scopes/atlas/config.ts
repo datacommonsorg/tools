@@ -9,7 +9,6 @@ import { ContextMenu } from './components/context_menu';
 import { Grid } from './components/grid';
 import { InFrontOfTheCanvas } from './components/in_front_of_canvas';
 import { OnTheCanvas } from './components/on_the_canvas';
-import type { CardSize, CardVariant } from './helpers';
 import { AtlasSelectionForegroundOverlayUtil } from './overlays/selection_foreground';
 import { ShapeCardUtil } from './shapes/card';
 /**
@@ -109,26 +108,11 @@ export const ZOOM_STEPS: readonly number[] = Array.from(
   (_, index) => MIN_ZOOM + (index * (MAX_ZOOM - MIN_ZOOM)) / ZOOM_STEP_COUNT,
 );
 
-/**
- * Per-variant card footprint. `w` is the 'fixed' default width (unless user
- * resizes); `h` is the default *maximum* height — a card's actual height tracks
- * its rendered content (see `useCardAutoHeight`).
- */
-export const CARD_VARIANT_SIZE_DEFAULT: Record<CardVariant, CardSize> = {
-  text: { w: 650, h: 440 },
-  table: { w: 650, h: 500 },
-  chart: { w: 420, h: 720 },
-};
-
-/** Smallest size a card may resized to. */
-export const CARD_SIZE_MIN = { w: 300, h: 220 } as const;
-
-/**
- * Snap unit (page px at 1:1 zoom) cards drop onto after a drag or resize.
- * Matches the dot spacing in `grid.module.scss` so drops land on a visible
- * dot; live dragging/resizing itself stays free of any snapping.
- */
-export const GRID_SIZE = 20 as const;
+export {
+  CARD_SIZE_MIN,
+  CARD_VARIANT_SIZE_DEFAULT,
+} from '~/components/elements/card/config';
+export { GRID_SIZE } from '~/functions/snap_to_grid';
 
 /** The card grid layout for each breakpoint. */
 export const CARD_GRID = {

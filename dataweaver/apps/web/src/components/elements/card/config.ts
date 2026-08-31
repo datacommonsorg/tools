@@ -1,0 +1,28 @@
+/**
+ * Card layout configuration constants, dimension interfaces, and variant types.
+ */
+
+/** 2D dimensions of a card in pixels. */
+export interface CardSize {
+  /** Width in pixels. */
+  w: number;
+  /** Height in pixels. */
+  h: number;
+}
+
+/** Supported card content variant types. */
+export type CardVariant = 'text' | 'table' | 'chart';
+
+/** Smallest size a card may be resized to. */
+export const CARD_SIZE_MIN = { w: 300, h: 220 } as const satisfies CardSize;
+
+/**
+ * Per-variant card footprint. `w` is the 'fixed' default width (unless user
+ * resizes); `h` is the default *maximum* height — a card's actual height tracks
+ * its rendered content (see `useCardAutoHeight`).
+ */
+export const CARD_VARIANT_SIZE_DEFAULT = {
+  text: { w: 650, h: 440 },
+  table: { w: 650, h: 500 },
+  chart: { w: 420, h: 720 },
+} as const satisfies Record<CardVariant, CardSize>;

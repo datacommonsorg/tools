@@ -4,9 +4,8 @@ import { AnimatePresence } from 'motion/react';
 import { useMemo, useRef, useState } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
-import { Card } from '~/components/elements/card';
-
-import type { CardState } from '~/components/elements/card/base';
+import { CardBase, type CardState } from '~/components/elements/card/base';
+import { CardFooter } from '~/components/elements/card/footer';
 import { useCardAutoHeight } from '~/components/elements/card/use_card_auto_height';
 import { Skeleton } from '~/components/elements/skeleton';
 import { IconBarChartOutlined } from '~/components/primitives/icons/bar_chart_outlined';
@@ -163,7 +162,7 @@ export const CardChart = ({
   const defaultStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
   const selectedStyle = chartStyle ?? selectedStyleOverride ?? defaultStyle;
   return (
-    <Card.Base
+    <CardBase
       id={id}
       childrenContainerRef={baseChildrenContainerRef}
       allowOverflow
@@ -272,7 +271,7 @@ export const CardChart = ({
           )}
 
           {relatedQueries && relatedQueries.length > 0 && !isLoading && (
-            <Card.Footer title="Suggested follow-up questions">
+            <CardFooter title="Suggested follow-up questions">
               {relatedQueries.map((query) => (
                 <Button
                   key={query}
@@ -285,7 +284,7 @@ export const CardChart = ({
                   {query}
                 </Button>
               ))}
-            </Card.Footer>
+            </CardFooter>
           )}
         </div>
       </div>
@@ -308,6 +307,6 @@ export const CardChart = ({
           />
         )}
       </AnimatePresence>
-    </Card.Base>
+    </CardBase>
   );
 };
