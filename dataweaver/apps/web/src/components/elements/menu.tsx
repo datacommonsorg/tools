@@ -51,6 +51,8 @@ const MenuWithPrefersMotion = ({
     const parent = el?.offsetParent;
     if (!el || !(parent instanceof HTMLElement)) return;
 
+    let frameId: number;
+
     const clamp = () => {
       el.style.removeProperty('left');
       el.style.removeProperty('right');
@@ -70,9 +72,17 @@ const MenuWithPrefersMotion = ({
       el.style.maxHeight = `${window.innerHeight - rect.top - VIEWPORT_EDGE_MARGIN}px`;
     };
 
+    const handleResize = () => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(clamp);
+    };
+
     clamp();
-    window.addEventListener('resize', clamp);
-    return () => window.removeEventListener('resize', clamp);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   return (

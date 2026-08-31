@@ -10,7 +10,6 @@
 
 .header-container {
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   height: 56px;
@@ -29,7 +28,6 @@
 
 .content-container {
   display: flex;
-  flex-shrink: 0;
   flex-direction: column;
   padding: 0 var(--menu-padding) var(--menu-padding);
 }
