@@ -57,26 +57,18 @@ export interface ObservationResponse {
   >;
 }
 
-/** Fetch direct child places contained within a parent place using Data Commons V2 /v2/node. */
-export const fetchChildPlaces = async (
-  parentDcid: string,
-  childPlaceType?: string,
+/** Query Data Commons V2 /v2/node for properties and connected graph nodes. */
+export const fetchNodes = async (
+  nodes: string[],
+  property: string,
   signal?: AbortSignal,
-): Promise<ChildPlace[]> => {
+): Promise<NodeResponse> => {
   const apiKey = process.env.DATA_COMMONS_API_KEY;
   if (!apiKey)
     throw new Error('DATA_COMMONS_API_KEY environment variable is not set');
 
   const config = getServiceConfig();
   const baseUrl = config.api.dataCommons.baseUrl;
-
-  const normalizedType = childPlaceType
-    ? normalizePlaceType(childPlaceType)
-    : undefined;
-
-  const property = normalizedType
-    ? `<-containedInPlace+{typeOf:${normalizedType}}`
-    : '<-containedInPlace+';
 
   const res = await fetch(`${baseUrl}/v2/node`, {
     method: 'POST',
@@ -85,14 +77,31 @@ export const fetchChildPlaces = async (
       'X-API-Key': apiKey,
     },
     body: JSON.stringify({
-      nodes: [parentDcid],
+      nodes,
       property,
     }),
     signal,
   });
 
   if (!res.ok) throw new Error(`DC API Error: ${res.status} ${res.statusText}`);
-  const json: NodeResponse = await res.json();
+  return res.json();
+};
+
+/** Fetch direct child places contained within a parent place using Data Commons V2 /v2/node. */
+export const fetchChildPlaces = async (
+  parentDcid: string,
+  childPlaceType?: string,
+  signal?: AbortSignal,
+): Promise<ChildPlace[]> => {
+  const normalizedType = childPlaceType
+    ? normalizePlaceType(childPlaceType)
+    : undefined;
+
+  const property = normalizedType
+    ? `<-containedInPlace+{typeOf:${normalizedType}}`
+    : '<-containedInPlace+';
+
+  const json = await fetchNodes([parentDcid], property, signal);
 
   const nodeArcs = json.data?.[parentDcid]?.arcs;
   if (!nodeArcs) return [];
