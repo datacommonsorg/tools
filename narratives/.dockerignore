@@ -18,3 +18,4 @@ screenshots
 figma_*
 .vite
 coverage
+deploy.env
