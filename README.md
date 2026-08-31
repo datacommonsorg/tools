@@ -52,6 +52,12 @@ steps in [contributing.md](contributing.md).
 
 Wait for approval of the Pull Request and merge the change.
 
+## Continuous Integration (CI)
+
+This repository uses a centralized GitHub Actions CI orchestrator to manage testing across multiple applications in the monorepo. Individual applications run modular test suites that gate branch merges into `main` without blocking unaffected applications.
+
+For the architectural overview and instructions on adding CI tests for new applications, see [CONTINUOUS_INTEGRATION.md](CONTINUOUS_INTEGRATION.md).
+
 ## Coding Standards
 
 Developers and AI agents contributing to frontend applications in this repository must follow the [Frontend Conventions and Best Practices](FRONTEND_CONVENTIONS.md). All submissions are expected to adhere to these rules and include comprehensive tests.
