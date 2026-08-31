@@ -1,8 +1,16 @@
+/**
+ * Card layout configuration constants, dimension interfaces, and variant types.
+ */
+
+/** 2D dimensions of a card in pixels. */
 export interface CardSize {
+  /** Width in pixels. */
   w: number;
+  /** Height in pixels. */
   h: number;
 }
 
+/** Supported card content variant types. */
 export type CardVariant = 'text' | 'table' | 'chart';
 
 /** Smallest size a card may be resized to. */
