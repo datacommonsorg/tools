@@ -12,6 +12,12 @@ dist
 .env.local
 .env.*.local
 
+# The agent's local config. A deployed instance fetches its config from the
+# instance bucket via CONFIG_URL and reads API keys from Secret Manager, so this
+# file only exists for local development — where it holds real Gemini keys.
+# Never commit it.
+agent/config.json
+
 # Logs
 *.log
 npm-debug.log*
@@ -47,3 +53,4 @@ sample.js
 
 # Redundant snapshot of the original AI Studio scaffold
 Archive.zip
+deploy.env
