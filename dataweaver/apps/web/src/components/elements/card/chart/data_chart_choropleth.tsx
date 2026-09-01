@@ -10,7 +10,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type WheelEvent,
 } from 'react';
 import type {
   GeoJsonFeature,
@@ -71,7 +70,7 @@ interface ChoroplethMapCanvasProps {
   series: ChartSeries[];
   svgRef: RefObject<SVGSVGElement | null>;
   dragMovedRef: RefObject<boolean>;
-  onWheel: (e: WheelEvent<SVGSVGElement>) => void;
+  onWheel: (e: globalThis.WheelEvent) => void;
   onPointerDown: (e: PointerEvent<SVGSVGElement>) => void;
   onPointerMove: (e: PointerEvent<SVGSVGElement>) => void;
   onPointerUp: (e: PointerEvent<SVGSVGElement>) => void;
@@ -104,6 +103,21 @@ const ChoroplethMapCanvas = ({
   onHover,
   onEntityClick,
 }: ChoroplethMapCanvasProps) => {
+  
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const handleWheelNative = (e: globalThis.WheelEvent) => {
+      onWheel(e);
+    };
+
+    svg.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => {
+      svg.removeEventListener('wheel', handleWheelNative);
+    };
+  }, [svgRef, onWheel]);
+
   // Memoize path computation and projection fitting to avoid heavy recalculation during pan/zoom/hover
   const mapPaths = useMemo(() => {
     const { projection: proj, isMapFitted } = getMapProjection(
@@ -164,7 +178,6 @@ const ChoroplethMapCanvas = ({
       aria-label="Choropleth map"
       className={s['map-svg']}
       viewBox={`0 0 ${width} ${height}`}
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -355,7 +368,7 @@ export const DataChartChoropleth = ({
     });
   }, []);
 
-  const handleWheel = useCallback((e: WheelEvent<SVGSVGElement>) => {
+  const handleWheel = useCallback((e: globalThis.WheelEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
