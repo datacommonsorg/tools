@@ -1,6 +1,11 @@
 import { EASE_OUT } from '@package/tokens/ts';
 import { m } from 'motion/react';
-import { type ComponentProps, useLayoutEffect, useRef } from 'react';
+import {
+  type ComponentProps,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import { mergeClassNames } from '~/functions/merge_class_names';
 import { useFocusTrap } from '~/hooks/use_focus_trap';
 import { useKeydown } from '~/hooks/use_keydown';
@@ -105,7 +110,7 @@ const MenuWithPrefersMotion = ({
       }}
       transition={{ duration: 0.2, ease: EASE_OUT }}
     >
-      <div className={s['scroll-container']}>{children}</div>
+      <div className={s['scroll-container']}>{children as ReactNode}</div>
     </m.dialog>
   );
 };
