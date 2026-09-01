@@ -33,6 +33,13 @@ import {
 } from './geo_service';
 import { MenuChartOptions } from './menu_chart_options';
 
+/**
+ * Minimum number of compared geographic entities required to default to a choropleth map.
+ * Comparisons below this threshold default to line/bar charts to facilitate direct series reading,
+ * while larger groups default to choropleth when full boundary geometries are available.
+ */
+const CHOROPLETH_DEFAULT_MIN_ENTITIES = 6;
+
 export interface ChartDatum {
   date: string;
   value: number;
@@ -214,10 +221,14 @@ export const CardChart = ({
     ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
     : 0;
 
-  // Revert to line/bar fallback when boundary geometry is unavailable (100% coverage check).
+  // Revert to line/bar fallback when boundary geometry is unavailable (100% coverage check)
+  // or when comparing fewer entities than the choropleth threshold.
   const fallbackStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
   const defaultStyle: ChartStyle =
-    isGeoAvailable === true ? 'choropleth' : fallbackStyle;
+    validEntityKeys.length >= CHOROPLETH_DEFAULT_MIN_ENTITIES &&
+    isGeoAvailable === true
+      ? 'choropleth'
+      : fallbackStyle;
   const candidateStyle = chartStyle ?? selectedStyleOverride ?? defaultStyle;
   const selectedStyle =
     candidateStyle === 'choropleth' && isGeoAvailable === false
