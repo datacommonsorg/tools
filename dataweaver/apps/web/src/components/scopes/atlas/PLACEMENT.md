@@ -3,7 +3,7 @@
 How cards get their position on the tldraw canvas, and how the camera follows
 them. Everything described here lives in
 [`register_card_placement.ts`](register_card_placement.ts)
-(`registerCardPlacement` + `fitCardSize`), configured by
+(`registerCardPlacement`), configured by
 `CARD_GRID` in [`config.ts`](config.ts), and wired up once in
 [`atlas_provider.tsx`](atlas_provider.tsx)'s `onMount`.
 
@@ -22,10 +22,9 @@ checks and no dependence on the camera — only the last few cards matter:
 - When the row is full, the next card **wraps**: back to the row's start x,
   just below the **tallest** card of the row above. Uneven card heights never
   stagger the grid.
-- Card widths are capped per breakpoint by `fitCardSize` (window width ÷
-  columns, zoom-independent, never below `CARD_SIZE_MIN`), so the column
-  count actually fits side by side at 1:1 zoom. The `CARD_VARIANT_SIZE_DEFAULT`
-  widths act as maximums.
+- Cards always use their `CARD_VARIANT_SIZE_DEFAULT` width — never capped
+  to the breakpoint's column width, so a full row may run wider than the
+  viewport at low column counts.
 
 The cursor tracks the current row (ids + footprints), the row's start x, and
 `gridIds` — every card placed since the grid was last rooted. Row bounds are
