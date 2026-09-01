@@ -103,7 +103,6 @@ const ChoroplethMapCanvas = ({
   onHover,
   onEntityClick,
 }: ChoroplethMapCanvasProps) => {
-  
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
