@@ -79,7 +79,17 @@ export const getCachedGeoJson = (
 };
 
 /**
- * Checks whether a GeoJsonFeatureCollection contains features for all requested entity DCIDs (100% coverage).
+ * Minimum number of compared geographic entities required to default to a choropleth map.
+ * Comparisons below this threshold require 100% boundary coverage and default to line/bar charts,
+ * while groups meeting or exceeding this threshold default to choropleth when coverage is high (>= 75%).
+ */
+export const CHOROPLETH_DEFAULT_MIN_ENTITIES = 6;
+
+/**
+ * Checks whether a GeoJsonFeatureCollection contains sufficient features for the requested entity DCIDs.
+ * For small explicit comparisons (< CHOROPLETH_DEFAULT_MIN_ENTITIES), enforces 100% complete coverage.
+ * For larger regional groups (>= CHOROPLETH_DEFAULT_MIN_ENTITIES), requires >= 75% coverage and >= 5 features
+ * to accommodate knowledge graphs containing historical or non-geographic entity subsets.
  */
 export const hasCompleteGeoJson = (
   collection: GeoJsonFeatureCollection | undefined,
@@ -90,8 +100,21 @@ export const hasCompleteGeoJson = (
     (d): d is string => !!d && d !== 'default',
   );
   if (validEntities.length === 0) return false;
+
   const featureIds = new Set(collection.features.map((f) => f.id));
-  return validEntities.every((dcid) => featureIds.has(dcid));
+  const matchedCount = validEntities.filter((dcid) =>
+    featureIds.has(dcid),
+  ).length;
+
+  if (validEntities.length < CHOROPLETH_DEFAULT_MIN_ENTITIES) {
+    return matchedCount === validEntities.length;
+  }
+
+  const coverageRatio = matchedCount / validEntities.length;
+  return (
+    coverageRatio >= 0.75 &&
+    collection.features.length >= Math.min(validEntities.length, 5)
+  );
 };
 
 /**

@@ -27,7 +27,6 @@ import {
   hasCompleteGeoJson,
   resolveGeoCacheKey,
 } from './geo_service';
-import { calculateFitBounds, getFittingGeometry } from './map_bounds';
 import { getMapProjection } from './map_projection';
 import { SCALE_MONOTONIC } from './palette';
 import { SliderTime } from './slider_time';
@@ -118,17 +117,14 @@ const ChoroplethMapCanvas = ({
     if (!isMapFitted) {
       proj.scale(1).translate([0, 0]);
 
-      let b: [[number, number], [number, number]] | null = null;
-      if (parentFeature) {
-        const parentFittingGeom = getFittingGeometry(parentFeature.geometry);
-        b = pathGenerator.bounds(
-          parentFittingGeom as unknown as GeoGeometryObjects,
-        );
-      }
+      const targetGeo = parentFeature ?? {
+        type: 'FeatureCollection',
+        features: uniqueFeatures,
+      };
 
-      if (!b || !Number.isFinite(b[0][0]) || Number.isNaN(b[0][0])) {
-        b = calculateFitBounds(uniqueFeatures, pathGenerator);
-      }
+      const b = pathGenerator.bounds(
+        targetGeo as unknown as GeoGeometryObjects,
+      );
 
       if (
         b &&

@@ -26,19 +26,13 @@ import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
 import {
+  CHOROPLETH_DEFAULT_MIN_ENTITIES,
   fetchGeoJson,
   getCachedGeoJson,
   hasCompleteGeoJson,
   resolveGeoCacheKey,
 } from './geo_service';
 import { MenuChartOptions } from './menu_chart_options';
-
-/**
- * Minimum number of compared geographic entities required to default to a choropleth map.
- * Comparisons below this threshold default to line/bar charts to facilitate direct series reading,
- * while larger groups default to choropleth when full boundary geometries are available.
- */
-const CHOROPLETH_DEFAULT_MIN_ENTITIES = 6;
 
 export interface ChartDatum {
   date: string;

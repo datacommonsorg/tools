@@ -145,10 +145,10 @@ describe('geo_service', () => {
   });
 
   describe('hasCompleteGeoJson', () => {
-    // Test: Full feature coverage.
+    // Test: Small list full feature coverage (< 6 entities).
     // Situation: Collection contains all requested entity DCIDs.
     // Expectation: Returns true.
-    it('returns true when all requested entities have features', () => {
+    it('returns true when all requested entities have features in small sets (< 6)', () => {
       const collection: GeoJsonFeatureCollection = {
         type: 'FeatureCollection',
         features: [
@@ -172,10 +172,10 @@ describe('geo_service', () => {
       ).toBe(true);
     });
 
-    // Test: Incomplete feature coverage.
+    // Test: Small list incomplete feature coverage (< 6 entities).
     // Situation: Collection is missing 1 of the requested entities.
     // Expectation: Returns false.
-    it('returns false when any requested entity lacks a feature', () => {
+    it('returns false when any requested entity lacks a feature in small sets (< 6)', () => {
       const collection: GeoJsonFeatureCollection = {
         type: 'FeatureCollection',
         features: [
@@ -191,6 +191,46 @@ describe('geo_service', () => {
       expect(
         hasCompleteGeoJson(collection, ['country/FRA', 'country/DEU']),
       ).toBe(false);
+    });
+
+    // Test: Large list high coverage (>= 6 entities, >= 75%).
+    // Situation: 10 entities requested, 9 features present (90% coverage).
+    // Expectation: Returns true to handle historical / micro-territory gaps gracefully.
+    it('returns true for large entity sets (>= 6) with high coverage (>= 75%)', () => {
+      const entities = Array.from({ length: 10 }, (_, i) => `country/E${i}`);
+      const features = entities.slice(0, 9).map((id) => ({
+        type: 'Feature' as const,
+        id,
+        properties: { dcid: id },
+        geometry: { type: 'Polygon', coordinates: [] },
+      }));
+
+      const collection: GeoJsonFeatureCollection = {
+        type: 'FeatureCollection',
+        features,
+      };
+
+      expect(hasCompleteGeoJson(collection, entities)).toBe(true);
+    });
+
+    // Test: Large list low coverage (>= 6 entities, < 75%).
+    // Situation: 10 entities requested, only 5 features present (50% coverage).
+    // Expectation: Returns false.
+    it('returns false for large entity sets (>= 6) with low coverage (< 75%)', () => {
+      const entities = Array.from({ length: 10 }, (_, i) => `country/E${i}`);
+      const features = entities.slice(0, 5).map((id) => ({
+        type: 'Feature' as const,
+        id,
+        properties: { dcid: id },
+        geometry: { type: 'Polygon', coordinates: [] },
+      }));
+
+      const collection: GeoJsonFeatureCollection = {
+        type: 'FeatureCollection',
+        features,
+      };
+
+      expect(hasCompleteGeoJson(collection, entities)).toBe(false);
     });
 
     // Test: Empty or undefined collection.
