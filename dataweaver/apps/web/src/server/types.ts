@@ -29,7 +29,11 @@ export interface HistoryNode {
 
 export type CardType = 'loading' | 'table' | 'notes' | 'chart';
 
-export type ChartStyle = 'bar-vertical' | 'bar-horizontal' | 'line';
+export type ChartStyle =
+  | 'bar-vertical'
+  | 'bar-horizontal'
+  | 'line'
+  | 'choropleth';
 
 export interface Insight {
   title: string;

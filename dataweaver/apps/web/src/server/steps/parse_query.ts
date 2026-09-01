@@ -74,6 +74,7 @@ export const parseQuery = async (
     'bar-vertical',
     'bar-horizontal',
     'line',
+    'choropleth',
   ];
 
   const parsed = extractJson<

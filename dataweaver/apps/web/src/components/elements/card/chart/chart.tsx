@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { CardBase, type CardState } from '~/components/elements/card/base';
@@ -21,9 +21,16 @@ import s from './chart.module.scss';
 import { ConditionalTabs } from './conditional_tabs';
 import { DataChartBarHorizontal } from './data_chart_bar_horizontal';
 import { DataChartBarVertical } from './data_chart_bar_vertical';
+import { DataChartChoropleth } from './data_chart_choropleth';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
+import {
+  fetchGeoJson,
+  getCachedGeoJson,
+  hasCompleteGeoJson,
+  resolveGeoCacheKey,
+} from './geo_service';
 import { MenuChartOptions } from './menu_chart_options';
 
 export interface ChartDatum {
@@ -51,6 +58,7 @@ export interface CardChartProps extends CardState {
   facets?: FacetInfo[];
   /** Per-series facets, keyed by series `key` (e.g. placeDcid). */
   seriesFacets?: Record<string, FacetInfo[]>;
+  parentPlaceDcid?: string;
   relatedQueries?: string[];
   /** Persisted chart style from the store (survives export/import). */
   chartStyle?: ChartStyle;
@@ -66,6 +74,7 @@ export const CardChart = ({
   series: seriesProp,
   facets,
   seriesFacets,
+  parentPlaceDcid,
   relatedQueries,
   chartStyle,
 }: CardChartProps) => {
@@ -155,12 +164,65 @@ export const CardChart = ({
 
   const chartSeries = baseSeries;
 
-  // Default to line chart when data has many points; allow manual override.
+  const validEntityKeys = useMemo(
+    () =>
+      chartSeries
+        ?.map((s) => s.key)
+        .filter((k) => k && k !== 'default')
+        .sort() ?? [],
+    [chartSeries],
+  );
+
+  const [isGeoAvailable, setIsGeoAvailable] = useState<boolean | null>(() => {
+    if (validEntityKeys.length <= 1) return false;
+    const cacheKey = resolveGeoCacheKey(parentPlaceDcid, validEntityKeys);
+    const cached = getCachedGeoJson(cacheKey);
+    if (!cached) return null;
+    return hasCompleteGeoJson(cached, validEntityKeys);
+  });
+
+  useEffect(() => {
+    if (validEntityKeys.length <= 1) {
+      setIsGeoAvailable(false);
+      return;
+    }
+
+    const cacheKey = resolveGeoCacheKey(parentPlaceDcid, validEntityKeys);
+    const cached = getCachedGeoJson(cacheKey);
+    if (cached) {
+      setIsGeoAvailable(hasCompleteGeoJson(cached, validEntityKeys));
+      return;
+    }
+
+    let isCurrent = true;
+    fetchGeoJson(parentPlaceDcid, validEntityKeys)
+      .then((data) => {
+        if (!isCurrent) return;
+        setIsGeoAvailable(hasCompleteGeoJson(data, validEntityKeys));
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setIsGeoAvailable(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [parentPlaceDcid, validEntityKeys]);
+
   const totalPoints = chartSeries
     ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
     : 0;
-  const defaultStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
-  const selectedStyle = chartStyle ?? selectedStyleOverride ?? defaultStyle;
+
+  // Revert to line/bar fallback when boundary geometry is unavailable (100% coverage check).
+  const fallbackStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
+  const defaultStyle: ChartStyle =
+    isGeoAvailable === true ? 'choropleth' : fallbackStyle;
+  const candidateStyle = chartStyle ?? selectedStyleOverride ?? defaultStyle;
+  const selectedStyle =
+    candidateStyle === 'choropleth' && isGeoAvailable === false
+      ? fallbackStyle
+      : candidateStyle;
   return (
     <CardBase
       id={id}
@@ -256,6 +318,12 @@ export const CardChart = ({
                         <DataChartBarVertical series={chartSeries} />
                       ) : selectedStyle === 'bar-horizontal' ? (
                         <DataChartBarHorizontal series={chartSeries} />
+                      ) : selectedStyle === 'choropleth' ? (
+                        <DataChartChoropleth
+                          series={chartSeries}
+                          parentPlaceDcid={parentPlaceDcid}
+                          onUnavailable={() => setIsGeoAvailable(false)}
+                        />
                       ) : (
                         <DataChartLine series={chartSeries} />
                       ),
