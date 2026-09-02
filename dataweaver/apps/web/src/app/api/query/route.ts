@@ -313,7 +313,7 @@ export async function POST(request: NextRequest) {
               emit({ type: STREAM_EVENT.toolCall, tool: e.tool, args: e.args });
               emit({
                 type: STREAM_EVENT.status,
-                message: STATUS.usingTool(e.tool, e.count, e.max),
+                message: STATUS.usingTool(e.tool),
               });
             },
           });
