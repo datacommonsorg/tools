@@ -176,6 +176,18 @@ export interface CombineStreamRequest {
 
 // --- Status messages ---
 
+export const TOOL_LABELS: Record<string, string> = {
+  search_indicators: 'Searching variables',
+  search_child_indicators: 'Searching regional variables',
+  get_variable_metadata: 'Retrieving variable metadata',
+  get_observations: 'Retrieving observations',
+  get_child_observations: 'Retrieving regional observations',
+  get_multi_entity_observations: 'Retrieving comparative observations',
+  resolve_entities: 'Resolving places',
+  find_entities: 'Finding places',
+  get_place_metadata: 'Fetching place data',
+};
+
 export const STATUS = {
   // Terminal states (for programmatic checks)
   idle: '',
@@ -193,8 +205,8 @@ export const STATUS = {
   // Dynamic messages
   discoveringMetrics: (place: string, current: number, total: number) =>
     `Discovering metrics for ${place} (${current}/${total})...`,
-  usingTool: (tool: string, count: number, max: number) =>
-    `Using tool: ${tool} (${count}/${max})...`,
+  usingTool: (tool: string) =>
+    `${TOOL_LABELS[tool] ?? `Using tool: ${tool}`}...`,
   noResponse: (place: string) => `No response for ${place}, skipping...`,
   buildingResults: (place: string) => `Building results for ${place}...`,
   invalidResponse: (place: string) =>
