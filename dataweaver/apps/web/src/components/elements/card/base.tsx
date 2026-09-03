@@ -6,7 +6,7 @@ import type {
   ReactNode,
   RefObject,
 } from 'react';
-import type { TLShapeId } from 'tldraw';
+import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import s from './base.module.scss';
 import { useCardClearTextSelection } from './use_card_clear_text_selection';
@@ -60,6 +60,8 @@ export const CardBase = ({
 
   useCardTextClipboard(childrenContainerRef);
 
+  const editor = useEditor();
+
   const startDragging = useCardDragHandle(id);
 
   return (
@@ -67,8 +69,24 @@ export const CardBase = ({
       className={s.container}
       data-is-loading={isLoading}
       data-selection={selection}
+      // While unselected, a pointerdown anywhere on the card (content or
+      // actions bar) would otherwise fall through to tldraw's default select
+      // tool, which selects AND starts dragging in one gesture. Select the
+      // card ourselves and swallow the event so the first press only selects
+      // — dragging only becomes available afterwards, from the actions bar.
+      onPointerDown={
+        selection === 'none'
+          ? (event) => {
+              event.stopPropagation();
+              editor.select(id);
+            }
+          : undefined
+      }
     >
-      <div className={s['actions-container']} onPointerDown={startDragging}>
+      <div
+        className={s['actions-container']}
+        onPointerDown={selection !== 'none' ? startDragging : undefined}
+      >
         {actions.map((action, index) => (
           <Button
             key={index}
