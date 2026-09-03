@@ -78,6 +78,7 @@ export const CardBase = ({
       onPointerDown={
         selection === 'none'
           ? (event) => {
+              if (event.button !== 0) return;
               event.stopPropagation();
               editor.select(id);
             }
