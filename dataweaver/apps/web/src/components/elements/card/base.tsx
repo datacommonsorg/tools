@@ -8,6 +8,7 @@ import type {
 } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
+import { IconDragIndicator } from '~/components/primitives/icons/drag_indicator';
 import s from './base.module.scss';
 import { useCardClearTextSelection } from './use_card_clear_text_selection';
 import { useCardDragHandle } from './use_card_drag_handle';
@@ -102,6 +103,7 @@ export const CardBase = ({
             isDisabled={action.isDisabled}
           />
         ))}
+        <IconDragIndicator className={s['drag-indicator']} />
       </div>
 
       <div
