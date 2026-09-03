@@ -22,14 +22,15 @@
     width: 18px;
     height: 18px;
     color: rgb(var(--color-card-action-content));
-    transform: translateY(-50%);
     opacity: 0.7;
+    transform: translateY(-50%);
 
     @include breakpoint(tablet) {
       width: 20px;
       height: 20px;
     }
   }
+
   height: calc(var(--actions-height) + var(--corner-size));
   padding-bottom: calc(var(--corner-size) - var(--border-thickness));
   margin-inline: 2px;
