@@ -147,6 +147,8 @@ export const deriveComparisonChartContent = (
 
   if (series.length === 0) return null;
 
+  series.sort((a, b) => a.label.localeCompare(b.label));
+
   return {
     variant: 'chart',
     title: chartMeta.title,
@@ -192,6 +194,8 @@ export const deriveChartContent = (
     }
 
     if (series.length === 0) return null;
+
+    series.sort((a, b) => a.label.localeCompare(b.label));
 
     const varName = result.variables[0]?.name;
     const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
@@ -265,6 +269,8 @@ export const deriveChartContentForVariable = (
     }
 
     if (series.length === 0) return null;
+
+    series.sort((a, b) => a.label.localeCompare(b.label));
 
     const variable = result.variables.find((v) => v.dcid === variableDcid);
     const title = formatChartCardTitle(

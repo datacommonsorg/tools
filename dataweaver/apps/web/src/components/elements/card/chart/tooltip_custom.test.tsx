@@ -168,4 +168,52 @@ describe('TooltipCustom', () => {
     expect(html).not.toContain('NaN');
     expect(html).toContain('—');
   });
+
+  // Test: Alphabetized multi-series rendering order
+  // Situation: Chart has 3 series alphabetized upstream (Alaska, California, Texas).
+  // Expectation: Tooltip renders entries in that exact alphabetical order with corresponding palette colors.
+  it('renders entries in upstream alphabetical series order with matching swatches', () => {
+    const sortedSeries: ChartSeries[] = [
+      {
+        key: 'geoId/02',
+        label: 'Alaska',
+        data: [{ date: '2020', value: 733391 }],
+      },
+      {
+        key: 'geoId/06',
+        label: 'California',
+        data: [{ date: '2020', value: 39538223 }],
+      },
+      {
+        key: 'geoId/48',
+        label: 'Texas',
+        data: [{ date: '2020', value: 29145505 }],
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <TooltipCustom
+        active={true}
+        payload={[
+          { value: 733391, dataKey: 'value_0', name: 'Alaska' },
+          { value: 39538223, dataKey: 'value_1', name: 'California' },
+          { value: 29145505, dataKey: 'value_2', name: 'Texas' },
+        ]}
+        label="2020"
+        series={sortedSeries}
+      />,
+    );
+
+    const alaskaIdx = html.indexOf('Alaska');
+    const californiaIdx = html.indexOf('California');
+    const texasIdx = html.indexOf('Texas');
+
+    expect(alaskaIdx).toBeGreaterThan(-1);
+    expect(californiaIdx).toBeGreaterThan(alaskaIdx);
+    expect(texasIdx).toBeGreaterThan(californiaIdx);
+
+    expect(html).toContain(`background-color:${getSeriesColor(0)}`);
+    expect(html).toContain(`background-color:${getSeriesColor(1)}`);
+    expect(html).toContain(`background-color:${getSeriesColor(2)}`);
+  });
 });

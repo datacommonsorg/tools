@@ -153,7 +153,10 @@ export const CardChart = ({
     currentFacet?.unit,
   ]);
 
-  const chartSeries = baseSeries;
+  const chartSeries = useMemo(() => {
+    if (!baseSeries || baseSeries.length <= 1) return baseSeries;
+    return [...baseSeries].sort((a, b) => a.label.localeCompare(b.label));
+  }, [baseSeries]);
 
   // Default to line chart when data has many points; allow manual override.
   const totalPoints = chartSeries
@@ -215,9 +218,9 @@ export const CardChart = ({
                 </div>
               )}
 
-              {seriesFacets && seriesProp && (
+              {seriesFacets && chartSeries && (
                 <div className={s['facet-selectors-container']}>
-                  {seriesProp.map((entry) => {
+                  {chartSeries.map((entry) => {
                     const facetList = seriesFacets[entry.key];
                     if (!facetList || facetList.length === 0) {
                       return null;
