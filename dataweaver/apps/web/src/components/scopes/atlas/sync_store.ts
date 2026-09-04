@@ -330,7 +330,7 @@ export const deriveContentForCard = (
     return deriveComparisonContent(comparison);
   }
   if (comparison && type === 'chart' && variableDcid && allResults) {
-    return withChartStyle(
+    return finalizeChartContent(
       deriveComparisonChartContent(comparison, variableDcid, allResults),
       chartStyle,
     );
@@ -345,17 +345,30 @@ export const deriveContentForCard = (
       const content = variableDcid
         ? deriveChartContentForVariable(result, variableDcid)
         : deriveChartContent(result);
-      return withChartStyle(content, chartStyle);
+      return finalizeChartContent(content, chartStyle);
     }
   }
 };
 
-/** Apply a persisted chart style override to derived chart content. */
-const withChartStyle = (
+/** Sort series alphabetically by label using deterministic English locale to prevent SSR hydration mismatches. */
+const sortSeries = (series: ChartSeries[]): ChartSeries[] =>
+  series.sort((a, b) =>
+    (a.label ?? '').localeCompare(b.label ?? '', 'en', {
+      sensitivity: 'base',
+      numeric: true,
+    }),
+  );
+
+/** Finalize chart content: sort multi-series data alphabetically and apply chart style override. */
+const finalizeChartContent = (
   content: AtlasContent | null,
   chartStyle?: ChartStyle,
 ): AtlasContent | null => {
-  if (content && chartStyle && content.variant === 'chart') {
+  if (!content || content.variant !== 'chart') return content;
+  if (content.series && content.series.length > 1) {
+    sortSeries(content.series);
+  }
+  if (chartStyle) {
     return { ...content, chartStyle };
   }
   return content;
