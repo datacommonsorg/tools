@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ComparisonResult, QueryResult } from '~/server/types';
-import {
-  deriveChartContent,
-  deriveChartContentForVariable,
-  deriveComparisonChartContent,
-} from './sync_store';
+import { deriveContentForCard } from './sync_store';
 
 describe('sync_store multi-series alphabetization', () => {
   const sampleObservations = [{ date: '2020', value: 100 }];
 
-  // Test: deriveChartContent multi-entity alphabetization
+  // Test: deriveContentForCard multi-entity alphabetization
   // Situation: QueryResult contains multiple entities in non-alphabetical order (Texas, Alaska, California).
   // Expectation: Resulting chart series are sorted alphabetically by label (Alaska, California, Texas).
-  it('alphabetizes series by entity name in deriveChartContent', () => {
+  it('alphabetizes series by entity name in multi-entity charts', () => {
     const result: QueryResult = {
       id: 'res-1',
       title: 'Population',
@@ -75,7 +71,7 @@ describe('sync_store multi-series alphabetization', () => {
       ],
     };
 
-    const content = deriveChartContent(result);
+    const content = deriveContentForCard('chart', result);
     expect(content).not.toBeNull();
     expect(content?.variant).toBe('chart');
     if (content && content.variant === 'chart') {
@@ -84,10 +80,10 @@ describe('sync_store multi-series alphabetization', () => {
     }
   });
 
-  // Test: deriveChartContentForVariable multi-entity alphabetization
+  // Test: deriveContentForCard for variable multi-entity alphabetization
   // Situation: QueryResult has multiple entities in reverse order for a specific variable.
   // Expectation: Resulting chart series are sorted alphabetically by entity name.
-  it('alphabetizes series by entity name in deriveChartContentForVariable', () => {
+  it('alphabetizes series by entity name in variable-specific charts', () => {
     const result: QueryResult = {
       id: 'res-2',
       title: 'Income',
@@ -132,7 +128,12 @@ describe('sync_store multi-series alphabetization', () => {
       ],
     };
 
-    const content = deriveChartContentForVariable(result, 'Median_Income');
+    const content = deriveContentForCard(
+      'chart',
+      result,
+      undefined,
+      'Median_Income',
+    );
     expect(content).not.toBeNull();
     if (content && content.variant === 'chart') {
       const labels = content.series?.map((s) => s.label);
@@ -140,7 +141,7 @@ describe('sync_store multi-series alphabetization', () => {
     }
   });
 
-  // Test: deriveComparisonChartContent cross-place alphabetization
+  // Test: deriveContentForCard cross-place alphabetization
   // Situation: Comparison across multiple places (Texas, Alaska, California) for a single variable.
   // Expectation: Series are sorted alphabetically by place name label.
   it('alphabetizes series by place name in cross-place comparison charts', () => {
@@ -237,9 +238,12 @@ describe('sync_store multi-series alphabetization', () => {
       },
     };
 
-    const content = deriveComparisonChartContent(
-      comparison,
+    const content = deriveContentForCard(
+      'chart',
+      undefined,
+      undefined,
       'Count_Person',
+      comparison,
       allResults,
     );
     expect(content).not.toBeNull();
@@ -249,9 +253,9 @@ describe('sync_store multi-series alphabetization', () => {
     }
   });
 
-  // Test: deriveComparisonChartContent same-place variable alphabetization
+  // Test: deriveContentForCard same-place variable alphabetization
   // Situation: Same-place comparison overlaying multiple variables.
-  // Expectation: Series are sorted alphabetically by variable name.
+  // Expectation: Series are sorted alphabetically by variable name using deterministic English locale.
   it('alphabetizes series by variable name in same-place comparison charts', () => {
     const comparison: ComparisonResult = {
       id: 'comp-2',
@@ -330,9 +334,12 @@ describe('sync_store multi-series alphabetization', () => {
       },
     };
 
-    const content = deriveComparisonChartContent(
-      comparison,
+    const content = deriveContentForCard(
+      'chart',
+      undefined,
+      undefined,
       'Var_A',
+      comparison,
       allResults,
     );
     expect(content).not.toBeNull();
