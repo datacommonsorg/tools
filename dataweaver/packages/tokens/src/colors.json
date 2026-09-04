@@ -110,6 +110,7 @@
   "card-table-head": "$card-surface",
   "card-action-base": "$transparent",
   "card-action-content": "$accent-content",
+  "card-action-content-muted": [255, 255, 255, 0.7],
   "card-action-base-hover": "$surface-raised",
   "card-action-content-hover": "$accent",
   "card-accent-subtle": "$accent-subtle",

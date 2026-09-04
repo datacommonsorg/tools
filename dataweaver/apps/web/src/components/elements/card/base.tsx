@@ -70,15 +70,18 @@ export const CardBase = ({
       className={s.container}
       data-is-loading={isLoading}
       data-selection={selection}
-      // While unselected, a pointerdown anywhere on the card (content or
-      // actions bar) would otherwise fall through to tldraw's default select
-      // tool, which selects AND starts dragging in one gesture. Select the
-      // card ourselves and swallow the event so the first press only selects
-      // — dragging only becomes available afterwards, from the actions bar.
+      // Unselected: a pointerdown here would otherwise fall through to
+      // tldraw's default select tool, which selects AND starts dragging in
+      // one gesture. Select the card ourselves and swallow the event so the
+      // first press only selects — dragging then happens via the actions
+      // bar. Skip for non-select tools (e.g. hand, which should pan) and
+      // modifier-held clicks (so native shift/ctrl/cmd multi-select works).
       onPointerDown={
         selection === 'none'
           ? (event) => {
               if (event.button !== 0) return;
+              if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+              if (editor.getCurrentToolId() !== 'select') return;
               event.stopPropagation();
               editor.select(id);
             }
@@ -104,7 +107,7 @@ export const CardBase = ({
             isDisabled={action.isDisabled}
           />
         ))}
-        <IconDragIndicator className={s['drag-indicator']} />
+        <IconDragIndicator className={s['icon-drag-indicator']} />
       </div>
 
       <div
@@ -129,8 +132,10 @@ export const CardBase = ({
         }}
         // Once the card is the single selection, reserve dragging for the
         // actions bar: stop the canvas from starting a gesture so the content
-        // stays selectable/highlightable. While unselected or multi-selected we
-        // let events through so tldraw keeps handling select/multi-select/drag
+        // stays selectable/highlightable. While multi-selected we let events
+        // through so tldraw keeps handling multi-select/drag; while
+        // unselected we also let them through, for the cases the article's
+        // own pointerdown handler doesn't cover (hand tool, modifier-click)
         onPointerDown={
           selection === 'single'
             ? (event) => event.stopPropagation()
