@@ -75,12 +75,13 @@ export const CardBase = ({
       // one gesture. Select the card ourselves and swallow the event so the
       // first press only selects — dragging then happens via the actions
       // bar. Skip for non-select tools (e.g. hand, which should pan) and
-      // modifier-held clicks (so native shift/ctrl/cmd multi-select works).
+      // modifier-held clicks (so native shift/ctrl/cmd multi-select and
+      // alt-drag-to-duplicate work).
       onPointerDown={
         selection === 'none'
           ? (event) => {
               if (event.button !== 0) return;
-              if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+              if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
               if (editor.getCurrentToolId() !== 'select') return;
               event.stopPropagation();
               editor.select(id);
