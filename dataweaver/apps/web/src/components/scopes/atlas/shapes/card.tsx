@@ -61,6 +61,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
         label: T.string,
         data: T.arrayOf(T.object({ date: T.string, value: T.number })),
         connectNulls: T.boolean.optional(),
+        unit: T.string.optional(),
       }),
     ).optional(),
     facets: T.arrayOf(
@@ -100,7 +101,9 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       'bar-vertical',
       'bar-horizontal',
       'line',
+      'choropleth',
     ).optional(),
+    parentPlaceDcid: T.string.optional(),
     relatedQueries: T.arrayOf(T.string).optional(),
   };
 
@@ -137,6 +140,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       seriesFacets,
       relatedQueries,
       chartStyle,
+      parentPlaceDcid,
     } = shape.props;
 
     const isLoading = shape.props.isLoading ?? false;
@@ -169,6 +173,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           seriesFacets={seriesFacets}
           relatedQueries={relatedQueries}
           chartStyle={chartStyle}
+          parentPlaceDcid={parentPlaceDcid}
         />
       );
     }

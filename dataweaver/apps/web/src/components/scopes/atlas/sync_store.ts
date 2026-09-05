@@ -195,12 +195,14 @@ export const deriveChartContent = (
 
     const varName = result.variables[0]?.name;
     const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
+    const parentPlaceDcid = result.parentPlaceDcid;
 
     return {
       variant: 'chart',
       title,
       description: result.variables[0]?.rationale || undefined,
       series,
+      parentPlaceDcid,
       ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
       isLoading: false,
     };
@@ -216,6 +218,9 @@ export const deriveChartContent = (
 
   const varName = result.variables[0]?.name;
   const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
+  const parentPlaceDcid = result.isChildQuery
+    ? result.parentPlaceDcid
+    : undefined;
 
   return {
     variant: 'chart',
@@ -224,6 +229,7 @@ export const deriveChartContent = (
       result.variables[0]?.rationale || firstFacet.source || undefined,
     data: firstFacet.observations,
     facets: allFacets,
+    parentPlaceDcid,
     isLoading: false,
   };
 };
@@ -272,12 +278,14 @@ export const deriveChartContentForVariable = (
       placeName,
       result.isChildQuery,
     );
+    const parentPlaceDcid = result.parentPlaceDcid;
 
     return {
       variant: 'chart',
       title,
       description: variable?.rationale || undefined,
       series,
+      parentPlaceDcid,
       ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
       isLoading: false,
     };
@@ -301,6 +309,10 @@ export const deriveChartContentForVariable = (
   const targetPlaceName = specificEntity?.name || placeName;
   const variable = result.variables.find((v) => v.dcid === variableDcid);
   const title = formatChartCardTitle(variable?.name, targetPlaceName, false);
+  const parentPlaceDcid =
+    result.isChildQuery && !isSpecificEntity
+      ? result.parentPlaceDcid
+      : undefined;
 
   return {
     variant: 'chart',
@@ -308,6 +320,7 @@ export const deriveChartContentForVariable = (
     description: variable?.rationale || firstFacet.source || undefined,
     data: firstFacet.observations,
     facets: allFacets,
+    parentPlaceDcid,
     isLoading: false,
   };
 };

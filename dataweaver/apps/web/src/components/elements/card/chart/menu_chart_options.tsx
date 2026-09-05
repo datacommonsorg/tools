@@ -9,6 +9,7 @@ import { Radio } from '~/components/elements/radio';
 import { IconBarChartHorizontal } from '~/components/primitives/icons/bar_chart_horizontal';
 import { IconBarChartVertical } from '~/components/primitives/icons/bar_chart_vertical';
 import { IconLineGraphDouble } from '~/components/primitives/icons/line_graph_double';
+import { IconMap } from '~/components/primitives/icons/map';
 import { ScreenReaderOnly } from '~/components/primitives/screen_reader';
 import { useClickOutside } from '~/hooks/use_click_outside';
 import { useFocusTrap } from '~/hooks/use_focus_trap';
@@ -37,6 +38,11 @@ const CHART_STYLE_OPTIONS: ChartStyleOption[] = [
     key: 'line',
     label: 'Line chart',
     icon: IconLineGraphDouble,
+  },
+  {
+    key: 'choropleth',
+    label: 'Choropleth map',
+    icon: IconMap,
   },
 ] as const;
 
