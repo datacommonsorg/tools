@@ -7,6 +7,7 @@
 }
 
 .actions-container {
+  position: relative;
   z-index: $z-index-behind-content;
   display: flex;
   grid-area: 1 / 1;
@@ -29,11 +30,25 @@
   &:focus-within {
     transform: translateY(calc(var(--actions-height) * -1));
 
-    // Safari-only ghosting fix. When selected, this bar translates up beyond the
-    // card outside 'contain: size layout' box tldraw draws. Deleting the card
-    // while selected can cause the bug. By forcing it to have its own composited
-    // layer makes WebKit track and discard on removal, clearing the ghost
+    // Safari-only fix: when selected, this bar translates outside tldraw's
+    // 'contain: size layout' box, so deleting the card while selected can
+    // leave a ghost. Forcing a composited layer here avoids it.
     will-change: transform;
+  }
+
+  .icon-drag-indicator {
+    position: absolute;
+    top: calc(var(--actions-height) / 2);
+    right: 12px;
+    width: 18px;
+    height: 18px;
+    color: rgb(var(--color-card-action-content-muted));
+    transform: translateY(-50%);
+
+    @include breakpoint(tablet) {
+      width: 20px;
+      height: 20px;
+    }
   }
 }
 
