@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { type TLShapeId, useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { CardBase, type CardState } from '~/components/elements/card/base';
@@ -18,6 +18,7 @@ import { useQueryActions } from '~/components/scopes/atlas/query_provider';
 import type { ChartStyle, FacetInfo } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import s from './chart.module.scss';
+import { extractValidEntityKeys, resolveChartStyle } from './chart_style';
 import { ConditionalTabs } from './conditional_tabs';
 import { DataChartBarHorizontal } from './data_chart_bar_horizontal';
 import { DataChartBarVertical } from './data_chart_bar_vertical';
@@ -25,14 +26,8 @@ import { DataChartChoropleth } from './data_chart_choropleth';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
 import { FacetSelector } from './facet_selector';
-import {
-  CHOROPLETH_DEFAULT_MIN_ENTITIES,
-  fetchGeoJson,
-  getCachedGeoJson,
-  hasCompleteGeoJson,
-  resolveGeoCacheKey,
-} from './geo_service';
 import { MenuChartOptions } from './menu_chart_options';
+import { useGeoAvailability } from './use_geo_availability';
 
 export interface ChartDatum {
   date: string;
@@ -166,68 +161,30 @@ export const CardChart = ({
   const chartSeries = baseSeries;
 
   const validEntityKeys = useMemo(
-    () =>
-      chartSeries
-        ?.map((s) => s.key)
-        .filter((k) => k && k !== 'default')
-        .sort() ?? [],
+    () => extractValidEntityKeys(chartSeries),
     [chartSeries],
   );
 
-  const [isGeoAvailable, setIsGeoAvailable] = useState<boolean | null>(() => {
-    if (validEntityKeys.length <= 1) return false;
-    const cacheKey = resolveGeoCacheKey(parentPlaceDcid, validEntityKeys);
-    const cached = getCachedGeoJson(cacheKey);
-    if (!cached) return null;
-    return hasCompleteGeoJson(cached, validEntityKeys);
+  const [isGeoAvailable, setIsGeoAvailable] = useGeoAvailability(
+    parentPlaceDcid,
+    validEntityKeys,
+  );
+
+  const totalPoints = useMemo(
+    () =>
+      chartSeries
+        ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
+        : 0,
+    [chartSeries],
+  );
+
+  const selectedStyle = resolveChartStyle({
+    chartStyle,
+    selectedStyleOverride,
+    validEntityCount: validEntityKeys.length,
+    isGeoAvailable,
+    totalPoints,
   });
-
-  useEffect(() => {
-    if (validEntityKeys.length <= 1) {
-      setIsGeoAvailable(false);
-      return;
-    }
-
-    const cacheKey = resolveGeoCacheKey(parentPlaceDcid, validEntityKeys);
-    const cached = getCachedGeoJson(cacheKey);
-    if (cached) {
-      setIsGeoAvailable(hasCompleteGeoJson(cached, validEntityKeys));
-      return;
-    }
-
-    let isCurrent = true;
-    fetchGeoJson(parentPlaceDcid, validEntityKeys)
-      .then((data) => {
-        if (!isCurrent) return;
-        setIsGeoAvailable(hasCompleteGeoJson(data, validEntityKeys));
-      })
-      .catch(() => {
-        if (!isCurrent) return;
-        setIsGeoAvailable(false);
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [parentPlaceDcid, validEntityKeys]);
-
-  const totalPoints = chartSeries
-    ? chartSeries.reduce((sum, entry) => sum + entry.data.length, 0)
-    : 0;
-
-  // Revert to line/bar fallback when boundary geometry is unavailable (100% coverage check)
-  // or when comparing fewer entities than the choropleth threshold.
-  const fallbackStyle: ChartStyle = totalPoints > 15 ? 'line' : 'bar-vertical';
-  const defaultStyle: ChartStyle =
-    validEntityKeys.length >= CHOROPLETH_DEFAULT_MIN_ENTITIES &&
-    isGeoAvailable === true
-      ? 'choropleth'
-      : fallbackStyle;
-  const candidateStyle = chartStyle ?? selectedStyleOverride ?? defaultStyle;
-  const selectedStyle =
-    candidateStyle === 'choropleth' && isGeoAvailable === false
-      ? fallbackStyle
-      : candidateStyle;
   return (
     <CardBase
       id={id}
