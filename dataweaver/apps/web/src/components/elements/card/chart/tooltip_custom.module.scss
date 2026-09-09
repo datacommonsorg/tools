@@ -1,8 +1,7 @@
 .tooltip {
-  @include type-label-medium(false);
+  @include type-label-small(false);
 
   padding: 10px 12px;
-  font-weight: 700;
   color: rgb(var(--color-card-content));
   background-color: rgb(var(--color-card-surface));
   border-radius: 8px;
@@ -15,17 +14,18 @@
   .label {
     @include type-label-small(false);
 
-    margin-bottom: 4px;
+    margin-top: 6px;
+    margin-bottom: 0;
     color: rgb(var(--color-card-chart-tooltip-date));
   }
 
   .entry {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
 
     & + & {
-      margin-top: 2px;
+      margin-top: 4px;
     }
   }
 
@@ -40,9 +40,17 @@
     @include type-label-small(false);
 
     color: rgb(var(--color-card-content-muted));
+    white-space: nowrap;
   }
 
   .value {
-    @include type-label-medium(false);
+    @include type-label-small(false);
+
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .name ~ .value {
+    margin-left: auto;
   }
 }

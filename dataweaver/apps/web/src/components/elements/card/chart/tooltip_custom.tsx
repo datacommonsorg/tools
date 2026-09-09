@@ -2,10 +2,10 @@ import { formatChartValue } from '~/functions/format_chart_value';
 
 import type { ChartSeries } from './chart';
 import { getSeriesColor } from './palette';
-import styles from './tooltip_custom.module.scss';
+import s from './tooltip_custom.module.scss';
 
 interface TooltipEntry {
-  value: number;
+  value: number | null;
   dataKey?: string;
   name?: string;
   color?: string;
@@ -31,27 +31,38 @@ export const TooltipCustom = ({
   const isMulti = series && series.length > 1;
 
   return (
-    <div className={styles.tooltip}>
+    <div className={s.tooltip}>
       {payload.map((entry, index) => {
-        const color = isMulti ? getSeriesColor(index) : entry.color;
-        const entryUnit = series?.[index]?.unit ?? unit;
+        const currentSeries =
+          (entry.name && series?.find((s) => s.label === entry.name)) ||
+          series?.[index];
+        const seriesIndex =
+          currentSeries && series ? series.indexOf(currentSeries) : index;
+        const seriesName = entry.name || currentSeries?.label;
+        const color = isMulti ? getSeriesColor(seriesIndex) : entry.color;
+        const entryUnit = currentSeries?.unit ?? unit;
+        const isValueValid =
+          entry.value !== null &&
+          entry.value !== undefined &&
+          !Number.isNaN(Number(entry.value));
+
         return (
-          <div key={entry.dataKey ?? index} className={styles.entry}>
+          <div key={entry.dataKey ?? index} className={s.entry}>
             {isMulti && color && (
-              <span
-                className={styles.swatch}
-                style={{ backgroundColor: color }}
-              />
+              <span className={s.swatch} style={{ backgroundColor: color }} />
             )}
-            <span className={styles.value}>
-              {entry.value !== null && entry.value !== undefined
+            {isMulti && seriesName && (
+              <span className={s.name}>{seriesName}</span>
+            )}
+            <span className={s.value}>
+              {isValueValid
                 ? formatChartValue(Number(entry.value), entryUnit, 'standard')
                 : '—'}
             </span>
           </div>
         );
       })}
-      {label && <p className={styles.label}>in {`${label}`}</p>}
+      {label && <p className={s.label}>in {`${label}`}</p>}
     </div>
   );
 };
