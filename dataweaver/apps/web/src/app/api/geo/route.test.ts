@@ -1,7 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as dcApi from '~/server/clients/dc_api';
-import { GET, type GeoJsonGeometry, normalizeGeometryForD3 } from './route';
+import {
+  GET,
+  type GeoJsonGeometry,
+  normalizeGeometryForD3,
+  PLACE_TYPES_CONTAINED,
+} from './route';
 
 describe('normalizeGeometryForD3', () => {
   // Test: Polygon preservation.
@@ -171,5 +176,109 @@ describe('GET /api/geo', () => {
     expect(json.features.length).toBe(1);
     expect(json.features[0].id).toBe('country/FRA');
     expect(json.features[0].geometry.type).toBe('Polygon');
+  });
+
+  // Test: Contained place types constant.
+  // Situation: PLACE_TYPES_CONTAINED is imported.
+  // Expectation: Contains standard hierarchical place types.
+  it('defines the expected place types for child containment filtering', () => {
+    expect(PLACE_TYPES_CONTAINED.has('Country')).toBe(true);
+    expect(PLACE_TYPES_CONTAINED.has('State')).toBe(true);
+    expect(PLACE_TYPES_CONTAINED.has('County')).toBe(true);
+    expect(PLACE_TYPES_CONTAINED.has('Place')).toBe(true);
+    expect(PLACE_TYPES_CONTAINED.has('AdministrativeArea1')).toBe(true);
+    expect(PLACE_TYPES_CONTAINED.has('AdministrativeArea2')).toBe(true);
+  });
+
+  // Test: Child place containment resolution.
+  // Situation: Requested entity lacks direct coordinates; child places with valid types are queried and resolved.
+  // Expectation: Only child places matching PLACE_TYPES_CONTAINED are resolved and returned.
+  it('resolves and filters child places using PLACE_TYPES_CONTAINED when direct coordinates are missing', async () => {
+    const fetchSpy = vi.spyOn(dcApi, 'fetchNodes');
+
+    // 1. Initial coordinates fetch: 'europe' has no coordinates
+    fetchSpy.mockResolvedValueOnce({
+      data: {
+        europe: {
+          arcs: {},
+        },
+      },
+    });
+
+    // 2. Child places fetch via <-containedInPlace+
+    fetchSpy.mockResolvedValueOnce({
+      data: {
+        europe: {
+          arcs: {
+            containedInPlace: {
+              nodes: [
+                { dcid: 'country/DEU', types: ['Country'] },
+                { dcid: 'unsupported/123', types: ['OtherNonPlace'] },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    // 3. Coordinates fetch for resolved child entities
+    fetchSpy.mockResolvedValueOnce({
+      data: {
+        'country/DEU': {
+          arcs: {
+            geoJsonCoordinates: {
+              nodes: [
+                {
+                  value: JSON.stringify({
+                    type: 'Polygon',
+                    coordinates: [
+                      [
+                        [0, 0],
+                        [1, 0],
+                        [1, 1],
+                        [0, 1],
+                        [0, 0],
+                      ],
+                    ],
+                  }),
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    const req = new Request(
+      'http://localhost/api/geo?entities=europe',
+    ) as unknown as NextRequest;
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.type).toBe('FeatureCollection');
+    expect(json.features.length).toBe(1);
+    expect(json.features[0].id).toBe('country/DEU');
+
+    // Verify fetch calls
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      ['europe'],
+      '->geoJsonCoordinates',
+      expect.anything(),
+    );
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      2,
+      ['europe'],
+      '<-containedInPlace+',
+      expect.anything(),
+    );
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      3,
+      ['country/DEU'],
+      '->geoJsonCoordinates',
+      expect.anything(),
+    );
   });
 });

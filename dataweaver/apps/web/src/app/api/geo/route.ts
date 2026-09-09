@@ -1,6 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { fetchNodes } from '~/server/clients/dc_api';
 
+// TODO(nick-nlb): The functionality in this route should be moved either down to the client SDK (when ready),
+//                 or up to the API, as appropriate.
+
 export interface GeoJsonGeometry {
   type: string;
   coordinates: unknown;
@@ -22,6 +25,15 @@ export interface GeoJsonFeatureCollection {
   parentFeature?: GeoJsonFeature;
   parentDcid?: string;
 }
+
+export const PLACE_TYPES_CONTAINED: ReadonlySet<string> = new Set([
+  'Country',
+  'State',
+  'County',
+  'Place',
+  'AdministrativeArea1',
+  'AdministrativeArea2',
+]);
 
 function ringArea(coords: number[][]): number {
   let area = 0;
@@ -164,12 +176,7 @@ export async function GET(request: NextRequest) {
             if (
               n.dcid &&
               !featureMap.has(n.dcid) &&
-              (n.types?.includes('Country') ||
-                n.types?.includes('State') ||
-                n.types?.includes('County') ||
-                n.types?.includes('Place') ||
-                n.types?.includes('AdministrativeArea1') ||
-                n.types?.includes('AdministrativeArea2'))
+              n.types?.some((type) => PLACE_TYPES_CONTAINED.has(type))
             ) {
               childDcids.push(n.dcid);
             }
