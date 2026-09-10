@@ -29,6 +29,7 @@ import {
 import { getMapProjection } from './map_projection';
 import { SCALE_MONOTONIC } from './palette';
 import { SliderTime } from './slider_time';
+import { Tooltip, TooltipContent } from './tooltip';
 
 export interface DataChartChoroplethProps {
   series: ChartSeries[];
@@ -551,76 +552,62 @@ export const DataChartChoropleth = ({
               )}
             </div>
 
-            <ChartContainer aspect={1.22}>
-              {(width, height) => (
-                <ChoroplethMapCanvas
-                  width={width}
-                  height={height}
-                  uniqueFeatures={uniqueFeatures}
-                  parentFeature={geoJson.parentFeature}
-                  enclosingDcid={geoJson.parentDcid || parentPlaceDcid}
-                  entityKeys={validEntityKeys}
-                  transform={transform}
-                  valueMap={valueMap}
-                  metaMap={metaMap}
-                  colorScale={colorScale}
-                  unit={unit}
-                  isDragging={isDragging}
-                  series={series}
-                  svgRef={svgRef}
-                  dragMovedRef={dragMovedRef}
-                  onWheel={handleWheel}
-                  onPointerDown={handlePointerDown}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onPointerLeave={() => {
-                    setHovered(null);
-                    if (isDragging) {
-                      setIsDragging(false);
-                    }
-                    dragStartRef.current = null;
-                  }}
-                  onHover={setHovered}
-                  onEntityClick={onEntityClick}
-                />
-              )}
-            </ChartContainer>
+            <div className={s['map-viewport']}>
+              <ChartContainer aspect={1.22}>
+                {(width, height) => (
+                  <ChoroplethMapCanvas
+                    width={width}
+                    height={height}
+                    uniqueFeatures={uniqueFeatures}
+                    parentFeature={geoJson.parentFeature}
+                    enclosingDcid={geoJson.parentDcid || parentPlaceDcid}
+                    entityKeys={validEntityKeys}
+                    transform={transform}
+                    valueMap={valueMap}
+                    metaMap={metaMap}
+                    colorScale={colorScale}
+                    unit={unit}
+                    isDragging={isDragging}
+                    series={series}
+                    svgRef={svgRef}
+                    dragMovedRef={dragMovedRef}
+                    onWheel={handleWheel}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={() => {
+                      setHovered(null);
+                      if (isDragging) {
+                        setIsDragging(false);
+                      }
+                      dragStartRef.current = null;
+                    }}
+                    onHover={setHovered}
+                    onEntityClick={onEntityClick}
+                  />
+                )}
+              </ChartContainer>
+            </div>
           </>
         )}
 
         {hovered && !isDragging && (
-          <div
-            className={[
-              s.tooltip,
-              hovered.y < 60 ? s['tooltip-align-bottom'] : '',
-              hovered.x < 80 ? s['tooltip-align-left'] : '',
-              hovered.containerWidth !== undefined &&
-              hovered.x > hovered.containerWidth - 80
-                ? s['tooltip-align-right']
-                : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            style={{ left: hovered.x, top: hovered.y }}
-          >
-            <div className={s['tooltip-title']}>{hovered.name}</div>
-            {hovered.value !== null ? (
-              <>
-                <div className={s['tooltip-value']}>
-                  {`${hovered.value.toLocaleString()}${hovered.unit ? ` ${hovered.unit}` : ''}`}
-                </div>
-                {onEntityClick && (
-                  <div className={s['tooltip-hint']}>
-                    Click to view time series
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className={s['tooltip-no-data']}>
-                {`No data for ${selectedDate}`}
-              </div>
-            )}
-          </div>
+          <Tooltip coords={hovered}>
+            <TooltipContent
+              title={hovered.name}
+              items={
+                hovered.value !== null
+                  ? [{ value: hovered.value, unit: hovered.unit }]
+                  : undefined
+              }
+              hint={onEntityClick ? 'Click to view time series' : undefined}
+              emptyMessage={
+                hovered.value === null
+                  ? `No data for ${selectedDate}`
+                  : undefined
+              }
+            />
+          </Tooltip>
         )}
       </div>
 

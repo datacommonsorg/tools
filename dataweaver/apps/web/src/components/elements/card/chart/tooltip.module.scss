@@ -1,0 +1,110 @@
+.tooltip {
+  @include type-label-small(false);
+
+  padding: 10px 12px;
+  color: rgb(var(--color-card-content));
+  background-color: rgb(var(--color-card-surface));
+  border-radius: 8px;
+  box-shadow: var(--shadow-elevated);
+
+  p {
+    margin: 0;
+  }
+
+  &.floating {
+    position: absolute;
+    z-index: $z-index-above-content;
+    margin-top: -8px;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+
+    &.align-left {
+      transform: translate(0, -100%);
+    }
+
+    &.align-right {
+      transform: translate(-100%, -100%);
+    }
+
+    &.align-bottom {
+      margin-top: 8px;
+      transform: translate(-50%, 0);
+
+      &.align-left {
+        transform: translate(0, 0);
+      }
+
+      &.align-right {
+        transform: translate(-100%, 0);
+      }
+    }
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  @include type-label-small(false);
+
+  font-weight: 600;
+  color: rgb(var(--color-card-content));
+}
+
+.subtitle {
+  @include type-label-small(false);
+
+  margin-top: 6px;
+  margin-bottom: 0;
+  color: rgb(var(--color-card-chart-tooltip-date));
+}
+
+.entry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  & + & {
+    margin-top: 4px;
+  }
+}
+
+.swatch {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.name {
+  @include type-label-small(false);
+
+  color: rgb(var(--color-card-content-muted));
+  white-space: nowrap;
+}
+
+.value {
+  @include type-label-small(false);
+
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.name ~ .value {
+  margin-left: auto;
+}
+
+.hint {
+  margin-top: 4px;
+  font-size: 10px;
+  font-style: italic;
+  color: rgb(var(--color-card-content-muted));
+}
+
+.empty {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgb(var(--color-card-content-muted));
+}

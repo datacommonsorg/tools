@@ -21,7 +21,7 @@ import { ChartLegend } from './legend';
 import { measureAxisWidth, numericAxisLabels } from './measure_axis_width';
 import { mergeSeriesData } from './merge_series_data';
 import { getSeriesColor } from './palette';
-import { TooltipCustom } from './tooltip_custom';
+import { TooltipRecharts } from './tooltip_recharts';
 
 const GRID_COLOR = `rgb(${COLORS['card-chart-grid']})`;
 const AXIS_COLOR = `rgb(${COLORS['card-chart-axis']})`;
@@ -110,7 +110,7 @@ export const DataChartBarVertical = ({ series }: ChartProps) => {
               <FullWidthAxisLine />
               <Tooltip
                 cursor={<CustomCursor />}
-                content={<TooltipCustom series={series} unit={unit} />}
+                content={<TooltipRecharts series={series} unit={unit} />}
               />
               {series.map((entry, i) => (
                 <Bar
