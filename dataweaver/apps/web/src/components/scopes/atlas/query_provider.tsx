@@ -129,6 +129,7 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         // Register a per-place chart card only for single-place queries.
         // Multi-place queries get a combined comparison chart instead.
+
         const node = store.getState().nodes[active.nodeId];
         const isMultiPlace = (node?.parsedQuery?.places.length ?? 0) > 1;
 
@@ -136,11 +137,14 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           const firstTimeSeries = result.timeSeries[0];
           const firstFacet = firstTimeSeries?.facets[0];
           if (firstFacet && firstFacet.observations.length > 0) {
+            const highestRankedVariable =
+              result.variables[0]?.dcid || firstTimeSeries.variableDcid;
             resultEntries.push({
-              shapeId: `shape:${active.nodeId}__${scopeKey}__chart`,
+              shapeId: `shape:${active.nodeId}__${scopeKey}__chart__${highestRankedVariable}`,
               historyNodeId: active.nodeId,
               type: 'chart',
               placeDcid: scopeKey,
+              variableDcid: highestRankedVariable,
             });
           }
         }

@@ -38,6 +38,7 @@ export interface ChartSeries {
   key: string;
   label: string;
   data: ChartDatum[];
+  facets?: FacetInfo[];
   connectNulls?: boolean;
   unit?: string;
 }
@@ -47,13 +48,7 @@ export interface CardChartProps extends CardState {
   title?: string;
   description?: string;
 
-  // Legacy single-series prop (backwards-compatible shorthand).
-  data?: ChartDatum[];
-  // Multi-series prop — takes priority over `data` when provided.
   series?: ChartSeries[];
-  facets?: FacetInfo[];
-  /** Per-series facets, keyed by series `key` (e.g. placeDcid). */
-  seriesFacets?: Record<string, FacetInfo[]>;
   parentPlaceDcid?: string;
   relatedQueries?: string[];
   /** Persisted chart style from the store (survives export/import). */
@@ -66,10 +61,7 @@ export const CardChart = ({
   selection,
   title,
   description,
-  data,
   series: seriesProp,
-  facets,
-  seriesFacets,
   parentPlaceDcid,
   relatedQueries,
   chartStyle,
@@ -79,6 +71,7 @@ export const CardChart = ({
   const { open: openExport } = useExportActions();
   const { runPrompt } = useQueryActions();
   const cardSetChartStyle = useAtlasStore((s) => s.cardSetChartStyle);
+  const cardRegisterChart = useAtlasStore((s) => s.cardRegisterChart);
 
   const baseChildrenContainerRef = useRef<HTMLDivElement>(null);
   const contentInnerRef = useRef<HTMLDivElement>(null);
@@ -88,20 +81,14 @@ export const CardChart = ({
   >(undefined);
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
-  const [selectedFacetId, setSelectedFacetId] = useState<string>(
-    facets?.[0]?.facetId ?? '',
-  );
-
-  // Per-series facet selections for multi-dataset charts.
-  const [selectedSeriesFacetIds, setSelectedSeriesFacetIds] = useState<
+  const [selectedFacetIds, setSelectedFacetIds] = useState<
     Record<string, string>
   >(() => {
-    if (!seriesFacets) return {};
+    if (!seriesProp) return {};
     const initial: Record<string, string> = {};
-    for (const [key, facetList] of Object.entries(seriesFacets)) {
-      const firstFacet = facetList[0];
-      if (firstFacet) {
-        initial[key] = firstFacet.facetId;
+    for (const s of seriesProp) {
+      if (s.facets?.[0]) {
+        initial[s.key] = s.facets[0].facetId;
       }
     }
     return initial;
@@ -117,48 +104,21 @@ export const CardChart = ({
     activeTabIndex === 0,
   );
 
-  // Derive chart data from selected facet if facets are available
-  const currentFacet = facets?.find((f) => f.facetId === selectedFacetId);
-  const chartData = currentFacet?.observations ?? data;
+  const chartSeries: ChartSeries[] | undefined = useMemo(() => {
+    if (!seriesProp) return undefined;
 
-  // Normalize to multi-series: explicit `series` prop takes priority,
-  // otherwise wrap legacy single-series `chartData` into a one-element
-  // array.
-  const baseSeries: ChartSeries[] | undefined = useMemo(() => {
-    if (seriesProp && seriesFacets) {
-      // Apply per-series facet selections to override series data.
-      return seriesProp.map((entry) => {
-        const facetList = seriesFacets[entry.key];
-        const selectedId = selectedSeriesFacetIds[entry.key];
-        if (!facetList || !selectedId) return entry;
-        const facet = facetList.find((f) => f.facetId === selectedId);
-        if (!facet) return entry;
-        return { ...entry, data: facet.observations, unit: facet.unit };
-      });
-    }
-    return (
-      seriesProp ??
-      (chartData
-        ? [
-            {
-              key: 'default',
-              label: title ?? 'Value',
-              data: chartData,
-              unit: currentFacet?.unit,
-            },
-          ]
-        : undefined)
-    );
-  }, [
-    seriesProp,
-    seriesFacets,
-    selectedSeriesFacetIds,
-    chartData,
-    title,
-    currentFacet?.unit,
-  ]);
-
-  const chartSeries = baseSeries;
+    return seriesProp.map((entry) => {
+      const selectedId = selectedFacetIds[entry.key];
+      if (!selectedId || !entry.facets) return entry;
+      const facet = entry.facets.find((f) => f.facetId === selectedId);
+      if (!facet) return entry;
+      return {
+        ...entry,
+        data: facet.observations,
+        unit: facet.unit ?? entry.unit,
+      };
+    });
+  }, [seriesProp, selectedFacetIds]);
 
   const validEntityKeys = useMemo(
     () => extractValidEntityKeys(chartSeries),
@@ -229,44 +189,36 @@ export const CardChart = ({
             <Skeleton />
           ) : (
             <>
-              {facets && facets.length > 0 && (
-                <div className={s['facet-selectors-container']}>
-                  <FacetSelector
-                    facets={facets}
-                    selectedFacetId={selectedFacetId}
-                    onSelect={setSelectedFacetId}
-                  />
-                </div>
-              )}
-
-              {seriesFacets && seriesProp && (
-                <div className={s['facet-selectors-container']}>
-                  {seriesProp.map((entry) => {
-                    const facetList = seriesFacets[entry.key];
-                    if (!facetList || facetList.length === 0) {
-                      return null;
-                    }
-                    return (
-                      <FacetSelector
-                        key={entry.key}
-                        facets={facetList}
-                        selectedFacetId={
-                          selectedSeriesFacetIds[entry.key] ??
-                          facetList[0]?.facetId ??
-                          ''
-                        }
-                        onSelect={(facetId) =>
-                          setSelectedSeriesFacetIds((prev) => ({
-                            ...prev,
-                            [entry.key]: facetId,
-                          }))
-                        }
-                        label={entry.label}
-                      />
-                    );
-                  })}
-                </div>
-              )}
+              {seriesProp &&
+                seriesProp.some((s) => s.facets && s.facets.length > 0) && (
+                  <div className={s['facet-selectors-container']}>
+                    {seriesProp.map((entry) => {
+                      if (!entry.facets || entry.facets.length === 0) {
+                        return null;
+                      }
+                      return (
+                        <FacetSelector
+                          key={entry.key}
+                          facets={entry.facets}
+                          selectedFacetId={
+                            selectedFacetIds[entry.key] ??
+                            entry.facets[0]?.facetId ??
+                            ''
+                          }
+                          onSelect={(facetId) =>
+                            setSelectedFacetIds((prev) => ({
+                              ...prev,
+                              [entry.key]: facetId,
+                            }))
+                          }
+                          label={
+                            seriesProp.length > 1 ? entry.label : undefined
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
 
               <ConditionalTabs
                 activeIndex={activeTabIndex}
@@ -285,6 +237,9 @@ export const CardChart = ({
                           series={chartSeries}
                           parentPlaceDcid={parentPlaceDcid}
                           onUnavailable={() => setIsGeoAvailable(false)}
+                          onEntityClick={(placeDcid) =>
+                            cardRegisterChart(id, placeDcid)
+                          }
                         />
                       ) : (
                         <DataChartLine series={chartSeries} />

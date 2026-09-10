@@ -54,46 +54,29 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
     title: T.string.optional(),
     description: T.string.optional(),
     body: T.string.optional(),
-    data: T.arrayOf(T.object({ date: T.string, value: T.number })).optional(),
     series: T.arrayOf(
       T.object({
         key: T.string,
         label: T.string,
         data: T.arrayOf(T.object({ date: T.string, value: T.number })),
+        facets: T.arrayOf(
+          T.object({
+            facetId: T.string,
+            source: T.string,
+            sourceUrl: T.string,
+            unit: T.string,
+            earliestDate: T.string,
+            latestDate: T.string,
+            observationCount: T.number,
+            measurementMethod: T.string.optional(),
+            observations: T.arrayOf(
+              T.object({ date: T.string, value: T.number }),
+            ),
+          }),
+        ).optional(),
         connectNulls: T.boolean.optional(),
         unit: T.string.optional(),
       }),
-    ).optional(),
-    facets: T.arrayOf(
-      T.object({
-        facetId: T.string,
-        source: T.string,
-        sourceUrl: T.string,
-        unit: T.string,
-        earliestDate: T.string,
-        latestDate: T.string,
-        observationCount: T.number,
-        measurementMethod: T.string.optional(),
-        observations: T.arrayOf(T.object({ date: T.string, value: T.number })),
-      }),
-    ).optional(),
-    seriesFacets: T.dict(
-      T.string,
-      T.arrayOf(
-        T.object({
-          facetId: T.string,
-          source: T.string,
-          sourceUrl: T.string,
-          unit: T.string,
-          earliestDate: T.string,
-          latestDate: T.string,
-          observationCount: T.number,
-          measurementMethod: T.string.optional(),
-          observations: T.arrayOf(
-            T.object({ date: T.string, value: T.number }),
-          ),
-        }),
-      ),
     ).optional(),
     isLoading: T.boolean.optional(),
     isManuallyResized: T.boolean.optional(),
@@ -134,10 +117,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
       title,
       description,
       body,
-      data,
       series,
-      facets,
-      seriesFacets,
       relatedQueries,
       chartStyle,
       parentPlaceDcid,
@@ -167,10 +147,7 @@ export class ShapeCardUtil extends ShapeUtil<ShapeCard> {
           selection={selection}
           title={title}
           description={description}
-          data={data}
           series={series}
-          facets={facets}
-          seriesFacets={seriesFacets}
           relatedQueries={relatedQueries}
           chartStyle={chartStyle}
           parentPlaceDcid={parentPlaceDcid}
