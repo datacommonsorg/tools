@@ -1,5 +1,29 @@
 'use client';
 
+/**
+ * Choropleth map chart module for geographic statistical visualization.
+ *
+ * Renders statistical time-series observations across geographic entity polygons
+ * (e.g., countries, states, counties) using D3 geographic projections and continuous
+ * monotonic color interpolation.
+ *
+ * Architecture & Data Flow:
+ * - Geometry & Boundary Resolution: Asynchronously fetches GeoJSON boundaries for place
+ *   entities via `geo_service` with LRU caching.
+ * - Geographic Projection: Selects and fits optimal D3 projections (e.g. Albers USA,
+ *   regional Europe/Asia, global) via `getMapProjection`.
+ * - Color Scaling: Maps numerical observations to color stops monotonically using
+ *   `scaleLinear` and `SCALE_MONOTONIC`.
+ * - Interactive Viewport: Direct SVG path canvas supporting drag-panning, pointer zoom,
+ *   and zoom-in / zoom-out controls inside an isolated `.map-viewport`.
+ * - Inspection & Navigation: Dynamic hover card inspection via universal `<Tooltip>` and
+ *   `<TooltipContent>`, with entity click support (`onEntityClick`) for deep-dive exploration.
+ * - Temporal Scrubbing: Interactive date selector (`SliderTime`) to explore observations
+ *   across available timeline dates.
+ * - Availability Guard: Triggers `onUnavailable` when geographic boundaries cannot be
+ *   resolved, allowing upstream containers to fall back to alternative chart presentations.
+ */
+
 import { type GeoGeometryObjects, geoPath } from 'd3-geo';
 import { scaleLinear } from 'd3-scale';
 import {
@@ -32,9 +56,13 @@ import { SliderTime } from './slider_time';
 import { Tooltip, TooltipContent } from './tooltip';
 
 export interface DataChartChoroplethProps {
+  /** Time-series dataset containing observation dates, values, and geographic entity keys. */
   series: ChartSeries[];
+  /** Optional enclosing parent place DCID (e.g. "country/USA") used to fit the projection. */
   parentPlaceDcid?: string;
+  /** Callback fired when GeoJSON boundary data is unavailable or incomplete for the given entities. */
   onUnavailable?: () => void;
+  /** Optional click handler for drilling into a specific geographic entity's time series. */
   onEntityClick?: (entityDcid: string, label: string) => void;
 }
 
@@ -80,6 +108,11 @@ interface ChoroplethMapCanvasProps {
   onEntityClick?: (entityDcid: string, label: string) => void;
 }
 
+/**
+ * Canvas layer rendering projected geographic SVG paths.
+ * Handles viewport transformations (pan and zoom), path calculation memoization,
+ * and pointer event forwarding for hover inspection and entity clicks.
+ */
 const ChoroplethMapCanvas = ({
   width,
   height,
@@ -243,6 +276,11 @@ const ChoroplethMapCanvas = ({
   );
 };
 
+/**
+ * Primary choropleth chart component.
+ * Coordinates asynchronous GeoJSON loading, observation date selection,
+ * monotonic color interpolation, pan/zoom interaction state, and hover tooltip inspection.
+ */
 export const DataChartChoropleth = ({
   series,
   parentPlaceDcid,
