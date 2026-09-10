@@ -17,6 +17,12 @@ import { Status } from './status';
 /** Show a tag per card up to this many; beyond it, collapse to a count tag. */
 const MAX_VISIBLE_TAGS = 2;
 
+/** Legal disclaimer shown below the prompt box. */
+const DISCLAIMER =
+  'Data Commons by Google. Data overviews are synthesized by Gemini. ' +
+  'Gemini is AI and can make mistakes; please verify content against ' +
+  'primary source data.';
+
 interface PageHomeProps {
   examplePrompts: string[];
 }
@@ -114,6 +120,8 @@ export const PageHome = ({ examplePrompts }: PageHomeProps) => {
         inputRef={promptInputRef}
         isStatusVisible={isStatusVisible}
       />
+
+      <p className={s.disclaimer}>{DISCLAIMER}</p>
     </div>
   );
 };

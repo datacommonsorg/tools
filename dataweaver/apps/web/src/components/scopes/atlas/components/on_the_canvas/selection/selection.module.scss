@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: center;
   height: var(--actions-height);
-  padding: 0 40px;
+  padding: 0 80px;
   pointer-events: auto;
   background: rgb(var(--color-control-accent));
   border-radius: var(--border-radius-medium);
@@ -25,4 +25,26 @@
 
   // Center horizontally and straddle the selection's top edge
   transform: translate(-50%, -50%);
+
+  .icon-drag-indicator {
+    position: absolute;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    color: rgb(var(--color-card-action-content-muted));
+    transform: translateY(-50%);
+
+    @include breakpoint(tablet) {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  .icon-drag-indicator-left {
+    left: 12px;
+  }
+
+  .icon-drag-indicator-right {
+    right: 12px;
+  }
 }

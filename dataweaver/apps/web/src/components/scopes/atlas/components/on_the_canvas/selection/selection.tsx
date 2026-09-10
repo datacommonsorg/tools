@@ -1,6 +1,7 @@
 import { useEditor } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { IconDelete } from '~/components/primitives/icons/delete';
+import { IconDragIndicator } from '~/components/primitives/icons/drag_indicator';
 import { IconExport } from '~/components/primitives/icons/export';
 import { useExportActions } from '~/components/scopes/atlas/export_provider';
 import s from './selection.module.scss';
@@ -24,6 +25,9 @@ export const Selection = () => {
           aria-label="Selection actions"
           onPointerDown={startDragging}
         >
+          <IconDragIndicator
+            className={`${s['icon-drag-indicator']} ${s['icon-drag-indicator-left']}`}
+          />
           <Button
             icon={IconExport}
             size="large"
@@ -41,6 +45,9 @@ export const Selection = () => {
             aria-label="Delete"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => editor.deleteShapes(editor.getSelectedShapeIds())}
+          />
+          <IconDragIndicator
+            className={`${s['icon-drag-indicator']} ${s['icon-drag-indicator-right']}`}
           />
         </div>
       </div>

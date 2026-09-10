@@ -1,5 +1,5 @@
 .container {
-  --gutter: 32px;
+  --gutter: 18px;
   --buffer: 12px;
   --controls-height-with-gutters: calc(
     var(--controls-height) + var(--controls-gutter-outer) * 2
@@ -33,4 +33,14 @@
     );
     --distance-from-left: var(--gutter);
   }
+}
+
+.disclaimer {
+  @include type-body-small;
+
+  max-width: 490px;
+  margin: 0 auto;
+  color: rgb(var(--color-control-content-muted));
+  text-align: center;
+  pointer-events: auto;
 }
