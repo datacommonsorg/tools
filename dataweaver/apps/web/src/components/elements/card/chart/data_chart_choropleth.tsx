@@ -227,6 +227,10 @@ const ChoroplethMapCanvas = ({
           const name = meta?.label || dcid;
           const fillColor = hasVal ? colorScale(val) : undefined;
 
+          // TODO(nick-nlb): `onEntityClick` makes each feature a navigation
+          // affordance, but a bare <path> is not focusable and has no
+          // accessible name, so drilling into a place is mouse-only. Once the 
+          // UI is finalized for this feature, implement accessible version.
           return (
             <path
               key={dcid}
