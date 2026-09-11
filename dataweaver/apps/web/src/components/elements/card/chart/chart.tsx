@@ -83,16 +83,7 @@ export const CardChart = ({
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedFacetIds, setSelectedFacetIds] = useState<
     Record<string, string>
-  >(() => {
-    if (!seriesProp) return {};
-    const initial: Record<string, string> = {};
-    for (const s of seriesProp) {
-      if (s.facets?.[0]) {
-        initial[s.key] = s.facets[0].facetId;
-      }
-    }
-    return initial;
-  });
+  >({});
 
   // Only auto-height when the chart tab is active — table tab should scroll
   // within the card at its current (chart-determined) height.
@@ -108,14 +99,14 @@ export const CardChart = ({
     if (!seriesProp) return undefined;
 
     return seriesProp.map((entry) => {
-      const selectedId = selectedFacetIds[entry.key];
-      if (!selectedId || !entry.facets) return entry;
-      const facet = entry.facets.find((f) => f.facetId === selectedId);
-      if (!facet) return entry;
+      const activeFacet =
+        entry.facets?.find((f) => f.facetId === selectedFacetIds[entry.key]) ??
+        entry.facets?.[0];
+      if (!activeFacet || !entry.facets) return entry;
       return {
         ...entry,
-        data: facet.observations,
-        unit: facet.unit ?? entry.unit,
+        data: activeFacet.observations,
+        unit: activeFacet.unit ?? entry.unit,
       };
     });
   }, [seriesProp, selectedFacetIds]);
@@ -196,15 +187,15 @@ export const CardChart = ({
                       if (!entry.facets || entry.facets.length === 0) {
                         return null;
                       }
+                      const activeFacet =
+                        entry.facets.find(
+                          (f) => f.facetId === selectedFacetIds[entry.key],
+                        ) ?? entry.facets[0];
                       return (
                         <FacetSelector
                           key={entry.key}
                           facets={entry.facets}
-                          selectedFacetId={
-                            selectedFacetIds[entry.key] ??
-                            entry.facets[0]?.facetId ??
-                            ''
-                          }
+                          selectedFacetId={activeFacet?.facetId ?? ''}
                           onSelect={(facetId) =>
                             setSelectedFacetIds((prev) => ({
                               ...prev,

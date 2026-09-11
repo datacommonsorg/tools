@@ -815,6 +815,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     const resFra = selectedResults[0];
     const resDeu = selectedResults[1];
 
+    expect(resFra?.title).toBe('Unemployment Rate in France');
     expect(resFra?.placeDcid).toBe('country/FRA');
     expect(resFra?.placeName).toBe('France');
     expect(resFra?.isChildQuery).toBe(false);
@@ -823,6 +824,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(resFra?.timeSeries).toHaveLength(1);
     expect(resFra?.timeSeries[0]?.entityDcid).toBe('country/FRA');
 
+    expect(resDeu?.title).toBe('Unemployment Rate in Germany');
     expect(resDeu?.placeDcid).toBe('country/DEU');
     expect(resDeu?.placeName).toBe('Germany');
     expect(resDeu?.isChildQuery).toBe(false);
@@ -832,5 +834,92 @@ describe('useAtlasStore child place card selection & combining', () => {
     ]);
     expect(resDeu?.timeSeries).toHaveLength(1);
     expect(resDeu?.timeSeries[0]?.entityDcid).toBe('country/DEU');
+  });
+
+  // Test: Plottable series fallback when variables[0] lacks observations.
+  // Situation: QueryResult has variables[0] with empty observations, and variables[1] with valid observations.
+  // Expectation: deriveChartContent and cardRegisterChart resolve to variables[1] when no variableDcid is specified.
+  it('falls back to the first plottable time series when variables[0] lacks observations', () => {
+    const store = useAtlasStore.getState();
+
+    const mockResultWithEmptyFirstVar: QueryResult = {
+      id: 'res_empty_first',
+      title: 'Economy of France',
+      placeDcid: 'country/FRA',
+      placeName: 'France',
+      variables: [
+        { dcid: 'UnplottableVar', name: 'Unplottable Variable' },
+        { dcid: 'PlottableVar', name: 'Plottable Variable' },
+      ],
+      entities: [{ dcid: 'country/FRA', name: 'France' }],
+      timeSeries: [
+        {
+          variableDcid: 'UnplottableVar',
+          entityDcid: 'country/FRA',
+          facets: [],
+        },
+        {
+          variableDcid: 'PlottableVar',
+          entityDcid: 'country/FRA',
+          facets: [
+            {
+              facetId: 'f_plot',
+              source: 'INSEE',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2021',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 3.2 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    // 1. Verify deriveChartContent falls back to PlottableVar
+    const content = deriveChartContent(mockResultWithEmptyFirstVar);
+    expect(content?.variant).toBe('chart');
+    if (content?.variant === 'chart') {
+      expect(content.series).toHaveLength(1);
+      expect(content.series?.[0]?.data).toEqual([{ date: '2020', value: 3.2 }]);
+      expect(content.series?.[0]?.unit).toBe('%');
+    }
+
+    // 2. Verify cardRegisterChart falls back to PlottableVar when variableDcid is omitted
+    useAtlasStore.setState({
+      nodes: {
+        node_empty_first: {
+          id: 'node_empty_first',
+          parentId: null,
+          query: 'Economy of France',
+          parsedQuery: null,
+          results: { 'country/FRA': mockResultWithEmptyFirstVar },
+          cardIds: ['shape:node_empty_first__country/FRA__notes'],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        'shape:node_empty_first__country/FRA__notes': {
+          shapeId: 'shape:node_empty_first__country/FRA__notes',
+          historyNodeId: 'node_empty_first',
+          type: 'notes',
+          placeDcid: 'country/FRA',
+        },
+      },
+      focusTarget: null,
+    });
+
+    store.cardRegisterChart(
+      'shape:node_empty_first__country/FRA__notes',
+      'country/FRA',
+    );
+
+    const updatedCards = useAtlasStore.getState().cards;
+    const expectedShapeId =
+      'shape:node_empty_first__country/FRA__chart__PlottableVar';
+    expect(updatedCards[expectedShapeId]).toBeDefined();
+    expect(updatedCards[expectedShapeId]?.variableDcid).toBe('PlottableVar');
   });
 });

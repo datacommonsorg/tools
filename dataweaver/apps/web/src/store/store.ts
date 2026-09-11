@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
+import { formatChartCardTitle } from '~/functions/format_card_title';
 import { resolveResultForPlace } from '~/functions/scope_key';
 import type {
   CardEntry,
@@ -328,11 +329,14 @@ export const useAtlasStore = create<AtlasStore>()(
             node?.results,
             effectiveParentPlaceDcid || placeDcid,
           );
+          const plottableVar = result?.timeSeries.find(
+            (ts) => (ts.facets[0]?.observations.length ?? 0) > 0,
+          )?.variableDcid;
           const effectiveVar =
             variableDcid ||
             parent.variableDcid ||
-            result?.variables[0]?.dcid ||
-            result?.timeSeries[0]?.variableDcid;
+            plottableVar ||
+            result?.variables[0]?.dcid;
 
           const shapeId = `shape:${parent.historyNodeId}__${placeDcid}__chart${effectiveVar ? `__${effectiveVar}` : ''}`;
           if (cards[shapeId]) {
@@ -549,6 +553,11 @@ export const useAtlasStore = create<AtlasStore>()(
                 results.push({
                   ...result,
                   id: `${result.id}__${card.placeDcid}`,
+                  title: formatChartCardTitle(
+                    cleanedVariables[0]?.name,
+                    placeName,
+                    false,
+                  ),
                   placeDcid: card.placeDcid,
                   placeName,
                   isChildQuery: false,

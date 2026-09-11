@@ -164,10 +164,11 @@ export const deriveChartContent = (
   variableDcid?: string,
   childPlaceDcid?: string,
 ): AtlasContent | null => {
+  const plottableVar = result.timeSeries.find(
+    (ts) => (ts.facets[0]?.observations.length ?? 0) > 0,
+  )?.variableDcid;
   const effectiveVar =
-    variableDcid ||
-    result.variables[0]?.dcid ||
-    result.timeSeries[0]?.variableDcid;
+    variableDcid || plottableVar || result.variables[0]?.dcid;
   if (!effectiveVar) return null;
 
   const isSpecificChildPlace =
