@@ -134,17 +134,17 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const isMultiPlace = (node?.parsedQuery?.places.length ?? 0) > 1;
 
         if (!isMultiPlace) {
-          const firstTimeSeries = result.timeSeries[0];
-          const firstFacet = firstTimeSeries?.facets[0];
-          if (firstFacet && firstFacet.observations.length > 0) {
-            const highestRankedVariable =
-              result.variables[0]?.dcid || firstTimeSeries.variableDcid;
+          const plottableTimeSeries = result.timeSeries.find(
+            (ts) => (ts.facets[0]?.observations.length ?? 0) > 0,
+          );
+          if (plottableTimeSeries) {
+            const variableDcid = plottableTimeSeries.variableDcid;
             resultEntries.push({
-              shapeId: `shape:${active.nodeId}__${scopeKey}__chart__${highestRankedVariable}`,
+              shapeId: `shape:${active.nodeId}__${scopeKey}__chart__${variableDcid}`,
               historyNodeId: active.nodeId,
               type: 'chart',
               placeDcid: scopeKey,
-              variableDcid: highestRankedVariable,
+              variableDcid,
             });
           }
         }
