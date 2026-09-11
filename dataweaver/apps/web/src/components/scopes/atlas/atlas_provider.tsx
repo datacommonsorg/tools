@@ -155,7 +155,11 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
     () => ({
       editor,
       add: (content, customId) => {
-        const shapeId = customId ? createShapeId(customId) : createShapeId();
+        const shapeId = customId
+          ? customId.startsWith('shape:')
+            ? (customId as TLShapeId)
+            : createShapeId(customId)
+          : createShapeId();
 
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)

@@ -296,16 +296,7 @@ export const useAtlasStore = create<AtlasStore>()(
 
         cardRegisterChart: (parentShapeId, placeDcid, variableDcid?) => {
           const { cards, nodes, cardRegister } = get();
-          const parent =
-            cards[parentShapeId] ||
-            cards[`shape:${parentShapeId}`] ||
-            Object.values(cards).find(
-              (c) =>
-                c.shapeId === parentShapeId ||
-                `shape:${c.shapeId}` === parentShapeId ||
-                c.shapeId.replace(/^shape:/, '') ===
-                  parentShapeId.replace(/^shape:/, ''),
-            );
+          const parent = cards[parentShapeId];
           if (!parent) return;
 
           const node = nodes[parent.historyNodeId];
@@ -346,7 +337,7 @@ export const useAtlasStore = create<AtlasStore>()(
           const shapeId = `shape:${parent.historyNodeId}__${placeDcid}__chart${effectiveVar ? `__${effectiveVar}` : ''}`;
           if (cards[shapeId]) {
             set(
-              { focusTarget: { shapeId, sourceShapeId: parentShapeId } },
+              { focusTarget: { shapeId, sourceShapeId: parent.shapeId } },
               undefined,
               'cardFocusTarget',
             );
@@ -362,7 +353,7 @@ export const useAtlasStore = create<AtlasStore>()(
             effectiveParentPlaceDcid,
           );
           set(
-            { focusTarget: { shapeId, sourceShapeId: parentShapeId } },
+            { focusTarget: { shapeId, sourceShapeId: parent.shapeId } },
             undefined,
             'cardFocusTarget',
           );

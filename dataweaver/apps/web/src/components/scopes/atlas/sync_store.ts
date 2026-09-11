@@ -368,9 +368,7 @@ export const useStoreShapeSync = () => {
           );
           if (!content) continue;
 
-          // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
-          const rawId = shapeId.replace(/^shape:/, '');
-          const handle = add(content, rawId);
+          const handle = add(content, shapeId);
           handles.set(shapeId, handle);
         }
 
