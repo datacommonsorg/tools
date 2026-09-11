@@ -330,7 +330,9 @@ export const useAtlasStore = create<AtlasStore>()(
             effectiveParentPlaceDcid || placeDcid,
           );
           const plottableVar = result?.timeSeries.find(
-            (ts) => (ts.facets[0]?.observations.length ?? 0) > 0,
+            (ts) =>
+              (!effectiveParentPlaceDcid || ts.entityDcid === placeDcid) &&
+              ts.facets.some((f) => f.observations.length > 0),
           )?.variableDcid;
           const effectiveVar =
             variableDcid ||
@@ -552,7 +554,7 @@ export const useAtlasStore = create<AtlasStore>()(
 
                 results.push({
                   ...result,
-                  id: `${result.id}__${card.placeDcid}`,
+                  id: `${result.id}__${card.placeDcid}${card.variableDcid ? `__${card.variableDcid}` : ''}`,
                   title: formatChartCardTitle(
                     cleanedVariables[0]?.name,
                     placeName,
@@ -598,6 +600,7 @@ export const useAtlasStore = create<AtlasStore>()(
                 );
                 results.push({
                   ...result,
+                  id: `${result.id}${card.variableDcid ? `__${card.variableDcid}` : ''}`,
                   variables: variable ? [variable] : result.variables,
                   timeSeries,
                 });

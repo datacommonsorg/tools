@@ -103,7 +103,8 @@ export const deriveComparisonChartContent = (
     if (!result) return null;
 
     for (const ts of result.timeSeries) {
-      const observations = ts.facets[0]?.observations;
+      const plottableFacet = ts.facets.find((f) => f.observations.length > 0);
+      const observations = plottableFacet?.observations;
       if (!observations || observations.length === 0) continue;
 
       const variable = result.variables.find(
@@ -115,7 +116,7 @@ export const deriveComparisonChartContent = (
         key: ts.variableDcid,
         label,
         data: observations,
-        unit: ts.facets[0]?.unit,
+        unit: plottableFacet?.unit,
         facets: ts.facets,
       });
     }
@@ -123,7 +124,9 @@ export const deriveComparisonChartContent = (
     // Different-place: build one series per place (original behavior).
     for (const result of resultEntries) {
       const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
-      const observations = ts?.facets[0]?.observations;
+      if (!ts) continue;
+      const plottableFacet = ts.facets.find((f) => f.observations.length > 0);
+      const observations = plottableFacet?.observations;
       if (!observations || observations.length === 0) continue;
 
       const placeDcid =
@@ -137,7 +140,7 @@ export const deriveComparisonChartContent = (
         key: placeDcid,
         label: placeName,
         data: observations,
-        unit: ts?.facets[0]?.unit,
+        unit: plottableFacet?.unit,
         facets: ts.facets,
       });
     }
@@ -165,16 +168,15 @@ export const deriveChartContent = (
   childPlaceDcid?: string,
 ): AtlasContent | null => {
   const plottableVar = result.timeSeries.find(
-    (ts) => (ts.facets[0]?.observations.length ?? 0) > 0,
+    (ts) =>
+      (!childPlaceDcid || ts.entityDcid === childPlaceDcid) &&
+      ts.facets.some((f) => f.observations.length > 0),
   )?.variableDcid;
   const effectiveVar =
     variableDcid || plottableVar || result.variables[0]?.dcid;
   if (!effectiveVar) return null;
 
-  const isSpecificChildPlace =
-    childPlaceDcid &&
-    (result.entities.some((e) => e.dcid === childPlaceDcid) ||
-      result.placeDcid === childPlaceDcid);
+  const isSpecificChildPlace = Boolean(childPlaceDcid);
   const placeName = resolvePlaceName(result);
 
   if (result.entities.length > 1 && !isSpecificChildPlace) {
@@ -184,14 +186,15 @@ export const deriveChartContent = (
       const ts = result.timeSeries.find(
         (t) => t.variableDcid === effectiveVar && t.entityDcid === entity.dcid,
       );
-      const observations = ts?.facets[0]?.observations;
+      const plottableFacet = ts?.facets.find((f) => f.observations.length > 0);
+      const observations = plottableFacet?.observations;
       if (!observations || observations.length === 0) continue;
 
       series.push({
         key: entity.dcid,
         label: entity.name || entity.dcid,
         data: observations,
-        unit: ts?.facets[0]?.unit,
+        unit: plottableFacet?.unit,
         facets: ts?.facets,
       });
     }
@@ -222,16 +225,20 @@ export const deriveChartContent = (
       (!childPlaceDcid || m.entityDcid === childPlaceDcid),
   );
   const allFacets = timeSeries?.facets;
-  const firstFacet = allFacets?.[0];
+  const plottableFacet = allFacets?.find((f) => f.observations.length > 0);
 
-  if (!allFacets || !firstFacet || firstFacet.observations.length === 0) {
+  if (!allFacets || !plottableFacet) {
     return null;
   }
 
   const specificEntity = isSpecificChildPlace
     ? result.entities.find((e) => e.dcid === childPlaceDcid)
     : undefined;
-  const targetPlaceName = specificEntity?.name || placeName;
+  const targetPlaceName =
+    specificEntity?.name ||
+    timeSeries?.entityName ||
+    childPlaceDcid ||
+    placeName;
   const targetPlaceDcid =
     childPlaceDcid ||
     specificEntity?.dcid ||
@@ -248,13 +255,13 @@ export const deriveChartContent = (
   return {
     variant: 'chart',
     title,
-    description: variable?.rationale || firstFacet.source || undefined,
+    description: variable?.rationale || plottableFacet.source || undefined,
     series: [
       {
         key: targetPlaceDcid,
         label: targetPlaceName,
-        data: firstFacet.observations,
-        unit: firstFacet.unit,
+        data: plottableFacet.observations,
+        unit: plottableFacet.unit,
         facets: allFacets,
       },
     ],

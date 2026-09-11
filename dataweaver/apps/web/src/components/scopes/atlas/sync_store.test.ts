@@ -815,6 +815,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     const resFra = selectedResults[0];
     const resDeu = selectedResults[1];
 
+    expect(resFra?.id).toBe('res_europe__country/FRA__UnemploymentRate');
     expect(resFra?.title).toBe('Unemployment Rate in France');
     expect(resFra?.placeDcid).toBe('country/FRA');
     expect(resFra?.placeName).toBe('France');
@@ -824,6 +825,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(resFra?.timeSeries).toHaveLength(1);
     expect(resFra?.timeSeries[0]?.entityDcid).toBe('country/FRA');
 
+    expect(resDeu?.id).toBe('res_europe__country/DEU__UnemploymentRate');
     expect(resDeu?.title).toBe('Unemployment Rate in Germany');
     expect(resDeu?.placeDcid).toBe('country/DEU');
     expect(resDeu?.placeName).toBe('Germany');
@@ -921,5 +923,318 @@ describe('useAtlasStore child place card selection & combining', () => {
       'shape:node_empty_first__country/FRA__chart__PlottableVar';
     expect(updatedCards[expectedShapeId]).toBeDefined();
     expect(updatedCards[expectedShapeId]?.variableDcid).toBe('PlottableVar');
+  });
+
+  // Test: Scoped plottable series fallback in regional child queries.
+  // Situation: Regional query has Entity 1 with observations for Var A only, and Entity 2 with observations for Var B only.
+  // Expectation: deriveChartContent and cardRegisterChart for Entity 2 fall back to Var B, not Var A.
+  it('scopes plottable series fallback to the specific child place in regional datasets', () => {
+    const store = useAtlasStore.getState();
+
+    const mockRegionalResult: QueryResult = {
+      id: 'res_regional',
+      title: 'Metrics across Europe',
+      placeDcid: 'europe',
+      placeName: 'Europe',
+      isChildQuery: true,
+      parentPlaceDcid: 'europe',
+      variables: [
+        { dcid: 'VarA', name: 'Variable A' },
+        { dcid: 'VarB', name: 'Variable B' },
+      ],
+      entities: [
+        { dcid: 'country/FRA', name: 'France' },
+        { dcid: 'country/DEU', name: 'Germany' },
+      ],
+      timeSeries: [
+        // France only has VarA
+        {
+          variableDcid: 'VarA',
+          entityDcid: 'country/FRA',
+          facets: [
+            {
+              facetId: 'f_fra',
+              source: 'Eurostat',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2021',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 5.0 }],
+            },
+          ],
+        },
+        // Germany only has VarB
+        {
+          variableDcid: 'VarB',
+          entityDcid: 'country/DEU',
+          facets: [
+            {
+              facetId: 'f_deu',
+              source: 'Destatis',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2021',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 3.5 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    // 1. deriveChartContent for Germany should resolve to VarB
+    const contentDeu = deriveChartContent(
+      mockRegionalResult,
+      undefined,
+      'country/DEU',
+    );
+    expect(contentDeu?.variant).toBe('chart');
+    if (contentDeu?.variant === 'chart') {
+      expect(contentDeu.series).toHaveLength(1);
+      expect(contentDeu.series?.[0]?.key).toBe('country/DEU');
+      expect(contentDeu.series?.[0]?.data).toEqual([
+        { date: '2020', value: 3.5 },
+      ]);
+    }
+
+    // 2. cardRegisterChart for Germany from Europe notes card should resolve to VarB
+    useAtlasStore.setState({
+      nodes: {
+        node_reg: {
+          id: 'node_reg',
+          parentId: null,
+          query: 'Metrics across Europe',
+          parsedQuery: null,
+          results: { europe: mockRegionalResult },
+          cardIds: ['shape:node_reg__europe__notes'],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        'shape:node_reg__europe__notes': {
+          shapeId: 'shape:node_reg__europe__notes',
+          historyNodeId: 'node_reg',
+          type: 'notes',
+          placeDcid: 'europe',
+        },
+      },
+      focusTarget: null,
+    });
+
+    store.cardRegisterChart('shape:node_reg__europe__notes', 'country/DEU');
+
+    const updatedCards = useAtlasStore.getState().cards;
+    const expectedShapeId = 'shape:node_reg__country/DEU__chart__VarB';
+    expect(updatedCards[expectedShapeId]).toBeDefined();
+    expect(updatedCards[expectedShapeId]?.variableDcid).toBe('VarB');
+  });
+
+  // Test: Fallback place name resolution for child entities absent from result.entities.
+  // Situation: Child place is in timeSeries with entityName, but absent from result.entities.
+  // Expectation: deriveChartContent titles the card using timeSeries.entityName rather than the parent region.
+  it('falls back to timeSeries.entityName when child entity is absent from result.entities', () => {
+    const mockRegionalResult: QueryResult = {
+      id: 'res_europe_partial',
+      title: 'Metrics across Europe',
+      placeDcid: 'europe',
+      placeName: 'Europe',
+      isChildQuery: true,
+      parentPlaceDcid: 'europe',
+      variables: [{ dcid: 'GDP', name: 'Gross Domestic Product' }],
+      entities: [{ dcid: 'country/FRA', name: 'France' }], // Monaco missing from entities
+      timeSeries: [
+        {
+          variableDcid: 'GDP',
+          entityDcid: 'country/MCO',
+          entityName: 'Monaco',
+          facets: [
+            {
+              facetId: 'f_mco',
+              source: 'World Bank',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2021',
+              observationCount: 1,
+              unit: '$',
+              observations: [{ date: '2020', value: 100000 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const content = deriveChartContent(
+      mockRegionalResult,
+      'GDP',
+      'country/MCO',
+    );
+    expect(content?.variant).toBe('chart');
+    if (content?.variant === 'chart') {
+      expect(content.title).toBe('Gross Domestic Product in Monaco');
+      expect(content.series?.[0]?.label).toBe('Monaco');
+      expect(content.series?.[0]?.key).toBe('country/MCO');
+    }
+  });
+
+  // Test: Non-zero facet index observation check.
+  // Situation: Primary facet facets[0] has 0 observations, but facets[1] has valid observations.
+  // Expectation: deriveChartContent resolves and plots data from the first non-empty facet (facets[1]).
+  it('resolves series data from the first non-empty facet when facets[0] has 0 observations', () => {
+    const mockResultWithEmptyFirstFacet: QueryResult = {
+      id: 'res_empty_facet_0',
+      title: 'Economy of France',
+      placeDcid: 'country/FRA',
+      placeName: 'France',
+      variables: [{ dcid: 'InflationRate', name: 'Inflation Rate' }],
+      entities: [{ dcid: 'country/FRA', name: 'France' }],
+      timeSeries: [
+        {
+          variableDcid: 'InflationRate',
+          entityDcid: 'country/FRA',
+          facets: [
+            {
+              facetId: 'f_empty',
+              source: 'Old Source',
+              sourceUrl: '',
+              earliestDate: '1990',
+              latestDate: '1990',
+              observationCount: 0,
+              unit: '%',
+              observations: [], // Empty primary facet
+            },
+            {
+              facetId: 'f_valid',
+              source: 'INSEE Active',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2022',
+              observationCount: 2,
+              unit: '%',
+              observations: [
+                { date: '2020', value: 1.2 },
+                { date: '2021', value: 2.1 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const content = deriveChartContent(mockResultWithEmptyFirstFacet);
+    expect(content?.variant).toBe('chart');
+    if (content?.variant === 'chart') {
+      expect(content.series).toHaveLength(1);
+      expect(content.series?.[0]?.data).toEqual([
+        { date: '2020', value: 1.2 },
+        { date: '2021', value: 2.1 },
+      ]);
+      expect(content.series?.[0]?.unit).toBe('%');
+    }
+  });
+
+  // Test: Unique IDs for multi-selected cards for the same place with distinct variables.
+  // Situation: Two child cards for France targeting UnemploymentRate and InflationRate are multi-selected.
+  // Expectation: getResultsForSelectedCards outputs distinct, unique IDs including variableDcid.
+  it('generates distinct synthesized IDs for same-place cards with different variables', () => {
+    const store = useAtlasStore.getState();
+
+    const shapeIdUnemployment =
+      'shape:node_test__country/FRA__chart__UnemploymentRate';
+    const shapeIdInflation =
+      'shape:node_test__country/FRA__chart__InflationRate';
+
+    useAtlasStore.setState({
+      nodes: {
+        node_test: {
+          id: 'node_test',
+          parentId: null,
+          query: 'Unemployment and Inflation in Europe',
+          parsedQuery: null,
+          results: {
+            europe: {
+              id: 'res_europe',
+              title: 'Metrics across Europe',
+              placeDcid: 'europe',
+              placeName: 'Europe',
+              isChildQuery: true,
+              parentPlaceDcid: 'europe',
+              variables: [
+                { dcid: 'UnemploymentRate', name: 'Unemployment Rate' },
+                { dcid: 'InflationRate', name: 'Inflation Rate' },
+              ],
+              entities: [{ dcid: 'country/FRA', name: 'France' }],
+              timeSeries: [
+                {
+                  variableDcid: 'UnemploymentRate',
+                  entityDcid: 'country/FRA',
+                  facets: [
+                    {
+                      facetId: 'f1',
+                      source: 'Eurostat',
+                      sourceUrl: '',
+                      earliestDate: '2020',
+                      latestDate: '2020',
+                      observationCount: 1,
+                      unit: '%',
+                      observations: [{ date: '2020', value: 7.5 }],
+                    },
+                  ],
+                },
+                {
+                  variableDcid: 'InflationRate',
+                  entityDcid: 'country/FRA',
+                  facets: [
+                    {
+                      facetId: 'f2',
+                      source: 'INSEE',
+                      sourceUrl: '',
+                      earliestDate: '2020',
+                      latestDate: '2020',
+                      observationCount: 1,
+                      unit: '%',
+                      observations: [{ date: '2020', value: 2.0 }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          cardIds: [shapeIdUnemployment, shapeIdInflation],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        [shapeIdUnemployment]: {
+          shapeId: shapeIdUnemployment,
+          historyNodeId: 'node_test',
+          type: 'chart',
+          placeDcid: 'country/FRA',
+          parentPlaceDcid: 'europe',
+          variableDcid: 'UnemploymentRate',
+        },
+        [shapeIdInflation]: {
+          shapeId: shapeIdInflation,
+          historyNodeId: 'node_test',
+          type: 'chart',
+          placeDcid: 'country/FRA',
+          parentPlaceDcid: 'europe',
+          variableDcid: 'InflationRate',
+        },
+      },
+      focusTarget: null,
+    });
+
+    const results = store.getResultsForSelectedCards([
+      shapeIdUnemployment,
+      shapeIdInflation,
+    ]);
+    expect(results).toHaveLength(2);
+    expect(results[0]?.id).toBe('res_europe__country/FRA__UnemploymentRate');
+    expect(results[1]?.id).toBe('res_europe__country/FRA__InflationRate');
+    expect(results[0]?.id).not.toBe(results[1]?.id);
   });
 });

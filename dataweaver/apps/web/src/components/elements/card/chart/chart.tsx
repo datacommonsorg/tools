@@ -101,6 +101,7 @@ export const CardChart = ({
     return seriesProp.map((entry) => {
       const activeFacet =
         entry.facets?.find((f) => f.facetId === selectedFacetIds[entry.key]) ??
+        entry.facets?.find((f) => f.observations.length > 0) ??
         entry.facets?.[0];
       if (!activeFacet || !entry.facets) return entry;
       return {
@@ -190,7 +191,9 @@ export const CardChart = ({
                       const activeFacet =
                         entry.facets.find(
                           (f) => f.facetId === selectedFacetIds[entry.key],
-                        ) ?? entry.facets[0];
+                        ) ??
+                        entry.facets.find((f) => f.observations.length > 0) ??
+                        entry.facets[0];
                       return (
                         <FacetSelector
                           key={entry.key}

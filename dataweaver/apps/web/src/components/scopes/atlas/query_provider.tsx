@@ -134,8 +134,8 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         const isMultiPlace = (node?.parsedQuery?.places.length ?? 0) > 1;
 
         if (!isMultiPlace) {
-          const plottableTimeSeries = result.timeSeries.find(
-            (ts) => (ts.facets[0]?.observations.length ?? 0) > 0,
+          const plottableTimeSeries = result.timeSeries.find((ts) =>
+            ts.facets.some((f) => f.observations.length > 0),
           );
           if (plottableTimeSeries) {
             const variableDcid = plottableTimeSeries.variableDcid;
