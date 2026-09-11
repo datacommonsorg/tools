@@ -115,6 +115,7 @@ export const deriveComparisonChartContent = (
         key: ts.variableDcid,
         label,
         data: observations,
+        unit: ts.facets[0]?.unit,
         facets: ts.facets,
       });
     }
@@ -136,6 +137,7 @@ export const deriveComparisonChartContent = (
         key: placeDcid,
         label: placeName,
         data: observations,
+        unit: ts?.facets[0]?.unit,
         facets: ts.facets,
       });
     }
@@ -188,6 +190,7 @@ export const deriveChartContent = (
         key: entity.dcid,
         label: entity.name || entity.dcid,
         data: observations,
+        unit: ts?.facets[0]?.unit,
         facets: ts?.facets,
       });
     }

@@ -421,8 +421,10 @@ describe('sync_store child place chart derivation', () => {
     if (content?.variant === 'chart') {
       expect(content.series).toHaveLength(2);
       expect(content.series?.[0]?.key).toBe('country/FRA');
+      expect(content.series?.[0]?.unit).toBe('%');
       expect(content.series?.[0]?.facets).toHaveLength(1);
       expect(content.series?.[1]?.key).toBe('country/DEU');
+      expect(content.series?.[1]?.unit).toBe('%');
       expect(content.series?.[1]?.facets).toHaveLength(1);
       expect(content.parentPlaceDcid).toBe('europe');
     }
@@ -443,6 +445,7 @@ describe('sync_store child place chart derivation', () => {
       expect(content.series).toHaveLength(1);
       expect(content.series?.[0]?.key).toBe('country/FRA');
       expect(content.series?.[0]?.label).toBe('France');
+      expect(content.series?.[0]?.unit).toBe('%');
       expect(content.series?.[0]?.facets).toHaveLength(1);
       expect(content.series?.[0]?.data).toEqual([
         { date: '2020', value: 8.0 },
