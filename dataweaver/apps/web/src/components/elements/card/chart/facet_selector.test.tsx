@@ -92,4 +92,3 @@ describe('FacetSelector', () => {
     expect(html).toBe('');
   });
 });
-
