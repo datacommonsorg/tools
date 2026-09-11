@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type { TLShapeId } from 'tldraw';
 import type { ChartSeries } from '~/components/elements/card/chart/chart';
+import { DEFAULT_SERIES_KEY } from '~/components/elements/card/chart/chart_style';
+import { COMPARISON_PLACE_KEY } from '~/functions/card_shape_id';
 import {
   formatChartCardTitle,
   formatNotesCardTitle,
@@ -244,7 +247,7 @@ export const deriveChartContent = (
     specificEntity?.dcid ||
     result.placeDcid ||
     result.entities[0]?.dcid ||
-    'default';
+    DEFAULT_SERIES_KEY;
   const variable = result.variables.find((v) => v.dcid === effectiveVar);
   const title = formatChartCardTitle(variable?.name, targetPlaceName, false);
   const parentPlaceDcid =
@@ -358,8 +361,8 @@ export const useStoreShapeSync = () => {
           if (prevCards[shapeId]) continue;
 
           const node = nodes[card.historyNodeId];
-          const isComparison = card.placeDcid === '__comparison';
-          const resultKey = card.parentPlaceDcid || card.placeDcid;
+          const isComparison = card.placeDcid === COMPARISON_PLACE_KEY;
+          const resultKey = card.resultPlaceDcid || card.placeDcid;
           const result = isComparison
             ? undefined
             : resolveResultForPlace(node?.results, resultKey);
@@ -375,11 +378,11 @@ export const useStoreShapeSync = () => {
             comparison,
             isComparison ? node?.results : undefined,
             card.chartStyle,
-            card.parentPlaceDcid ? card.placeDcid : undefined,
+            card.resultPlaceDcid ? card.placeDcid : undefined,
           );
           if (!content) continue;
 
-          const handle = add(content, shapeId);
+          const handle = add(content, shapeId as TLShapeId);
           handles.set(shapeId, handle);
         }
 
@@ -389,8 +392,8 @@ export const useStoreShapeSync = () => {
           if (!prevCard || prevCard.type === card.type) continue;
 
           const node = nodes[card.historyNodeId];
-          const isComparison = card.placeDcid === '__comparison';
-          const resultKey = card.parentPlaceDcid || card.placeDcid;
+          const isComparison = card.placeDcid === COMPARISON_PLACE_KEY;
+          const resultKey = card.resultPlaceDcid || card.placeDcid;
           const result = isComparison
             ? undefined
             : resolveResultForPlace(node?.results, resultKey);
@@ -403,7 +406,7 @@ export const useStoreShapeSync = () => {
             comparison,
             isComparison ? node?.results : undefined,
             card.chartStyle,
-            card.parentPlaceDcid ? card.placeDcid : undefined,
+            card.resultPlaceDcid ? card.placeDcid : undefined,
           );
           if (!content) continue;
 

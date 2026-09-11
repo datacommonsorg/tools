@@ -25,6 +25,7 @@ import { DataChartBarVertical } from './data_chart_bar_vertical';
 import { DataChartChoropleth } from './data_chart_choropleth';
 import { DataChartLine } from './data_chart_line';
 import { DataTable } from './data_table';
+import { resolveActiveFacet } from './facet_resolution';
 import { FacetSelector } from './facet_selector';
 import { MenuChartOptions } from './menu_chart_options';
 import { useGeoAvailability } from './use_geo_availability';
@@ -99,10 +100,10 @@ export const CardChart = ({
     if (!seriesProp) return undefined;
 
     return seriesProp.map((entry) => {
-      const activeFacet =
-        entry.facets?.find((f) => f.facetId === selectedFacetIds[entry.key]) ??
-        entry.facets?.find((f) => f.observations.length > 0) ??
-        entry.facets?.[0];
+      const activeFacet = resolveActiveFacet(
+        entry.facets,
+        selectedFacetIds[entry.key],
+      );
       if (!activeFacet || !entry.facets) return entry;
       return {
         ...entry,
@@ -182,18 +183,18 @@ export const CardChart = ({
           ) : (
             <>
               {seriesProp &&
-                seriesProp.some((s) => s.facets && s.facets.length > 0) && (
+                seriesProp.some(
+                  (entry) => entry.facets && entry.facets.length > 0,
+                ) && (
                   <div className={s['facet-selectors-container']}>
                     {seriesProp.map((entry) => {
                       if (!entry.facets || entry.facets.length === 0) {
                         return null;
                       }
-                      const activeFacet =
-                        entry.facets.find(
-                          (f) => f.facetId === selectedFacetIds[entry.key],
-                        ) ??
-                        entry.facets.find((f) => f.observations.length > 0) ??
-                        entry.facets[0];
+                      const activeFacet = resolveActiveFacet(
+                        entry.facets,
+                        selectedFacetIds[entry.key],
+                      );
                       return (
                         <FacetSelector
                           key={entry.key}

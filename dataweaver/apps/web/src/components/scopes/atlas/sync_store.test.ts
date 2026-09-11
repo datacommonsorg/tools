@@ -460,7 +460,7 @@ describe('sync_store child place chart derivation', () => {
 describe('useAtlasStore child place card selection & combining', () => {
   // Test: Child place card registration.
   // Situation: cardRegisterChart called with parent shape ID and child place DCID.
-  // Expectation: Card is registered in store with placeDcid and parentPlaceDcid, and focusTarget is set.
+  // Expectation: Card is registered in store with placeDcid and resultPlaceDcid, and focusTarget is set.
   it('registers a new child place chart card and focuses it', () => {
     const store = useAtlasStore.getState();
 
@@ -504,7 +504,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(updatedState.cards[expectedChildShapeId]?.placeDcid).toBe(
       'country/FRA',
     );
-    expect(updatedState.cards[expectedChildShapeId]?.parentPlaceDcid).toBe(
+    expect(updatedState.cards[expectedChildShapeId]?.resultPlaceDcid).toBe(
       'europe',
     );
     expect(updatedState.focusTarget).toEqual({
@@ -515,8 +515,8 @@ describe('useAtlasStore child place card selection & combining', () => {
 
   // Test: Child place card registration from a notes card.
   // Situation: cardRegisterChart called from a notes card for an enclosing region.
-  // Expectation: Card is registered with placeDcid and inferred parentPlaceDcid.
-  it('registers a child place chart card from a notes card and infers parentPlaceDcid', () => {
+  // Expectation: Card is registered with placeDcid and inferred resultPlaceDcid.
+  it('registers a child place chart card from a notes card and infers resultPlaceDcid', () => {
     const store = useAtlasStore.getState();
 
     useAtlasStore.setState({
@@ -557,15 +557,15 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(updatedState.cards[expectedChildShapeId]?.placeDcid).toBe(
       'country/DEU',
     );
-    expect(updatedState.cards[expectedChildShapeId]?.parentPlaceDcid).toBe(
+    expect(updatedState.cards[expectedChildShapeId]?.resultPlaceDcid).toBe(
       'europe',
     );
   });
 
-  // Test: Single-place card registration does not set parentPlaceDcid (preventing self-parenting).
+  // Test: Single-place card registration does not set resultPlaceDcid (preventing self-parenting).
   // Situation: cardRegisterChart called from a single-entity notes card for the same place.
-  // Expectation: Card is registered with placeDcid but parentPlaceDcid remains undefined.
-  it('does not set parentPlaceDcid when spawning a chart for the same single-place entity', () => {
+  // Expectation: Card is registered with placeDcid but resultPlaceDcid remains undefined.
+  it('does not set resultPlaceDcid when spawning a chart for the same single-place entity', () => {
     const store = useAtlasStore.getState();
 
     const mockSingleResult: QueryResult = {
@@ -635,7 +635,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(updatedState.cards[expectedShapeId]).toBeDefined();
     expect(updatedState.cards[expectedShapeId]?.placeDcid).toBe('country/FRA');
     expect(
-      updatedState.cards[expectedShapeId]?.parentPlaceDcid,
+      updatedState.cards[expectedShapeId]?.resultPlaceDcid,
     ).toBeUndefined();
   });
 
@@ -674,7 +674,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           historyNodeId: 'node_test',
           type: 'chart',
           placeDcid: 'country/FRA',
-          parentPlaceDcid: 'europe',
+          resultPlaceDcid: 'europe',
           variableDcid: 'UnemploymentRate',
         },
       },
@@ -700,14 +700,43 @@ describe('useAtlasStore child place card selection & combining', () => {
     cardRegisterSpy.mockRestore();
   });
 
-  // Test: Child-of-child parentPlaceDcid inheritance.
+  // Test: Child-of-child resultPlaceDcid inheritance.
   // Situation: cardRegisterChart called from an already spawned child card for the same place.
-  // Expectation: Newly registered chart preserves the top-level enclosing parentPlaceDcid.
-  it('preserves top-level enclosing parentPlaceDcid when registering a chart from an already spawned child card', () => {
+  // Expectation: Newly registered chart preserves the top-level enclosing result key.
+  it('preserves the top-level enclosing result key when registering a chart from an already spawned child card', () => {
     const store = useAtlasStore.getState();
 
     const spawnedChildShapeId =
       'shape:node_test__country/FRA__chart__UnemploymentRate';
+
+    // The regional result also carries the variable being spawned, so the
+    // registration is not rejected for lack of plottable data.
+    const resultWithYouthRate: QueryResult = {
+      ...mockChildResult,
+      variables: [
+        ...mockChildResult.variables,
+        { dcid: 'YouthUnemploymentRate', name: 'Youth Unemployment Rate' },
+      ],
+      timeSeries: [
+        ...mockChildResult.timeSeries,
+        {
+          variableDcid: 'YouthUnemploymentRate',
+          entityDcid: 'country/FRA',
+          facets: [
+            {
+              facetId: 'f3',
+              source: 'Eurostat',
+              sourceUrl: 'https://ec.europa.eu/eurostat',
+              earliestDate: '2020',
+              latestDate: '2021',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 18.2 }],
+            },
+          ],
+        },
+      ],
+    };
 
     useAtlasStore.setState({
       nodes: {
@@ -716,7 +745,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           parentId: null,
           query: 'Unemployment in Europe',
           parsedQuery: null,
-          results: { europe: mockChildResult },
+          results: { europe: resultWithYouthRate },
           cardIds: [spawnedChildShapeId],
           timestamp: Date.now(),
           status: 'complete',
@@ -728,7 +757,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           historyNodeId: 'node_test',
           type: 'chart',
           placeDcid: 'country/FRA',
-          parentPlaceDcid: 'europe',
+          resultPlaceDcid: 'europe',
           variableDcid: 'UnemploymentRate',
         },
       },
@@ -749,7 +778,7 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(updatedState.cards[expectedNewShapeId]?.placeDcid).toBe(
       'country/FRA',
     );
-    expect(updatedState.cards[expectedNewShapeId]?.parentPlaceDcid).toBe(
+    expect(updatedState.cards[expectedNewShapeId]?.resultPlaceDcid).toBe(
       'europe',
     );
     expect(updatedState.focusTarget).toEqual({
@@ -786,7 +815,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           historyNodeId: 'node_test',
           type: 'chart',
           placeDcid: 'country/FRA',
-          parentPlaceDcid: 'europe',
+          resultPlaceDcid: 'europe',
           variableDcid: 'UnemploymentRate',
         },
         [shapeIdDeu]: {
@@ -794,7 +823,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           historyNodeId: 'node_test',
           type: 'chart',
           placeDcid: 'country/DEU',
-          parentPlaceDcid: 'europe',
+          resultPlaceDcid: 'europe',
           variableDcid: 'UnemploymentRate',
         },
       },
@@ -1213,7 +1242,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           historyNodeId: 'node_test',
           type: 'chart',
           placeDcid: 'country/FRA',
-          parentPlaceDcid: 'europe',
+          resultPlaceDcid: 'europe',
           variableDcid: 'UnemploymentRate',
         },
         [shapeIdInflation]: {
@@ -1221,7 +1250,7 @@ describe('useAtlasStore child place card selection & combining', () => {
           historyNodeId: 'node_test',
           type: 'chart',
           placeDcid: 'country/FRA',
-          parentPlaceDcid: 'europe',
+          resultPlaceDcid: 'europe',
           variableDcid: 'InflationRate',
         },
       },
@@ -1236,5 +1265,170 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(results[0]?.id).toBe('res_europe__country/FRA__UnemploymentRate');
     expect(results[1]?.id).toBe('res_europe__country/FRA__InflationRate');
     expect(results[0]?.id).not.toBe(results[1]?.id);
+  });
+
+  // Test: No card is registered when the requested variable has no data.
+  // Situation: cardRegisterChart is called for a variable whose time series carries no observations.
+  // Expectation: No card entry and no focus target — a phantom entry would block every retry.
+  it('does not register a card when the requested variable has no plottable data', () => {
+    const store = useAtlasStore.getState();
+
+    const mockResultWithEmptyVar: QueryResult = {
+      id: 'res_empty',
+      title: 'Economy of France',
+      placeDcid: 'country/FRA',
+      placeName: 'France',
+      variables: [{ dcid: 'EmptyVar', name: 'Empty Variable' }],
+      entities: [{ dcid: 'country/FRA', name: 'France' }],
+      timeSeries: [
+        {
+          variableDcid: 'EmptyVar',
+          entityDcid: 'country/FRA',
+          facets: [
+            {
+              facetId: 'f_empty',
+              source: 'INSEE',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2020',
+              observationCount: 0,
+              unit: '%',
+              observations: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    useAtlasStore.setState({
+      nodes: {
+        node_empty: {
+          id: 'node_empty',
+          parentId: null,
+          query: 'Economy of France',
+          parsedQuery: null,
+          results: { 'country/FRA': mockResultWithEmptyVar },
+          cardIds: ['shape:node_empty__country/FRA__notes'],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        'shape:node_empty__country/FRA__notes': {
+          shapeId: 'shape:node_empty__country/FRA__notes',
+          historyNodeId: 'node_empty',
+          type: 'notes',
+          placeDcid: 'country/FRA',
+        },
+      },
+      focusTarget: null,
+    });
+
+    store.cardRegisterChart(
+      'shape:node_empty__country/FRA__notes',
+      'country/FRA',
+      'EmptyVar',
+    );
+
+    const updatedState = useAtlasStore.getState();
+    expect(
+      updatedState.cards['shape:node_empty__country/FRA__chart__EmptyVar'],
+    ).toBeUndefined();
+    expect(updatedState.focusTarget).toBeNull();
+  });
+
+  // Test: The parent chart's variable is demoted when the target place lacks it.
+  // Situation: A chart card of VarA (plottable for France only) spawns a chart for Germany, which only has VarB.
+  // Expectation: The new card resolves to VarB rather than inheriting the parent's unplottable VarA.
+  it('ignores the parent card variable when it has no data for the target place', () => {
+    const store = useAtlasStore.getState();
+
+    const mockRegionalResult: QueryResult = {
+      id: 'res_regional_mixed',
+      title: 'Metrics across Europe',
+      placeDcid: 'europe',
+      placeName: 'Europe',
+      isChildQuery: true,
+      parentPlaceDcid: 'europe',
+      variables: [
+        { dcid: 'VarA', name: 'Variable A' },
+        { dcid: 'VarB', name: 'Variable B' },
+      ],
+      entities: [
+        { dcid: 'country/FRA', name: 'France' },
+        { dcid: 'country/DEU', name: 'Germany' },
+      ],
+      timeSeries: [
+        {
+          variableDcid: 'VarA',
+          entityDcid: 'country/FRA',
+          facets: [
+            {
+              facetId: 'f_fra',
+              source: 'Eurostat',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2020',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 5 }],
+            },
+          ],
+        },
+        {
+          variableDcid: 'VarB',
+          entityDcid: 'country/DEU',
+          facets: [
+            {
+              facetId: 'f_deu',
+              source: 'Destatis',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2020',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 3.5 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const parentShapeId = 'shape:node_mixed__europe__chart__VarA';
+
+    useAtlasStore.setState({
+      nodes: {
+        node_mixed: {
+          id: 'node_mixed',
+          parentId: null,
+          query: 'Metrics across Europe',
+          parsedQuery: null,
+          results: { europe: mockRegionalResult },
+          cardIds: [parentShapeId],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        [parentShapeId]: {
+          shapeId: parentShapeId,
+          historyNodeId: 'node_mixed',
+          type: 'chart',
+          placeDcid: 'europe',
+          variableDcid: 'VarA',
+        },
+      },
+      focusTarget: null,
+    });
+
+    store.cardRegisterChart(parentShapeId, 'country/DEU');
+
+    const updatedCards = useAtlasStore.getState().cards;
+    const expectedShapeId = 'shape:node_mixed__country/DEU__chart__VarB';
+    expect(updatedCards[expectedShapeId]?.variableDcid).toBe('VarB');
+    expect(updatedCards[expectedShapeId]?.resultPlaceDcid).toBe('europe');
+    expect(
+      updatedCards['shape:node_mixed__country/DEU__chart__VarA'],
+    ).toBeUndefined();
   });
 });

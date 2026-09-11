@@ -57,7 +57,8 @@ export interface AtlasContextProps {
   editor: Editor | null;
   add<TVariant extends CardVariant>(
     content: ContentForVariant<TVariant>,
-    customId?: string,
+    /** Reuse a caller-owned shape id (e.g. the card registry key). */
+    customId?: TLShapeId,
   ): CardHandle<TVariant>;
 }
 
@@ -155,11 +156,7 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
     () => ({
       editor,
       add: (content, customId) => {
-        const shapeId = customId
-          ? customId.startsWith('shape:')
-            ? (customId as TLShapeId)
-            : createShapeId(customId)
-          : createShapeId();
+        const shapeId = customId ?? createShapeId();
 
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)

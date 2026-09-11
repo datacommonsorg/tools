@@ -11,6 +11,10 @@ import {
 import type { TLShapeId } from 'tldraw';
 import { toast } from '~/components/foundations/toaster/store';
 
+import {
+  buildCardShapeId,
+  COMPARISON_PLACE_KEY,
+} from '~/functions/card_shape_id';
 import { getResultScopeKey } from '~/functions/scope_key';
 import {
   type CardEntry,
@@ -108,7 +112,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Batch-register result cards.
         const resultEntries: CardEntry[] = [
           {
-            shapeId: `shape:${active.nodeId}__${scopeKey}__table`,
+            shapeId: buildCardShapeId({
+              historyNodeId: active.nodeId,
+              placeDcid: scopeKey,
+              type: 'table',
+            }),
             historyNodeId: active.nodeId,
             type: 'table',
             placeDcid: scopeKey,
@@ -120,7 +128,11 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // registered via the comparisonResult event instead.
         if (result.notesHtml) {
           resultEntries.push({
-            shapeId: `shape:${active.nodeId}__${scopeKey}__notes`,
+            shapeId: buildCardShapeId({
+              historyNodeId: active.nodeId,
+              placeDcid: scopeKey,
+              type: 'notes',
+            }),
             historyNodeId: active.nodeId,
             type: 'notes',
             placeDcid: scopeKey,
@@ -129,7 +141,6 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
 
         // Register a per-place chart card only for single-place queries.
         // Multi-place queries get a combined comparison chart instead.
-
         const node = store.getState().nodes[active.nodeId];
         const isMultiPlace = (node?.parsedQuery?.places.length ?? 0) > 1;
 
@@ -140,7 +151,12 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
           if (plottableTimeSeries) {
             const variableDcid = plottableTimeSeries.variableDcid;
             resultEntries.push({
-              shapeId: `shape:${active.nodeId}__${scopeKey}__chart__${variableDcid}`,
+              shapeId: buildCardShapeId({
+                historyNodeId: active.nodeId,
+                placeDcid: scopeKey,
+                type: 'chart',
+                variableDcid,
+              }),
               historyNodeId: active.nodeId,
               type: 'chart',
               placeDcid: scopeKey,
@@ -209,10 +225,14 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         // Register a single comparison notes card.
         const comparisonEntries: CardEntry[] = [
           {
-            shapeId: `shape:${active.nodeId}__comparison__notes`,
+            shapeId: buildCardShapeId({
+              historyNodeId: active.nodeId,
+              placeDcid: COMPARISON_PLACE_KEY,
+              type: 'notes',
+            }),
             historyNodeId: active.nodeId,
             type: 'notes',
-            placeDcid: '__comparison',
+            placeDcid: COMPARISON_PLACE_KEY,
           },
         ];
 
@@ -220,10 +240,15 @@ export const QueryProvider = ({ children }: QueryProviderProps) => {
         if (result.charts) {
           for (const chart of result.charts) {
             comparisonEntries.push({
-              shapeId: `shape:${active.nodeId}__comparison__chart__${chart.variableDcid}`,
+              shapeId: buildCardShapeId({
+                historyNodeId: active.nodeId,
+                placeDcid: COMPARISON_PLACE_KEY,
+                type: 'chart',
+                variableDcid: chart.variableDcid,
+              }),
               historyNodeId: active.nodeId,
               type: 'chart',
-              placeDcid: '__comparison',
+              placeDcid: COMPARISON_PLACE_KEY,
               variableDcid: chart.variableDcid,
             });
           }
