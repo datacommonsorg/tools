@@ -36,10 +36,9 @@ if the change is self-contained.
 
 ## Checklist
 
-- [ ] I have followed `CODING_GUIDELINES.md`, and `FRONTEND.md` for UI changes
-      (using the copy in the application directory where one exists).
+- [ ] I have followed `CODING_GUIDELINES.md`, and `FRONTEND.md` for UI changes.
 - [ ] I have run the app's lint, test, and build commands, as documented in
-      its `AGENTS.md`.
+      for that application.
 - [ ] I have commented my code, particularly in hard-to-understand areas.
 - [ ] My changes generate no new warnings.
 
