@@ -128,10 +128,12 @@ interface NextSlotResult {
  * last dragged, which may sit higher than others), so this is the one floor
  * a fresh row can rely on to clear every pre-existing card.
  */
-const canvasFloorY = (editor: Editor): number | null => {
+const canvasFloorY = (
+  shapes: ReturnType<Editor['getCurrentPageShapes']>,
+): number | null => {
   let floor: number | null = null;
 
-  for (const shape of editor.getCurrentPageShapes()) {
+  for (const shape of shapes) {
     if (shape.type !== 'card') continue;
 
     const bottom = shape.y + shape.props.h;
@@ -169,6 +171,12 @@ const nextSlot = (
     ? latestCursor.row[latestCursor.row.length - 1]
     : null;
 
+  let pageShapes: ReturnType<Editor['getCurrentPageShapes']> | null = null;
+  const getPageShapes = () => {
+    if (!pageShapes) pageShapes = editor.getCurrentPageShapes();
+    return pageShapes;
+  };
+
   // Empty canvas: return the first slot in the top-left corner of viewport
   if (!latestCursor || !rowFirst || !rowLast) {
     const viewport = editor.getViewportPageBounds();
@@ -192,7 +200,7 @@ const nextSlot = (
       y: rowFirst.bounds.y,
     };
     const candidate: CardBounds = { ...position, ...size };
-    const blocked = editor.getCurrentPageShapes().some((shape) => {
+    const blocked = getPageShapes().some((shape) => {
       if (shape.type !== 'card' || latestCursor.gridIds.includes(shape.id)) {
         return false;
       }
@@ -214,7 +222,7 @@ const nextSlot = (
   // Row full, or the in-row slot is blocked: start a new row below the
   // lowest card on the canvas — always below it, never beside or on top of
   // one, regardless of what the tracked row's own height would suggest.
-  const floor = canvasFloorY(editor) ?? rowFirst.bounds.y;
+  const floor = canvasFloorY(getPageShapes()) ?? rowFirst.bounds.y;
   const position = {
     x: latestCursor.rowStartX,
     y: floor + gutter,
