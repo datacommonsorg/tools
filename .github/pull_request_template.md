@@ -9,8 +9,8 @@ Fixes # (issue number)
 
 ## Changes Made
 
-- [ ] List significant changes
-- [ ] List UI changes, with before/after screenshots or recordings covering
+- List significant changes
+- List UI changes, with before/after screenshots or recordings covering
       desktop and mobile viewports
 
 ## Testing Done
