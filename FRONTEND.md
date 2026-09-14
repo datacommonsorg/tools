@@ -45,8 +45,10 @@ service or provider → foundation.
 
 Component files follow the general naming rules (`snake_case` file names,
 `PascalCase` identifiers, category-first composition) and the flat-by-default
-rule in [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) §3 — promote a component
-to a folder only once it actually gains a sub-component used solely by it:
+rule in
+[`CODING_GUIDELINES.md` §3](CODING_GUIDELINES.md#3-structure-and-organization)
+— promote a component to a folder only once it actually gains a sub-component
+used solely by it:
 
 ```
 elements/
@@ -96,7 +98,7 @@ every app.
 * **Untrusted Client Input**: URL hashes and search parameters
   (`window.location.hash`, `window.location.search`) are untrusted input.
   Sanitize them before passing them into hooks, renderers, or navigation — see
-  [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) §11.
+  [`CODING_GUIDELINES.md` §11](CODING_GUIDELINES.md#11-security-secrets-and-input-handling).
 
 ---
 
@@ -198,4 +200,4 @@ Target WCAG 2.2 AA compliance natively:
 * Keep the interface premium and polished: no default browser colors, unstyled
   elements, or janky animations.
 * Run the app's lint, test, and build commands before pushing UI changes (see
-  [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) §16).
+  [`CODING_GUIDELINES.md` §16](CODING_GUIDELINES.md#16-verification-before-submitting)).
