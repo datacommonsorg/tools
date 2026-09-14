@@ -19,11 +19,17 @@
 
 Structure components from lowest level to highest. Composition flows upward:
 
-* **Primitives**: Thin wrappers over a single platform or third-party concern
-  (e.g., links, icons, images). No business logic, minimal styling. Always go
-  through these instead of raw HTML tags (`<a>`, `<img>`). Typographic HTML
-  elements (such as `<h1>`–`<h6>`, `<p>`, `<span>`, etc.) are allowed directly
-  unless a dedicated project text-wrapper primitive exists.
+* **Primitives**: Base wrappers around one native HTML element, framework API,
+  or third-party component — `<Link>` in place of a raw `<a>`, an icon
+  component in place of an inline `<svg>`. They hold no business logic and
+  minimal styling; what they carry is the cross-cutting concern that is easy to
+  forget at the call site: security (`rel="noopener noreferrer"` on external
+  links), client-side routing, and accessibility (`aria-hidden` on decorative
+  icons). Centralizing these means a call site cannot omit them.
+  * *Rule*: use the primitive in place of the raw equivalent. Standard
+    typographic tags (`<h1>`–`<h6>`, `<p>`, `<span>`) are used directly unless
+    the app has a text-wrapper primitive. An app whose call sites need a
+    primitive it does not yet have is expected to add it.
 * **Elements**: Generic, reusable, presentational building blocks (e.g.,
   buttons, tabs). Self-contained, no feature or business logic. Flat by
   default.
