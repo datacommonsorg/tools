@@ -4,14 +4,14 @@ export const IconLineGraphSingle = (props: ComponentPropsWithRef<'svg'>) => {
   return (
     <svg
       {...props}
-      viewBox="0 0 24 24"
+      viewBox="0 -960 960 960"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <path
         fill="currentColor"
-        d="m6.086 16.523-1.044-1.044 5.219-5.218 2.783 2.783 4.94-5.567.974.974-5.914 6.68-2.784-2.783-4.174 4.175Z"
+        d="m126-220-46-46 300-300 160 161 298-335 42 41-340 384-160-159-254 254Z"
       />
     </svg>
   );

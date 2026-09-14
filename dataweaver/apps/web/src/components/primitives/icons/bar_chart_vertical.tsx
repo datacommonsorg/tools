@@ -4,14 +4,14 @@ export const IconBarChartVertical = (props: ComponentPropsWithRef<'svg'>) => {
   return (
     <svg
       {...props}
-      viewBox="0 0 24 24"
+      viewBox="0 -960 960 960"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <path
         fill="currentColor"
-        d="M16 20v-7h4v7h-4Zm-6 0V4h4v16h-4Zm-6 0V9h4v11H4Z"
+        d="M660-160v-280h140v280H660Zm-250 0v-640h140v640H410Zm-250 0v-440h140v440H160Z"
       />
     </svg>
   );
