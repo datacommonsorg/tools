@@ -143,6 +143,29 @@ const canvasFloorY = (
   return floor;
 };
 
+/**
+ * Horizontal extent (left edge of the leftmost card to right edge of the
+ * rightmost) of every card on the canvas, or null with no cards. A batch's
+ * new row centers under this.
+ */
+const canvasContentXRange = (
+  shapes: ReturnType<Editor['getCurrentPageShapes']>,
+): { minX: number; maxX: number } | null => {
+  let range: { minX: number; maxX: number } | null = null;
+
+  for (const shape of shapes) {
+    if (shape.type !== 'card') continue;
+
+    const left = shape.x;
+    const right = shape.x + shape.props.w;
+    range = range
+      ? { minX: Math.min(range.minX, left), maxX: Math.max(range.maxX, right) }
+      : { minX: left, maxX: right };
+  }
+
+  return range;
+};
+
 /** Whether two card-sized rectangles overlap at all. */
 const boundsOverlap = (a: CardBounds, b: CardBounds): boolean => {
   return (
@@ -224,15 +247,28 @@ const nextSlot = (
   // lowest card on the canvas — always below it, never beside or on top of
   // one, regardless of what the tracked row's own height would suggest.
   const floor = canvasFloorY(getPageShapes()) ?? rowFirst.bounds.y;
+
+  // A batch's first card centers its (assumed full-width) row under the
+  // canvas's existing content; an organic wrap keeps the tracked row's x.
+  let rowStartX = latestCursor.rowStartX;
+  if (forceNewRow) {
+    const contentRange = canvasContentXRange(getPageShapes());
+    if (contentRange) {
+      const fullRowWidth = columns * size.w + (columns - 1) * gutter;
+      rowStartX =
+        (contentRange.minX + contentRange.maxX) / 2 - fullRowWidth / 2;
+    }
+  }
+
   const position = {
-    x: latestCursor.rowStartX,
+    x: rowStartX,
     y: floor + gutter,
   };
   return {
     position,
     cursor: {
       row: [entry(position)],
-      rowStartX: latestCursor.rowStartX,
+      rowStartX,
       gridIds: [...latestCursor.gridIds, id],
     },
   };
@@ -291,11 +327,14 @@ const gridBounds = (
  * 3. Otherwise → pan to the new card.
  * Single column (mobile) skips step 2 — the stack reads as a scrolling feed,
  * so the camera pans instead of zooming out.
+ * A batch that started a new row frames the whole canvas instead of just its
+ * own grid, so the new row is seen in the context of everything already there.
  */
 const keepInView = (
   editor: Editor,
   bounds: CardBounds,
   cursor: GridCursor | null,
+  frameWholeCanvas: boolean,
 ): void => {
   const viewport = editor.getViewportPageBounds();
 
@@ -312,8 +351,9 @@ const keepInView = (
 
   // If we can fit the grid within the zoom cap - zoom to fit
   if (columns > 1) {
-    const frame =
-      gridBounds(editor, cursor, bounds) ?? editor.getCurrentPageBounds();
+    const frame = frameWholeCanvas
+      ? editor.getCurrentPageBounds()
+      : (gridBounds(editor, cursor, bounds) ?? editor.getCurrentPageBounds());
     if (frame && canFitWithinZoomCap(editor, frame, gutter)) {
       editor.zoomToBounds(frame, {
         inset: gutter,
@@ -354,6 +394,11 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
   // `pastedThisTask`/`revealedThisTask` below.
   let placedThisTask = false;
 
+  // Whether the most recent `place()` call started a new row. Read right
+  // after by `cleanupRevealCreated`'s handler for that same card, since each
+  // card's place-then-create completes before the next one starts.
+  let lastPlacementStartedNewRow = false;
+
   const place = (id: TLShapeId, size: CardSize): CardPosition => {
     const forceNewRow = !placedThisTask;
     placedThisTask = true;
@@ -363,6 +408,7 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
 
     const slot = nextSlot(editor, id, size, cursor, forceNewRow);
     cursor = slot.cursor;
+    lastPlacementStartedNewRow = forceNewRow;
     return slot.position;
   };
 
@@ -473,7 +519,12 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
         });
       }
 
-      keepInView(editor, mapShapeToBounds(shape), cursor);
+      keepInView(
+        editor,
+        mapShapeToBounds(shape),
+        cursor,
+        lastPlacementStartedNewRow,
+      );
     },
   );
 
