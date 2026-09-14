@@ -156,6 +156,7 @@ const nextSlot = (
   id: TLShapeId,
   size: CardSize,
   cursor: GridCursor | null,
+  forceNewRow: boolean,
 ): NextSlotResult => {
   const { columns, gutter } = resolveGrid(editor);
   const latestCursor = cursor
@@ -190,10 +191,10 @@ const nextSlot = (
     };
   }
 
-  // Room in the row: place against the previous card's right edge — but only
-  // if nothing the cursor lost track of (e.g. a card dragged into that gap)
-  // sits there. If it does, fall through to a fresh row below everything.
-  if (latestCursor.row.length < columns) {
+  // Room in the row: place against the previous card's right edge — unless a
+  // stray card blocks the gap, or this is the first card of a new batch (new
+  // batches always start their own row). Either case falls through below.
+  if (!forceNewRow && latestCursor.row.length < columns) {
     const previousBounds = rowLast.bounds;
     const position = {
       x: previousBounds.x + previousBounds.w + gutter,
@@ -346,8 +347,21 @@ export interface CardPlacement {
 export const registerCardPlacement = (editor: Editor): CardPlacement => {
   let cursor: GridCursor | null = null;
 
+  // First card placed each task starts a fresh row (below the lowest card),
+  // so a batch always lands together on its own line instead of splitting
+  // across an old row's leftover slots. Later cards in the same task fill
+  // that row normally. Expires with the task's microtasks, like
+  // `pastedThisTask`/`revealedThisTask` below.
+  let placedThisTask = false;
+
   const place = (id: TLShapeId, size: CardSize): CardPosition => {
-    const slot = nextSlot(editor, id, size, cursor);
+    const forceNewRow = !placedThisTask;
+    placedThisTask = true;
+    queueMicrotask(() => {
+      placedThisTask = false;
+    });
+
+    const slot = nextSlot(editor, id, size, cursor, forceNewRow);
     cursor = slot.cursor;
     return slot.position;
   };
