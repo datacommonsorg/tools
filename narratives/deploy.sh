@@ -619,7 +619,17 @@ if [ "$CODE_ONLY" = false ]; then
         secret_pairs=("DC_SECRET:DC_API_KEY" "GEMINI_SECRET:GEMINI_API_KEY")
         # MAPS_API_KEY is read by the CDC data-plane container and by nothing
         # else, so it is not created on the backends that have no such container.
-        [ "$DATA_BACKEND" = "cdc" ] && secret_pairs+=("MAPS_SECRET:MAPS_API_KEY")
+        if [ "$DATA_BACKEND" = "cdc" ]; then
+            secret_pairs+=("MAPS_SECRET:MAPS_API_KEY")
+        elif [ -n "${MAPS_API_KEY:-}" ]; then
+            # Supplying a key this backend does not consume used to be dropped in
+            # silence, and the run still ended in "Secrets written". The key looks
+            # stored; the backend is switched to cdc later; the deploy then fails
+            # on a secret the operator is certain they wrote. Say so instead.
+            log_warn "MAPS_API_KEY was supplied but DATA_BACKEND=\"${DATA_BACKEND}\" has no data-plane"
+            log_warn "  container to read it. NOTHING was stored for '${MAPS_SECRET}'."
+            log_warn "  Set DATA_BACKEND=\"cdc\" in config/instance.env first, then re-run this command."
+        fi
         for pair in "${secret_pairs[@]}"; do
             secret_var="${pair%%:*}"; value_var="${pair##*:}"
             secret_id="${!secret_var}"; value="${!value_var:-}"
@@ -747,22 +757,33 @@ EOF
     fi
 
     # Normal deploy: the keys must already be in Secret Manager.
-    missing=()
-    for secret_id in "$DC_SECRET" "$GEMINI_SECRET"; do
-        gcloud secrets versions describe latest --secret="$secret_id" --project="$PROJECT_ID" &>/dev/null || missing+=("$secret_id")
-    done
+    required_pairs=("${DC_SECRET}:DC_API_KEY" "${GEMINI_SECRET}:GEMINI_API_KEY")
     if [ "$DATA_BACKEND" = "cdc" ]; then
-        gcloud secrets versions describe latest --secret="$MAPS_SECRET" --project="$PROJECT_ID" &>/dev/null || missing+=("$MAPS_SECRET")
+        required_pairs+=("${MAPS_SECRET}:MAPS_API_KEY")
     fi
     # No else-branch. The Maps secret used to be created empty on every backend
     # because Terraform's data source read its metadata whether or not anything
     # consumed it. That data source is gated to cdc now, so on dcp and none the
     # secret is neither read nor needed.
+    missing=()
+    missing_vars=()
+    for pair in "${required_pairs[@]}"; do
+        secret_id="${pair%%:*}"; value_var="${pair##*:}"
+        if ! gcloud secrets versions describe latest --secret="$secret_id" --project="$PROJECT_ID" &>/dev/null; then
+            missing+=("$secret_id")
+            missing_vars+=("${value_var}=...")
+        fi
+    done
     if [ ${#missing[@]} -gt 0 ]; then
         log_error "These secrets have no value in Secret Manager: ${missing[*]}"
         echo "  Write them once (values are read from the environment, never stored on disk):" >&2
-        echo "    DC_API_KEY=... GEMINI_API_KEY=... \\" >&2
+        # Naming the fixed DC/Gemini pair here regardless of what was missing sent
+        # you to re-enter the two keys that were already stored, while the one
+        # actually missing went unmentioned.
+        echo "    ${missing_vars[*]} \\" >&2
         echo "      ./deploy.sh --bootstrap-secrets" >&2
+        echo "  DATA_BACKEND is \"${DATA_BACKEND}\" right now, and --bootstrap-secrets only writes the" >&2
+        echo "  secrets that backend reads. Set it in config/instance.env before running the above." >&2
         exit 1
     fi
 
@@ -1062,6 +1083,13 @@ cd ../../..
 
 # 10. Run Verification Smoke Tests
 if [ "$CODE_ONLY" = false ]; then
+    # Only CDC cold-starts a data plane of its own. On dcp the plane is Google's
+    # and already running, and on none it is api.datacommons.org, so both answer
+    # the first capability probe. A fresh CDC Mixer took ~60s to serve its first
+    # MCP response, which is why the smoke tests have to be given room here
+    # rather than reporting a healthy deploy as four failures.
+    if [ "$DATA_BACKEND" = "cdc" ]; then SMOKE_WARMUP=180; else SMOKE_WARMUP=60; fi
+
     # The IAP toggle around the smoke tests made sense when every instance was
     # IAP-fronted. It must not run for ACCESS_MODE=public: the final step
     # switches IAP ON, which puts a sign-in wall in front of a service that is
@@ -1073,14 +1101,14 @@ if [ "$CODE_ONLY" = false ]; then
     # dance is worth retiring once smoke.sh can present a token.
     if [ "$ACCESS_MODE" = "public" ]; then
         log_info "Running post-deployment smoke tests (public access; no IAP toggle needed)..."
-        bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
     else
         log_info "Temporarily disabling Identity-Aware Proxy (IAP) for validation..."
         gcloud beta run services update "${APP_SERVICE}" \
             --no-iap --region="$REGION" --project="$PROJECT_ID"
 
         log_info "Running automated post-deployment smoke tests..."
-        bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
 
         log_info "Re-enabling Identity-Aware Proxy (IAP) on Cloud Run service..."
         gcloud beta run services update "${APP_SERVICE}" \

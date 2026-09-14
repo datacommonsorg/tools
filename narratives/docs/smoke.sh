@@ -104,28 +104,49 @@ check 2 c2
 #    The tool COUNT is deliberately not asserted. 1.2.x serves 2 and 1.3.x
 #    serves 6, and both are correct; pinning a number here would make the
 #    script fail on exactly the backend difference it exists to tolerate.
-#    Retried once, deliberately. /agent/health never blocks on the data plane;
-#    when its cache is cold it serves the empty snapshot and kicks off the probe
-#    in the background. So the FIRST call after a deploy legitimately reports
-#    zero tools and the next one is correct. Failing on the first read would
-#    report a healthy stack as broken -- which it did, on a CDC deploy whose
-#    run.invoker binding had simply not propagated when the agent started.
+#    Retried on a deadline, deliberately. /agent/health never blocks on the data
+#    plane; when its cache is cold it serves the empty snapshot and kicks off the
+#    probe in the background. So the FIRST call after a deploy legitimately
+#    reports zero tools and a later one is correct.
+#
+#    The budget is a deadline rather than a fixed retry count because the three
+#    backends warm at very different speeds. `none` points at api.datacommons.org,
+#    which is always hot, so the first read is already correct. A fresh CDC deploy
+#    has to cold-start its own Mixer container, and that took ~60s on the first
+#    one -- comfortably past the old 3-reads-and-5-seconds ceiling, so a healthy
+#    stack reported FAIL on checks 3, 4, 5 and 7 and passed on a manual re-run
+#    minutes later. A smoke test that cries wolf on every first CDC deploy trains
+#    you to ignore it, which is worse than not having it.
+#
+#    This check also gates the ones after it: 4, 5 and 7 all need the same data
+#    plane, so letting 3 block until it answers keeps them from failing for a
+#    reason that has nothing to do with what they test.
+WARMUP_SECS="${SMOKE_WARMUP_SECS:-120}"
+
 c3() {
-    local health n gen attempt
-    for attempt in 1 2 3; do
+    local health n gen start elapsed attempt=0
+    start=$(date +%s)
+    while :; do
+        attempt=$((attempt+1))
         health=$(curl_cmd -sS --max-time 30 "$URL/agent/health")
         echo "$health" | jq -e '.status == "ok"' >/dev/null \
             || { echo "health not ok: $(echo "$health" | head -c 200)"; return 1; }
         n=$(echo "$health" | jq -r '.mcp.tool_count // 0')
         gen=$(echo "$health" | jq -r '.mcp.generation // "unknown"')
         if [ "$n" -ge 1 ] 2>/dev/null; then
-            [ "$attempt" -eq 1 ] && echo "$n tools, generation $gen" \
-                                || echo "$n tools, generation $gen (after $attempt reads; probe warmed in background)"
+            elapsed=$(( $(date +%s) - start ))
+            if [ "$attempt" -eq 1 ]; then
+                echo "$n tools, generation $gen"
+            else
+                echo "$n tools, generation $gen (ready after ${elapsed}s, $attempt reads)"
+            fi
             return 0
         fi
+        elapsed=$(( $(date +%s) - start ))
+        [ "$elapsed" -ge "$WARMUP_SECS" ] && break
         sleep 5
     done
-    echo "capability probe found no tools after 3 reads -- data plane unreachable or refusing auth"
+    echo "capability probe found no tools in ${WARMUP_SECS}s ($attempt reads) -- data plane unreachable or refusing auth"
     return 1
 }
 check 3 c3
