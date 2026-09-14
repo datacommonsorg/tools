@@ -1,13 +1,13 @@
 import { useEditor, useValue } from 'tldraw';
 import { Button } from '~/components/elements/button';
 import { IconCursor } from '~/components/primitives/icons/cursor';
-import { IconHand } from '~/components/primitives/icons/hand';
 import { IconInsertText } from '~/components/primitives/icons/insert_text';
+import { IconPanTool } from '~/components/primitives/icons/pan_tool';
 import s from './tools.module.scss';
 
 const TOOLS = {
   select: { label: 'Select', Icon: IconCursor },
-  hand: { label: 'Pan', Icon: IconHand },
+  hand: { label: 'Pan', Icon: IconPanTool },
   text: { label: 'Text', Icon: IconInsertText },
 } as const;
 

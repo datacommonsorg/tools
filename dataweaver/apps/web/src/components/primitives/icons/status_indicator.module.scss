@@ -10,8 +10,8 @@
 // with a CSS conic-gradient instead of a flat SVG fill.
 .container {
   position: relative;
-  width: 18px;
-  height: 18px;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
 
   &::before,
   &::after {
