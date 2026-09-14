@@ -194,12 +194,12 @@ def _bootstrap_config_from_url() -> None:
         # Write it through unmodified so the failure surfaces at load_config()
         # exactly as it did before, rather than turning into a silent no-config.
         logger.error("CONFIG_URL is not valid JSON (%s); writing through unmodified", e)
-        config_path.write_text(raw)
+        config_path.write_text(raw, encoding="utf-8")
         return
 
     if not isinstance(config, dict):
         logger.error("CONFIG_URL did not contain a JSON object; writing through unmodified")
-        config_path.write_text(raw)
+        config_path.write_text(raw, encoding="utf-8")
         return
 
     prompts = _fetch_prompt_bodies(url)
@@ -219,7 +219,7 @@ def _bootstrap_config_from_url() -> None:
             missing,
         )
 
-    config_path.write_text(json.dumps(config))
+    config_path.write_text(json.dumps(config), encoding="utf-8")
 
 
 def load_config() -> dict:
@@ -238,7 +238,11 @@ def load_config() -> dict:
         return _config_cache
 
     try:
-        with open(config_path, 'r') as f:
+        # config.json is UTF-8 on both sides: _bootstrap_config_from_url pins the
+        # same encoding when it writes. A config carrying non-ASCII -- prompt text
+        # with ₹ or an em-dash, an instance name -- would otherwise decode by the
+        # platform locale and come back corrupted.
+        with open(config_path, 'r', encoding='utf-8') as f:
             _config_cache = json.load(f)
             _config_mtime = current_mtime
             logger.info("Config loaded/reloaded from config.json")
