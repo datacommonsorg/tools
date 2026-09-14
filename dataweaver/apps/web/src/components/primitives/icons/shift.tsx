@@ -4,14 +4,14 @@ export const IconShift = (props: ComponentPropsWithRef<'svg'>) => {
   return (
     <svg
       {...props}
-      viewBox="0 0 24 24"
+      viewBox="0 -960 960 960"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <path
         fill="currentColor"
-        d="m12 6.861-6 5.996h3.429v4.282h5.142v-4.282H18L12 6.86Zm1.714 5.14v4.282h-3.428V12H8.143L12 8.078 15.857 12h-2.143Z"
+        d="M480-685.6 240-445.76h137.16v171.28h205.68v-171.28H720L480-685.6Zm68.56 205.6v171.28h-137.12V-480H325.72L480-636.88 634.28-480h-85.72Z"
       />
     </svg>
   );
