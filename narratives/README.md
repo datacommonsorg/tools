@@ -792,6 +792,7 @@ python3 tests/test_mcp_session.py          # 6 checks  — session recovery, thr
 python3 tests/test_backend_generations.py  # 14 checks — both MCP generations, both payload shapes
 python3 tests/test_auth_selection.py       # 5 checks  — API key vs ID token, chosen by host
 python3 tests/test_prompt_rendering.py     # 17 checks — placeholder substitution, ?key= gate
+python3 tests/test_prompt_urls.py          # 3 checks  — prompt URLs derived from CONFIG_URL
 
 # UI — from ui/
 cd ui

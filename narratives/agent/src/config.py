@@ -17,10 +17,12 @@ import copy
 import json
 import logging
 import os
+import posixpath
 import re
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -127,10 +129,22 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
     is exactly how the agent behaved before the files were wired up, so a partial
     fetch degrades to the old behaviour rather than taking the agent down.
     """
-    base = config_url.rsplit("/", 1)[0]
+    # Prompt bodies live in a `prompts/` directory beside the config object, so
+    # the URL is the config's own with its last path segment swapped out. Query
+    # and fragment are dropped: they address that one object (e.g. ?generation=)
+    # and mean nothing for a prompt. posixpath.join keeps the host-root case
+    # right, where dirname is "/".
+    parsed = urlparse(config_url)
+    base_path = posixpath.dirname(parsed.path)
     prompts = {}
     for slot in PROMPT_SLOTS:
-        prompt_url = f"{base}/prompts/{slot}.md"
+        prompt_url = urlunparse(
+            parsed._replace(
+                path=posixpath.join(base_path, "prompts", f"{slot}.md"),
+                query="",
+                fragment="",
+            )
+        )
         try:
             r = _fetch_gcs_url(prompt_url)
             r.raise_for_status()
