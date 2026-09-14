@@ -149,6 +149,8 @@ def _forward(subpath: str, prefix: str) -> Response:
     # not belong.
     attach_auth(headers, upstream_url)
 
+    # TODO(juliawu): stream the body once this service is on FastAPI (see comment
+    # in PR 472)
     try:
         upstream = _SESSION.request(
             request.method,
