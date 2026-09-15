@@ -3,7 +3,13 @@
  * them. See `PLACEMENT.md` for the full model and its trade-offs.
  */
 
-import { Box, type Editor, type TLShapeId } from 'tldraw';
+import {
+  Box,
+  type Editor,
+  type TLCreateShapePartial,
+  type TLShape,
+  type TLShapeId,
+} from 'tldraw';
 import { CARD_GRID, KEEP_IN_VIEW_ANIMATION, MIN_ZOOM } from './config';
 import type { CardBounds, CardPosition, CardShape, CardSize } from './helpers';
 
@@ -127,15 +133,33 @@ interface NextSlotResult {
 /**
  * How a card that opens its own row picks that row's x.
  *
- * - `batch` — every card arriving together is known now, so the row can be
- *   centered on the canvas's content using the width it will really occupy.
- * - `align` — they are not known (clones are created one at a time, before
- *   their siblings exist), so the row keeps the grid's current x. Assuming a
- *   full row of identical cards instead would bias every row toward the side
- *   the estimate overshoots, and each biased row widens the content it is
- *   measured against, so successive batches walk further out.
+ * - `batch` — every card arriving together is known, so the row is centered
+ *   on the canvas's content using the width it will really occupy. Both the
+ *   query flow and clones (see `trackCreateBatch`) report their batch.
+ * - `align` — the batch is unknown, so the row keeps the grid's current x.
+ *   Assuming a width instead would bias every row toward the side the
+ *   estimate overshoots, and each biased row widens the content the next row
+ *   is measured against, so successive batches walk further out.
  */
 export type RowStart = { kind: 'batch'; widths: number[] } | { kind: 'align' };
+
+/**
+ * Widths of the cards in a set of shapes about to be created, in the order
+ * given. Cards whose width is left to the schema's default are skipped — the
+ * row can only be measured from widths that are actually stated.
+ */
+const cardWidths = (
+  shapes: readonly { type: string; props?: { w?: number } }[],
+): number[] => {
+  const widths: number[] = [];
+
+  for (const shape of shapes) {
+    const width = shape.type === 'card' ? shape.props?.w : undefined;
+    if (width !== undefined) widths.push(width);
+  }
+
+  return widths;
+};
 
 /** Card extents across the whole canvas. */
 interface CanvasCardMetrics {
@@ -202,6 +226,38 @@ const batchRowWidth = (
   const row = widths.slice(0, columns);
   const cards = row.reduce((total, width) => total + width, 0);
   return cards + Math.max(row.length - 1, 0) * gutter;
+};
+
+/**
+ * Report the set of cards each creation is about to make, for as long as that
+ * creation runs. Clones are positioned in a `beforeCreate` handler, which
+ * tldraw hands one record at a time, so the first clone of a paste cannot see
+ * its siblings. Every creation in tldraw — new card, paste, drop, duplicate —
+ * funnels through `createShapes` with the whole set in one array, so this is
+ * the one place the set is knowable before any of it exists.
+ *
+ * Returns a function restoring the editor's own method.
+ */
+const trackCreateBatch = (
+  editor: Editor,
+  report: (widths: number[] | null) => void,
+): (() => void) => {
+  const createShapes = editor.createShapes;
+
+  editor.createShapes = <TShape extends TLShape>(
+    shapes: TLCreateShapePartial<TShape>[],
+  ) => {
+    report(cardWidths(shapes));
+    try {
+      return createShapes.call(editor, shapes);
+    } finally {
+      report(null);
+    }
+  };
+
+  return () => {
+    editor.createShapes = createShapes;
+  };
 };
 
 /** Calculate position for a card about to be created + its updated cursor. */
@@ -469,6 +525,13 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
   // each guard exactly when the operation ends
   const pastedThisTask = new Set<TLShapeId>();
 
+  // The widths of the card set being created, for the row its first clone
+  // opens. Set only while the creation that reported it runs
+  let cloneBatchWidths: number[] | null = null;
+  const cleanupTrackCreateBatch = trackCreateBatch(editor, (widths) => {
+    cloneBatchWidths = widths;
+  });
+
   // Clones (copy/paste, duplicate) flow onto the grid as they're created —
   // except alt-drag duplicates, which the user's pointer is placing
   const cleanupPlaceClones = editor.sideEffects.registerBeforeCreateHandler(
@@ -486,21 +549,22 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
         return shape;
       }
 
-      // The first clone of the operation opens a row for the whole paste;
-      // its siblings fill that row. Their sizes aren't knowable yet — they
-      // don't exist — so the row aligns to the grid rather than centering
+      // The first clone of the operation opens a row for the whole batch and
+      // its siblings fill that row. Anything creating clones outside the
+      // tracked entry points leaves the row aligned to the grid instead
       const isFirstClone = pastedThisTask.size === 0;
+      const rowStart: RowStart | null = !isFirstClone
+        ? null
+        : cloneBatchWidths?.length
+          ? { kind: 'batch', widths: cloneBatchWidths }
+          : { kind: 'align' };
 
       pastedThisTask.add(shape.id);
       queueMicrotask(() => pastedThisTask.delete(shape.id));
 
       return {
         ...shape,
-        ...place(
-          shape.id,
-          { w: shape.props.w, h: shape.props.h },
-          isFirstClone ? { kind: 'align' } : null,
-        ),
+        ...place(shape.id, { w: shape.props.w, h: shape.props.h }, rowStart),
       };
     },
   );
@@ -610,6 +674,7 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
       cleanupTrackMoved();
       cleanupRevealCreated();
       cleanupPruneDeleted();
+      cleanupTrackCreateBatch();
       cursor = null;
       pastedThisTask.clear();
     },

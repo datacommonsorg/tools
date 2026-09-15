@@ -43,17 +43,22 @@ place before the batch commits) keep their placement bounds.
 ## Where a new row starts horizontally
 
 A wrap within a batch keeps the grid's current x. A card that opens a batch
-picks its x from what the caller knows about the batch:
+centers its row under the canvas's content, using the width the row will
+really occupy. That needs every width in the batch before the first card is
+placed, which the two callers supply:
 
-- **Size known** (`rowStart: 'batch'`) — the query flow registers a result's
-  cards in one store update, so `sync_store` passes every width and the row is
-  centered under the canvas's content using the width it will really occupy.
-- **Size unknown** (`rowStart: 'align'`) — clones are created one at a time,
-  before their siblings exist, so a paste keeps the grid's x.
+- **The query flow** registers a result's cards in one store update, so
+  `sync_store` passes their widths to `add`.
+- **Clones** (paste, drop, duplicate) are positioned in a `beforeCreate`
+  handler, which tldraw hands one record at a time — the first clone cannot
+  see its siblings. Every creation funnels through `editor.createShapes`
+  though, which receives the whole set in one array, so placement wraps that
+  method and reads the widths there.
 
-The row width is never assumed. An assumed width biases every row toward the
-side the estimate overshoots, and because each biased row widens the content
-that the next row is centered against, successive batches walk further out.
+A row whose widths never arrive keeps the grid's x instead of centering. The
+width is never assumed: an assumed width biases every row toward the side the
+estimate overshoots, and because each biased row widens the content that the
+next row is centered against, successive batches walk further out.
 
 
 ## Rooting and re-rooting
@@ -80,9 +85,13 @@ that the next row is centered against, successive batches walk further out.
 Cards created outside the `add` flow (detected by `meta.originId` differing
 from the shape's own id) are positioned onto the grid in a
 `beforeCreate` handler — pastes and duplicates follow the same flow as new
-cards, with the first clone of the operation opening the row. Two exceptions
-/ gotchas:
+cards, with the first clone of the operation opening the row. Three
+exceptions / gotchas:
 
+- **`editor.createShapes` is wrapped.** The `beforeCreate` handler is given
+  one record at a time, so it reports the batch from the one method every
+  creation passes through, and the first clone centers its row on it. The
+  editor's own method is put back on cleanup.
 - **Alt-drag duplicates** are created mid-drag with the pointer deciding
   where they go; they're left alone, and the move tracker re-roots the grid
   to them as they're dragged.

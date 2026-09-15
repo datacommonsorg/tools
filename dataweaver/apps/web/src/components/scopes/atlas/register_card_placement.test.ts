@@ -17,18 +17,20 @@ interface StubShape {
   x: number;
   y: number;
   props: CardSize;
+  meta?: { originId: TLShapeId };
 }
 
 /** Stands in for the unregister callback each side effect returns. */
 const noop = () => undefined;
 
 /**
- * The slice of the editor that placement reads. Shapes are committed
- * explicitly so a test can reproduce the state during a multi-card paste,
- * where tldraw has not yet published the siblings created alongside a card.
+ * The slice of the editor that placement reads. Shapes are published only
+ * once the whole batch has been through `beforeCreate`, as tldraw does: a
+ * card created in a multi-shape operation cannot see its siblings.
  */
 const stubEditor = (screenWidth: number) => {
   const shapes: StubShape[] = [];
+  const beforeCreate: ((shape: StubShape) => StubShape)[] = [];
 
   const editor = {
     getViewportScreenBounds: () => ({ width: screenWidth, height: 1080 }),
@@ -36,8 +38,21 @@ const stubEditor = (screenWidth: number) => {
     getCurrentPageShapes: () => shapes,
     getShape: (id: TLShapeId) => shapes.find((shape) => shape.id === id),
     isIn: () => false,
+    createShapes: (batch: StubShape[]) => {
+      const created = batch.map((shape) =>
+        beforeCreate.reduce((next, handler) => handler(next), shape),
+      );
+      shapes.push(...created);
+      return created;
+    },
     sideEffects: {
-      registerBeforeCreateHandler: () => noop,
+      registerBeforeCreateHandler: (
+        _type: string,
+        handler: (shape: StubShape) => StubShape,
+      ) => {
+        beforeCreate.push(handler);
+        return noop;
+      },
       registerBeforeChangeHandler: () => noop,
       registerAfterChangeHandler: () => noop,
       registerAfterCreateHandler: () => noop,
@@ -57,6 +72,25 @@ const stubEditor = (screenWidth: number) => {
         y: bounds.y,
         props: { w: bounds.w, h: bounds.h },
       });
+    },
+    /**
+     * Paste or duplicate a set of cards, the way tldraw does: one
+     * `createShapes` call carrying every clone. Returns where they landed.
+     */
+    createClones: (sizes: CardSize[]): CardBounds[] => {
+      const origin = createShapeId('origin');
+      const batch = sizes.map((size, index) => ({
+        id: createShapeId(`clone-${index}`),
+        type: 'card' as const,
+        x: 0,
+        y: 0,
+        props: size,
+        meta: { originId: origin },
+      }));
+
+      return editor
+        .createShapes(batch)
+        .map((shape) => ({ x: shape.x, y: shape.y, ...shape.props }));
     },
   };
 };
@@ -104,25 +138,17 @@ describe('registerCardPlacement', () => {
   });
 
   // Test: A paste wider than the grid wraps without overlapping itself.
-  // Situation: Four cards are placed in one atomic operation, so none of them
-  //   reaches the store before the next is placed — the state during a
-  //   multi-card paste or duplicate.
+  // Situation: Four cards arrive in one `createShapes` call, so none of them
+  //   reaches the store before the next is placed — a multi-card paste.
   // Expectation: The card that wraps clears the row its siblings occupy.
   it('wraps a multi-card paste below its own first row', () => {
-    const placement = registerCardPlacement(canvas.editor);
+    registerCardPlacement(canvas.editor);
 
     canvas.commit(createShapeId('existing'), { x: 0, y: 0, ...TABLE });
 
-    const placed = Array.from({ length: LAPTOP_COLUMNS + 1 }, (_, index) => {
-      const position = placement.place(
-        createShapeId(`clone-${index}`),
-        TABLE,
-        // Only the first card of a paste opens the row, and clones cannot
-        // know their siblings' sizes
-        index === 0 ? { kind: 'align' } : null,
-      );
-      return { ...position, ...TABLE };
-    });
+    const placed = canvas.createClones(
+      Array.from({ length: LAPTOP_COLUMNS + 1 }, () => TABLE),
+    );
 
     const [rowStart, ...rest] = placed;
     const wrapped = rest[rest.length - 1];
@@ -135,23 +161,37 @@ describe('registerCardPlacement', () => {
   });
 
   // Test: Single-column duplicate of two cards.
-  // Situation: Mobile grid, two clones placed in one operation.
+  // Situation: Mobile grid, two clones created in one operation.
   // Expectation: The second clone stacks below the first rather than on it.
   it('stacks a single-column paste instead of overlapping it', () => {
     const mobile = stubEditor(MOBILE_WIDTH);
-    const placement = registerCardPlacement(mobile.editor);
+    registerCardPlacement(mobile.editor);
 
     mobile.commit(createShapeId('existing'), { x: 0, y: 0, ...TABLE });
 
-    const first = placement.place(createShapeId('clone-0'), TABLE, {
-      kind: 'align',
-    });
-    const second = placement.place(createShapeId('clone-1'), TABLE, null);
+    const [first, second] = mobile.createClones([TABLE, TABLE]);
+    if (!first || !second) throw new Error('expected two clones');
 
-    expect(overlaps({ ...first, ...TABLE }, { ...second, ...TABLE })).toBe(
-      false,
-    );
+    expect(overlaps(first, second)).toBe(false);
     expect(second.y).toBeGreaterThanOrEqual(first.y + TABLE.h);
+  });
+
+  // Test: A paste is centered on the canvas's content.
+  // Situation: Two clones of different widths pasted under one existing card.
+  //   The first clone is placed before its sibling exists, so the row can
+  //   only be centered if the batch was read from the creation itself.
+  // Expectation: The row's midpoint matches the content's midpoint.
+  it('centers a pasted row on the existing content', () => {
+    registerCardPlacement(canvas.editor);
+
+    canvas.commit(createShapeId('existing'), { x: 0, y: 0, ...TABLE });
+    const contentCenter = TABLE.w / 2;
+
+    const placed = canvas.createClones([TABLE, CHART]);
+    const rowLeft = Math.min(...placed.map((card) => card.x));
+    const rowRight = Math.max(...placed.map((card) => card.x + card.w));
+
+    expect((rowLeft + rowRight) / 2).toBeCloseTo(contentCenter);
   });
 
   // Test: One row per registration batch.
