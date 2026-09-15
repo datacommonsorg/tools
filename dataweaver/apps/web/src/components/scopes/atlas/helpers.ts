@@ -25,13 +25,7 @@ interface ChartContent
   extends BaseContent,
     Pick<
       CardChartProps,
-      | 'title'
-      | 'description'
-      | 'data'
-      | 'series'
-      | 'facets'
-      | 'seriesFacets'
-      | 'parentPlaceDcid'
+      'title' | 'description' | 'series' | 'parentPlaceDcid'
     > {
   variant: 'chart';
   chartStyle?: ChartStyle;
@@ -89,10 +83,7 @@ export const contentToShape = (
         variant: 'chart',
         title: content.title,
         description: content.description,
-        data: content.data,
         series: content.series,
-        facets: content.facets,
-        seriesFacets: content.seriesFacets,
         chartStyle: content.chartStyle,
         parentPlaceDcid: content.parentPlaceDcid,
       },

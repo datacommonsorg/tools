@@ -18,7 +18,8 @@ export const FacetSelector = ({
   onSelect,
   label = 'Facet',
 }: FacetSelectorProps) => {
-  const currentFacet = facets.find((f) => f.facetId === selectedFacetId);
+  const currentFacet =
+    facets.find((f) => f.facetId === selectedFacetId) ?? facets[0];
 
   if (!currentFacet || facets.length <= 1) {
     return currentFacet ? (

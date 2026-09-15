@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
+import {
+  buildCardShapeId,
+  COMPARISON_PLACE_KEY,
+} from '~/functions/card_shape_id';
+import { formatChartCardTitle } from '~/functions/format_card_title';
 import { resolveResultForPlace } from '~/functions/scope_key';
 import type {
   CardEntry,
@@ -52,12 +57,13 @@ export interface AtlasStore {
     type: CardType,
     placeDcid: string,
     variableDcid?: string,
+    resultPlaceDcid?: string,
   ) => void;
   cardRegisterBatch: (entries: CardEntry[]) => void;
   cardRegisterChart: (
     parentShapeId: string,
     placeDcid: string,
-    variableDcid: string,
+    variableDcid?: string,
   ) => void;
   cardUnregister: (shapeId: string) => void;
   cardClearFocusTarget: () => void;
@@ -257,6 +263,7 @@ export const useAtlasStore = create<AtlasStore>()(
           type,
           placeDcid,
           variableDcid?,
+          resultPlaceDcid?,
         ) => {
           set(
             (state) => ({
@@ -268,6 +275,7 @@ export const useAtlasStore = create<AtlasStore>()(
                   type,
                   placeDcid,
                   variableDcid,
+                  resultPlaceDcid,
                 },
               },
             }),
@@ -291,52 +299,102 @@ export const useAtlasStore = create<AtlasStore>()(
           );
         },
 
-        cardRegisterChart: (parentShapeId, placeDcid, variableDcid) => {
+        cardRegisterChart: (parentShapeId, placeDcid, variableDcid?) => {
           const { cards, nodes, cardRegister } = get();
           const parent = cards[parentShapeId];
           if (!parent) return;
 
-          const shapeId = `shape:${parent.historyNodeId}__${placeDcid}__chart__${variableDcid}`;
+          const node = nodes[parent.historyNodeId];
+
+          // Determine effectiveResultPlaceDcid:
+          // If the parent card belongs to or is an enclosing region, and the target
+          // place is a child entity inside it, record that enclosing region as the
+          // key its observations must be read from.
+          const parentDatasetKey = parent.resultPlaceDcid || parent.placeDcid;
+          let effectiveResultPlaceDcid: string | undefined;
+
+          if (parentDatasetKey && parent.placeDcid !== COMPARISON_PLACE_KEY) {
+            if (parent.resultPlaceDcid && placeDcid === parent.placeDcid) {
+              effectiveResultPlaceDcid = parent.resultPlaceDcid;
+            } else if (parentDatasetKey !== placeDcid) {
+              const parentResult = resolveResultForPlace(
+                node?.results,
+                parentDatasetKey,
+              );
+              if (
+                parentResult?.placeDcid !== placeDcid &&
+                parentResult?.entities?.some((e) => e.dcid === placeDcid)
+              ) {
+                effectiveResultPlaceDcid = parentDatasetKey;
+              }
+            }
+          }
+
+          const result = resolveResultForPlace(
+            node?.results,
+            effectiveResultPlaceDcid || placeDcid,
+          );
+
+          // A card is only renderable when some facet of the target variable
+          // carries observations for the target place. Child cards read a
+          // single entity out of the enclosing region's result, so they must
+          // match on entity too.
+          const isPlottable = (candidate: string | undefined): boolean =>
+            candidate !== undefined &&
+            (result?.timeSeries.some(
+              (ts) =>
+                ts.variableDcid === candidate &&
+                (!effectiveResultPlaceDcid || ts.entityDcid === placeDcid) &&
+                ts.facets.some((f) => f.observations.length > 0),
+            ) ??
+              false);
+
+          const plottableVar = result?.timeSeries.find(
+            (ts) =>
+              (!effectiveResultPlaceDcid || ts.entityDcid === placeDcid) &&
+              ts.facets.some((f) => f.observations.length > 0),
+          )?.variableDcid;
+
+          // Inherit the parent card's variable so a drill-down keeps the metric
+          // the user was looking at — but only when that metric has data for
+          // the target place, otherwise fall back to the first one that does.
+          const effectiveVar =
+            variableDcid ||
+            (isPlottable(parent.variableDcid)
+              ? parent.variableDcid
+              : undefined) ||
+            plottableVar;
+
+          const shapeId = buildCardShapeId({
+            historyNodeId: parent.historyNodeId,
+            placeDcid,
+            type: 'chart',
+            variableDcid: effectiveVar,
+          });
           if (cards[shapeId]) {
             set(
-              { focusTarget: { shapeId, sourceShapeId: parentShapeId } },
+              { focusTarget: { shapeId, sourceShapeId: parent.shapeId } },
               undefined,
               'cardFocusTarget',
             );
             return;
           }
 
-          // Check whether the generic chart (created with the initial query)
-          // already shows this variable (it displays the first time series).
-          const genericChartId = `shape:${parent.historyNodeId}__${placeDcid}__chart`;
-          if (cards[genericChartId]) {
-            const node = nodes[parent.historyNodeId];
-            const result = resolveResultForPlace(node?.results, placeDcid);
-            const firstVariable = result?.timeSeries[0]?.variableDcid;
-            if (firstVariable === variableDcid) {
-              set(
-                {
-                  focusTarget: {
-                    shapeId: genericChartId,
-                    sourceShapeId: parentShapeId,
-                  },
-                },
-                undefined,
-                'cardFocusTarget',
-              );
-              return;
-            }
-          }
+          // Nothing to draw: the shape sync would skip this card, leaving a
+          // registry entry with no shape on the canvas — and the duplicate
+          // check above would then swallow every retry. Bail out instead.
+          if (!isPlottable(effectiveVar)) return;
 
           cardRegister(
             shapeId,
             parent.historyNodeId,
             'chart',
             placeDcid,
-            variableDcid,
+            effectiveVar,
+            effectiveResultPlaceDcid,
           );
           set(
-            { focusTarget: { shapeId, sourceShapeId: parentShapeId } },
+            { focusTarget: { shapeId, sourceShapeId: parent.shapeId } },
             undefined,
             'cardFocusTarget',
           );
@@ -452,6 +510,10 @@ export const useAtlasStore = create<AtlasStore>()(
           for (const shapeId of selectedShapeIds) {
             const card = cards[shapeId];
             if (!card) continue;
+            if (card.resultPlaceDcid) {
+              dcids.add(card.placeDcid);
+              continue;
+            }
             const node = nodes[card.historyNodeId];
             if (!node) continue;
             const result = resolveResultForPlace(node.results, card.placeDcid);
@@ -475,7 +537,7 @@ export const useAtlasStore = create<AtlasStore>()(
             const node = nodes[card.historyNodeId];
             if (!node) continue;
 
-            if (card.placeDcid === '__comparison') {
+            if (card.placeDcid === COMPARISON_PLACE_KEY) {
               // Comparison chart — extract all per-place results from the node.
               for (const [key, result] of Object.entries(node.results)) {
                 const placeKey =
@@ -488,11 +550,68 @@ export const useAtlasStore = create<AtlasStore>()(
               }
             } else {
               // Regular chart — extract the single place result.
-              const result = resolveResultForPlace(
-                node.results,
-                card.placeDcid,
-              );
+              const resultKey = card.resultPlaceDcid || card.placeDcid;
+              const result = resolveResultForPlace(node.results, resultKey);
               if (!result) continue;
+
+              // If the card is scoped to a specific child place (e.g. South Africa from an Africa map)
+              if (card.resultPlaceDcid) {
+                // Deliberately the same `place::variable` namespace as the
+                // regular branch below: a child card and a same-place regular
+                // card describe the same place/variable pair, so the combine
+                // API should only receive it once.
+                const dedupeKey = card.variableDcid
+                  ? `${card.placeDcid}::${card.variableDcid}`
+                  : card.placeDcid;
+                if (seen.has(dedupeKey)) continue;
+                seen.add(dedupeKey);
+
+                const entity = result.entities.find(
+                  (e) => e.dcid === card.placeDcid,
+                );
+                const placeName = entity?.name || card.placeDcid;
+                const filteredTimeSeries = result.timeSeries.filter(
+                  (entry) =>
+                    entry.entityDcid === card.placeDcid &&
+                    (!card.variableDcid ||
+                      entry.variableDcid === card.variableDcid),
+                );
+                const filteredVariables = card.variableDcid
+                  ? result.variables.filter(
+                      (entry) => entry.dcid === card.variableDcid,
+                    )
+                  : result.variables;
+
+                const cleanedVariables = filteredVariables.map((v) => ({
+                  ...v,
+                  isChildQuery: false,
+                  parentPlaceDcid: undefined,
+                  childPlaceType: undefined,
+                  placeDcid: card.placeDcid,
+                  placeName,
+                }));
+
+                results.push({
+                  ...result,
+                  id: `${result.id}__${card.placeDcid}${card.variableDcid ? `__${card.variableDcid}` : ''}`,
+                  title: formatChartCardTitle(
+                    cleanedVariables[0]?.name,
+                    placeName,
+                    false,
+                  ),
+                  placeDcid: card.placeDcid,
+                  placeName,
+                  isChildQuery: false,
+                  parentPlaceDcid: undefined,
+                  childPlaceType: undefined,
+                  entities: entity
+                    ? [entity]
+                    : [{ dcid: card.placeDcid, name: placeName }],
+                  variables: cleanedVariables,
+                  timeSeries: filteredTimeSeries,
+                });
+                continue;
+              }
 
               // Use a composite key based on card/result place scope and variable so that
               // different variables for the same place/region are treated as distinct results.
@@ -520,6 +639,7 @@ export const useAtlasStore = create<AtlasStore>()(
                 );
                 results.push({
                   ...result,
+                  id: `${result.id}__${card.variableDcid}`,
                   variables: variable ? [variable] : result.variables,
                   timeSeries,
                 });

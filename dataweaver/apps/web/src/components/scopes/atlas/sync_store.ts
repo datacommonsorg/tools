@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type { TLShapeId } from 'tldraw';
 import type { ChartSeries } from '~/components/elements/card/chart/chart';
+import { DEFAULT_SERIES_KEY } from '~/components/elements/card/chart/chart_style';
+import { COMPARISON_PLACE_KEY } from '~/functions/card_shape_id';
 import {
   formatChartCardTitle,
   formatNotesCardTitle,
@@ -14,7 +17,6 @@ import type {
   CardType,
   ChartStyle,
   ComparisonResult,
-  FacetInfo,
   QueryResult,
 } from '~/server/types';
 import { useAtlasStore } from '~/store';
@@ -81,7 +83,6 @@ export const deriveComparisonChartContent = (
   if (!chartMeta) return null;
 
   const series: ChartSeries[] = [];
-  const seriesFacets: Record<string, FacetInfo[]> = {};
 
   const resultEntries = Object.values(allResults);
   const allPlaces = new Set(
@@ -105,7 +106,8 @@ export const deriveComparisonChartContent = (
     if (!result) return null;
 
     for (const ts of result.timeSeries) {
-      const observations = ts.facets[0]?.observations;
+      const plottableFacet = ts.facets.find((f) => f.observations.length > 0);
+      const observations = plottableFacet?.observations;
       if (!observations || observations.length === 0) continue;
 
       const variable = result.variables.find(
@@ -117,15 +119,17 @@ export const deriveComparisonChartContent = (
         key: ts.variableDcid,
         label,
         data: observations,
+        unit: plottableFacet?.unit,
+        facets: ts.facets,
       });
-
-      seriesFacets[ts.variableDcid] = ts.facets;
     }
   } else {
     // Different-place: build one series per place (original behavior).
     for (const result of resultEntries) {
       const ts = result.timeSeries.find((t) => t.variableDcid === variableDcid);
-      const observations = ts?.facets[0]?.observations;
+      if (!ts) continue;
+      const plottableFacet = ts.facets.find((f) => f.observations.length > 0);
+      const observations = plottableFacet?.observations;
       if (!observations || observations.length === 0) continue;
 
       const placeDcid =
@@ -139,9 +143,9 @@ export const deriveComparisonChartContent = (
         key: placeDcid,
         label: placeName,
         data: observations,
+        unit: plottableFacet?.unit,
+        facets: ts.facets,
       });
-
-      seriesFacets[placeDcid] = ts.facets;
     }
   }
 
@@ -152,127 +156,55 @@ export const deriveComparisonChartContent = (
     title: chartMeta.title,
     description: chartMeta.description,
     series,
-    ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
-    isLoading: false,
-  };
-};
-
-/** Derive AtlasContent for a chart card from a QueryResult (first variable's facets). */
-export const deriveChartContent = (
-  result: QueryResult,
-): AtlasContent | null => {
-  const placeName = resolvePlaceName(result);
-
-  if (result.entities.length > 1) {
-    const primaryVariableDcid =
-      result.variables[0]?.dcid || result.timeSeries[0]?.variableDcid;
-    if (!primaryVariableDcid) return null;
-
-    const series: ChartSeries[] = [];
-    const seriesFacets: Record<string, FacetInfo[]> = {};
-
-    for (const entity of result.entities) {
-      const ts = result.timeSeries.find(
-        (t) =>
-          t.variableDcid === primaryVariableDcid &&
-          t.entityDcid === entity.dcid,
-      );
-      const observations = ts?.facets[0]?.observations;
-      if (!observations || observations.length === 0) continue;
-
-      series.push({
-        key: entity.dcid,
-        label: entity.name || entity.dcid,
-        data: observations,
-      });
-
-      if (ts?.facets) {
-        seriesFacets[entity.dcid] = ts.facets;
-      }
-    }
-
-    if (series.length === 0) return null;
-
-    const varName = result.variables[0]?.name;
-    const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
-    const parentPlaceDcid = result.parentPlaceDcid;
-
-    return {
-      variant: 'chart',
-      title,
-      description: result.variables[0]?.rationale || undefined,
-      series,
-      parentPlaceDcid,
-      ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
-      isLoading: false,
-    };
-  }
-
-  const firstTimeSeries = result.timeSeries[0];
-  const allFacets = firstTimeSeries?.facets;
-  const firstFacet = allFacets?.[0];
-
-  if (!allFacets || !firstFacet || firstFacet.observations.length === 0) {
-    return null;
-  }
-
-  const varName = result.variables[0]?.name;
-  const title = formatChartCardTitle(varName, placeName, result.isChildQuery);
-  const parentPlaceDcid = result.isChildQuery
-    ? result.parentPlaceDcid
-    : undefined;
-
-  return {
-    variant: 'chart',
-    title,
-    description:
-      result.variables[0]?.rationale || firstFacet.source || undefined,
-    data: firstFacet.observations,
-    facets: allFacets,
-    parentPlaceDcid,
     isLoading: false,
   };
 };
 
 /**
- * Derive AtlasContent for a chart card targeting a specific variable by DCID.
- * For multi-entity / child results, builds a multi-series comparison across entities.
- * For single-entity results (or a specific entity), builds a single-series chart with all facets.
+ * Derive AtlasContent for a chart card from a QueryResult.
+ * Handles both multi-entity (regional comparisons/choropleths) and single-entity views,
+ * optionally targeting a specific variable and/or specific child place.
  */
-export const deriveChartContentForVariable = (
+export const deriveChartContent = (
   result: QueryResult,
-  variableDcid: string,
-  entityDcid?: string,
+  variableDcid?: string,
+  childPlaceDcid?: string,
 ): AtlasContent | null => {
-  const isSpecificEntity =
-    entityDcid && result.entities.some((e) => e.dcid === entityDcid);
+  const plottableVar = result.timeSeries.find(
+    (ts) =>
+      (!childPlaceDcid || ts.entityDcid === childPlaceDcid) &&
+      ts.facets.some((f) => f.observations.length > 0),
+  )?.variableDcid;
+  const effectiveVar =
+    variableDcid || plottableVar || result.variables[0]?.dcid;
+  if (!effectiveVar) return null;
+
+  const isSpecificChildPlace = Boolean(childPlaceDcid);
   const placeName = resolvePlaceName(result);
 
-  if (result.entities.length > 1 && !isSpecificEntity) {
+  if (result.entities.length > 1 && !isSpecificChildPlace) {
     const series: ChartSeries[] = [];
-    const seriesFacets: Record<string, FacetInfo[]> = {};
 
     for (const entity of result.entities) {
       const ts = result.timeSeries.find(
-        (t) => t.variableDcid === variableDcid && t.entityDcid === entity.dcid,
+        (t) => t.variableDcid === effectiveVar && t.entityDcid === entity.dcid,
       );
-      const observations = ts?.facets[0]?.observations;
+      const plottableFacet = ts?.facets.find((f) => f.observations.length > 0);
+      const observations = plottableFacet?.observations;
       if (!observations || observations.length === 0) continue;
 
       series.push({
         key: entity.dcid,
         label: entity.name || entity.dcid,
         data: observations,
+        unit: plottableFacet?.unit,
+        facets: ts?.facets,
       });
-
-      if (ts?.facets) {
-        seriesFacets[entity.dcid] = ts.facets;
-      }
     }
 
     if (series.length === 0) return null;
 
-    const variable = result.variables.find((v) => v.dcid === variableDcid);
+    const variable = result.variables.find((v) => v.dcid === effectiveVar);
     const title = formatChartCardTitle(
       variable?.name,
       placeName,
@@ -286,40 +218,56 @@ export const deriveChartContentForVariable = (
       description: variable?.rationale || undefined,
       series,
       parentPlaceDcid,
-      ...(Object.keys(seriesFacets).length > 0 && { seriesFacets }),
       isLoading: false,
     };
   }
 
   const timeSeries = result.timeSeries.find(
     (m) =>
-      m.variableDcid === variableDcid &&
-      (!entityDcid || m.entityDcid === entityDcid),
+      m.variableDcid === effectiveVar &&
+      (!childPlaceDcid || m.entityDcid === childPlaceDcid),
   );
   const allFacets = timeSeries?.facets;
-  const firstFacet = allFacets?.[0];
+  const plottableFacet = allFacets?.find((f) => f.observations.length > 0);
 
-  if (!allFacets || !firstFacet || firstFacet.observations.length === 0) {
+  if (!allFacets || !plottableFacet) {
     return null;
   }
 
-  const specificEntity = isSpecificEntity
-    ? result.entities.find((e) => e.dcid === entityDcid)
+  const specificEntity = isSpecificChildPlace
+    ? result.entities.find((e) => e.dcid === childPlaceDcid)
     : undefined;
-  const targetPlaceName = specificEntity?.name || placeName;
-  const variable = result.variables.find((v) => v.dcid === variableDcid);
+  const targetPlaceName =
+    specificEntity?.name ||
+    timeSeries?.entityName ||
+    childPlaceDcid ||
+    placeName;
+  const targetPlaceDcid =
+    childPlaceDcid ||
+    specificEntity?.dcid ||
+    result.placeDcid ||
+    result.entities[0]?.dcid ||
+    DEFAULT_SERIES_KEY;
+  const variable = result.variables.find((v) => v.dcid === effectiveVar);
   const title = formatChartCardTitle(variable?.name, targetPlaceName, false);
   const parentPlaceDcid =
-    result.isChildQuery && !isSpecificEntity
+    result.isChildQuery && !isSpecificChildPlace
       ? result.parentPlaceDcid
       : undefined;
 
   return {
     variant: 'chart',
     title,
-    description: variable?.rationale || firstFacet.source || undefined,
-    data: firstFacet.observations,
-    facets: allFacets,
+    description: variable?.rationale || plottableFacet.source || undefined,
+    series: [
+      {
+        key: targetPlaceDcid,
+        label: targetPlaceName,
+        data: plottableFacet.observations,
+        unit: plottableFacet.unit,
+        facets: allFacets,
+      },
+    ],
     parentPlaceDcid,
     isLoading: false,
   };
@@ -334,6 +282,7 @@ export const deriveContentForCard = (
   comparison?: ComparisonResult,
   allResults?: Record<string, QueryResult>,
   chartStyle?: ChartStyle,
+  childPlaceDcid?: string,
 ): AtlasContent | null => {
   if (type === 'loading') {
     return deriveLoadingContent(placeholderTitle ?? '');
@@ -355,9 +304,7 @@ export const deriveContentForCard = (
     case 'notes':
       return deriveNotesContent(result);
     case 'chart': {
-      const content = variableDcid
-        ? deriveChartContentForVariable(result, variableDcid)
-        : deriveChartContent(result);
+      const content = deriveChartContent(result, variableDcid, childPlaceDcid);
       return finalizeChartContent(content, chartStyle);
     }
   }
@@ -414,10 +361,11 @@ export const useStoreShapeSync = () => {
           if (prevCards[shapeId]) continue;
 
           const node = nodes[card.historyNodeId];
-          const isComparison = card.placeDcid === '__comparison';
+          const isComparison = card.placeDcid === COMPARISON_PLACE_KEY;
+          const resultKey = card.resultPlaceDcid || card.placeDcid;
           const result = isComparison
             ? undefined
-            : resolveResultForPlace(node?.results, card.placeDcid);
+            : resolveResultForPlace(node?.results, resultKey);
           const comparison = isComparison ? node?.comparison : undefined;
           const title =
             node?.parsedQuery?.titles[card.placeDcid] || card.placeDcid;
@@ -430,12 +378,11 @@ export const useStoreShapeSync = () => {
             comparison,
             isComparison ? node?.results : undefined,
             card.chartStyle,
+            card.resultPlaceDcid ? card.placeDcid : undefined,
           );
           if (!content) continue;
 
-          // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
-          const rawId = shapeId.replace(/^shape:/, '');
-          const handle = add(content, rawId);
+          const handle = add(content, shapeId as TLShapeId);
           handles.set(shapeId, handle);
         }
 
@@ -445,10 +392,11 @@ export const useStoreShapeSync = () => {
           if (!prevCard || prevCard.type === card.type) continue;
 
           const node = nodes[card.historyNodeId];
-          const isComparison = card.placeDcid === '__comparison';
+          const isComparison = card.placeDcid === COMPARISON_PLACE_KEY;
+          const resultKey = card.resultPlaceDcid || card.placeDcid;
           const result = isComparison
             ? undefined
-            : resolveResultForPlace(node?.results, card.placeDcid);
+            : resolveResultForPlace(node?.results, resultKey);
           const comparison = isComparison ? node?.comparison : undefined;
           const content = deriveContentForCard(
             card.type,
@@ -458,6 +406,7 @@ export const useStoreShapeSync = () => {
             comparison,
             isComparison ? node?.results : undefined,
             card.chartStyle,
+            card.resultPlaceDcid ? card.placeDcid : undefined,
           );
           if (!content) continue;
 
