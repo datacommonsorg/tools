@@ -1,12 +1,18 @@
 # Custom Data Commons Narratives Front-End UI
 
-This directory contains the React SPA frontend application for Custom Data Commons instances. It serves as the primary visual client for interacting with the local Data Agent sidecar and rendering various interactive charts and metrics cards dynamically configured via branding packages.
+This directory contains the React SPA frontend application for Custom Data
+Commons instances. It serves as the primary visual client for interacting with
+the local Data Agent sidecar and rendering various interactive charts and
+metrics cards dynamically configured via branding packages.
 
 ## Layout & Architecture
 
 * **React + Vite**: Pre-configured dev server and production builder.
-* **Tailwind CSS v4**: Theme engine styling. Brand tokens are fetched from the server and loaded dynamically using CSS variables inside `src/index.css`.
-* **Hash-based Routing**: Normalized routes parsed using window hash (`#/<route>`) inside `src/hooks/useHashRoute.ts` to keep client-side navigation lightweight and avoid server routing overrides.
+* **Tailwind CSS v4**: Theme engine styling. Brand tokens are fetched from the
+  server and loaded dynamically using CSS variables inside `src/index.css`.
+* **Hash-based Routing**: Normalized routes parsed using window hash
+  (`#/<route>`) inside `src/hooks/use_hash_route.ts` to keep client-side
+  navigation lightweight and avoid server routing overrides.
 
 ## Getting Started
 

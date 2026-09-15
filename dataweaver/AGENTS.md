@@ -1,43 +1,76 @@
 # dataweaver — agent guide
 
-Root of the `/dataweaver` directory, managed with [pnpm workspaces](https://pnpm.io/workspaces).
-It sits within a larger monorepo, so all paths and commands here are relative to
-`/dataweaver`, not that outer repo.
+Root of the `/dataweaver` directory, managed with
+[pnpm workspaces](https://pnpm.io/workspaces). It sits within a larger monorepo,
+so all paths and commands here are relative to `/dataweaver`, not that outer
+repo.
 
 This file is the source of truth for project conventions, imported by each
 tool's agent entry point so every assistant reads the same rules.
 
+## Required reading
+
+Read these before writing code, in this order:
+
+1. [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) (repository root) — general
+   engineering rules for every language: simplicity, file organization, naming,
+   TypeScript and Vitest rules, error handling, testing, security, and the Data
+   Commons pipeline conventions. Dataweaver has no local copy, so the root
+   document applies in full.
+2. [`FRONTEND.md`](FRONTEND.md) (this directory) — the authoritative frontend
+   reference for React, SCSS modules, primitives, motion, performance, and
+   accessibility. It augments the repository-root
+   [`FRONTEND.md`](../FRONTEND.md); it does not replace it. Where the two
+   differ, the copy in this directory takes precedence.
+3. This file — layout, commands, component categories, and design tokens.
+
+Contribution process and PR expectations:
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
 ## Layout
 
 - `apps/web` — Next.js 16 app (App Router, React 19, Turbopack).
-- `packages/tokens` — design tokens (JSON → generated CSS / SCSS / TS), consumed as `@package/tokens`.
+- `packages/tokens` — design tokens (JSON → generated CSS / SCSS / TS), consumed
+  as `@package/tokens`.
 
 ## Commands
 
 Run from the root of the `/dataweaver` directory:
 
-- `corepack enable && pnpm i` — install (the pnpm version is pinned via `packageManager`).
+- `corepack enable && pnpm i` — install (the pnpm version is pinned via
+  `packageManager`).
 - `pnpm dev` — run apps in dev mode.
 - `pnpm build` — build all apps.
 - `pnpm test` — run unit tests across packages.
 - `pnpm lint` — type-check + Biome + Stylelint.
 - `pnpm fix` — auto-fix Biome + Stylelint.
-- `pnpm generate:tokens` — regenerate `packages/tokens/dist/` from `packages/tokens/src/*.json`.
+- `pnpm generate:tokens` — regenerate `packages/tokens/dist/` from
+  `packages/tokens/src/*.json`.
 
-Run `pnpm test`, `pnpm lint` (and `pnpm build` for UI changes) before considering work done.
+Run `pnpm test`, `pnpm lint` (and `pnpm build` for UI changes) before
+considering work done.
 
 ## Code style
 
-- **TypeScript** follows the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html), enforced via Biome (`biome.json`).
-- **CSS / SCSS** follow the [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html): Stylelint for `.scss` (`stylelint.config.mjs`), Biome for plain `.css`.
-- **File naming** — use `dash-case` for all Next.js routing within `apps/web/src/app` (route segments, `page.tsx`, dynamic params, etc.) and `snake_case` for every other file.
-- **Category-first naming** — composed names lead with what the thing *is*, then what makes it specific: `card_chart` (not `chart_card`), `button_close`, `icon_arrow_right`. Applies to files, folders, component identifiers, and element-prefixed SCSS classes. See [`FRONTEND.md` §1.2](FRONTEND.md#12-naming--category-first).
+Repo-wide rules live in [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md);
+frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
 
-## Frontend
+- **Enforcement** — TypeScript via Biome (`biome.json`); `.scss` via Stylelint
+  (`stylelint.config.mjs`); plain `.css` via Biome. `pnpm lint` runs all three
+  plus the type-check; `pnpm fix` auto-fixes.
+- **File naming** — `dash-case` for all Next.js routing within
+  `apps/web/src/app` (route segments, `page.tsx`, dynamic params, etc.) and
+  `snake_case` for every other file. Composed names are category-first
+  (`card_chart`, not `chart_card`) — see
+  [`FRONTEND.md` §1.2](FRONTEND.md#12-naming--category-first).
 
-Before writing any React component, SCSS module, or front-end utility, read
-[`FRONTEND.md`](FRONTEND.md) — the authoritative reference for TypeScript, SCSS,
-primitives, motion, performance, and accessibility conventions.
+## Tests
+
+Vitest, co-located with the code under test (`x.test.ts` next to `x.ts`). The
+Vitest environment/global stubbing rules (`vi.stubEnv`, `vi.stubGlobal`) are in
+[`CODING_GUIDELINES.md` §6](../CODING_GUIDELINES.md#6-typescript); the
+structured `Test / Situation / Expectation` comment format is in
+[§13](../CODING_GUIDELINES.md#13-testing).
 
 ## Components (`apps/web/src/components`)
 
@@ -58,9 +91,9 @@ elements compose primitives); `foundations` wrap the whole tree from the root.
 - **`scopes/`** — feature- or page-scoped compositions that assemble primitives
   and elements into a specific view. A scope **owns its sub-components**: pieces
   used only by that scope live in its folder, not in `elements/`. _e.g._
-  `scopes/page_home` and `scopes/atlas`. Complex scope subsystems are
-  documented in place — e.g. how Atlas cards are positioned and the camera
-  follows them: [`scopes/atlas/PLACEMENT.md`](apps/web/src/components/scopes/atlas/PLACEMENT.md).
+  `scopes/page_home` and `scopes/atlas`. Complex scope subsystems are documented
+  in place — e.g. how Atlas cards are positioned and the camera follows them:
+  [`scopes/atlas/PLACEMENT.md`](apps/web/src/components/scopes/atlas/PLACEMENT.md).
 - **`foundations/`** — app-level infrastructure and cross-cutting providers /
   services that the rest of the tree depends on but that render little or no UI
   of their own: context providers, motion / scroll providers, analytics, global
@@ -76,18 +109,44 @@ app-wide service / provider → `foundation`.
 Source: `packages/tokens/src/*.json`. Edit those and run `pnpm generate:tokens`;
 never edit `packages/tokens/dist/**` (generated).
 
-- **Colors** → `@package/tokens/colors` → `colors.css` (imported once in `core.scss`): runtime `:root` custom properties as space-separated channels. Use as `rgb(var(--color-name))`; alpha as `rgb(var(--color-name) / 50%)`. Names are **semantic, not literal** (e.g. `atlas-content`) — the theme contract partners override at runtime, so the app never references raw palette names like `blue`. In JS use `@package/tokens/ts` `COLORS`: same channel form (`r g b` / `r g b / a`, alpha included) — wrap in `rgb()`, e.g. `` `rgb(${COLORS['card-chart-grid']})` ``.
-  - **Value forms** in `colors.json`: an RGB triplet `[r, g, b]`; a triplet **plus alpha** `[r, g, b, a]` (emitted as `r g b / a`, so `rgb(var(--color-x))` already carries the opacity); or an **alias** `"$other-token"` pointing at another token (one source of truth — edit the target, every aliasing token follows).
-  - **Two layers**: generic **roles** hold the real values (`accent`, `surface`, `content`, `shadow`, …); component-scoped sets **alias** them (`button-*`, `card-*`, `control-*`, `atlas-*`, `query-*`, …). A component references its **own scope's tokens** (which alias the roles), not a generic role or another component's tokens directly. The one deliberate exception: a button emphasis that *is* another scope reuses it — `control` / `card-action` pull from `control-*` / `card-action-*`.
-  - A **one-off** value (used by a single component) is declared **inline** in that component's token (e.g. `"card-border-divider": [196, 199, 197]`), not added to the generic palette. Promote it to a generic role only once 2+ scopes share it.
-- **Breakpoints** → `@package/tokens/scss` (build-time SCSS `$breakpoint-*` for `@media`) and `@package/tokens/ts` (`BREAKPOINT_*`). Not CSS variables — `var()` is invalid in media-query conditions.
-- **Eases** → build-time SCSS `$ease-*` (`@package/tokens/scss`) and typed `EASE_*` (`@package/tokens/ts`), both ready-to-use `cubic-bezier()` timing functions. Not runtime CSS variables.
+- **Colors** → `@package/tokens/colors` → `colors.css` (imported once in
+  `core.scss`): runtime `:root` custom properties as space-separated channels.
+  Use as `rgb(var(--color-name))`; alpha as `rgb(var(--color-name) / 50%)`.
+  Names are **semantic, not literal** (e.g. `atlas-content`) — the theme
+  contract partners override at runtime, so the app never references raw palette
+  names like `blue`. In JS use `@package/tokens/ts` `COLORS`: same channel form
+  (`r g b` / `r g b / a`, alpha included) — wrap in `rgb()`, e.g.
+  `` `rgb(${COLORS['card-chart-grid']})` ``.
+  - **Value forms** in `colors.json`: an RGB triplet `[r, g, b]`; a triplet
+    **plus alpha** `[r, g, b, a]` (emitted as `r g b / a`, so
+    `rgb(var(--color-x))` already carries the opacity); or an **alias**
+    `"$other-token"` pointing at another token (one source of truth — edit the
+    target, every aliasing token follows).
+  - **Two layers**: generic **roles** hold the real values (`accent`, `surface`,
+    `content`, `shadow`, …); component-scoped sets **alias** them (`button-*`,
+    `card-*`, `control-*`, `atlas-*`, `query-*`, …). A component references its
+    **own scope's tokens** (which alias the roles), not a generic role or
+    another component's tokens directly. The one deliberate exception: a button
+    emphasis that *is* another scope reuses it — `control` / `card-action` pull
+    from `control-*` / `card-action-*`.
+  - A **one-off** value (used by a single component) is declared **inline** in
+    that component's token (e.g. `"card-border-divider": [196, 199, 197]`), not
+    added to the generic palette. Promote it to a generic role only once 2+
+    scopes share it.
+- **Breakpoints** → `@package/tokens/scss` (build-time SCSS `$breakpoint-*` for
+  `@media`) and `@package/tokens/ts` (`BREAKPOINT_*`). Not CSS variables —
+  `var()` is invalid in media-query conditions.
+- **Eases** → build-time SCSS `$ease-*` (`@package/tokens/scss`) and typed
+  `EASE_*` (`@package/tokens/ts`), both ready-to-use `cubic-bezier()` timing
+  functions. Not runtime CSS variables.
 
-Add new colors to `colors.json` (following the role/scope + alias conventions above), breakpoints to `variables.json`, eases to `eases.json`, then regenerate.
+Add new colors to `colors.json` (following the role/scope + alias conventions
+above), breakpoints to `variables.json`, eases to `eases.json`, then regenerate.
 
 ## Verify
 
-`pnpm lint` for every change; `pnpm build` and a manual check for UI changes.
+`pnpm test` and `pnpm lint` for every change; `pnpm build` and a manual check
+for UI changes.
 
 ## Self-maintenance
 
@@ -96,3 +155,8 @@ architecture, update this file, [`FRONTEND.md`](FRONTEND.md), and `README.md` to
 match. Keep `AGENTS.md` / `FRONTEND.md` as the technical source of truth and
 `README.md` as user-facing docs. The per-tool agent entry points import this
 file — edit conventions here, not in those.
+
+Put each rule in exactly one place: rules that apply beyond Dataweaver belong in
+the repository-root [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) or
+[`FRONTEND.md`](../FRONTEND.md); only Dataweaver-specific rules and overrides
+belong here or in the local `FRONTEND.md`.
