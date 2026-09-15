@@ -1,0 +1,71 @@
+{
+  "$schema": "./branding.schema.json",
+  "$comment": "Base Data Commons theme — the blue one Google plans to launch first. Every value here is a theme token; no base-DC branch exists in component code. Colours are from the 'UI elements branded elements - Data Commons' spec slide, which names #0B57D0 (Google product blue) as primary, #EFEDED for skeleton bars and #F5FAFF for the skeleton surface; the rest were sampled from the accompanying mockups. The empty `navigation` array is deliberate — the spec calls for removing the base-DC header menu from the Narratives App altogether, not restyling it.",
+  "schema_version": "1",
+  "instance_id": "base-dc",
+  "instance_name": "Data Commons",
+  "domain_hint": "datacommons.org",
+  "logo": "assets/dc-logo.svg",
+  "favicon": "assets/dc-logo.svg",
+  "logo_alt": "Data Commons",
+  "logo_text": "Data Commons",
+  "logo_height": "28px",
+  "headline": "Data agent explorer",
+  "tagline": "powered by Google's Data Commons",
+  "colors": {
+    "primary": "#0B57D0",
+    "accent": "#0B57D0",
+    "text": "#1B1C1D",
+    "text_muted": "#444746",
+    "background": "#FFFFFF",
+    "surface": "#F9F9F9",
+    "gradient_start": "#0B57D0",
+    "gradient_end": "#0B57D0",
+    "surface_narrative": "#F5FAFF",
+    "skeleton_bar": "#EFEDED",
+    "border": "#E3E3E3",
+    "user_message": "#EAEEF5",
+    "container": "#C9E6FD",
+    "on_container": "#0B57D0"
+  },
+  "radius": {
+    "card": "16px",
+    "input": "36px",
+    "chip": "20px"
+  },
+  "fonts": {
+    "primary": "Google Sans, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    "body": "Google Sans Text, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+  },
+  "navigation": [],
+  "suggestions": [
+    "How big is the financial sector in Vietnam",
+    "How is India doing in agricultural practices",
+    "How is Africa doing combating HIV/AIDS"
+  ],
+  "footer": {
+    "text": "Base Data Commons — built on Custom Data Commons.",
+    "links": [
+      {
+        "label": "About",
+        "href": "/about"
+      },
+      {
+        "label": "FAQ",
+        "href": "/faq"
+      },
+      {
+        "label": "Disclaimers",
+        "href": "/disclaimers"
+      }
+    ]
+  },
+  "analytics": {
+    "ga_tag_id": ""
+  },
+  "splash_assets": [],
+  "metrics": {
+    "$comment": "Disabled by default for public-only instance. Populate with public DCIDs or leave tabs empty.",
+    "tabs": []
+  }
+}

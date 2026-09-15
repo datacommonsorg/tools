@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import json
+import os
+import sys
 import threading
 import uuid
 from datetime import datetime
@@ -24,6 +26,46 @@ from src.config import AGENT_ROOT
 # Max characters of the final response text kept as a preview in the log
 # (the full text_length is recorded separately).
 MAX_TEXT_PREVIEW_LENGTH = 500
+
+# Where session logs go.
+#
+# Every Cloud Run instance has its own ephemeral disk, so a session log written
+# to a file dies with the instance and cannot be read across the fleet --
+# exactly when scaling out makes it most needed. Emitting one JSON object per
+# line on stdout gets the same information into Cloud Logging as structured
+# entries, queryable by session_id and event_type, with no dependency and no
+# credentials.
+#
+# Files are still written off Cloud Run, because tailing one is the fastest way
+# to debug locally. SESSION_LOG_TO_FILE forces either behaviour explicitly.
+_ON_CLOUD_RUN = bool(os.environ.get("K_SERVICE"))
+_FILE_LOGGING = os.environ.get(
+    "SESSION_LOG_TO_FILE", "false" if _ON_CLOUD_RUN else "true"
+).strip().lower() in ("1", "true", "yes")
+
+
+def _emit_structured(session_id: str, event_type: str, data: dict) -> None:
+    """Write one JSON object per line to stdout for Cloud Logging to pick up.
+
+    Uses print rather than the logging module deliberately: Cloud Logging only
+    parses a line as structured when the *entire* line is JSON, and a logging
+    formatter that prepends a timestamp or level would silently downgrade every
+    entry to plain text.
+    """
+    print(
+        json.dumps(
+            {
+                "severity": "INFO",
+                "message": f"{event_type} [{session_id}]",
+                "session_id": session_id,
+                "event_type": event_type,
+                "data": data,
+            },
+            default=str,
+        ),
+        flush=True,
+        file=sys.stdout,
+    )
 
 
 # ============================================================
@@ -42,8 +84,9 @@ class SessionLogger:
         """
         self.session_id = session_id or self._generate_session_id()
         self.logs_dir = AGENT_ROOT / 'logs'
-        self.logs_dir.mkdir(exist_ok=True)
         self.log_file = self.logs_dir / f"{self.session_id}.log"
+        if _FILE_LOGGING:
+            self.logs_dir.mkdir(exist_ok=True)
         self.entries = []
         # Temporary cost instrumentation: accumulate Gemini token usage across
         # every model call in a single /chat/stream request (MCP tool loop, KB,
@@ -85,6 +128,11 @@ class SessionLogger:
 
     def _write_header(self):
         """Write session header to log file (only if new file)."""
+        _emit_structured(self.session_id, "SESSION_START", {
+            "started": datetime.now().isoformat(),
+        })
+        if not _FILE_LOGGING:
+            return
         if self.log_file.exists():
             # Resuming existing session - add continuation marker
             with open(self.log_file, 'a') as f:
@@ -109,11 +157,13 @@ class SessionLogger:
         }
         self.entries.append(entry)
 
-        # Write to file immediately
-        with open(self.log_file, 'a') as f:
-            f.write(f"\n--- {event_type} @ {timestamp} ---\n")
-            f.write(json.dumps(data, indent=2, default=str))
-            f.write("\n")
+        _emit_structured(self.session_id, event_type, data)
+
+        if _FILE_LOGGING:
+            with open(self.log_file, 'a') as f:
+                f.write(f"\n--- {event_type} @ {timestamp} ---\n")
+                f.write(json.dumps(data, indent=2, default=str))
+                f.write("\n")
 
     def log_user_message(self, message: str, history_count: int = 0):
         """Log the user's input message."""

@@ -1,0 +1,32 @@
+{
+  "$schema": "./branding.schema.json",
+  "$comment": "Neutral / white-label theme — the vanilla starting point for a new instance, with greyscale surfaces and blue links. Same layout as every other theme; only tokens differ. Unlike base DC this keeps the header menu, so `navigation` is omitted and the shipped defaults apply.",
+  "schema_version": "1",
+  "instance_id": "neutral",
+  "instance_name": "Data Commons",
+  "logo_text": "Data Commons",
+  "logo_height": "28px",
+  "headline": "Data Agent",
+  "tagline": "powered by Google's Data Commons",
+  "colors": {
+    "primary": "#0B57D0",
+    "accent": "#0B57D0",
+    "text": "#1B1C1D",
+    "text_muted": "#444746",
+    "background": "#FFFFFF",
+    "surface": "#F9F9F9",
+    "gradient_start": "#0B57D0",
+    "gradient_end": "#0B57D0",
+    "surface_narrative": "#F9F9F9",
+    "skeleton_bar": "#E3E3E3",
+    "user_message": "#F2F2F2",
+    "container": "#C9E6FD",
+    "on_container": "#004A77",
+    "nav_active": "#303030"
+  },
+  "radius": {
+    "card": "16px",
+    "input": "36px",
+    "chip": "20px"
+  }
+}

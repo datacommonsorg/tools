@@ -1,0 +1,116 @@
+# Cloud Build pipeline — validation on every pull request.
+#
+# Trigger: pull_request opened|synchronize against the main branch.
+# Filtered to paths: config/**, deploy/**, image/**, agent/**, cloudbuild/**.
+#
+# Validates without pushing or deploying.
+
+substitutions:
+  _AR_REGION: us-central1
+  _AR_REPO: custom-dc
+  # _PR_BRANCH is set automatically by Cloud Build for PR triggers.
+
+steps:
+  # 1. Terraform formatting + validation
+  - id: terraform-fmt
+    name: hashicorp/terraform:1.6
+    entrypoint: terraform
+    args: ['fmt', '-check', '-recursive', 'deploy/terraform-custom-datacommons/']
+
+  - id: terraform-validate
+    name: hashicorp/terraform:1.6
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        cd deploy/terraform-custom-datacommons/modules
+        terraform init -backend=false
+        terraform validate
+
+  # 2. tfsec — security scan on Terraform
+  - id: tfsec
+    name: aquasec/tfsec:latest
+    entrypoint: tfsec
+    args: ['--soft-fail', 'deploy/terraform-custom-datacommons/']
+
+  # 3. JSON Schema validation. config/ holds schemas and examples only; an
+  #    deployment's own overrides live in config/ and are validated at
+  #    deploy time by deploy/validate-branding.py. So the contract to check
+  #    here is that every committed example still satisfies its schema.
+  - id: schema-validate
+    name: node:20
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        npm install -g ajv-cli@5
+        ajv-cli validate -s schemas/agent-config.schema.json -d schemas/agent-config.example.json
+        ajv-cli validate -s schemas/agent-config.schema.json -d defaults/agent-config.json
+        for b in config/branding.example.json \
+                 config/branding.neutral.example.json \
+                 config/branding.base-dc.example.json \
+                 defaults/branding.json; do
+          ajv-cli validate -s schemas/branding.schema.json -d "$$b"
+        done
+
+  # 4. Build the images (no push). Confirms Dockerfile + linux/amd64 still work.
+  - id: build-services
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cd image
+        # Bypass the React build for PR validation; the dist/ is populated only
+        # by the deploy-stamp pipeline.
+        mkdir -p ./dist && echo "stub" > ./dist/index.html
+        docker buildx build --platform linux/amd64 -t services-pr:$SHORT_SHA .
+        ARCH=$$(docker inspect --format '{{.Architecture}}' services-pr:$SHORT_SHA)
+        if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi
+
+  - id: build-agent
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cd agent
+        docker buildx build --platform linux/amd64 -t agent-pr:$SHORT_SHA .
+        ARCH=$$(docker inspect --format '{{.Architecture}}' agent-pr:$SHORT_SHA)
+        if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi
+
+  # 5. Agent test suites. They are framework-free but not dependency-free —
+  #    two of the three import requests — so install requirements first.
+  - id: agent-tests
+    name: python:3.11-slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        cd agent
+        pip install --quiet -r requirements.txt
+        python tests/test_mcp_session.py
+        python tests/test_backend_generations.py
+        python tests/test_auth_selection.py
+        python tests/test_prompt_rendering.py
+
+  # 6. UI typecheck and tests.
+  - id: ui-tests
+    name: node:20
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        cd ui
+        npm ci
+        npx tsc --noEmit
+        npx vitest run
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
+
+timeout: 1200s

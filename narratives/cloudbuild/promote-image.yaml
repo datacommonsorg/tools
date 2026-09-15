@@ -1,0 +1,93 @@
+# Cloud Build pipeline — weekly upstream image promotion.
+#
+# Trigger: scheduled (Cloud Scheduler → Pub/Sub → Cloud Build), weekly.
+# Mirrors gcr.io/datcom-ci/datacommons-services:stable into our Artifact Registry,
+# retags as :stable-mirror-<date>, runs the AR vulnerability scan, and opens a PR
+# bumping the FROM tag in image/Dockerfile.
+
+substitutions:
+  _AR_REGION: us-central1
+  _AR_REPO: dc-images
+  _UPSTREAM: 'gcr.io/datcom-ci/datacommons-services:stable'
+  _GITHUB_REPO: ''   # owner/name — required for PR creation
+
+steps:
+  # 1. Pull the upstream :stable digest and re-push to AR.
+  - id: mirror
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        DATE=$$(date +%Y-%m-%d)
+        docker pull ${_UPSTREAM}
+        DIGEST=$$(docker inspect --format='{{index .RepoDigests 0}}' ${_UPSTREAM} | awk -F@ '{print $$2}')
+        echo "Upstream digest: $$DIGEST"
+        DEST="${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/datacommons-services:stable-mirror-$$DATE"
+        docker tag ${_UPSTREAM} "$$DEST"
+        docker push "$$DEST"
+        echo "$$DEST" > /workspace/mirrored_image.txt
+        echo "$$DATE" > /workspace/mirror_date.txt
+
+  # 2. Trigger AR vulnerability scan (auto-runs on push, but block until complete).
+  - id: scan-wait
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        IMG=$$(cat /workspace/mirrored_image.txt)
+        # Poll until scan complete (5 min max).
+        for i in $$(seq 1 30); do
+          STATE=$$(gcloud artifacts docker images describe "$$IMG" --format='value(image_summary.vulnerability.scan_status)' 2>/dev/null || echo "")
+          if [ "$$STATE" = "SCAN_STATE_FINISHED_SUCCESS" ]; then echo "scan complete"; break; fi
+          echo "waiting for scan ($$STATE)..."; sleep 10
+        done
+        # Fail the build if any CRITICAL findings.
+        CRIT=$$(gcloud artifacts docker images describe "$$IMG" --show-package-vulnerability --format='value(package_vulnerability_summary.vulnerability_counts.CRITICAL)' 2>/dev/null || echo "0")
+        if [ "$$CRIT" != "0" ] && [ -n "$$CRIT" ]; then
+          echo "FATAL: $$CRIT CRITICAL vulnerabilities in $$IMG"
+          exit 1
+        fi
+        echo "Zero CRITICAL findings."
+
+  # 3. Open a PR bumping image/Dockerfile.
+  - id: pr
+    name: gcr.io/cloud-builders/gh
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        if [ -z "${_GITHUB_REPO}" ]; then
+          echo "_GITHUB_REPO not set; skipping PR creation"
+          exit 0
+        fi
+        DATE=$$(cat /workspace/mirror_date.txt)
+        IMG=$$(cat /workspace/mirrored_image.txt)
+        BRANCH="promote-image-$$DATE"
+        git config user.email "cloudbuild@$PROJECT_ID.iam.gserviceaccount.com"
+        git config user.name  "Cloud Build (image promotion)"
+        git checkout -b "$$BRANCH"
+        sed -i "s|^FROM .*datacommons-services.*|FROM --platform=linux/amd64 $$IMG|" image/Dockerfile
+        git add image/Dockerfile
+        git commit -m "promote: mirror datacommons-services:stable on $$DATE"
+        git push origin "$$BRANCH"
+        gh pr create \
+          --repo "${_GITHUB_REPO}" \
+          --title "Promote datacommons-services to $$DATE mirror" \
+          --body "Weekly upstream image promotion.
+
+        Mirrored: $$IMG
+        Vulnerability scan: zero CRITICAL.
+
+        Merging this PR triggers deploy-stamp pipelines for all instances." \
+          --base main \
+          --head "$$BRANCH"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

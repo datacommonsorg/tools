@@ -1,0 +1,148 @@
+# Cloud Build pipeline — deploy this instance on merge to main.
+#
+# One handover repo deploys ONE instance. If you have multiple instances, use a
+# separate repo (or separate branch) per instance — each with its own _INSTANCE
+# substitution and its own deploy-stamp trigger.
+#
+# Trigger: push to main, filtered to paths config/**, deploy/**, image/**,
+#          agent/**, cloudbuild/deploy-stamp.yaml.
+
+substitutions:
+  _AR_REGION: us-central1
+  _AR_REPO: custom-dc
+  _INSTANCE: ""               # MUST be set per trigger
+  _TF_STATE_BUCKET: ""        # e.g. <project>-tfstate; required
+
+steps:
+  # 0. Sanity check — _INSTANCE must be set.
+  - id: check-substitutions
+    name: alpine:3.19
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        if [ -z "$_INSTANCE" ]; then echo "FATAL: _INSTANCE substitution not set"; exit 1; fi
+        if [ -z "$_TF_STATE_BUCKET" ]; then echo "FATAL: _TF_STATE_BUCKET substitution not set"; exit 1; fi
+        if [ ! -f "deploy/terraform-custom-datacommons/$_INSTANCE.tfvars" ]; then
+          echo "FATAL: deploy/terraform-custom-datacommons/$_INSTANCE.tfvars not found"
+          exit 1
+        fi
+        if [ ! -f "config/instance.env" ]; then
+          echo "FATAL: config/instance.env not found - this repository is one deployment"
+          exit 1
+        fi
+
+  # 1. Build + push services image.
+  - id: build-services
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        # Stage React UI build (ui is expected at repo root).
+        if [ -d ui ]; then
+          ( cd ui && npm ci && npm run build )
+          rm -rf image/dist && cp -r ui/dist image/dist
+        else
+          mkdir -p image/dist; echo "stub" > image/dist/index.html
+        fi
+        cd image
+        TAG="$SHORT_SHA"
+        IMG="${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/services:$$TAG"
+        docker buildx build --platform linux/amd64 -t "$$IMG" --push .
+        echo "$$IMG" > /workspace/services_image.txt
+
+  # 2. Build + push agent image.
+  - id: build-agent
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        cd agent
+        TAG="$SHORT_SHA"
+        IMG="${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/agent:$$TAG"
+        docker buildx build --platform linux/amd64 -t "$$IMG" --push .
+        echo "$$IMG" > /workspace/agent_image.txt
+
+  # 3. Compose the config bucket, then sync it.
+  #
+  # Must mirror deploy.sh exactly: defaults/ is the upstream baseline and config/
+  # is laid over the top, so a deployment carries only what it overrides and
+  # everything else improves when the repository is updated. schemas/ is code and
+  # is never uploaded. instance.env is excluded so the project id and the member
+  # list never reach a bucket that may be readable more widely than intended.
+  - id: compose-config
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        rm -rf /workspace/config-bundle
+        cp -R defaults /workspace/config-bundle
+        cp -R config/. /workspace/config-bundle/
+        rm -f /workspace/config-bundle/instance.env
+
+  - id: sync-config
+    name: gcr.io/cloud-builders/gsutil
+    args:
+      - '-m'
+      - 'rsync'
+      - '-r'
+      - '-d'
+      - '/workspace/config-bundle'
+      - 'gs://$PROJECT_ID-$_INSTANCE-config'
+
+  # 4. Terraform apply with the new image tags.
+  - id: terraform-apply
+    name: hashicorp/terraform:1.6
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -e
+        cd deploy/terraform-custom-datacommons/modules
+        terraform init \
+          -backend-config="bucket=${_TF_STATE_BUCKET}" \
+          -backend-config="prefix=custom-datacommons/${_INSTANCE}"
+        SERVICES_IMG=$$(cat /workspace/services_image.txt)
+        AGENT_IMG=$$(cat /workspace/agent_image.txt)
+        terraform apply -auto-approve \
+          -var-file=../${_INSTANCE}.tfvars \
+          -var="dc_web_service_image=$$SERVICES_IMG" \
+          -var="dc_agent_image=$$AGENT_IMG"
+
+  # 5. Force-restart so the new revision picks up the bucket changes immediately.
+  - id: force-restart
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'update'
+      - '${_INSTANCE}-datacommons'
+      - '--region=${_AR_REGION}'
+      - '--update-env-vars'
+      - 'FORCE_RESTART=$BUILD_ID'
+
+  # 6. Smoke.
+  - id: smoke
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        URL=$$(gcloud run services describe ${_INSTANCE}-datacommons --region=${_AR_REGION} --format='value(status.url)')
+        echo "Service URL: $$URL"
+        bash docs/smoke.sh "$$URL"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s

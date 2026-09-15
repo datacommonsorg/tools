@@ -1,0 +1,683 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/*
+ * Single source of truth for the design system.
+ *
+ * Colors registered here as `--color-*` automatically generate Tailwind v4
+ * utility classes (e.g. `--color-brand-primary` → `bg-brand-primary`,
+ * `text-brand-primary`, `border-brand-primary`, `hover:bg-brand-primary`,
+ * etc.) AND are available as CSS custom properties for use inside `var()`.
+ * Edit a value here and every consumer updates.
+ *
+ * Names mirror the Figma GM3 token vocabulary where possible.
+ *
+ * BRAND-DRIVEN TOKENS: tokens below written as `var(--brand-*, <fallback>)` are
+ * recolored at runtime from the instance's branding.json. hooks/use_branding.ts
+ * fetches the config bucket and sets `--brand-primary`, `--brand-accent`,
+ * `--brand-text`, `--brand-text-muted`, `--brand-surface`, `--brand-background`,
+ * `--brand-font`, `--brand-font-body` on :root. The `<fallback>` after the comma
+ * is the shipped design value used when no branding.json is present — keep it in
+ * sync with DEFAULT_BRAND in use_branding.ts. The hero-gradient stops are
+ * brand-driven too (--brand-gradient-start / --brand-gradient-end), as are the
+ * narrative tile (--brand-surface-narrative), the skeleton bars
+ * (--brand-skeleton-bar), the user-message bubble (--brand-user-msg) and the
+ * three radii (--brand-radius-card / -input / -chip).
+ */
+@theme {
+  --font-sans: var(--brand-font-body, "Google Sans Text", "Inter", system-ui, sans-serif);
+  --font-display: var(--brand-font, "Google Sans", "Roboto", system-ui, sans-serif);
+
+  /* Brand */
+  --color-brand-primary: var(--brand-primary, #175C75);
+  --color-brand-accent: var(--brand-accent, #65A782);
+  /* Material 3 "filled tonal" container and its content color, used by the
+     Export button. The container defaults to a tint mixed from the primary so
+     any brand gets a coherent tonal pair without configuring one; set
+     colors.container / colors.on_container in branding.json to override. */
+  --color-brand-container: var(
+    --brand-container,
+    color-mix(in srgb, var(--color-brand-primary) 18%, #ffffff)
+  );
+  --color-on-brand-container: var(--brand-on-container, var(--color-brand-primary));
+  /* Hero-gradient stops (the "Data Agent" heading). Brand-driven via
+     branding.json's colors.gradient_start / colors.gradient_end; the literals
+     after the comma are the shipped design fallback (green → teal). */
+  --color-brand-gradient-start: var(--brand-gradient-start, #65A782);
+  --color-brand-gradient-end: var(--brand-gradient-end, #6FAEC0);
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-soft: var(--brand-surface, #F9F9F9);
+  --color-surface-muted: #f3f4f6;
+  --color-surface-blue: #f0f4f9;
+  /* Tile behind a rendered narrative (response card / skeleton). Separate from
+     --color-surface-soft so an instance can tint the narrative without moving
+     every other soft surface. */
+  --color-surface-narrative: var(--brand-surface-narrative, #F9F9F9);
+  /* Skeleton ("ghost loader") bars shown while a narrative streams in. */
+  --color-skeleton-bar: var(--brand-skeleton-bar, #E3E3E3);
+  /* User-message bubble. */
+  --color-user-msg: var(--brand-user-msg, #E8F2F4);
+  /* Active header tab: label and underline. Defaults to the body text color —
+     the neutral theme marks the active tab in ink rather than brand color —
+     and is overridable for instances that want a branded tab. */
+  --color-nav-active: var(--brand-nav-active, var(--color-on-surface));
+  --color-button-hover: #e1e5eb;
+
+  /* Radii — brand-driven so an instance can move between rounded and square
+     without touching component code. Tailwind v4 turns the --radius-* namespace
+     into utilities, so these are consumed as `rounded-card`, `rounded-input`
+     and `rounded-chip`. */
+  --radius-card: var(--brand-radius-card, 16px);
+  --radius-input: var(--brand-radius-input, 36px);
+  --radius-chip: var(--brand-radius-chip, 20px);
+
+  /* Lines / borders */
+  --color-line: #C4C7C5;
+  /* Card borders and divider rules; themeable so an instance can move them
+     with its palette instead of leaving a grey rule on a tinted surface. */
+  --color-border: var(--brand-border, #E3E3E3);
+  --color-outline: #e5e7eb;
+  --color-outline-variant: #f3f4f6;
+  --color-divider: #d1d5db;
+
+  /* State — error */
+  --color-error: #dc2626;
+  --color-error-strong: #b91c1c;
+  --color-error-surface: #fef2f2;
+
+  /* Scrim — click-outside backdrop */
+  --color-scrim: #000000;
+
+  /* Inverse surface — the M3 role for UI that sits *over* the page rather
+     than in it (m3.material.io/components/tooltips). */
+  --color-inverse-surface: #313033;
+  --color-on-inverse-surface: #F4EFF4;
+
+  /* Text — primary */
+  --color-on-surface: var(--brand-text, #1B1C1D);
+  --color-on-surface-variant: var(--brand-text-muted, #444746);
+  --color-muted: #575B5F;
+  --color-subtle: #747775;
+  --color-placeholder: #8E918F;
+
+  /* Text — table */
+  --color-table-data: #191C1B;
+  --color-table-header: #3F4946;
+  --color-table-body: #212529;
+}
+
+:root {
+  /* Header logo height. Brand-driven so an instance can size its own mark; the
+     28px default is the natural size of the bundled Data Commons logo. */
+  --logo-height: var(--brand-logo-height, 28px);
+
+  /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
+     Consumed by the .text-* utility classes below. Font families reference
+     the brand-driven theme fonts (--font-display / --font-sans) so a
+     branding.json font override propagates to every type style. */
+  --static-display-small-font: var(--font-display, "Google Sans");
+  --static-display-small-size: 32px;
+  --static-display-small-line-height: 36px;
+
+  --static-title-large-font: var(--font-display, "Google Sans");
+  --static-title-large-size: 22px;
+  --static-title-large-line-height: 28px;
+
+  --static-body-large-font: var(--font-sans, "Google Sans Text");
+  --static-body-large-size: 16px;
+  --static-body-large-line-height: 24px;
+
+  --static-body-medium-font: var(--font-sans, "Google Sans Text");
+  --static-body-medium-size: 14px;
+  --static-body-medium-line-height: 20px;
+
+  --static-label-large-font: var(--font-sans, "Google Sans Text");
+  --static-label-large-size: 14px;
+  --static-label-large-line-height: 20px;
+
+  --static-label-small-font: var(--font-sans, "Google Sans Text");
+  --static-label-small-size: 11px;
+  --static-label-small-line-height: 16px;
+
+  --static-caption-font: var(--font-sans, "Google Sans Text");
+  --static-caption-size: 12px;
+  --static-caption-line-height: 16px;
+}
+
+html, body {
+  font-family: var(--font-sans);
+  background-color: var(--brand-background, #ffffff);
+  color: var(--color-on-surface);
+  margin: 0;
+  padding: 0;
+  /* Prevent any rogue fixed-width child from causing a horizontal scrollbar
+     on narrow viewports. Internal scrollable regions (chat list, drawer)
+     handle their own overflow. */
+  overflow-x: hidden;
+}
+
+/*
+ * Tailwind v4's Preflight sets `cursor: default` on buttons, reverting the
+ * browser default the design assumes. Every interactive control in this app is
+ * a <button>, an <a> or a role="button", so restoring the pointer here fixes
+ * all of them at once rather than per-component -- which is what the report
+ * asked for ("this is true to all buttons").
+ *
+ * :disabled is excluded: a control that cannot be pressed should not invite a
+ * press. `a` is scoped to links that actually navigate, since a bare <a> with
+ * no href is not interactive.
+ */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary,
+label[for],
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+.text-display-small {
+  font-family: var(--static-display-small-font, "Google Sans");
+  font-size: var(--static-display-small-size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-display-small-line-height, 36px);
+  letter-spacing: 0;
+}
+
+.text-title-large-emphasized {
+  font-family: var(--static-title-large-font, "Google Sans");
+  font-size: var(--static-title-large-size, 22px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-title-large-line-height, 28px);
+  letter-spacing: 0;
+}
+
+.text-body-large {
+  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-size: var(--static-body-large-size, 16px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-body-large-line-height, 24px);
+  letter-spacing: 0;
+}
+
+.text-body-large-emphasized {
+  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-size: var(--static-body-large-size, 16px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-body-large-line-height, 24px);
+  letter-spacing: 0;
+}
+
+.text-body-medium {
+  font-family: var(--static-body-medium-font, "Google Sans Text");
+  font-size: var(--static-body-medium-size, 14px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-body-medium-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-large {
+  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-size: var(--static-label-large-size, 14px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-label-large-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-large-emphasized {
+  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-size: var(--static-label-large-size, 14px);
+  font-style: normal;
+  font-weight: 700;
+  line-height: var(--static-label-large-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-label-small {
+  font-family: var(--static-label-small-font, "Google Sans Text");
+  font-size: var(--static-label-small-size, 11px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-label-small-line-height, 16px);
+  letter-spacing: 0;
+}
+
+.text-caption {
+  font-family: var(--static-caption-font, "Google Sans Text");
+  font-size: var(--static-caption-size, 12px);
+  font-style: normal;
+  font-weight: 400;
+  line-height: var(--static-caption-line-height, 16px);
+  letter-spacing: 0;
+}
+
+.text-display-small-gradient {
+  font-family: var(--static-display-small-font, "Google Sans");
+  font-size: var(--static-display-small-size, 32px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--static-display-small-line-height, 36px);
+  letter-spacing: 0;
+  background: linear-gradient(4deg, var(--color-brand-gradient-start) 0%, var(--color-brand-gradient-end) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Long inline-code tokens (e.g. StatVar DCIDs like
+ * `Amount_EconomicActivity_GrossDomesticProduction`) have no spaces, so
+ * they never find a break opportunity and force horizontal scroll in the
+ * chat column. Allow them to wrap mid-token. `min-width: 0` on the
+ * markdown containers lets them shrink below their content's intrinsic
+ * width inside the flex layout. Block code (<pre>) keeps its own
+ * overflow-auto scroll and is intentionally excluded.
+ * ──────────────────────────────────────────────────────────────────── */
+.reasoning-markdown,
+.thought-markdown,
+.markdown-body {
+  min-width: 0;
+}
+.reasoning-markdown :not(pre) > code,
+.thought-markdown :not(pre) > code,
+.markdown-body :not(pre) > code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * On-screen chart sizing (mobile fix). Data Commons web-component charts
+ * size their internal SVG to the width of their host element. Custom
+ * elements default to `display: inline`, which does NOT constrain width —
+ * so on narrow viewports the chart's SVG keeps its wider intrinsic size
+ * and overflows the card's right edge (then gets clipped by
+ * body{overflow-x:hidden}, so the right edge of the chart and the title
+ * appear cropped). Force the host elements to fill — and never exceed —
+ * their card width so the component's ResizeObserver redraws the chart at
+ * the actual viewport width. `min-width: 0` lets the card shrink below the
+ * SVG's intrinsic width inside the flex/grid layout. This mirrors the
+ * print rules below, which only apply under body[data-print-target].
+ * ──────────────────────────────────────────────────────────────────── */
+.dc-charts-container {
+  min-width: 0;
+  max-width: 100%;
+}
+.dc-chart-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.dc-chart-card datacommons-line,
+.dc-chart-card datacommons-bar,
+.dc-chart-card datacommons-ranking,
+.dc-chart-card datacommons-map,
+.dc-chart-card datacommons-highlight,
+.dc-chart-card datacommons-gauge,
+.dc-chart-card datacommons-pie,
+.dc-chart-card datacommons-scatter,
+.dc-chart-card datacommons-slider {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Print stylesheet: when the Export PDF action fires (see
+ * utils/print_element.ts), `body[data-print-target]` is set and the
+ * selected answer panel is tagged with `data-print-active`. We then
+ * hide every other element on the page via visibility, so the user gets
+ * a clean PDF of just THAT one Q&A — not the rest of the conversation
+ * and not the chrome (sidebar / header / input bar / other turns).
+ *
+ * `visibility: hidden` (instead of `display: none`) lets the active
+ * subtree keep its ancestors' layout intact, which avoids breaking the
+ * absolute/flex containers around it during the print render pass.
+ * ──────────────────────────────────────────────────────────────────── */
+@media print {
+  body[data-print-target] {
+    background: #ffffff !important;
+  }
+  /* Hide every body descendant that is NOT on the path to the active panel
+     and NOT inside the active subtree. The JS in utils/print_element.ts has
+     marked the path with `data-print-ancestor`; the active panel itself
+     carries `data-print-active`. */
+  body[data-print-target]
+    *:not([data-print-ancestor]):not([data-print-active]):not(
+      [data-print-active] *
+    ) {
+    display: none !important;
+  }
+  /* Even inside the active subtree, hide elements explicitly marked
+     non-printable — e.g. the "Export PDF" buttons themselves, which are
+     UI affordances, not document content. */
+  body[data-print-target] [data-non-print="true"] {
+    display: none !important;
+  }
+  /* The question becomes the document's heading.
+     On screen it is a truncated one-line card title; `truncate` sets
+     white-space: nowrap and text-overflow: ellipsis, which the generic
+     overflow reset below does NOT undo -- so without this a long question was
+     exported cut off mid-sentence. Sized up and given room to breathe so the
+     PDF opens with the question it answers, which is what the export is for. */
+  body[data-print-target] [data-print-active] .print-question {
+    white-space: normal !important;
+    text-overflow: clip !important;
+    overflow: visible !important;
+    font-size: 18px !important;
+    line-height: 26px !important;
+    font-weight: 700 !important;
+    color: #000000 !important;
+    padding-bottom: 4px;
+  }
+
+  /* Strip card chrome on the active panel so the printed page reads as a
+     clean document, not a UI screenshot. `overflow: visible` is critical:
+     the panel sets `overflow-hidden` on screen to clip rounded corners,
+     but during print that crops content past the first viewport (charts,
+     follow-ups, anything tall). */
+  body[data-print-target] [data-print-active] {
+    box-shadow: none !important;
+    border: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  /* Same overflow guarantee for everything inside the active panel — the
+     content body wrapper, ResponseCard etc. all need to let their content
+     flow across page breaks rather than clip to their on-screen frames.
+     Chart cards are exempt: they keep `overflow: hidden` so the Recharts
+     SVG renders within its rounded-corner frame instead of bleeding past
+     the card edges. */
+  body[data-print-target]
+    [data-print-active] *:not(.dc-chart-card):not(.dc-chart-card *) {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  /* Ancestors collapse to plain containers — drop their scroll, padding
+     constraints, and fixed heights so the active panel is the page. */
+  body[data-print-target] [data-print-ancestor] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+  }
+  /* Avoid splitting a chart card or table across pages where possible */
+  .dc-chart-card,
+  .markdown-body table,
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3 {
+    break-inside: avoid;
+  }
+  /* Force charts into a single-column stack and clamp every card and the
+     DC web component inside it to the print page width. On screen the
+     container is a 2-column auto-fit grid and each card stretches to its
+     natural column width — in a PDF that's wider than one print page and
+     the chart's SVG (sized in CSS pixels by the DC component) ends up
+     clipped at the right margin. */
+  body[data-print-target] .dc-charts-container {
+    display: block !important;
+    grid-template-columns: 1fr !important;
+  }
+  body[data-print-target] .dc-chart-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 16px !important;
+    page-break-inside: avoid !important;
+    /* Clip anything past the card edge — DC bar/ranking charts size their
+       x-axis labels for the on-screen width and even after the resize
+       nudge the longest place labels can still overhang the page margin.
+       Better a few labels truncated at the card edge than the layout
+       breaking out onto the next page sideways. */
+    overflow: hidden !important;
+  }
+  /* DC web components themselves: force them to fill the card width.
+     The element's clientWidth is what ResizeObserver inside the DC
+     component reads — combined with the beforeprint resize event
+     dispatched in utils/print_element.ts, this prompts the chart to
+     redraw at print-page width before the browser snapshots. */
+  body[data-print-target] .dc-chart-card datacommons-line,
+  body[data-print-target] .dc-chart-card datacommons-bar,
+  body[data-print-target] .dc-chart-card datacommons-ranking,
+  body[data-print-target] .dc-chart-card datacommons-map,
+  body[data-print-target] .dc-chart-card datacommons-highlight,
+  body[data-print-target] .dc-chart-card datacommons-gauge,
+  body[data-print-target] .dc-chart-card datacommons-pie,
+  body[data-print-target] .dc-chart-card datacommons-scatter {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+  /* Any SVG inside the DC component scales to its parent. Setting both
+     width AND height to 100% (rather than height:auto) forces the SVG to
+     fit fully inside the card frame — DC bar charts in particular have
+     labels positioned outside their core viewBox, and height:auto lets
+     those labels push the SVG taller than the card. */
+  body[data-print-target] .dc-chart-card svg {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+  /* Last resort for bar-chart x-axis tick labels that stick out past the
+     SVG viewBox: rotate them so they read vertically (DC components
+     don't expose a prop for this). Targets the standard d3 axis text
+     class produced by DC components. */
+  body[data-print-target] .dc-chart-card datacommons-bar .x.axis text,
+  body[data-print-target] .dc-chart-card datacommons-bar g.x text,
+  body[data-print-target] .dc-chart-card datacommons-bar .axis-label,
+  body[data-print-target] .dc-chart-card datacommons-ranking .x.axis text,
+  body[data-print-target] .dc-chart-card datacommons-ranking g.x text {
+    font-size: 10px !important;
+  }
+}
+
+/*
+ * Print preflight: lay the answer out at print-page width while still on
+ * screen, so the charts can finish redrawing BEFORE the print snapshot.
+ *
+ * The Data Commons chart components re-render from their host element's
+ * clientWidth, and that render is asynchronous -- it passes through a
+ * "Loading..." state. window.print() snapshots synchronously, so a chart that
+ * was still loading when the page switched to print width was captured as
+ * "Loading..." and shipped in the PDF that way. Dispatching a resize on
+ * beforeprint, as we used to rely on alone, starts that redraw but cannot wait
+ * for it.
+ *
+ * utils/print_element.ts sets this attribute first, waits for the charts to
+ * settle, and only then prints -- by which point the print layout is the width
+ * they have already drawn at, so nothing needs to re-render again.
+ *
+ * Deliberately OUTSIDE @media print: the whole point is that it applies on
+ * screen. It stays set through the print itself, so the widths do not change
+ * underneath the snapshot.
+ */
+body[data-print-preflight] [data-print-active] {
+  width: var(--print-page-width, 717px) !important;
+  max-width: var(--print-page-width, 717px) !important;
+}
+body[data-print-preflight] .dc-charts-container {
+  display: block !important;
+  grid-template-columns: 1fr !important;
+}
+body[data-print-preflight] .dc-chart-card {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+body[data-print-preflight] .dc-chart-card datacommons-line,
+body[data-print-preflight] .dc-chart-card datacommons-bar,
+body[data-print-preflight] .dc-chart-card datacommons-ranking,
+body[data-print-preflight] .dc-chart-card datacommons-map,
+body[data-print-preflight] .dc-chart-card datacommons-highlight,
+body[data-print-preflight] .dc-chart-card datacommons-gauge,
+body[data-print-preflight] .dc-chart-card datacommons-pie,
+body[data-print-preflight] .dc-chart-card datacommons-scatter {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@keyframes reasoning-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+
+/* ==========================================================================
+   Material Design 3 Tooltips (https://m3.material.io/components/tooltips/overview)
+   ========================================================================== */
+
+/* 1. M3 Plain Tooltip
+   Brief, single-line (or compact) label for icon buttons and controls.
+   Tokens:
+     - Container: inverse surface (#313033), 4dp corner radius, 24dp min-height,
+       4dp vertical / 8dp horizontal padding, elevation level 1 subtle shadow.
+     - Label: inverse on surface (#F4EFF4), body-small / label-small (12sp/16sp),
+       font-weight 500, letter-spacing 0.2px.
+     - Motion: M3 standard decel curve 150ms with subtle scale (0.92 -> 1).
+*/
+.dc-tooltip {
+  z-index: 60;
+  pointer-events: none;
+  max-width: 288px;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--color-inverse-surface, #313033);
+  color: var(--color-on-inverse-surface, #F4EFF4);
+  font-family: var(--font-sans, "Google Sans Text", "Roboto", system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  text-align: start;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+  animation: dc-tooltip-in 150ms cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  transform-origin: center;
+}
+
+/* Multiline plain tooltip when text wraps */
+.dc-tooltip.dc-tooltip-multiline {
+  white-space: normal;
+}
+
+/* 2. M3 Rich Tooltip
+   Provides extended contextual detail with optional subhead and action buttons.
+   Tokens:
+     - Container: surface container (#FFFFFF / elevated), 12dp corner radius,
+       12dp top / 16dp horizontal / 8dp bottom padding, elevation level 2.
+     - Subhead: title-small (14sp, 500 weight, #1D1B20).
+     - Supporting text: body-small/medium (12sp/14sp, 400 weight, #49454F).
+     - Actions: label-large buttons (14sp, 500 weight, brand primary).
+*/
+.dc-tooltip-rich {
+  z-index: 60;
+  max-width: 320px;
+  min-width: 180px;
+  box-sizing: border-box;
+  padding: 12px 16px 8px 16px;
+  border-radius: 12px;
+  background: var(--color-surface, #FFFFFF);
+  color: var(--color-on-surface, #1D1B20);
+  border: 1px solid var(--color-border, #E3E3E3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  font-family: var(--font-sans, "Google Sans Text", "Roboto", system-ui, sans-serif);
+  text-align: start;
+  white-space: normal;
+  pointer-events: auto;
+  animation: dc-tooltip-in 150ms cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  transform-origin: center;
+}
+
+.dc-tooltip-rich-subhead {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--color-on-surface, #1D1B20);
+  margin-bottom: 4px;
+}
+
+.dc-tooltip-rich-body {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+  color: var(--color-on-surface-variant, #444746);
+  margin-bottom: 8px;
+}
+
+.dc-tooltip-rich-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 4px;
+}
+
+.dc-tooltip-rich-action-btn {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--color-brand-primary, #175C75);
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.dc-tooltip-rich-action-btn:hover {
+  background-color: var(--color-button-hover, #e1e5eb);
+}
+
+@keyframes dc-tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-tooltip,
+  .dc-tooltip-rich {
+    animation: none;
+  }
+}

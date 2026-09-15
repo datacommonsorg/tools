@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and (optionally) push the agent sidecar image to Artifact Registry.
+# Build and (optionally) push the app-plane image (agent + UI) to Artifact Registry.
 #
 # Tag is the short git SHA so image and infra (Terraform tfvars) stay in sync.
 
@@ -7,7 +7,7 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Build and (optionally) push the agent sidecar image to Artifact Registry.
+Build and (optionally) push the app-plane image (agent + UI) to Artifact Registry.
 
 Usage: ./build.sh [--push] [--help]
 
@@ -18,7 +18,7 @@ Options:
 Environment overrides (with defaults):
   AR_REGION   Artifact Registry region   (us-central1)
   AR_REPO     Artifact Registry repo     (custom-dc)
-  PROJECT     GCP project                (gdatacomms)
+  PROJECT     GCP project                (defaults to the active gcloud project)
 USAGE
 }
 
@@ -41,13 +41,32 @@ done
 
 AR_REGION="${AR_REGION:-us-central1}"
 AR_REPO="${AR_REPO:-custom-dc}"
-PROJECT="${PROJECT:-gdatacomms}"
+PROJECT="${PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+if [ -z "$PROJECT" ] || [ "$PROJECT" = "(unset)" ]; then
+    echo "Error: set PROJECT=<gcp-project> or run: gcloud config set project <id>" >&2
+    exit 1
+fi
 IMAGE_NAME="agent"
 TAG="$(git rev-parse --short=12 HEAD)"
 
 IMAGE_BASE="${AR_REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}"
 FULL_IMAGE="${IMAGE_BASE}:${TAG}"
 LATEST_IMAGE="${IMAGE_BASE}:latest"
+
+# Stage the compiled SPA into the build context. ui/dist lives outside this
+# directory, so the Dockerfile cannot COPY it directly.
+#
+# Fail loudly rather than producing an image with no UI: a missing static/ used
+# to be a silent 404 on / that only showed up after a deploy.
+UI_DIST="${DIR}/../ui/dist"
+if [[ ! -f "${UI_DIST}/index.html" ]]; then
+    echo "FATAL: ${UI_DIST}/index.html not found — build the UI first:" >&2
+    echo "  (cd ui && npm ci && npm run build)" >&2
+    exit 1
+fi
+rm -rf "${DIR}/static"
+cp -R "${UI_DIST}" "${DIR}/static"
+echo "  staged UI build: $(find "${DIR}/static" -type f | wc -l | tr -d ' ') files"
 
 echo "Building ${FULL_IMAGE}"
 echo "  PROJECT=${PROJECT} AR_REGION=${AR_REGION} AR_REPO=${AR_REPO}"

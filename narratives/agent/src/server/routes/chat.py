@@ -15,6 +15,7 @@
 
 import json
 import logging
+import secrets
 import time
 
 from flask import Blueprint, jsonify, request, Response, stream_with_context
@@ -73,10 +74,12 @@ def chat_stream():
     expected_key = get_query_param_key()
     demo_mode = False
 
-    if secret_key == expected_key:
+    # An unconfigured key disables overrides outright. Comparing equal-and-empty
+    # would hand every anonymous caller the demo API keys and model overrides.
+    if expected_key and secrets.compare_digest(secret_key, expected_key):
         # Valid key - extract override params
         query_params = {
-            "model": request.args.get("model"),  # e.g., "gemini-2.0-flash"
+            "model": request.args.get("model"),  # e.g., "gemini-3-flash-preview"
             "kb_enabled": request.args.get("kb"),  # "true" or "false"
             "mcp_thinking": request.args.get("mcp_thinking"),  # "low", "medium", "high", or budget number
             "synthesis_thinking": request.args.get("synthesis_thinking"),  # same options

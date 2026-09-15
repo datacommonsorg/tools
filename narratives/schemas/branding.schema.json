@@ -1,0 +1,377 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data-commons-deployment/schemas/branding.schema.json",
+  "title": "Custom Data Commons branding configuration",
+  "description": "Schema for this instance's branding.json (lives at the per-instance config bucket root, served publicly and fetched by the React UI at page load). The UI reads the nested `colors`/`fonts` blocks and applies them as --brand-* CSS variables; see ui/src/hooks/use_branding.ts. One instance, one file.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "hexColor": {
+      "type": "string",
+      "description": "CSS hex color, 3- or 6-digit (e.g. '#175C75').",
+      "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$"
+    },
+    "cssLength": {
+      "type": "string",
+      "description": "CSS length (e.g. '16px', '1rem').",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(px|rem|em|%)$"
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "href"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "href": {
+          "type": "string"
+        }
+      }
+    },
+    "metricsTile": {
+      "type": "object",
+      "description": "One tile → one <datacommons-${type}> web component on the Key Metrics dashboard. `title` is the card's chrome header; the rest pass through as attributes.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "title"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "line",
+            "bar",
+            "map",
+            "ranking",
+            "highlight",
+            "scatter",
+            "pie",
+            "gauge",
+            "slider"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "header": {
+          "type": "string"
+        },
+        "variable": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "string",
+          "description": "Space-separated StatVar DCIDs for multi-series tiles."
+        },
+        "place": {
+          "type": "string"
+        },
+        "places": {
+          "type": "string",
+          "description": "Space-separated place DCIDs."
+        },
+        "parentPlace": {
+          "type": "string"
+        },
+        "childPlaceType": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "rankingCount": {
+          "type": "integer"
+        },
+        "showHighestLowest": {
+          "type": "boolean"
+        },
+        "showLowest": {
+          "type": "boolean"
+        },
+        "showPlaceLabels": {
+          "type": "boolean"
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "ascending",
+            "descending",
+            "ascendingPopulation",
+            "descendingPopulation"
+          ]
+        },
+        "colors": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "endDate": {
+          "type": "string"
+        }
+      }
+    },
+    "metricsTab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "tiles"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsTile"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "$comment": {
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "Branding schema version string.",
+      "type": "string"
+    },
+    "instance_id": {
+      "description": "Short DNS-safe instance label, e.g. 'india'.",
+      "type": "string"
+    },
+    "instance_name": {
+      "description": "Display name of the instance, e.g. 'India Data Commons'. Shown in the header/title.",
+      "type": "string"
+    },
+    "domain_hint": {
+      "description": "Domain or DNS-safe label for the instance (informational).",
+      "type": "string"
+    },
+    "logo": {
+      "description": "Path (relative to the config bucket root) or URL to the instance logo.",
+      "type": "string"
+    },
+    "logo_height": {
+      "$ref": "#/$defs/cssLength",
+      "description": "Header logo height, e.g. \"28px\". Omitted, the bundled Data Commons mark renders at its natural 28px — the same size datacommons.org uses."
+    },
+    "logo_text": {
+      "type": "string",
+      "description": "Wordmark rendered beside the logo in the header, e.g. \"Data Commons\". Omit it entirely to show the logo mark alone — an instance whose logo image already contains its name wants no text here."
+    },
+    "logo_alt": {
+      "description": "Alt text for the logo image.",
+      "type": "string"
+    },
+    "favicon": {
+      "description": "Path (relative to the config bucket root) or URL to the favicon.",
+      "type": "string"
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Brand palette. Applied as --brand-* CSS variables; each maps to a design token in ui/src/index.css with a built-in fallback, so omitted keys keep the shipped design value.",
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Primary interactive color: active nav tabs, links, buttons, send button (--brand-primary → --color-teal)."
+        },
+        "accent": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Accent color (--brand-accent). Currently has no visual consumer in the UI; reserved."
+        },
+        "text": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Primary body text (--brand-text → --color-on-surface)."
+        },
+        "text_muted": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Secondary/muted text (--brand-text-muted → --color-on-surface-variant)."
+        },
+        "background": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Page background (--brand-background)."
+        },
+        "surface": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Elevated surface / panel / card background (--brand-surface → --color-surface-soft)."
+        },
+        "gradient_start": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Hero 'Data Agent' heading gradient start stop (--brand-gradient-start → --color-brand-green)."
+        },
+        "gradient_end": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Hero 'Data Agent' heading gradient end stop (--brand-gradient-end → --color-brand-teal)."
+        },
+        "surface_narrative": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Tile behind a rendered narrative — response card and its skeleton (--brand-surface-narrative → --color-surface-narrative)."
+        },
+        "skeleton_bar": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Skeleton ('ghost loader') bars shown while a narrative streams in (--brand-skeleton-bar → --color-skeleton-bar)."
+        },
+        "border": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Card borders and divider rules (--brand-border → --color-border)."
+        },
+        "user_message": {
+          "$ref": "#/$defs/hexColor",
+          "description": "User-message bubble background (--brand-user-msg → --color-user-msg)."
+        },
+        "container": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Tonal-button container, e.g. the Export button (--brand-container → --color-brand-container). Omitted, it is mixed automatically from `primary`."
+        },
+        "on_container": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Tonal-button label and icon (--brand-on-container → --color-on-brand-container). Omitted, it follows `primary`."
+        },
+        "nav_active": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Active header-tab label and underline (--brand-nav-active → --color-nav-active). Omitted, it follows `text`, which is how the neutral theme marks the active tab."
+        }
+      }
+    },
+    "radius": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corner radii as CSS lengths. Applied as --brand-radius-* CSS variables; each maps to a design token in ui/src/index.css with a built-in fallback, so omitted keys keep the shipped design value.",
+      "properties": {
+        "card": {
+          "$ref": "#/$defs/cssLength",
+          "description": "Cards, response tiles and message bubbles (--brand-radius-card → rounded-card). Default 16px."
+        },
+        "input": {
+          "$ref": "#/$defs/cssLength",
+          "description": "Query input box (--brand-radius-input → rounded-input). Default 36px."
+        },
+        "chip": {
+          "$ref": "#/$defs/cssLength",
+          "description": "Suggestion chips (--brand-radius-chip → rounded-chip). Default 20px."
+        }
+      }
+    },
+    "headline": {
+      "type": "string",
+      "description": "Hero heading on the empty Data Agent screen, e.g. \"Data agent explorer\"."
+    },
+    "tagline": {
+      "type": "string",
+      "description": "Sub-heading under `headline`, e.g. \"powered by Google's Data Commons\"."
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "description": "Display/heading font family stack (--brand-font → --font-display).",
+          "type": "string"
+        },
+        "body": {
+          "description": "Body font family stack (--brand-font-body → --font-sans).",
+          "type": "string"
+        }
+      }
+    },
+    "extra_css": {
+      "description": "Path (relative to the config bucket root) to an optional CSS override file.",
+      "type": "string"
+    },
+    "navigation": {
+      "description": "Header navigation entries.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "suggestions": {
+      "description": "Starter prompt suggestions on the empty Data Agent screen.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "suggestion_chips": {
+      "description": "DEPRECATED alias for `suggestions`, accepted for older uploaded files.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "footer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        }
+      }
+    },
+    "analytics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ga_tag_id": {
+          "description": "Google Analytics tag ID; empty string disables analytics.",
+          "type": "string"
+        }
+      }
+    },
+    "splash_assets": {
+      "description": "Paths (relative to the config bucket root) to hero/splash images.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Key Metrics dashboard composition. When absent, the UI falls back to DEFAULT_METRICS_TABS in ui/src/components/metrics_page.tsx.",
+      "properties": {
+        "$comment": {
+          "type": "string"
+        },
+        "tabs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsTab"
+          }
+        }
+      }
+    }
+  }
+}

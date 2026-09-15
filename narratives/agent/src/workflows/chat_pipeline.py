@@ -29,10 +29,11 @@ import threading
 import time
 
 import src.mcp.client as mcp_client
-from src.config import apply_query_overrides, load_config
+from src.config import apply_query_overrides, get_gemini_model, load_config
 from src.gemini.client import gemini_request
-from src.mcp.client import get_tools, initialize_mcp
+from src.mcp.client import get_tools
 from src.mcp.data_utils import (
+    annotate_truncation,
     check_data_availability,
     extract_provenance_from_mcp_results,
 )
@@ -54,9 +55,13 @@ def run_mcp_phase(ctx):
 
     Reads ``user_message``, ``history``, ``session_logger``, ``query_params``,
     ``demo_mode`` and the chart holders from ``ctx``; writes ``effective_config``,
-    ``mcp_results``, ``tool_calls_list``, ``thought_queue`` and
-    ``thought_callback`` back into ``ctx`` for later phases. Sets
-    ``ctx['aborted']`` if the backend config fails to load."""
+    ``mcp_results``, ``tool_calls_list``, ``mcp_sources``, ``thought_queue``
+    and ``thought_callback`` back into ``ctx`` for later phases. Sets
+    ``ctx['aborted']`` if the backend config fails to load.
+
+    ``mcp_sources`` is both streamed to the frontend and left on ``ctx``: it is
+    the single source of citation numbering, shared by the rendered Sources
+    list and the numbered list synthesis is prompted with."""
     session_logger = ctx['session_logger']
     query_params = ctx['query_params']
     demo_mode = ctx['demo_mode']
@@ -88,27 +93,17 @@ def run_mcp_phase(ctx):
     ctx['effective_config'] = effective_config
 
     # Ensure MCP is initialized (fix for tool calls not showing)
+    # Readiness is "can we list tools?", not "do we hold a session id?".
+    # The session is established on demand and re-established automatically if
+    # the data plane instance we land on does not recognise it, so a session id
+    # says nothing useful about whether MCP is reachable right now.
     mcp_ready = False
-    if not mcp_client.session_id:
-        logger.info("MCP session not initialized, attempting to connect...")
-        session_logger.log("MCP_INIT_ATTEMPT", {"reason": "session_id was None"})
-        if initialize_mcp():
-            session_logger.log("MCP_INIT_SUCCESS", {"mcp_session_id": mcp_client.session_id})
-            mcp_ready = True
-        else:
-            # Even if init returns False, try to get tools anyway
-            # Some MCP servers work without session IDs
-            session_logger.log("MCP_INIT_RETURNED_FALSE", {"trying_tools_anyway": True})
-    else:
-        mcp_ready = True
-
-    # Double-check: if we have tools, MCP is working regardless of session_id
     tools = get_tools()
     if tools:
         mcp_ready = True
         session_logger.log("MCP_TOOLS_AVAILABLE", {"tool_count": len(tools), "tools": [t.get("name") for t in tools]})
     else:
-        session_logger.log("MCP_NO_TOOLS", {"session_id": mcp_client.session_id})
+        session_logger.log("MCP_NO_TOOLS", {"mcp_session_id": mcp_client.get_session_id()})
 
     # Create thought queue for streaming thoughts from background threads
     thought_queue = queue.Queue()
@@ -123,16 +118,26 @@ def run_mcp_phase(ctx):
     mcp_enabled = effective_config.get("mcp", {}).get("enabled", True)
     mcp_results = ""
     tool_calls_list = []
+    mcp_sources = []
 
     if mcp_enabled and mcp_ready:
         yield f"data: {json.dumps({'status': 'mcp_start', 'message': 'Querying data tools...'})}\n\n"
 
         # Run MCP in thread to enable thought streaming
-        mcp_result_holder = {'results': '', 'tool_calls': [], 'text': ''}
+        # `text` is captured but deliberately unused: the tool loop's own prose
+        # ("Max tool iterations reached", "No response from model") is
+        # diagnostic, not something to show a user. `truncated` is the part that
+        # has to travel -- see the data_status yield below.
+        mcp_result_holder = {
+            'results': '', 'tool_calls': [], 'text': '', 'truncated': False,
+        }
 
         def run_mcp():
             try:
-                mcp_result_holder['results'], mcp_result_holder['tool_calls'], mcp_result_holder['text'] = execute_mcp_tool_loop(
+                (mcp_result_holder['results'],
+                 mcp_result_holder['tool_calls'],
+                 mcp_result_holder['text'],
+                 mcp_result_holder['truncated']) = execute_mcp_tool_loop(
                     user_message, history, session_logger=session_logger,
                     effective_config=effective_config,
                     thought_callback=lambda t: thought_callback(t, 'mcp'),
@@ -161,6 +166,7 @@ def run_mcp_phase(ctx):
         # Get results from thread
         mcp_results = mcp_result_holder['results']
         tool_calls_list = mcp_result_holder['tool_calls']
+        mcp_truncated = mcp_result_holder['truncated']
 
         # Send each tool call for left sidebar
         for tc in tool_calls_list:
@@ -168,21 +174,70 @@ def run_mcp_phase(ctx):
 
         yield f"data: {json.dumps({'status': 'mcp_complete', 'tool_count': len(tool_calls_list)})}\n\n"
 
-        # Check data availability and send status to frontend
-        data_status = check_data_availability(tool_calls_list)
+        # Check data availability and send status to frontend.
+        # `truncated` rides along here rather than in an event of its own: the
+        # frontend already consumes data_status, and truncation is a statement
+        # about how complete the data is. Without it a cut-short answer is
+        # indistinguishable from a complete one -- it still has citations, a
+        # chart and has_data=true.
+        data_status = annotate_truncation(
+            check_data_availability(tool_calls_list), mcp_truncated
+        )
         yield f"data: {json.dumps({'data_status': data_status})}\n\n"
 
-        # Extract and send provenance sources from MCP results
+        # Extract and send provenance sources from MCP results.
+        #
+        # This list is the ONE authority on citation numbering. The frontend
+        # numbers the Sources list by position in it, and synthesis is handed
+        # the same list already numbered, so the [n] in the prose and the [n]
+        # beside the source resolve to the same row. It is therefore stashed on
+        # ctx rather than recomputed downstream: two calls that drift apart --
+        # because a later phase appended a tool call, say -- would renumber the
+        # prose against a list the reader never sees, and nothing would fail
+        # loudly.
         mcp_sources = extract_provenance_from_mcp_results(tool_calls_list)
+        if not mcp_sources and mcp_results:
+            # Observation tools ran but reported no sourceMetadata. Synthesis
+            # still has to attribute its figures to something, so fall back to
+            # the graph itself -- defined here, once, so the fallback the model
+            # cites is the same row the reader sees. Left out entirely when
+            # there are no results at all: nothing was fetched, so nothing is
+            # attributable.
+            mcp_sources = [
+                {"name": "Data Commons", "url": "https://datacommons.org/"}
+            ]
         if mcp_sources:
             yield f"data: {json.dumps({'mcp_sources': mcp_sources})}\n\n"
 
         # Start chart config in background (runs parallel with KB + synthesis)
-        if mcp_results:
+        #
+        # Gated on the structural `has_data` check above, not only on the
+        # model's later reading of the synthesis prose. A chart is drawn from
+        # observations, and check_data_availability already knows whether any
+        # landed, so when none did there is nothing to configure and no Gemini
+        # call worth spending. The prose check downstream stays as a second net
+        # for the case where observations exist but do not answer the question
+        # asked; it cannot be the only net, because it is a model judging a
+        # wording -- asked about an answer that opened "I don't have this
+        # specific data in the current dataset" it still reported data found,
+        # and the turn rendered two chart cards whose own fetches then came
+        # back empty, under prose saying there was no data.
+        if mcp_results and data_status.get('has_data'):
             def run_chart_config():
                 chart_result_holder['config'] = get_chart_config(mcp_results, user_message)
             chart_thread[0] = threading.Thread(target=run_chart_config)
             chart_thread[0].start()
+        elif mcp_results:
+            # Left unstarted, so `chart_result_holder` keeps the
+            # should_render=False it was created with and the turn renders no
+            # charts. Logged because a turn with results but no charts is
+            # otherwise indistinguishable from one whose chart config timed out.
+            session_logger.log("CHART_CONFIG_SKIPPED", {
+                "reason": "no observations in tool results",
+                "no_variables_found": data_status.get('no_variables_found'),
+                "no_observations_found": data_status.get('no_observations_found'),
+                "truncated": data_status.get('truncated'),
+            })
 
     elif mcp_enabled and not mcp_ready:
         session_logger.log("MCP_SKIPPED", {"reason": "MCP not connected or no tools available"})
@@ -190,6 +245,7 @@ def run_mcp_phase(ctx):
 
     ctx['mcp_results'] = mcp_results
     ctx['tool_calls_list'] = tool_calls_list
+    ctx['mcp_sources'] = mcp_sources
 
 
 def run_kb_phase(ctx):
@@ -264,7 +320,9 @@ def run_synthesis_phase(ctx):
     """Phase 3: Synthesis with streaming, chart validation and the done event.
 
     Reads the MCP/KB results, chart holders and ``request_start_time`` from
-    ``ctx``; writes ``full_text`` and ``chart_config`` back into ``ctx``. Sets
+    ``ctx`` -- including ``mcp_sources``, which it numbers for the synthesis
+    prompt rather than deriving its own -- and writes ``full_text`` and
+    ``chart_config`` back into ``ctx``. Sets
     ``ctx['aborted']`` if the synthesis request returns an error dict or the
     stream breaks part-way, so chart validation, the ``done`` event and
     follow-ups are skipped for a response that was never completed."""
@@ -276,7 +334,7 @@ def run_synthesis_phase(ctx):
     history = ctx['history']
     demo_mode = ctx['demo_mode']
     mcp_results = ctx['mcp_results']
-    tool_calls_list = ctx['tool_calls_list']
+    mcp_sources = ctx['mcp_sources']
     kb_response = ctx['kb_response']
     kb_sources = ctx['kb_sources']
     chart_result_holder = ctx['chart_result_holder']
@@ -288,21 +346,45 @@ def run_synthesis_phase(ctx):
     yield f"data: {json.dumps({'status': 'synthesis_start', 'message': 'Generating response...'})}\n\n"
 
     synthesis_prompt = effective_config.get("prompts", {}).get("synthesis", "")
-    synthesis_model = effective_config.get("gemini", {}).get("mcp_model", "gemini-3-flash-preview")
+    synthesis_model = get_gemini_model(effective_config)
     thinking_level = effective_config.get("thinking", {}).get("synthesis_level", "low")
 
     # Build synthesis context with source labels for citations
     context_parts = []
     if mcp_results:
-        # Format extracted sources as markdown links for synthesis
-        mcp_sources = extract_provenance_from_mcp_results(tool_calls_list)
+        # Hand the model the sources ALREADY NUMBERED, in the order the
+        # frontend received them, because the reader's Sources list is numbered
+        # by position in that same list. The prompt tells the model to cite
+        # these numbers and no others, which is what makes [2] in the prose and
+        # [2] in the list the same source.
+        #
+        # This used to be a comma-joined line of markdown links carrying no
+        # numbers at all, so the model invented its own numbering -- and, being
+        # asked to print its own Sources roll-call, produced a second list that
+        # disagreed with the rendered one.
         if mcp_sources:
-            source_links = ", ".join([f"[{s['name']}]({s['url']})" for s in mcp_sources])
-        else:
-            source_links = "Data Commons"
-        context_parts.append(f"**DATA RESULTS [Sources: {source_links}]:**\n{mcp_results}")
+            numbered_sources = "\n".join(
+                f"[{n}] {src.get('name') or src.get('url')} - {src.get('url')}"
+                for n, src in enumerate(mcp_sources, start=1)
+            )
+            context_parts.append(
+                "**NUMBERED SOURCES - cite these numbers, exactly as given:**\n"
+                f"{numbered_sources}"
+            )
+        context_parts.append(f"**DATA RESULTS:**\n{mcp_results}")
     if kb_response:
-        # Include document names from kb_sources for proper citation
+        # KB documents are named but deliberately NOT numbered, because they
+        # never reach the frontend's provenance list: kb_sources carries
+        # `title`/`uri`, while the reducer merges only entries with a `url`, so
+        # it drops them all. A number here would therefore point at nothing.
+        #
+        # The failure mode is safe rather than wrong -- an unmapped marker
+        # renders as plain text and lists no source, instead of attributing a
+        # document's claim to a statistical agency -- but it does mean KB
+        # citations are currently unlinkable. Fixing that means normalising
+        # kb_sources to {name, url} and appending them to mcp_sources in the
+        # same order the reducer merges them. Inert while
+        # knowledge_base.enabled is false, which it is for this instance.
         kb_source_names = ", ".join([s['title'] for s in kb_sources]) if kb_sources else "Knowledge Base"
         context_parts.append(f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n{kb_response}")
 

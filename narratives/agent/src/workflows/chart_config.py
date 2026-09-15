@@ -16,7 +16,7 @@
 import json
 import logging
 
-from src.config import load_config
+from src.config import get_gemini_model, load_config
 from src.gemini.client import gemini_request
 from src.gemini.schemas import CHART_CONFIG_SCHEMA, DATA_VALIDATION_SCHEMA
 
@@ -32,7 +32,7 @@ def get_chart_config(mcp_results: str, user_message: str) -> dict:
     Supports multiple charts for variables with different units/scales.
     """
     config = load_config()
-    mcp_model = config.get("gemini", {}).get("mcp_model", "gemini-3-flash-preview")
+    mcp_model = get_gemini_model(config)
 
     prompt = f"""Based on the data query and results, determine chart configurations.
 
@@ -86,10 +86,20 @@ def validate_data_response(synthesis_text: str, user_message: str) -> bool:
     """Quick validation: did synthesis actually answer with data?
 
     Called after synthesis completes to determine if charts should be shown.
-    Uses fast model with no thinking for minimal latency.
+    The second of two gates: the pipeline only reaches here when observations
+    landed, and this catches the case where they landed but do not answer the
+    question -- a search for a variable the graph does not hold matches
+    something adjacent, the observations for *that* come back full, and the
+    answer says it does not have what was asked for while the chart draws the
+    adjacent thing.
+
+    Returns True on any answer it cannot get a verdict on, since by then the
+    turn is known to have data. That default is logged: it used to be reached
+    silently on every call, because the model named here defaulted to one the
+    API key cannot address, and a 404 body has no `candidates`.
     """
     config = load_config()
-    model = config.get("gemini", {}).get("mcp_model", "gemini-2.0-flash")
+    model = get_gemini_model(config)
 
     prompt = f"""User asked: {user_message}
 
@@ -104,17 +114,30 @@ Return false if the response says data is "not available", "not found", "doesn't
         system_instruction="You validate if a response contains actual data.",
         model=model,
         temperature=0,
-        thinking_level="none",  # Fastest - no thinking needed
+        # "minimal" is the floor the API accepts; "none" is not a level and was
+        # being silently rewritten to "low", the opposite of what was wanted.
+        thinking_level="minimal",
         response_schema=DATA_VALIDATION_SCHEMA,
         stream=False
     )
 
+    if "candidates" not in response:
+        # An API error, whose body gemini_request returns verbatim. Logged
+        # rather than swallowed: this branch taking the permissive default on
+        # every single call is what let charts through under answers that said
+        # there was no data, and it left no trace anywhere.
+        logger.error(
+            "Data validation got no candidates from %s, defaulting to "
+            "showing charts. Response: %s",
+            model, str(response)[:300],
+        )
+        return True
+
     try:
-        if "candidates" in response:
-            text = response["candidates"][0]["content"]["parts"][0].get("text", "{}")
-            result = json.loads(text)
-            return result.get("data_found", True)
+        text = response["candidates"][0]["content"]["parts"][0].get("text", "{}")
+        result = json.loads(text)
+        return result.get("data_found", True)
     except Exception as e:
         logger.error(f"Data validation parse error: {e}")
 
-    return True  # Default to showing charts on error
+    return True  # Default to showing charts when there is no verdict

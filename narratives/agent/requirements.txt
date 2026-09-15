@@ -17,6 +17,7 @@ google-cloud-secret-manager==2.20.2
 google-genai==1.56.0
 google-generativeai==0.8.6
 googleapis-common-protos==1.72.0
+gunicorn==23.0.0
 grpcio==1.76.0
 grpcio-status==1.71.2
 h11==0.16.0

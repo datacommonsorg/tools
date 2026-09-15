@@ -20,11 +20,26 @@ import time
 from typing import Generator, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 
-from src.config import get_api_keys, inject_datetime, load_config
+from src.config import get_api_keys, load_config, render_prompt
 from src.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
+
+# One pooled session for every Gemini call.
+#
+# The MCP client and the data-plane proxy were given pooled sessions; this path
+# was missed -- and it is the busiest of the three, making 6-9 calls per chat
+# turn (tool loop iterations, KB, synthesis, chart config, follow-ups). Each
+# bare requests.post opened a fresh TCP connection and TLS handshake to
+# generativelanguage.googleapis.com.
+#
+# pool_maxsize is sized above the gunicorn thread count so concurrent turns do
+# not queue on connections.
+_SESSION = requests.Session()
+_SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
+
 
 
 def build_thinking_config(thinking_value: str, include_thoughts: bool = False) -> dict:
@@ -109,7 +124,7 @@ def gemini_request(
 
     if system_instruction:
         payload["systemInstruction"] = {
-            "parts": [{"text": inject_datetime(system_instruction)}]
+            "parts": [{"text": render_prompt(system_instruction)}]
         }
 
     if tools:
@@ -165,7 +180,7 @@ def gemini_request(
 
         try:
             if stream:
-                response = requests.post(
+                response = _SESSION.post(
                     url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
@@ -183,7 +198,7 @@ def gemini_request(
                     continue  # Try next key
                 return _stream_gemini_response(response, session_logger, return_dicts=include_thoughts)
             else:
-                response = requests.post(
+                response = _SESSION.post(
                     url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
@@ -349,7 +364,7 @@ def gemini_request_with_thought_streaming(
 
     if system_instruction:
         payload["systemInstruction"] = {
-            "parts": [{"text": inject_datetime(system_instruction)}]
+            "parts": [{"text": render_prompt(system_instruction)}]
         }
 
     if tools:
@@ -397,7 +412,7 @@ def gemini_request_with_thought_streaming(
         start_time = time.time()
 
         try:
-            response = requests.post(
+            response = _SESSION.post(
                 url,
                 json=payload,
                 headers={"Content-Type": "application/json"},

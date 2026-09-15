@@ -20,12 +20,24 @@ import time
 from typing import Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 
-from src.config import get_api_keys, inject_datetime, load_config
+from src.config import get_api_keys, get_gemini_model, load_config, render_prompt
 from src.gemini.client import build_thinking_config, get_api_key_filestore_mapping
 from src.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
+
+# One pooled session for every Gemini call.
+#
+# Same reasoning as src/gemini/client.py: this is a Gemini call on the chat
+# critical path and was opening a fresh TLS connection every time.
+#
+# pool_maxsize is sized above the gunicorn thread count so concurrent turns do
+# not queue on connections.
+_SESSION = requests.Session()
+_SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
+
 
 
 def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] = None, thought_callback: callable = None, demo_mode: bool = False, effective_config: dict = None) -> dict:
@@ -53,7 +65,7 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
         return {"response": "", "sources": []}
 
     kb_prompt = config.get("prompts", {}).get("kb", "")
-    kb_model = config.get("gemini", {}).get("kb_model", "gemini-3-flash-preview")
+    kb_model = get_gemini_model(config, "kb_model")
     kb_temperature = kb_config.get("temperature", 0.3)
     kb_dynamic_threshold = kb_config.get("dynamic_threshold", 0.3)
 
@@ -91,7 +103,7 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
         thinking_level = config.get("thinking", {}).get("kb_level", "low")
         payload = {
             "contents": [{"role": "user", "parts": [{"text": user_message}]}],
-            "systemInstruction": {"parts": [{"text": inject_datetime(kb_prompt)}]},
+            "systemInstruction": {"parts": [{"text": render_prompt(kb_prompt)}]},
             "generationConfig": {
                 "temperature": kb_temperature,
             },
@@ -130,7 +142,7 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
         try:
             # Use streaming endpoint to get thoughts in real-time
             url = f"{api_base}/{kb_model}:streamGenerateContent?key={api_key}&alt=sse"
-            response = requests.post(
+            response = _SESSION.post(
                 url,
                 json=payload,
                 headers={"Content-Type": "application/json"},

@@ -34,6 +34,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Model used whenever config.json names none. Read through get_gemini_model()
+# rather than repeated inline, because the deployed config sets no model at all
+# -- every caller runs on this default, so a caller that spells its own default
+# differently silently calls a different model than the rest of the pipeline.
+# That is not hypothetical: the chart-suppression check defaulted to
+# "gemini-2.0-flash", which the project's API key cannot address at all. Every
+# call 404'd, the 404 body carried no `candidates`, the check read that as
+# "data found" and charts were never suppressed.
+DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+
+
+def get_gemini_model(config: dict, key: str = "mcp_model") -> str:
+    """Returns the configured Gemini model for `key`, or the shared default."""
+    return config.get("gemini", {}).get(key) or DEFAULT_GEMINI_MODEL
+
+
 # Secret Manager client for runtime key loading (optional import).
 try:
     from google.cloud import secretmanager
@@ -57,12 +73,10 @@ _config_mtime = 0
 
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
 # as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
-# `follow_up` is the only slot with an in-code default
-# (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
-# than to no system instruction at all.
+# `follow_up` is the only slot with an in-code default (DEFAULT_FOLLOW_UP_PROMPT),
+# so a failed fetch there degrades to that rather than to no system instruction.
 PROMPT_SLOTS = ("mcp", "kb", "synthesis", "follow_up")
 
-# Authoring notes in the .md files must not reach Gemini.
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
@@ -96,38 +110,34 @@ def _fetch_gcs_url(url: str) -> requests.Response:
             )
     response = requests.get(url, headers=headers, timeout=15)
     # `gcloud storage rsync` uploads .md as text/markdown with no charset, and
-    # requests then guesses the encoding from the bytes. Every file in the config
-    # bucket is UTF-8 by contract, and the prompts carry currency symbols, arrows
-    # and em-dashes, so a wrong guess silently corrupts the text sent to Gemini.
+    # requests then falls back to guessing the encoding from the bytes. Every
+    # file in the config bucket is UTF-8 by contract, and the prompts carry ₹, →
+    # and em-dashes, so a wrong guess silently corrupts the text we hand Gemini.
     response.encoding = "utf-8"
     return response
 
 
-def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
-    """Fetches ``prompts/<slot>.md`` from the config bucket.
+def _fetch_prompt_bodies(config_url: str) -> dict:
+    """Fetch `prompts/<slot>.md` from the config bucket, beside agent-config.json.
 
-    The base is derived from ``CONFIG_URL`` rather than ``BRAND_CONFIG_URL`` so
+    The base is derived from CONFIG_URL rather than read from BRAND_CONFIG_URL so
     the prompts always come from the same bucket as the config they belong to,
-    even if the two ever disagree.
+    even if the two env vars ever disagree.
 
     A slot that 404s or errors is skipped with a warning instead of failing
-    startup. An absent prompt leaves that phase with no system instruction, which
-    is how the agent behaved before the files were wired up — so a partial fetch
-    degrades to the old behaviour rather than taking the agent down.
+    startup: an absent prompt leaves that phase with no system instruction, which
+    is exactly how the agent behaved before the files were wired up, so a partial
+    fetch degrades to the old behaviour rather than taking the agent down.
     """
-    # Take the directory of the parsed path, not of the raw string: a query
-    # containing a slash (``?prefix=a/b``) would otherwise be split mid-query and
-    # yield a nonsense base. Query and fragment are dropped because they address
-    # the config object, not the prompt objects — a `generation` or a signed-URL
-    # signature is per-object and would 403 if carried across. Reading a private
-    # bucket goes through the metadata token in _fetch_gcs_url, so nothing here
-    # depends on the query surviving.
+    # Prompt bodies live in a `prompts/` directory beside the config object, so
+    # the URL is the config's own with its last path segment swapped out. Query
+    # and fragment are dropped: they address that one object (e.g. ?generation=)
+    # and mean nothing for a prompt. posixpath.join keeps the host-root case
+    # right, where dirname is "/".
     parsed = urlparse(config_url)
     base_path = posixpath.dirname(parsed.path)
     prompts = {}
     for slot in PROMPT_SLOTS:
-        # posixpath.join, not an f-string: dirname returns "/" for a config at
-        # the host root, which would otherwise give "//prompts/<slot>.md".
         prompt_url = urlunparse(
             parsed._replace(
                 path=posixpath.join(base_path, "prompts", f"{slot}.md"),
@@ -136,22 +146,20 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
             )
         )
         try:
-            response = _fetch_gcs_url(prompt_url)
-            response.raise_for_status()
+            r = _fetch_gcs_url(prompt_url)
+            r.raise_for_status()
             # Strip HTML comments so the .md files can carry authoring notes —
             # provenance, "keep in sync with X" reminders — without those notes
-            # reaching Gemini as part of the system instruction.
-            body = _HTML_COMMENT_RE.sub("", response.text).strip()
+            # being sent to Gemini as part of the system instruction.
+            body = _HTML_COMMENT_RE.sub("", r.text).strip()
         except Exception as e:
             logger.warning("Prompt %r fetch failed (%s): %s", slot, prompt_url, e)
             continue
         if not body:
-            logger.warning(
-                "Prompt %r at %s is empty; leaving the slot unset", slot, prompt_url
-            )
+            logger.warning("Prompt %r at %s is empty; leaving slot unset", slot, prompt_url)
             continue
         prompts[slot] = body
-        logger.info("Prompt %r loaded: %d bytes", slot, len(body))
+        logger.info("Prompt %r loaded: %d bytes from %s", slot, len(body), prompt_url)
     return prompts
 
 
@@ -161,21 +169,20 @@ def _bootstrap_config_from_url() -> None:
     the agent compatible with the bucket-driven config model (BRAND_CONFIG_URL +
     CONFIG_URL) without rewriting the upstream loader.
 
-    The prompt bodies are merged in here. ``config/prompts/*.md`` is the
-    authoring format, but the workflows only ever read ``config["prompts"]`` and
-    nothing populated it — so the MCP tool loop, the KB phase and synthesis all
-    ran with an empty system instruction while the .md files sat unread in the
-    bucket. An inline ``prompts`` slot in agent-config.json still wins, as the
-    schema documents.
+    The prompt bodies are merged in here. `config/prompts/*.md` is the authoring
+    format, but the workflows only ever read config["prompts"], and nothing
+    populated it — so the MCP tool loop, the KB phase and synthesis all ran with
+    an empty system instruction while the .md files sat unread in the bucket. An
+    inline `prompts` slot in agent-config.json still wins, per the schema.
     """
     url = os.environ.get("CONFIG_URL", "").strip()
     if not url:
         return
     config_path = AGENT_ROOT / "config.json"
     try:
-        response = _fetch_gcs_url(url)
-        response.raise_for_status()
-        raw = response.text
+        r = _fetch_gcs_url(url)
+        r.raise_for_status()
+        raw = r.text
         logger.info("CONFIG_URL fetched %d bytes from %s", len(raw), url)
     except Exception as e:
         logger.error("CONFIG_URL fetch failed (%s): %s", url, e)
@@ -185,17 +192,13 @@ def _bootstrap_config_from_url() -> None:
         config = json.loads(raw)
     except json.JSONDecodeError as e:
         # Write it through unmodified so the failure surfaces at load_config()
-        # exactly as it did before, rather than becoming a silent no-config.
-        logger.error(
-            "CONFIG_URL is not valid JSON (%s); writing through unmodified", e
-        )
+        # exactly as it did before, rather than turning into a silent no-config.
+        logger.error("CONFIG_URL is not valid JSON (%s); writing through unmodified", e)
         config_path.write_text(raw, encoding="utf-8")
         return
 
     if not isinstance(config, dict):
-        logger.error(
-            "CONFIG_URL did not contain a JSON object; writing through unmodified"
-        )
+        logger.error("CONFIG_URL did not contain a JSON object; writing through unmodified")
         config_path.write_text(raw, encoding="utf-8")
         return
 
@@ -208,7 +211,6 @@ def _bootstrap_config_from_url() -> None:
                 prompts[slot] = body
     if prompts:
         config["prompts"] = prompts
-
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
         logger.warning(
@@ -236,9 +238,11 @@ def load_config() -> dict:
         return _config_cache
 
     try:
-        # Pinned to match the encoding _bootstrap_config_from_url writes with;
-        # the platform default would decode a non-ASCII config wrongly on Windows.
-        with config_path.open(encoding='utf-8') as f:
+        # config.json is UTF-8 on both sides: _bootstrap_config_from_url pins the
+        # same encoding when it writes. A config carrying non-ASCII -- prompt text
+        # with ₹ or an em-dash, an instance name -- would otherwise decode by the
+        # platform locale and come back corrupted.
+        with open(config_path, 'r', encoding='utf-8') as f:
             _config_cache = json.load(f)
             _config_mtime = current_mtime
             logger.info("Config loaded/reloaded from config.json")
@@ -267,13 +271,35 @@ def get_current_datetime_ist() -> str:
     return now.strftime("%A, %B %d, %Y at %I:%M %p ") + now.strftime("%Z")
 
 
-def inject_datetime(prompt: str) -> str:
-    """Replace {{CURRENT_DATETIME}} placeholder with the configured-timezone datetime."""
-    return prompt.replace('{{CURRENT_DATETIME}}', get_current_datetime_ist())
+def _instance_template_vars() -> dict[str, str]:
+    """agent-config's template_vars, coerced to strings.
+
+    Keys beginning with "_" are dropped so the "_comment" convention used
+    throughout the config files cannot be substituted into a prompt.
+    """
+    raw = load_config().get("template_vars")
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: str(value)
+        for key, value in raw.items()
+        if not key.startswith("_") and isinstance(value, (str, int, float))
+    }
 
 
-# Secret Manager lookups are cached so a burst of requests doesn't re-fetch the
-# key list on every call.
+def render_prompt(prompt: str) -> str:
+    """Substitute {{CURRENT_DATETIME}} and {{instance.<key>}} into a prompt.
+
+    An {{instance.<key>}} with no matching template_vars entry is left in place
+    rather than blanked: a visible placeholder in an answer is a far louder
+    failure than a sentence that has silently lost its subject.
+    """
+    rendered = prompt.replace("{{CURRENT_DATETIME}}", get_current_datetime_ist())
+    for key, value in _instance_template_vars().items():
+        rendered = rendered.replace("{{instance.%s}}" % key, value)
+    return rendered
+
+
 _SECRET_MANAGER_CACHE: dict[str, tuple[float, list[str]]] = {}
 _SECRET_MANAGER_TTL_SECONDS = 300
 
@@ -316,17 +342,12 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
 
 
 def get_api_keys(demo_mode: bool = False) -> list:
-    """Load API keys from Secret Manager (preferred) or local config (dev only).
+    """Load API keys from Secret Manager (preferred) or config (fallback).
 
-    A deployed instance sets `GEMINI_API_KEYS_SECRET` (and optionally
-    `GEMINI_DEMO_API_KEYS_SECRET`) and the value is resolved via Secret Manager.
-    `agent-config.schema.json` defines no field for keys, so a config served from
-    the instance's config bucket cannot carry them.
-
-    The on-disk `config.json` `gemini.api_keys` array — and the legacy scalar
-    `gemini.api_key` — remain readable for **local development only**, where the
-    file is uncommitted. Both paths log a warning, so a deployment that is
-    accidentally reading keys from config is visible in the logs.
+    In `prod` mode the agent reads `GEMINI_API_KEYS_SECRET` (and
+    optionally `GEMINI_DEMO_API_KEYS_SECRET`) and resolves the value via Secret
+    Manager. The on-disk config.json `gemini.api_keys` array is honoured only as
+    a dev fallback. The legacy scalar `gemini.api_key` is rejected outright.
 
     Args:
         demo_mode: If True, returns demo_api_keys for internal demo usage.
@@ -357,36 +378,29 @@ def get_api_keys(demo_mode: bool = False) -> list:
             return keys
         logger.warning("GEMINI_API_KEYS_SECRET set but returned no keys; falling back to config")
 
-    # Local-development fallback. These fields are not in
-    # agent-config.schema.json, so reaching here in a deployed instance means the
-    # keys came from somewhere they should not have — warn loudly rather than
-    # silently succeeding.
     config = load_config()
     gemini_config = config.get("gemini", {})
     keys = gemini_config.get("api_keys", [])
-    if keys:
-        logger.warning(
-            "Read %d Gemini key(s) from config rather than Secret Manager. This path is "
-            "for local development only; set GEMINI_API_KEYS_SECRET for a deployed instance.",
-            len(keys),
-        )
     if not keys:
         single_key = gemini_config.get("api_key", "")
         if single_key and not single_key.startswith("DEPRECATED"):
-            logger.warning(
-                "Using deprecated scalar gemini.api_key from config; migrate to Secret "
-                "Manager via GEMINI_API_KEYS_SECRET."
-            )
+            logger.warning("Using deprecated scalar gemini.api_key; migrate to api_keys[] or Secret Manager")
             keys = [single_key]
     return keys
 
 
 def get_query_param_key() -> str:
-    """Get the secret key for query param overrides from config."""
-    config = load_config()
-    # TODO: replace the instance-specific "AISummit2026" fallback with a more
-    # generic default, or require query_param_key to be configured explicitly.
-    return config.get("query_param_key", "AISummit2026")  # Default fallback
+    """The secret gating ?key= overrides and demo mode, or "" if unconfigured.
+
+    Returns empty rather than a default: this repo is public, so any literal
+    here would be a published credential for every instance that did not
+    override it. Callers must treat "" as "no override key configured" and
+    reject every supplied key -- see routes/chat.py.
+    """
+    key = load_config().get("query_param_key", "")
+    if not isinstance(key, str):
+        return ""
+    return key.strip()
 
 
 def apply_query_overrides(config: dict, query_params: dict) -> dict:

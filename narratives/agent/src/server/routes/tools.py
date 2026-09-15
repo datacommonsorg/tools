@@ -18,7 +18,7 @@ import logging
 from flask import Blueprint, jsonify, request
 
 import src.mcp.client as mcp_client
-from src.mcp.client import call_tool, get_tools, initialize_mcp
+from src.mcp.client import call_tool, get_tools
 from src.mcp.schema import transform_schema_for_gemini
 
 logger = logging.getLogger(__name__)
@@ -29,10 +29,9 @@ tools_bp = Blueprint("tools", __name__)
 @tools_bp.route("/api/tools", methods=["GET"])
 def list_tools():
     """List available tools."""
-    if not mcp_client.session_id:
-        if not initialize_mcp():
-            return jsonify({"success": False, "error": "Cannot connect to MCP server. Make sure it's running on port 3000!"}), 503
-
+    # No session pre-check: get_tools() establishes one on demand and recovers
+    # from a session the data plane no longer recognises. An empty tool list is
+    # the only signal that actually means "MCP is unreachable".
     tools = get_tools()
     if not tools:
         return jsonify({"success": False, "error": "No tools available"}), 503
@@ -52,10 +51,7 @@ def list_tools():
 @tools_bp.route("/api/call", methods=["POST"])
 def tool_call():
     """Execute a tool call."""
-    if not mcp_client.session_id:
-        if not initialize_mcp():
-            return jsonify({"success": False, "error": "Cannot connect to MCP server"}), 503
-
+    # See list_tools(): call_tool() establishes and recovers its own session.
     data = request.get_json()
     if not data or not data.get("name"):
         return jsonify({"success": False, "error": "Tool name required"}), 400

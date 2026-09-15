@@ -17,7 +17,7 @@ import json
 import logging
 import re
 
-from src.config import load_config
+from src.config import get_gemini_model, load_config
 from src.gemini.client import gemini_request
 from src.gemini.schemas import DEFAULT_FOLLOW_UP_PROMPT, FOLLOW_UP_SCHEMA
 
@@ -39,7 +39,7 @@ def generate_follow_up_questions(user_message: str, topics: list) -> list:
         return []
 
     config = load_config()
-    model = config.get("gemini", {}).get("mcp_model", "gemini-3-flash-preview")
+    model = get_gemini_model(config)
     system_prompt = config.get("prompts", {}).get("follow_up") or DEFAULT_FOLLOW_UP_PROMPT
 
     prompt = f"""The user's original research question is: {user_message}

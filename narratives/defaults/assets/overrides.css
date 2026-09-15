@@ -1,0 +1,75 @@
+/**
+ * Copyright 2023 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+:root {
+  --dc-primary: #5d5f65;
+  --link-color: #514ea3;
+  --footer-background: white;
+  --dc-red-fade: #40d4e033;
+}
+
+#main-header {
+  background: white;
+  z-index: 100;
+  position: sticky;
+}
+
+#main-nav .navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%280, 0, 0, 0.5%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e")!important;
+}
+
+@media screen and (max-width: 1067px) {
+  #main-nav .navbar-nav {
+    width: 100%;
+    text-align: right;
+  }
+}
+
+#main-nav {
+  background: white;
+}
+
+#main-nav .navbar-collapse {
+  background: white;
+}
+
+#main-nav a {
+  color: var(--dc-primary) !important;
+}
+
+#main-header .navbar-brand {
+  display: flex;
+  flex-wrap: wrap;
+}
+.btn.btn-primary {
+  background-color: var(--dc-primary);
+}
+
+#main-pane #explore {
+  background-color: var(--dc-primary);
+}
+
+#main-pane #plot-container {
+  background: none;
+}
+
+#main-footer {
+  border-top: 1px solid #efefef;
+}
+
+.search-section-container.sticky {
+  top: 60px;
+}

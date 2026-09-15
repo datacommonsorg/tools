@@ -41,7 +41,16 @@ CHART_CONFIG_SCHEMA = {
                         "type": "string",
                         "description": "Single comparison date in YYYY, YYYY-MM, or YYYY-MM-DD"
                     }
-                }
+                },
+                # A chart with no title renders a blank header strip, not an
+                # untitled chart: the web components resolve their heading as
+                # `header || title`, both of which are attributes we supply, so
+                # when neither carries text there is nothing to fall back to
+                # and .chart-headers still reserves its 2.2rem. Asking for a
+                # title in the prompt was not enough on its own -- the model
+                # dropped the field often enough to be noticed, and an optional
+                # field in a structured-output schema is genuinely optional.
+                "required": ["title"]
             }
         }
     },

@@ -15,8 +15,9 @@
 
 from flask import Blueprint, jsonify
 
-from src.config import load_config
-from src.mcp.client import MCP_PORT, MCP_URL
+from src.config import get_gemini_model, load_config
+from src.mcp.capabilities import current_cached as mcp_capabilities
+from src.mcp.client import mcp_url
 from src.server.app import PROXY_PORT
 
 system_bp = Blueprint("system", __name__)
@@ -26,30 +27,39 @@ system_bp = Blueprint("system", __name__)
 
 @system_bp.route("/health", methods=["GET"])
 def health():
-    """Health check."""
-    return jsonify({"status": "ok", "mcp_url": MCP_URL})
+    """Health check.
+
+    Reports the *resolved* MCP endpoint rather than a constant, so this can no
+    longer disagree with where the agent is actually talking after the endpoint
+    became configurable.
+    """
+    return jsonify({
+        "status": "ok",
+        "mcp_url": mcp_url(),
+        # Discovered, not declared -- see src/mcp/capabilities.py. Tells an
+        # operator at a glance whether this deployment can attribute sources.
+        "mcp": mcp_capabilities().describe(),
+    })
 
 
 @system_bp.route("/", methods=["GET"])
 def index():
+    # Links are relative so they resolve under whatever AGENT_API_PREFIX the
+    # blueprint was mounted at, rather than 404ing at the site root.
     return f"""
     <html>
-    <head><title>MCP Proxy</title></head>
+    <head><title>Data Commons agent</title></head>
     <body>
-    <h1>Data Commons MCP Proxy Server (Proxy-Only Mode)</h1>
-    <p>MCP Server: {MCP_URL}</p>
-    <p>Proxy Server: http://localhost:{PROXY_PORT}</p>
+    <h1>Data Commons agent</h1>
+    <p>MCP server: {mcp_url()}</p>
     <ul>
-        <li><a href="/health">/health</a> - Health check</li>
-        <li><a href="/api/tools">/api/tools</a> - List tools</li>
-        <li>POST /api/call - Execute tool</li>
-        <li><a href="/api/config">/api/config</a> - Get backend config (no API key)</li>
-        <li>POST /api/chat/stream - Full chat with streaming</li>
-        <li><a href="/logs?key=">/logs</a> - Query Analytics Dashboard (requires ?key=SECRET)</li>
+        <li><a href="health">health</a> - health, MCP generation and tool surface</li>
+        <li><a href="api/tools">api/tools</a> - discovered tool surface</li>
+        <li><a href="api/config">api/config</a> - backend config (no API key)</li>
+        <li><a href="brand">brand</a> - the branding document</li>
+        <li>POST api/call - execute one tool</li>
+        <li>POST chat/stream - chat, server-sent events</li>
     </ul>
-    <h3>Prerequisite</h3>
-    <p>Make sure the MCP server is running:</p>
-    <code>python3 -m uv tool run datacommons-mcp serve http --port {MCP_PORT}</code>
     </body>
     </html>
     """
@@ -71,8 +81,8 @@ def get_config_endpoint():
         "proxy_url": config.get("proxy_url", f"http://localhost:{PROXY_PORT}"),
         "gemini": {
             "api_base": config.get("gemini", {}).get("api_base", ""),
-            "mcp_model": config.get("gemini", {}).get("mcp_model", "gemini-3-flash-preview"),
-            "kb_model": config.get("gemini", {}).get("kb_model", "gemini-3-flash-preview"),
+            "mcp_model": get_gemini_model(config),
+            "kb_model": get_gemini_model(config, "kb_model"),
         },
         "mcp": config.get("mcp", {}),
         "knowledge_base": config.get("knowledge_base", {}),
