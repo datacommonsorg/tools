@@ -4,14 +4,14 @@ export const IconBarChartHorizontal = (props: ComponentPropsWithRef<'svg'>) => {
   return (
     <svg
       {...props}
-      viewBox="0 0 24 24"
+      viewBox="0 -960 960 960"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <path
         fill="currentColor"
-        d="M4 16h7v4H4v-4Zm0-6h16v4H4v-4Zm0-6h11v4H4V4Z"
+        d="M160-320h280v160H160v-160Zm0-240h640v160H160v-160Zm0-240h440v160H160v-160Z"
       />
     </svg>
   );

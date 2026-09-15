@@ -7,13 +7,12 @@ widgets, algorithms for detecting anomalous data, and more.
 ## About Data Commons
 
 [Data Commons](https://datacommons.org/) is an Open Knowledge Graph that
-provides a unified view across multiple public data sets and statistics.
-We've bootstrapped the graph with lots of
-[data](https://datacommons.org/datasets) from US Census, CDC, NOAA, etc.,
-and through collaborations with the New York Botanical Garden,
-Opportunity Insights, and more. However, Data Commons is
-meant to be for community, by the community. We're excited to work with you
-to make public data accessible to everyone.
+provides a unified view across multiple public data sets and statistics. We've
+bootstrapped the graph with lots of [data](https://datacommons.org/datasets)
+from US Census, CDC, NOAA, etc., and through collaborations with the New York
+Botanical Garden, Opportunity Insights, and more. However, Data Commons is meant
+to be for community, by the community. We're excited to work with you to make
+public data accessible to everyone.
 
 To see the extent of data we have today, browse the graph using our
 [browser](https://browser.datacommons.org/).
@@ -24,7 +23,8 @@ Apache 2.0
 
 ### GitHub Development Process
 
-In [Github Repo](https://github.com/datacommonsorg/tools), click on "Fork" button to fork the repo.
+In [Github Repo](https://github.com/datacommonsorg/tools), click on "Fork"
+button to fork the repo.
 
 Clone your forked repo to your desktop.
 
@@ -54,18 +54,30 @@ Wait for approval of the Pull Request and merge the change.
 
 ## Continuous Integration (CI)
 
-This repository uses a centralized GitHub Actions CI orchestrator to manage testing across multiple applications in the monorepo. Individual applications run modular test suites that gate branch merges into `main` without blocking unaffected applications.
+This repository uses a centralized GitHub Actions CI orchestrator to manage
+testing across multiple applications in the monorepo. Individual applications
+run modular test suites that gate branch merges into `main` without blocking
+unaffected applications.
 
-For the architectural overview and instructions on adding CI tests for new applications, see [CONTINUOUS_INTEGRATION.md](CONTINUOUS_INTEGRATION.md).
+For the architectural overview and instructions on adding CI tests for new
+applications, see [CONTINUOUS_INTEGRATION.md](CONTINUOUS_INTEGRATION.md).
 
 ## Coding Standards
 
-Developers and AI agents contributing to frontend applications in this repository must follow the [Frontend Conventions and Best Practices](FRONTEND_CONVENTIONS.md). All submissions are expected to adhere to these rules and include comprehensive tests.
+Developers and AI agents contributing to this repository must follow the
+[Coding Guidelines](CODING_GUIDELINES.md), plus the
+[Frontend Conventions](FRONTEND.md) for any UI work and the `AGENTS.md` of the
+application being changed, where it has one
+([dataweaver](dataweaver/AGENTS.md)). Where an application directory carries its
+own `CODING_GUIDELINES.md` or `FRONTEND.md`, that copy augments the root
+document; it does not replace it. Where the two differ, the application-level
+copy takes precedence. All submissions are expected to adhere to these rules
+and include comprehensive tests.
 
 ## Support
 
-For general questions or issues about tool development, please open an issue
-on our [issues](https://github.com/datacommonsorg/tools/issues) page. For all
-other questions, please send an email to `support@datacommons.org`.
+For general questions or issues about tool development, please open an issue on
+our [issues](https://github.com/datacommonsorg/tools/issues) page. For all other
+questions, please send an email to `support@datacommons.org`.
 
 **Note** - This is not an officially supported Google product.

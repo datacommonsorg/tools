@@ -3,7 +3,7 @@ import { Button } from '~/components/elements/button';
 import { Menu as MenuElement } from '~/components/elements/menu';
 import { toast } from '~/components/foundations/toaster/store';
 import { IconClose } from '~/components/primitives/icons/close';
-import { IconImport } from '~/components/primitives/icons/import';
+import { IconDownload } from '~/components/primitives/icons/download';
 import { ImportError, importState } from '~/store/serialization';
 import s from './menu.module.scss';
 
@@ -101,7 +101,7 @@ export const Menu = ({ id, onClose }: MenuProps) => {
           onDragLeave={() => setIsDraggingOver(false)}
           onDrop={dropFile}
         >
-          <IconImport className={s['icon-import']} />
+          <IconDownload className={s['icon-import']} />
           <span className={s['browse-label']}>
             {isDraggingOver ? 'Drop to import' : 'Browse or drop file'}
           </span>
