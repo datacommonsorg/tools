@@ -18,11 +18,10 @@ precedence.
 | 2 | `FRONTEND.md` | Frontend/UI: React, styling, motion, accessibility |
 | 3 | `<app>/AGENTS.md` | App layout, commands, app-specific conventions |
 
-For `CODING_GUIDELINES.md` and `FRONTEND.md`, **read the copy in the
-application directory you are working in; fall back to the root copy when the
-application has none.** An application-level copy augments the root document;
-it does not replace it. Where the two differ, the application-level copy takes
-precedence.
+For `CODING_GUIDELINES.md` and `FRONTEND.md`, **read the root copy, then the
+copy in the application directory you are working in, where it has one.** An
+application-level copy augments the root document; it does not replace it.
+Where the two differ, the application-level copy takes precedence.
 
 Contribution process, PR expectations, and review policy live in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).

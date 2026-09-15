@@ -28,11 +28,10 @@ documents govern. Its owners should add one.
 
 ## Resolution rule
 
-For `CODING_GUIDELINES.md` and `FRONTEND.md`, **read the copy in the
-application directory you are working in; fall back to the root copy when the
-application has none.** An application-level copy augments the root document;
-it does not replace it. Where the two differ, the application-level copy takes
-precedence.
+For `CODING_GUIDELINES.md` and `FRONTEND.md`, **read the root copy, then the
+copy in the application directory you are working in, where it has one.** An
+application-level copy augments the root document; it does not replace it.
+Where the two differ, the application-level copy takes precedence.
 
 Today: each app carries its own `FRONTEND.md`, holding the styling stack it
 uses — SCSS modules in `dataweaver/`, Tailwind in `narratives/`. Neither app has
