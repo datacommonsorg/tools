@@ -7,8 +7,8 @@
 * @datacommonsorg/owners @nick-nlb
 
 # Data Weaver stand-alone app.
-dataweaver/ @beets @nick-nlb @miss-o-soup
+dataweaver/ @beets @juliawu @miss-o-soup @nick-nlb
 
 # Narratives stand-alone app.
-narratives/ @beets @nick-nlb @juliawu
+narratives/ @beets @juliawu @miss-o-soup @nick-nlb
 

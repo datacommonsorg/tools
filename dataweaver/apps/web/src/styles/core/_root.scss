@@ -13,6 +13,8 @@
     --button-circle-size-medium: 28px;
     --button-circle-size-large: 32px;
     --button-circle-size-extra-large: 34px;
+    --icon-size-small: 18px;
+    --icon-size-medium: 24px;
     --tag-height: 27px;
     --controls-gutter-outer: 16px;
     --controls-height: var(--button-pill-size-large);
@@ -27,5 +29,12 @@
     --border-radius-small: 8px;
     --border-radius-extra-small: 4px;
     --actions-height: calc(var(--button-circle-size-large) + 10px);
+  }
+
+  @include includes.breakpoint(tablet) {
+    :root {
+      --icon-size-small: 20px;
+      --icon-size-medium: 26px;
+    }
   }
 }

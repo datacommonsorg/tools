@@ -4,14 +4,14 @@ export const IconInsertText = (props: ComponentPropsWithRef<'svg'>) => {
   return (
     <svg
       {...props}
-      viewBox="0 0 24 24"
+      viewBox="0 -960 960 960"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <path
         fill="currentColor"
-        d="M11 16v-6H8V8h8v2h-3v6h-2ZM1 23v-6h2V7H1V1h6v2h10V1h6v6h-2v10h2v6h-6v-2H7v2H1Zm6-4h10v-2h2V7h-2V5H7v2H5v10h2v2ZM3 5h2V3H3v2Zm16 0h2V3h-2v2Zm0 16h2v-2h-2v2ZM3 21h2v-2H3v2Z"
+        d="M450-320v-260H330v-60h300v60H510v260h-60ZM40-40v-213h79v-454H40v-213h213v79h454v-79h213v213h-79v454h79v213H707v-79H253v79H40Zm213-139h454v-74h74v-454h-74v-74H253v74h-74v454h74v74ZM100-767h93v-93h-93v93Zm667 0h93v-93h-93v93Zm0 667h93v-93h-93v93Zm-667 0h93v-93h-93v93Zm93-667Zm574 0Zm0 574Zm-574 0Z"
       />
     </svg>
   );
