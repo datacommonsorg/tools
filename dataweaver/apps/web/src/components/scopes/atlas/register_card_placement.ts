@@ -74,10 +74,13 @@ const refreshCursor = (editor: Editor, cursor: GridCursor): GridCursor => {
  * existing cards): the bottom-most-then-right-most card counts as last
  * placed, and the cards sharing its row top form the current row.
  */
-const deriveCursor = (editor: Editor, columns: number): GridCursor | null => {
+const deriveCursor = (
+  shapes: ReturnType<Editor['getCurrentPageShapes']>,
+  columns: number,
+): GridCursor | null => {
   const entries: CursorEntry[] = [];
 
-  for (const shape of editor.getCurrentPageShapes()) {
+  for (const shape of shapes) {
     if (shape.type !== 'card') continue;
 
     entries.push({ id: shape.id, bounds: mapShapeToBounds(shape) });
@@ -122,48 +125,61 @@ interface NextSlotResult {
 }
 
 /**
- * Bottom edge of the lowest card on the canvas, or null with no cards. This
- * is one of the two inputs a new row's y is taken from: it clears every card
- * the store has already published, which the cursor's tracked row does not
- * (the cursor re-roots on whichever card the user last dragged, which may sit
- * higher than others). It is not sufficient on its own — see `nextSlot`.
+ * How a card that opens its own row picks that row's x.
+ *
+ * - `batch` — every card arriving together is known now, so the row can be
+ *   centered on the canvas's content using the width it will really occupy.
+ * - `align` — they are not known (clones are created one at a time, before
+ *   their siblings exist), so the row keeps the grid's current x. Assuming a
+ *   full row of identical cards instead would bias every row toward the side
+ *   the estimate overshoots, and each biased row widens the content it is
+ *   measured against, so successive batches walk further out.
  */
-const canvasFloorY = (
-  shapes: ReturnType<Editor['getCurrentPageShapes']>,
-): number | null => {
-  let floor: number | null = null;
+export type RowStart = { kind: 'batch'; widths: number[] } | { kind: 'align' };
 
-  for (const shape of shapes) {
-    if (shape.type !== 'card') continue;
-
-    const bottom = shape.y + shape.props.h;
-    if (floor === null || bottom > floor) floor = bottom;
-  }
-
-  return floor;
-};
+/** Card extents across the whole canvas. */
+interface CanvasCardMetrics {
+  /** Bottom edge of the lowest card. */
+  floor: number;
+  /** Left edge of the leftmost card. */
+  minX: number;
+  /** Right edge of the rightmost card. */
+  maxX: number;
+}
 
 /**
- * Horizontal extent (left edge of the leftmost card to right edge of the
- * rightmost) of every card on the canvas, or null with no cards. A batch's
- * new row centers under this.
+ * Extents of every card on the canvas, or null with no cards. One pass: a new
+ * row needs the floor to clear existing cards, and a centered row needs the
+ * horizontal span to center under.
+ *
+ * Reads the store, so it only sees committed cards. Cards placed earlier in
+ * the same atomic operation — the siblings of a multi-card paste — are absent,
+ * which is why the floor below is combined with the cursor's tracked row.
  */
-const canvasContentXRange = (
+const canvasCardMetrics = (
   shapes: ReturnType<Editor['getCurrentPageShapes']>,
-): { minX: number; maxX: number } | null => {
-  let range: { minX: number; maxX: number } | null = null;
+): CanvasCardMetrics | null => {
+  let metrics: CanvasCardMetrics | null = null;
 
   for (const shape of shapes) {
-    if (shape.type !== 'card') continue;
+    if (shape.type !== 'card') {
+      continue;
+    }
 
-    const left = shape.x;
+    const bottom = shape.y + shape.props.h;
     const right = shape.x + shape.props.w;
-    range = range
-      ? { minX: Math.min(range.minX, left), maxX: Math.max(range.maxX, right) }
-      : { minX: left, maxX: right };
+
+    if (!metrics) {
+      metrics = { floor: bottom, minX: shape.x, maxX: right };
+      continue;
+    }
+
+    metrics.floor = Math.max(metrics.floor, bottom);
+    metrics.minX = Math.min(metrics.minX, shape.x);
+    metrics.maxX = Math.max(metrics.maxX, right);
   }
 
-  return range;
+  return metrics;
 };
 
 /** Whether two card-sized rectangles overlap at all. */
@@ -173,18 +189,42 @@ const boundsOverlap = (a: CardBounds, b: CardBounds): boolean => {
   );
 };
 
+/**
+ * Width the first row of `widths` will occupy: the cards that fit within the
+ * column count, plus the gutters between them. Cards beyond it wrap onto the
+ * next row and add nothing here.
+ */
+const batchRowWidth = (
+  widths: number[],
+  columns: number,
+  gutter: number,
+): number => {
+  const row = widths.slice(0, columns);
+  const cards = row.reduce((total, width) => total + width, 0);
+  return cards + Math.max(row.length - 1, 0) * gutter;
+};
+
 /** Calculate position for a card about to be created + its updated cursor. */
 const nextSlot = (
   editor: Editor,
   id: TLShapeId,
   size: CardSize,
   cursor: GridCursor | null,
-  forceNewRow: boolean,
+  rowStart: RowStart | null,
 ): NextSlotResult => {
   const { columns, gutter } = resolveGrid(editor);
+
+  let pageShapes: ReturnType<Editor['getCurrentPageShapes']> | null = null;
+  const getPageShapes = () => {
+    if (!pageShapes) {
+      pageShapes = editor.getCurrentPageShapes();
+    }
+    return pageShapes;
+  };
+
   const latestCursor = cursor
     ? refreshCursor(editor, cursor)
-    : deriveCursor(editor, columns);
+    : deriveCursor(getPageShapes(), columns);
 
   const entry = (position: CardPosition): CursorEntry => {
     return { id, bounds: { ...position, ...size } };
@@ -194,12 +234,6 @@ const nextSlot = (
   const rowLast = latestCursor
     ? latestCursor.row[latestCursor.row.length - 1]
     : null;
-
-  let pageShapes: ReturnType<Editor['getCurrentPageShapes']> | null = null;
-  const getPageShapes = () => {
-    if (!pageShapes) pageShapes = editor.getCurrentPageShapes();
-    return pageShapes;
-  };
 
   // Empty canvas: return the first slot in the top-left corner of viewport
   if (!latestCursor || !rowFirst || !rowLast) {
@@ -215,17 +249,22 @@ const nextSlot = (
   }
 
   // Room in the row: place against the previous card's right edge — unless a
-  // stray card blocks the gap, or this is the first card of a new batch (new
-  // batches always start their own row). Either case falls through below.
-  if (!forceNewRow && latestCursor.row.length < columns) {
+  // stray card blocks the gap, or this card opens a row of its own. Either
+  // case falls through below.
+  if (!rowStart && latestCursor.row.length < columns) {
     const previousBounds = rowLast.bounds;
     const position = {
       x: previousBounds.x + previousBounds.w + gutter,
       y: rowFirst.bounds.y,
     };
+
+    // Only this row's own cards are expected in the slot; anything else
+    // sitting there — including a card the grid placed on an earlier row —
+    // is a collision
+    const rowIds = new Set(latestCursor.row.map((rowEntry) => rowEntry.id));
     const candidate: CardBounds = { ...position, ...size };
     const blocked = getPageShapes().some((shape) => {
-      if (shape.type !== 'card' || latestCursor.gridIds.includes(shape.id)) {
+      if (shape.type !== 'card' || rowIds.has(shape.id)) {
         return false;
       }
       return boundsOverlap(candidate, mapShapeToBounds(shape));
@@ -243,29 +282,25 @@ const nextSlot = (
     }
   }
 
-  // Row full, or the in-row slot is blocked: drop below both the tracked row
-  // and the lowest card on the canvas. Neither alone is enough — the tracked
-  // row can be stale (re-rooted on a card the user dragged, which may sit
-  // above others), and the canvas misses the siblings of an in-flight paste,
-  // which are not in the store until the whole operation commits.
+  const metrics = canvasCardMetrics(getPageShapes());
+
+  // Row full, blocked, or opening a row: drop below both the tracked row and
+  // the lowest card on the canvas. Neither alone is enough — the tracked row
+  // can be stale (re-rooted on a card the user dragged, which may sit above
+  // others), and the canvas misses the siblings of an in-flight paste, which
+  // are not in the store until the whole operation commits.
   const trackedRowBottom = Math.max(
     ...latestCursor.row.map(({ bounds }) => bounds.y + bounds.h),
   );
-  const floor = Math.max(
-    trackedRowBottom,
-    canvasFloorY(getPageShapes()) ?? trackedRowBottom,
-  );
+  const floor = Math.max(trackedRowBottom, metrics?.floor ?? trackedRowBottom);
 
-  // A batch's first card centers its (assumed full-width) row under the
-  // canvas's existing content; an organic wrap keeps the tracked row's x.
+  // A batch of known size centers its row under the canvas's content;
+  // anything else keeps the grid's x, since the row's width isn't knowable
+  // yet and a guess would drift (see `RowStart`)
   let rowStartX = latestCursor.rowStartX;
-  if (forceNewRow) {
-    const contentRange = canvasContentXRange(getPageShapes());
-    if (contentRange) {
-      const fullRowWidth = columns * size.w + (columns - 1) * gutter;
-      rowStartX =
-        (contentRange.minX + contentRange.maxX) / 2 - fullRowWidth / 2;
-    }
+  if (rowStart?.kind === 'batch' && metrics) {
+    const rowWidth = batchRowWidth(rowStart.widths, columns, gutter);
+    rowStartX = (metrics.minX + metrics.maxX) / 2 - rowWidth / 2;
   }
 
   const position = {
@@ -379,8 +414,19 @@ const keepInView = (
 };
 
 export interface CardPlacement {
-  /** Get the position for a card about to be created and advance the cursor. */
-  place(id: TLShapeId, size: CardSize): CardPosition;
+  /**
+   * Get the position for a card about to be created and advance the cursor.
+   *
+   * Pass `rowStart` when this card opens a row of its own: `batch` when every
+   * card arriving with it is known now (its row is centered on the canvas's
+   * content), `align` when they are not (its row keeps the grid's x). Omit it
+   * for a card that should flow into the row in progress.
+   */
+  place(
+    id: TLShapeId,
+    size: CardSize,
+    rowStart?: RowStart | null,
+  ): CardPosition;
 
   /** Unregister every placement side effect and drop tracked state. */
   cleanup(): void;
@@ -395,28 +441,24 @@ export interface CardPlacement {
 export const registerCardPlacement = (editor: Editor): CardPlacement => {
   let cursor: GridCursor | null = null;
 
-  // First card placed each task starts a fresh row (below the lowest card),
-  // so a batch always lands together on its own line instead of splitting
-  // across an old row's leftover slots. Later cards in the same task fill
-  // that row normally. Expires with the task's microtasks, like
-  // `pastedThisTask`/`revealedThisTask` below.
-  let placedThisTask = false;
-
-  // Whether the most recent `place()` call started a new row. Read right
-  // after by `cleanupRevealCreated`'s handler for that same card, since each
-  // card's place-then-create completes before the next one starts.
+  // Whether the most recent `place()` call opened a new row, read by
+  // `cleanupRevealCreated` to decide how to frame the camera.
+  //
+  // Caveat: tldraw runs every `beforeCreate` of an atomic operation before
+  // any `afterCreate`, so during a multi-card paste this reports the last
+  // card placed rather than the card being revealed. Cards added through
+  // `place`-then-`createShape` (the query flow) are unaffected — each one
+  // completes before the next begins.
   let lastPlacementStartedNewRow = false;
 
-  const place = (id: TLShapeId, size: CardSize): CardPosition => {
-    const forceNewRow = !placedThisTask;
-    placedThisTask = true;
-    queueMicrotask(() => {
-      placedThisTask = false;
-    });
-
-    const slot = nextSlot(editor, id, size, cursor, forceNewRow);
+  const place = (
+    id: TLShapeId,
+    size: CardSize,
+    rowStart: RowStart | null = null,
+  ): CardPosition => {
+    const slot = nextSlot(editor, id, size, cursor, rowStart);
     cursor = slot.cursor;
-    lastPlacementStartedNewRow = forceNewRow;
+    lastPlacementStartedNewRow = rowStart !== null;
     return slot.position;
   };
 
@@ -444,12 +486,21 @@ export const registerCardPlacement = (editor: Editor): CardPlacement => {
         return shape;
       }
 
+      // The first clone of the operation opens a row for the whole paste;
+      // its siblings fill that row. Their sizes aren't knowable yet — they
+      // don't exist — so the row aligns to the grid rather than centering
+      const isFirstClone = pastedThisTask.size === 0;
+
       pastedThisTask.add(shape.id);
       queueMicrotask(() => pastedThisTask.delete(shape.id));
 
       return {
         ...shape,
-        ...place(shape.id, { w: shape.props.w, h: shape.props.h }),
+        ...place(
+          shape.id,
+          { w: shape.props.w, h: shape.props.h },
+          isFirstClone ? { kind: 'align' } : null,
+        ),
       };
     },
   );
