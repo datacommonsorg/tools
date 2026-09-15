@@ -122,11 +122,11 @@ interface NextSlotResult {
 }
 
 /**
- * Bottom edge of the lowest card on the canvas, or null with no cards. A new
- * row always starts here, never beside a locally computed row height — the
- * cursor's tracked row can go stale (re-rooted on whichever card the user
- * last dragged, which may sit higher than others), so this is the one floor
- * a fresh row can rely on to clear every pre-existing card.
+ * Bottom edge of the lowest card on the canvas, or null with no cards. This
+ * is one of the two inputs a new row's y is taken from: it clears every card
+ * the store has already published, which the cursor's tracked row does not
+ * (the cursor re-roots on whichever card the user last dragged, which may sit
+ * higher than others). It is not sufficient on its own — see `nextSlot`.
  */
 const canvasFloorY = (
   shapes: ReturnType<Editor['getCurrentPageShapes']>,
@@ -243,10 +243,18 @@ const nextSlot = (
     }
   }
 
-  // Row full, or the in-row slot is blocked: start a new row below the
-  // lowest card on the canvas — always below it, never beside or on top of
-  // one, regardless of what the tracked row's own height would suggest.
-  const floor = canvasFloorY(getPageShapes()) ?? rowFirst.bounds.y;
+  // Row full, or the in-row slot is blocked: drop below both the tracked row
+  // and the lowest card on the canvas. Neither alone is enough — the tracked
+  // row can be stale (re-rooted on a card the user dragged, which may sit
+  // above others), and the canvas misses the siblings of an in-flight paste,
+  // which are not in the store until the whole operation commits.
+  const trackedRowBottom = Math.max(
+    ...latestCursor.row.map(({ bounds }) => bounds.y + bounds.h),
+  );
+  const floor = Math.max(
+    trackedRowBottom,
+    canvasFloorY(getPageShapes()) ?? trackedRowBottom,
+  );
 
   // A batch's first card centers its (assumed full-width) row under the
   // canvas's existing content; an organic wrap keeps the tracked row's x.
