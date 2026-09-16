@@ -3,6 +3,16 @@
 The authoritative reference for writing React + SCSS in this project. Read this
 before touching any component, hook, or stylesheet.
 
+> [!IMPORTANT]
+> This document covers **Dataweaver frontend** work only. It augments the
+> repository-root [`FRONTEND.md`](../FRONTEND.md); it does not replace it. Where
+> the two differ, this document takes precedence.
+> General engineering rules — simplicity, file organization, naming, TypeScript
+> language rules, error handling, testing, security — live in
+> [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) at the repository root and
+> apply here in full. Dataweaver has no local coding-guidelines override.
+> Project layout, commands, and design tokens are in [`AGENTS.md`](AGENTS.md).
+
 These conventions follow the same shape as our other projects, but this is a
 **Google-style-guide project**, so several rules are inverted by the linting
 setup. The Google-specific differences:
@@ -15,8 +25,10 @@ setup. The Google-specific differences:
 | Token source | **`@package/tokens`** (`/colors`, `/scss`, `/ts`) — not in-app generated | convention |
 | Class names | **kebab-case** | Stylelint `selector-class-pattern` |
 
-Full rule sources: [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html)
-and [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html),
+Full rule sources:
+[Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html)
+and
+[Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html),
 enforced via `biome.json` and `stylelint.config.mjs`.
 
 ---
@@ -38,8 +50,8 @@ reuse and concern (one platform concern → primitive; reusable presentational U
 [AGENTS.md](AGENTS.md) for the full description of each category.
 
 - **snake_case** file names (dash-case only for `src/app` routing — see
-  [AGENTS.md](AGENTS.md)); **PascalCase** component identifiers
-  (`card_text.tsx` → `CardText`).
+  [AGENTS.md](AGENTS.md)); **PascalCase** component identifiers (`card_text.tsx`
+  → `CardText`).
 - Every `.tsx` pairs with a co-located `.module.scss`. No styled-jsx, no
   Tailwind, no inline styles (CSS custom properties via `style={{}}` are fine
   for index-driven values only — see §3.5).
@@ -77,68 +89,47 @@ A sub-component that becomes reused outside its parent gets promoted out to its
 own flat pair in `elements/` (or up to a `primitive`, depending on concern).
 Don't create a folder "in anticipation" of future sub-components — wait until
 the second file actually exists. Same rule applies inside `scopes/`: a scope is
-always a folder (it owns its view), but its sub-components stay flat inside
-that folder until one of *them* grows a child of its own.
+always a folder (it owns its view), but its sub-components stay flat inside that
+folder until one of *them* grows a child of its own.
 
 ### 1.2 Naming — category first
 
-**Lead the name with what the thing *is*, then what makes it specific.** A
-card that holds a chart is `card_chart`, not `chart_card`; a card that holds
-text is `card_text`; a button that closes is `button_close`; an icon of an
-arrow is `icon_arrow_right`.
+**Lead the name with what the thing *is*, then what makes it specific.** A card
+that holds a chart is `card_chart`, not `chart_card`; a card that holds text is
+`card_text`; a button that closes is `button_close`; an icon of an arrow is
+`icon_arrow_right`. The rule and its rationale are repo-wide — see
+[`CODING_GUIDELINES.md` §3.1](../CODING_GUIDELINES.md#31-file-naming).
 
-This trades a slightly less natural-sounding name for real DX wins:
-
-- **Sorted directory listings group by category** — all `card_*` sit together,
-  all `button_*` sit together, all `icon_*` sit together. Browsing the folder
-  reads like an index of what's available.
-- **Editor fuzzy-find narrows by category** — typing `card` surfaces every
-  card variant; you don't have to remember the modifier first.
-- **Imports stay parallel** — `import { CardChart } from …; import { CardText }
-  from …;` line up visually instead of scattering by adjective.
-
-Apply this everywhere a name is composed of a noun + modifier: file and folder
-names, component identifiers (`CardChart`, not `ChartCard`), and the
-element-prefixed SCSS classes in §3.2 (`.button-close`, `.icon-arrow-right`).
+In this project it applies to file and folder names, component identifiers
+(`CardChart`, not `ChartCard`), and the element-prefixed SCSS classes in §3.2
+(`.button-close`, `.icon-arrow-right`).
 
 ---
 
-## 2. TypeScript
+## 2. TypeScript in components
 
-- **`interface` over `type`** for object shapes. Name a component's props
-  `ComponentNameProps` (`interface CardProps`). Unions, tuples, mapped and
-  function types stay `type`.
-- **Named exports only** — `export default` is allowed only in `src/app/**`
-  (Next.js route files) and `*.config.*`.
-- **`import type`** for type-only imports; **`export type`** for type-only
-  re-exports.
-- **Components use an explicit `return` block** — `() => { return ( … ); }`,
-  never an implicit arrow return, even for one-line JSX. Implicit returns are
-  fine for non-component helpers whose body fits on one line.
-- Prefer arrow functions; only mark a function `async` when it `await`s.
-- **No `any`** — use `unknown` and narrow. If unavoidable, suppress the single
-  line with a comment, never relax the rule globally.
-- `===` / `!==` only; `const` by default; **braced** control statements.
-- **Single quotes** for JS / TS strings (Biome). SCSS strings use double quotes,
-  plain `.css` single — see §3.1.
-- **80-column lines** — keep code and prose (incl. this doc and Markdown) at
-  ≤ 80 chars. Biome (JS / TS / JSON) and Prettier (SCSS) reflow on format; wrap
-  long lines rather than letting them run. The only exceptions are unbreakable
-  tokens (long URLs, import paths).
-- No relative parent imports (`../`) — use the `~/` alias (`~/* → apps/web/src/*`).
+The general TypeScript rules (`interface` over `type`, named exports,
+`import type`, no `any`, `===`, full names, JSDoc) live in
+[`CODING_GUIDELINES.md` §6](../CODING_GUIDELINES.md#6-typescript). This section
+lists only what is specific to — or stricter in — Dataweaver:
+
+- **Components always use an explicit `return` block** —
+  `() => { return ( … ); }`, never an implicit arrow return, even for one-line
+  JSX. (The repo-wide rule permits implicit returns for trivial components;
+  Dataweaver does not.) Implicit returns remain fine for non-component helpers
+  whose body fits on one line.
+- The path alias is `~/` (`~/* → apps/web/src/*`); no relative parent imports.
 - Destructure props **in the same order as the interface** so reviewers can diff
   props against the type at a glance.
 - Declare **DOM-bound variables (refs, IDs) in the order they appear in the
   rendered tree**, so the hooks block can be read top-to-bottom against the JSX.
-- Prefer full names (`index` not `i`, `calculateTotal` not `calcTotal`). Prefix
-  booleans with `is` / `has` / `should` (`isLoading`, `hasFooter`).
-- Add JSDoc where intent is non-obvious.
 
 ---
 
 ## 3. SCSS
 
-CSS Modules only (`*.module.scss`), imported as `import s from './x.module.scss'`.
+CSS Modules only (`*.module.scss`), imported as
+`import s from './x.module.scss'`.
 
 `~/styles/includes` (breakpoint / helper / z-index mixins) is **auto-injected**
 into every module via `next.config.ts` `additionalData` — do **not** re-`@use`
@@ -186,7 +177,11 @@ Drive visual variants and boolean state through `data-*` attributes on the
 container — never through className flags:
 
 ```tsx
-<article className={s.container} data-variant={variant} data-is-loading={isLoading}>
+<article
+  className={s.container}
+  data-variant={variant}
+  data-is-loading={isLoading}
+>
 ```
 
 ```scss
@@ -197,11 +192,13 @@ container — never through className flags:
 
 Tokens come from `@package/tokens` (see [AGENTS.md](AGENTS.md)):
 
-- **Colour**: `rgb(var(--color-name))`; translucent: `rgb(var(--color-name) / 50%)`.
-  Never a bare hex or `rgb(0 0 0 / …)` — always anchor to a `--color-*` variable.
-- **Breakpoints (SCSS, build-time)**: `@include breakpoint(tablet|laptop|desktop)`.
-- **Z-index**: `$z-index-*` (ordered stack in `_z-indices.module.scss`) — never a
-  raw number.
+- **Colour**: `rgb(var(--color-name))`; translucent:
+  `rgb(var(--color-name) / 50%)`. Never a bare hex or `rgb(0 0 0 / …)` — always
+  anchor to a `--color-*` variable.
+- **Breakpoints (SCSS, build-time)**:
+  `@include breakpoint(tablet|laptop|desktop)`.
+- **Z-index**: `$z-index-*` (ordered stack in `_z-indices.module.scss`) — never
+  a raw number.
 - **Easing (SCSS)**: `$ease-linear` / `$ease-out` / `$ease-in` / `$ease-in-out`.
 
 If a design value has no matching token, flag it — don't introduce a one-off
@@ -236,8 +233,8 @@ skip layout/paint).
 
 ### 3.8 Misc
 
-- Prefer `overflow: clip` over `overflow: hidden` when you only need to crop
-  (no scroll container / new stacking context).
+- Prefer `overflow: clip` over `overflow: hidden` when you only need to crop (no
+  scroll container / new stacking context).
 - Prefer **grid-stack** (`display: grid` + `grid-area: 1 / 1`) over absolute
   positioning to overlap siblings.
 - When removing a property at a breakpoint, use `unset`, not a hardcoded zero.
@@ -246,7 +243,8 @@ skip layout/paint).
   adding `padding: 0` / `border: 0` / `background: none`.
 - Typography mixins live in `~/styles/typography.module.scss` — `@use` it where
   needed (it isn't part of the auto-injected includes).
-- Cascade layers, low → high: `reset, root, primitive, base` (`~/styles/layers.css`).
+- Cascade layers, low → high: `reset, root, primitive, base`
+  (`~/styles/layers.css`).
 
 ---
 
@@ -259,8 +257,8 @@ skip layout/paint).
 | Match a breakpoint / media query | `useMatchMedia("tablet" \| "prefers-motion" \| …)` | `~/hooks/use_match_media` |
 
 `<Link />` derives internal (`NextLink`) vs external (`target="_blank"` +
-`rel="noopener noreferrer"`) from `href` / `isExternal` — never pass `target`
-/ `rel` yourself, and never render a raw `<a>` / `NextLink`.
+`rel="noopener noreferrer"`) from `href` / `isExternal` — never pass `target` /
+`rel` yourself, and never render a raw `<a>` / `NextLink`.
 
 ---
 
@@ -302,15 +300,15 @@ unconditionally when they animate `opacity` alone; only reach for the
 Target WCAG 2.2 AA. Build it in, don't bolt it on.
 
 - **Semantic HTML first.** `<section>` for sections, `<article>` for
-  self-contained content (a card), `<button type="button">` for actions,
-  `<a>` via `<Link />` for navigation, `<h1>`–`<h6>` for headings (never a
-  styled `<div>`), `<ul>`/`<ol>` + `<li>` for lists. Never `<div onClick>`.
+  self-contained content (a card), `<button type="button">` for actions, `<a>`
+  via `<Link />` for navigation, `<h1>`–`<h6>` for headings (never a styled
+  `<div>`), `<ul>`/`<ol>` + `<li>` for lists. Never `<div onClick>`.
 - **Headings**: one `<h1>` per page; don't skip levels; visual size ≠ level.
 - **Icon-only buttons / links** need `aria-label`; the inner icon is
   `aria-hidden`.
-- **Focus**: every interactive element reachable via Tab and operable via
-  Enter / Space; never remove the focus outline (restyle via `:focus-visible`);
-  tab order matches visual order; no `tabindex ≥ 1`.
+- **Focus**: every interactive element reachable via Tab and operable via Enter
+  / Space; never remove the focus outline (restyle via `:focus-visible`); tab
+  order matches visual order; no `tabindex ≥ 1`.
 - **Touch targets** ≥ 44×44 CSS px (pad or use a pseudo-element).
 - **Loading regions** use `role="status"` with a visually-hidden label
   (`@include screen-reader-only`) and `aria-hidden` on the visual skeleton.
@@ -321,12 +319,11 @@ Target WCAG 2.2 AA. Build it in, don't bolt it on.
 
 ## 8. Rules (never / always)
 
+Frontend quick reference. The language-level rules (`interface` over `type`,
+named exports, no `any`, no `../`) are in
+[`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) and apply as well.
+
 **Never:**
-- Use `type` for an object shape (use `interface`); name props anything but
-  `ComponentNameProps`.
-- `export default` outside `src/app/**` / `*.config.*`.
-- Use `any` (suppress one line with a comment if truly unavoidable).
-- Relative parent imports (`../`) — use `~/`.
 - Hardcode a colour / size / spacing that has a token; use a bare hex or
   `rgb(0 0 0 / …)` for translucency — anchor to `rgb(var(--color-x) / a)`.
 - Restate the reset in a component module.
@@ -339,10 +336,8 @@ Target WCAG 2.2 AA. Build it in, don't bolt it on.
 - A raw `z-index` number, or `motion.*` (use `m.*`).
 
 **Always:**
-- Named exports; `import type` for type-only imports; explicit `return` block in
-  components; props destructured in interface order.
+- Explicit `return` block in components; props destructured in interface order.
 - Co-locate `.tsx` with `.module.scss`; kebab class names; `.container` root.
-- Keep lines ≤ 80 columns (code and prose).
 - Consume tokens from `@package/tokens`; wrap motion-bearing SCSS in
   `@include prefers-motion` (opacity-only transitions are exempt — see §3.7).
 - Icon-only controls get `aria-label`, inner icon `aria-hidden`.
