@@ -49,6 +49,7 @@ $-supported-headline-font-weights: 400, 700;
     $-supported-headline-font-weights
   );
 
+  font-size: $-font-size-16;
   line-height: 1.2;
 
   @include breakpoints.breakpoint(tablet) {
@@ -84,6 +85,7 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
+  font-size: $-font-size-14;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
@@ -121,12 +123,12 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-large($has-text-box-trim: true) {
-  font-size: $-font-size-12;
+  font-size: $-font-size-14;
   font-weight: 500;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: $-font-size-14;
+    font-size: $-font-size-16;
   }
 
   @if $has-text-box-trim {
@@ -135,16 +137,16 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-extra-large($has-text-box-trim: true) {
-  font-size: $-font-size-14;
+  font-size: $-font-size-16;
   font-weight: 500;
   line-height: 1.1;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: $-font-size-16;
+    font-size: $-font-size-18;
   }
 
   @include breakpoints.breakpoint(laptop) {
-    font-size: $-font-size-18;
+    font-size: $-font-size-20;
   }
 
   @if $has-text-box-trim {
