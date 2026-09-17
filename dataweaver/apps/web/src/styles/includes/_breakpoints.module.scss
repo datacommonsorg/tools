@@ -2,6 +2,7 @@
 @use "@package/tokens/scss" as tokens;
 
 $-breakpoints: (
+  "mobile": tokens.$breakpoint-mobile,
   "tablet": tokens.$breakpoint-tablet,
   "laptop": tokens.$breakpoint-laptop,
   "desktop": tokens.$breakpoint-desktop,
