@@ -4,8 +4,8 @@
 # separate repo (or separate branch) per instance — each with its own _INSTANCE
 # substitution and its own deploy-stamp trigger.
 #
-# Trigger: push to main, filtered to paths config/**, deploy/**, image/**,
-#          agent/**, cloudbuild/deploy-stamp.yaml.
+# Trigger: push to main, filtered to paths config/**, deploy/**, agent/**,
+#          cloudbuild/deploy-stamp.yaml.
 
 substitutions:
   _AR_REGION: us-central1
@@ -32,28 +32,6 @@ steps:
           exit 1
         fi
 
-  # 1. Build + push services image.
-  - id: build-services
-    name: gcr.io/cloud-builders/docker
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
-        set -e
-        # Stage React UI build (ui is expected at repo root).
-        if [ -d ui ]; then
-          ( cd ui && npm ci && npm run build )
-          rm -rf image/dist && cp -r ui/dist image/dist
-        else
-          mkdir -p image/dist; echo "stub" > image/dist/index.html
-        fi
-        cd image
-        TAG="$SHORT_SHA"
-        IMG="${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/services:$$TAG"
-        docker buildx build --platform linux/amd64 -t "$$IMG" --push .
-        echo "$$IMG" > /workspace/services_image.txt
-
-  # 2. Build + push agent image.
   - id: build-agent
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
@@ -108,11 +86,9 @@ steps:
         terraform init \
           -backend-config="bucket=${_TF_STATE_BUCKET}" \
           -backend-config="prefix=custom-datacommons/${_INSTANCE}"
-        SERVICES_IMG=$$(cat /workspace/services_image.txt)
         AGENT_IMG=$$(cat /workspace/agent_image.txt)
         terraform apply -auto-approve \
           -var-file=../${_INSTANCE}.tfvars \
-          -var="dc_web_service_image=$$SERVICES_IMG" \
           -var="dc_agent_image=$$AGENT_IMG"
 
   # 5. Force-restart so the new revision picks up the bucket changes immediately.

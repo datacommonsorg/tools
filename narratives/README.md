@@ -52,11 +52,11 @@ you do there requires TypeScript or Python.
                      │                host                  │
                      └──────────────┬───────────────────────┘
                                     │  DATA_PLANE_URL
-         ┌──────────────────────────┼──────────────────────────┐
-         ▼                          ▼                          ▼
-   DCP / Spanner              CDC / Cloud SQL         public datacommons.org
-   Google's terraform         this repo's terraform   nothing to run
-      DEFAULT
+                  ┌─────────────────┴─────────────────┐
+                  ▼                                   ▼
+           DCP / Spanner                    public datacommons.org
+           Google's terraform               nothing to run
+              DEFAULT
 ```
 
 The app plane never knows which backend it is talking to. It has a URL, an auth
@@ -131,36 +131,23 @@ on Python 3.14 (`google-api-core` requires `>=1.75.1` there), so
 
 **IAM roles:** Owner, or the combination from the DCP documentation — Service
 Usage Admin, Service Account Admin, Project IAM Admin, Storage Admin, Run Admin,
-Secret Manager Admin, plus Cloud SQL Admin for the `cdc` backend.
+Secret Manager Admin.
 
 ---
 
 ## Choosing a data plane
 
-One variable decides what gets created. The app plane is identical in all three
-cases — it receives a URL and an auth mode, and has no notion of what is behind
-them.
+One variable decides what gets created. The app plane is identical either way —
+it receives a URL and an auth mode, and has no notion of what is behind them.
 
 | `DATA_BACKEND` | What serves the data | Created by | Use when |
 | :--- | :--- | :--- | :--- |
 | **`dcp`** *(default)* | Google's Data Commons Platform — Spanner, managed ingestion, no NL server | `datacommons-cli`, **separately** — or already running, see [attaching](#attaching-to-a-data-commons-instance-that-already-exists) | You need your own data and want Google to run the plumbing |
-| `cdc` | The legacy plane — this repo's services image over Cloud SQL, plus an ingest Job | This deploy | An existing instance that cannot move yet |
 | `none` | Public `datacommons.org` | Nothing | Demos, pilots, review stacks |
 
 Switching backends is editing `DATA_BACKEND` in `instance.env` and redeploying.
 No code changes, no branch.
 
-### Why DCP is the default
-
-**Cloud SQL is the first hard wall, and Spanner does not have that wall.** There
-is no connection-pool sizing configured anywhere in the Terraform, the tier
-defaults to shared-core `db-g1-small`, and Cloud Run's default concurrency allows
-a large number of simultaneous requests against it. MySQL fails with "too many
-connections" rather than merely slow queries. Spanner uses session pools and has
-no fixed connection ceiling.
-
-Secondary: DCP has no NL server to run, ingestion is managed, and the Mixer
-defaults to stale reads so ingestion causes no downtime.
 
 ---
 
@@ -193,7 +180,7 @@ Required always:
 | `PROJECT_ID` | Your GCP project. Billing must be enabled. |
 | `REGION` | Where everything runs. Check your data-residency obligations first — moving later means recreating everything. |
 | `INSTANCE` | Lowercase, DNS-safe. Names every resource and the Terraform state prefix. |
-| `DATA_BACKEND` | `none`, `dcp` or `cdc` |
+| `DATA_BACKEND` | `none` or `dcp` |
 | `ACCESS_MODE` | `public`, `iap` or `private` |
 
 Required depending on those choices, and `--preflight` tells you which:
@@ -203,7 +190,6 @@ Required depending on those choices, and `--preflight` tells you which:
 | `AUTHORIZED_MEMBERS` | for `iap` and `private` |
 | `PUBLIC_DC_URL`, `PUBLIC_DC_WEB_URL` | for `none` — **two different hosts**, see below |
 | `DCP_SERVICE_URL`, `DCP_SERVICE_NAME` | for `dcp` |
-| `CLOUDSQL_TIER`, `CLOUDSQL_AVAILABILITY_TYPE` | for `cdc` — these bill by the hour, so they are explicit |
 
 ### The `none` backend needs two URLs, not one
 
@@ -314,10 +300,10 @@ only the keys you want to change — everything else comes from `defaults/`:
 
 | Group | Keys |
 | :--- | :--- |
-| Identity | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
+| Identity | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `favicon` |
 | Theme | `colors` (primary, accent, text, surfaces, borders, containers…), `radius` (card / input / chip), `fonts` |
 | Content | `suggestions` — the starter chips; `footer` text and links |
-| Structure | `navigation` — header tabs; `metrics.tabs`; `analytics.ga_tag_id` |
+| Structure | `navigation` — header tabs; `metrics.tabs` |
 
 Two complete examples ship as starting points: `schemas/branding.neutral.example.json`
 (neutral theme) and `schemas/branding.base-dc.example.json` (Google blue, no header
@@ -368,8 +354,7 @@ So one prompt serves every deployment:
 "template_vars": {
   "name": "Example Data Commons",
   "region": "the world",
-  "states_term": "regions",
-  "fiscal_year_start": "01-01"
+  "states_term": "regions"
 }
 ```
 
@@ -438,9 +423,6 @@ Values are read from **this process's environment**, written to Secret Manager,
 and never persisted to disk. Every later deploy needs no keys at all. If you skip
 this, the deploy stops and tells you which secrets are missing.
 
-Add `MAPS_API_KEY=...` only for `DATA_BACKEND=cdc` — it is the only backend that
-reads it.
-
 **Why there is no gitignored `secret.env`.** The keys already live in Secret
 Manager after the first deploy, so a local plaintext copy is redundant — and on a
 public repo a redundant secret file is a liability: one `git add -f`, one edited
@@ -460,11 +442,10 @@ cannot reach a bucket that may be readable more widely than intended.
 ```
 
 Roughly, in order: enable APIs → create the state bucket and Artifact Registry →
-verify secrets → build the UI and bake it into the app image (plus the services
-image, **only** on `cdc`) → compose the config bucket from `defaults/` +
-`config/` and sync it → `terraform apply` → smoke tests.
+verify secrets → build the UI and bake it into the app image → compose the config
+bucket from `defaults/` + `config/` and sync it → `terraform apply` → smoke tests.
 
-First run is ~10 minutes, or ~20 on `cdc` because Cloud SQL is slow to create.
+First run is ~10 minutes.
 
 **Preview the plan before an apply into a project that already has resources:**
 
@@ -503,10 +484,10 @@ app image.
 ./deploy.sh --destroy
 ```
 
-Asks you to type the deployment name, then destroys everything Terraform created
-— on `cdc` that includes the Cloud SQL instance and its data. The config bucket
-and the Secret Manager entries are left alone, so a later redeploy does not need
-the keys again; delete them separately if you want them gone.
+Asks you to type the deployment name, then destroys everything Terraform created.
+The config bucket and the Secret Manager entries are left alone, so a later
+redeploy does not need the keys again; delete them separately if you want them
+gone.
 
 It runs the same state-ownership guard as the apply path, so it cannot destroy
 resources belonging to another deployment.
@@ -865,7 +846,6 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Chat answers "no data" for everything | App SA lacks `run.invoker` on the data plane, or `DCP_SERVICE_NAME` is wrong | Check `app_invokes_dcp` in the plan; look for `dcproxy: … -> HTTP 403` in agent logs |
 | Charts blank, chat fine | `/dcproxy` failing | Agent logs — `401/403` is IAM or ingress, `404` is a path the data plane does not serve |
 | Charts blank on `none`, `{"code":404,"message":"The current request is not defined by this API"}` | Chart routes are on a **different host** to MCP | Terraform sets `DATA_PLANE_WEB_URL` for this. Chat keeps working either way, so only the browser sees the fault |
-| Charts blank on `cdc` after idle, first load only | Data plane scaled to zero; a cold container takes ~6s | Set `min_instances = 1`, or accept the first-request penalty |
 | Config or branding change does nothing | Read once at startup | `--config-only --restart` |
 | Theme flashes on load | `brand.js` not running | Check it is in `<head>` and `/agent/brand.js` returns 200 |
 | Every tab vanished | `navigation: []` in branding.json | Remove the key to restore the shipped tabs |
@@ -915,13 +895,11 @@ ui/                        React source; built and baked into the agent image
   src/hooks/               branding, chat session, SSE, hash routing
   src/utils/               PDF export, turn inspection, DC web components
 
-image/                     CDC data-plane overlay (nginx routing only; cdc backend)
 deploy/terraform-…/        one module tree; `data_backend` selects the plane
 deploy/*.py                deploy-time guards: state ownership, branding schema
 cloudbuild/                PR validation, image promotion, deploy stamps
 docs/smoke.sh              post-deploy checks
 docs/architecture.drawio   editable source for the architecture diagram
-sample-data/               seed CSVs for the cdc ingest job
 ```
 
 Two things are deliberately **not** here: API keys, which live only in Secret

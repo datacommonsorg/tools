@@ -21,11 +21,6 @@ variable "instance" {
   }
 }
 
-variable "dc_web_service_image" {
-  description = "Artifact Registry path to the services overlay image (image/Dockerfile output). Tag is the short git SHA from build.sh."
-  type        = string
-}
-
 variable "dc_agent_image" {
   description = "Artifact Registry path to the sidecar agent image (agent/Dockerfile output)."
   type        = string
@@ -50,46 +45,6 @@ variable "timezone" {
   description = "IANA timezone the agent uses when rendering {{CURRENT_DATETIME}}. Override per-instance (e.g. \"Asia/Kolkata\" for India)."
   type        = string
   default     = "UTC"
-}
-
-variable "cloudsql_tier" {
-  description = "Cloud SQL machine tier. db-g1-small is a reasonable POC default; bump to db-custom-2-7680 for production load."
-  type        = string
-  default     = "db-g1-small"
-}
-
-variable "cloudsql_availability_type" {
-  description = "Cloud SQL availability mode. REGIONAL is HA (multi-zone); ZONAL is single-zone (cheaper, no failover)."
-  type        = string
-  default     = "REGIONAL"
-  validation {
-    condition     = contains(["REGIONAL", "ZONAL"], var.cloudsql_availability_type)
-    error_message = "cloudsql_availability_type must be REGIONAL or ZONAL."
-  }
-}
-
-variable "min_instances" {
-  description = "Cloud Run min instances. min=1 eliminates cold starts; min=0 saves cost when idle."
-  type        = number
-  default     = 1
-}
-
-variable "max_instances" {
-  description = "Cloud Run max instances. Cap on autoscale headroom."
-  type        = number
-  default     = 10
-}
-
-variable "services_cpu" {
-  description = "vCPU for the services container."
-  type        = string
-  default     = "2"
-}
-
-variable "services_memory" {
-  description = "Memory for the services container."
-  type        = string
-  default     = "2Gi"
 }
 
 variable "agent_cpu" {
@@ -130,16 +85,6 @@ variable "dc_api_key_secret_id" {
   type        = string
 }
 
-variable "maps_api_key_secret_id" {
-  description = "Secret Manager ID for MAPS_API_KEY (Google Maps)."
-  type        = string
-}
-
-variable "db_pass_secret_id" {
-  description = "Secret Manager ID for the Cloud SQL user password."
-  type        = string
-}
-
 variable "gemini_api_keys_secret_id" {
   description = "Secret Manager ID for GEMINI_API_KEYS (JSON array of keys for rotation)."
   type        = string
@@ -148,36 +93,6 @@ variable "gemini_api_keys_secret_id" {
 # Data-layer overrides — for sharing an existing populated Cloud SQL across
 # instances during the POC. Leave empty to use the SQL instance created by
 # this module.
-
-variable "cloudsql_instance_override" {
-  description = "If set, Cloud Run uses this Cloud SQL connection name instead of the module-created instance. Format: project:region:instance."
-  type        = string
-  default     = ""
-}
-
-variable "db_user_override" {
-  description = "If set, Cloud Run uses this DB_USER instead of dc_runtime (created by the module)."
-  type        = string
-  default     = ""
-}
-
-variable "output_dir" {
-  description = "OUTPUT_DIR env var for the services container. Use gs:// URL pointing at the data + embeddings bucket. If empty, the per-instance data bucket is used."
-  type        = string
-  default     = ""
-}
-
-variable "input_dir" {
-  description = "INPUT_DIR env var. If empty, defaults to the per-instance data bucket."
-  type        = string
-  default     = ""
-}
-
-variable "extra_data_buckets" {
-  description = "Additional GCS bucket names the runtime SA should be granted objectViewer on (e.g. a shared cdc-dev data bucket during the POC)."
-  type        = list(string)
-  default     = []
-}
 
 variable "authorized_members" {
   description = <<-EOT
@@ -198,41 +113,9 @@ variable "authorized_members" {
   default     = []
 }
 
-variable "deletion_protection" {
-  description = "Whether to enable deletion protection on the Cloud SQL database instance."
-  type        = bool
-  default     = true
-}
-
-variable "force_destroy" {
-  description = "Whether to force destroy the GCS data bucket if it contains objects."
-  type        = bool
-  default     = false
-}
-
 # ---------------------------------------------------------------------------
 # App-plane / data-plane split
 # ---------------------------------------------------------------------------
-
-variable "data_plane_ingress" {
-  description = <<-EOT
-    Cloud Run ingress for the data plane. INGRESS_TRAFFIC_INTERNAL_ONLY is the
-    intended setting: the browser reaches the app plane, which proxies here, so
-    Mixer/MCP/the Flask pages need no public surface. Widen to
-    INGRESS_TRAFFIC_ALL only to debug from outside the VPC.
-  EOT
-  type        = string
-  default     = "INGRESS_TRAFFIC_INTERNAL_ONLY"
-
-  validation {
-    condition = contains([
-      "INGRESS_TRAFFIC_INTERNAL_ONLY",
-      "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER",
-      "INGRESS_TRAFFIC_ALL",
-    ], var.data_plane_ingress)
-    error_message = "data_plane_ingress must be a valid Cloud Run ingress value."
-  }
-}
 
 variable "app_subnet_cidr" {
   description = "CIDR for the app plane's Direct VPC egress subnet. Must not overlap anything else in the project."
@@ -264,19 +147,6 @@ variable "app_concurrency" {
 }
 
 
-variable "data_concurrency" {
-  description = <<-EOT
-    Simultaneous requests Cloud Run will send to one data-plane instance.
-
-    Unset, Cloud Run defaults to 80; multiplied by max_instances that is several
-    hundred concurrent requests against one Cloud SQL instance with no pool
-    sizing configured. Sized deliberately here instead. Raise it on the Spanner
-    backend, which has no fixed connection ceiling.
-  EOT
-  type        = number
-  default     = 30
-}
-
 # ---------------------------------------------------------------------------
 # Which data plane this instance runs against
 # ---------------------------------------------------------------------------
@@ -292,21 +162,25 @@ variable "data_backend" {
              Workflows orchestrator and the Dataflow flex template are Google's
              artifacts and cannot be reproduced.
 
-      "cdc"  The legacy self-hosted plane -- our services image over Cloud SQL,
-             with an ingest Job. Everything is created here.
-
       "none" No data plane. The app plane talks to public datacommons.org.
              Cheapest; cannot serve your own datasets.
 
-    The app plane is identical in all three cases. It receives a URL and an auth
+    The app plane is identical in both cases. It receives a URL and an auth
     mode; it has no notion of which backend is behind them.
+
+    A third value, "cdc", used to name a self-hosted plane built by this module
+    -- our services image over Cloud SQL, with an ingest Job. It is gone, and
+    so is everything that existed only to serve it: the Cloud SQL instance, the
+    data bucket, the ingest Job, the data-plane Cloud Run service and the
+    runtime service account. An instance still on that backend must be
+    destroyed with the last revision of this module that declared it.
   EOT
   type        = string
   default     = "dcp"
 
   validation {
-    condition     = contains(["dcp", "cdc", "none"], var.data_backend)
-    error_message = "data_backend must be one of: dcp, cdc, none."
+    condition     = contains(["dcp", "none"], var.data_backend)
+    error_message = "data_backend must be one of: dcp, none. The cdc backend was removed."
   }
 }
 

@@ -168,11 +168,6 @@
         "states_term": {
           "description": "Local term for sub-national administrative units ('states', 'districts', 'counties', 'provinces').",
           "type": "string"
-        },
-        "fiscal_year_start": {
-          "description": "Month/day of fiscal-year start (e.g. '04-01' for India, '01-01' for calendar-year states).",
-          "type": "string",
-          "pattern": "^[0-9]{2}-[0-9]{2}$"
         }
       },
       "additionalProperties": {

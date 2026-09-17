@@ -1,7 +1,7 @@
 # Cloud Build pipeline — validation on every pull request.
 #
 # Trigger: pull_request opened|synchronize against the main branch.
-# Filtered to paths: config/**, deploy/**, image/**, agent/**, cloudbuild/**.
+# Filtered to paths: config/**, deploy/**, agent/**, cloudbuild/**.
 #
 # Validates without pushing or deploying.
 
@@ -54,20 +54,6 @@ steps:
           ajv-cli validate -s schemas/branding.schema.json -d "$$b"
         done
 
-  # 4. Build the images (no push). Confirms Dockerfile + linux/amd64 still work.
-  - id: build-services
-    name: gcr.io/cloud-builders/docker
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
-        cd image
-        # Bypass the React build for PR validation; the dist/ is populated only
-        # by the deploy-stamp pipeline.
-        mkdir -p ./dist && echo "stub" > ./dist/index.html
-        docker buildx build --platform linux/amd64 -t services-pr:$SHORT_SHA .
-        ARCH=$$(docker inspect --format '{{.Architecture}}' services-pr:$SHORT_SHA)
-        if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi
 
   - id: build-agent
     name: gcr.io/cloud-builders/docker

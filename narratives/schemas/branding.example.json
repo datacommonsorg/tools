@@ -2,12 +2,9 @@
   "$schema": "./branding.schema.json",
   "$comment": "Canonical branding.json reference. Copy to branding.json, edit for your instance, and upload to the config bucket root. The React UI fetches this at page load and applies colors/fonts as --brand-* CSS variables (ui/src/hooks/use_branding.ts). Omitted keys fall back to the shipped design tokens in ui/src/index.css. One instance, one file.",
 
-  "instance_id": "example",
   "instance_name": "Example Data Commons",
-  "domain_hint": "example.data-commons.org",
 
   "logo": "assets/logo.png",
-  "logo_alt": "Example Data Commons",
   "favicon": "assets/logo.png",
 
   "colors": {
@@ -26,7 +23,6 @@
     "body": "Google Sans Text, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
   },
 
-  "extra_css": "assets/overrides.css",
 
   "navigation": [
     { "label": "Home", "href": "/" },
@@ -48,11 +44,7 @@
     ]
   },
 
-  "analytics": {
-    "ga_tag_id": ""
-  },
 
-  "splash_assets": [],
 
   "metrics": {
     "$comment": "Optional Key Metrics dashboard composition. When omitted entirely, the UI uses its built-in DEFAULT_METRICS_TABS. Each tile maps 1:1 to a <datacommons-${type}> web component.",

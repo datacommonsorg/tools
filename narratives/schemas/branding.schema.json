@@ -160,16 +160,8 @@
       "description": "Branding schema version string.",
       "type": "string"
     },
-    "instance_id": {
-      "description": "Short DNS-safe instance label, e.g. 'india'.",
-      "type": "string"
-    },
     "instance_name": {
       "description": "Display name of the instance, e.g. 'India Data Commons'. Shown in the header/title.",
-      "type": "string"
-    },
-    "domain_hint": {
-      "description": "Domain or DNS-safe label for the instance (informational).",
       "type": "string"
     },
     "logo": {
@@ -183,10 +175,6 @@
     "logo_text": {
       "type": "string",
       "description": "Wordmark rendered beside the logo in the header, e.g. \"Data Commons\". Omit it entirely to show the logo mark alone — an instance whose logo image already contains its name wants no text here."
-    },
-    "logo_alt": {
-      "description": "Alt text for the logo image.",
-      "type": "string"
     },
     "favicon": {
       "description": "Path (relative to the config bucket root) or URL to the favicon.",
@@ -300,10 +288,6 @@
         }
       }
     },
-    "extra_css": {
-      "description": "Path (relative to the config bucket root) to an optional CSS override file.",
-      "type": "string"
-    },
     "navigation": {
       "description": "Header navigation entries.",
       "type": "array",
@@ -338,23 +322,6 @@
             "$ref": "#/$defs/link"
           }
         }
-      }
-    },
-    "analytics": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "ga_tag_id": {
-          "description": "Google Analytics tag ID; empty string disables analytics.",
-          "type": "string"
-        }
-      }
-    },
-    "splash_assets": {
-      "description": "Paths (relative to the config bucket root) to hero/splash images.",
-      "type": "array",
-      "items": {
-        "type": "string"
       }
     },
     "metrics": {
