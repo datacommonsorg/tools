@@ -1,0 +1,13 @@
+dist/
+node_modules/
+package-lock.json
+.DS_Store
+*.log
+.env
+.env.local
+.env.production
+.env.development
+.env.staging
+.vite/
+**/.vite/
+*.tsbuildinfo
