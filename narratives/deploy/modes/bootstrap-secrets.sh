@@ -138,7 +138,9 @@ assert isinstance(keys, list) and all(isinstance(k, str) for k in keys), keys
                 # Same reasoning as DC_API_KEY: a rejected Gemini key produces a
                 # deployment that starts, serves the UI, and fails only when
                 # someone asks a question -- as "All N API keys failed", which
-                # reads as a quota problem rather than a bad key.
+                # reads as a quota problem rather than a bad key. Only 400, 401
+                # and 403 mean the key itself is bad; a 429 or a 5xx is the API
+                # having a moment and must not fail the deploy.
                 gem_base="https://generativelanguage.googleapis.com/v1beta/models"
                 bad_keys=""
                 while IFS= read -r k; do
@@ -148,7 +150,8 @@ assert isinstance(keys, list) and all(isinstance(k, str) for k in keys), keys
                     case "$gem_code" in
                         200) ;;
                         000) log_warn "Could not reach the Gemini API to check a key; storing it unverified." ;;
-                        *)   bad_keys="${bad_keys} ${k:0:6}...(HTTP ${gem_code})" ;;
+                        400|401|403) bad_keys="${bad_keys} ${k:0:6}...(HTTP ${gem_code})" ;;
+                        *)   log_warn "Gemini API returned HTTP ${gem_code} for a key; storing it unverified." ;;
                     esac
                 done <<EOF
 $(echo -n "$value" | python3 -c 'import json,sys; print("\n".join(json.loads(sys.stdin.read())))')

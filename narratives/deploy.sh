@@ -112,7 +112,7 @@ done
 unset _mode
 
 # Early check for required CLI tools
-for cmd in gcloud terraform npm python3; do
+for cmd in gcloud terraform npm python3 curl; do
     if ! command -v "$cmd" &>/dev/null; then
         log_error "Required tool '$cmd' is not installed or not in PATH!"
         exit 1
@@ -254,9 +254,6 @@ log_info "Data backend: ${DATA_BACKEND}"
 # instance.env is loaded -- INSTANCE does not exist before that, and under
 # `set -u` referencing it earlier aborts the script.
 APP_SERVICE="${INSTANCE}-app"
-
-
-
 
 if [ "$PREFLIGHT" = true ]; then
     run_preflight
