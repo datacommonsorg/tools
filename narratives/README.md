@@ -2,8 +2,7 @@
 
 A branded, conversational Data Commons instance: a React UI and a Gemini agent in
 one container, running against **any** Data Commons backend — Google's Data
-Commons Platform (Spanner), the legacy Custom DC plane (Cloud SQL), or public
-`datacommons.org`.
+Commons Platform (Spanner) or public `datacommons.org`.
 
 **The backend is a configuration value, not a branch. So is the branding.**
 
@@ -29,13 +28,8 @@ you do there requires TypeScript or Python.
 - [Deploying](#deploying)
 - [Access modes](#access-modes)
 - [Attaching to a Data Commons instance that already exists](#attaching-to-a-data-commons-instance-that-already-exists)
-- [Provisioning a new DCP data plane](#provisioning-a-new-dcp-data-plane)
-- [Local development](#local-development)
-- [Testing](#testing)
-- [Verifying a deployment](#verifying-a-deployment)
 - [Troubleshooting](#troubleshooting)
 - [Repository layout](#repository-layout)
-- [Design notes](#design-notes) — why it is built this way
 
 ---
 
@@ -101,8 +95,12 @@ gcloud run services proxy acme-app --region=<your-region> --port=8080
 # public or iap — the deploy prints the URL
 ```
 
-Move to `dcp` once that works. Changing backend is editing one line in
-`config/instance.env` and redeploying.
+Move to `dcp` once that works. The DCP data plane is not created by this
+repository — you point at one that is already running, which is three lines in
+`config/instance.env` and a redeploy. See
+[attaching](#attaching-to-a-data-commons-instance-that-already-exists).
+
+No code changes, no branch.
 
 **`--preflight` is the step worth not skipping.** It checks the things that
 otherwise fail late or silently: credentials, billing, whether your organisation
@@ -117,10 +115,9 @@ in with. It creates nothing.
 | :--- | :--- |
 | A GCP project with **billing enabled** | |
 | `gcloud`, authenticated | `gcloud auth login` **and** `gcloud auth application-default login` — separate; Terraform uses ADC |
-| `terraform`, `npm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
+| `terraform`, `npm`, `python3`, `curl` on PATH | Images build in **Cloud Build**, so no local Docker is needed. `curl` is what validates your API keys |
 | A **Data Commons API key** | https://apikeys.datacommons.org |
 | A **Gemini API key** | https://aistudio.google.com |
-| `uv` — only to provision a *new* DCP plane | `uv tool install datacommons-cli` |
 
 **Python 3.11–3.13.** The agent's pinned `grpcio-status==1.71.2` cannot resolve
 on Python 3.14 (`google-api-core` requires `>=1.75.1` there), so
@@ -142,11 +139,16 @@ it receives a URL and an auth mode, and has no notion of what is behind them.
 
 | `DATA_BACKEND` | What serves the data | Created by | Use when |
 | :--- | :--- | :--- | :--- |
-| **`dcp`** *(default)* | Google's Data Commons Platform — Spanner, managed ingestion, no NL server | `datacommons-cli`, **separately** — or already running, see [attaching](#attaching-to-a-data-commons-instance-that-already-exists) | You need your own data and want Google to run the plumbing |
+| **`dcp`** *(default)* | Google's Data Commons Platform — Spanner, managed ingestion, no NL server | Not this repository — it must already exist, see [attaching](#attaching-to-a-data-commons-instance-that-already-exists) | You need your own data and want Google to run the plumbing |
 | `none` | Public `datacommons.org` | Nothing | Demos, pilots, review stacks |
 
 Switching backends is editing `DATA_BACKEND` in `instance.env` and redeploying.
 No code changes, no branch.
+
+**The DCP data plane is not created by this repository.** If you are choosing
+`dcp`, read
+[attaching to an instance that already exists](#attaching-to-a-data-commons-instance-that-already-exists)
+before you fill anything in.
 
 
 ---
@@ -269,12 +271,12 @@ you write only your differences, and an upstream prompt or branding fix reaches
 you on the next `git pull` instead of sitting unnoticed in a file you copied
 once and forgot.
 
-| What you can override | Validated by | Controls |
-| :--- | :--- | :--- |
-| `config/branding.json` | `schemas/branding.schema.json` | identity, theme, content, structure |
-| `config/agent-config.json` | `schemas/agent-config.schema.json` | models, thinking levels, template vars |
-| `config/prompts/*.md` | — | `mcp`, `synthesis`, `kb`, `follow_up` |
-| `config/assets/` | — | logo, favicon, CSS overrides |
+| What you can override | Start from | Validated by | Controls |
+| :--- | :--- | :--- | :--- |
+| `config/branding.json` | `schemas/branding.neutral.example.json` | `schemas/branding.schema.json` | identity, theme, content, structure |
+| `config/agent-config.json` | `schemas/agent-config.example.json` | `schemas/agent-config.schema.json` | models, thinking levels, RAG, template vars |
+| `config/prompts/*.md` | `defaults/prompts/*.md` | — | `mcp`, `synthesis`, `kb`, `follow_up` |
+| `config/assets/` | — | — | logo, favicon, CSS overrides |
 
 Both schemas set `additionalProperties: false`, so an unrecognised key is an
 error rather than a silently ignored one — a typo'd colour name fails loudly.
@@ -327,6 +329,63 @@ startup and serves them from `/agent/brand/assets/<name>`, rewriting the paths
 before the document leaves the process. **The browser never reads the config
 bucket**, so the bucket stays private. Absolute and `data:` URIs pass through
 untouched.
+
+### Agent config
+
+```sh
+cp schemas/agent-config.example.json config/agent-config.json
+$EDITOR config/agent-config.json
+./deploy.sh --config-only --restart
+```
+
+Same rule as branding: keep only the keys you want to differ and delete the rest.
+The example lists every field with placeholder values, so it is a reference to
+read, not a file to ship as-is.
+
+| Group | Keys | What it decides |
+| :--- | :--- | :--- |
+| `thinking` | `mcp_level`, `synthesis_level` — `low` / `medium` / `high` | **The cost and latency dial.** `mcp_level` budgets the tool-planning loop, `synthesis_level` the final answer. Both are `medium` by default |
+| `gemini` | `mcp_model`, `kb_model`, `api_base` | Which model runs each phase, and a regional endpoint if you need one |
+| `template_vars` | `name`, `region`, `states_term`, plus anything you add | Substituted into `{{instance.*}}` in prompts — see [Prompts](#prompts) |
+| `knowledge_base` | `enabled` | Turns the File Search RAG phase on or off |
+| `gemini.filestores` | corpus IDs | Which corpora that phase searches |
+| `mcp` | `enabled` | `false` runs synthesis-only with no tool loop — a chat-only fallback for when the data plane is down |
+| `query_param_key` | a token you choose | Gates `?demo=true` and the model / thinking overrides. **Omitted by default, which disables both outright** |
+
+A minimal override is as small as this:
+
+```json
+{
+  "thinking": { "mcp_level": "high" },
+  "template_vars": { "name": "Acme Data Commons", "region": "the UK" }
+}
+```
+
+**No key is ever a value here.** `gemini.api_keys` and `gemini.demo_api_keys` are
+in the schema as a *shape contract*. Real keys reach the agent from Secret
+Manager via [`--bootstrap-secrets`](#secrets); the committed files carry an empty
+array, and anything credential-shaped in the loaded document is scrubbed and
+logged at error level before it can be served.
+
+**`query_param_key` is a soft gate, not authentication.** Set it only if you want
+demo links, never reuse one across deployments, and make it non-guessable — it
+hands the caller your demo API key pool.
+
+**Turning on the knowledge base (RAG).** Four steps, and the first two are not in
+this repository:
+
+1. Provision a Gemini File Search corpus at https://aistudio.google.com
+2. Upload your reference documents to it
+3. Put its ID in `gemini.filestores` — `["fileSearchStores/<id>"]`
+4. Set `knowledge_base.enabled` to `true`, then `./deploy.sh --config-only --restart`
+
+Left `false`, the KB pipeline is skipped entirely. With no corpus that is the
+correct state, not a failure.
+
+**`mcp.server_url` in the defaults is ignored once deployed.** Terraform sets
+`MCP_SERVER_URL` from the data plane it configured and the environment variable
+wins. The `127.0.0.1:8082` is there so a laptop run finds a local server; it is
+never the value that ships.
 
 ### Prompts
 
@@ -604,232 +663,6 @@ error. `deploy.sh` refuses to start without both.
 
 ---
 
-## Provisioning a new DCP data plane
-
-DCP's data plane is **not** created by this repo, and cannot be: the Spanner
-instance, the BigQuery reservation, the Workflows orchestrator and the Dataflow
-flex template are Google's artifacts. `datacommons-cli` is irreducible for
-`admin init-db` (Spanner DDL) and `admin ingest start` (a Workflows execution,
-not a resource).
-
-```sh
-uvx datacommons-cli admin init --project-id "$PROJECT_ID" \
-    --instance-name "<namespace>" --dc-api-key "$DC_API_KEY"
-cd <namespace> && terraform init && terraform apply
-uvx datacommons-cli admin init-db          # creates the Spanner schema
-```
-
-Then take the two values into `instance.env`:
-
-```sh
-terraform output datacommons_service_url    # -> DCP_SERVICE_URL
-terraform output datacommons_service_name   # -> DCP_SERVICE_NAME
-```
-
-To load data: upload to the artifacts bucket and
-`uvx datacommons-cli admin ingest start --imports <dir>`. Three things from the
-DCP docs worth repeating:
-
-- **Re-ingesting an import wipes and rebuilds all of it.** No incremental imports
-  — always upload the complete file set.
-- **Every provenance's `Source` must be defined in your MCF.** It is not resolved
-  from base Data Commons.
-- **The BigQuery reservation is one per project per region**, shared by every
-  deployment. A second one breaks ingestion for all of them.
-
----
-
-## Local development
-
-Two paths. Pick by what you are changing.
-
-There is deliberately **no "run the whole data plane locally" path**. Cloud SQL,
-Spanner, Workflows and Dataflow are not reproducible on a laptop, and the DCP
-ingestion pipeline cannot be run locally at all. Point at a deployed backend
-instead — or at public Data Commons, which needs nothing provisioned.
-
-### Path A — UI only (the fast loop)
-
-A hot-reloading Vite dev server proxying every backend call to a deployed
-instance. Real Gemini, real MCP tools, real charts.
-
-```sh
-cd ui
-npm install
-
-cat > .env.local <<'EOF'
-BACKEND_URL=https://<your-instance>.run.app
-AGENT_URL=https://<your-instance>.run.app
-EOF
-
-npm run dev      # http://localhost:3000
-```
-
-Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
-(in `vite.config.ts`) forwards `/agent/*` and the data routes; it is **dev-only**,
-so `vite build` ignores it. Defaults are `localhost:5001` and `localhost:8080` if
-unset. Vite picks up `.env.local` changes on **restart**, not live.
-
-You need Node 20+ and nothing else — no Docker, no Python, no gcloud.
-
-### Path B — the agent locally
-
-```sh
-cd agent
-python3 -m venv .venv && . .venv/bin/activate     # Python 3.11–3.13
-pip install -r requirements.txt
-```
-
-Choose what it talks to — the same three backends, selected the same way, by URL.
-
-**Public Data Commons.** Nothing to provision, but note it takes **two** hosts:
-
-```sh
-export MCP_SERVER_URL="https://api.datacommons.org/mcp"
-export DC_API_KEY="..."
-export DATA_PLANE_URL="https://api.datacommons.org"      # MCP + versioned REST
-export DATA_PLANE_WEB_URL="https://datacommons.org"      # website routes the charts call
-```
-
-`api.datacommons.org` serves `/v1`, `/v2` and `/mcp`. It does **not** serve the
-website routes the chart web components fetch — `/api/observations/series`,
-`/api/place/name`, `/core/api/...` — which live on `datacommons.org` only. Set
-only `DATA_PLANE_URL` and the agent answers correctly with real numbers while
-every chart silently 404s, because the failure is entirely browser-side:
-
-```json
-{"message":"The current request is not defined by this API.","code":404}
-```
-
-`DATA_PLANE_WEB_URL` defaults to `DATA_PLANE_URL`, so a deployed plane needs only
-the one URL — one container serves both MCP and the website.
-
-**A deployed data plane:**
-
-```sh
-export MCP_SERVER_URL="https://<data-plane>-uc.a.run.app/mcp"
-export DATA_PLANE_URL="https://<data-plane>-uc.a.run.app"
-```
-
-> A private data plane expects a Google-signed ID token, which the agent mints
-> from the **metadata server** — unavailable off GCP, so `attach_auth` is a no-op
-> on a laptop and the call is refused. Either widen that service's ingress
-> temporarily, or run against public Data Commons. Local development against a
-> private backend is not a supported path.
-
-**Config and keys:**
-
-```sh
-export CONFIG_URL="https://storage.googleapis.com/<bucket>/agent-config.json"
-export BRAND_CONFIG_URL="https://storage.googleapis.com/<bucket>"
-```
-
-Gemini keys are **not** an environment variable. `get_api_keys()` resolves
-`GEMINI_API_KEYS_SECRET` through Secret Manager and falls back to a
-`gemini.api_keys` array in the config document — which is the local path, since
-Secret Manager needs credentials the laptop may not have:
-
-```json
-{ "gemini": { "api_keys": ["your-key"] } }
-```
-
-Do not commit that array with a value in it; it is a shape contract in the
-checked-in files, never a value.
-
-**Serve the SPA from the agent**, so routing matches production:
-
-```sh
-(cd ui && npm ci && npm run build)
-export STATIC_ROOT="$(cd ui/dist && pwd)"
-```
-
-Skip it if you only care about the API — `/` will 404 and `/agent/*` still works.
-
-**Run and check:**
-
-```sh
-cd agent && python3 main.py            # http://localhost:5001
-
-curl -s localhost:5001/agent/health | jq
-curl -s localhost:5001/agent/api/tools | jq '.raw_tools | length'
-curl -sN -X POST localhost:5001/agent/chat/stream \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"What is the population of France?","history":[]}'
-```
-
-The stream should carry `session_id`, `mcp_start`, tool events, text, and `done`.
-Production runs `gunicorn main:app`; `main.py` is the development path.
-
----
-
-## Testing
-
-Nothing is mocked that matters, and no test framework is needed on the agent side.
-
-```sh
-# Agent — from agent/, with requirements.txt installed
-cd agent
-python3 tests/test_mcp_session.py          # 6 checks  — session recovery, thread isolation
-python3 tests/test_backend_generations.py  # 14 checks — both MCP generations, both payload shapes
-python3 tests/test_auth_selection.py       # 5 checks  — API key vs ID token, chosen by host
-python3 tests/test_prompt_rendering.py     # 17 checks — placeholder substitution, ?key= gate
-python3 tests/test_prompt_urls.py          # 3 checks  — prompt URLs derived from CONFIG_URL
-
-# UI — from ui/
-cd ui
-npx tsc --noEmit
-npx vitest run                             # 9 files, 108 tests
-```
-
-Each agent suite exits non-zero on failure and prints an `n/n checks passed` line.
-
-> `test_mcp_session.py` and `test_auth_selection.py` import `requests`, so they
-> need `pip install -r requirements.txt` first — they are framework-free, not
-> dependency-free. `test_backend_generations.py` runs standalone.
-
-The agent suites cover the three things whose failure is **silent**:
-
-- **MCP session recovery** when the data plane scales. Sessions are bound to the
-  process that minted them and Cloud Run has no affinity, so a session created
-  against instance 1 gets presented to instance 2, which has never seen it.
-- **Both server generations parsing correctly** — including the empty response
-  that used to report `has_data=true` for no data. A 1.3.x server signals "no
-  data" as `{"data": {}}`, which the old substring check did not match, so the
-  agent narrated numbers it never received.
-- **Auth chosen by target host** — API key for public hosts, minted ID token for
-  private ones. Widening the host list to make a backend work is a security
-  regression, not a fix.
-- **Prompt placeholder substitution and the `?key=` gate** — an unsubstituted
-  `{{instance.*}}` reaches the user inside an answer, and an override gate that
-  accepts an empty key hands anonymous callers the demo API keys.
-
----
-
-## Verifying a deployment
-
-```sh
-bash docs/smoke.sh "$URL"
-curl -s "$URL/agent/health" | jq
-```
-
-`mcp.generation` and `mcp.supports_source_attribution` tell you which MCP surface
-the agent actually found. If `supports_source_attribution` is false, answers carry
-weaker provenance — no named source, no licence.
-
-> The smoke suite's data check queries `Count_Person` / `country/IND`, which is
-> **base** Data Commons data served through the passthrough. It passes on any
-> backend and therefore proves nothing about *your* ingested data. For `dcp`,
-> confirm that in Spanner: `SELECT COUNT(*) FROM Observation`.
-
-Branding:
-
-```sh
-curl -s "$URL/agent/brand" | jq '.branding.instance_name, .branding.navigation'
-curl -sI "$URL/agent/brand.css" | grep -i cache    # expect no-store
-curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclosed
-```
-
----
 
 ## Troubleshooting
 
@@ -842,7 +675,7 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | IAP mode, nobody can sign in | No OAuth consent screen in the project | Create it once in the console; `--preflight` prints the link |
 | IAP mode, 403 on every request *after* sign-in | IAP service agent lacks `run.invoker` | Should not happen — Terraform grants it. Check `iap_agent_invoker` in the plan |
 | `These secrets have no value in Secret Manager` | Bootstrap not run | [Secrets](#secrets) |
-| `data_backend = "dcp" requires dcp_service_url` | Missing DCP outputs | [Provisioning](#provisioning-a-new-dcp-data-plane) |
+| `data_backend = "dcp" requires dcp_service_url` | Missing DCP outputs | [Attaching](#attaching-to-a-data-commons-instance-that-already-exists) |
 | Chat answers "no data" for everything | App SA lacks `run.invoker` on the data plane, or `DCP_SERVICE_NAME` is wrong | Check `app_invokes_dcp` in the plan; look for `dcproxy: … -> HTTP 403` in agent logs |
 | Charts blank, chat fine | `/dcproxy` failing | Agent logs — `401/403` is IAM or ingress, `404` is a path the data plane does not serve |
 | Charts blank on `none`, `{"code":404,"message":"The current request is not defined by this API"}` | Chart routes are on a **different host** to MCP | Terraform sets `DATA_PLANE_WEB_URL` for this. Chat keeps working either way, so only the browser sees the fault |
@@ -857,10 +690,7 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
 | Public access binding refused | Domain Restricted Sharing | Use IAP or the proxy |
 | `/healthz` works but the uptime check does not | Cloud Run's frontend reserves `/healthz` and answers it itself | External checks must use `/agent/health` |
-| A private backend refuses everything locally | No metadata server on a laptop | Expected — see Path B |
-| Ingestion fails: missing `Source` | MCF incomplete | Define every provenance's `Source` node |
-| Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
-| `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
+| A private backend refuses everything locally | No metadata server on a laptop | Expected off GCP — the agent cannot mint an ID token there. Run against public Data Commons instead |
 | `pip install -r requirements.txt` fails with `ResolutionImpossible` | Python 3.14 | Use Python 3.11–3.13 |
 
 For anything else, start with the app plane's Cloud Run logs — session events are
@@ -895,11 +725,12 @@ ui/                        React source; built and baked into the agent image
   src/hooks/               branding, chat session, SSE, hash routing
   src/utils/               PDF export, turn inspection, DC web components
 
+deploy/modes/              the four modes that are not the deploy path:
+                           preflight · bootstrap-secrets · config-sync · destroy
 deploy/terraform-…/        one module tree; `data_backend` selects the plane
 deploy/*.py                deploy-time guards: state ownership, branding schema
-cloudbuild/                PR validation, image promotion, deploy stamps
+cloudbuild/                PR validation, deploy stamps
 docs/smoke.sh              post-deploy checks
-docs/architecture.drawio   editable source for the architecture diagram
 ```
 
 Two things are deliberately **not** here: API keys, which live only in Secret
@@ -909,67 +740,3 @@ And one thing deliberately **is**: `config/`. It is committed, because that is
 what makes this clone a deployment rather than a copy whose settings have to be
 re-derived. Which is exactly why the clone must be private.
 
----
-
-## Design notes
-
-### Two seams, and only one is stable
-
-**Agent → backend, over MCP: stable, abstract here.** Four JSON-RPC methods —
-`initialize`, `notifications/initialized`, `tools/list`, `tools/call` — over
-Streamable-HTTP, session in the `Mcp-Session-Id` header, protocol version
-config-driven. This genuinely works unchanged across every backend.
-
-**Browser → backend, over HTTP: not stable, proxy it, do not translate it.** The
-two REST generations return different shapes (`data[var][entity].series` +
-`facets` versus `byVariable[v].byEntity`), and the chart web components read
-their own data from the page origin. So: **one origin, one reverse proxy, no
-shape translation.** The browser always talks to the app plane; the app plane
-replays to whichever data plane is configured.
-
-### Why the app plane is a separate container
-
-Google's `stack` module hard-wires the services container's environment — there
-is no env pass-through. Baking the agent into that image and injecting env
-afterwards with `gcloud run services update` **gets silently wiped**, because the
-module sets `FORCE_RESTART = timestamp()`, guaranteeing a diff on every apply,
-which reconciles the container spec and drops the injected vars. The symptom
-(`"Backend config not loaded"`) arrives later, on an unrelated apply.
-
-A decoupled app plane never asks Google's service to carry our configuration.
-
-### Capability discovery, not declaration
-
-The tool surface is probed from `tools/list` at boot rather than declared. A
-hardcoded union of tool names lets the model call `get_variable_metadata` against
-a 1.2.x server, which answers "Unknown tool" and burns an iteration; and if the
-server is 1.2.x, source attribution is unavailable **silently**. Probing makes
-that visible in `/agent/health` instead.
-
----
-
-## Contributing
-
-Before opening a PR, run what CI runs:
-
-```sh
-cd agent && pip install -r requirements.txt \
-  && for t in tests/test_*.py; do python3 "$t" || exit 1; done
-
-cd ../ui && npm ci && npx tsc --noEmit && npx vitest run
-
-cd .. && bash -n deploy.sh
-cd deploy/terraform-custom-datacommons/modules \
-  && terraform fmt -check -recursive . && terraform init -backend=false && terraform validate
-```
-
-Two rules that are easy to break by accident:
-
-- **Keep a deployment clone private.** `config/` is committed by design, and
-  `config/instance.env` names the project, the region, a service URL that embeds
-  the project number, and everyone allowed in. That is disclosure on its own.
-- **Change only `config/` in a deployment clone.** Anything else and every later
-  `git pull upstream main` conflicts, and the clone stops being updatable. Code
-  changes belong upstream.
-- **Never commit a key.** Every `*_API_KEY` is empty in committed files; real
-  values live only in Secret Manager.
