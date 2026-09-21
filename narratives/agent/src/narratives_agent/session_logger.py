@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from src.config import AGENT_ROOT
+from narratives_agent.config import AGENT_ROOT
 
 # Max characters of the final response text kept as a preview in the log
 # (the full text_length is recorded separately).

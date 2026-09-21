@@ -18,17 +18,17 @@ os.environ["MCP_SERVER_URL"] = "https://data.example.run.app/mcp"
 
 # Stub the heavy deps client.py imports so we can load it standalone.
 for name, attrs in {
-    "src.config": {"load_config": lambda: {}, "AGENT_ROOT": "."},
-    "src.gcp_auth": {"attach_auth": lambda h, u: None},
-    "src.mcp.schema": {"fix_tool_arguments": lambda n, a: a},
-    "src.session_logger": {"SessionLogger": object},
+    "narratives_agent.config": {"load_config": lambda: {}, "AGENT_ROOT": "."},
+    "narratives_agent.gcp_auth": {"attach_auth": lambda h, u: None},
+    "narratives_agent.mcp.schema": {"fix_tool_arguments": lambda n, a: a},
+    "narratives_agent.session_logger": {"SessionLogger": object},
 }.items():
     m = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(m, k, v)
     sys.modules[name] = m
 
-spec = importlib.util.spec_from_file_location("mcpclient", "src/mcp/client.py")
+spec = importlib.util.spec_from_file_location("mcpclient", "src/narratives_agent/mcp/client.py")
 c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
 
 calls = []

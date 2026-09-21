@@ -38,7 +38,7 @@ import os
 import requests
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
-from src.gcp_auth import attach_auth
+from narratives_agent.gcp_auth import attach_auth
 
 logger = logging.getLogger(__name__)
 

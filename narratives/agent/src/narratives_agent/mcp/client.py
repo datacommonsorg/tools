@@ -24,10 +24,10 @@ from urllib.parse import urlparse
 import requests
 from requests.adapters import HTTPAdapter
 
-from src.config import load_config
-from src.gcp_auth import attach_auth
-from src.mcp.schema import fix_tool_arguments
-from src.session_logger import SessionLogger
+from narratives_agent.config import load_config
+from narratives_agent.gcp_auth import attach_auth
+from narratives_agent.mcp.schema import fix_tool_arguments
+from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 

@@ -24,8 +24,8 @@ import types
 sys.path.insert(0, os.getcwd())
 
 for name, attrs in {
-    "src.config": {"load_config": lambda: {}, "AGENT_ROOT": "."},
-    "src.session_logger": {"SessionLogger": object},
+    "narratives_agent.config": {"load_config": lambda: {}, "AGENT_ROOT": "."},
+    "narratives_agent.session_logger": {"SessionLogger": object},
 }.items():
     module = types.ModuleType(name)
     for key, value in attrs.items():
@@ -41,9 +41,9 @@ def _load(name, path):
     return module
 
 
-du = _load("data_utils", "src/mcp/data_utils.py")
-caps_mod = _load("capabilities", "src/mcp/capabilities.py")
-schema = _load("schema", "src/mcp/schema.py")
+du = _load("data_utils", "src/narratives_agent/mcp/data_utils.py")
+caps_mod = _load("capabilities", "src/narratives_agent/mcp/capabilities.py")
+schema = _load("schema", "src/narratives_agent/mcp/schema.py")
 
 
 def tool_call(name, payload):

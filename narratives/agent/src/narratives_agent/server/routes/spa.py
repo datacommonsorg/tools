@@ -31,14 +31,15 @@ from pathlib import Path
 
 from flask import Blueprint, Response, abort, send_from_directory
 
+from narratives_agent.config import AGENT_ROOT
+
 logger = logging.getLogger(__name__)
 
 spa_bp = Blueprint("spa", __name__)
 
 # The Dockerfile copies the `ui` build here. Overridable so a local
 # `python main.py` can point straight at ui/dist without a container build.
-# This module is agent/src/server/routes/spa.py, so parents[3] is agent/.
-_DEFAULT_STATIC_ROOT = Path(__file__).resolve().parents[3] / "static"
+_DEFAULT_STATIC_ROOT = AGENT_ROOT / "static"
 STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", _DEFAULT_STATIC_ROOT))
 
 # Bare files the SPA loads from the root, e.g. /logo.png.

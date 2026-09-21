@@ -22,16 +22,16 @@ from typing import Optional
 import requests
 from requests.adapters import HTTPAdapter
 
-from src.config import get_api_keys, get_gemini_model, load_config, render_prompt
-from src.gemini.client import build_thinking_config, get_api_key_filestore_mapping
-from src.session_logger import SessionLogger
+from narratives_agent.config import get_api_keys, get_gemini_model, load_config, render_prompt
+from narratives_agent.gemini.client import build_thinking_config, get_api_key_filestore_mapping
+from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 
 # One pooled session for every Gemini call.
 #
-# Same reasoning as src/gemini/client.py: this is a Gemini call on the chat
-# critical path and was opening a fresh TLS connection every time.
+# Same reasoning as narratives_agent/gemini/client.py: this is a Gemini call on
+# the chat critical path and was opening a fresh TLS connection every time.
 #
 # pool_maxsize is sized above the gunicorn thread count so concurrent turns do
 # not queue on connections.

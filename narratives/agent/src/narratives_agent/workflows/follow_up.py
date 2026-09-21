@@ -17,9 +17,9 @@ import json
 import logging
 import re
 
-from src.config import get_gemini_model, load_config
-from src.gemini.client import gemini_request
-from src.gemini.schemas import DEFAULT_FOLLOW_UP_PROMPT, FOLLOW_UP_SCHEMA
+from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.gemini.client import gemini_request
+from narratives_agent.gemini.schemas import DEFAULT_FOLLOW_UP_PROMPT, FOLLOW_UP_SCHEMA
 
 logger = logging.getLogger(__name__)
 

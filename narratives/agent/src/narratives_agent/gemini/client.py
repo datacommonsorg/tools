@@ -22,8 +22,8 @@ from typing import Generator, Optional
 import requests
 from requests.adapters import HTTPAdapter
 
-from src.config import get_api_keys, load_config, render_prompt
-from src.session_logger import SessionLogger
+from narratives_agent.config import get_api_keys, load_config, render_prompt
+from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 

@@ -62,10 +62,11 @@ except ImportError:
     )
 
 
-# Agent package root (the `agent/` dir). Config and logs live here — this
-# module is `agent/src/config.py`, so the root is two levels up. Keeps
-# config.json / logs at the same on-disk location as before the src/ split.
-AGENT_ROOT = Path(__file__).resolve().parent.parent
+# The `agent/` directory, where config.json, logs, and the staged SPA live.
+# This module is `agent/src/narratives_agent/config.py`, so `agent/` is three
+# levels up. Anything resolving a path against the agent directory should read
+# this rather than counting parents of its own `__file__`.
+AGENT_ROOT = Path(__file__).resolve().parents[2]
 
 # Backend config cache
 _config_cache = None

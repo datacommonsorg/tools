@@ -17,11 +17,11 @@ import json
 import logging
 from typing import Optional
 
-from src.config import get_gemini_model, load_config
-from src.gemini.client import gemini_request_with_thought_streaming
-from src.mcp.client import call_tool, get_tools
-from src.mcp.schema import transform_schema_for_gemini
-from src.session_logger import SessionLogger
+from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.gemini.client import gemini_request_with_thought_streaming
+from narratives_agent.mcp.client import call_tool, get_tools
+from narratives_agent.mcp.schema import transform_schema_for_gemini
+from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 

@@ -118,7 +118,7 @@ def current_cached() -> Capabilities:
 
     Use where blocking is unacceptable, e.g. a health endpoint.
     """
-    from src.mcp.client import cached_tools  # noqa: PLC0415  (circular by design)
+    from narratives_agent.mcp.client import cached_tools  # noqa: PLC0415  (circular by design)
 
     return from_tools(cached_tools())
 
@@ -129,7 +129,7 @@ def current() -> Capabilities:
     Imported lazily so this module stays independent of the client -- the
     client's schema helpers would otherwise import it back.
     """
-    from src.mcp.client import get_tools  # noqa: PLC0415  (circular by design)
+    from narratives_agent.mcp.client import get_tools  # noqa: PLC0415  (circular by design)
 
     caps = from_tools(get_tools())
     if not caps.tool_names:

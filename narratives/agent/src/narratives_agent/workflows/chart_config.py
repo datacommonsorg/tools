@@ -16,9 +16,9 @@
 import json
 import logging
 
-from src.config import get_gemini_model, load_config
-from src.gemini.client import gemini_request
-from src.gemini.schemas import CHART_CONFIG_SCHEMA, DATA_VALIDATION_SCHEMA
+from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.gemini.client import gemini_request
+from narratives_agent.gemini.schemas import CHART_CONFIG_SCHEMA, DATA_VALIDATION_SCHEMA
 
 logger = logging.getLogger(__name__)
 

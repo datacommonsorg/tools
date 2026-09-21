@@ -26,10 +26,10 @@ Usage:
     python main.py
 """
 
-from src.config import _bootstrap_config_from_url
-from src.mcp.client import get_tools, initialize_mcp, mcp_url, MCP_PORT
-from src.server.app import app, PROXY_PORT
-from src.server.routes import register_all
+from narratives_agent.config import _bootstrap_config_from_url
+from narratives_agent.mcp.client import get_tools, initialize_mcp, mcp_url, MCP_PORT
+from narratives_agent.server.app import app, PROXY_PORT
+from narratives_agent.server.routes import register_all
 
 # Startup work runs at import time, not inside main(), because production
 # serves `main:app` through gunicorn and never calls main() at all. Importing

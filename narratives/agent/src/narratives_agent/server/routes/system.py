@@ -15,10 +15,10 @@
 
 from flask import Blueprint, jsonify
 
-from src.config import get_gemini_model, load_config
-from src.mcp.capabilities import current_cached as mcp_capabilities
-from src.mcp.client import mcp_url
-from src.server.app import PROXY_PORT
+from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.mcp.capabilities import current_cached as mcp_capabilities
+from narratives_agent.mcp.client import mcp_url
+from narratives_agent.server.app import PROXY_PORT
 
 system_bp = Blueprint("system", __name__)
 
@@ -36,8 +36,9 @@ def health():
     return jsonify({
         "status": "ok",
         "mcp_url": mcp_url(),
-        # Discovered, not declared -- see src/mcp/capabilities.py. Tells an
-        # operator at a glance whether this deployment can attribute sources.
+        # Discovered, not declared -- see narratives_agent/mcp/capabilities.py.
+        # Tells an operator at a glance whether this deployment can attribute
+        # sources.
         "mcp": mcp_capabilities().describe(),
     })
 

@@ -23,7 +23,7 @@ sys.modules.setdefault("google", types.ModuleType("google"))
 sys.modules.setdefault("google.cloud", types.ModuleType("google.cloud"))
 sys.modules["google.cloud.secretmanager"] = _sm
 
-spec = importlib.util.spec_from_file_location("agentconfig", "src/config.py")
+spec = importlib.util.spec_from_file_location("agentconfig", "src/narratives_agent/config.py")
 cfg = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cfg)
 

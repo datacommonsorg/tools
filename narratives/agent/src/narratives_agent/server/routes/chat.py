@@ -20,9 +20,9 @@ import time
 
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
-from src.config import get_query_param_key
-from src.session_logger import SessionLogger
-from src.workflows.chat_pipeline import (
+from narratives_agent.config import get_query_param_key
+from narratives_agent.session_logger import SessionLogger
+from narratives_agent.workflows.chat_pipeline import (
     run_followups,
     run_kb_phase,
     run_mcp_phase,

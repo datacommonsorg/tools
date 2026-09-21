@@ -28,19 +28,19 @@ import queue
 import threading
 import time
 
-import src.mcp.client as mcp_client
-from src.config import apply_query_overrides, get_gemini_model, load_config
-from src.gemini.client import gemini_request
-from src.mcp.client import get_tools
-from src.mcp.data_utils import (
+import narratives_agent.mcp.client as mcp_client
+from narratives_agent.config import apply_query_overrides, get_gemini_model, load_config
+from narratives_agent.gemini.client import gemini_request
+from narratives_agent.mcp.client import get_tools
+from narratives_agent.mcp.data_utils import (
     annotate_truncation,
     check_data_availability,
     extract_provenance_from_mcp_results,
 )
-from src.workflows.chart_config import get_chart_config, validate_data_response
-from src.workflows.follow_up import generate_follow_up_questions
-from src.workflows.kb_search import execute_kb_query
-from src.workflows.mcp_loop import execute_mcp_tool_loop
+from narratives_agent.workflows.chart_config import get_chart_config, validate_data_response
+from narratives_agent.workflows.follow_up import generate_follow_up_questions
+from narratives_agent.workflows.kb_search import execute_kb_query
+from narratives_agent.workflows.mcp_loop import execute_mcp_tool_loop
 
 logger = logging.getLogger(__name__)
 

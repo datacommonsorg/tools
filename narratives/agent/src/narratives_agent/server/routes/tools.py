@@ -17,9 +17,9 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-import src.mcp.client as mcp_client
-from src.mcp.client import call_tool, get_tools
-from src.mcp.schema import transform_schema_for_gemini
+import narratives_agent.mcp.client as mcp_client
+from narratives_agent.mcp.client import call_tool, get_tools
+from narratives_agent.mcp.schema import transform_schema_for_gemini
 
 logger = logging.getLogger(__name__)
 

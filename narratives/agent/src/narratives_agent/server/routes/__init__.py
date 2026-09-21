@@ -15,12 +15,12 @@
 
 import os
 
-from src.server.routes.brand import brand_bp, load_branding
-from src.server.routes.chat import chat_bp
-from src.server.routes.dcproxy import dcproxy_bp
-from src.server.routes.spa import spa_bp
-from src.server.routes.system import system_bp
-from src.server.routes.tools import tools_bp
+from narratives_agent.server.routes.brand import brand_bp, load_branding
+from narratives_agent.server.routes.chat import chat_bp
+from narratives_agent.server.routes.dcproxy import dcproxy_bp
+from narratives_agent.server.routes.spa import spa_bp
+from narratives_agent.server.routes.system import system_bp
+from narratives_agent.server.routes.tools import tools_bp
 
 # The API blueprints declare their routes at the root (/brand, /chat/stream,
 # /health) because the services container's nginx used to strip the /agent

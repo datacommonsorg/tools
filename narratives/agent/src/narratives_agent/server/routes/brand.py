@@ -32,7 +32,7 @@ import re
 
 from flask import Blueprint, Response, jsonify
 
-from src.config import _fetch_gcs_url
+from narratives_agent.config import _fetch_gcs_url
 
 logger = logging.getLogger(__name__)
 
