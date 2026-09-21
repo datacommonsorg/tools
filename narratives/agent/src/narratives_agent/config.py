@@ -269,14 +269,13 @@ def load_config() -> dict:
         return {}
 
 
-def get_current_datetime_ist() -> str:
-    """Get current date/time formatted for the configured TIMEZONE.
+def get_current_datetime() -> str:
+    """Get the current date and time in the configured timezone.
 
-    The TIMEZONE env var controls the
-    zone (e.g. "Asia/Kolkata", "America/Los_Angeles"); the function name and the
-    "{{CURRENT_DATETIME}}" placeholder are preserved so prompt templates don't
-    need to change. The label suffix ("IST", "PT", ...) is derived from the zone
-    abbreviation at runtime.
+    The TIMEZONE environment variable selects the zone (for example
+    "Asia/Kolkata" or "America/Los_Angeles"), and the trailing label
+    ("IST", "PT", ...) is the zone abbreviation resolved at runtime.
+    Falls back to UTC when TIMEZONE names a zone that cannot be resolved.
     """
     tz_name = os.environ.get("TIMEZONE", "UTC")
     try:
@@ -311,9 +310,7 @@ def render_prompt(prompt: str) -> str:
     rather than blanked: a visible placeholder in an answer is a far louder
     failure than a sentence that has silently lost its subject.
     """
-    rendered = prompt.replace(
-        "{{CURRENT_DATETIME}}", get_current_datetime_ist()
-    )
+    rendered = prompt.replace("{{CURRENT_DATETIME}}", get_current_datetime())
     for key, value in _instance_template_vars().items():
         rendered = rendered.replace(f"{{{{instance.{key}}}}}", value)
     return rendered
