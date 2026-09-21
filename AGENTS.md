@@ -9,12 +9,12 @@ guide lives.
 | Directory | What it is | App guide |
 |---|---|---|
 | `dataweaver/` | Next.js 16 / React 19 app (pnpm workspaces) | [`dataweaver/AGENTS.md`](dataweaver/AGENTS.md) |
-| `narratives/` | React + Vite SPA and its Python agent sidecar | — |
+| `narratives/` | React + Vite SPA and the Python server that hosts it | [`narratives/AGENTS.md`](narratives/AGENTS.md) |
 | `bigtable_automation/`, `gcf/` | Older standalone tools; no app guide | — |
 
-`narratives/` has no app guide. Its frontend conventions are in
-[`narratives/FRONTEND.md`](narratives/FRONTEND.md); for everything else the root
-documents govern. Its owners should add one.
+`narratives/` splits into two toolchains: npm for the SPA in `ui/`, and uv
+for the Python app plane in `agent/`. Its guide covers both; do not assume
+the npm commands are the whole gate.
 
 ## Which document governs what
 
