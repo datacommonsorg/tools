@@ -120,12 +120,13 @@ in with. It creates nothing.
 | `terraform`, `npm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
 | A **Data Commons API key** | https://apikeys.datacommons.org |
 | A **Gemini API key** | https://aistudio.google.com |
-| `uv` — only to provision a *new* DCP plane | `uv tool install datacommons-cli` |
+| [`uv`](https://docs.astral.sh/uv/) | The agent's dependencies; also `uv tool install datacommons-cli`, to provision a *new* DCP plane |
 
-**Python 3.11–3.13.** The agent's pinned `grpcio-status==1.71.2` cannot resolve
-on Python 3.14 (`google-api-core` requires `>=1.75.1` there), so
-`pip install -r requirements.txt` fails outright. The container pins
-`python:3.11-slim`, so this only bites local work.
+**Python 3.14.** The agent declares its direct dependencies in
+`agent/pyproject.toml` and resolves the whole graph into `agent/uv.lock`.
+`uv sync` creates `agent/.venv` from that lockfile, and commands run as
+`uv run <command>`. Regenerate the lockfile with `uv lock` after a dependency
+change, and never hand-edit it. The container pins `python:3.14-slim`.
 
 **Node 20+** for the UI.
 
@@ -695,9 +696,11 @@ You need Node 20+ and nothing else — no Docker, no Python, no gcloud.
 
 ```sh
 cd agent
-python3 -m venv .venv && . .venv/bin/activate     # Python 3.11–3.13
-pip install -r requirements.txt
+uv sync          # creates .venv and installs from uv.lock
 ```
+
+There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
+uses it.
 
 Choose what it talks to — the same three backends, selected the same way, by URL.
 
@@ -767,7 +770,7 @@ Skip it if you only care about the API — `/` will 404 and `/agent/*` still wor
 **Run and check:**
 
 ```sh
-cd agent && python3 main.py            # http://localhost:5001
+cd agent && uv run python main.py      # http://localhost:5001
 
 curl -s localhost:5001/agent/health | jq
 curl -s localhost:5001/agent/api/tools | jq '.raw_tools | length'
@@ -783,16 +786,13 @@ Production runs `gunicorn main:app`; `main.py` is the development path.
 
 ## Testing
 
-Nothing is mocked that matters, and no test framework is needed on the agent side.
+Nothing is mocked that matters.
 
 ```sh
-# Agent — from agent/, with requirements.txt installed
+# Agent — from agent/
 cd agent
-python3 tests/test_mcp_session.py          # 6 checks  — session recovery, thread isolation
-python3 tests/test_backend_generations.py  # 14 checks — both MCP generations, both payload shapes
-python3 tests/test_auth_selection.py       # 5 checks  — API key vs ID token, chosen by host
-python3 tests/test_prompt_rendering.py     # 17 checks — placeholder substitution, ?key= gate
-python3 tests/test_prompt_urls.py          # 3 checks  — prompt URLs derived from CONFIG_URL
+uv sync                                    # once, and after a dependency change
+uv run pytest
 
 # UI — from ui/
 cd ui
@@ -800,11 +800,24 @@ npx tsc --noEmit
 npx vitest run                             # 9 files, 108 tests
 ```
 
-Each agent suite exits non-zero on failure and prints an `n/n checks passed` line.
+Agent tests are pytest modules named `*_test.py`, colocated beside the module
+under test inside `src/narratives_agent/`. `uv run` executes them in the locked
+environment, so there is nothing to activate and nothing to install by hand.
 
-> `test_mcp_session.py` and `test_auth_selection.py` import `requests`, so they
-> need `pip install -r requirements.txt` first — they are framework-free, not
-> dependency-free. `test_backend_generations.py` runs standalone.
+Style and types are separate checks, and CI fails on any of them:
+
+```sh
+cd agent
+uv run ruff format --check .               # formatting
+uv run ruff check .                        # lint
+uv run mypy                                # types, strict
+```
+
+> The agent type-checks under `mypy --strict`. Modules written before that
+> standard are exempted one at a time in `agent/pyproject.toml`, and each
+> exemption names the branch that rewrites or deletes the module it covers. An
+> exemption is retired by deleting that module, never by annotating code that is
+> about to be replaced — the list only shrinks.
 
 The agent suites cover the three things whose failure is **silent**:
 
@@ -881,7 +894,6 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Ingestion fails: missing `Source` | MCF incomplete | Define every provenance's `Source` node |
 | Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
 | `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
-| `pip install -r requirements.txt` fails with `ResolutionImpossible` | Python 3.14 | Use Python 3.11–3.13 |
 
 For anything else, start with the app plane's Cloud Run logs — session events are
 structured JSON queryable by `session_id` and `event_type`.
@@ -904,11 +916,14 @@ schemas/                   JSON Schemas + example branding — code, not config
 
 agent/                     app plane — API + SPA, one gunicorn process
   main.py                  dev entry point; production runs gunicorn main:app
-  src/server/routes/       spa · brand · chat · tools · system · dcproxy
-  src/mcp/                 client · capabilities · schema · data_utils
-  src/workflows/           chat_pipeline · mcp_loop · kb_search · follow_up
-  src/gemini/              client · schemas
-  tests/                   framework-free; needs requirements.txt installed
+  pyproject.toml           direct dependencies; ruff, mypy and pytest config
+  uv.lock                  the resolved graph; generated by uv lock
+  src/narratives_agent/    the Python package; imports are narratives_agent.*
+    server/routes/         spa · brand · chat · tools · system · dcproxy
+    mcp/                   client · capabilities · schema · data_utils
+    workflows/             chat_pipeline · mcp_loop · kb_search · follow_up
+    gemini/                client · schemas
+    *_test.py              pytest, colocated beside the module under test
 
 ui/                        React source; built and baked into the agent image
   src/components/          presentational units
@@ -975,8 +990,9 @@ that visible in `/agent/health` instead.
 Before opening a PR, run what CI runs:
 
 ```sh
-cd agent && pip install -r requirements.txt \
-  && for t in tests/test_*.py; do python3 "$t" || exit 1; done
+cd agent && uv sync --frozen \
+  && uv run ruff format --check . && uv run ruff check . \
+  && uv run mypy && uv run pytest
 
 cd ../ui && npm ci && npx tsc --noEmit && npx vitest run
 

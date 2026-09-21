@@ -80,21 +80,24 @@ steps:
         ARCH=$$(docker inspect --format '{{.Architecture}}' agent-pr:$SHORT_SHA)
         if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi
 
-  # 5. Agent test suites. They are framework-free but not dependency-free —
-  #    two of the three import requests — so install requirements first.
-  - id: agent-tests
-    name: python:3.11-slim
+  # 5. Agent lint, type check, and tests. uv installs the exact versions in
+  #    uv.lock, so CI and the image resolve identically. --frozen fails the
+  #    build if uv.lock is out of date with pyproject.toml rather than
+  #    silently re-resolving.
+  - id: agent-checks
+    name: python:3.14-slim
     entrypoint: bash
     args:
       - '-c'
       - |
         set -e
         cd agent
-        pip install --quiet -r requirements.txt
-        python tests/test_mcp_session.py
-        python tests/test_backend_generations.py
-        python tests/test_auth_selection.py
-        python tests/test_prompt_rendering.py
+        pip install --quiet uv==0.10.2
+        uv sync --frozen
+        uv run ruff format --check .
+        uv run ruff check .
+        uv run mypy
+        uv run pytest -q
 
   # 6. UI typecheck and tests.
   - id: ui-tests
