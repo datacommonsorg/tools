@@ -17,7 +17,7 @@ import json
 import logging
 import random
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -77,10 +77,10 @@ def gemini_request(
     messages: list,
     system_instruction: str,
     model: str,
-    tools: list = None,
+    tools: list | None = None,
     temperature: float = 0.3,
-    thinking_level: str = None,
-    response_schema: dict = None,
+    thinking_level: str | None = None,
+    response_schema: dict | None = None,
     stream: bool = False,
     session_logger: SessionLogger | None = None,
     include_thoughts: bool = False,
@@ -98,14 +98,17 @@ def gemini_request(
         response_schema: Optional JSON schema for structured output
         stream: If True, returns a generator for SSE streaming
         session_logger: Optional SessionLogger for comprehensive logging
-        include_thoughts: If True (and stream=True), yields dicts with 'type' and 'content'
-                         for both thoughts and text. If False, yields plain text strings.
+        include_thoughts: If True (and stream=True), yields dicts with 'type'
+                         and 'content' for both thoughts and text. If False,
+                         yields plain text strings.
         demo_mode: If True, uses demo API keys reserved for internal demos.
 
     Returns:
         If stream=False: dict with response
-        If stream=True and include_thoughts=False: Generator yielding text chunks (str)
-        If stream=True and include_thoughts=True: Generator yielding dicts {'type': 'thought'|'text', 'content': str}
+        If stream=True and include_thoughts=False: Generator yielding text
+            chunks (str)
+        If stream=True and include_thoughts=True: Generator yielding dicts
+            {'type': 'thought'|'text', 'content': str}
     """
     config = load_config()
     api_base = config.get("gemini", {}).get(
@@ -213,7 +216,8 @@ def gemini_request(
                 if response.status_code in [500, 503]:
                     last_error = f"Server error ({response.status_code})"
                     logger.warning(
-                        f"Server error {response.status_code}, switching to next key..."
+                        f"Server error {response.status_code}, switching to "
+                        "next key..."
                     )
                     continue  # Try next key
                 return _stream_gemini_response(
@@ -239,7 +243,8 @@ def gemini_request(
                 if response.status_code in [500, 503]:
                     last_error = f"Server error ({response.status_code})"
                     logger.warning(
-                        f"Server error {response.status_code}, switching to next key..."
+                        f"Server error {response.status_code}, switching to "
+                        "next key..."
                     )
                     continue  # Try next key
 
@@ -293,7 +298,8 @@ def _stream_gemini_response(
         response: The requests response object with streaming enabled
         session_logger: Optional SessionLogger for logging
         return_dicts: If True, yields dicts with 'type' and 'content' keys
-                      for both thoughts and text. If False, yields plain text strings.
+                      for both thoughts and text. If False, yields plain
+                      text strings.
 
     Yields:
         If return_dicts=True: {'type': 'thought'|'text', 'content': str}
@@ -322,7 +328,8 @@ def _stream_gemini_response(
                         ):
                             for part in candidate["content"]["parts"]:
                                 if "text" in part:
-                                    # Check if this is a thought summary or regular text
+                                    # Check if this is a thought summary or
+                                    # regular text
                                     is_thought = part.get("thought", False)
                                     if is_thought:
                                         total_thoughts += part["text"]
@@ -331,7 +338,8 @@ def _stream_gemini_response(
                                                 "type": "thought",
                                                 "content": part["text"],
                                             }
-                                        # Skip thoughts in legacy mode (return_dicts=False)
+                                        # Skip thoughts in legacy mode
+                                        # (return_dicts=False)
                                     else:
                                         total_text += part["text"]
                                         if return_dicts:
@@ -365,15 +373,16 @@ def gemini_request_with_thought_streaming(
     messages: list,
     system_instruction: str,
     model: str,
-    tools: list = None,
+    tools: list | None = None,
     temperature: float = 0.3,
-    thinking_level: str = None,
-    response_schema: dict = None,
+    thinking_level: str | None = None,
+    response_schema: dict | None = None,
     session_logger: SessionLogger | None = None,
-    thought_callback: callable = None,
+    thought_callback: Callable[[str], None] | None = None,
     demo_mode: bool = False,
 ) -> dict:
-    """Make a streaming Gemini request, calling thought_callback for thoughts but returning complete response.
+    """Make a streaming Gemini request, calling thought_callback for thoughts
+    but returning complete response.
 
     This enables thought streaming for reduced TTFT while still getting the
     complete response needed for tool call processing.
@@ -387,7 +396,8 @@ def gemini_request_with_thought_streaming(
         thinking_level: Optional thinking budget level
         response_schema: Optional JSON schema for structured output
         session_logger: Optional SessionLogger for comprehensive logging
-        thought_callback: Optional callback function called with each thought chunk.
+        thought_callback: Optional callback function called with each
+                         thought chunk.
                          Signature: callback(thought_text: str) -> None
         demo_mode: If True, uses demo API keys reserved for internal demos.
 
@@ -489,7 +499,8 @@ def gemini_request_with_thought_streaming(
             if response.status_code in [500, 503]:
                 last_error = f"Server error ({response.status_code})"
                 logger.warning(
-                    f"Server error {response.status_code}, switching to next key..."
+                    f"Server error {response.status_code}, switching to "
+                    "next key..."
                 )
                 continue
 
@@ -621,7 +632,8 @@ def get_api_key_filestore_mapping(demo_mode: bool = False) -> dict:
         if i < len(filestores):
             mapping[key] = filestores[i]
         else:
-            # Fallback to legacy store_id if no filestore configured for this key
+            # Fallback to legacy store_id if no filestore configured for
+            # this key
             legacy_store = config.get("knowledge_base", {}).get("store_id", "")
             mapping[key] = legacy_store
 

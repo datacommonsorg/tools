@@ -54,7 +54,8 @@ def chat_stream():
     }
 
     Query params (optional, requires valid key):
-    - key: Secret key for config overrides (must match query_param_key in config)
+    - key: Secret key for config overrides (must match query_param_key in
+      config)
     - model: Override mcp_model and kb_model
     - kb: "true" or "false" to toggle knowledge base
     - mcp_thinking: Override MCP thinking level
@@ -142,7 +143,9 @@ def chat_stream():
         }
 
         # Send session ID first so frontend can display it
-        yield f"data: {json.dumps({'session_id': session_logger.session_id})}\n\n"
+        yield (
+            f"data: {json.dumps({'session_id': session_logger.session_id})}\n\n"
+        )
 
         yield from run_mcp_phase(ctx)
         yield from run_kb_phase(ctx)

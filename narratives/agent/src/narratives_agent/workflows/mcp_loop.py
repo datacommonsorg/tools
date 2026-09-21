@@ -15,6 +15,7 @@
 
 import json
 import logging
+from collections.abc import Callable
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import gemini_request_with_thought_streaming
@@ -40,8 +41,8 @@ def execute_mcp_tool_loop(
     # search alone and returning no data at all.
     max_iterations: int = 15,
     session_logger: SessionLogger | None = None,
-    effective_config: dict = None,
-    thought_callback: callable = None,
+    effective_config: dict | None = None,
+    thought_callback: Callable[[str], None] | None = None,
     demo_mode: bool = False,
 ) -> tuple:
     """Execute the MCP tool calling loop with optional thought streaming.
@@ -51,7 +52,8 @@ def execute_mcp_tool_loop(
         history: Conversation history
         max_iterations: Maximum tool calling iterations
         session_logger: Optional SessionLogger for comprehensive logging
-        effective_config: Optional config dict with query param overrides applied
+        effective_config: Optional config dict with query param overrides
+            applied
         thought_callback: Optional callback for streaming thought chunks.
                          Signature: callback(thought_text: str) -> None
         demo_mode: If True, uses demo API keys reserved for internal demos.
@@ -80,7 +82,8 @@ def execute_mcp_tool_loop(
             )
         return "", [], "MCP tools not available", False
 
-    # Convert tools to Gemini format (transform schema to remove unsupported constructs)
+    # Convert tools to Gemini format (transform schema to remove unsupported
+    # constructs)
     gemini_tools = [
         {
             "name": t.get("name", ""),
@@ -194,7 +197,8 @@ def execute_mcp_tool_loop(
             tool_call_info = {
                 "name": tool_name,
                 "arguments": tool_args,
-                "result": result_text,  # No truncation - full result for source extraction
+                # No truncation - full result for source extraction
+                "result": result_text,
                 "status": "error"
                 if "error" in result_text.lower()
                 else "success",

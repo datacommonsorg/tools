@@ -74,8 +74,9 @@ _config_mtime = 0
 
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
 # as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
-# `follow_up` is the only slot with an in-code default (DEFAULT_FOLLOW_UP_PROMPT),
-# so a failed fetch there degrades to that rather than to no system instruction.
+# `follow_up` is the only slot with an in-code default
+# (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
+# than to no system instruction.
 PROMPT_SLOTS = ("mcp", "kb", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -119,16 +120,18 @@ def _fetch_gcs_url(url: str) -> requests.Response:
 
 
 def _fetch_prompt_bodies(config_url: str) -> dict:
-    """Fetch `prompts/<slot>.md` from the config bucket, beside agent-config.json.
+    """Fetch `prompts/<slot>.md` from the config bucket, beside
+    agent-config.json.
 
-    The base is derived from CONFIG_URL rather than read from BRAND_CONFIG_URL so
-    the prompts always come from the same bucket as the config they belong to,
-    even if the two env vars ever disagree.
+    The base is derived from CONFIG_URL rather than read from BRAND_CONFIG_URL
+    so the prompts always come from the same bucket as the config they belong
+    to, even if the two env vars ever disagree.
 
     A slot that 404s or errors is skipped with a warning instead of failing
-    startup: an absent prompt leaves that phase with no system instruction, which
-    is exactly how the agent behaved before the files were wired up, so a partial
-    fetch degrades to the old behaviour rather than taking the agent down.
+    startup: an absent prompt leaves that phase with no system instruction,
+    which is exactly how the agent behaved before the files were wired up, so a
+    partial fetch degrades to the old behaviour rather than taking the agent
+    down.
     """
     # Prompt bodies live in a `prompts/` directory beside the config object, so
     # the URL is the config's own with its last path segment swapped out. Query
@@ -208,7 +211,8 @@ def _bootstrap_config_from_url() -> None:
 
     if not isinstance(config, dict):
         logger.error(
-            "CONFIG_URL did not contain a JSON object; writing through unmodified"
+            "CONFIG_URL did not contain a JSON object; writing through "
+            "unmodified"
         )
         config_path.write_text(raw, encoding="utf-8")
         return
@@ -227,8 +231,8 @@ def _bootstrap_config_from_url() -> None:
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
         logger.warning(
-            "No prompt body for %s; only follow_up has an in-code default, so the "
-            "rest of those phases run with no system instruction",
+            "No prompt body for %s; only follow_up has an in-code default, "
+            "so the rest of those phases run with no system instruction",
             missing,
         )
 
@@ -251,10 +255,10 @@ def load_config() -> dict:
         return _config_cache
 
     try:
-        # config.json is UTF-8 on both sides: _bootstrap_config_from_url pins the
-        # same encoding when it writes. A config carrying non-ASCII -- prompt text
-        # with ₹ or an em-dash, an instance name -- would otherwise decode by the
-        # platform locale and come back corrupted.
+        # config.json is UTF-8 on both sides: _bootstrap_config_from_url pins
+        # the same encoding when it writes. A config carrying non-ASCII --
+        # prompt text with ₹ or an em-dash, an instance name -- would otherwise
+        # decode by the platform locale and come back corrupted.
         with open(config_path, encoding="utf-8") as f:
             _config_cache = json.load(f)
             _config_mtime = current_mtime
@@ -311,7 +315,7 @@ def render_prompt(prompt: str) -> str:
         "{{CURRENT_DATETIME}}", get_current_datetime_ist()
     )
     for key, value in _instance_template_vars().items():
-        rendered = rendered.replace("{{instance.%s}}" % key, value)
+        rendered = rendered.replace(f"{{{{instance.{key}}}}}", value)
     return rendered
 
 
@@ -323,8 +327,9 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
     """Load a JSON-encoded key array from Secret Manager.
 
     secret_name is either "projects/<proj>/secrets/<name>/versions/<v>" (full
-    resource name) or just "<name>" (resolved against GOOGLE_CLOUD_PROJECT, latest
-    version). Cached for 5 minutes to avoid hammering Secret Manager on each call.
+    resource name) or just "<name>" (resolved against GOOGLE_CLOUD_PROJECT,
+    latest version). Cached for 5 minutes to avoid hammering Secret Manager on
+    each call.
     """
     if not _SECRET_MANAGER_AVAILABLE:
         return []
@@ -336,7 +341,8 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
     if not secret_name.startswith("projects/"):
         if not project:
             logger.error(
-                "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret name %r",
+                "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
+                "name %r",
                 secret_name,
             )
             return []
@@ -386,7 +392,8 @@ def get_api_keys(demo_mode: bool = False) -> list:
             keys = _fetch_keys_from_secret_manager(demo_secret)
             if keys:
                 logger.info(
-                    f"Using demo API keys pool from Secret Manager ({len(keys)} keys)"
+                    "Using demo API keys pool from Secret Manager "
+                    f"({len(keys)} keys)"
                 )
                 return keys
         config = load_config()
@@ -397,7 +404,8 @@ def get_api_keys(demo_mode: bool = False) -> list:
             )
         else:
             logger.error(
-                "Demo mode requested but no demo_api_keys configured - will fail (no fallback to regular keys)"
+                "Demo mode requested but no demo_api_keys configured - will "
+                "fail (no fallback to regular keys)"
             )
         return demo_keys
 
@@ -407,7 +415,8 @@ def get_api_keys(demo_mode: bool = False) -> list:
         if keys:
             return keys
         logger.warning(
-            "GEMINI_API_KEYS_SECRET set but returned no keys; falling back to config"
+            "GEMINI_API_KEYS_SECRET set but returned no keys; falling back "
+            "to config"
         )
 
     config = load_config()
@@ -417,7 +426,8 @@ def get_api_keys(demo_mode: bool = False) -> list:
         single_key = gemini_config.get("api_key", "")
         if single_key and not single_key.startswith("DEPRECATED"):
             logger.warning(
-                "Using deprecated scalar gemini.api_key; migrate to api_keys[] or Secret Manager"
+                "Using deprecated scalar gemini.api_key; migrate to "
+                "api_keys[] or Secret Manager"
             )
             keys = [single_key]
     return keys

@@ -37,7 +37,8 @@ def get_chart_config(mcp_results: str, user_message: str) -> dict:
     config = load_config()
     mcp_model = get_gemini_model(config)
 
-    prompt = f"""Based on the data query and results, determine chart configurations.
+    prompt = f"""Based on the data query and results, determine chart \
+configurations.
 
 User Query: {user_message}
 
@@ -51,13 +52,18 @@ Instructions:
    - Same unit type (e.g., both INR, both counts, both percentages)
    - Similar magnitude (within ~100x of each other)
 4. Create SEPARATE charts for incompatible variable groups:
-   - Different unit types should be separate (e.g., "Count" vs "INR" vs "Percentage")
+   - Different unit types should be separate (e.g., "Count" vs "INR" vs \
+"Percentage")
    - Vastly different scales should be separate (e.g., millions vs trillions)
-5. MAXIMUM 3 charts - if more groups exist, prioritize most relevant to the query
-6. Choose appropriate viz_type for each chart (line for time series, bar for comparison)
-7. Give each chart a descriptive title related to data it is showing but do NOT include year/date in the title.
+5. MAXIMUM 3 charts - if more groups exist, prioritize most relevant to the \
+query
+6. Choose appropriate viz_type for each chart (line for time series, bar for \
+comparison)
+7. Give each chart a descriptive title related to data it is showing but do \
+NOT include year/date in the title.
 8. For ALL bar charts, ALWAYS include a date field:
-   - date can be in formats YYYY, YYYY-MM, or YYYY-MM-DD (e.g., "2021", "2022", "2021-01", "2022-01-01")
+   - date can be in formats YYYY, YYYY-MM, or YYYY-MM-DD (e.g., "2021", \
+"2022", "2021-01", "2022-01-01")
    - prefer explicit date from user query or tool result context
    - if no reliable explicit date is available, omit date
 
@@ -65,7 +71,11 @@ Set should_render to false if no meaningful data for visualization."""
 
     response = gemini_request(
         messages=[{"role": "user", "parts": [{"text": prompt}]}],
-        system_instruction="You are a data visualization expert. Extract chart configurations from data results, grouping compatible variables together and separating incompatible ones into multiple charts.",
+        system_instruction=(
+            "You are a data visualization expert. Extract chart "
+            "configurations from data results, grouping compatible variables "
+            "together and separating incompatible ones into multiple charts."
+        ),
         model=mcp_model,
         temperature=0.2,
         thinking_level="minimal",  # Fastest for simple extraction
@@ -113,8 +123,10 @@ def validate_data_response(synthesis_text: str, user_message: str) -> bool:
 Response given:
 {synthesis_text[:SYNTHESIS_PREVIEW_LENGTH]}
 
-Did this response contain actual data/statistics that answer the user's question?
-Return false if the response says data is "not available", "not found", "doesn't exist", or similar."""
+Did this response contain actual data/statistics that answer the user's \
+question?
+Return false if the response says data is "not available", "not found", \
+"doesn't exist", or similar."""
 
     response = gemini_request(
         messages=[{"role": "user", "parts": [{"text": prompt}]}],

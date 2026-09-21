@@ -61,10 +61,11 @@ def run_mcp_phase(ctx):
     """Phase 1: run config/MCP setup then execute the MCP tool loop.
 
     Reads ``user_message``, ``history``, ``session_logger``, ``query_params``,
-    ``demo_mode`` and the chart holders from ``ctx``; writes ``effective_config``,
-    ``mcp_results``, ``tool_calls_list``, ``mcp_sources``, ``thought_queue``
-    and ``thought_callback`` back into ``ctx`` for later phases. Sets
-    ``ctx['aborted']`` if the backend config fails to load.
+    ``demo_mode`` and the chart holders from ``ctx``; writes
+    ``effective_config``, ``mcp_results``, ``tool_calls_list``,
+    ``mcp_sources``, ``thought_queue`` and ``thought_callback`` back into
+    ``ctx`` for later phases. Sets ``ctx['aborted']`` if the backend config
+    fails to load.
 
     ``mcp_sources`` is both streamed to the frontend and left on ``ctx``: it is
     the single source of citation numbering, shared by the rendered Sources
@@ -134,7 +135,16 @@ def run_mcp_phase(ctx):
     mcp_sources = []
 
     if mcp_enabled and mcp_ready:
-        yield f"data: {json.dumps({'status': 'mcp_start', 'message': 'Querying data tools...'})}\n\n"
+        yield (
+            f"data: {
+                json.dumps(
+                    {
+                        'status': 'mcp_start',
+                        'message': 'Querying data tools...',
+                    }
+                )
+            }\n\n"
+        )
 
         # Run MCP in thread to enable thought streaming
         # `text` is captured but deliberately unused: the tool loop's own prose
@@ -190,9 +200,30 @@ def run_mcp_phase(ctx):
 
         # Send each tool call for left sidebar
         for tc in tool_calls_list:
-            yield f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'arguments': tc['arguments'], 'result': tc['result'], 'status': tc['status']})}\n\n"
+            yield (
+                f"data: {
+                    json.dumps(
+                        {
+                            'type': 'tool_call',
+                            'name': tc['name'],
+                            'arguments': tc['arguments'],
+                            'result': tc['result'],
+                            'status': tc['status'],
+                        }
+                    )
+                }\n\n"
+            )
 
-        yield f"data: {json.dumps({'status': 'mcp_complete', 'tool_count': len(tool_calls_list)})}\n\n"
+        yield (
+            f"data: {
+                json.dumps(
+                    {
+                        'status': 'mcp_complete',
+                        'tool_count': len(tool_calls_list),
+                    }
+                )
+            }\n\n"
+        )
 
         # Check data availability and send status to frontend.
         # `truncated` rides along here rather than in an event of its own: the
@@ -272,7 +303,16 @@ def run_mcp_phase(ctx):
         session_logger.log(
             "MCP_SKIPPED", {"reason": "MCP not connected or no tools available"}
         )
-        yield f"data: {json.dumps({'status': 'mcp_skipped', 'message': 'MCP server not connected'})}\n\n"
+        yield (
+            f"data: {
+                json.dumps(
+                    {
+                        'status': 'mcp_skipped',
+                        'message': 'MCP server not connected',
+                    }
+                )
+            }\n\n"
+        )
 
     ctx["mcp_results"] = mcp_results
     ctx["tool_calls_list"] = tool_calls_list
@@ -302,7 +342,16 @@ def run_kb_phase(ctx):
     )
 
     if kb_enabled:
-        yield f"data: {json.dumps({'status': 'kb_start', 'message': 'Searching knowledge base...'})}\n\n"
+        yield (
+            f"data: {
+                json.dumps(
+                    {
+                        'status': 'kb_start',
+                        'message': 'Searching knowledge base...',
+                    }
+                )
+            }\n\n"
+        )
 
         # Run KB in thread to enable thought streaming
         kb_result_holder = {"response": "", "sources": []}
@@ -377,7 +426,16 @@ def run_synthesis_phase(ctx):
     full_text = ctx["full_text"]
 
     # Phase 3: Synthesis with streaming
-    yield f"data: {json.dumps({'status': 'synthesis_start', 'message': 'Generating response...'})}\n\n"
+    yield (
+        f"data: {
+            json.dumps(
+                {
+                    'status': 'synthesis_start',
+                    'message': 'Generating response...',
+                }
+            )
+        }\n\n"
+    )
 
     synthesis_prompt = effective_config.get("prompts", {}).get("synthesis", "")
     synthesis_model = get_gemini_model(effective_config)
@@ -427,7 +485,8 @@ def run_synthesis_phase(ctx):
             else "Knowledge Base"
         )
         context_parts.append(
-            f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n{kb_response}"
+            f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n"
+            f"{kb_response}"
         )
 
     # Log synthesis start
@@ -437,7 +496,11 @@ def run_synthesis_phase(ctx):
 
     synthesis_message = f"""User Query: {user_message}
 
-{chr(10).join(context_parts) if context_parts else "No additional context available."}
+{
+        chr(10).join(context_parts)
+        if context_parts
+        else "No additional context available."
+    }
 
 Please provide a comprehensive response combining all available information."""
 
@@ -446,7 +509,8 @@ Please provide a comprehensive response combining all available information."""
         # Build messages with conversation history for context
         synthesis_messages = []
 
-        # Add conversation history first (already in Gemini format from frontend)
+        # Add conversation history first (already in Gemini format from
+        # frontend)
         for msg in history:
             synthesis_messages.append(msg)
 
@@ -477,7 +541,16 @@ Please provide a comprehensive response combining all available information."""
             # Handle dict format with 'type' and 'content' keys
             if isinstance(chunk, dict):
                 if chunk.get("type") == "thought":
-                    yield f"data: {json.dumps({'thought': chunk['content'], 'phase': 'synthesis'})}\n\n"
+                    yield (
+                        f"data: {
+                            json.dumps(
+                                {
+                                    'thought': chunk['content'],
+                                    'phase': 'synthesis',
+                                }
+                            )
+                        }\n\n"
+                    )
                 elif chunk.get("type") == "text":
                     full_text += chunk["content"]
                     yield f"data: {json.dumps({'text': chunk['content']})}\n\n"
@@ -511,7 +584,8 @@ Please provide a comprehensive response combining all available information."""
                 {"data_found": False, "action": "hide_charts"},
             )
 
-    # Wait for chart config thread (started after MCP, runs parallel with KB + synthesis)
+    # Wait for chart config thread (started after MCP, runs parallel with KB +
+    # synthesis)
     if chart_thread[0]:
         chart_thread[0].join(timeout=CHART_CONFIG_JOIN_TIMEOUT_SECONDS)
     chart_config = chart_result_holder["config"]
@@ -534,7 +608,17 @@ Please provide a comprehensive response combining all available information."""
     yield f"data: {json.dumps({'usage': session_logger.token_usage})}\n\n"
 
     # Send final event with timing info
-    yield f"data: {json.dumps({'chart_config': chart_config, 'done': True, 'duration_ms': round(total_duration_ms, 0)})}\n\n"
+    yield (
+        f"data: {
+            json.dumps(
+                {
+                    'chart_config': chart_config,
+                    'done': True,
+                    'duration_ms': round(total_duration_ms, 0),
+                }
+            )
+        }\n\n"
+    )
 
     ctx["full_text"] = full_text
     ctx["chart_config"] = chart_config

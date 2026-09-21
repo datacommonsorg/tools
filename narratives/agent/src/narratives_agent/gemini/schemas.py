@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Chart config schema for Gemini structured output (hardcoded - not user configurable)
+# Chart config schema for Gemini structured output (hardcoded - not user
+# configurable)
 # Supports multiple charts for variables with different units/scales
 CHART_CONFIG_SCHEMA = {
     "type": "object",
@@ -24,7 +25,10 @@ CHART_CONFIG_SCHEMA = {
         },
         "charts": {
             "type": "array",
-            "description": "Array of chart configurations (max 3). Group compatible variables together.",
+            "description": (
+                "Array of chart configurations (max 3). Group compatible "
+                "variables together."
+            ),
             "items": {
                 "type": "object",
                 "properties": {
@@ -57,7 +61,10 @@ CHART_CONFIG_SCHEMA = {
                     "child_place_type": {"type": "string"},
                     "date": {
                         "type": "string",
-                        "description": "Single comparison date in YYYY, YYYY-MM, or YYYY-MM-DD",
+                        "description": (
+                            "Single comparison date in YYYY, YYYY-MM, or "
+                            "YYYY-MM-DD"
+                        ),
                     },
                 },
                 # A chart with no title renders a blank header strip, not an
@@ -82,7 +89,11 @@ DATA_VALIDATION_SCHEMA = {
     "properties": {
         "data_found": {
             "type": "boolean",
-            "description": "True if the response contains actual data/statistics that answer the query. False if data is unavailable, not found, or the response says data doesn't exist.",
+            "description": (
+                "True if the response contains actual data/statistics that "
+                "answer the query. False if data is unavailable, not found, "
+                "or the response says data doesn't exist."
+            ),
         }
     },
     "required": ["data_found"],
@@ -96,7 +107,9 @@ FOLLOW_UP_SCHEMA = {
         "questions": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Self-contained follow-up questions, one per related topic.",
+            "description": (
+                "Self-contained follow-up questions, one per related topic."
+            ),
         }
     },
     "required": ["questions"],
@@ -106,20 +119,29 @@ FOLLOW_UP_SCHEMA = {
 # datacommons.org explore feature (server/lib/nl/explore/gemini_prompts.py,
 # FOLLOW_UP_QUESTIONS_PROMPT) and adapted for the Custom DC agent. Overridable
 # via config["prompts"]["follow_up"] (or config/prompts/follow_up.md).
-DEFAULT_FOLLOW_UP_PROMPT = """You are a dynamic, trusted, and factual UI copywriter for a public-data explorer.
+DEFAULT_FOLLOW_UP_PROMPT = """You are a dynamic, trusted, and factual UI \
+copywriter for a public-data explorer.
 
-Write related follow-up questions that the user might find interesting to BROADEN their research — relatable angles to explore around the original question, NOT continuations of it.
+Write related follow-up questions that the user might find interesting to \
+BROADEN their research — relatable angles to explore around the original \
+question, NOT continuations of it.
 
-The follow-up questions are based on a list of RELATED TOPICS (statistical variables for the same place) provided in the user message.
+The follow-up questions are based on a list of RELATED TOPICS (statistical \
+variables for the same place) provided in the user message.
 
 CRUCIAL RULES:
 - If no related topics are given, return an empty list.
 - Generate at most one question per topic. Return at most 3 questions total.
-- Each question MUST be fully SELF-CONTAINED: it must name its own subject explicitly and read sensibly on its own, with no prior context.
-- NEVER use referential words like "this", "that", "these", "those", "it", or "the above". Do not reference "the previous question/answer".
+- Each question MUST be fully SELF-CONTAINED: it must name its own subject \
+explicitly and read sensibly on its own, with no prior context.
+- NEVER use referential words like "this", "that", "these", "those", "it", \
+or "the above". Do not reference "the previous question/answer".
 - Make the questions timeless: do NOT ask for a specific year or range of years.
 - Each question must be simple and focus on a single variable.
 - Avoid questions about places that meet a certain condition.
-- Make the questions extremely varied; use diverse phrasing. For inspiration draw from these angles: Ranking, Maps, Comparison, Correlation, Increase/Decrease over time.
-- Only suggest questions that can plausibly be answered from public statistical data for the same place.
+- Make the questions extremely varied; use diverse phrasing. For inspiration \
+draw from these angles: Ranking, Maps, Comparison, Correlation, \
+Increase/Decrease over time.
+- Only suggest questions that can plausibly be answered from public \
+statistical data for the same place.
 - Ensure correct grammar and casing."""

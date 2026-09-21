@@ -38,9 +38,9 @@ def health():
         {
             "status": "ok",
             "mcp_url": mcp_url(),
-            # Discovered, not declared -- see narratives_agent/mcp/capabilities.py.
-            # Tells an operator at a glance whether this deployment can attribute
-            # sources.
+            # Discovered, not declared -- see
+            # narratives_agent/mcp/capabilities.py. Tells an operator at a
+            # glance whether this deployment can attribute sources.
             "mcp": mcp_capabilities().describe(),
         }
     )
@@ -57,9 +57,11 @@ def index():
     <h1>Data Commons agent</h1>
     <p>MCP server: {mcp_url()}</p>
     <ul>
-        <li><a href="health">health</a> - health, MCP generation and tool surface</li>
+        <li><a href="health">health</a> - health, MCP generation and tool \
+surface</li>
         <li><a href="api/tools">api/tools</a> - discovered tool surface</li>
-        <li><a href="api/config">api/config</a> - backend config (no API key)</li>
+        <li><a href="api/config">api/config</a> - backend config (no API \
+key)</li>
         <li><a href="brand">brand</a> - the branding document</li>
         <li>POST api/call - execute one tool</li>
         <li>POST chat/stream - chat, server-sent events</li>

@@ -129,7 +129,8 @@ def fix_tool_arguments(name: str, arguments: dict) -> dict:
         )
         if has_range_params and args.get("date") != "range":
             logger.info(
-                "Fixing: Setting date='range' because date_range params provided"
+                "Fixing: Setting date='range' because date_range params "
+                "provided"
             )
             args["date"] = "range"
 
@@ -140,17 +141,21 @@ def fix_tool_arguments(name: str, arguments: dict) -> dict:
         # Fix 3: Remove null/None values that might cause issues
         args = {k: v for k, v in args.items() if v is not None}
 
-    if name in ("search_indicators", "search_child_indicators"):
-        # Ensure places is a list
-        if "places" in args and isinstance(args["places"], str):
-            args["places"] = [args["places"]]
+    # Ensure places is a list
+    if (
+        name in ("search_indicators", "search_child_indicators")
+        and "places" in args
+        and isinstance(args["places"], str)
+    ):
+        args["places"] = [args["places"]]
 
-    if name == "search_child_indicators":
-        # sample_child_places is required and must be a list. A model naming one
-        # example place tends to pass a bare string, which the server rejects.
-        if isinstance(args.get("sample_child_places"), str):
-            logger.info("Fixing: wrapping sample_child_places in a list")
-            args["sample_child_places"] = [args["sample_child_places"]]
+    # sample_child_places is required and must be a list. A model naming one
+    # example place tends to pass a bare string, which the server rejects.
+    if name == "search_child_indicators" and isinstance(
+        args.get("sample_child_places"), str
+    ):
+        logger.info("Fixing: wrapping sample_child_places in a list")
+        args["sample_child_places"] = [args["sample_child_places"]]
 
     if name == "get_variable_metadata":
         # Both arguments are required and must be lists. A model asking about a

@@ -121,7 +121,8 @@ def _normalise_url(url: str) -> str:
 
 
 def mcp_url() -> str:
-    """The MCP endpoint: MCP_SERVER_URL, then config, then in-container localhost.
+    """The MCP endpoint: MCP_SERVER_URL, then config, then in-container
+    localhost.
 
     Cached after the first call. The localhost fallback keeps the co-located
     sidecar deployment working unchanged when neither override is set, so this
@@ -146,7 +147,7 @@ def mcp_url() -> str:
 
 
 def mcp_request(
-    method: str, params: dict = None, is_notification: bool = False
+    method: str, params: dict | None = None, is_notification: bool = False
 ) -> dict:
     """Send one JSON-RPC request or notification. No session recovery.
 
@@ -157,7 +158,8 @@ def mcp_request(
     Args:
         method: The JSON-RPC method name
         params: Optional parameters
-        is_notification: If True, sends as notification (no id, no response expected)
+        is_notification: If True, sends as notification (no id, no response
+            expected)
     """
     payload = {"jsonrpc": "2.0", "method": method}
 
@@ -194,7 +196,8 @@ def mcp_request(
 
         # Log response details for debugging
         logger.info(
-            f"MCP Response - Status: {response.status_code}, Headers: {dict(response.headers)}"
+            f"MCP Response - Status: {response.status_code}, "
+            f"Headers: {dict(response.headers)}"
         )
 
         # Get session ID from response (try multiple header variations)
@@ -236,7 +239,10 @@ def mcp_request(
 
     except requests.exceptions.ConnectionError:
         return {
-            "error": f"Cannot connect to MCP server at {url}. Make sure it's running!"
+            "error": (
+                f"Cannot connect to MCP server at {url}. Make sure it's "
+                "running!"
+            )
         }
     except Exception as e:
         return {"error": str(e)}
@@ -277,7 +283,7 @@ def initialize_mcp() -> bool:
     return True
 
 
-def mcp_call(method: str, params: dict = None) -> dict:
+def mcp_call(method: str, params: dict | None = None) -> dict:
     """Send a request, establishing or re-establishing the session as needed.
 
     This is the entry point everything except the handshake should use. It

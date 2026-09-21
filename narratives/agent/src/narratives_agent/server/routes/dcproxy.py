@@ -55,7 +55,8 @@ DATA_PLANE_URL = os.environ.get("DATA_PLANE_URL", "").rstrip("/")
 #
 #   api.datacommons.org  the versioned REST API and /mcp -- what the agent uses
 #   datacommons.org      the website routes the chart web components call:
-#                        /api/observations/series, /api/place/name, /core/api/...
+#                        /api/observations/series, /api/place/name,
+#                        /core/api/...
 #
 # Sending chart traffic to the API host returns
 #   {"message":"The current request is not defined by this API.","code":404}
@@ -186,14 +187,14 @@ def _forward(subpath: str, prefix: str) -> Response:
         for k, v in request.headers.items()
         if k.lower() not in _HOP_HEADERS
     }
-    # Auth is chosen by the host actually being called, not by a single global --
-    # the two hosts differ on the "none" backend, and attaching a credential
-    # scoped to the wrong host is how the API key would leak somewhere it does
-    # not belong.
+    # Auth is chosen by the host actually being called, not by a single
+    # global -- the two hosts differ on the "none" backend, and attaching a
+    # credential scoped to the wrong host is how the API key would leak
+    # somewhere it does not belong.
     attach_auth(headers, upstream_url)
 
-    # TODO(juliawu): stream the body once this service is on FastAPI (see comment
-    # in PR 472)
+    # TODO(juliawu): stream the body once this service is on FastAPI (see
+    # comment in PR 472)
     try:
         upstream = _SESSION.request(
             request.method,

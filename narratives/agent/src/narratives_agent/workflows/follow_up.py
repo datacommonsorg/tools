@@ -31,11 +31,12 @@ MAX_FOLLOW_UP_QUESTIONS = 3
 
 
 def generate_follow_up_questions(user_message: str, topics: list) -> list:
-    """Generate self-contained follow-up questions grounded in the resolved topics.
+    """Generate self-contained follow-up questions grounded in the resolved
+    topics.
 
     Mirrors datacommons.org's related.generate_follow_up_questions: returns []
-    when there are no topics (no static fallback), uses a structured Gemini call,
-    and filters out any question that leaks a context-dependent pronoun.
+    when there are no topics (no static fallback), uses a structured Gemini
+    call, and filters out any question that leaks a context-dependent pronoun.
     """
     topics = [
         t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()
@@ -75,7 +76,8 @@ Generate the self-contained follow-up questions now."""
         logger.error(f"Follow-up generation error: {e}")
         return []
 
-    # Safety net: drop empties, context-dependent pronouns, and duplicates; cap 3.
+    # Safety net: drop empties, context-dependent pronouns, and duplicates;
+    # cap 3.
     cleaned, seen = [], set()
     for q in questions:
         if not isinstance(q, str):

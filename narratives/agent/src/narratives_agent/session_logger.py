@@ -76,7 +76,7 @@ def _emit_structured(session_id: str, event_type: str, data: dict) -> None:
 class SessionLogger:
     """Comprehensive session-based logging for debugging and audit."""
 
-    def __init__(self, session_id: str = None):
+    def __init__(self, session_id: str | None = None):
         """Initialize or resume a session logger.
 
         Args:
@@ -220,7 +220,8 @@ class SessionLogger:
                 "tool_name": tool_name,
                 "duration_ms": round(duration_ms, 2),
                 "status": status,
-                "result": result_str,  # No truncation - full result for debugging
+                # No truncation - full result for debugging
+                "result": result_str,
             },
         )
 
@@ -243,8 +244,8 @@ class SessionLogger:
     def log_final_response(
         self,
         text: str,
-        chart_config: dict = None,
-        total_duration_ms: float = None,
+        chart_config: dict | None = None,
+        total_duration_ms: float | None = None,
     ):
         """Log the final response sent to user."""
         self.log(
@@ -264,7 +265,7 @@ class SessionLogger:
         )
 
     def log_error(
-        self, error_type: str, error_message: str, context: dict = None
+        self, error_type: str, error_message: str, context: dict | None = None
     ):
         """Log an error."""
         self.log(

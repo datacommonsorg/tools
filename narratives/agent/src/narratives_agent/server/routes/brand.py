@@ -61,9 +61,9 @@ _ASSET_CONTENT_TYPES = {
     ".ico": "image/x-icon",
 }
 
-# Credential shapes rejected by :func:`find_credential_like_values`. Deliberately
-# broad: a false positive costs one log line and a dropped key, a false negative
-# publishes a secret to every browser that loads the page.
+# Credential shapes rejected by :func:`find_credential_like_values`.
+# Deliberately broad: a false positive costs one log line and a dropped key, a
+# false negative publishes a secret to every browser that loads the page.
 _CREDENTIAL_PATTERNS = (
     re.compile(r"^AIza[0-9A-Za-z_-]{20,}$"),  # Google API key
     re.compile(r"^gh[pousr]_[0-9A-Za-z]{20,}$"),  # GitHub token
@@ -225,7 +225,8 @@ def _fetch_asset(base_url: str, relative_path: str) -> bytes | None:
         return None
     if response.status_code != 200:
         logger.warning(
-            f"Brand asset '{relative_path}' fetch returned HTTP {response.status_code}"
+            f"Brand asset '{relative_path}' fetch returned HTTP "
+            f"{response.status_code}"
         )
         return None
     return response.content
@@ -234,10 +235,10 @@ def _fetch_asset(base_url: str, relative_path: str) -> bytes | None:
 def _mirror_assets(document: dict, base_url: str) -> dict[str, bytes]:
     """Pulls every referenced image into memory and rewrites its path.
 
-    Each asset field naming a bucket-relative path is fetched once and rewritten
-    to this blueprint's own asset route, so a browser rendering the branding
-    never issues a request to GCS. Absolute URLs and data: URIs are left alone --
-    they are already not our bucket.
+    Each asset field naming a bucket-relative path is fetched once and
+    rewritten to this blueprint's own asset route, so a browser rendering the
+    branding never issues a request to GCS. Absolute URLs and data: URIs are
+    left alone -- they are already not our bucket.
 
     Args:
         document: The branding document, modified in place.
@@ -316,8 +317,8 @@ def _build_brand_css(document: dict | None) -> str:
         value = node.strip()
         if not _SAFE_CSS_VALUE.match(value):
             logger.warning(
-                f"branding value for {css_variable} is not a plain CSS literal; "
-                "dropping it from brand.css"
+                f"branding value for {css_variable} is not a plain CSS "
+                "literal; dropping it from brand.css"
             )
             continue
         declarations.append(f"  {css_variable}: {value};")
@@ -328,7 +329,8 @@ def _build_brand_css(document: dict | None) -> str:
 
 
 def load_branding() -> None:
-    """Reads branding and its images from GCS into memory. Call once, at startup.
+    """Reads branding and its images from GCS into memory. Call once, at
+    startup.
 
     Any failure is logged and swallowed: the server must start even when the
     config bucket is missing, unreachable or holds a corrupt document, in which

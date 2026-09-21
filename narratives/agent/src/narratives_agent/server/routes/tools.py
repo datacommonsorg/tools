@@ -35,7 +35,8 @@ def list_tools():
     if not tools:
         return jsonify({"success": False, "error": "No tools available"}), 503
 
-    # Convert to Gemini format (transform schema to remove unsupported constructs)
+    # Convert to Gemini format (transform schema to remove unsupported
+    # constructs)
     gemini_tools = [
         {
             "name": t.get("name", ""),

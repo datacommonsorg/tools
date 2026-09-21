@@ -17,6 +17,7 @@ import json
 import logging
 import random
 import time
+from collections.abc import Callable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -49,21 +50,25 @@ _SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
 def execute_kb_query(
     user_message: str,
     session_logger: SessionLogger | None = None,
-    thought_callback: callable = None,
+    thought_callback: Callable[[str], None] | None = None,
     demo_mode: bool = False,
-    effective_config: dict = None,
+    effective_config: dict | None = None,
 ) -> dict:
-    """Execute Knowledge Base query using file search with key rotation and thought streaming.
+    """Execute Knowledge Base query using file search with key rotation and
+    thought streaming.
 
-    Each API key automatically uses its paired filestore from the config mapping.
+    Each API key automatically uses its paired filestore from the config
+    mapping.
 
     Args:
         user_message: The user's query
         session_logger: Optional SessionLogger for logging
         thought_callback: Optional callback for streaming thought chunks.
                          Signature: callback(thought_text: str) -> None
-        demo_mode: If True, uses demo API keys and filestores reserved for internal demos.
-        effective_config: Optional config dict with query param overrides applied.
+        demo_mode: If True, uses demo API keys and filestores reserved for
+            internal demos.
+        effective_config: Optional config dict with query param overrides
+            applied.
 
     Returns:
         dict with keys:
@@ -160,7 +165,10 @@ def execute_kb_query(
 
         try:
             # Use streaming endpoint to get thoughts in real-time
-            url = f"{api_base}/{kb_model}:streamGenerateContent?key={api_key}&alt=sse"
+            url = (
+                f"{api_base}/{kb_model}:streamGenerateContent"
+                f"?key={api_key}&alt=sse"
+            )
             response = _SESSION.post(
                 url,
                 json=payload,
@@ -181,7 +189,8 @@ def execute_kb_query(
             if response.status_code in [500, 503]:
                 last_error = f"Server error ({response.status_code})"
                 logger.warning(
-                    f"KB server error {response.status_code}, switching to next key..."
+                    f"KB server error {response.status_code}, switching to "
+                    "next key..."
                 )
                 continue
 
@@ -281,7 +290,8 @@ def execute_kb_query(
 
     # All keys exhausted
     logger.error(
-        f"KB query failed: All {len(all_keys)} API keys exhausted. Last error: {last_error}"
+        f"KB query failed: All {len(all_keys)} API keys exhausted. "
+        f"Last error: {last_error}"
     )
     if session_logger:
         session_logger.log_error(

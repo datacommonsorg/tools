@@ -137,7 +137,10 @@ def check_data_availability(tool_calls_list: list) -> dict:
                 "We didn't find any matching data variables for your query."
             )
         elif no_observations:
-            message = "We found the data variable but there are no observations available."
+            message = (
+                "We found the data variable but there are no observations "
+                "available."
+            )
         else:
             message = "We didn't find data for your query."
 
@@ -184,7 +187,8 @@ def _first_present(mapping: dict, *keys: str) -> str:
 
 
 def _facet_index_from_variable_metadata(result_data: dict) -> dict:
-    """Maps facet id -> {name, url, license} from a get_variable_metadata result.
+    """Maps facet id -> {name, url, license} from a get_variable_metadata
+    result.
 
     Returned as an index rather than a list because this tool describes
     *candidates*: every source a variable could be answered from. Which one
@@ -285,7 +289,8 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
     so both spellings are tried rather than assumed.
 
     Args:
-        tool_calls_list: List of tool call dicts with 'name', 'arguments', 'result'
+        tool_calls_list: List of tool call dicts with 'name', 'arguments',
+            'result'
 
     Returns:
         list of dicts: [{"name": "Source Name", "url": "https://...",

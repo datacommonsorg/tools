@@ -46,7 +46,9 @@ _TOKEN_TTL_SECONDS = 50 * 60
 
 
 def _audience_for(url: str) -> str:
-    """Cloud Run expects the audience to be the service's origin, not the path."""
+    """Cloud Run expects the audience to be the service's origin, not the
+    path.
+    """
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}"
 
