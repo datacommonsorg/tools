@@ -19,7 +19,10 @@ import re
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import gemini_request
-from narratives_agent.gemini.schemas import DEFAULT_FOLLOW_UP_PROMPT, FOLLOW_UP_SCHEMA
+from narratives_agent.gemini.schemas import (
+    DEFAULT_FOLLOW_UP_PROMPT,
+    FOLLOW_UP_SCHEMA,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +37,17 @@ def generate_follow_up_questions(user_message: str, topics: list) -> list:
     when there are no topics (no static fallback), uses a structured Gemini call,
     and filters out any question that leaks a context-dependent pronoun.
     """
-    topics = [t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()]
+    topics = [
+        t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()
+    ]
     if not topics or not user_message:
         return []
 
     config = load_config()
     model = get_gemini_model(config)
-    system_prompt = config.get("prompts", {}).get("follow_up") or DEFAULT_FOLLOW_UP_PROMPT
+    system_prompt = (
+        config.get("prompts", {}).get("follow_up") or DEFAULT_FOLLOW_UP_PROMPT
+    )
 
     prompt = f"""The user's original research question is: {user_message}
 
@@ -56,11 +63,13 @@ Generate the self-contained follow-up questions now."""
             temperature=0.8,  # higher for varied phrasing
             thinking_level="minimal",
             response_schema=FOLLOW_UP_SCHEMA,
-            stream=False
+            stream=False,
         )
         questions = []
         if "candidates" in response:
-            text = response["candidates"][0]["content"]["parts"][0].get("text", "{}")
+            text = response["candidates"][0]["content"]["parts"][0].get(
+                "text", "{}"
+            )
             questions = (json.loads(text) or {}).get("questions", []) or []
     except Exception as e:
         logger.error(f"Follow-up generation error: {e}")

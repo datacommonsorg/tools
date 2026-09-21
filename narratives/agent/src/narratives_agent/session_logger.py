@@ -19,7 +19,7 @@ import sys
 import threading
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from narratives_agent.config import AGENT_ROOT
 
@@ -72,6 +72,7 @@ def _emit_structured(session_id: str, event_type: str, data: dict) -> None:
 # SESSION LOGGER - Comprehensive logging for debugging & audit
 # ============================================================
 
+
 class SessionLogger:
     """Comprehensive session-based logging for debugging and audit."""
 
@@ -83,7 +84,7 @@ class SessionLogger:
                         If None, generates a new session ID.
         """
         self.session_id = session_id or self._generate_session_id()
-        self.logs_dir = AGENT_ROOT / 'logs'
+        self.logs_dir = AGENT_ROOT / "logs"
         self.log_file = self.logs_dir / f"{self.session_id}.log"
         if _FILE_LOGGING:
             self.logs_dir.mkdir(exist_ok=True)
@@ -98,7 +99,7 @@ class SessionLogger:
         self._usage_lock = threading.Lock()
         self._write_header()
 
-    def add_usage(self, usage_metadata: Optional[dict]) -> None:
+    def add_usage(self, usage_metadata: dict | None) -> None:
         """Accumulate one Gemini call's usageMetadata into the request total.
 
         Args:
@@ -115,7 +116,9 @@ class SessionLogger:
             self.token_usage["input"] += prompt
             self.token_usage["output"] += candidates + thoughts
             # Fall back to input+output when the API omits a total.
-            self.token_usage["total"] += total or (prompt + candidates + thoughts)
+            self.token_usage["total"] += total or (
+                prompt + candidates + thoughts
+            )
 
     def _generate_session_id(self) -> str:
         """Generate a short readable session ID.
@@ -128,115 +131,147 @@ class SessionLogger:
 
     def _write_header(self):
         """Write session header to log file (only if new file)."""
-        _emit_structured(self.session_id, "SESSION_START", {
-            "started": datetime.now().isoformat(),
-        })
+        _emit_structured(
+            self.session_id,
+            "SESSION_START",
+            {
+                "started": datetime.now().isoformat(),
+            },
+        )
         if not _FILE_LOGGING:
             return
         if self.log_file.exists():
             # Resuming existing session - add continuation marker
-            with open(self.log_file, 'a') as f:
-                f.write(f"\n{'='*80}\n")
+            with open(self.log_file, "a") as f:
+                f.write(f"\n{'=' * 80}\n")
                 f.write(f"CONTINUATION @ {datetime.now().isoformat()}\n")
-                f.write(f"{'='*80}\n")
+                f.write(f"{'=' * 80}\n")
         else:
             # New session - write header
-            with open(self.log_file, 'w') as f:
-                f.write(f"{'='*80}\n")
+            with open(self.log_file, "w") as f:
+                f.write(f"{'=' * 80}\n")
                 f.write(f"SESSION LOG: {self.session_id}\n")
                 f.write(f"Started: {datetime.now().isoformat()}\n")
-                f.write(f"{'='*80}\n\n")
+                f.write(f"{'=' * 80}\n\n")
 
     def log(self, event_type: str, data: dict):
         """Log an event with full request/response details."""
         timestamp = datetime.now().isoformat()
-        entry = {
-            "timestamp": timestamp,
-            "event_type": event_type,
-            "data": data
-        }
+        entry = {"timestamp": timestamp, "event_type": event_type, "data": data}
         self.entries.append(entry)
 
         _emit_structured(self.session_id, event_type, data)
 
         if _FILE_LOGGING:
-            with open(self.log_file, 'a') as f:
+            with open(self.log_file, "a") as f:
                 f.write(f"\n--- {event_type} @ {timestamp} ---\n")
                 f.write(json.dumps(data, indent=2, default=str))
                 f.write("\n")
 
     def log_user_message(self, message: str, history_count: int = 0):
         """Log the user's input message."""
-        self.log("USER_MESSAGE", {
-            "message": message,
-            "history_messages": history_count
-        })
+        self.log(
+            "USER_MESSAGE",
+            {"message": message, "history_messages": history_count},
+        )
 
     def log_gemini_request(self, model: str, endpoint: str, payload_info: dict):
         """Log outgoing Gemini API request."""
-        self.log("GEMINI_REQUEST", {
-            "model": model,
-            "endpoint": endpoint,
-            "payload": payload_info
-        })
+        self.log(
+            "GEMINI_REQUEST",
+            {"model": model, "endpoint": endpoint, "payload": payload_info},
+        )
 
-    def log_gemini_response(self, model: str, response: dict, duration_ms: float):
+    def log_gemini_response(
+        self, model: str, response: dict, duration_ms: float
+    ):
         """Log incoming Gemini API response."""
-        self.log("GEMINI_RESPONSE", {
-            "model": model,
-            "duration_ms": round(duration_ms, 2),
-            "response": response
-        })
+        self.log(
+            "GEMINI_RESPONSE",
+            {
+                "model": model,
+                "duration_ms": round(duration_ms, 2),
+                "response": response,
+            },
+        )
 
     def log_mcp_tool_call(self, tool_name: str, arguments: dict):
         """Log MCP tool call request."""
-        self.log("MCP_TOOL_REQUEST", {
-            "tool_name": tool_name,
-            "arguments": arguments
-        })
+        self.log(
+            "MCP_TOOL_REQUEST", {"tool_name": tool_name, "arguments": arguments}
+        )
 
-    def log_mcp_tool_result(self, tool_name: str, result: Any, duration_ms: float, status: str = "success"):
+    def log_mcp_tool_result(
+        self,
+        tool_name: str,
+        result: Any,
+        duration_ms: float,
+        status: str = "success",
+    ):
         """Log MCP tool call result."""
-        result_str = json.dumps(result, default=str) if isinstance(result, dict) else str(result)
-        self.log("MCP_TOOL_RESPONSE", {
-            "tool_name": tool_name,
-            "duration_ms": round(duration_ms, 2),
-            "status": status,
-            "result": result_str  # No truncation - full result for debugging
-        })
+        result_str = (
+            json.dumps(result, default=str)
+            if isinstance(result, dict)
+            else str(result)
+        )
+        self.log(
+            "MCP_TOOL_RESPONSE",
+            {
+                "tool_name": tool_name,
+                "duration_ms": round(duration_ms, 2),
+                "status": status,
+                "result": result_str,  # No truncation - full result for debugging
+            },
+        )
 
     def log_kb_query(self, message: str, result: str, duration_ms: float):
         """Log Knowledge Base query."""
-        self.log("KB_QUERY", {
-            "query": message,
-            "duration_ms": round(duration_ms, 2),
-            "result_length": len(result),
-            "result": result  # No truncation - full result for debugging
-        })
+        self.log(
+            "KB_QUERY",
+            {
+                "query": message,
+                "duration_ms": round(duration_ms, 2),
+                "result_length": len(result),
+                "result": result,  # No truncation - full result for debugging
+            },
+        )
 
     def log_synthesis_start(self, context_parts: list):
         """Log synthesis phase start."""
-        self.log("SYNTHESIS_START", {
-            "context_sources": context_parts
-        })
+        self.log("SYNTHESIS_START", {"context_sources": context_parts})
 
-    def log_final_response(self, text: str, chart_config: dict = None, total_duration_ms: float = None):
+    def log_final_response(
+        self,
+        text: str,
+        chart_config: dict = None,
+        total_duration_ms: float = None,
+    ):
         """Log the final response sent to user."""
-        self.log("FINAL_RESPONSE", {
-            "text_length": len(text),
-            "text_preview": (
-                text[:MAX_TEXT_PREVIEW_LENGTH] + "..."
-                if len(text) > MAX_TEXT_PREVIEW_LENGTH
-                else text
-            ),
-            "chart_config": chart_config,
-            "total_duration_ms": round(total_duration_ms, 2) if total_duration_ms else None
-        })
+        self.log(
+            "FINAL_RESPONSE",
+            {
+                "text_length": len(text),
+                "text_preview": (
+                    text[:MAX_TEXT_PREVIEW_LENGTH] + "..."
+                    if len(text) > MAX_TEXT_PREVIEW_LENGTH
+                    else text
+                ),
+                "chart_config": chart_config,
+                "total_duration_ms": round(total_duration_ms, 2)
+                if total_duration_ms
+                else None,
+            },
+        )
 
-    def log_error(self, error_type: str, error_message: str, context: dict = None):
+    def log_error(
+        self, error_type: str, error_message: str, context: dict = None
+    ):
         """Log an error."""
-        self.log("ERROR", {
-            "error_type": error_type,
-            "error_message": str(error_message),
-            "context": context or {}
-        })
+        self.log(
+            "ERROR",
+            {
+                "error_type": error_type,
+                "error_message": str(error_message),
+                "context": context or {},
+            },
+        )

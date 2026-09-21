@@ -73,10 +73,15 @@ def get_id_token(audience: str) -> str:
         response.raise_for_status()
         token = response.text.strip()
     except Exception as e:  # pylint: disable=broad-except
-        logger.debug("ID token fetch failed for %s (normal if local): %s", audience, e)
+        logger.debug(
+            "ID token fetch failed for %s (normal if local): %s", audience, e
+        )
         return ""
 
-    _TOKEN_CACHE[audience] = {"token": token, "exp": time.time() + _TOKEN_TTL_SECONDS}
+    _TOKEN_CACHE[audience] = {
+        "token": token,
+        "exp": time.time() + _TOKEN_TTL_SECONDS,
+    }
     logger.info("Minted ID token for audience %s", audience)
     return token
 
@@ -122,7 +127,8 @@ def attach_auth(headers: dict, target_url: str) -> None:
         else:
             logger.warning(
                 "%s expects an API key but DC_API_KEY is unset; requests will "
-                "be rejected.", parsed.hostname
+                "be rejected.",
+                parsed.hostname,
             )
         return
 

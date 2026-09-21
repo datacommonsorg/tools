@@ -12,7 +12,13 @@ failing tools/list must not blank the tool surface.
 
 Behavioural test for MCP session handling: thread isolation, recovery from a
 data-plane instance that does not recognise our session, and tool-cache TTL."""
-import importlib.util, os, sys, threading, types
+
+import importlib.util
+import os
+import sys
+import threading
+import types
+
 sys.path.insert(0, os.getcwd())
 os.environ["MCP_SERVER_URL"] = "https://data.example.run.app/mcp"
 
@@ -28,10 +34,15 @@ for name, attrs in {
         setattr(m, k, v)
     sys.modules[name] = m
 
-spec = importlib.util.spec_from_file_location("mcpclient", "src/narratives_agent/mcp/client.py")
-c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
+spec = importlib.util.spec_from_file_location(
+    "mcpclient", "src/narratives_agent/mcp/client.py"
+)
+c = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(c)
 
 calls = []
+
+
 def fake_request(method, params=None, is_notification=False):
     """Scripted server: rejects the first tools/list, accepts after re-init."""
     calls.append(method)
@@ -46,40 +57,72 @@ def fake_request(method, params=None, is_notification=False):
             return {"error": {"code": -32000, "message": "Session not found"}}
         return {"result": {"tools": [{"name": "get_observations"}]}}
     return {"result": {}}
+
+
 fake_request.reject_next = True
 c.mcp_request = fake_request
 
 fails = []
+
+
 def check(label, cond):
     print(f"  {'ok  ' if cond else 'FAIL'} {label}")
-    if not cond: fails.append(label)
+    if not cond:
+        fails.append(label)
+
 
 # 1. Recovery: a rejected session re-initialises and retries once.
 tools = c.get_tools(force_refresh=True)
-check("recovers from a rejected session", tools == [{"name": "get_observations"}])
+check(
+    "recovers from a rejected session", tools == [{"name": "get_observations"}]
+)
 check("re-initialised exactly once", calls.count("initialize") == 2)
 check("retried tools/list exactly once", calls.count("tools/list") == 2)
 
 # 2. Thread isolation: two threads never share a session id.
 seen = {}
+
+
 def worker():
     c.initialize_mcp()
     seen[threading.current_thread().name] = c.get_session_id()
-t1 = threading.Thread(target=worker, name="A"); t2 = threading.Thread(target=worker, name="B")
-t1.start(); t2.start(); t1.join(); t2.join()
-check("threads hold distinct sessions", seen.get("A") != seen.get("B") and all(seen.values()))
+
+
+t1 = threading.Thread(target=worker, name="A")
+t2 = threading.Thread(target=worker, name="B")
+t1.start()
+t2.start()
+t1.join()
+t2.join()
+check(
+    "threads hold distinct sessions",
+    seen.get("A") != seen.get("B") and all(seen.values()),
+)
 
 # 3. Tool cache: served from cache, and stale-on-failure beats empty.
 before = calls.count("tools/list")
-c.get_tools(); c.get_tools()
-check("cached within TTL (no extra round trips)", calls.count("tools/list") == before)
+c.get_tools()
+c.get_tools()
+check(
+    "cached within TTL (no extra round trips)",
+    calls.count("tools/list") == before,
+)
+
 
 def always_fail(method, params=None, is_notification=False):
     calls.append(method)
     return {"error": {"message": "backend down"}}
-c.mcp_request = always_fail
-check("serves a stale list rather than nothing",
-      c.get_tools(force_refresh=True) == [{"name": "get_observations"}])
 
-print(f"\n{4+2-len(fails)}/6 checks passed" if not fails else f"\nFAILURES: {fails}")
+
+c.mcp_request = always_fail
+check(
+    "serves a stale list rather than nothing",
+    c.get_tools(force_refresh=True) == [{"name": "get_observations"}],
+)
+
+print(
+    f"\n{4 + 2 - len(fails)}/6 checks passed"
+    if not fails
+    else f"\nFAILURES: {fails}"
+)
 sys.exit(1 if fails else 0)

@@ -17,7 +17,6 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-import narratives_agent.mcp.client as mcp_client
 from narratives_agent.mcp.client import call_tool, get_tools
 from narratives_agent.mcp.schema import transform_schema_for_gemini
 
@@ -37,13 +36,16 @@ def list_tools():
         return jsonify({"success": False, "error": "No tools available"}), 503
 
     # Convert to Gemini format (transform schema to remove unsupported constructs)
-    gemini_tools = [{
-        "name": t.get("name", ""),
-        "description": t.get("description", ""),
-        "parameters": transform_schema_for_gemini(
-            t.get("inputSchema", {"type": "object", "properties": {}})
-        )
-    } for t in tools]
+    gemini_tools = [
+        {
+            "name": t.get("name", ""),
+            "description": t.get("description", ""),
+            "parameters": transform_schema_for_gemini(
+                t.get("inputSchema", {"type": "object", "properties": {}})
+            ),
+        }
+        for t in tools
+    ]
 
     return jsonify({"success": True, "tools": gemini_tools, "raw_tools": tools})
 

@@ -20,7 +20,7 @@ CHART_CONFIG_SCHEMA = {
     "properties": {
         "should_render": {
             "type": "boolean",
-            "description": "True if at least one chart should be rendered"
+            "description": "True if at least one chart should be rendered",
         },
         "charts": {
             "type": "array",
@@ -30,17 +30,35 @@ CHART_CONFIG_SCHEMA = {
                 "properties": {
                     "viz_type": {
                         "type": "string",
-                        "enum": ["line", "bar", "ranking", "pie", "highlight", "gauge", "scatter", "slider"]
+                        "enum": [
+                            "line",
+                            "bar",
+                            "ranking",
+                            "pie",
+                            "highlight",
+                            "gauge",
+                            "scatter",
+                            "slider",
+                        ],
                     },
-                    "title": {"type": "string", "description": "Descriptive chart title"},
-                    "variable_dcids": {"type": "array", "items": {"type": "string"}},
-                    "place_dcids": {"type": "array", "items": {"type": "string"}},
+                    "title": {
+                        "type": "string",
+                        "description": "Descriptive chart title",
+                    },
+                    "variable_dcids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "place_dcids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                     "parent_place": {"type": "string"},
                     "child_place_type": {"type": "string"},
                     "date": {
                         "type": "string",
-                        "description": "Single comparison date in YYYY, YYYY-MM, or YYYY-MM-DD"
-                    }
+                        "description": "Single comparison date in YYYY, YYYY-MM, or YYYY-MM-DD",
+                    },
                 },
                 # A chart with no title renders a blank header strip, not an
                 # untitled chart: the web components resolve their heading as
@@ -50,11 +68,11 @@ CHART_CONFIG_SCHEMA = {
                 # title in the prompt was not enough on its own -- the model
                 # dropped the field often enough to be noticed, and an optional
                 # field in a structured-output schema is genuinely optional.
-                "required": ["title"]
-            }
-        }
+                "required": ["title"],
+            },
+        },
     },
-    "required": ["should_render"]
+    "required": ["should_render"],
 }
 
 
@@ -64,10 +82,10 @@ DATA_VALIDATION_SCHEMA = {
     "properties": {
         "data_found": {
             "type": "boolean",
-            "description": "True if the response contains actual data/statistics that answer the query. False if data is unavailable, not found, or the response says data doesn't exist."
+            "description": "True if the response contains actual data/statistics that answer the query. False if data is unavailable, not found, or the response says data doesn't exist.",
         }
     },
-    "required": ["data_found"]
+    "required": ["data_found"],
 }
 
 
@@ -78,10 +96,10 @@ FOLLOW_UP_SCHEMA = {
         "questions": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Self-contained follow-up questions, one per related topic."
+            "description": "Self-contained follow-up questions, one per related topic.",
         }
     },
-    "required": ["questions"]
+    "required": ["questions"],
 }
 
 # Default system prompt for follow-up generation. Ported from the

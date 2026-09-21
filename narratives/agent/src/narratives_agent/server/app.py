@@ -40,7 +40,9 @@ def _allowed_origins() -> list[str]:
     """
     configured = os.environ.get("ALLOWED_ORIGIN", "").strip()
     if configured:
-        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+        return [
+            origin.strip() for origin in configured.split(",") if origin.strip()
+        ]
 
     # K_SERVICE is set by Cloud Run; its presence means "not local dev".
     if os.environ.get("K_SERVICE"):

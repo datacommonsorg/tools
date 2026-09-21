@@ -52,7 +52,7 @@ def _parse_tool_result(result) -> dict:
     if isinstance(content, list) and content:
         try:
             payload = json.loads(content[0].get("text", ""))
-        except (json.JSONDecodeError, AttributeError):
+        except json.JSONDecodeError, AttributeError:
             return None
 
     return payload if isinstance(payload, dict) else None
@@ -113,8 +113,8 @@ def check_data_availability(tool_calls_list: list) -> dict:
     observations_called = False
 
     for tc in tool_calls_list:
-        tool_name = tc.get('name', '')
-        payload = _parse_tool_result(tc.get('result', ''))
+        tool_name = tc.get("name", "")
+        payload = _parse_tool_result(tc.get("result", ""))
 
         if tool_name in _SEARCH_TOOLS:
             search_called = True
@@ -133,19 +133,21 @@ def check_data_availability(tool_calls_list: list) -> dict:
     message = None
     if not has_data:
         if no_variables:
-            message = "We didn't find any matching data variables for your query."
+            message = (
+                "We didn't find any matching data variables for your query."
+            )
         elif no_observations:
             message = "We found the data variable but there are no observations available."
         else:
             message = "We didn't find data for your query."
 
     return {
-        'has_data': has_data,
-        'no_variables_found': no_variables,
-        'no_observations_found': no_observations,
-        'search_called': search_called,
-        'observations_called': observations_called,
-        'message': message
+        "has_data": has_data,
+        "no_variables_found": no_variables,
+        "no_observations_found": no_observations,
+        "search_called": search_called,
+        "observations_called": observations_called,
+        "message": message,
     }
 
 
@@ -240,7 +242,9 @@ def _facet_index_from_variable_metadata(result_data: dict) -> dict:
                 continue
 
             entry = {
-                "name": _first_present(properties, "isPartOf", "source", "domain")
+                "name": _first_present(
+                    properties, "isPartOf", "source", "domain"
+                )
                 or url,
                 "url": url,
             }
@@ -290,43 +294,43 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
     # Pass 1: index every candidate facet the metadata calls described.
     facet_index = {}
     for tc in tool_calls_list:
-        if tc.get('name') != 'get_variable_metadata':
+        if tc.get("name") != "get_variable_metadata":
             continue
         try:
-            result_data = _parse_tool_result(tc.get('result', ''))
+            result_data = _parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
             for facet_id, entry in _facet_index_from_variable_metadata(
                 result_data
             ).items():
                 facet_index.setdefault(facet_id, entry)
-        except (json.JSONDecodeError, KeyError, TypeError, IndexError):
+        except json.JSONDecodeError, KeyError, TypeError, IndexError:
             continue
 
     # Pass 2: the observation calls decide which of them are sources at all.
     sources = []
     seen_urls = set()
     for tc in tool_calls_list:
-        if tc.get('name') not in _OBSERVATION_TOOLS:
+        if tc.get("name") not in _OBSERVATION_TOOLS:
             continue
 
         try:
-            result_data = _parse_tool_result(tc.get('result', ''))
+            result_data = _parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
 
-            metadata = result_data.get('sourceMetadata') or result_data.get(
-                'source_metadata'
+            metadata = result_data.get("sourceMetadata") or result_data.get(
+                "source_metadata"
             )
             if not isinstance(metadata, dict):
                 continue
 
-            facet_id = _first_present(metadata, 'sourceId', 'source_id')
+            facet_id = _first_present(metadata, "sourceId", "source_id")
             # Server 1.2.1 wrote the literal "unknown" for a result that
             # carried no data rather than omitting the block, so it is not an
             # id and must not be looked up as one.
-            if facet_id == 'unknown':
-                facet_id = ''
+            if facet_id == "unknown":
+                facet_id = ""
 
             entry = facet_index.get(facet_id) if facet_id else None
             if entry is not None:
@@ -338,19 +342,21 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
                 # or it served something the candidates did not cover. The
                 # observation result still knows where the numbers came from,
                 # it just has no dataset name to offer.
-                url = _first_present(metadata, 'provenanceUrl', 'provenance_url')
+                url = _first_present(
+                    metadata, "provenanceUrl", "provenance_url"
+                )
                 if not url:
                     continue
                 name = _first_present(
                     metadata,
-                    'importName',
-                    'import_name',
-                    'sourceName',
-                    'source_name',
+                    "importName",
+                    "import_name",
+                    "sourceName",
+                    "source_name",
                 )
                 if not name:
                     host = urlparse(url).netloc
-                    name = host[4:] if host.startswith('www.') else host
+                    name = host[4:] if host.startswith("www.") else host
                 entry = {"name": name or "Data Source", "url": url}
 
             if entry["url"] in seen_urls:
@@ -358,7 +364,7 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
             seen_urls.add(entry["url"])
             sources.append(entry)
 
-        except (json.JSONDecodeError, KeyError, TypeError, IndexError):
+        except json.JSONDecodeError, KeyError, TypeError, IndexError:
             continue
 
     return sources

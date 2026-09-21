@@ -25,6 +25,7 @@ system_bp = Blueprint("system", __name__)
 
 # Flask Routes
 
+
 @system_bp.route("/health", methods=["GET"])
 def health():
     """Health check.
@@ -33,14 +34,16 @@ def health():
     longer disagree with where the agent is actually talking after the endpoint
     became configurable.
     """
-    return jsonify({
-        "status": "ok",
-        "mcp_url": mcp_url(),
-        # Discovered, not declared -- see narratives_agent/mcp/capabilities.py.
-        # Tells an operator at a glance whether this deployment can attribute
-        # sources.
-        "mcp": mcp_capabilities().describe(),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "mcp_url": mcp_url(),
+            # Discovered, not declared -- see narratives_agent/mcp/capabilities.py.
+            # Tells an operator at a glance whether this deployment can attribute
+            # sources.
+            "mcp": mcp_capabilities().describe(),
+        }
+    )
 
 
 @system_bp.route("/", methods=["GET"])
@@ -69,6 +72,7 @@ def index():
 # ============================================================
 # NEW BACKEND API ENDPOINTS FOR GEMINI CALLS
 # ============================================================
+
 
 @system_bp.route("/api/config", methods=["GET"])
 def get_config_endpoint():

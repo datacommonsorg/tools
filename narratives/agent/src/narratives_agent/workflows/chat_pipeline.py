@@ -29,7 +29,11 @@ import threading
 import time
 
 import narratives_agent.mcp.client as mcp_client
-from narratives_agent.config import apply_query_overrides, get_gemini_model, load_config
+from narratives_agent.config import (
+    apply_query_overrides,
+    get_gemini_model,
+    load_config,
+)
 from narratives_agent.gemini.client import gemini_request
 from narratives_agent.mcp.client import get_tools
 from narratives_agent.mcp.data_utils import (
@@ -37,7 +41,10 @@ from narratives_agent.mcp.data_utils import (
     check_data_availability,
     extract_provenance_from_mcp_results,
 )
-from narratives_agent.workflows.chart_config import get_chart_config, validate_data_response
+from narratives_agent.workflows.chart_config import (
+    get_chart_config,
+    validate_data_response,
+)
 from narratives_agent.workflows.follow_up import generate_follow_up_questions
 from narratives_agent.workflows.kb_search import execute_kb_query
 from narratives_agent.workflows.mcp_loop import execute_mcp_tool_loop
@@ -62,13 +69,13 @@ def run_mcp_phase(ctx):
     ``mcp_sources`` is both streamed to the frontend and left on ``ctx``: it is
     the single source of citation numbering, shared by the rendered Sources
     list and the numbered list synthesis is prompted with."""
-    session_logger = ctx['session_logger']
-    query_params = ctx['query_params']
-    demo_mode = ctx['demo_mode']
-    user_message = ctx['user_message']
-    history = ctx['history']
-    chart_result_holder = ctx['chart_result_holder']
-    chart_thread = ctx['chart_thread']
+    session_logger = ctx["session_logger"]
+    query_params = ctx["query_params"]
+    demo_mode = ctx["demo_mode"]
+    user_message = ctx["user_message"]
+    history = ctx["history"]
+    chart_result_holder = ctx["chart_result_holder"]
+    chart_thread = ctx["chart_thread"]
 
     # Log query params if present
     if query_params:
@@ -85,12 +92,12 @@ def run_mcp_phase(ctx):
     if not config:
         session_logger.log_error("CONFIG_ERROR", "Backend config not loaded")
         yield f"data: {json.dumps({'error': 'Backend config not loaded'})}\n\n"
-        ctx['aborted'] = True
+        ctx["aborted"] = True
         return
 
     # Apply query param overrides to config
     effective_config = apply_query_overrides(config, query_params)
-    ctx['effective_config'] = effective_config
+    ctx["effective_config"] = effective_config
 
     # Ensure MCP is initialized (fix for tool calls not showing)
     # Readiness is "can we list tools?", not "do we hold a session id?".
@@ -101,18 +108,24 @@ def run_mcp_phase(ctx):
     tools = get_tools()
     if tools:
         mcp_ready = True
-        session_logger.log("MCP_TOOLS_AVAILABLE", {"tool_count": len(tools), "tools": [t.get("name") for t in tools]})
+        session_logger.log(
+            "MCP_TOOLS_AVAILABLE",
+            {"tool_count": len(tools), "tools": [t.get("name") for t in tools]},
+        )
     else:
-        session_logger.log("MCP_NO_TOOLS", {"mcp_session_id": mcp_client.get_session_id()})
+        session_logger.log(
+            "MCP_NO_TOOLS", {"mcp_session_id": mcp_client.get_session_id()}
+        )
 
     # Create thought queue for streaming thoughts from background threads
     thought_queue = queue.Queue()
-    ctx['thought_queue'] = thought_queue
+    ctx["thought_queue"] = thought_queue
 
     def thought_callback(thought_text: str, phase: str):
         """Callback to put thoughts into queue for streaming."""
-        thought_queue.put({'thought': thought_text, 'phase': phase})
-    ctx['thought_callback'] = thought_callback
+        thought_queue.put({"thought": thought_text, "phase": phase})
+
+    ctx["thought_callback"] = thought_callback
 
     # Phase 1: MCP Tools
     mcp_enabled = effective_config.get("mcp", {}).get("enabled", True)
@@ -129,23 +142,30 @@ def run_mcp_phase(ctx):
         # diagnostic, not something to show a user. `truncated` is the part that
         # has to travel -- see the data_status yield below.
         mcp_result_holder = {
-            'results': '', 'tool_calls': [], 'text': '', 'truncated': False,
+            "results": "",
+            "tool_calls": [],
+            "text": "",
+            "truncated": False,
         }
 
         def run_mcp():
             try:
-                (mcp_result_holder['results'],
-                 mcp_result_holder['tool_calls'],
-                 mcp_result_holder['text'],
-                 mcp_result_holder['truncated']) = execute_mcp_tool_loop(
-                    user_message, history, session_logger=session_logger,
+                (
+                    mcp_result_holder["results"],
+                    mcp_result_holder["tool_calls"],
+                    mcp_result_holder["text"],
+                    mcp_result_holder["truncated"],
+                ) = execute_mcp_tool_loop(
+                    user_message,
+                    history,
+                    session_logger=session_logger,
                     effective_config=effective_config,
-                    thought_callback=lambda t: thought_callback(t, 'mcp'),
-                    demo_mode=demo_mode
+                    thought_callback=lambda t: thought_callback(t, "mcp"),
+                    demo_mode=demo_mode,
                 )
             except Exception as e:
                 logger.error(f"MCP thread error: {e}")
-                mcp_result_holder['text'] = f"Error: {e}"
+                mcp_result_holder["text"] = f"Error: {e}"
 
         mcp_thread = threading.Thread(target=run_mcp)
         mcp_thread.start()
@@ -164,9 +184,9 @@ def run_mcp_phase(ctx):
         yield f"data: {json.dumps({'thinking_complete': 'mcp'})}\n\n"
 
         # Get results from thread
-        mcp_results = mcp_result_holder['results']
-        tool_calls_list = mcp_result_holder['tool_calls']
-        mcp_truncated = mcp_result_holder['truncated']
+        mcp_results = mcp_result_holder["results"]
+        tool_calls_list = mcp_result_holder["tool_calls"]
+        mcp_truncated = mcp_result_holder["truncated"]
 
         # Send each tool call for left sidebar
         for tc in tool_calls_list:
@@ -222,9 +242,13 @@ def run_mcp_phase(ctx):
         # specific data in the current dataset" it still reported data found,
         # and the turn rendered two chart cards whose own fetches then came
         # back empty, under prose saying there was no data.
-        if mcp_results and data_status.get('has_data'):
+        if mcp_results and data_status.get("has_data"):
+
             def run_chart_config():
-                chart_result_holder['config'] = get_chart_config(mcp_results, user_message)
+                chart_result_holder["config"] = get_chart_config(
+                    mcp_results, user_message
+                )
+
             chart_thread[0] = threading.Thread(target=run_chart_config)
             chart_thread[0].start()
         elif mcp_results:
@@ -232,20 +256,27 @@ def run_mcp_phase(ctx):
             # should_render=False it was created with and the turn renders no
             # charts. Logged because a turn with results but no charts is
             # otherwise indistinguishable from one whose chart config timed out.
-            session_logger.log("CHART_CONFIG_SKIPPED", {
-                "reason": "no observations in tool results",
-                "no_variables_found": data_status.get('no_variables_found'),
-                "no_observations_found": data_status.get('no_observations_found'),
-                "truncated": data_status.get('truncated'),
-            })
+            session_logger.log(
+                "CHART_CONFIG_SKIPPED",
+                {
+                    "reason": "no observations in tool results",
+                    "no_variables_found": data_status.get("no_variables_found"),
+                    "no_observations_found": data_status.get(
+                        "no_observations_found"
+                    ),
+                    "truncated": data_status.get("truncated"),
+                },
+            )
 
     elif mcp_enabled and not mcp_ready:
-        session_logger.log("MCP_SKIPPED", {"reason": "MCP not connected or no tools available"})
+        session_logger.log(
+            "MCP_SKIPPED", {"reason": "MCP not connected or no tools available"}
+        )
         yield f"data: {json.dumps({'status': 'mcp_skipped', 'message': 'MCP server not connected'})}\n\n"
 
-    ctx['mcp_results'] = mcp_results
-    ctx['tool_calls_list'] = tool_calls_list
-    ctx['mcp_sources'] = mcp_sources
+    ctx["mcp_results"] = mcp_results
+    ctx["tool_calls_list"] = tool_calls_list
+    ctx["mcp_sources"] = mcp_sources
 
 
 def run_kb_phase(ctx):
@@ -254,36 +285,39 @@ def run_kb_phase(ctx):
     Reads ``effective_config``, ``user_message``, ``session_logger``,
     ``demo_mode``, ``thought_queue`` and ``thought_callback`` from ``ctx``;
     writes ``kb_response`` and ``kb_sources`` back into ``ctx``."""
-    if ctx['aborted']:
+    if ctx["aborted"]:
         return
-    session_logger = ctx['session_logger']
-    effective_config = ctx['effective_config']
-    user_message = ctx['user_message']
-    demo_mode = ctx['demo_mode']
-    thought_queue = ctx['thought_queue']
-    thought_callback = ctx['thought_callback']
+    session_logger = ctx["session_logger"]
+    effective_config = ctx["effective_config"]
+    user_message = ctx["user_message"]
+    demo_mode = ctx["demo_mode"]
+    thought_queue = ctx["thought_queue"]
+    thought_callback = ctx["thought_callback"]
 
     # Phase 2: KB Query (if enabled)
     kb_response = ""
     kb_sources = []
-    kb_enabled = effective_config.get("knowledge_base", {}).get("enabled", False)
+    kb_enabled = effective_config.get("knowledge_base", {}).get(
+        "enabled", False
+    )
 
     if kb_enabled:
         yield f"data: {json.dumps({'status': 'kb_start', 'message': 'Searching knowledge base...'})}\n\n"
 
         # Run KB in thread to enable thought streaming
-        kb_result_holder = {'response': '', 'sources': []}
+        kb_result_holder = {"response": "", "sources": []}
 
         def run_kb():
             try:
                 kb_result = execute_kb_query(
-                    user_message, session_logger=session_logger,
-                    thought_callback=lambda t: thought_callback(t, 'kb'),
+                    user_message,
+                    session_logger=session_logger,
+                    thought_callback=lambda t: thought_callback(t, "kb"),
                     demo_mode=demo_mode,
-                    effective_config=effective_config
+                    effective_config=effective_config,
                 )
-                kb_result_holder['response'] = kb_result.get("response", "")
-                kb_result_holder['sources'] = kb_result.get("sources", [])
+                kb_result_holder["response"] = kb_result.get("response", "")
+                kb_result_holder["sources"] = kb_result.get("sources", [])
             except Exception as e:
                 logger.error(f"KB thread error: {e}")
 
@@ -304,16 +338,16 @@ def run_kb_phase(ctx):
         yield f"data: {json.dumps({'thinking_complete': 'kb'})}\n\n"
 
         # Get results from thread
-        kb_response = kb_result_holder['response']
-        kb_sources = kb_result_holder['sources']
+        kb_response = kb_result_holder["response"]
+        kb_sources = kb_result_holder["sources"]
 
         # Send KB sources to frontend for inline citations
         if kb_sources:
             yield f"data: {json.dumps({'kb_sources': kb_sources})}\n\n"
         yield f"data: {json.dumps({'status': 'kb_complete'})}\n\n"
 
-    ctx['kb_response'] = kb_response
-    ctx['kb_sources'] = kb_sources
+    ctx["kb_response"] = kb_response
+    ctx["kb_sources"] = kb_sources
 
 
 def run_synthesis_phase(ctx):
@@ -326,28 +360,30 @@ def run_synthesis_phase(ctx):
     ``ctx['aborted']`` if the synthesis request returns an error dict or the
     stream breaks part-way, so chart validation, the ``done`` event and
     follow-ups are skipped for a response that was never completed."""
-    if ctx['aborted']:
+    if ctx["aborted"]:
         return
-    session_logger = ctx['session_logger']
-    effective_config = ctx['effective_config']
-    user_message = ctx['user_message']
-    history = ctx['history']
-    demo_mode = ctx['demo_mode']
-    mcp_results = ctx['mcp_results']
-    mcp_sources = ctx['mcp_sources']
-    kb_response = ctx['kb_response']
-    kb_sources = ctx['kb_sources']
-    chart_result_holder = ctx['chart_result_holder']
-    chart_thread = ctx['chart_thread']
-    request_start_time = ctx['request_start_time']
-    full_text = ctx['full_text']
+    session_logger = ctx["session_logger"]
+    effective_config = ctx["effective_config"]
+    user_message = ctx["user_message"]
+    history = ctx["history"]
+    demo_mode = ctx["demo_mode"]
+    mcp_results = ctx["mcp_results"]
+    mcp_sources = ctx["mcp_sources"]
+    kb_response = ctx["kb_response"]
+    kb_sources = ctx["kb_sources"]
+    chart_result_holder = ctx["chart_result_holder"]
+    chart_thread = ctx["chart_thread"]
+    request_start_time = ctx["request_start_time"]
+    full_text = ctx["full_text"]
 
     # Phase 3: Synthesis with streaming
     yield f"data: {json.dumps({'status': 'synthesis_start', 'message': 'Generating response...'})}\n\n"
 
     synthesis_prompt = effective_config.get("prompts", {}).get("synthesis", "")
     synthesis_model = get_gemini_model(effective_config)
-    thinking_level = effective_config.get("thinking", {}).get("synthesis_level", "low")
+    thinking_level = effective_config.get("thinking", {}).get(
+        "synthesis_level", "low"
+    )
 
     # Build synthesis context with source labels for citations
     context_parts = []
@@ -385,15 +421,23 @@ def run_synthesis_phase(ctx):
         # kb_sources to {name, url} and appending them to mcp_sources in the
         # same order the reducer merges them. Inert while
         # knowledge_base.enabled is false, which it is for this instance.
-        kb_source_names = ", ".join([s['title'] for s in kb_sources]) if kb_sources else "Knowledge Base"
-        context_parts.append(f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n{kb_response}")
+        kb_source_names = (
+            ", ".join([s["title"] for s in kb_sources])
+            if kb_sources
+            else "Knowledge Base"
+        )
+        context_parts.append(
+            f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n{kb_response}"
+        )
 
     # Log synthesis start
-    session_logger.log_synthesis_start(["MCP" if mcp_results else None, "KB" if kb_response else None])
+    session_logger.log_synthesis_start(
+        ["MCP" if mcp_results else None, "KB" if kb_response else None]
+    )
 
     synthesis_message = f"""User Query: {user_message}
 
-{chr(10).join(context_parts) if context_parts else 'No additional context available.'}
+{chr(10).join(context_parts) if context_parts else "No additional context available."}
 
 Please provide a comprehensive response combining all available information."""
 
@@ -407,7 +451,9 @@ Please provide a comprehensive response combining all available information."""
             synthesis_messages.append(msg)
 
         # Add current query with MCP/KB context as final user message
-        synthesis_messages.append({"role": "user", "parts": [{"text": synthesis_message}]})
+        synthesis_messages.append(
+            {"role": "user", "parts": [{"text": synthesis_message}]}
+        )
 
         stream_gen = gemini_request(
             messages=synthesis_messages,
@@ -418,22 +464,22 @@ Please provide a comprehensive response combining all available information."""
             stream=True,
             session_logger=session_logger,
             include_thoughts=True,  # Enable thought streaming
-            demo_mode=demo_mode
+            demo_mode=demo_mode,
         )
 
         if isinstance(stream_gen, dict) and "error" in stream_gen:
-            session_logger.log_error("SYNTHESIS_ERROR", stream_gen['error'])
+            session_logger.log_error("SYNTHESIS_ERROR", stream_gen["error"])
             yield f"data: {json.dumps({'error': stream_gen['error']})}\n\n"
-            ctx['aborted'] = True
+            ctx["aborted"] = True
             return
 
         for chunk in stream_gen:
             # Handle dict format with 'type' and 'content' keys
             if isinstance(chunk, dict):
-                if chunk.get('type') == 'thought':
+                if chunk.get("type") == "thought":
                     yield f"data: {json.dumps({'thought': chunk['content'], 'phase': 'synthesis'})}\n\n"
-                elif chunk.get('type') == 'text':
-                    full_text += chunk['content']
+                elif chunk.get("type") == "text":
+                    full_text += chunk["content"]
                     yield f"data: {json.dumps({'text': chunk['content']})}\n\n"
             else:
                 # Backward compatibility: plain text string
@@ -451,8 +497,8 @@ Please provide a comprehensive response combining all available information."""
         # validation and follow-up generation would spend two more Gemini
         # calls judging a partial answer. Abort instead; the frontend treats
         # `error` as a terminal status, so it does not need the `done` event.
-        ctx['full_text'] = full_text
-        ctx['aborted'] = True
+        ctx["full_text"] = full_text
+        ctx["aborted"] = True
         return
 
     # Quick validation: should we show charts based on synthesis response?
@@ -460,20 +506,25 @@ Please provide a comprehensive response combining all available information."""
     if full_text and chart_thread[0]:
         show_charts = validate_data_response(full_text, user_message)
         if not show_charts:
-            session_logger.log("CHART_VALIDATION", {"data_found": False, "action": "hide_charts"})
+            session_logger.log(
+                "CHART_VALIDATION",
+                {"data_found": False, "action": "hide_charts"},
+            )
 
     # Wait for chart config thread (started after MCP, runs parallel with KB + synthesis)
     if chart_thread[0]:
         chart_thread[0].join(timeout=CHART_CONFIG_JOIN_TIMEOUT_SECONDS)
-    chart_config = chart_result_holder['config']
+    chart_config = chart_result_holder["config"]
 
     # Add hide_charts flag if validation determined no data was found
     if not show_charts:
-        chart_config['hide_charts'] = True
+        chart_config["hide_charts"] = True
 
     # Log final response
     total_duration_ms = (time.time() - request_start_time) * 1000
-    session_logger.log_final_response(full_text, chart_config, total_duration_ms)
+    session_logger.log_final_response(
+        full_text, chart_config, total_duration_ms
+    )
 
     # Temporary cost instrumentation: report accumulated Gemini token usage
     # for this query (MCP + KB + synthesis + chart config). Emitted before
@@ -485,8 +536,8 @@ Please provide a comprehensive response combining all available information."""
     # Send final event with timing info
     yield f"data: {json.dumps({'chart_config': chart_config, 'done': True, 'duration_ms': round(total_duration_ms, 0)})}\n\n"
 
-    ctx['full_text'] = full_text
-    ctx['chart_config'] = chart_config
+    ctx["full_text"] = full_text
+    ctx["chart_config"] = chart_config
 
 
 def run_followups(ctx):
@@ -494,22 +545,24 @@ def run_followups(ctx):
 
     Reads ``chart_config`` and ``user_message`` from ``ctx``. Runs after the
     ``done`` event, matching the original order."""
-    if ctx['aborted']:
+    if ctx["aborted"]:
         return
-    user_message = ctx['user_message']
-    chart_config = ctx['chart_config']
+    user_message = ctx["user_message"]
+    chart_config = ctx["chart_config"]
 
     # Follow-up questions — grounded in the resolved chart topics. Emitted
     # AFTER `done` so the answer/charts render immediately; the UI shows
     # them when they arrive. Returns nothing when no topics resolved.
     try:
         topics = []
-        for c in (chart_config.get('charts') or []):
-            title = c.get('title')
+        for c in chart_config.get("charts") or []:
+            title = c.get("title")
             if title:
                 topics.append(title)
-        if not topics and chart_config.get('title'):  # legacy single-chart shape
-            topics.append(chart_config['title'])
+        if not topics and chart_config.get(
+            "title"
+        ):  # legacy single-chart shape
+            topics.append(chart_config["title"])
         follow_ups = generate_follow_up_questions(user_message, topics)
         if follow_ups:
             yield f"data: {json.dumps({'follow_up_questions': follow_ups})}\n\n"

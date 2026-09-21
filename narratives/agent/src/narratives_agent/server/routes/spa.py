@@ -55,7 +55,18 @@ STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", _DEFAULT_STATIC_ROOT))
 # directory, or anything else that shares the image -- while removing the
 # hand-maintenance that made it wrong.
 _SERVABLE_SUFFIXES = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".woff", ".woff2", ".txt"}
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".ico",
+        ".webp",
+        ".woff",
+        ".woff2",
+        ".txt",
+    }
 )
 
 

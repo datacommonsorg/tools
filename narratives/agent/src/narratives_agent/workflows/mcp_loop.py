@@ -15,7 +15,6 @@
 
 import json
 import logging
-from typing import Optional
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import gemini_request_with_thought_streaming
@@ -40,10 +39,10 @@ def execute_mcp_tool_loop(
     # two, and a bilateral question was observed spending all seven turns on
     # search alone and returning no data at all.
     max_iterations: int = 15,
-    session_logger: Optional[SessionLogger] = None,
+    session_logger: SessionLogger | None = None,
     effective_config: dict = None,
     thought_callback: callable = None,
-    demo_mode: bool = False
+    demo_mode: bool = False,
 ) -> tuple:
     """Execute the MCP tool calling loop with optional thought streaming.
 
@@ -76,17 +75,22 @@ def execute_mcp_tool_loop(
     tools = get_tools()
     if not tools:
         if session_logger:
-            session_logger.log_error("MCP_TOOLS_UNAVAILABLE", "No MCP tools available")
+            session_logger.log_error(
+                "MCP_TOOLS_UNAVAILABLE", "No MCP tools available"
+            )
         return "", [], "MCP tools not available", False
 
     # Convert tools to Gemini format (transform schema to remove unsupported constructs)
-    gemini_tools = [{
-        "name": t.get("name", ""),
-        "description": t.get("description", ""),
-        "parameters": transform_schema_for_gemini(
-            t.get("inputSchema", {"type": "object", "properties": {}})
-        )
-    } for t in tools]
+    gemini_tools = [
+        {
+            "name": t.get("name", ""),
+            "description": t.get("description", ""),
+            "parameters": transform_schema_for_gemini(
+                t.get("inputSchema", {"type": "object", "properties": {}})
+            ),
+        }
+        for t in tools
+    ]
 
     # Build conversation - NO history for MCP calls (fresh search every time)
     # History is only used in synthesis phase for context
@@ -97,10 +101,15 @@ def execute_mcp_tool_loop(
     all_tool_results = []
 
     for iteration in range(max_iterations):
-        logger.info(f"MCP Tool Loop - Iteration {iteration + 1}/{max_iterations}")
+        logger.info(
+            f"MCP Tool Loop - Iteration {iteration + 1}/{max_iterations}"
+        )
 
         if session_logger:
-            session_logger.log("MCP_LOOP_ITERATION", {"iteration": iteration + 1, "max": max_iterations})
+            session_logger.log(
+                "MCP_LOOP_ITERATION",
+                {"iteration": iteration + 1, "max": max_iterations},
+            )
 
         response = gemini_request_with_thought_streaming(
             messages=contents,
@@ -111,19 +120,21 @@ def execute_mcp_tool_loop(
             thinking_level=thinking_level,
             session_logger=session_logger,
             thought_callback=thought_callback,
-            demo_mode=demo_mode
+            demo_mode=demo_mode,
         )
 
         if "error" in response:
             if session_logger:
-                session_logger.log_error("MCP_LOOP_ERROR", response['error'])
+                session_logger.log_error("MCP_LOOP_ERROR", response["error"])
             return "", tool_calls_list, f"Error: {response['error']}", False
 
         # Check for function calls
         candidates = response.get("candidates", [])
         if not candidates:
             if session_logger:
-                session_logger.log_error("MCP_NO_CANDIDATES", "No response from model")
+                session_logger.log_error(
+                    "MCP_NO_CANDIDATES", "No response from model"
+                )
             return "", tool_calls_list, "No response from model", False
 
         candidate = candidates[0]
@@ -143,11 +154,14 @@ def execute_mcp_tool_loop(
         if not function_calls:
             tool_results_text = "\n\n".join(all_tool_results)
             if session_logger:
-                session_logger.log("MCP_LOOP_COMPLETE", {
-                    "iterations_used": iteration + 1,
-                    "tools_called": len(tool_calls_list),
-                    "has_text_response": bool(text_response)
-                })
+                session_logger.log(
+                    "MCP_LOOP_COMPLETE",
+                    {
+                        "iterations_used": iteration + 1,
+                        "tools_called": len(tool_calls_list),
+                        "has_text_response": bool(text_response),
+                    },
+                )
             return tool_results_text, tool_calls_list, text_response, False
 
         # Execute function calls
@@ -159,14 +173,19 @@ def execute_mcp_tool_loop(
             tool_args = fc.get("args", {})
 
             logger.info(f"Executing MCP tool: {tool_name}")
-            result = call_tool(tool_name, tool_args, session_logger=session_logger)
+            result = call_tool(
+                tool_name, tool_args, session_logger=session_logger
+            )
 
             # Convert result to string
             if isinstance(result, dict):
                 if "content" in result and isinstance(result["content"], list):
-                    result_text = "\n".join([
-                        c.get("text", json.dumps(c)) for c in result["content"]
-                    ])
+                    result_text = "\n".join(
+                        [
+                            c.get("text", json.dumps(c))
+                            for c in result["content"]
+                        ]
+                    )
                 else:
                     result_text = json.dumps(result)
             else:
@@ -176,17 +195,21 @@ def execute_mcp_tool_loop(
                 "name": tool_name,
                 "arguments": tool_args,
                 "result": result_text,  # No truncation - full result for source extraction
-                "status": "error" if "error" in result_text.lower() else "success"
+                "status": "error"
+                if "error" in result_text.lower()
+                else "success",
             }
             tool_calls_list.append(tool_call_info)
             all_tool_results.append(f"Tool: {tool_name}\nResult: {result_text}")
 
-            function_responses.append({
-                "functionResponse": {
-                    "name": tool_name,
-                    "response": {"result": result_text}
+            function_responses.append(
+                {
+                    "functionResponse": {
+                        "name": tool_name,
+                        "response": {"result": result_text},
+                    }
                 }
-            })
+            )
 
         contents.append({"role": "user", "parts": function_responses})
 
@@ -201,9 +224,16 @@ def execute_mcp_tool_loop(
         len(tool_calls_list),
     )
     if session_logger:
-        session_logger.log("MCP_LOOP_MAX_ITERATIONS", {
-            "tools_called": len(tool_calls_list),
-            "max_iterations": max_iterations,
-        })
-    return (tool_results_text, tool_calls_list,
-            "Max tool iterations reached", True)
+        session_logger.log(
+            "MCP_LOOP_MAX_ITERATIONS",
+            {
+                "tools_called": len(tool_calls_list),
+                "max_iterations": max_iterations,
+            },
+        )
+    return (
+        tool_results_text,
+        tool_calls_list,
+        "Max tool iterations reached",
+        True,
+    )

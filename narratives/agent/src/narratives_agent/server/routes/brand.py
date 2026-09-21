@@ -65,15 +65,22 @@ _ASSET_CONTENT_TYPES = {
 # broad: a false positive costs one log line and a dropped key, a false negative
 # publishes a secret to every browser that loads the page.
 _CREDENTIAL_PATTERNS = (
-    re.compile(r"^AIza[0-9A-Za-z_-]{20,}$"),          # Google API key
-    re.compile(r"^gh[pousr]_[0-9A-Za-z]{20,}$"),      # GitHub token
-    re.compile(r"^sk-[0-9A-Za-z_-]{20,}$"),           # OpenAI-style key
-    re.compile(r"^ya29\.[0-9A-Za-z_-]{20,}$"),        # Google OAuth token
+    re.compile(r"^AIza[0-9A-Za-z_-]{20,}$"),  # Google API key
+    re.compile(r"^gh[pousr]_[0-9A-Za-z]{20,}$"),  # GitHub token
+    re.compile(r"^sk-[0-9A-Za-z_-]{20,}$"),  # OpenAI-style key
+    re.compile(r"^ya29\.[0-9A-Za-z_-]{20,}$"),  # Google OAuth token
     re.compile(r"^-----BEGIN [A-Z ]*PRIVATE KEY-----"),
 )
 
 # Keys whose *name* implies a secret, whatever the value looks like.
-_CREDENTIAL_KEY_HINTS = ("api_key", "apikey", "secret", "password", "private_key", "token")
+_CREDENTIAL_KEY_HINTS = (
+    "api_key",
+    "apikey",
+    "secret",
+    "password",
+    "private_key",
+    "token",
+)
 
 # Populated once by load_branding(); read-only thereafter.
 _BRAND_STATE: dict = {
@@ -152,7 +159,9 @@ def find_credential_like_values(node, path: str = "") -> list[str]:
                 findings.extend(find_credential_like_values(value, child))
     elif isinstance(node, list):
         for index, value in enumerate(node):
-            findings.extend(find_credential_like_values(value, f"{path}[{index}]"))
+            findings.extend(
+                find_credential_like_values(value, f"{path}[{index}]")
+            )
     return findings
 
 
@@ -184,7 +193,9 @@ def _fetch_branding_document(base_url: str) -> dict | None:
         return None
 
     if response.status_code != 200:
-        logger.warning(f"branding.json fetch returned HTTP {response.status_code}")
+        logger.warning(
+            f"branding.json fetch returned HTTP {response.status_code}"
+        )
         return None
 
     try:
@@ -208,7 +219,9 @@ def _fetch_asset(base_url: str, relative_path: str) -> bytes | None:
     try:
         response = _fetch_gcs_url(f"{base_url}/{relative_path.lstrip('/')}")
     except Exception as error:
-        logger.error(f"Brand asset '{relative_path}' could not be fetched: {error}")
+        logger.error(
+            f"Brand asset '{relative_path}' could not be fetched: {error}"
+        )
         return None
     if response.status_code != 200:
         logger.warning(
@@ -323,7 +336,9 @@ def load_branding() -> None:
     """
     base_url = os.environ.get("BRAND_CONFIG_URL", "").rstrip("/")
     if not base_url:
-        logger.info("BRAND_CONFIG_URL is unset; serving the UI's default branding")
+        logger.info(
+            "BRAND_CONFIG_URL is unset; serving the UI's default branding"
+        )
         _BRAND_STATE["loaded"] = True
         return
 
@@ -403,7 +418,9 @@ def brand_asset(name: str) -> Response:
     extension = posixpath.splitext(name)[1].lower()
     response = Response(
         content,
-        mimetype=_ASSET_CONTENT_TYPES.get(extension, "application/octet-stream"),
+        mimetype=_ASSET_CONTENT_TYPES.get(
+            extension, "application/octet-stream"
+        ),
     )
     # Genuinely immutable: _mirror_assets names each asset after a digest of
     # its bytes, so the content behind a given name can never change and the

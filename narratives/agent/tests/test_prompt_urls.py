@@ -9,6 +9,7 @@ as "slot absent" and carries on -- so the whole class of failure here is silent:
 the agent starts, answers, and only runs every phase with no system instruction.
 That makes the derivation worth pinning at each shape CONFIG_URL can take.
 """
+
 import importlib.util
 import os
 import sys
@@ -23,7 +24,9 @@ sys.modules.setdefault("google", types.ModuleType("google"))
 sys.modules.setdefault("google.cloud", types.ModuleType("google.cloud"))
 sys.modules["google.cloud.secretmanager"] = _sm
 
-spec = importlib.util.spec_from_file_location("agentconfig", "src/narratives_agent/config.py")
+spec = importlib.util.spec_from_file_location(
+    "agentconfig", "src/narratives_agent/config.py"
+)
 cfg = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cfg)
 
@@ -32,6 +35,7 @@ requested = []
 
 class _Response:
     """Enough of requests.Response for _fetch_prompt_bodies."""
+
     text = "body"
 
     def raise_for_status(self):
@@ -52,12 +56,18 @@ cfg._fetch_gcs_url = _record
 #   single slash at the root, and the query -- which addresses the config object
 #   alone -- neither carried over nor read as part of the path.
 CASES = [
-    ("https://storage.googleapis.com/bucket/dir/agent-config.json",
-     "https://storage.googleapis.com/bucket/dir/prompts/mcp.md"),
-    ("https://example.com/agent-config.json",
-     "https://example.com/prompts/mcp.md"),
-    ("https://storage.googleapis.com/bucket/agent-config.json?generation=17&x=a/b",
-     "https://storage.googleapis.com/bucket/prompts/mcp.md"),
+    (
+        "https://storage.googleapis.com/bucket/dir/agent-config.json",
+        "https://storage.googleapis.com/bucket/dir/prompts/mcp.md",
+    ),
+    (
+        "https://example.com/agent-config.json",
+        "https://example.com/prompts/mcp.md",
+    ),
+    (
+        "https://storage.googleapis.com/bucket/agent-config.json?generation=17&x=a/b",
+        "https://storage.googleapis.com/bucket/prompts/mcp.md",
+    ),
 ]
 
 fails = []
@@ -72,6 +82,9 @@ for config_url, expected in CASES:
     if not ok:
         fails.append(config_url)
 
-print(f"\n{len(CASES) - len(fails)}/{len(CASES)} checks passed"
-      if not fails else f"\nFAILURES: {fails}")
+print(
+    f"\n{len(CASES) - len(fails)}/{len(CASES)} checks passed"
+    if not fails
+    else f"\nFAILURES: {fails}"
+)
 sys.exit(1 if fails else 0)

@@ -17,6 +17,7 @@ to reserved demo API keys. It used to fall back to a literal default, so a
 public repo published a working credential; and an empty default would make
 "" == "" true for every anonymous caller, which is worse still.
 """
+
 import importlib.util
 import os
 import secrets
@@ -32,7 +33,9 @@ sys.modules.setdefault("google", types.ModuleType("google"))
 sys.modules.setdefault("google.cloud", types.ModuleType("google.cloud"))
 sys.modules["google.cloud.secretmanager"] = _sm
 
-spec = importlib.util.spec_from_file_location("agentconfig", "src/narratives_agent/config.py")
+spec = importlib.util.spec_from_file_location(
+    "agentconfig", "src/narratives_agent/config.py"
+)
 cfg = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cfg)
 
@@ -47,7 +50,9 @@ def check(label, got, want):
         print(f"  ok   {label}")
     else:
         failures.append(label)
-        print(f"  FAIL {label}\n         got:  {got!r}\n         want: {want!r}")
+        print(
+            f"  FAIL {label}\n         got:  {got!r}\n         want: {want!r}"
+        )
 
 
 def with_config(doc):
@@ -57,49 +62,81 @@ def with_config(doc):
 # --- {{instance.*}} substitution -------------------------------------------
 print("instance template vars")
 
-with_config({"template_vars": {"name": "Example DC", "region": "the world",
-                               "states_term": "regions"}})
-check("single placeholder",
-      cfg.render_prompt("Welcome to {{instance.name}}."),
-      "Welcome to Example DC.")
-check("repeated placeholder",
-      cfg.render_prompt("{{instance.name}} / {{instance.name}}"),
-      "Example DC / Example DC")
-check("several distinct placeholders",
-      cfg.render_prompt("{{instance.name}} covers {{instance.region}} by {{instance.states_term}}"),
-      "Example DC covers the world by regions")
-check("unknown placeholder is left intact, not blanked",
-      cfg.render_prompt("fiscal year {{instance.fiscal_year_start}}"),
-      "fiscal year {{instance.fiscal_year_start}}")
-check("prompt with no placeholders is untouched",
-      cfg.render_prompt("plain text"),
-      "plain text")
+with_config(
+    {
+        "template_vars": {
+            "name": "Example DC",
+            "region": "the world",
+            "states_term": "regions",
+        }
+    }
+)
+check(
+    "single placeholder",
+    cfg.render_prompt("Welcome to {{instance.name}}."),
+    "Welcome to Example DC.",
+)
+check(
+    "repeated placeholder",
+    cfg.render_prompt("{{instance.name}} / {{instance.name}}"),
+    "Example DC / Example DC",
+)
+check(
+    "several distinct placeholders",
+    cfg.render_prompt(
+        "{{instance.name}} covers {{instance.region}} by {{instance.states_term}}"
+    ),
+    "Example DC covers the world by regions",
+)
+check(
+    "unknown placeholder is left intact, not blanked",
+    cfg.render_prompt("fiscal year {{instance.fiscal_year_start}}"),
+    "fiscal year {{instance.fiscal_year_start}}",
+)
+check(
+    "prompt with no placeholders is untouched",
+    cfg.render_prompt("plain text"),
+    "plain text",
+)
 
-with_config({"template_vars": {"_comment": "notes for humans", "name": "Example DC"}})
-check("_comment keys are not substitutable",
-      cfg.render_prompt("{{instance._comment}}|{{instance.name}}"),
-      "{{instance._comment}}|Example DC")
+with_config(
+    {"template_vars": {"_comment": "notes for humans", "name": "Example DC"}}
+)
+check(
+    "_comment keys are not substitutable",
+    cfg.render_prompt("{{instance._comment}}|{{instance.name}}"),
+    "{{instance._comment}}|Example DC",
+)
 
 with_config({"template_vars": {"fiscal_year_start": "04-01", "count": 7}})
-check("non-string scalars are coerced",
-      cfg.render_prompt("{{instance.count}} on {{instance.fiscal_year_start}}"),
-      "7 on 04-01")
+check(
+    "non-string scalars are coerced",
+    cfg.render_prompt("{{instance.count}} on {{instance.fiscal_year_start}}"),
+    "7 on 04-01",
+)
 
 with_config({})
-check("absent template_vars leaves placeholders intact",
-      cfg.render_prompt("{{instance.name}}"),
-      "{{instance.name}}")
+check(
+    "absent template_vars leaves placeholders intact",
+    cfg.render_prompt("{{instance.name}}"),
+    "{{instance.name}}",
+)
 
 with_config({"template_vars": "not-an-object"})
-check("malformed template_vars does not raise",
-      cfg.render_prompt("{{instance.name}}"),
-      "{{instance.name}}")
+check(
+    "malformed template_vars does not raise",
+    cfg.render_prompt("{{instance.name}}"),
+    "{{instance.name}}",
+)
 
 with_config({"template_vars": {"name": "Example DC"}})
 rendered = cfg.render_prompt("{{CURRENT_DATETIME}} at {{instance.name}}")
-check("datetime still substituted alongside instance vars",
-      "{{CURRENT_DATETIME}}" not in rendered and rendered.endswith("at Example DC"),
-      True)
+check(
+    "datetime still substituted alongside instance vars",
+    "{{CURRENT_DATETIME}}" not in rendered
+    and rendered.endswith("at Example DC"),
+    True,
+)
 
 
 # --- the ?key= override gate ------------------------------------------------
@@ -113,16 +150,33 @@ def gate(expected, supplied):
 
 with_config({})
 check("unconfigured key reads as empty", cfg.get_query_param_key(), "")
-check("no key configured, none supplied -> refused", gate(cfg.get_query_param_key(), ""), False)
-check("no key configured, key guessed  -> refused",
-      gate(cfg.get_query_param_key(), "AISummit2026"), False)
+check(
+    "no key configured, none supplied -> refused",
+    gate(cfg.get_query_param_key(), ""),
+    False,
+)
+check(
+    "no key configured, key guessed  -> refused",
+    gate(cfg.get_query_param_key(), "AISummit2026"),
+    False,
+)
 
 with_config({"query_param_key": "  a-long-non-guessable-value  "})
-check("configured key is stripped", cfg.get_query_param_key(), "a-long-non-guessable-value")
-check("configured key, wrong value -> refused",
-      gate(cfg.get_query_param_key(), "nope"), False)
-check("configured key, right value -> allowed",
-      gate(cfg.get_query_param_key(), "a-long-non-guessable-value"), True)
+check(
+    "configured key is stripped",
+    cfg.get_query_param_key(),
+    "a-long-non-guessable-value",
+)
+check(
+    "configured key, wrong value -> refused",
+    gate(cfg.get_query_param_key(), "nope"),
+    False,
+)
+check(
+    "configured key, right value -> allowed",
+    gate(cfg.get_query_param_key(), "a-long-non-guessable-value"),
+    True,
+)
 
 with_config({"query_param_key": 12345})
 check("non-string key reads as empty", cfg.get_query_param_key(), "")

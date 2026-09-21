@@ -124,9 +124,13 @@ def fix_tool_arguments(name: str, arguments: dict) -> dict:
         # Fix 1: If date_range_start/end provided but date != 'range', fix it.
         # Load-bearing, not cosmetic: the server ignores the range bounds unless
         # date is exactly "range" and returns a single latest value instead.
-        has_range_params = args.get("date_range_start") or args.get("date_range_end")
+        has_range_params = args.get("date_range_start") or args.get(
+            "date_range_end"
+        )
         if has_range_params and args.get("date") != "range":
-            logger.info("Fixing: Setting date='range' because date_range params provided")
+            logger.info(
+                "Fixing: Setting date='range' because date_range params provided"
+            )
             args["date"] = "range"
 
         # Fix 2: Ensure date has a default if not provided

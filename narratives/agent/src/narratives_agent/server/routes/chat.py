@@ -18,7 +18,7 @@ import logging
 import secrets
 import time
 
-from flask import Blueprint, jsonify, request, Response, stream_with_context
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from narratives_agent.config import get_query_param_key
 from narratives_agent.session_logger import SessionLogger
@@ -35,7 +35,9 @@ chat_bp = Blueprint("chat", __name__)
 
 
 @chat_bp.route("/api/chat/stream", methods=["POST"])
-@chat_bp.route("/chat/stream", methods=["POST"])  # alias for the SPA served under /agent/*
+@chat_bp.route(
+    "/chat/stream", methods=["POST"]
+)  # alias for the SPA served under /agent/*
 def chat_stream():
     """Full chat workflow with SSE streaming.
 
@@ -79,10 +81,16 @@ def chat_stream():
     if expected_key and secrets.compare_digest(secret_key, expected_key):
         # Valid key - extract override params
         query_params = {
-            "model": request.args.get("model"),  # e.g., "gemini-3-flash-preview"
+            "model": request.args.get(
+                "model"
+            ),  # e.g., "gemini-3-flash-preview"
             "kb_enabled": request.args.get("kb"),  # "true" or "false"
-            "mcp_thinking": request.args.get("mcp_thinking"),  # "low", "medium", "high", or budget number
-            "synthesis_thinking": request.args.get("synthesis_thinking"),  # same options
+            "mcp_thinking": request.args.get(
+                "mcp_thinking"
+            ),  # "low", "medium", "high", or budget number
+            "synthesis_thinking": request.args.get(
+                "synthesis_thinking"
+            ),  # same options
         }
         # Remove None values
         query_params = {k: v for k, v in query_params.items() if v is not None}
@@ -95,7 +103,7 @@ def chat_stream():
             logger.info("Demo mode ENABLED - using reserved demo API keys")
     elif secret_key:
         # Invalid key provided - log warning but continue with defaults
-        logger.warning(f"Invalid query param key provided, ignoring overrides")
+        logger.warning("Invalid query param key provided, ignoring overrides")
 
     # Create or resume session logger
     session_logger = SessionLogger(session_id=existing_session_id)
@@ -106,31 +114,31 @@ def chat_stream():
         full_text = ""
 
         # Chart config runs in parallel with KB + synthesis
-        chart_result_holder = {'config': {"should_render": False}}
+        chart_result_holder = {"config": {"should_render": False}}
         chart_thread = [None]  # Use list to avoid nonlocal issues
 
         # Shared mutable context threaded through the phase generators so the
         # threading/queue behavior and cross-phase state match the original
         # inline generator exactly.
         ctx = {
-            'user_message': user_message,
-            'history': history,
-            'session_logger': session_logger,
-            'query_params': query_params,
-            'demo_mode': demo_mode,
-            'request_start_time': request_start_time,
-            'full_text': full_text,
-            'chart_result_holder': chart_result_holder,
-            'chart_thread': chart_thread,
-            'effective_config': None,
-            'mcp_results': "",
-            'tool_calls_list': [],
-            'kb_response': "",
-            'kb_sources': [],
-            'thought_queue': None,
-            'thought_callback': None,
-            'chart_config': None,
-            'aborted': False,
+            "user_message": user_message,
+            "history": history,
+            "session_logger": session_logger,
+            "query_params": query_params,
+            "demo_mode": demo_mode,
+            "request_start_time": request_start_time,
+            "full_text": full_text,
+            "chart_result_holder": chart_result_holder,
+            "chart_thread": chart_thread,
+            "effective_config": None,
+            "mcp_results": "",
+            "tool_calls_list": [],
+            "kb_response": "",
+            "kb_sources": [],
+            "thought_queue": None,
+            "thought_callback": None,
+            "chart_config": None,
+            "aborted": False,
         }
 
         # Send session ID first so frontend can display it
@@ -143,10 +151,10 @@ def chat_stream():
 
     return Response(
         stream_with_context(generate()),
-        mimetype='text/event-stream',
+        mimetype="text/event-stream",
         headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive'
-        }
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )

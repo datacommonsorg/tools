@@ -34,7 +34,6 @@ which tools exist, and does source attribution work here.
 
 import logging
 from dataclasses import dataclass, field
-from typing import FrozenSet
 
 logger = logging.getLogger(__name__)
 
@@ -45,23 +44,27 @@ _METADATA_TOOL = "get_variable_metadata"
 
 # Tools that return observations. Used to decide whether a turn actually
 # fetched any numbers.
-_OBSERVATION_TOOLS = frozenset({
-    "get_observations",
-    "get_child_observations",
-    "get_multi_entity_observations",
-})
+_OBSERVATION_TOOLS = frozenset(
+    {
+        "get_observations",
+        "get_child_observations",
+        "get_multi_entity_observations",
+    }
+)
 
-_SEARCH_TOOLS = frozenset({
-    "search_indicators",
-    "search_child_indicators",
-})
+_SEARCH_TOOLS = frozenset(
+    {
+        "search_indicators",
+        "search_child_indicators",
+    }
+)
 
 
 @dataclass(frozen=True)
 class Capabilities:
     """An immutable snapshot of one MCP server's tool surface."""
 
-    tool_names: FrozenSet[str] = field(default_factory=frozenset)
+    tool_names: frozenset[str] = field(default_factory=frozenset)
 
     def has(self, tool: str) -> bool:
         return tool in self.tool_names
@@ -77,11 +80,11 @@ class Capabilities:
         return self.has(_METADATA_TOOL)
 
     @property
-    def observation_tools(self) -> FrozenSet[str]:
+    def observation_tools(self) -> frozenset[str]:
         return _OBSERVATION_TOOLS & self.tool_names
 
     @property
-    def search_tools(self) -> FrozenSet[str]:
+    def search_tools(self) -> frozenset[str]:
         return _SEARCH_TOOLS & self.tool_names
 
     @property
@@ -108,7 +111,9 @@ class Capabilities:
 def from_tools(tools: list) -> Capabilities:
     """Build a snapshot from whatever `tools/list` returned."""
     names = frozenset(
-        t.get("name") for t in (tools or []) if isinstance(t, dict) and t.get("name")
+        t.get("name")
+        for t in (tools or [])
+        if isinstance(t, dict) and t.get("name")
     )
     return Capabilities(tool_names=names)
 
@@ -118,7 +123,9 @@ def current_cached() -> Capabilities:
 
     Use where blocking is unacceptable, e.g. a health endpoint.
     """
-    from narratives_agent.mcp.client import cached_tools  # noqa: PLC0415  (circular by design)
+    from narratives_agent.mcp.client import (
+        cached_tools,
+    )
 
     return from_tools(cached_tools())
 
@@ -129,7 +136,9 @@ def current() -> Capabilities:
     Imported lazily so this module stays independent of the client -- the
     client's schema helpers would otherwise import it back.
     """
-    from narratives_agent.mcp.client import get_tools  # noqa: PLC0415  (circular by design)
+    from narratives_agent.mcp.client import (
+        get_tools,
+    )
 
     caps = from_tools(get_tools())
     if not caps.tool_names:
@@ -140,6 +149,7 @@ def current() -> Capabilities:
         logger.warning(
             "MCP server has no %s: answers will carry weaker provenance "
             "(no named source, no licence). Tools present: %s",
-            _METADATA_TOOL, sorted(caps.tool_names),
+            _METADATA_TOOL,
+            sorted(caps.tool_names),
         )
     return caps

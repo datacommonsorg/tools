@@ -29,8 +29,7 @@ import requests
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -53,6 +52,7 @@ def get_gemini_model(config: dict, key: str = "mcp_model") -> str:
 # Secret Manager client for runtime key loading (optional import).
 try:
     from google.cloud import secretmanager
+
     _SECRET_MANAGER_AVAILABLE = True
 except ImportError:
     _SECRET_MANAGER_AVAILABLE = False
@@ -154,13 +154,19 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
             # being sent to Gemini as part of the system instruction.
             body = _HTML_COMMENT_RE.sub("", r.text).strip()
         except Exception as e:
-            logger.warning("Prompt %r fetch failed (%s): %s", slot, prompt_url, e)
+            logger.warning(
+                "Prompt %r fetch failed (%s): %s", slot, prompt_url, e
+            )
             continue
         if not body:
-            logger.warning("Prompt %r at %s is empty; leaving slot unset", slot, prompt_url)
+            logger.warning(
+                "Prompt %r at %s is empty; leaving slot unset", slot, prompt_url
+            )
             continue
         prompts[slot] = body
-        logger.info("Prompt %r loaded: %d bytes from %s", slot, len(body), prompt_url)
+        logger.info(
+            "Prompt %r loaded: %d bytes from %s", slot, len(body), prompt_url
+        )
     return prompts
 
 
@@ -194,12 +200,16 @@ def _bootstrap_config_from_url() -> None:
     except json.JSONDecodeError as e:
         # Write it through unmodified so the failure surfaces at load_config()
         # exactly as it did before, rather than turning into a silent no-config.
-        logger.error("CONFIG_URL is not valid JSON (%s); writing through unmodified", e)
+        logger.error(
+            "CONFIG_URL is not valid JSON (%s); writing through unmodified", e
+        )
         config_path.write_text(raw, encoding="utf-8")
         return
 
     if not isinstance(config, dict):
-        logger.error("CONFIG_URL did not contain a JSON object; writing through unmodified")
+        logger.error(
+            "CONFIG_URL did not contain a JSON object; writing through unmodified"
+        )
         config_path.write_text(raw, encoding="utf-8")
         return
 
@@ -208,7 +218,9 @@ def _bootstrap_config_from_url() -> None:
     if isinstance(inline, dict):
         for slot, body in inline.items():
             if isinstance(body, str) and body.strip():
-                logger.info("Prompt %r overridden inline by agent-config.json", slot)
+                logger.info(
+                    "Prompt %r overridden inline by agent-config.json", slot
+                )
                 prompts[slot] = body
     if prompts:
         config["prompts"] = prompts
@@ -227,7 +239,7 @@ def load_config() -> dict:
     """Load configuration from config.json file."""
     global _config_cache, _config_mtime
 
-    config_path = AGENT_ROOT / 'config.json'
+    config_path = AGENT_ROOT / "config.json"
 
     if not config_path.exists():
         logger.warning(f"Config file not found at {config_path}")
@@ -243,7 +255,7 @@ def load_config() -> dict:
         # same encoding when it writes. A config carrying non-ASCII -- prompt text
         # with ₹ or an em-dash, an instance name -- would otherwise decode by the
         # platform locale and come back corrupted.
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, encoding="utf-8") as f:
             _config_cache = json.load(f)
             _config_mtime = current_mtime
             logger.info("Config loaded/reloaded from config.json")
@@ -295,7 +307,9 @@ def render_prompt(prompt: str) -> str:
     rather than blanked: a visible placeholder in an answer is a far louder
     failure than a sentence that has silently lost its subject.
     """
-    rendered = prompt.replace("{{CURRENT_DATETIME}}", get_current_datetime_ist())
+    rendered = prompt.replace(
+        "{{CURRENT_DATETIME}}", get_current_datetime_ist()
+    )
     for key, value in _instance_template_vars().items():
         rendered = rendered.replace("{{instance.%s}}" % key, value)
     return rendered
@@ -321,7 +335,10 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
     project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
     if not secret_name.startswith("projects/"):
         if not project:
-            logger.error("GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret name %r", secret_name)
+            logger.error(
+                "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret name %r",
+                secret_name,
+            )
             return []
         full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
     else:
@@ -331,11 +348,17 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
         response = client.access_secret_version(request={"name": full_name})
         payload = response.payload.data.decode("utf-8")
         keys = json.loads(payload)
-        if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
-            logger.error("Secret %s did not contain a JSON array of strings", full_name)
+        if not isinstance(keys, list) or not all(
+            isinstance(k, str) for k in keys
+        ):
+            logger.error(
+                "Secret %s did not contain a JSON array of strings", full_name
+            )
             return []
         _SECRET_MANAGER_CACHE[secret_name] = (now, keys)
-        logger.info("Loaded %d keys from Secret Manager (%s)", len(keys), full_name)
+        logger.info(
+            "Loaded %d keys from Secret Manager (%s)", len(keys), full_name
+        )
         return keys
     except Exception as e:
         logger.error("Failed to load secret %s: %s", full_name, e)
@@ -362,14 +385,20 @@ def get_api_keys(demo_mode: bool = False) -> list:
         if demo_secret:
             keys = _fetch_keys_from_secret_manager(demo_secret)
             if keys:
-                logger.info(f"Using demo API keys pool from Secret Manager ({len(keys)} keys)")
+                logger.info(
+                    f"Using demo API keys pool from Secret Manager ({len(keys)} keys)"
+                )
                 return keys
         config = load_config()
         demo_keys = config.get("gemini", {}).get("demo_api_keys", [])
         if demo_keys:
-            logger.info(f"Using demo API keys pool from config ({len(demo_keys)} keys)")
+            logger.info(
+                f"Using demo API keys pool from config ({len(demo_keys)} keys)"
+            )
         else:
-            logger.error("Demo mode requested but no demo_api_keys configured - will fail (no fallback to regular keys)")
+            logger.error(
+                "Demo mode requested but no demo_api_keys configured - will fail (no fallback to regular keys)"
+            )
         return demo_keys
 
     secret = os.environ.get("GEMINI_API_KEYS_SECRET", "")
@@ -377,7 +406,9 @@ def get_api_keys(demo_mode: bool = False) -> list:
         keys = _fetch_keys_from_secret_manager(secret)
         if keys:
             return keys
-        logger.warning("GEMINI_API_KEYS_SECRET set but returned no keys; falling back to config")
+        logger.warning(
+            "GEMINI_API_KEYS_SECRET set but returned no keys; falling back to config"
+        )
 
     config = load_config()
     gemini_config = config.get("gemini", {})
@@ -385,7 +416,9 @@ def get_api_keys(demo_mode: bool = False) -> list:
     if not keys:
         single_key = gemini_config.get("api_key", "")
         if single_key and not single_key.startswith("DEPRECATED"):
-            logger.warning("Using deprecated scalar gemini.api_key; migrate to api_keys[] or Secret Manager")
+            logger.warning(
+                "Using deprecated scalar gemini.api_key; migrate to api_keys[] or Secret Manager"
+            )
             keys = [single_key]
     return keys
 
@@ -431,6 +464,8 @@ def apply_query_overrides(config: dict, query_params: dict) -> dict:
 
     # Synthesis thinking budget override
     if query_params.get("synthesis_thinking"):
-        effective["thinking"]["synthesis_level"] = query_params["synthesis_thinking"]
+        effective["thinking"]["synthesis_level"] = query_params[
+            "synthesis_thinking"
+        ]
 
     return effective

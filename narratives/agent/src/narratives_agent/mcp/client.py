@@ -18,7 +18,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -89,12 +89,12 @@ _SESSION_LOST_MARKERS = (
 )
 
 
-def get_session_id() -> Optional[str]:
+def get_session_id() -> str | None:
     """This thread's MCP session id, if it has one."""
     return getattr(_local, "session_id", None)
 
 
-def _set_session_id(value: Optional[str]) -> None:
+def _set_session_id(value: str | None) -> None:
     _local.session_id = value
 
 
@@ -136,7 +136,8 @@ def mcp_url() -> str:
         configured = str(mcp_config.get("server_url") or "").strip()
 
     resolved = (
-        _normalise_url(configured) if configured
+        _normalise_url(configured)
+        if configured
         else f"http://localhost:{MCP_PORT}/mcp"
     )
     _URL_CACHE["url"] = resolved
@@ -144,7 +145,9 @@ def mcp_url() -> str:
     return resolved
 
 
-def mcp_request(method: str, params: dict = None, is_notification: bool = False) -> dict:
+def mcp_request(
+    method: str, params: dict = None, is_notification: bool = False
+) -> dict:
     """Send one JSON-RPC request or notification. No session recovery.
 
     Prefer `mcp_call` for anything that needs a live session -- this is the raw
@@ -156,10 +159,7 @@ def mcp_request(method: str, params: dict = None, is_notification: bool = False)
         params: Optional parameters
         is_notification: If True, sends as notification (no id, no response expected)
     """
-    payload = {
-        "jsonrpc": "2.0",
-        "method": method
-    }
+    payload = {"jsonrpc": "2.0", "method": method}
 
     # Notifications don't have an id
     if not is_notification:
@@ -170,7 +170,7 @@ def mcp_request(method: str, params: dict = None, is_notification: bool = False)
 
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream"
+        "Accept": "application/json, text/event-stream",
     }
 
     current_session = get_session_id()
@@ -185,30 +185,23 @@ def mcp_request(method: str, params: dict = None, is_notification: bool = False)
     try:
         # For notifications, we send but don't expect a response
         if is_notification:
-            _SESSION.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=5
-            )
+            _SESSION.post(url, json=payload, headers=headers, timeout=5)
             return {"result": "notification sent"}
 
         response = _SESSION.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=300,
-            stream=True
+            url, json=payload, headers=headers, timeout=300, stream=True
         )
 
         # Log response details for debugging
-        logger.info(f"MCP Response - Status: {response.status_code}, Headers: {dict(response.headers)}")
+        logger.info(
+            f"MCP Response - Status: {response.status_code}, Headers: {dict(response.headers)}"
+        )
 
         # Get session ID from response (try multiple header variations)
         session_header = (
-            response.headers.get("Mcp-Session-Id") or
-            response.headers.get("mcp-session-id") or
-            response.headers.get("MCP-Session-ID")
+            response.headers.get("Mcp-Session-Id")
+            or response.headers.get("mcp-session-id")
+            or response.headers.get("MCP-Session-ID")
         )
         if session_header:
             _set_session_id(session_header)
@@ -216,7 +209,8 @@ def mcp_request(method: str, params: dict = None, is_notification: bool = False)
         else:
             logger.debug(
                 "No session ID in response headers; keeping the current one. "
-                "Available headers: %s", list(response.headers.keys())
+                "Available headers: %s",
+                list(response.headers.keys()),
             )
 
         content_type = response.headers.get("content-type", "")
@@ -226,7 +220,7 @@ def mcp_request(method: str, params: dict = None, is_notification: bool = False)
             result = None
             for line in response.iter_lines():
                 if line:
-                    line_str = line.decode('utf-8')
+                    line_str = line.decode("utf-8")
                     if line_str.startswith("data: "):
                         try:
                             data = json.loads(line_str[6:])
@@ -241,7 +235,9 @@ def mcp_request(method: str, params: dict = None, is_notification: bool = False)
             return response.json()
 
     except requests.exceptions.ConnectionError:
-        return {"error": f"Cannot connect to MCP server at {url}. Make sure it's running!"}
+        return {
+            "error": f"Cannot connect to MCP server at {url}. Make sure it's running!"
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -257,14 +253,17 @@ def initialize_mcp() -> bool:
 
     _set_session_id(None)
     mcp_config = load_config().get("mcp", {})
-    result = mcp_request("initialize", {
-        "protocolVersion": mcp_config.get("protocol_version", "2024-11-05"),
-        "capabilities": {"roots": {"listChanged": True}},
-        "clientInfo": {
-            "name": mcp_config.get("client_name", "dc-mcp-proxy"),
-            "version": mcp_config.get("client_version", "1.0.0"),
+    result = mcp_request(
+        "initialize",
+        {
+            "protocolVersion": mcp_config.get("protocol_version", "2024-11-05"),
+            "capabilities": {"roots": {"listChanged": True}},
+            "clientInfo": {
+                "name": mcp_config.get("client_name", "dc-mcp-proxy"),
+                "version": mcp_config.get("client_version", "1.0.0"),
+            },
         },
-    })
+    )
 
     if "error" in result:
         logger.error("Failed to initialize MCP: %s", result["error"])
@@ -297,7 +296,8 @@ def mcp_call(method: str, params: dict = None) -> dict:
     if _looks_like_lost_session(result):
         logger.warning(
             "MCP session rejected by the server (likely a different data-plane "
-            "instance); re-initialising and retrying %s once.", method
+            "instance); re-initialising and retrying %s once.",
+            method,
         )
         if initialize_mcp():
             result = mcp_request(method, params)
@@ -384,7 +384,9 @@ def get_tools(force_refresh: bool = False) -> list:
         return _TOOLS_CACHE["tools"] or []
 
 
-def call_tool(name: str, arguments: dict, session_logger: Optional[SessionLogger] = None) -> Any:
+def call_tool(
+    name: str, arguments: dict, session_logger: SessionLogger | None = None
+) -> Any:
     """Call a tool on the MCP server with optional logging."""
     # Fix common parameter mistakes
     fixed_args = fix_tool_arguments(name, arguments)
@@ -397,21 +399,22 @@ def call_tool(name: str, arguments: dict, session_logger: Optional[SessionLogger
 
     start_time = time.time()
 
-    result = mcp_call("tools/call", {
-        "name": name,
-        "arguments": fixed_args
-    })
+    result = mcp_call("tools/call", {"name": name, "arguments": fixed_args})
 
     duration_ms = (time.time() - start_time) * 1000
 
     if "result" in result:
         # Log successful result
         if session_logger:
-            session_logger.log_mcp_tool_result(name, result["result"], duration_ms, "success")
+            session_logger.log_mcp_tool_result(
+                name, result["result"], duration_ms, "success"
+            )
         return result["result"]
 
     # Log error result
     error_result = {"error": result.get("error", "Unknown error")}
     if session_logger:
-        session_logger.log_mcp_tool_result(name, error_result, duration_ms, "error")
+        session_logger.log_mcp_tool_result(
+            name, error_result, duration_ms, "error"
+        )
     return error_result

@@ -17,13 +17,20 @@ import json
 import logging
 import random
 import time
-from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
 
-from narratives_agent.config import get_api_keys, get_gemini_model, load_config, render_prompt
-from narratives_agent.gemini.client import build_thinking_config, get_api_key_filestore_mapping
+from narratives_agent.config import (
+    get_api_keys,
+    get_gemini_model,
+    load_config,
+    render_prompt,
+)
+from narratives_agent.gemini.client import (
+    build_thinking_config,
+    get_api_key_filestore_mapping,
+)
 from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
@@ -39,8 +46,13 @@ _SESSION = requests.Session()
 _SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
 
 
-
-def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] = None, thought_callback: callable = None, demo_mode: bool = False, effective_config: dict = None) -> dict:
+def execute_kb_query(
+    user_message: str,
+    session_logger: SessionLogger | None = None,
+    thought_callback: callable = None,
+    demo_mode: bool = False,
+    effective_config: dict = None,
+) -> dict:
     """Execute Knowledge Base query using file search with key rotation and thought streaming.
 
     Each API key automatically uses its paired filestore from the config mapping.
@@ -81,7 +93,9 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
     if not all_keys:
         return {"response": "", "sources": []}
 
-    api_base = config.get("gemini", {}).get("api_base", "https://generativelanguage.googleapis.com/v1beta/models")
+    api_base = config.get("gemini", {}).get(
+        "api_base", "https://generativelanguage.googleapis.com/v1beta/models"
+    )
 
     # Shuffle keys for random order
     keys_to_try = all_keys.copy()
@@ -94,7 +108,7 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
         # Get the filestore for this specific API key
         store_id = key_filestore_map.get(api_key, "")
         if not store_id:
-            logger.warning(f"No filestore configured for API key, skipping...")
+            logger.warning("No filestore configured for API key, skipping...")
             continue
 
         logger.info(f"KB query using filestore: {store_id[:50]}...")
@@ -103,23 +117,25 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
         thinking_level = config.get("thinking", {}).get("kb_level", "low")
         payload = {
             "contents": [{"role": "user", "parts": [{"text": user_message}]}],
-            "systemInstruction": {"parts": [{"text": render_prompt(kb_prompt)}]},
+            "systemInstruction": {
+                "parts": [{"text": render_prompt(kb_prompt)}]
+            },
             "generationConfig": {
                 "temperature": kb_temperature,
             },
-            "tools": [{
-                "fileSearch": {
-                    "dynamicFileSearchConfig": {
-                        "mode": "MODE_DYNAMIC",
-                        "dynamicThreshold": kb_dynamic_threshold
+            "tools": [
+                {
+                    "fileSearch": {
+                        "dynamicFileSearchConfig": {
+                            "mode": "MODE_DYNAMIC",
+                            "dynamicThreshold": kb_dynamic_threshold,
+                        }
                     }
                 }
-            }],
+            ],
             "toolConfig": {
-                "fileSearch": {
-                    "vectorStore": {"storeResourceId": store_id}
-                }
-            }
+                "fileSearch": {"vectorStore": {"storeResourceId": store_id}}
+            },
         }
 
         # Add thinking config with includeThoughts for streaming
@@ -133,11 +149,14 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
 
         # Log retry attempt (if not first attempt)
         if attempt_count > 1 and session_logger:
-            session_logger.log("KB_KEY_ROTATION", {
-                "attempt": attempt_count,
-                "total_keys": len(all_keys),
-                "reason": str(last_error)
-            })
+            session_logger.log(
+                "KB_KEY_ROTATION",
+                {
+                    "attempt": attempt_count,
+                    "total_keys": len(all_keys),
+                    "reason": str(last_error),
+                },
+            )
 
         try:
             # Use streaming endpoint to get thoughts in real-time
@@ -147,19 +166,23 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
                 json=payload,
                 headers={"Content-Type": "application/json"},
                 stream=True,
-                timeout=300
+                timeout=300,
             )
 
             # Check for rate limit - immediately switch key
             if response.status_code == 429:
                 last_error = "Rate limited (429)"
-                logger.warning(f"KB API key rate limited, switching to next key...")
+                logger.warning(
+                    "KB API key rate limited, switching to next key..."
+                )
                 continue
 
             # Check for other retryable errors
             if response.status_code in [500, 503]:
                 last_error = f"Server error ({response.status_code})"
-                logger.warning(f"KB server error {response.status_code}, switching to next key...")
+                logger.warning(
+                    f"KB server error {response.status_code}, switching to next key..."
+                )
                 continue
 
             # Collect response while streaming thoughts
@@ -171,29 +194,40 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
 
             for line in response.iter_lines():
                 if line:
-                    line_str = line.decode('utf-8')
-                    if line_str.startswith('data: '):
+                    line_str = line.decode("utf-8")
+                    if line_str.startswith("data: "):
                         try:
                             data = json.loads(line_str[6:])
-                            if 'usageMetadata' in data:
-                                kb_usage = data['usageMetadata']
-                            if 'candidates' in data and data['candidates']:
-                                candidate = data['candidates'][0]
+                            if "usageMetadata" in data:
+                                kb_usage = data["usageMetadata"]
+                            if data.get("candidates"):
+                                candidate = data["candidates"][0]
 
                                 # Extract grounding metadata when available
-                                if 'groundingMetadata' in candidate:
-                                    grounding_metadata = candidate['groundingMetadata']
+                                if "groundingMetadata" in candidate:
+                                    grounding_metadata = candidate[
+                                        "groundingMetadata"
+                                    ]
 
-                                if 'content' in candidate and 'parts' in candidate['content']:
-                                    for part in candidate['content']['parts']:
-                                        if 'text' in part:
-                                            is_thought = part.get('thought', False)
+                                if (
+                                    "content" in candidate
+                                    and "parts" in candidate["content"]
+                                ):
+                                    for part in candidate["content"]["parts"]:
+                                        if "text" in part:
+                                            is_thought = part.get(
+                                                "thought", False
+                                            )
                                             if is_thought:
-                                                collected_thoughts += part['text']
+                                                collected_thoughts += part[
+                                                    "text"
+                                                ]
                                                 if thought_callback:
-                                                    thought_callback(part['text'])
+                                                    thought_callback(
+                                                        part["text"]
+                                                    )
                                             else:
-                                                result_text += part['text']
+                                                result_text += part["text"]
                         except json.JSONDecodeError:
                             continue
 
@@ -212,35 +246,47 @@ def execute_kb_query(user_message: str, session_logger: Optional[SessionLogger] 
                     # Deduplicate by title
                     if title not in seen_titles:
                         seen_titles.add(title)
-                        sources.append({
-                            "title": title,
-                            "uri": uri
-                        })
+                        sources.append({"title": title, "uri": uri})
 
             # Log KB query
             if session_logger:
                 duration_ms = (time.time() - start_time) * 1000
-                session_logger.log_kb_query(user_message, result_text, duration_ms)
+                session_logger.log_kb_query(
+                    user_message, result_text, duration_ms
+                )
                 if sources:
                     session_logger.log("KB_SOURCES", {"sources": sources})
                 if collected_thoughts:
-                    session_logger.log("KB_THOUGHTS_STREAMED", {"thoughts_length": len(collected_thoughts)})
+                    session_logger.log(
+                        "KB_THOUGHTS_STREAMED",
+                        {"thoughts_length": len(collected_thoughts)},
+                    )
 
             return {"response": result_text, "sources": sources}
 
         except requests.exceptions.Timeout:
             last_error = "Request timeout"
-            logger.warning(f"KB request timeout, trying next key...")
+            logger.warning("KB request timeout, trying next key...")
             continue
         except Exception as e:
             last_error = str(e)
             logger.error(f"KB query error: {e}")
             if session_logger:
-                session_logger.log_error("KB_QUERY_ERROR", str(e), {"query": user_message, "attempt": attempt_count})
+                session_logger.log_error(
+                    "KB_QUERY_ERROR",
+                    str(e),
+                    {"query": user_message, "attempt": attempt_count},
+                )
             continue
 
     # All keys exhausted
-    logger.error(f"KB query failed: All {len(all_keys)} API keys exhausted. Last error: {last_error}")
+    logger.error(
+        f"KB query failed: All {len(all_keys)} API keys exhausted. Last error: {last_error}"
+    )
     if session_logger:
-        session_logger.log_error("KB_ALL_KEYS_EXHAUSTED", f"All keys failed: {last_error}", {"total_keys": len(all_keys)})
+        session_logger.log_error(
+            "KB_ALL_KEYS_EXHAUSTED",
+            f"All keys failed: {last_error}",
+            {"total_keys": len(all_keys)},
+        )
     return {"response": "", "sources": []}

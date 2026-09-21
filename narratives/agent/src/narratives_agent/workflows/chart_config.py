@@ -18,7 +18,10 @@ import logging
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import gemini_request
-from narratives_agent.gemini.schemas import CHART_CONFIG_SCHEMA, DATA_VALIDATION_SCHEMA
+from narratives_agent.gemini.schemas import (
+    CHART_CONFIG_SCHEMA,
+    DATA_VALIDATION_SCHEMA,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +42,7 @@ def get_chart_config(mcp_results: str, user_message: str) -> dict:
 User Query: {user_message}
 
 Data Results:
-{mcp_results if mcp_results else 'No data results'}
+{mcp_results if mcp_results else "No data results"}
 
 Instructions:
 1. Extract variable DCIDs and place DCIDs from the results
@@ -67,14 +70,18 @@ Set should_render to false if no meaningful data for visualization."""
         temperature=0.2,
         thinking_level="minimal",  # Fastest for simple extraction
         response_schema=CHART_CONFIG_SCHEMA,
-        stream=False
+        stream=False,
     )
 
     try:
         if "candidates" in response:
-            text = response["candidates"][0]["content"]["parts"][0].get("text", "{}")
+            text = response["candidates"][0]["content"]["parts"][0].get(
+                "text", "{}"
+            )
             chart_config = json.loads(text)
-            logger.info(f"📊 Chart config result: {json.dumps(chart_config, indent=2)}")
+            logger.info(
+                f"📊 Chart config result: {json.dumps(chart_config, indent=2)}"
+            )
             return chart_config
     except Exception as e:
         logger.error(f"Chart config parse error: {e}")
@@ -118,7 +125,7 @@ Return false if the response says data is "not available", "not found", "doesn't
         # being silently rewritten to "low", the opposite of what was wanted.
         thinking_level="minimal",
         response_schema=DATA_VALIDATION_SCHEMA,
-        stream=False
+        stream=False,
     )
 
     if "candidates" not in response:
@@ -129,12 +136,15 @@ Return false if the response says data is "not available", "not found", "doesn't
         logger.error(
             "Data validation got no candidates from %s, defaulting to "
             "showing charts. Response: %s",
-            model, str(response)[:300],
+            model,
+            str(response)[:300],
         )
         return True
 
     try:
-        text = response["candidates"][0]["content"]["parts"][0].get("text", "{}")
+        text = response["candidates"][0]["content"]["parts"][0].get(
+            "text", "{}"
+        )
         result = json.loads(text)
         return result.get("data_found", True)
     except Exception as e:

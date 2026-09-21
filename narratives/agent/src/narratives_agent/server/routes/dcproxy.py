@@ -64,7 +64,9 @@ DATA_PLANE_URL = os.environ.get("DATA_PLANE_URL", "").rstrip("/")
 # so nothing renders and nothing looks broken server-side.
 #
 # Falls back to DATA_PLANE_URL so cdc and dcp need no configuration.
-DATA_PLANE_WEB_URL = os.environ.get("DATA_PLANE_WEB_URL", "").rstrip("/") or DATA_PLANE_URL
+DATA_PLANE_WEB_URL = (
+    os.environ.get("DATA_PLANE_WEB_URL", "").rstrip("/") or DATA_PLANE_URL
+)
 
 # Prefixes that must go to the MCP/API host rather than the web host.
 #
@@ -79,13 +81,22 @@ _MCP_HOST_PREFIXES = frozenset({"mcp"})
 
 def _upstream_for(prefix: str) -> str:
     """Which host serves this prefix. Identical on cdc and dcp."""
-    return DATA_PLANE_URL if prefix in _MCP_HOST_PREFIXES else DATA_PLANE_WEB_URL
+    return (
+        DATA_PLANE_URL if prefix in _MCP_HOST_PREFIXES else DATA_PLANE_WEB_URL
+    )
+
 
 # One pooled session, for the same reason the MCP client has one: a single page
 # of charts fires many of these and each would otherwise pay a TLS handshake.
 _SESSION = requests.Session()
-_SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=64))
-_SESSION.mount("http://", requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=64))
+_SESSION.mount(
+    "https://",
+    requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=64),
+)
+_SESSION.mount(
+    "http://",
+    requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=64),
+)
 
 # Top-level path segments owned by the data plane. Derived from the route list
 # in ui/vite.config.ts, which is the same set the dev proxy has always
@@ -95,10 +106,29 @@ _SESSION.mount("http://", requests.adapters.HTTPAdapter(pool_connections=8, pool
 # a missing entry shows up as "Uncaught SyntaxError: Unexpected token '<'"
 # inside a tool iframe (index.html served where JavaScript was expected).
 DATA_PLANE_PREFIXES = (
-    "api", "core", "mcp", "node", "browser", "tools", "explore", "disease",
-    "nl", "admin", "place", "ranking", "topic", "custom_dc", "datacommons",
-    "files", "sitemap", "css",
-    "datacommons.js", "queryStore.js", "base.js", "download.js", "stat_var.js",
+    "api",
+    "core",
+    "mcp",
+    "node",
+    "browser",
+    "tools",
+    "explore",
+    "disease",
+    "nl",
+    "admin",
+    "place",
+    "ranking",
+    "topic",
+    "custom_dc",
+    "datacommons",
+    "files",
+    "sitemap",
+    "css",
+    "datacommons.js",
+    "queryStore.js",
+    "base.js",
+    "download.js",
+    "stat_var.js",
 )
 
 # Headers that must not be forwarded upstream.
@@ -111,9 +141,18 @@ DATA_PLANE_PREFIXES = (
 # like an authorisation bug rather than a header-hygiene one.
 _HOP_HEADERS = frozenset(
     {
-        "host", "authorization", "connection", "keep-alive",
-        "transfer-encoding", "te", "upgrade", "proxy-authorization",
-        "proxy-authenticate", "trailers", "content-length", "accept-encoding",
+        "host",
+        "authorization",
+        "connection",
+        "keep-alive",
+        "transfer-encoding",
+        "te",
+        "upgrade",
+        "proxy-authorization",
+        "proxy-authenticate",
+        "trailers",
+        "content-length",
+        "accept-encoding",
         "x-goog-iap-jwt-assertion",
         "x-goog-authenticated-user-email",
         "x-goog-authenticated-user-id",
@@ -134,14 +173,18 @@ def _forward(subpath: str, prefix: str) -> Response:
     # edit reaches for the wrong one.
     upstream_url = _upstream_for(prefix)
     if not upstream_url:
-        return jsonify({"error": "DATA_PLANE_URL is not configured on the agent"}), 503
+        return jsonify(
+            {"error": "DATA_PLANE_URL is not configured on the agent"}
+        ), 503
 
     target = f"{upstream_url}/{subpath}"
     if request.query_string:
         target = f"{target}?{request.query_string.decode('utf-8', 'ignore')}"
 
     headers = {
-        k: v for k, v in request.headers.items() if k.lower() not in _HOP_HEADERS
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in _HOP_HEADERS
     }
     # Auth is chosen by the host actually being called, not by a single global --
     # the two hosts differ on the "none" backend, and attaching a credential
@@ -155,7 +198,9 @@ def _forward(subpath: str, prefix: str) -> Response:
         upstream = _SESSION.request(
             request.method,
             target,
-            data=request.get_data() if request.method in ("POST", "PUT", "PATCH") else None,
+            data=request.get_data()
+            if request.method in ("POST", "PUT", "PATCH")
+            else None,
             headers=headers,
             stream=True,
             timeout=120,
@@ -170,14 +215,17 @@ def _forward(subpath: str, prefix: str) -> Response:
     if upstream.status_code >= 400:
         logger.warning(
             "dcproxy: %s /%s -> HTTP %d from data plane",
-            request.method, subpath, upstream.status_code,
+            request.method,
+            subpath,
+            upstream.status_code,
         )
 
     return Response(
         stream_with_context(upstream.iter_content(chunk_size=8192)),
         status=upstream.status_code,
         headers=[
-            (k, v) for k, v in upstream.raw.headers.items()
+            (k, v)
+            for k, v in upstream.raw.headers.items()
             if k.lower() not in _RESPONSE_HEADER_BLOCKLIST
         ],
     )

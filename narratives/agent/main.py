@@ -27,8 +27,13 @@ Usage:
 """
 
 from narratives_agent.config import _bootstrap_config_from_url
-from narratives_agent.mcp.client import get_tools, initialize_mcp, mcp_url, MCP_PORT
-from narratives_agent.server.app import app, PROXY_PORT
+from narratives_agent.mcp.client import (
+    MCP_PORT,
+    get_tools,
+    initialize_mcp,
+    mcp_url,
+)
+from narratives_agent.server.app import PROXY_PORT, app
 from narratives_agent.server.routes import register_all
 
 # Startup work runs at import time, not inside main(), because production
@@ -55,7 +60,9 @@ def main():
     print("=" * 60)
     print(f"\nMCP endpoint: {mcp_url()}")
     print("\nIf that is a localhost URL, make sure the MCP server is running:")
-    print(f"  python3 -m uv tool run datacommons-mcp serve http --port {MCP_PORT}")
+    print(
+        f"  python3 -m uv tool run datacommons-mcp serve http --port {MCP_PORT}"
+    )
 
     # Try to connect to MCP server
     print("\nChecking MCP server connection...")
