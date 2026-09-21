@@ -11,12 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Capability discovery from whatever tool surface a server happens to serve.
+"""Tests for MCP server capability discovery from `tools/list` responses.
 
-Part of the plug-and-play guarantee: one agent, either MCP server generation.
-The agent must run unchanged against a CDC services container (MCP 1.2.x, two
-fat tools, `place_observations` / `time_series` payloads) and a DCP or public
-instance (1.3.x, six tools, columnar `data.rows` payloads).
+Verifies that `capabilities.from_tools` derives supported features and tool
+names from the tool definitions returned by either MCP server generation:
+- MCP 1.2.x (CDC services container): `search_indicators` and `get_observations`
+- MCP 1.3.x+ (DCP / public Data Commons): six tools including
+  `get_variable_metadata`, `get_child_observations`, and
+  `get_multi_entity_observations`
 """
 
 from typing import Any
@@ -47,13 +49,12 @@ TOOLS_130 = [
 def test_source_attribution_follows_the_metadata_tool(
     tools: list[dict[str, Any]], expected: bool
 ) -> None:
-    # Test: whether an answer can be attributed to a named source.
-    # Situation: a 1.2.x tool surface, which has no get_variable_metadata, and
-    #   a 1.3.x one, which does.
-    # Expectation: the capability is reported from the tool surface itself.
-    #   Without the tool the best available provenance is a bare domain
-    #   scraped from the observation payload, which is worth surfacing rather
-    #   than discovering from an unattributed answer.
+    # Test: Detection of source attribution support (`get_variable_metadata`).
+    # Situation: `capabilities.from_tools` is called with an MCP 1.2.x tool
+    #   list (which lacks `get_variable_metadata`) and an MCP 1.3.x tool list
+    #   (which includes it).
+    # Expectation: `supports_source_attribution` is True only when
+    #   `get_variable_metadata` is present in the server's tool list.
     caps = capabilities.from_tools(tools)
     assert caps.supports_source_attribution is expected
 
@@ -66,31 +67,29 @@ def test_source_attribution_follows_the_metadata_tool(
 def test_observation_tool_count_matches_the_served_surface(
     tools: list[dict[str, Any]], expected: int
 ) -> None:
-    # Test: which observation tools the agent will offer the model.
-    # Situation: 1.2.x serves one fat observations tool; 1.3.x splits it into
-    #   three.
-    # Expectation: only the tools the server actually has. Offering a tool the
-    #   server lacks means the model calls it, gets "Unknown tool", and burns
-    #   an iteration of a capped loop -- a slower, worse answer, with nothing
-    #   anywhere saying why.
+    # Test: Filtering of observation tools exposed to the model.
+    # Situation: An MCP 1.2.x server provides one observation tool
+    #   (`get_observations`), while an MCP 1.3.x server provides three.
+    # Expectation: `caps.observation_tools` contains only the observation tools
+    #   supported by the target server so the model does not invoke nonexistent
+    #   tools.
     caps = capabilities.from_tools(tools)
     assert len(caps.observation_tools) == expected
 
 
 def test_a_server_with_no_tools_reports_an_unknown_generation() -> None:
-    # Test: the label for a server whose tool surface could not be read.
-    # Situation: tools/list returned nothing at all.
-    # Expectation: "unknown" rather than a guess -- an empty surface is not
-    #   evidence of an old server.
+    # Test: Generation label when the server returns an empty tool list.
+    # Situation: `capabilities.from_tools` is given an empty list `[]`.
+    # Expectation: `generation` is set to `"unknown"` rather than defaulting to
+    #   a specific MCP server version.
     assert capabilities.from_tools([]).generation == "unknown"
 
 
 def test_generation_labels_both_known_surfaces() -> None:
-    # Test: the human label attached to each surface.
-    # Situation: the two generations the agent meets in the wild.
-    # Expectation: labels that do not invite version branching. Behavior is
-    #   driven by which tools are present, never by this string -- a version
-    #   label invites `if generation == "1.3.0"`, and that is exactly the
-    #   assumption that breaks when Google ships 1.4.
+    # Test: Diagnostic generation label for known MCP tool surfaces.
+    # Situation: `capabilities.from_tools` is called with the MCP 1.3.x and
+    #   MCP 1.2.x tool lists.
+    # Expectation: `generation` returns `"1.3.x-or-later"` for the six-tool
+    #   surface and `"1.2.x"` for the two-tool surface.
     assert capabilities.from_tools(TOOLS_130).generation == "1.3.x-or-later"
     assert capabilities.from_tools(TOOLS_121).generation == "1.2.x"

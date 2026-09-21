@@ -11,22 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Auth is chosen by target host, not by a backend flag.
+"""Tests for host-based credential selection in `gcp_auth.attach_auth`.
 
-Covers `attach_auth`: which credential each kind of target gets, and the host
-allowlist that keeps DC_API_KEY off every other host.
-
-Two backends need two different credentials, and sending the wrong one fails in
-a way that looks like a data problem rather than an auth problem:
-
-  * public Data Commons wants X-API-Key -- our service account means nothing to
-    it, so an ID token yields "no data" on every query.
-  * a private Cloud Run data plane wants a Google-signed ID token -- an API key
-    yields 403 on every chart.
-
-The last case is the security property the host allowlist exists for: the MCP
-endpoint is configuration-driven and that config is fetched from a GCS bucket,
-so an edit to it must not be able to hand our API key to an arbitrary host.
+Verifies how `attach_auth` selects credentials based on the target URL:
+- Allowlisted public Data Commons hosts receive the `X-API-Key` header.
+- Private HTTPS Cloud Run hosts receive a Google-signed Bearer ID token.
+- Plain HTTP localhost URLs (sidecar deployments) receive no auth headers.
+- Unlisted external HTTPS hosts do not receive `DC_API_KEY`, preventing a
+  modified remote configuration from leaking the API key to an arbitrary host.
 """
 
 import pytest
@@ -38,17 +30,18 @@ _ID_TOKEN = "fake-id-token"
 
 
 def _fake_id_token(audience: str) -> str:
-    """Stands in for the metadata server, which is unreachable in tests."""
+    """Stub for `gcp_auth.get_id_token` to avoid metadata server requests."""
     return _ID_TOKEN
 
 
 @pytest.fixture(autouse=True)
 def credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The two credentials attach_auth chooses between.
+    """Configure test credentials and clear `DATA_PLANE_AUTH`.
 
-    DATA_PLANE_AUTH is cleared as well: it switches attach_auth off wholesale,
-    so a developer with it exported would otherwise watch every case below pass
-    for the wrong reason.
+    When `DATA_PLANE_AUTH=none` is set in the environment, `attach_auth` exits
+    early without attaching any headers. Clearing `DATA_PLANE_AUTH` ensures
+    the credential-selection logic is exercised regardless of the caller's
+    shell environment.
     """
     monkeypatch.delenv("DATA_PLANE_AUTH", raising=False)
     monkeypatch.setenv("DC_API_KEY", _API_KEY)
@@ -63,21 +56,22 @@ def credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     ],
 )
 def test_public_data_commons_gets_the_api_key(url: str) -> None:
-    # Test: the credential chosen for public Data Commons.
-    # Situation: the target host is one of the allowlisted public DC hosts.
-    # Expectation: X-API-Key carries DC_API_KEY and nothing else is attached --
-    #   our service account means nothing to public DC, so an ID token would
-    #   yield "no data" on every query.
+    # Test: Credential selection for public Data Commons endpoints.
+    # Situation: The target URL points to an allowlisted public Data Commons
+    #   host (`api.datacommons.org` or `datacommons.org`).
+    # Expectation: `attach_auth` sets the `X-API-Key` header to `DC_API_KEY`
+    #   and does not attach an `Authorization` Bearer token.
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(headers, url)
     assert headers == {"X-API-Key": _API_KEY}
 
 
 def test_private_cloud_run_gets_an_id_token() -> None:
-    # Test: the credential chosen for a private data plane.
-    # Situation: the target is an IAM-gated Cloud Run service.
-    # Expectation: a Google-signed ID token is sent as a bearer token, and no
-    #   API key -- an API key yields 403 on every chart.
+    # Test: Credential selection for a private Cloud Run data plane.
+    # Situation: The target URL is an HTTPS Cloud Run service outside the
+    #   public Data Commons host allowlist.
+    # Expectation: `attach_auth` sets the `Authorization` header to a Bearer ID
+    #   token and does not attach `X-API-Key`.
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(
         headers, "https://x-dc-datacommons-service-uc.a.run.app/mcp"
@@ -86,21 +80,20 @@ def test_private_cloud_run_gets_an_id_token() -> None:
 
 
 def test_local_http_target_gets_no_credential() -> None:
-    # Test: the co-located sidecar deployment is left alone.
-    # Situation: the target is a plain-http localhost URL.
-    # Expectation: no header at all, so a sidecar data plane is unaffected.
+    # Test: Credential selection for a local HTTP sidecar endpoint.
+    # Situation: The target URL uses plain HTTP on localhost.
+    # Expectation: `attach_auth` leaves the headers dictionary empty.
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(headers, "http://localhost:8082/mcp")
     assert headers == {}
 
 
 def test_api_key_is_not_sent_to_an_unlisted_host() -> None:
-    # Test: the host allowlist, which is a security property rather than a
-    #   convenience.
-    # Situation: config -- fetched from a GCS bucket, so editable without a
-    #   code change -- points the agent at an arbitrary https host.
-    # Expectation: DC_API_KEY is not attached, so a config edit cannot turn
-    #   into a credential leak.
+    # Test: Enforcement of the host allowlist for `DC_API_KEY`.
+    # Situation: The target URL is an external HTTPS host that is not in the
+    #   public Data Commons allowlist.
+    # Expectation: `X-API-Key` is not added to the request headers, ensuring
+    #   `DC_API_KEY` cannot be sent to an untrusted host.
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(headers, "https://evil.example.com/mcp")
     assert "X-API-Key" not in headers

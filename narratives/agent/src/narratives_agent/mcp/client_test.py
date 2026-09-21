@@ -11,16 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Behavioral test for MCP session handling.
+"""Tests for MCP session management, thread isolation, and tool-list caching.
 
-Thread isolation, recovery from a data-plane instance that does not recognize
-our session, and tool-cache TTL.
-
-Guards the fix for the module-global session_id, which made N instances
-incorrect rather than merely slow. The three behaviors asserted here are the
-ones whose absence is silent: a session rejected by a different data-plane
-instance must recover, concurrent threads must not share a session, and a
-failing tools/list must not blank the tool surface.
+Verifies three behaviors in `narratives_agent.mcp.client`:
+1. Session recovery: when an MCP server rejects a stale or unrecognized session
+   ID (`Session not found`), the client re-initializes the session and retries
+   the request once.
+2. Thread isolation: concurrent worker threads store independent session IDs in
+   thread-local storage rather than overwriting a shared module global.
+3. Tool caching and fallback: `get_tools` serves cached tool definitions within
+   the TTL and falls back to the last known tool list if a refresh fails.
 """
 
 import threading
@@ -34,7 +34,9 @@ _TOOLS = [{"name": "get_observations"}]
 
 
 class _ScriptedServer:
-    """Scripted server: rejects the first tools/list, accepts after re-init."""
+    """Fake MCP transport that rejects the first `tools/list` call and succeeds
+    after re-initialization.
+    """
 
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -48,8 +50,8 @@ class _ScriptedServer:
     ) -> dict[str, Any]:
         self.calls.append(method)
         if method == "initialize":
-            # A real server mints one session per caller; the id is carried
-            # back on a response header, which this stands in for.
+            # Assign a thread-specific session ID to simulate the MCP session
+            # header returned by the server during initialization.
             client._set_session_id("sess-" + threading.current_thread().name)
             return {"result": {"ok": True}}
         if method == "notifications/initialized":
@@ -65,7 +67,7 @@ class _ScriptedServer:
 
 
 class _DeadServer:
-    """Every call fails, as during a data-plane outage."""
+    """Fake MCP transport that returns an error for every request."""
 
     def __call__(
         self,
@@ -78,18 +80,17 @@ class _DeadServer:
 
 @pytest.fixture
 def server(monkeypatch: pytest.MonkeyPatch) -> _ScriptedServer:
-    """A scripted transport over freshly isolated client state.
+    """Provide a `_ScriptedServer` with isolated thread-local and cache state.
 
-    The session id is thread-local and the tool list is a process-wide cache,
-    so both are replaced per test: left shared, a test would be reading state
-    another test wrote, which is the very class of bug this file exists for.
+    Replaces `client._local` and `client._TOOLS_CACHE` before each test so that
+    session IDs and cached tools do not leak across test cases.
     """
     monkeypatch.setattr(client, "_local", threading.local())
     monkeypatch.setattr(
         client, "_TOOLS_CACHE", {"tools": None, "fetched_at": 0.0}
     )
-    # The handshake reads mcp.* out of the agent config; an empty document
-    # exercises the defaults and keeps the test off the filesystem.
+    # Stub `load_config` with an empty dictionary so initialization uses default
+    # MCP settings without reading from disk.
     monkeypatch.setattr(client, "load_config", lambda: {})
     scripted = _ScriptedServer()
     monkeypatch.setattr(client, "mcp_request", scripted)
@@ -99,23 +100,24 @@ def server(monkeypatch: pytest.MonkeyPatch) -> _ScriptedServer:
 def test_rejected_session_recovers_and_returns_the_tool_list(
     server: _ScriptedServer,
 ) -> None:
-    # Test: recovery from a session the server does not recognize.
-    # Situation: the request lands on a data-plane instance that never minted
-    #   our session, so tools/list comes back "Session not found".
-    # Expectation: the tool list is still returned. A lost session must be a
-    #   recoverable event rather than a permanent one -- nothing used to clear
-    #   the value, so the failure stuck until the container restarted.
+    # Test: Session recovery when `tools/list` returns a session-not-found
+    #   error.
+    # Situation: The first `tools/list` request is rejected with code -32000
+    #   ("Session not found"), simulating a request routed to a new backend
+    #   instance.
+    # Expectation: `get_tools` clears the stale session, re-runs MCP
+    #   initialization, and returns the tool list from the retry.
     assert client.get_tools(force_refresh=True) == _TOOLS
 
 
 def test_rejected_session_re_initializes_and_retries_exactly_once(
     server: _ScriptedServer,
 ) -> None:
-    # Test: the bound on the recovery path.
-    # Situation: as above -- one rejected tools/list, then a working one.
-    # Expectation: exactly one re-initialize and exactly one retry. Retrying
-    #   once rather than looping matters: a genuine outage should surface as an
-    #   error, not as an unbounded retry storm against a struggling backend.
+    # Test: Retry bound during MCP session recovery.
+    # Situation: The initial `tools/list` call fails with "Session not found"
+    #   and succeeds after a single re-initialization.
+    # Expectation: The client performs exactly one re-initialization and one
+    #   retry (`initialize` and `tools/list` are each called twice in total).
     client.get_tools(force_refresh=True)
 
     assert server.calls.count("initialize") == 2
@@ -123,12 +125,10 @@ def test_rejected_session_re_initializes_and_retries_exactly_once(
 
 
 def test_threads_hold_distinct_sessions(server: _ScriptedServer) -> None:
-    # Test: session state is per thread.
-    # Situation: two worker threads initialize concurrently, as two requests
-    #   in one Gunicorn process do.
-    # Expectation: each holds its own session id. A module-global was
-    #   last-writer-wins, so one thread would send the session another had just
-    #   been issued.
+    # Test: Thread-local isolation of MCP session IDs.
+    # Situation: Two worker threads concurrently call `initialize_mcp()`.
+    # Expectation: Each thread stores and retrieves its own distinct session ID
+    #   without overwriting the other thread's session.
     seen: dict[str, str | None] = {}
 
     def worker() -> None:
@@ -149,11 +149,11 @@ def test_threads_hold_distinct_sessions(server: _ScriptedServer) -> None:
 def test_tool_list_is_served_from_cache_within_the_ttl(
     server: _ScriptedServer,
 ) -> None:
-    # Test: the tool cache actually caches.
-    # Situation: the list has been fetched, and two more calls arrive inside
-    #   the TTL.
-    # Expectation: no further round trips -- tools/list is two extra calls per
-    #   chat turn when it is not cached.
+    # Test: Caching of `tools/list` responses within the cache TTL.
+    # Situation: `get_tools(force_refresh=True)` populates the cache, followed
+    #   immediately by two unforced `get_tools()` calls.
+    # Expectation: The subsequent `get_tools()` calls return the cached tool
+    #   list without issuing additional `tools/list` network requests.
     client.get_tools(force_refresh=True)
     before = server.calls.count("tools/list")
 
@@ -166,12 +166,11 @@ def test_tool_list_is_served_from_cache_within_the_ttl(
 def test_a_failing_refresh_serves_the_stale_list_rather_than_nothing(
     server: _ScriptedServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: what a failed refresh leaves the model to work with.
-    # Situation: the list has been fetched, then the backend goes down and a
-    #   forced refresh fails.
-    # Expectation: the previously known list is served. An expired-but-known
-    #   tool surface is far more useful than an empty one, which would silently
-    #   disable every tool the model can call.
+    # Test: Fallback to the last cached tool list when a refresh fails.
+    # Situation: The tool cache is populated, the MCP backend becomes
+    #   unavailable, and `get_tools(force_refresh=True)` is called.
+    # Expectation: `get_tools` returns the previously cached tool list rather
+    #   than an empty list.
     client.get_tools(force_refresh=True)
     monkeypatch.setattr(client, "mcp_request", _DeadServer())
 

@@ -11,15 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Argument coercion, covering every generation's tool names.
+"""Tests for MCP tool argument normalization in `schema.fix_tool_arguments`.
 
-Part of the plug-and-play guarantee: one agent, either MCP server generation.
-The agent must run unchanged against a CDC services container (MCP 1.2.x, two
-fat tools, `place_observations` / `time_series` payloads) and a DCP or public
-instance (1.3.x, six tools, columnar `data.rows` payloads).
-
-A coercion that names only the 1.2.x tool is not a missing feature on 1.3.x: it
-is a request that goes out malformed against the tool the model actually chose.
+Verifies that `fix_tool_arguments` normalizes date-range and list parameters
+across both MCP 1.2.x (`get_observations`) and MCP 1.3.x
+(`get_child_observations`, `search_child_indicators`, `get_variable_metadata`)
+tool names before requests are sent to the MCP server.
 """
 
 import pytest
@@ -35,22 +32,22 @@ from narratives_agent.mcp import schema
 def test_date_is_forced_to_range_when_range_bounds_are_given(
     tool: str,
 ) -> None:
-    # Test: the date/date_range_start pairing the model routinely gets wrong.
-    # Situation: the model supplies date_range_start without date="range", on
-    #   each of the observation tools that takes the date trio.
-    # Expectation: date is forced to "range". Load-bearing, not cosmetic: the
-    #   server ignores the range bounds unless date is exactly "range" and
-    #   returns a single latest value instead. The fix has to cover every tool
-    #   name or a range request against child places silently collapses to one
-    #   date.
+    # Test: Automatic setting of `date="range"` when range bounds are provided.
+    # Situation: The model passes `date_range_start` without setting
+    #   `date="range"` on `get_observations` or `get_child_observations`.
+    # Expectation: `fix_tool_arguments` sets `args["date"] = "range"` so the
+    #   MCP server applies the requested date range instead of returning only
+    #   the single latest observation.
     args = schema.fix_tool_arguments(tool, {"date_range_start": "2000"})
     assert args["date"] == "range"
 
 
 def test_scalar_places_is_coerced_to_a_list() -> None:
-    # Test: list coercion on search_child_indicators, a 1.3.x tool.
-    # Situation: the model passes a bare string for `places`.
-    # Expectation: it is wrapped in a list, which is what the server requires.
+    # Test: Coercion of a scalar `places` argument on `search_child_indicators`.
+    # Situation: The model supplies a single string for `places` instead of a
+    #   list of strings.
+    # Expectation: `fix_tool_arguments` wraps the string in a single-element
+    #   list to match the MCP server's schema.
     args = schema.fix_tool_arguments(
         "search_child_indicators", {"places": "India"}
     )
@@ -58,11 +55,12 @@ def test_scalar_places_is_coerced_to_a_list() -> None:
 
 
 def test_scalar_variable_dcids_is_coerced_to_a_list() -> None:
-    # Test: list coercion on get_variable_metadata, a 1.3.x tool.
-    # Situation: the model asks about a single variable and passes a bare
-    #   string for `variable_dcids`.
-    # Expectation: it is wrapped in a list -- the server rejects the string
-    #   outright rather than coercing it.
+    # Test: Coercion of a scalar `variable_dcids` argument on
+    #   `get_variable_metadata`.
+    # Situation: The model supplies a single string for `variable_dcids`
+    #   instead of a list of strings.
+    # Expectation: `fix_tool_arguments` wraps the string in a single-element
+    #   list to match the MCP server's schema.
     args = schema.fix_tool_arguments(
         "get_variable_metadata", {"variable_dcids": "Count_Person"}
     )

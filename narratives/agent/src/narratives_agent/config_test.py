@@ -11,26 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Prompt placeholder substitution, the ?key= gate, and prompt URL derivation.
+"""Tests for prompt placeholder substitution, query_param_key validation, and
+prompt URL derivation.
 
-Three things are pinned here, all of which fail silently if they regress.
-
-{{instance.*}} substitution was documented in agent-config.schema.json long
-before anything implemented it, so every instance that set template_vars got a
-prompt containing literal braces. An unknown placeholder is deliberately left
-in place rather than blanked: a visible {{instance.region}} in an answer is a
-much louder failure than a sentence that quietly lost its subject.
-
-query_param_key gates model/thinking overrides and ?demo=true, which switches
-to reserved demo API keys. It used to fall back to a literal default, so a
-public repo published a working credential; and an empty default would make
-"" == "" true for every anonymous caller, which is worse still.
-
-Prompt URLs are derived from CONFIG_URL as a URL, not as a string. A prompt
-whose URL comes out wrong 404s, and _fetch_prompt_bodies treats a 404 as "slot
-absent" and carries on -- so the whole class of failure here is silent: the
-agent starts, answers, and only runs every phase with no system instruction.
-That makes the derivation worth pinning at each shape CONFIG_URL can take.
+Covers three configuration behaviors:
+1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
+   unconfigured placeholders intact so missing values remain visible in rendered
+   prompts.
+2. `query_param_key` validation for gating model/thinking overrides and
+   `?demo=true`, ensuring an unconfigured key defaults to an empty string and
+   rejects all callers.
+3. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
+   bucket directory prefixes while stripping query parameters.
 """
 
 import secrets
@@ -43,12 +35,12 @@ from narratives_agent import config
 def _with_config(
     monkeypatch: pytest.MonkeyPatch, doc: dict[str, object]
 ) -> None:
-    """Serve `doc` as the agent config for the duration of one test."""
+    """Stub `config.load_config` to return `doc` for the current test."""
     monkeypatch.setattr(config, "load_config", lambda: doc)
 
 
 def _gate(expected: str, supplied: str) -> bool:
-    """The condition guarding overrides in routes/chat.py."""
+    """Replicate the `query_param_key` check used in `routes/chat.py`."""
     return bool(expected) and secrets.compare_digest(supplied, expected)
 
 
@@ -77,12 +69,12 @@ def _gate(expected: str, supplied: str) -> bool:
 def test_instance_placeholders_are_substituted(
     monkeypatch: pytest.MonkeyPatch, prompt: str, expected: str
 ) -> None:
-    # Test: {{instance.<key>}} substitution from template_vars.
-    # Situation: an instance configures template_vars and authors a prompt
-    #   using one placeholder, the same placeholder twice, several distinct
-    #   placeholders, or none at all.
-    # Expectation: every configured placeholder is replaced by its value, and
-    #   a prompt without placeholders comes back unchanged.
+    # Test: Substitution of {{instance.<key>}} placeholders from template_vars.
+    # Situation: The configuration defines template_vars, and the prompt
+    #   contains a single placeholder, repeated placeholders, multiple distinct
+    #   placeholders, or no placeholders.
+    # Expectation: Every configured placeholder is replaced with its configured
+    #   value, and prompts without placeholders are returned unchanged.
     _with_config(
         monkeypatch,
         {
@@ -99,12 +91,12 @@ def test_instance_placeholders_are_substituted(
 def test_unknown_placeholder_is_left_intact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: what happens to a placeholder template_vars does not define.
-    # Situation: a prompt names {{instance.fiscal_year_start}}, which the
-    #   configured template_vars has no entry for.
-    # Expectation: it is left in place rather than blanked -- a visible
-    #   placeholder in an answer is a much louder failure than a sentence that
-    #   quietly lost its subject.
+    # Test: Handling of placeholders not defined in template_vars.
+    # Situation: A prompt references {{instance.fiscal_year_start}}, which is
+    #   not present in the configured template_vars dictionary.
+    # Expectation: The unknown placeholder is left intact in the rendered output
+    #   rather than replaced with an empty string, making missing configuration
+    #   values immediately visible.
     _with_config(
         monkeypatch,
         {
@@ -124,10 +116,11 @@ def test_unknown_placeholder_is_left_intact(
 def test_comment_keys_are_not_substitutable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: the "_comment" convention used throughout the config files.
-    # Situation: template_vars carries a _comment key alongside a real one.
-    # Expectation: the _comment placeholder is not substituted, so authoring
-    #   notes cannot leak into a prompt; the real key still is.
+    # Test: Exclusion of "_comment" metadata keys from prompt substitution.
+    # Situation: template_vars contains a "_comment" documentation entry
+    #   alongside a valid template variable.
+    # Expectation: {{instance._comment}} is not substituted into the prompt,
+    #   while the valid {{instance.name}} placeholder is replaced normally.
     _with_config(
         monkeypatch,
         {
@@ -144,9 +137,10 @@ def test_comment_keys_are_not_substitutable(
 def test_non_string_scalars_are_coerced(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: template_vars values that are not strings.
-    # Situation: a config sets a numeric template var, which JSON permits.
-    # Expectation: it is coerced to its string form rather than skipped.
+    # Test: Coercion of non-string scalar values in template_vars.
+    # Situation: template_vars includes an integer value alongside a string.
+    # Expectation: The integer value is converted to its string representation
+    #   and substituted into the prompt.
     _with_config(
         monkeypatch,
         {"template_vars": {"fiscal_year_start": "04-01", "count": 7}},
@@ -160,10 +154,11 @@ def test_non_string_scalars_are_coerced(
 def test_absent_template_vars_leaves_placeholders_intact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: the default case, where an instance configures nothing.
-    # Situation: the config document has no template_vars at all.
-    # Expectation: placeholders survive untouched, matching the unknown-key
-    #   behavior rather than blanking the prompt.
+    # Test: Prompt rendering when template_vars is omitted from the config.
+    # Situation: The configuration dictionary does not contain a template_vars
+    #   key.
+    # Expectation: All {{instance.*}} placeholders remain untouched in the
+    #   rendered prompt.
     _with_config(monkeypatch, {})
     assert config.render_prompt("{{instance.name}}") == "{{instance.name}}"
 
@@ -171,10 +166,11 @@ def test_absent_template_vars_leaves_placeholders_intact(
 def test_malformed_template_vars_does_not_raise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: tolerance of a config that does not match the schema.
-    # Situation: template_vars is a string where an object is required.
-    # Expectation: rendering degrades to leaving placeholders in place instead
-    #   of raising, so one bad config field cannot take the agent down.
+    # Test: Graceful handling when template_vars has an invalid JSON type.
+    # Situation: template_vars is configured as a string instead of a
+    #   dictionary.
+    # Expectation: render_prompt does not raise an exception and leaves
+    #   placeholders unchanged.
     _with_config(monkeypatch, {"template_vars": "not-an-object"})
     assert config.render_prompt("{{instance.name}}") == "{{instance.name}}"
 
@@ -182,10 +178,10 @@ def test_malformed_template_vars_does_not_raise(
 def test_datetime_is_substituted_alongside_instance_vars(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: the pre-existing {{CURRENT_DATETIME}} placeholder still works.
-    # Situation: a prompt mixes {{CURRENT_DATETIME}} with an instance var.
-    # Expectation: both are substituted -- adding instance vars must not have
-    #   displaced the datetime substitution that prompts already relied on.
+    # Test: Simultaneous substitution of {{CURRENT_DATETIME}} and instance vars.
+    # Situation: A prompt contains both {{CURRENT_DATETIME}} and
+    #   {{instance.name}}.
+    # Expectation: Both placeholders are replaced with their resolved values.
     _with_config(monkeypatch, {"template_vars": {"name": "Example DC"}})
     rendered = config.render_prompt("{{CURRENT_DATETIME}} at {{instance.name}}")
     assert "{{CURRENT_DATETIME}}" not in rendered
@@ -198,11 +194,10 @@ def test_datetime_is_substituted_alongside_instance_vars(
 def test_unconfigured_key_reads_as_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: the value get_query_param_key returns when nothing is configured.
-    # Situation: the config document sets no query_param_key.
-    # Expectation: "" rather than a literal default -- this repo is public, so
-    #   any literal here would be a published credential for every instance
-    #   that did not override it.
+    # Test: Default return value of get_query_param_key when unconfigured.
+    # Situation: The configuration dictionary does not set query_param_key.
+    # Expectation: get_query_param_key returns an empty string rather than a
+    #   hardcoded fallback secret.
     _with_config(monkeypatch, {})
     assert config.get_query_param_key() == ""
 
@@ -215,21 +210,21 @@ def test_unconfigured_key_reads_as_empty(
 def test_gate_refuses_when_no_key_is_configured(
     monkeypatch: pytest.MonkeyPatch, supplied: str
 ) -> None:
-    # Test: the gate's behavior on an instance that configured no key.
-    # Situation: no query_param_key is configured, and a caller supplies
-    #   nothing or a guess.
-    # Expectation: refused either way. An empty default would make "" == ""
-    #   true for every anonymous caller, which is worse than a published one.
+    # Test: Override gate behavior when query_param_key is not configured.
+    # Situation: query_param_key is omitted from the config, and a caller passes
+    #   either an empty string or a candidate key.
+    # Expectation: The gate evaluates to False in both cases so that an empty
+    #   configuration never matches an empty caller parameter.
     _with_config(monkeypatch, {})
     assert _gate(config.get_query_param_key(), supplied) is False
 
 
 def test_configured_key_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Test: whitespace handling on the configured key.
-    # Situation: the config value carries leading and trailing whitespace, as
-    #   a hand-edited JSON document readily can.
-    # Expectation: it is stripped, so the key a caller can actually supply is
-    #   the one the config author meant to write.
+    # Test: Whitespace normalization on a configured query_param_key.
+    # Situation: The query_param_key value in the config contains leading and
+    #   trailing whitespace.
+    # Expectation: get_query_param_key strips surrounding whitespace before
+    #   returning the key.
     _with_config(
         monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
     )
@@ -237,9 +232,10 @@ def test_configured_key_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_gate_refuses_a_wrong_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Test: the gate rejects a mismatch.
-    # Situation: a key is configured and the caller supplies a different one.
-    # Expectation: refused.
+    # Test: Override gate rejection of an incorrect key.
+    # Situation: A valid query_param_key is configured, and the caller supplies
+    #   a non-matching string.
+    # Expectation: The gate evaluates to False.
     _with_config(
         monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
     )
@@ -249,10 +245,10 @@ def test_gate_refuses_a_wrong_key(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_gate_allows_the_configured_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: the gate admits the configured key.
-    # Situation: a key is configured and the caller supplies exactly it.
-    # Expectation: allowed -- the overrides and demo mode this gates are
-    #   unreachable otherwise.
+    # Test: Override gate acceptance of a matching key.
+    # Situation: A valid query_param_key is configured, and the caller supplies
+    #   the exact stripped key.
+    # Expectation: The gate evaluates to True, enabling request overrides.
     _with_config(
         monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
     )
@@ -262,10 +258,11 @@ def test_gate_allows_the_configured_key(
 def test_non_string_key_reads_as_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: a query_param_key of the wrong JSON type.
-    # Situation: the config sets a number where a string is required.
-    # Expectation: "" -- which the gate refuses for every caller -- rather
-    #   than a value compare_digest would raise on.
+    # Test: Handling of a non-string query_param_key in the config.
+    # Situation: query_param_key is set to an integer instead of a string.
+    # Expectation: get_query_param_key returns an empty string so that
+    #   secrets.compare_digest does not raise a TypeError and the gate remains
+    #   closed.
     _with_config(monkeypatch, {"query_param_key": 12345})
     assert config.get_query_param_key() == ""
 
@@ -274,7 +271,7 @@ def test_non_string_key_reads_as_empty(
 
 
 class _StubResponse:
-    """Enough of requests.Response for _fetch_prompt_bodies."""
+    """Minimal requests.Response stub for _fetch_prompt_bodies."""
 
     text = "body"
 
@@ -283,7 +280,7 @@ class _StubResponse:
 
 
 class _RecordingFetch:
-    """Records every URL _fetch_prompt_bodies asks for, and fetches nothing."""
+    """Callable stub that records requested URLs without network I/O."""
 
     def __init__(self) -> None:
         self.urls: list[str] = []
@@ -315,19 +312,17 @@ class _RecordingFetch:
 def test_prompt_urls_are_derived_from_the_config_url(
     monkeypatch: pytest.MonkeyPatch, config_url: str, expected: str
 ) -> None:
-    # Test: the three shapes CONFIG_URL arrives in.
-    # Situation: config in a bucket subdirectory, config at the host root, and
-    #   a config URL carrying a query whose own value contains a slash.
-    # Expectation: prompts/<slot>.md resolves beside the config every time,
-    #   with a single slash at the root, and the query -- which addresses the
-    #   config object alone -- neither carried over nor read as part of the
-    #   path.
+    # Test: Derivation of prompt file URLs from CONFIG_URL.
+    # Situation: CONFIG_URL points to a bucket subdirectory, a host root, or
+    #   includes query parameters whose values contain slashes.
+    # Expectation: _fetch_prompt_bodies resolves prompts/<slot>.md sibling to
+    #   the config file path in all three cases and strips query parameters
+    #   before constructing the prompt URLs.
     fetch = _RecordingFetch()
     monkeypatch.setattr(config, "_fetch_gcs_url", fetch)
 
     config._fetch_prompt_bodies(config_url)
 
-    # The first slot's URL is the whole derivation; the rest differ only in
-    # filename, so that URL plus the request count covers the loop.
+    # All slots share the same base directory URL and differ only in filename.
     assert fetch.urls[0] == expected
     assert len(fetch.urls) == len(config.PROMPT_SLOTS)
