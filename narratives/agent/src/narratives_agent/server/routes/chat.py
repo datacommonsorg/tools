@@ -33,10 +33,7 @@ logger = logging.getLogger(__name__)
 chat_bp = Blueprint("chat", __name__)
 
 
-@chat_bp.route("/api/chat/stream", methods=["POST"])
-@chat_bp.route(
-    "/chat/stream", methods=["POST"]
-)  # alias for the SPA served under /agent/*
+@chat_bp.route("/chat/stream", methods=["POST"])
 def chat_stream():
     """Full chat workflow with SSE streaming.
 
