@@ -80,7 +80,7 @@ _config_mtime = 0
 # `follow_up` is the only slot with an in-code default
 # (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
 # than to no system instruction.
-PROMPT_SLOTS = ("mcp", "kb", "synthesis", "follow_up")
+PROMPT_SLOTS = ("mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -177,16 +177,11 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
 
 
 def _bootstrap_config_from_url() -> None:
-    """If CONFIG_URL is set, fetch the file once at startup and save
-    it as config.json so the existing load_config() path finds it. This makes
-    the agent compatible with the bucket-driven config model (BRAND_CONFIG_URL +
-    CONFIG_URL) without rewriting the upstream loader.
+    """Fetch CONFIG_URL at startup and write the merged config to config.json.
 
-    The prompt bodies are merged in here. `config/prompts/*.md` is the authoring
-    format, but the workflows only ever read config["prompts"], and nothing
-    populated it — so the MCP tool loop, the KB phase and synthesis all ran with
-    an empty system instruction while the .md files sat unread in the bucket. An
-    inline `prompts` slot in agent-config.json still wins, per the schema.
+    Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
+    `config["prompts"]` before writing the file, while allowing non-empty inline
+    `prompts` entries in `agent-config.json` to take precedence.
     """
     url = os.environ.get("CONFIG_URL", "").strip()
     if not url:
@@ -461,12 +456,6 @@ def apply_query_overrides(config: dict, query_params: dict) -> dict:
     # Model override
     if query_params.get("model"):
         effective["gemini"]["mcp_model"] = query_params["model"]
-        effective["gemini"]["kb_model"] = query_params["model"]
-
-    # Knowledge base toggle
-    if query_params.get("kb_enabled"):
-        enabled = query_params["kb_enabled"].lower() == "true"
-        effective["knowledge_base"]["enabled"] = enabled
 
     # MCP thinking budget override
     if query_params.get("mcp_thinking"):

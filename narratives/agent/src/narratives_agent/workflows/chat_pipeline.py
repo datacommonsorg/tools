@@ -46,7 +46,6 @@ from narratives_agent.workflows.chart_config import (
     validate_data_response,
 )
 from narratives_agent.workflows.follow_up import generate_follow_up_questions
-from narratives_agent.workflows.kb_search import execute_kb_query
 from narratives_agent.workflows.mcp_loop import execute_mcp_tool_loop
 
 logger = logging.getLogger(__name__)
@@ -260,7 +259,7 @@ def run_mcp_phase(ctx):
         if mcp_sources:
             yield f"data: {json.dumps({'mcp_sources': mcp_sources})}\n\n"
 
-        # Start chart config in background (runs parallel with KB + synthesis)
+        # Start chart config in background (runs parallel with synthesis)
         #
         # Gated on the structural `has_data` check above, not only on the
         # model's later reading of the synthesis prose. A chart is drawn from
@@ -319,90 +318,10 @@ def run_mcp_phase(ctx):
     ctx["mcp_sources"] = mcp_sources
 
 
-def run_kb_phase(ctx):
-    """Phase 2: KB Query (if enabled).
-
-    Reads ``effective_config``, ``user_message``, ``session_logger``,
-    ``demo_mode``, ``thought_queue`` and ``thought_callback`` from ``ctx``;
-    writes ``kb_response`` and ``kb_sources`` back into ``ctx``."""
-    if ctx["aborted"]:
-        return
-    session_logger = ctx["session_logger"]
-    effective_config = ctx["effective_config"]
-    user_message = ctx["user_message"]
-    demo_mode = ctx["demo_mode"]
-    thought_queue = ctx["thought_queue"]
-    thought_callback = ctx["thought_callback"]
-
-    # Phase 2: KB Query (if enabled)
-    kb_response = ""
-    kb_sources = []
-    kb_enabled = effective_config.get("knowledge_base", {}).get(
-        "enabled", False
-    )
-
-    if kb_enabled:
-        yield (
-            f"data: {
-                json.dumps(
-                    {
-                        'status': 'kb_start',
-                        'message': 'Searching knowledge base...',
-                    }
-                )
-            }\n\n"
-        )
-
-        # Run KB in thread to enable thought streaming
-        kb_result_holder = {"response": "", "sources": []}
-
-        def run_kb():
-            try:
-                kb_result = execute_kb_query(
-                    user_message,
-                    session_logger=session_logger,
-                    thought_callback=lambda t: thought_callback(t, "kb"),
-                    demo_mode=demo_mode,
-                    effective_config=effective_config,
-                )
-                kb_result_holder["response"] = kb_result.get("response", "")
-                kb_result_holder["sources"] = kb_result.get("sources", [])
-            except Exception as e:
-                logger.error(f"KB thread error: {e}")
-
-        kb_thread = threading.Thread(target=run_kb)
-        kb_thread.start()
-
-        # Stream thoughts while KB runs
-        while kb_thread.is_alive() or not thought_queue.empty():
-            try:
-                thought_data = thought_queue.get(timeout=0.1)
-                yield f"data: {json.dumps(thought_data)}\n\n"
-            except queue.Empty:
-                continue
-
-        kb_thread.join()
-
-        # Signal KB thinking complete
-        yield f"data: {json.dumps({'thinking_complete': 'kb'})}\n\n"
-
-        # Get results from thread
-        kb_response = kb_result_holder["response"]
-        kb_sources = kb_result_holder["sources"]
-
-        # Send KB sources to frontend for inline citations
-        if kb_sources:
-            yield f"data: {json.dumps({'kb_sources': kb_sources})}\n\n"
-        yield f"data: {json.dumps({'status': 'kb_complete'})}\n\n"
-
-    ctx["kb_response"] = kb_response
-    ctx["kb_sources"] = kb_sources
-
-
 def run_synthesis_phase(ctx):
-    """Phase 3: Synthesis with streaming, chart validation and the done event.
+    """Phase 2: Synthesis with streaming, chart validation and the done event.
 
-    Reads the MCP/KB results, chart holders and ``request_start_time`` from
+    Reads the MCP results, chart holders and ``request_start_time`` from
     ``ctx`` -- including ``mcp_sources``, which it numbers for the synthesis
     prompt rather than deriving its own -- and writes ``full_text`` and
     ``chart_config`` back into ``ctx``. Sets
@@ -418,14 +337,12 @@ def run_synthesis_phase(ctx):
     demo_mode = ctx["demo_mode"]
     mcp_results = ctx["mcp_results"]
     mcp_sources = ctx["mcp_sources"]
-    kb_response = ctx["kb_response"]
-    kb_sources = ctx["kb_sources"]
     chart_result_holder = ctx["chart_result_holder"]
     chart_thread = ctx["chart_thread"]
     request_start_time = ctx["request_start_time"]
     full_text = ctx["full_text"]
 
-    # Phase 3: Synthesis with streaming
+    # Phase 2: Synthesis with streaming
     yield (
         f"data: {
             json.dumps(
@@ -446,16 +363,12 @@ def run_synthesis_phase(ctx):
     # Build synthesis context with source labels for citations
     context_parts = []
     if mcp_results:
-        # Hand the model the sources ALREADY NUMBERED, in the order the
-        # frontend received them, because the reader's Sources list is numbered
-        # by position in that same list. The prompt tells the model to cite
-        # these numbers and no others, which is what makes [2] in the prose and
-        # [2] in the list the same source.
-        #
-        # This used to be a comma-joined line of markdown links carrying no
-        # numbers at all, so the model invented its own numbering -- and, being
-        # asked to print its own Sources roll-call, produced a second list that
-        # disagreed with the rendered one.
+        # Number sources 1..N in the order streamed to the frontend as
+        # mcp_sources so inline [n] citations resolve to the matching entry in
+        # the rendered Sources list. Any additional source list must be
+        # normalized to {name, url} and appended to mcp_sources before
+        # numbering, because the frontend provenance reducer drops entries
+        # without a `url` field.
         if mcp_sources:
             numbered_sources = "\n".join(
                 f"[{n}] {src.get('name') or src.get('url')} - {src.get('url')}"
@@ -466,33 +379,9 @@ def run_synthesis_phase(ctx):
                 f"{numbered_sources}"
             )
         context_parts.append(f"**DATA RESULTS:**\n{mcp_results}")
-    if kb_response:
-        # KB documents are named but deliberately NOT numbered, because they
-        # never reach the frontend's provenance list: kb_sources carries
-        # `title`/`uri`, while the reducer merges only entries with a `url`, so
-        # it drops them all. A number here would therefore point at nothing.
-        #
-        # The failure mode is safe rather than wrong -- an unmapped marker
-        # renders as plain text and lists no source, instead of attributing a
-        # document's claim to a statistical agency -- but it does mean KB
-        # citations are currently unlinkable. Fixing that means normalising
-        # kb_sources to {name, url} and appending them to mcp_sources in the
-        # same order the reducer merges them. Inert while
-        # knowledge_base.enabled is false, which it is for this instance.
-        kb_source_names = (
-            ", ".join([s["title"] for s in kb_sources])
-            if kb_sources
-            else "Knowledge Base"
-        )
-        context_parts.append(
-            f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n"
-            f"{kb_response}"
-        )
 
     # Log synthesis start
-    session_logger.log_synthesis_start(
-        ["MCP" if mcp_results else None, "KB" if kb_response else None]
-    )
+    session_logger.log_synthesis_start(["MCP" if mcp_results else None])
 
     synthesis_message = f"""User Query: {user_message}
 
@@ -514,7 +403,7 @@ Please provide a comprehensive response combining all available information."""
         for msg in history:
             synthesis_messages.append(msg)
 
-        # Add current query with MCP/KB context as final user message
+        # Add current query with MCP context as final user message
         synthesis_messages.append(
             {"role": "user", "parts": [{"text": synthesis_message}]}
         )
@@ -584,7 +473,7 @@ Please provide a comprehensive response combining all available information."""
                 {"data_found": False, "action": "hide_charts"},
             )
 
-    # Wait for chart config thread (started after MCP, runs parallel with KB +
+    # Wait for chart config thread (started after MCP, runs parallel with
     # synthesis)
     if chart_thread[0]:
         chart_thread[0].join(timeout=CHART_CONFIG_JOIN_TIMEOUT_SECONDS)
@@ -601,7 +490,7 @@ Please provide a comprehensive response combining all available information."""
     )
 
     # Temporary cost instrumentation: report accumulated Gemini token usage
-    # for this query (MCP + KB + synthesis + chart config). Emitted before
+    # for this query (MCP + synthesis + chart config). Emitted before
     # `done`; the UI shows it only when opened with ?debug=tokens. Follow-up
     # question generation happens after this and is intentionally excluded.
     session_logger.log("TOKEN_USAGE", session_logger.token_usage)

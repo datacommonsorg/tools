@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 #
 # The MCP client and the data-plane proxy were given pooled sessions; this path
 # was missed -- and it is the busiest of the three, making 6-9 calls per chat
-# turn (tool loop iterations, KB, synthesis, chart config, follow-ups). Each
+# turn (tool loop iterations, synthesis, chart config, follow-ups). Each
 # bare requests.post opened a fresh TCP connection and TLS handshake to
 # generativelanguage.googleapis.com.
 #
@@ -600,41 +600,3 @@ def gemini_request_with_thought_streaming(
             {"total_keys": len(all_keys)},
         )
     return {"error": error_msg}
-
-
-def get_api_key_filestore_mapping(demo_mode: bool = False) -> dict:
-    """Build mapping of API key -> filestore from config.
-
-    Each API key in gemini.api_keys maps to the filestore at the same index
-    in gemini.filestores array.
-
-    Args:
-        demo_mode: If True, uses demo_api_keys and demo_filestores for mapping.
-
-    Returns:
-        dict mapping api_key -> filestore_id
-    """
-    config = load_config()
-    gemini_config = config.get("gemini", {})
-
-    if demo_mode:
-        api_keys = gemini_config.get("demo_api_keys", [])
-        filestores = gemini_config.get("demo_filestores", [])
-        if api_keys:
-            logger.info(f"Using demo filestore mapping ({len(api_keys)} keys)")
-    else:
-        api_keys = gemini_config.get("api_keys", [])
-        filestores = gemini_config.get("filestores", [])
-
-    # Build the mapping - each key maps to filestore at same index
-    mapping = {}
-    for i, key in enumerate(api_keys):
-        if i < len(filestores):
-            mapping[key] = filestores[i]
-        else:
-            # Fallback to legacy store_id if no filestore configured for
-            # this key
-            legacy_store = config.get("knowledge_base", {}).get("store_id", "")
-            mapping[key] = legacy_store
-
-    return mapping

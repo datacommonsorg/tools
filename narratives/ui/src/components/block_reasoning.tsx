@@ -134,8 +134,6 @@ function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   switch (status) {
     case "mcp":
       return "Querying data tools…";
-    case "kb":
-      return "Searching knowledge base…";
     case "synthesis":
       return "Synthesizing answer…";
     default:

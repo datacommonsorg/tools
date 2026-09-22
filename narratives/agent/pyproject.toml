@@ -97,7 +97,6 @@ explicit_package_bases = true
 # Branch 2 deletes these modules outright.
 module = [
     "narratives_agent.server.routes.tools",
-    "narratives_agent.workflows.kb_search",
 ]
 ignore_errors = true
 

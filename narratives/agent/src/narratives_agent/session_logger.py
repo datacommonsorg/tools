@@ -90,11 +90,11 @@ class SessionLogger:
             self.logs_dir.mkdir(exist_ok=True)
         self.entries = []
         # Temporary cost instrumentation: accumulate Gemini token usage across
-        # every model call in a single /chat/stream request (MCP tool loop, KB,
+        # every model call in a single /chat/stream request (MCP tool loop,
         # synthesis, chart config). Emitted to the UI as a `usage` SSE event and
         # gated behind ?debug=tokens on the client. `output` includes thinking
         # tokens (thoughtsTokenCount) since Gemini bills those as output.
-        # Guarded by a lock because MCP/KB/chart calls run in parallel threads.
+        # Guarded by a lock because MCP/chart calls run in parallel threads.
         self.token_usage = {"input": 0, "output": 0, "total": 0}
         self._usage_lock = threading.Lock()
         self._write_header()
@@ -222,18 +222,6 @@ class SessionLogger:
                 "status": status,
                 # No truncation - full result for debugging
                 "result": result_str,
-            },
-        )
-
-    def log_kb_query(self, message: str, result: str, duration_ms: float):
-        """Log Knowledge Base query."""
-        self.log(
-            "KB_QUERY",
-            {
-                "query": message,
-                "duration_ms": round(duration_ms, 2),
-                "result_length": len(result),
-                "result": result,  # No truncation - full result for debugging
             },
         )
 

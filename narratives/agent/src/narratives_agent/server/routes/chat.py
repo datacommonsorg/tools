@@ -24,7 +24,6 @@ from narratives_agent.config import get_query_param_key
 from narratives_agent.session_logger import SessionLogger
 from narratives_agent.workflows.chat_pipeline import (
     run_followups,
-    run_kb_phase,
     run_mcp_phase,
     run_synthesis_phase,
 )
@@ -43,8 +42,7 @@ def chat_stream():
 
     Phases:
     1. MCP Tools - Execute data queries (send tool call details)
-    2. KB Query - Search knowledge base (if enabled)
-    3. Synthesis - Stream final response with chart config
+    2. Synthesis - Stream final response with chart config
 
     Request body:
     {
@@ -56,8 +54,7 @@ def chat_stream():
     Query params (optional, requires valid key):
     - key: Secret key for config overrides (must match query_param_key in
       config)
-    - model: Override mcp_model and kb_model
-    - kb: "true" or "false" to toggle knowledge base
+    - model: Override mcp_model
     - mcp_thinking: Override MCP thinking level
     - synthesis_thinking: Override synthesis thinking level
 
@@ -85,7 +82,6 @@ def chat_stream():
             "model": request.args.get(
                 "model"
             ),  # e.g., "gemini-3-flash-preview"
-            "kb_enabled": request.args.get("kb"),  # "true" or "false"
             "mcp_thinking": request.args.get(
                 "mcp_thinking"
             ),  # "low", "medium", "high", or budget number
@@ -114,7 +110,7 @@ def chat_stream():
         request_start_time = time.time()
         full_text = ""
 
-        # Chart config runs in parallel with KB + synthesis
+        # Chart config runs in parallel with synthesis
         chart_result_holder = {"config": {"should_render": False}}
         chart_thread = [None]  # Use list to avoid nonlocal issues
 
@@ -134,8 +130,6 @@ def chat_stream():
             "effective_config": None,
             "mcp_results": "",
             "tool_calls_list": [],
-            "kb_response": "",
-            "kb_sources": [],
             "thought_queue": None,
             "thought_callback": None,
             "chart_config": None,
@@ -148,7 +142,6 @@ def chat_stream():
         )
 
         yield from run_mcp_phase(ctx)
-        yield from run_kb_phase(ctx)
         yield from run_synthesis_phase(ctx)
         yield from run_followups(ctx)
 
