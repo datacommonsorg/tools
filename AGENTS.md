@@ -25,6 +25,7 @@ documents govern. Its owners should add one.
 | `<app>/AGENTS.md` | App layout, commands, app-specific conventions |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution process, PR expectations, review policy |
 | [`CONTINUOUS_INTEGRATION.md`](CONTINUOUS_INTEGRATION.md) | CI orchestrator and how to wire a new app into it |
+| [`.agent/skills/datacommons-pr-review/SKILL.md`](.agent/skills/datacommons-pr-review/SKILL.md) | Pull request review workflow and verification checklist |
 
 ## Resolution rule
 
