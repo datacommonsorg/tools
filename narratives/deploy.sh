@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# Custom Data Commons — deploy and update one instance.
+# Unified Deployer (DCP/Public MCP) — deploy and update one instance.
 # ===========================================================================
 set -euo pipefail
 
