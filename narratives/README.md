@@ -822,7 +822,7 @@ uv run mypy                                # types, strict
 > exemption is retired by deleting that module, never by annotating code that is
 > about to be replaced — the list only shrinks.
 
-The agent suites cover four behaviors whose failure is **silent**:
+The agent suites cover five behaviors whose failure is **silent**:
 
 - **MCP session recovery** when the data plane scales. Sessions are bound to the
   process that minted them and Cloud Run has no affinity, so a session created
@@ -836,6 +836,9 @@ The agent suites cover four behaviors whose failure is **silent**:
   regression, not a fix.
 - **Prompt placeholder substitution** — an unsubstituted `{{instance.*}}` reaches
   the user inside an answer.
+- **Gemini non-200 reporting and credential redaction** — a rejected request or
+  proxy error page fails closed with `key=...` redacted rather than being parsed
+  as an empty candidate list or leaking the API key.
 
 ---
 

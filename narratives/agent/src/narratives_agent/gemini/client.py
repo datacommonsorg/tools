@@ -15,6 +15,7 @@
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable, Generator
 
@@ -43,26 +44,46 @@ _NO_KEY_ERROR = (
 _SESSION = requests.Session()
 _SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
 
+# Maximum characters of an upstream error body included in the returned error
+# string and log message.
+_ERROR_BODY_LENGTH = 500
 
-def _status_error(status_code: int) -> str | None:
-    """Return a descriptive error string for HTTP 429, 500, or 503 responses."""
-    if status_code == 429:
-        return "Rate limited (429)"
-    if status_code in (500, 503):
-        return f"Server error ({status_code})"
-    return None
+# Redact `key=...` query parameters from upstream error bodies so API keys
+# echoed by intermediate proxies or frontends are never logged or streamed to
+# the browser.
+_CREDENTIAL_PATTERN = re.compile(r"\bkey=[^&\s\"'<>]*", re.IGNORECASE)
+_CREDENTIAL_REPLACEMENT = "key=[REDACTED]"
+
+
+def _status_error(response: requests.Response) -> str | None:
+    """Return a formatted error string for non-200 HTTP responses, or None."""
+    status_code = response.status_code
+    if status_code == 200:
+        return None
+    try:
+        if status_code == 429:
+            return "Rate limited (429)"
+        if status_code in (500, 503):
+            return f"Server error ({status_code})"
+        excerpt = _CREDENTIAL_PATTERN.sub(
+            _CREDENTIAL_REPLACEMENT, response.text[:_ERROR_BODY_LENGTH]
+        )
+        return f"HTTP {status_code}: {excerpt}"
+    finally:
+        response.close()
 
 
 def _report_failure(
     error: str, model: str, session_logger: SessionLogger | None
 ) -> dict:
-    """Log a failed Gemini call and shape it as the caller's error dict."""
-    logger.error(f"Gemini request failed: {error}")
+    """Log a failed Gemini call with credentials redacted and return a dict."""
+    redacted = _CREDENTIAL_PATTERN.sub(_CREDENTIAL_REPLACEMENT, error)
+    logger.error(f"Gemini request failed: {redacted}")
     if session_logger:
         session_logger.log_error(
-            "GEMINI_REQUEST_FAILED", error, {"model": model}
+            "GEMINI_REQUEST_FAILED", redacted, {"model": model}
         )
-    return {"error": error}
+    return {"error": redacted}
 
 
 def build_thinking_config(
@@ -205,7 +226,7 @@ def gemini_request(
             )
             # Check the HTTP status before streaming because error responses
             # return a JSON body rather than SSE frames.
-            status_error = _status_error(response.status_code)
+            status_error = _status_error(response)
             if status_error:
                 return _report_failure(status_error, model, session_logger)
             return _stream_gemini_response(
@@ -219,7 +240,7 @@ def gemini_request(
             timeout=300,
         )
 
-        status_error = _status_error(response.status_code)
+        status_error = _status_error(response)
         if status_error:
             return _report_failure(status_error, model, session_logger)
 
@@ -236,12 +257,7 @@ def gemini_request(
     except requests.exceptions.Timeout:
         return _report_failure("Request timeout", model, session_logger)
     except Exception as e:
-        logger.error(f"Gemini API error: {e}")
-        if session_logger:
-            session_logger.log_error(
-                "GEMINI_API_ERROR", str(e), {"model": model}
-            )
-        return {"error": str(e)}
+        return _report_failure(str(e), model, session_logger)
 
 
 def _stream_gemini_response(
@@ -425,7 +441,7 @@ def gemini_request_with_thought_streaming(
 
         # Check the HTTP status before streaming because error responses
         # return a JSON body rather than SSE frames.
-        status_error = _status_error(response.status_code)
+        status_error = _status_error(response)
         if status_error:
             return _report_failure(status_error, model, session_logger)
 
@@ -495,9 +511,4 @@ def gemini_request_with_thought_streaming(
     except requests.exceptions.Timeout:
         return _report_failure("Request timeout", model, session_logger)
     except Exception as e:
-        logger.error(f"Gemini API error: {e}")
-        if session_logger:
-            session_logger.log_error(
-                "GEMINI_API_ERROR", str(e), {"model": model}
-            )
-        return {"error": str(e)}
+        return _report_failure(str(e), model, session_logger)

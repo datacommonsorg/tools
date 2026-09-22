@@ -141,7 +141,8 @@ Return false if the response says data is "not available", "not found", \
     )
 
     if "candidates" not in response:
-        # An API error, whose body gemini_request returns verbatim. Logged
+        # An API error, which gemini_request reports as {"error": "..."} with
+        # a redacted excerpt of the upstream body inside the string. Logged
         # rather than swallowed: this branch taking the permissive default on
         # every single call is what let charts through under answers that said
         # there was no data, and it left no trace anywhere.
