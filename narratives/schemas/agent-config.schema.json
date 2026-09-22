@@ -19,15 +19,6 @@
           },
           "minItems": 1
         },
-        "demo_api_keys": {
-          "description": "Separate pool for demo / public-facing traffic. Same Secret-Manager-in-prod policy applies via GEMINI_DEMO_API_KEYS_SECRET.",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "default": []
-        },
         "api_key": {
           "description": "DEPRECATED single-key fallback. Agent will refuse it in prod mode; warn-only in dev mode.",
           "type": "string"
@@ -42,29 +33,6 @@
           "description": "Model used for the MCP tool-loop / planner.",
           "type": "string",
           "default": "gemini-3-flash-preview"
-        },
-        "kb_model": {
-          "description": "Model used for the File Search / KB phase.",
-          "type": "string",
-          "default": "gemini-3-flash-preview"
-        },
-        "filestores": {
-          "description": "Gemini File Search corpus IDs (one or more; sharded RAG when multiple).",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^fileSearchStores/"
-          },
-          "default": []
-        },
-        "demo_filestores": {
-          "description": "Demo corpus pool.",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^fileSearchStores/"
-          },
-          "default": []
         }
       }
     },
@@ -82,25 +50,6 @@
           "description": "Set false to run synthesis-only (no tool loop). Used for chat-only fallback when MCP is down.",
           "type": "boolean",
           "default": true
-        },
-        "_comment": {
-          "type": "string",
-          "description": "Free-text annotation for maintainers. Ignored by the agent."
-        }
-      }
-    },
-    "knowledge_base": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "description": "Toggle the File Search RAG phase. False disables the KB pipeline entirely for instances without a corpus.",
-          "type": "boolean",
-          "default": false
-        },
-        "store_id": {
-          "description": "DEPRECATED single-corpus shim. Use gemini.filestores[] instead. Schema accepts it for backward shape compat; agent ignores it.",
-          "type": "string"
         },
         "_comment": {
           "type": "string",
@@ -142,9 +91,6 @@
         "mcp": {
           "type": "string"
         },
-        "kb": {
-          "type": "string"
-        },
         "synthesis": {
           "type": "string"
         },
@@ -178,11 +124,6 @@
       "additionalProperties": {
         "type": "string"
       }
-    },
-    "query_param_key": {
-      "description": "Soft-gate token for demo links, supplied as ?key=<this>. Gates model/thinking overrides and ?demo=true, which switches to the reserved demo API keys. OMIT THIS KEY unless you need demo links: with none configured, those overrides are refused outright. Never commit a real value, and never reuse one across instances.",
-      "type": "string",
-      "minLength": 16
     },
     "proxy_url": {
       "description": "Legacy: where the agent itself binds. Container env (PROXY_PORT) is the source of truth in the target deployment; schema accepts this key for backward compatibility with upstream config.json.example.",
