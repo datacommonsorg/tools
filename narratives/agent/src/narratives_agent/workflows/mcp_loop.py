@@ -25,22 +25,16 @@ from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 
+# Maximum model turns in the MCP tool loop. Each entity or variable lookup uses
+# up to three tool calls (search, get_variable_metadata, observations), and the
+# final iteration must produce a text summary rather than a tool call.
+MAX_ITERATIONS = 15
+
 
 def execute_mcp_tool_loop(
     user_message: str,
     history: list,
     config: dict,
-    # Each iteration is one model turn, and the last one has to carry the text
-    # answer rather than a tool call. A broad question re-searches before it
-    # settles — "compare X across European countries" spent four turns on
-    # search/observe/search/observe — and exhausting the budget returns whatever
-    # was gathered with no synthesis, so leave headroom.
-    #
-    # Raised from 7 for the 1.3.0 tool surface: the recommended flow is now
-    # three steps (search → get_variable_metadata → observations) rather than
-    # two, and a bilateral question was observed spending all seven turns on
-    # search alone and returning no data at all.
-    max_iterations: int = 15,
     session_logger: SessionLogger | None = None,
     thought_callback: Callable[[str], None] | None = None,
 ) -> tuple:
@@ -51,7 +45,6 @@ def execute_mcp_tool_loop(
         history: Conversation history
         config: Backend config dict, already checked to be non-empty by the
             caller
-        max_iterations: Maximum tool calling iterations
         session_logger: Optional SessionLogger for comprehensive logging
         thought_callback: Optional callback for streaming thought chunks.
                          Signature: callback(thought_text: str) -> None
@@ -68,7 +61,6 @@ def execute_mcp_tool_loop(
     mcp_prompt = config.get("prompts", {}).get("mcp", "")
     mcp_model = get_gemini_model(config)
     thinking_level = config.get("thinking", {}).get("mcp_level", "low")
-    max_iterations = config.get("mcp", {}).get("max_iterations", max_iterations)
 
     # Get MCP tools
     tools = get_tools()
@@ -100,15 +92,15 @@ def execute_mcp_tool_loop(
     tool_calls_list = []
     all_tool_results = []
 
-    for iteration in range(max_iterations):
+    for iteration in range(MAX_ITERATIONS):
         logger.info(
-            f"MCP Tool Loop - Iteration {iteration + 1}/{max_iterations}"
+            f"MCP Tool Loop - Iteration {iteration + 1}/{MAX_ITERATIONS}"
         )
 
         if session_logger:
             session_logger.log(
                 "MCP_LOOP_ITERATION",
-                {"iteration": iteration + 1, "max": max_iterations},
+                {"iteration": iteration + 1, "max": MAX_ITERATIONS},
             )
 
         response = gemini_request_with_thought_streaming(
@@ -218,9 +210,9 @@ def execute_mcp_tool_loop(
     # Cloud Logging and lets this be counted across real traffic.
     tool_results_text = "\n\n".join(all_tool_results)
     logger.warning(
-        "MCP loop hit max_iterations=%d after %d tool calls; the answer "
+        "MCP loop hit its iteration cap of %d after %d tool calls; the answer "
         "will be built on partial data",
-        max_iterations,
+        MAX_ITERATIONS,
         len(tool_calls_list),
     )
     if session_logger:
@@ -228,7 +220,7 @@ def execute_mcp_tool_loop(
             "MCP_LOOP_MAX_ITERATIONS",
             {
                 "tools_called": len(tool_calls_list),
-                "max_iterations": max_iterations,
+                "max_iterations": MAX_ITERATIONS,
             },
         )
     return (
