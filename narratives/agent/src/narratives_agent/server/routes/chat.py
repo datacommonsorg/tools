@@ -14,21 +14,16 @@
 # limitations under the License.
 
 import json
-import logging
-import secrets
 import time
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
-from narratives_agent.config import get_query_param_key
 from narratives_agent.session_logger import SessionLogger
 from narratives_agent.workflows.chat_pipeline import (
     run_followups,
     run_mcp_phase,
     run_synthesis_phase,
 )
-
-logger = logging.getLogger(__name__)
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -48,13 +43,6 @@ def chat_stream():
         "session_id": "optional session ID for follow-up messages"
     }
 
-    Query params (optional, requires valid key):
-    - key: Secret key for config overrides (must match query_param_key in
-      config)
-    - model: Override mcp_model
-    - mcp_thinking: Override MCP thinking level
-    - synthesis_thinking: Override synthesis thinking level
-
     Response: Server-Sent Events stream
     """
     data = request.get_json()
@@ -64,34 +52,6 @@ def chat_stream():
     user_message = data["message"]
     history = data.get("history", [])
     existing_session_id = data.get("session_id")  # From follow-up messages
-
-    # Parse query parameters for config overrides
-    query_params = {}
-    secret_key = request.args.get("key", "")
-    expected_key = get_query_param_key()
-
-    # An unconfigured key disables overrides outright. Comparing equal-and-empty
-    # would hand every anonymous caller the model overrides.
-    if expected_key and secrets.compare_digest(secret_key, expected_key):
-        # Valid key - extract override params
-        query_params = {
-            "model": request.args.get(
-                "model"
-            ),  # e.g., "gemini-3-flash-preview"
-            "mcp_thinking": request.args.get(
-                "mcp_thinking"
-            ),  # "low", "medium", "high", or budget number
-            "synthesis_thinking": request.args.get(
-                "synthesis_thinking"
-            ),  # same options
-        }
-        # Remove None values
-        query_params = {k: v for k, v in query_params.items() if v is not None}
-        if query_params:
-            logger.info(f"Query params override applied: {query_params}")
-    elif secret_key:
-        # Invalid key provided - log warning but continue with defaults
-        logger.warning("Invalid query param key provided, ignoring overrides")
 
     # Create or resume session logger
     session_logger = SessionLogger(session_id=existing_session_id)
@@ -112,12 +72,10 @@ def chat_stream():
             "user_message": user_message,
             "history": history,
             "session_logger": session_logger,
-            "query_params": query_params,
             "request_start_time": request_start_time,
             "full_text": full_text,
             "chart_result_holder": chart_result_holder,
             "chart_thread": chart_thread,
-            "effective_config": None,
             "mcp_results": "",
             "tool_calls_list": [],
             "thought_queue": None,

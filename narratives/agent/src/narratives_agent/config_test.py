@@ -11,21 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for prompt placeholder substitution, query_param_key validation, and
-prompt URL derivation.
+"""Tests for prompt placeholder substitution and prompt URL derivation.
 
-Covers three configuration behaviors:
+Covers two configuration behaviors:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts.
-2. `query_param_key` validation for gating model and thinking overrides,
-   ensuring an unconfigured key defaults to an empty string and rejects all
-   callers.
-3. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
+2. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
    bucket directory prefixes while stripping query parameters.
 """
-
-import secrets
 
 import pytest
 
@@ -37,11 +31,6 @@ def _with_config(
 ) -> None:
     """Stub `config.load_config` to return `doc` for the current test."""
     monkeypatch.setattr(config, "load_config", lambda: doc)
-
-
-def _gate(expected: str, supplied: str) -> bool:
-    """Replicate the `query_param_key` check used in `routes/chat.py`."""
-    return bool(expected) and secrets.compare_digest(supplied, expected)
 
 
 # --- {{instance.*}} substitution -------------------------------------------
@@ -186,85 +175,6 @@ def test_datetime_is_substituted_alongside_instance_vars(
     rendered = config.render_prompt("{{CURRENT_DATETIME}} at {{instance.name}}")
     assert "{{CURRENT_DATETIME}}" not in rendered
     assert rendered.endswith("at Example DC")
-
-
-# --- the ?key= override gate ------------------------------------------------
-
-
-def test_unconfigured_key_reads_as_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Default return value of get_query_param_key when unconfigured.
-    # Situation: The configuration dictionary does not set query_param_key.
-    # Expectation: get_query_param_key returns an empty string rather than a
-    #   hardcoded fallback secret.
-    _with_config(monkeypatch, {})
-    assert config.get_query_param_key() == ""
-
-
-@pytest.mark.parametrize(
-    "supplied",
-    ["", "AISummit2026"],
-    ids=["none supplied", "key guessed"],
-)
-def test_gate_refuses_when_no_key_is_configured(
-    monkeypatch: pytest.MonkeyPatch, supplied: str
-) -> None:
-    # Test: Override gate behavior when query_param_key is not configured.
-    # Situation: query_param_key is omitted from the config, and a caller passes
-    #   either an empty string or a candidate key.
-    # Expectation: The gate evaluates to False in both cases so that an empty
-    #   configuration never matches an empty caller parameter.
-    _with_config(monkeypatch, {})
-    assert _gate(config.get_query_param_key(), supplied) is False
-
-
-def test_configured_key_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Test: Whitespace normalization on a configured query_param_key.
-    # Situation: The query_param_key value in the config contains leading and
-    #   trailing whitespace.
-    # Expectation: get_query_param_key strips surrounding whitespace before
-    #   returning the key.
-    _with_config(
-        monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
-    )
-    assert config.get_query_param_key() == "a-long-non-guessable-value"
-
-
-def test_gate_refuses_a_wrong_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Test: Override gate rejection of an incorrect key.
-    # Situation: A valid query_param_key is configured, and the caller supplies
-    #   a non-matching string.
-    # Expectation: The gate evaluates to False.
-    _with_config(
-        monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
-    )
-    assert _gate(config.get_query_param_key(), "nope") is False
-
-
-def test_gate_allows_the_configured_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Override gate acceptance of a matching key.
-    # Situation: A valid query_param_key is configured, and the caller supplies
-    #   the exact stripped key.
-    # Expectation: The gate evaluates to True, enabling request overrides.
-    _with_config(
-        monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
-    )
-    assert _gate(config.get_query_param_key(), "a-long-non-guessable-value")
-
-
-def test_non_string_key_reads_as_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Handling of a non-string query_param_key in the config.
-    # Situation: query_param_key is set to an integer instead of a string.
-    # Expectation: get_query_param_key returns an empty string so that
-    #   secrets.compare_digest does not raise a TypeError and the gate remains
-    #   closed.
-    _with_config(monkeypatch, {"query_param_key": 12345})
-    assert config.get_query_param_key() == ""
 
 
 # --- prompt URLs derived from CONFIG_URL ------------------------------------

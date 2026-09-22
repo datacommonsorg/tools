@@ -17,7 +17,7 @@ import json
 import logging
 from collections.abc import Callable
 
-from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import gemini_request_with_thought_streaming
 from narratives_agent.mcp.client import call_tool, get_tools
 from narratives_agent.mcp.schema import transform_schema_for_gemini
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 def execute_mcp_tool_loop(
     user_message: str,
     history: list,
+    config: dict,
     # Each iteration is one model turn, and the last one has to carry the text
     # answer rather than a tool call. A broad question re-searches before it
     # settles — "compare X across European countries" spent four turns on
@@ -41,7 +42,6 @@ def execute_mcp_tool_loop(
     # search alone and returning no data at all.
     max_iterations: int = 15,
     session_logger: SessionLogger | None = None,
-    effective_config: dict | None = None,
     thought_callback: Callable[[str], None] | None = None,
 ) -> tuple:
     """Execute the MCP tool calling loop with optional thought streaming.
@@ -49,10 +49,10 @@ def execute_mcp_tool_loop(
     Args:
         user_message: The user's query
         history: Conversation history
+        config: Backend config dict, already checked to be non-empty by the
+            caller
         max_iterations: Maximum tool calling iterations
         session_logger: Optional SessionLogger for comprehensive logging
-        effective_config: Optional config dict with query param overrides
-            applied
         thought_callback: Optional callback for streaming thought chunks.
                          Signature: callback(thought_text: str) -> None
 
@@ -65,7 +65,6 @@ def execute_mcp_tool_loop(
         returned and still usable -- but the answer is built on less data than
         the model intended to collect, and callers have no other way to tell.
     """
-    config = effective_config if effective_config else load_config()
     mcp_prompt = config.get("prompts", {}).get("mcp", "")
     mcp_model = get_gemini_model(config)
     thinking_level = config.get("thinking", {}).get("mcp_level", "low")

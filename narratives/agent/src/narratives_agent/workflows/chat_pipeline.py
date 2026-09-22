@@ -29,11 +29,7 @@ import threading
 import time
 
 import narratives_agent.mcp.client as mcp_client
-from narratives_agent.config import (
-    apply_query_overrides,
-    get_gemini_model,
-    load_config,
-)
+from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import gemini_request
 from narratives_agent.mcp.client import get_tools
 from narratives_agent.mcp.data_utils import (
@@ -59,25 +55,20 @@ CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
 def run_mcp_phase(ctx):
     """Phase 1: run config/MCP setup then execute the MCP tool loop.
 
-    Reads ``user_message``, ``history``, ``session_logger``, ``query_params``
-    and the chart holders from ``ctx``; writes ``effective_config``,
-    ``mcp_results``, ``tool_calls_list``, ``mcp_sources``, ``thought_queue``
-    and ``thought_callback`` back into ``ctx`` for later phases. Sets
-    ``ctx['aborted']`` if the backend config fails to load.
+    Reads ``user_message``, ``history``, ``session_logger`` and the chart
+    holders from ``ctx``; writes ``mcp_results``, ``tool_calls_list``,
+    ``mcp_sources``, ``thought_queue`` and ``thought_callback`` back into
+    ``ctx`` for later phases. Sets ``ctx['aborted']`` if the backend config
+    fails to load.
 
     ``mcp_sources`` is both streamed to the frontend and left on ``ctx``: it is
     the single source of citation numbering, shared by the rendered Sources
     list and the numbered list synthesis is prompted with."""
     session_logger = ctx["session_logger"]
-    query_params = ctx["query_params"]
     user_message = ctx["user_message"]
     history = ctx["history"]
     chart_result_holder = ctx["chart_result_holder"]
     chart_thread = ctx["chart_thread"]
-
-    # Log query params if present
-    if query_params:
-        session_logger.log("QUERY_PARAMS_OVERRIDE", query_params)
 
     # Log user message
     session_logger.log_user_message(user_message, len(history))
@@ -88,10 +79,6 @@ def run_mcp_phase(ctx):
         yield f"data: {json.dumps({'error': 'Backend config not loaded'})}\n\n"
         ctx["aborted"] = True
         return
-
-    # Apply query param overrides to config
-    effective_config = apply_query_overrides(config, query_params)
-    ctx["effective_config"] = effective_config
 
     # Ensure MCP is initialized (fix for tool calls not showing)
     # Readiness is "can we list tools?", not "do we hold a session id?".
@@ -122,7 +109,7 @@ def run_mcp_phase(ctx):
     ctx["thought_callback"] = thought_callback
 
     # Phase 1: MCP Tools
-    mcp_enabled = effective_config.get("mcp", {}).get("enabled", True)
+    mcp_enabled = config.get("mcp", {}).get("enabled", True)
     mcp_results = ""
     tool_calls_list = []
     mcp_sources = []
@@ -162,7 +149,7 @@ def run_mcp_phase(ctx):
                     user_message,
                     history,
                     session_logger=session_logger,
-                    effective_config=effective_config,
+                    config=config,
                     thought_callback=lambda t: thought_callback(t, "mcp"),
                 )
             except Exception as e:
@@ -324,7 +311,6 @@ def run_synthesis_phase(ctx):
     if ctx["aborted"]:
         return
     session_logger = ctx["session_logger"]
-    effective_config = ctx["effective_config"]
     user_message = ctx["user_message"]
     history = ctx["history"]
     mcp_results = ctx["mcp_results"]
@@ -333,6 +319,7 @@ def run_synthesis_phase(ctx):
     chart_thread = ctx["chart_thread"]
     request_start_time = ctx["request_start_time"]
     full_text = ctx["full_text"]
+    config = load_config()
 
     # Phase 2: Synthesis with streaming
     yield (
@@ -346,11 +333,9 @@ def run_synthesis_phase(ctx):
         }\n\n"
     )
 
-    synthesis_prompt = effective_config.get("prompts", {}).get("synthesis", "")
-    synthesis_model = get_gemini_model(effective_config)
-    thinking_level = effective_config.get("thinking", {}).get(
-        "synthesis_level", "low"
-    )
+    synthesis_prompt = config.get("prompts", {}).get("synthesis", "")
+    synthesis_model = get_gemini_model(config)
+    thinking_level = config.get("thinking", {}).get("synthesis_level", "low")
 
     # Build synthesis context with source labels for citations
     context_parts = []

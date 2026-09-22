@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import json
 import logging
 import os
@@ -423,45 +422,3 @@ def get_gemini_api_key() -> str:
         )
         return single_key
     return ""
-
-
-def get_query_param_key() -> str:
-    """The secret gating ?key= overrides, or "" if unconfigured.
-
-    Returns empty rather than a default: this repo is public, so any literal
-    here would be a published credential for every instance that did not
-    override it. Callers must treat "" as "no override key configured" and
-    reject every supplied key -- see routes/chat.py.
-    """
-    key = load_config().get("query_param_key", "")
-    if not isinstance(key, str):
-        return ""
-    return key.strip()
-
-
-def apply_query_overrides(config: dict, query_params: dict) -> dict:
-    """Apply query parameter overrides to config.
-
-    Returns a new config dict with overrides applied (does not modify original).
-    """
-    if not query_params:
-        return config
-
-    # Deep copy to avoid modifying cached config
-    effective = copy.deepcopy(config)
-
-    # Model override
-    if query_params.get("model"):
-        effective["gemini"]["mcp_model"] = query_params["model"]
-
-    # MCP thinking budget override
-    if query_params.get("mcp_thinking"):
-        effective["thinking"]["mcp_level"] = query_params["mcp_thinking"]
-
-    # Synthesis thinking budget override
-    if query_params.get("synthesis_thinking"):
-        effective["thinking"]["synthesis_level"] = query_params[
-            "synthesis_thinking"
-        ]
-
-    return effective
