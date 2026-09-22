@@ -95,7 +95,7 @@ application's formatter and is not restated here.
 |---|---|---|
 | TypeScript / JavaScript | [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) | Biome, ESLint, or `tsc` as configured per app |
 | HTML / CSS / SCSS | [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html) | Stylelint / Biome as configured per app |
-| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | `ruff` (format + check) for new code; existing apps keep their configured toolchain |
+| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | `ruff` (format + check) and `mypy` (strict) for new code; existing apps keep their configured toolchain |
 | Go | [Google Go Style Guide](https://google.github.io/styleguide/go/) | `gofmt`, `go vet`, `golangci-lint` |
 | Java | [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) | `google-java-format` |
 | Shell | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shellcheck` |
@@ -209,8 +209,18 @@ Vitest-specific conventions:
 
 * Follow the Google Python Style Guide; 4-space indent, `snake_case` functions
   and modules, `PascalCase` classes.
-* Type-hint public function signatures; use `Optional[...]` explicitly rather
-  than relying on an implicit `None` default.
+* Type-hint public function signatures. Write an optional parameter as
+  `X | None`, never as a bare `X` with a `None` default — an implicit optional
+  misstates the signature, and `ruff` rejects it.
+* **New and rewritten Python type-checks under `mypy --strict`, and CI fails on
+  any error.** A new module is annotated as it is written, and is never added
+  to the exemption list.
+* Modules that predate the standard are exempted individually in the app's
+  `pyproject.toml`, under `[[tool.mypy.overrides]]` with `ignore_errors`. Each
+  entry names the change that rewrites or deletes the module it covers. An
+  exemption is retired by deleting that module, never by annotating code that
+  is scheduled for replacement. **The list only shrinks**, and it should reach
+  the standard small set — third-party stubs and nothing else.
 * Module-level docstring describing the file's responsibility; docstrings on
   public functions covering arguments, return value, and raised exceptions.
 * Use the `logging` module, never `print`, for anything that runs in a server or
@@ -434,7 +444,13 @@ a PR. Do not guess commands — each app documents its own in `<app>/AGENTS.md`:
 | App | Lint / types | Tests | Build |
 |---|---|---|---|
 | `dataweaver` | `pnpm lint` | `pnpm test` | `pnpm build` |
-| `narratives` | `npm run lint` | `npm run test` | `npm run build` |
+| `narratives`, `ui/` | `npm run lint` | `npm run test` | `npm run build` |
+| `narratives`, `agent/` | `uv run ruff check .`, `uv run mypy` | `uv run pytest` | — |
+
+`narratives` has two toolchains and both gate the merge; running only the npm
+commands leaves the Python side unchecked. The agent also runs
+`uv run ruff format --check .`, which has no column above because it is a
+formatter rather than a linter.
 
 For UI changes, also run the production build and verify the change manually in
 the browser. Every app must be wired into the CI orchestrator so that

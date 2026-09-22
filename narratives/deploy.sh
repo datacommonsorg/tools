@@ -333,12 +333,16 @@ run_preflight() {
     _warn() { echo -e "  ${YELLOW}warn${NC}  $1"; warn=1; }
 
     # --- tooling -----------------------------------------------------------
-    local py_minor node_major
-    py_minor=$(python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0)
-    if [ "$py_minor" -ge 11 ] && [ "$py_minor" -le 13 ]; then
-        _ok "python3.${py_minor}"
+    local node_major uv_py
+    if command -v uv &>/dev/null; then
+        _ok "$(uv --version)"
+        if uv_py=$(uv python find '>=3.14' 2>/dev/null); then
+            _ok "$("$uv_py" --version 2>&1) ($uv_py)"
+        else
+            _bad "python >=3.14 missing — run: uv python install 3.14"
+        fi
     else
-        _bad "python 3.${py_minor} — the agent needs 3.11-3.13 (grpcio-status cannot resolve on 3.14)"
+        _bad "uv missing — install from https://docs.astral.sh/uv/"
     fi
     node_major=$(node -v 2>/dev/null | sed 's/^v//; s/\..*//' || echo 0)
     if [ "${node_major:-0}" -ge 20 ]; then _ok "node ${node_major}"; else _bad "node ${node_major:-missing} — the UI build needs 20+"; fi

@@ -50,7 +50,6 @@ agent/logs/
 
 # ── Local AI/assistant instruction files (never committed) ──
 /*.local.md
-/AGENTS.md
 
 # ── Local secrets ──
 .env

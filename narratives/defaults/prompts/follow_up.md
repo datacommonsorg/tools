@@ -18,6 +18,7 @@ CRUCIAL RULES:
 
 <!-- Note: this file is the canonical copy of the follow-up prompt. The agent
      loads it into config["prompts"]["follow_up"] at startup and falls back to
-     the inline DEFAULT_FOLLOW_UP_PROMPT in agent/src/gemini/schemas.py only if
-     the fetch fails. Keep the two in sync so the fallback stays faithful.
+     the inline DEFAULT_FOLLOW_UP_PROMPT in
+     agent/src/narratives_agent/gemini/schemas.py only if the fetch fails. Keep
+     the two in sync so the fallback stays faithful.
      Ported from website/server/lib/nl/explore/gemini_prompts.py. -->

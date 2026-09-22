@@ -9,12 +9,19 @@
 # Built linux/amd64 only — Cloud Run rejects arm64 silently with a
 # "failed to find supported architecture" startup error.
 
-FROM --platform=linux/amd64 python:3.11-slim
+FROM --platform=linux/amd64 python:3.14-slim
+
+# uv resolves and installs from uv.lock, so the image gets exactly the versions
+# committed to the repository. Pinned to a uv release rather than :latest, so
+# rebuilding an old commit still uses the uv that produced its lockfile.
+COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    AGENT_ROOT=/app \
+    PATH="/app/.venv/bin:$PATH" \
     PROXY_PORT=5001 \
     MCP_PORT=8082 \
     TIMEZONE=UTC \
@@ -28,22 +35,25 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Run as a dedicated non-root user. /app is owned by that user so the config
-# bootstrap can write config.json there at startup without root.
+# bootstrap can write config.json there at startup without root, and switching
+# before `uv sync` avoids a recursive chown across `/app/.venv` in a later layer.
 RUN groupadd -g 10001 appuser \
-    && useradd -u 10001 -g appuser -m -s /sbin/nologin appuser
+    && useradd -u 10001 -g appuser -m -s /sbin/nologin appuser \
+    && chown appuser:appuser /app
+USER appuser
 
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
+# Dependencies first, without the project itself, so editing application code
+# does not invalidate this layer.
+COPY --chown=appuser:appuser pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
-COPY main.py ./
-COPY src/ ./src/
+COPY --chown=appuser:appuser main.py ./
+COPY --chown=appuser:appuser src/ ./src/
+RUN uv sync --frozen --no-dev
 
 # The compiled SPA, staged here by build.sh / deploy.sh. Served by
-# src/server/routes/spa.py.
-COPY static/ ./static/
-
-RUN chown -R appuser:appuser /app
-USER appuser
+# src/narratives_agent/server/routes/spa.py.
+COPY --chown=appuser:appuser static/ ./static/
 
 # 8080 when this container is the Cloud Run ingress (the split deployment);
 # PROXY_PORT still applies when it runs as a sidecar behind nginx.
