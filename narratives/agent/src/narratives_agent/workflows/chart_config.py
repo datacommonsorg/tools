@@ -100,20 +100,11 @@ Set should_render to false if no meaningful data for visualization."""
 
 
 def validate_data_response(synthesis_text: str, user_message: str) -> bool:
-    """Quick validation: did synthesis actually answer with data?
+    """Validate via Gemini whether the synthesis text contains chartable data.
 
-    Called after synthesis completes to determine if charts should be shown.
-    The second of two gates: the pipeline only reaches here when observations
-    landed, and this catches the case where they landed but do not answer the
-    question -- a search for a variable the graph does not hold matches
-    something adjacent, the observations for *that* come back full, and the
-    answer says it does not have what was asked for while the chart draws the
-    adjacent thing.
-
-    Returns True on any answer it cannot get a verdict on, since by then the
-    turn is known to have data. That default is logged: it used to be reached
-    silently on every call, because the model named here defaulted to one the
-    API key cannot address, and a 404 body has no `candidates`.
+    Returns False and logs an error if the validation request fails, returns
+    malformed JSON, or omits the boolean `data_found` field so that charts are
+    suppressed unless explicitly confirmed.
     """
     config = load_config()
     model = get_gemini_model(config)
@@ -133,34 +124,36 @@ Return false if the response says data is "not available", "not found", \
         system_instruction="You validate if a response contains actual data.",
         model=model,
         temperature=0,
-        # "minimal" is the floor the API accepts; "none" is not a level and was
-        # being silently rewritten to "low", the opposite of what was wanted.
+        # "minimal" is the lowest thinking level accepted by the Gemini 3 API.
         thinking_level="minimal",
         response_schema=DATA_VALIDATION_SCHEMA,
         stream=False,
     )
 
     if "candidates" not in response:
-        # An API error, which gemini_request reports as {"error": "..."} with
-        # a redacted excerpt of the upstream body inside the string. Logged
-        # rather than swallowed: this branch taking the permissive default on
-        # every single call is what let charts through under answers that said
-        # there was no data, and it left no trace anywhere.
         logger.error(
-            "Data validation got no candidates from %s, defaulting to "
-            "showing charts. Response: %s",
+            "Data validation got no candidates from %s, hiding charts. "
+            "Response: %s",
             model,
             str(response)[:300],
         )
-        return True
+        return False
 
     try:
         text = response["candidates"][0]["content"]["parts"][0].get(
             "text", "{}"
         )
         result = json.loads(text)
-        return result.get("data_found", True)
     except Exception as e:
-        logger.error(f"Data validation parse error: {e}")
+        logger.error("Data validation parse error, hiding charts: %s", e)
+        return False
 
-    return True  # Default to showing charts when there is no verdict
+    verdict = result.get("data_found") if isinstance(result, dict) else None
+    if not isinstance(verdict, bool):
+        logger.error(
+            "Data validation returned no data_found boolean, hiding charts. "
+            "Parsed: %s",
+            str(result)[:300],
+        )
+        return False
+    return verdict
