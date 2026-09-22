@@ -20,6 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_NO_CACHE=1 \
+    AGENT_ROOT=/app \
     PATH="/app/.venv/bin:$PATH" \
     PROXY_PORT=5001 \
     MCP_PORT=8082 \

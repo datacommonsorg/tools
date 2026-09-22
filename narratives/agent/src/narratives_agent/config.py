@@ -63,10 +63,13 @@ except ImportError:
 
 
 # The `agent/` directory, where config.json, logs, and the staged SPA live.
-# This module is `agent/src/narratives_agent/config.py`, so `agent/` is three
-# levels up. Anything resolving a path against the agent directory should read
-# this rather than counting parents of its own `__file__`.
-AGENT_ROOT = Path(__file__).resolve().parents[2]
+# Set via `AGENT_ROOT` in the container (`Dockerfile`); falls back to three
+# levels above `agent/src/narratives_agent/config.py` in a local checkout.
+# Anything resolving a path against the agent directory should read this
+# rather than counting parents of its own `__file__`.
+AGENT_ROOT = Path(
+    os.environ.get("AGENT_ROOT") or Path(__file__).resolve().parents[2]
+)
 
 # Backend config cache
 _config_cache = None
