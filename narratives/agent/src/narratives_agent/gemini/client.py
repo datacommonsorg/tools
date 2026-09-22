@@ -15,30 +15,54 @@
 
 import json
 import logging
-import random
 import time
 from collections.abc import Callable, Generator
 
 import requests
 from requests.adapters import HTTPAdapter
 
-from narratives_agent.config import get_api_keys, load_config, render_prompt
+from narratives_agent.config import (
+    get_gemini_api_key,
+    load_config,
+    render_prompt,
+)
 from narratives_agent.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 
-# One pooled session for every Gemini call.
-#
-# The MCP client and the data-plane proxy were given pooled sessions; this path
-# was missed -- and it is the busiest of the three, making 6-9 calls per chat
-# turn (tool loop iterations, synthesis, chart config, follow-ups). Each
-# bare requests.post opened a fresh TCP connection and TLS handshake to
-# generativelanguage.googleapis.com.
-#
-# pool_maxsize is sized above the gunicorn thread count so concurrent turns do
-# not queue on connections.
+# Name both Secret Manager and config.json so the error message is actionable
+# in both deployed and local environments.
+_NO_KEY_ERROR = (
+    "No Gemini API key configured: set GEMINI_API_KEYS_SECRET, or "
+    "gemini.api_keys in the agent config for local development"
+)
+
+# Shared connection pool for Gemini API requests, sized above the Gunicorn
+# worker thread count so concurrent chat turns reuse TLS connections without
+# blocking.
 _SESSION = requests.Session()
 _SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
+
+
+def _status_error(status_code: int) -> str | None:
+    """Return a descriptive error string for HTTP 429, 500, or 503 responses."""
+    if status_code == 429:
+        return "Rate limited (429)"
+    if status_code in (500, 503):
+        return f"Server error ({status_code})"
+    return None
+
+
+def _report_failure(
+    error: str, model: str, session_logger: SessionLogger | None
+) -> dict:
+    """Log a failed Gemini call and shape it as the caller's error dict."""
+    logger.error(f"Gemini request failed: {error}")
+    if session_logger:
+        session_logger.log_error(
+            "GEMINI_REQUEST_FAILED", error, {"model": model}
+        )
+    return {"error": error}
 
 
 def build_thinking_config(
@@ -85,7 +109,7 @@ def gemini_request(
     session_logger: SessionLogger | None = None,
     include_thoughts: bool = False,
 ) -> Generator | dict:
-    """Make a request to the Gemini API with key rotation and retry.
+    """Make a request to the Gemini API.
 
     Args:
         messages: Conversation history in Gemini format
@@ -107,22 +131,18 @@ def gemini_request(
             chunks (str)
         If stream=True and include_thoughts=True: Generator yielding dicts
             {'type': 'thought'|'text', 'content': str}
+        On failure, in either mode: dict with an 'error' key.
     """
     config = load_config()
     api_base = config.get("gemini", {}).get(
         "api_base", "https://generativelanguage.googleapis.com/v1beta/models"
     )
 
-    # Get all available keys
-    all_keys = get_api_keys()
-    if not all_keys:
-        return {"error": "No Gemini API keys configured in config.json"}
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return _report_failure(_NO_KEY_ERROR, model, session_logger)
 
-    # Shuffle keys for random order
-    keys_to_try = all_keys.copy()
-    random.shuffle(keys_to_try)
-
-    # Build the payload (same for all attempts)
+    # Build the payload
     payload = {
         "contents": messages,
         "generationConfig": {
@@ -152,7 +172,7 @@ def gemini_request(
 
     endpoint = "streamGenerateContent" if stream else "generateContent"
 
-    # Log request (once, before attempting)
+    # Log request
     if session_logger:
         session_logger.log_gemini_request(
             model,
@@ -165,124 +185,63 @@ def gemini_request(
                 "thinking_level": thinking_level,
                 "has_response_schema": bool(response_schema),
                 "stream": stream,
-                "total_keys_available": len(all_keys),
             },
         )
 
-    last_error = None
-    attempt_count = 0
+    url = f"{api_base}/{model}:{endpoint}?key={api_key}"
+    if stream:
+        url += "&alt=sse"
 
-    for api_key in keys_to_try:
-        attempt_count += 1
+    start_time = time.time()
 
-        # Build URL with current key
-        url = f"{api_base}/{model}:{endpoint}"
+    try:
         if stream:
-            url += f"?key={api_key}&alt=sse"
-        else:
-            url += f"?key={api_key}"
-
-        # Log retry attempt (if not first attempt)
-        if attempt_count > 1 and session_logger:
-            session_logger.log(
-                "GEMINI_KEY_ROTATION",
-                {
-                    "attempt": attempt_count,
-                    "total_keys": len(all_keys),
-                    "reason": str(last_error),
-                },
+            response = _SESSION.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                stream=True,
+                timeout=300,
+            )
+            # Check the HTTP status before streaming because error responses
+            # return a JSON body rather than SSE frames.
+            status_error = _status_error(response.status_code)
+            if status_error:
+                return _report_failure(status_error, model, session_logger)
+            return _stream_gemini_response(
+                response, session_logger, return_dicts=include_thoughts
             )
 
-        start_time = time.time()
-
-        try:
-            if stream:
-                response = _SESSION.post(
-                    url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                    stream=True,
-                    timeout=300,
-                )
-                # Check for rate limit before streaming
-                if response.status_code == 429:
-                    last_error = "Rate limited (429)"
-                    logger.warning(
-                        "API key rate limited, switching to next key..."
-                    )
-                    continue  # Immediately try next key
-                if response.status_code in [500, 503]:
-                    last_error = f"Server error ({response.status_code})"
-                    logger.warning(
-                        f"Server error {response.status_code}, switching to "
-                        "next key..."
-                    )
-                    continue  # Try next key
-                return _stream_gemini_response(
-                    response, session_logger, return_dicts=include_thoughts
-                )
-            else:
-                response = _SESSION.post(
-                    url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=300,
-                )
-
-                # Check for rate limit - immediately switch key
-                if response.status_code == 429:
-                    last_error = "Rate limited (429)"
-                    logger.warning(
-                        "API key rate limited, switching to next key..."
-                    )
-                    continue  # Immediately try next key
-
-                # Check for other retryable errors (500, 503)
-                if response.status_code in [500, 503]:
-                    last_error = f"Server error ({response.status_code})"
-                    logger.warning(
-                        f"Server error {response.status_code}, switching to "
-                        "next key..."
-                    )
-                    continue  # Try next key
-
-                result = response.json()
-
-                # Log response
-                if session_logger:
-                    duration_ms = (time.time() - start_time) * 1000
-                    session_logger.log_gemini_response(
-                        model, result, duration_ms
-                    )
-                    session_logger.add_usage(result.get("usageMetadata"))
-
-                return result
-
-        except requests.exceptions.Timeout:
-            last_error = "Request timeout"
-            logger.warning("Request timeout, trying next key...")
-            continue
-        except Exception as e:
-            last_error = str(e)
-            logger.error(f"Gemini API error: {e}")
-            if session_logger:
-                session_logger.log_error(
-                    "GEMINI_API_ERROR",
-                    str(e),
-                    {"attempt": attempt_count, "model": model},
-                )
-            continue
-
-    # All keys exhausted
-    error_msg = f"All {len(all_keys)} API keys failed. Last error: {last_error}"
-    logger.error(error_msg)
-    if session_logger:
-        session_logger.log_error(
-            "GEMINI_ALL_KEYS_EXHAUSTED",
-            error_msg,
-            {"total_keys": len(all_keys)},
+        response = _SESSION.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=300,
         )
-    return {"error": error_msg}
+
+        status_error = _status_error(response.status_code)
+        if status_error:
+            return _report_failure(status_error, model, session_logger)
+
+        result = response.json()
+
+        # Log response
+        if session_logger:
+            duration_ms = (time.time() - start_time) * 1000
+            session_logger.log_gemini_response(model, result, duration_ms)
+            session_logger.add_usage(result.get("usageMetadata"))
+
+        return result
+
+    except requests.exceptions.Timeout:
+        return _report_failure("Request timeout", model, session_logger)
+    except Exception as e:
+        logger.error(f"Gemini API error: {e}")
+        if session_logger:
+            session_logger.log_error(
+                "GEMINI_API_ERROR", str(e), {"model": model}
+            )
+        return {"error": str(e)}
 
 
 def _stream_gemini_response(
@@ -398,21 +357,17 @@ def gemini_request_with_thought_streaming(
                          Signature: callback(thought_text: str) -> None
 
     Returns:
-        dict: Complete response (same format as non-streaming gemini_request)
+        dict: Complete response (same format as non-streaming gemini_request),
+            or a dict with an 'error' key if the call failed.
     """
     config = load_config()
     api_base = config.get("gemini", {}).get(
         "api_base", "https://generativelanguage.googleapis.com/v1beta/models"
     )
 
-    # Get all available keys
-    all_keys = get_api_keys()
-    if not all_keys:
-        return {"error": "No Gemini API keys configured in config.json"}
-
-    # Shuffle keys for random order
-    keys_to_try = all_keys.copy()
-    random.shuffle(keys_to_try)
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return _report_failure(_NO_KEY_ERROR, model, session_logger)
 
     # Build payload
     payload = {
@@ -452,147 +407,97 @@ def gemini_request_with_thought_streaming(
                 "temperature": temperature,
                 "thinking_level": thinking_level,
                 "include_thoughts": True,
-                "total_keys_available": len(all_keys),
             },
         )
 
-    last_error = None
-    attempt_count = 0
+    url = f"{api_base}/{model}:streamGenerateContent?key={api_key}&alt=sse"
 
-    for api_key in keys_to_try:
-        attempt_count += 1
+    start_time = time.time()
 
-        # Build URL for streaming
-        url = f"{api_base}/{model}:streamGenerateContent?key={api_key}&alt=sse"
-
-        # Log retry attempt (if not first attempt)
-        if attempt_count > 1 and session_logger:
-            session_logger.log(
-                "GEMINI_KEY_ROTATION",
-                {
-                    "attempt": attempt_count,
-                    "total_keys": len(all_keys),
-                    "reason": str(last_error),
-                },
-            )
-
-        start_time = time.time()
-
-        try:
-            response = _SESSION.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                stream=True,
-                timeout=300,
-            )
-
-            # Check for rate limit before streaming
-            if response.status_code == 429:
-                last_error = "Rate limited (429)"
-                logger.warning("API key rate limited, switching to next key...")
-                continue
-            if response.status_code in [500, 503]:
-                last_error = f"Server error ({response.status_code})"
-                logger.warning(
-                    f"Server error {response.status_code}, switching to "
-                    "next key..."
-                )
-                continue
-
-            # Collect response while streaming thoughts
-            collected_text = ""
-            collected_function_calls = []
-            collected_thoughts = ""
-            collected_usage = None
-
-            for line in response.iter_lines():
-                if line:
-                    line_str = line.decode("utf-8")
-                    if line_str.startswith("data: "):
-                        try:
-                            data = json.loads(line_str[6:])
-                            if "usageMetadata" in data:
-                                collected_usage = data["usageMetadata"]
-                            if data.get("candidates"):
-                                candidate = data["candidates"][0]
-                                if (
-                                    "content" in candidate
-                                    and "parts" in candidate["content"]
-                                ):
-                                    for part in candidate["content"]["parts"]:
-                                        if "functionCall" in part:
-                                            collected_function_calls.append(
-                                                part
-                                            )
-                                        elif "text" in part:
-                                            is_thought = part.get(
-                                                "thought", False
-                                            )
-                                            if is_thought:
-                                                collected_thoughts += part[
-                                                    "text"
-                                                ]
-                                                if thought_callback:
-                                                    thought_callback(
-                                                        part["text"]
-                                                    )
-                                            else:
-                                                collected_text += part["text"]
-                        except json.JSONDecodeError:
-                            continue
-
-            # Accumulate this call's token usage into the request total.
-            if session_logger:
-                session_logger.add_usage(collected_usage)
-
-            # Build response in same format as non-streaming
-            result_parts = []
-            for fc in collected_function_calls:
-                result_parts.append(fc)
-            if collected_text:
-                result_parts.append({"text": collected_text})
-
-            result = {
-                "candidates": [
-                    {"content": {"parts": result_parts, "role": "model"}}
-                ]
-            }
-
-            # Log response
-            if session_logger:
-                duration_ms = (time.time() - start_time) * 1000
-                session_logger.log_gemini_response(model, result, duration_ms)
-                if collected_thoughts:
-                    session_logger.log(
-                        "THOUGHTS_STREAMED",
-                        {"thoughts_length": len(collected_thoughts)},
-                    )
-
-            return result
-
-        except requests.exceptions.Timeout:
-            last_error = "Request timeout"
-            logger.warning("Request timeout, trying next key...")
-            continue
-        except Exception as e:
-            last_error = str(e)
-            logger.error(f"Gemini API error: {e}")
-            if session_logger:
-                session_logger.log_error(
-                    "GEMINI_API_ERROR",
-                    str(e),
-                    {"attempt": attempt_count, "model": model},
-                )
-            continue
-
-    # All keys exhausted
-    error_msg = f"All {len(all_keys)} API keys failed. Last error: {last_error}"
-    logger.error(error_msg)
-    if session_logger:
-        session_logger.log_error(
-            "GEMINI_ALL_KEYS_EXHAUSTED",
-            error_msg,
-            {"total_keys": len(all_keys)},
+    try:
+        response = _SESSION.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            stream=True,
+            timeout=300,
         )
-    return {"error": error_msg}
+
+        # Check the HTTP status before streaming because error responses
+        # return a JSON body rather than SSE frames.
+        status_error = _status_error(response.status_code)
+        if status_error:
+            return _report_failure(status_error, model, session_logger)
+
+        # Collect response while streaming thoughts
+        collected_text = ""
+        collected_function_calls = []
+        collected_thoughts = ""
+        collected_usage = None
+
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode("utf-8")
+                if line_str.startswith("data: "):
+                    try:
+                        data = json.loads(line_str[6:])
+                        if "usageMetadata" in data:
+                            collected_usage = data["usageMetadata"]
+                        if data.get("candidates"):
+                            candidate = data["candidates"][0]
+                            if (
+                                "content" in candidate
+                                and "parts" in candidate["content"]
+                            ):
+                                for part in candidate["content"]["parts"]:
+                                    if "functionCall" in part:
+                                        collected_function_calls.append(part)
+                                    elif "text" in part:
+                                        is_thought = part.get("thought", False)
+                                        if is_thought:
+                                            collected_thoughts += part["text"]
+                                            if thought_callback:
+                                                thought_callback(part["text"])
+                                        else:
+                                            collected_text += part["text"]
+                    except json.JSONDecodeError:
+                        continue
+
+        # Accumulate this call's token usage into the request total.
+        if session_logger:
+            session_logger.add_usage(collected_usage)
+
+        # Build response in same format as non-streaming
+        result_parts = []
+        for fc in collected_function_calls:
+            result_parts.append(fc)
+        if collected_text:
+            result_parts.append({"text": collected_text})
+
+        result = {
+            "candidates": [
+                {"content": {"parts": result_parts, "role": "model"}}
+            ]
+        }
+
+        # Log response
+        if session_logger:
+            duration_ms = (time.time() - start_time) * 1000
+            session_logger.log_gemini_response(model, result, duration_ms)
+            if collected_thoughts:
+                session_logger.log(
+                    "THOUGHTS_STREAMED",
+                    {"thoughts_length": len(collected_thoughts)},
+                )
+
+        return result
+
+    except requests.exceptions.Timeout:
+        return _report_failure("Request timeout", model, session_logger)
+    except Exception as e:
+        logger.error(f"Gemini API error: {e}")
+        if session_logger:
+            session_logger.log_error(
+                "GEMINI_API_ERROR", str(e), {"model": model}
+            )
+        return {"error": str(e)}

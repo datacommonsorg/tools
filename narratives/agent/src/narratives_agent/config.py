@@ -366,19 +366,44 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
         return []
 
 
-def get_api_keys() -> list:
-    """Load API keys from Secret Manager (preferred) or config (fallback).
+def _first_key(keys: object, source: str) -> str:
+    """Return the first API key from a configured key list, or an empty string.
 
-    In `prod` mode the agent reads `GEMINI_API_KEYS_SECRET` and resolves the
-    value via Secret Manager. The on-disk config.json `gemini.api_keys` array
-    is honoured only as a dev fallback. The legacy scalar `gemini.api_key` is
-    rejected outright.
+    Logs a warning if the list contains more than one entry so operators know
+    only the first credential is used.
+    """
+    if not isinstance(keys, list) or not keys:
+        return ""
+    first = keys[0]
+    if not isinstance(first, str) or not first.strip():
+        logger.error("%s did not hold a non-empty string key", source)
+        return ""
+    if len(keys) > 1:
+        logger.warning(
+            "%s holds %d keys; the agent uses one and ignores the rest",
+            source,
+            len(keys),
+        )
+    first = first.strip()
+    if first.startswith(("DEPRECATED", "REPLACE_ME")):
+        return ""
+    return first
+
+
+def get_gemini_api_key() -> str:
+    """Return the configured Gemini API key, or an empty string if unavailable.
+
+    Reads `GEMINI_API_KEYS_SECRET` from Secret Manager when set, and falls back
+    to `gemini.api_keys` (or `gemini.api_key`) in `config.json` for local
+    development.
     """
     secret = os.environ.get("GEMINI_API_KEYS_SECRET", "")
     if secret:
-        keys = _fetch_keys_from_secret_manager(secret)
-        if keys:
-            return keys
+        key = _first_key(
+            _fetch_keys_from_secret_manager(secret), "GEMINI_API_KEYS_SECRET"
+        )
+        if key:
+            return key
         logger.warning(
             "GEMINI_API_KEYS_SECRET set but returned no keys; falling back "
             "to config"
@@ -386,16 +411,18 @@ def get_api_keys() -> list:
 
     config = load_config()
     gemini_config = config.get("gemini", {})
-    keys = gemini_config.get("api_keys", [])
-    if not keys:
-        single_key = gemini_config.get("api_key", "")
-        if single_key and not single_key.startswith("DEPRECATED"):
-            logger.warning(
-                "Using deprecated scalar gemini.api_key; migrate to "
-                "api_keys[] or Secret Manager"
-            )
-            keys = [single_key]
-    return keys
+    key = _first_key(gemini_config.get("api_keys"), "gemini.api_keys")
+    if key:
+        return key
+
+    single_key = str(gemini_config.get("api_key", "")).strip()
+    if single_key and not single_key.startswith(("DEPRECATED", "REPLACE_ME")):
+        logger.warning(
+            "Using deprecated scalar gemini.api_key; migrate to "
+            "api_keys[] or Secret Manager"
+        )
+        return single_key
+    return ""
 
 
 def get_query_param_key() -> str:
