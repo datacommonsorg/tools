@@ -69,10 +69,9 @@ def chat_stream():
     query_params = {}
     secret_key = request.args.get("key", "")
     expected_key = get_query_param_key()
-    demo_mode = False
 
     # An unconfigured key disables overrides outright. Comparing equal-and-empty
-    # would hand every anonymous caller the demo API keys and model overrides.
+    # would hand every anonymous caller the model overrides.
     if expected_key and secrets.compare_digest(secret_key, expected_key):
         # Valid key - extract override params
         query_params = {
@@ -90,11 +89,6 @@ def chat_stream():
         query_params = {k: v for k, v in query_params.items() if v is not None}
         if query_params:
             logger.info(f"Query params override applied: {query_params}")
-
-        # Check for demo mode - uses reserved API keys for internal demos
-        if request.args.get("demo", "").lower() == "true":
-            demo_mode = True
-            logger.info("Demo mode ENABLED - using reserved demo API keys")
     elif secret_key:
         # Invalid key provided - log warning but continue with defaults
         logger.warning("Invalid query param key provided, ignoring overrides")
@@ -119,7 +113,6 @@ def chat_stream():
             "history": history,
             "session_logger": session_logger,
             "query_params": query_params,
-            "demo_mode": demo_mode,
             "request_start_time": request_start_time,
             "full_text": full_text,
             "chart_result_holder": chart_result_holder,

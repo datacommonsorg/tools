@@ -59,19 +59,17 @@ CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
 def run_mcp_phase(ctx):
     """Phase 1: run config/MCP setup then execute the MCP tool loop.
 
-    Reads ``user_message``, ``history``, ``session_logger``, ``query_params``,
-    ``demo_mode`` and the chart holders from ``ctx``; writes
-    ``effective_config``, ``mcp_results``, ``tool_calls_list``,
-    ``mcp_sources``, ``thought_queue`` and ``thought_callback`` back into
-    ``ctx`` for later phases. Sets ``ctx['aborted']`` if the backend config
-    fails to load.
+    Reads ``user_message``, ``history``, ``session_logger``, ``query_params``
+    and the chart holders from ``ctx``; writes ``effective_config``,
+    ``mcp_results``, ``tool_calls_list``, ``mcp_sources``, ``thought_queue``
+    and ``thought_callback`` back into ``ctx`` for later phases. Sets
+    ``ctx['aborted']`` if the backend config fails to load.
 
     ``mcp_sources`` is both streamed to the frontend and left on ``ctx``: it is
     the single source of citation numbering, shared by the rendered Sources
     list and the numbered list synthesis is prompted with."""
     session_logger = ctx["session_logger"]
     query_params = ctx["query_params"]
-    demo_mode = ctx["demo_mode"]
     user_message = ctx["user_message"]
     history = ctx["history"]
     chart_result_holder = ctx["chart_result_holder"]
@@ -80,10 +78,6 @@ def run_mcp_phase(ctx):
     # Log query params if present
     if query_params:
         session_logger.log("QUERY_PARAMS_OVERRIDE", query_params)
-
-    # Log demo mode if enabled
-    if demo_mode:
-        session_logger.log("DEMO_MODE_ENABLED", {"using_demo_keys": True})
 
     # Log user message
     session_logger.log_user_message(user_message, len(history))
@@ -170,7 +164,6 @@ def run_mcp_phase(ctx):
                     session_logger=session_logger,
                     effective_config=effective_config,
                     thought_callback=lambda t: thought_callback(t, "mcp"),
-                    demo_mode=demo_mode,
                 )
             except Exception as e:
                 logger.error(f"MCP thread error: {e}")
@@ -334,7 +327,6 @@ def run_synthesis_phase(ctx):
     effective_config = ctx["effective_config"]
     user_message = ctx["user_message"]
     history = ctx["history"]
-    demo_mode = ctx["demo_mode"]
     mcp_results = ctx["mcp_results"]
     mcp_sources = ctx["mcp_sources"]
     chart_result_holder = ctx["chart_result_holder"]
@@ -417,7 +409,6 @@ Please provide a comprehensive response combining all available information."""
             stream=True,
             session_logger=session_logger,
             include_thoughts=True,  # Enable thought streaming
-            demo_mode=demo_mode,
         )
 
         if isinstance(stream_gen, dict) and "error" in stream_gen:

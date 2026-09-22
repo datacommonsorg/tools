@@ -84,7 +84,6 @@ def gemini_request(
     stream: bool = False,
     session_logger: SessionLogger | None = None,
     include_thoughts: bool = False,
-    demo_mode: bool = False,
 ) -> Generator | dict:
     """Make a request to the Gemini API with key rotation and retry.
 
@@ -101,7 +100,6 @@ def gemini_request(
         include_thoughts: If True (and stream=True), yields dicts with 'type'
                          and 'content' for both thoughts and text. If False,
                          yields plain text strings.
-        demo_mode: If True, uses demo API keys reserved for internal demos.
 
     Returns:
         If stream=False: dict with response
@@ -115,8 +113,8 @@ def gemini_request(
         "api_base", "https://generativelanguage.googleapis.com/v1beta/models"
     )
 
-    # Get all available keys (demo or regular based on mode)
-    all_keys = get_api_keys(demo_mode=demo_mode)
+    # Get all available keys
+    all_keys = get_api_keys()
     if not all_keys:
         return {"error": "No Gemini API keys configured in config.json"}
 
@@ -379,7 +377,6 @@ def gemini_request_with_thought_streaming(
     response_schema: dict | None = None,
     session_logger: SessionLogger | None = None,
     thought_callback: Callable[[str], None] | None = None,
-    demo_mode: bool = False,
 ) -> dict:
     """Make a streaming Gemini request, calling thought_callback for thoughts
     but returning complete response.
@@ -399,7 +396,6 @@ def gemini_request_with_thought_streaming(
         thought_callback: Optional callback function called with each
                          thought chunk.
                          Signature: callback(thought_text: str) -> None
-        demo_mode: If True, uses demo API keys reserved for internal demos.
 
     Returns:
         dict: Complete response (same format as non-streaming gemini_request)
@@ -409,8 +405,8 @@ def gemini_request_with_thought_streaming(
         "api_base", "https://generativelanguage.googleapis.com/v1beta/models"
     )
 
-    # Get all available keys (demo or regular based on mode)
-    all_keys = get_api_keys(demo_mode=demo_mode)
+    # Get all available keys
+    all_keys = get_api_keys()
     if not all_keys:
         return {"error": "No Gemini API keys configured in config.json"}
 

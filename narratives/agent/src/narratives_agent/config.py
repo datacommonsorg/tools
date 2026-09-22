@@ -366,44 +366,14 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
         return []
 
 
-def get_api_keys(demo_mode: bool = False) -> list:
+def get_api_keys() -> list:
     """Load API keys from Secret Manager (preferred) or config (fallback).
 
-    In `prod` mode the agent reads `GEMINI_API_KEYS_SECRET` (and
-    optionally `GEMINI_DEMO_API_KEYS_SECRET`) and resolves the value via Secret
-    Manager. The on-disk config.json `gemini.api_keys` array is honoured only as
-    a dev fallback. The legacy scalar `gemini.api_key` is rejected outright.
-
-    Args:
-        demo_mode: If True, returns demo_api_keys for internal demo usage.
-                   Demo keys are reserved for events/demos and won't be
-                   affected by regular traffic rate limits.
-                   If demo_mode=True but no demo keys configured, returns
-                   empty list (will cause API call to fail - NO fallback).
+    In `prod` mode the agent reads `GEMINI_API_KEYS_SECRET` and resolves the
+    value via Secret Manager. The on-disk config.json `gemini.api_keys` array
+    is honoured only as a dev fallback. The legacy scalar `gemini.api_key` is
+    rejected outright.
     """
-    if demo_mode:
-        demo_secret = os.environ.get("GEMINI_DEMO_API_KEYS_SECRET", "")
-        if demo_secret:
-            keys = _fetch_keys_from_secret_manager(demo_secret)
-            if keys:
-                logger.info(
-                    "Using demo API keys pool from Secret Manager "
-                    f"({len(keys)} keys)"
-                )
-                return keys
-        config = load_config()
-        demo_keys = config.get("gemini", {}).get("demo_api_keys", [])
-        if demo_keys:
-            logger.info(
-                f"Using demo API keys pool from config ({len(demo_keys)} keys)"
-            )
-        else:
-            logger.error(
-                "Demo mode requested but no demo_api_keys configured - will "
-                "fail (no fallback to regular keys)"
-            )
-        return demo_keys
-
     secret = os.environ.get("GEMINI_API_KEYS_SECRET", "")
     if secret:
         keys = _fetch_keys_from_secret_manager(secret)
@@ -429,7 +399,7 @@ def get_api_keys(demo_mode: bool = False) -> list:
 
 
 def get_query_param_key() -> str:
-    """The secret gating ?key= overrides and demo mode, or "" if unconfigured.
+    """The secret gating ?key= overrides, or "" if unconfigured.
 
     Returns empty rather than a default: this repo is public, so any literal
     here would be a published credential for every instance that did not

@@ -18,9 +18,9 @@ Covers three configuration behaviors:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts.
-2. `query_param_key` validation for gating model/thinking overrides and
-   `?demo=true`, ensuring an unconfigured key defaults to an empty string and
-   rejects all callers.
+2. `query_param_key` validation for gating model and thinking overrides,
+   ensuring an unconfigured key defaults to an empty string and rejects all
+   callers.
 3. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
    bucket directory prefixes while stripping query parameters.
 """

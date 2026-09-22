@@ -43,7 +43,6 @@ def execute_mcp_tool_loop(
     session_logger: SessionLogger | None = None,
     effective_config: dict | None = None,
     thought_callback: Callable[[str], None] | None = None,
-    demo_mode: bool = False,
 ) -> tuple:
     """Execute the MCP tool calling loop with optional thought streaming.
 
@@ -56,7 +55,6 @@ def execute_mcp_tool_loop(
             applied
         thought_callback: Optional callback for streaming thought chunks.
                          Signature: callback(thought_text: str) -> None
-        demo_mode: If True, uses demo API keys reserved for internal demos.
 
     Returns:
         tuple: (tool_results_text, tool_calls_list, final_response_text,
@@ -123,7 +121,6 @@ def execute_mcp_tool_loop(
             thinking_level=thinking_level,
             session_logger=session_logger,
             thought_callback=thought_callback,
-            demo_mode=demo_mode,
         )
 
         if "error" in response:
