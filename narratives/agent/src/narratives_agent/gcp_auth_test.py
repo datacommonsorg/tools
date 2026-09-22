@@ -19,6 +19,7 @@ Verifies how `attach_auth` selects credentials based on the target URL:
 - Plain HTTP localhost URLs (sidecar deployments) receive no auth headers.
 - Unlisted external HTTPS hosts do not receive `DC_API_KEY`, preventing a
   modified remote configuration from leaking the API key to an arbitrary host.
+- Setting `DATA_PLANE_AUTH=off` disables credential attachment entirely.
 """
 
 import pytest
@@ -38,7 +39,7 @@ def _fake_id_token(audience: str) -> str:
 def credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Configure test credentials and clear `DATA_PLANE_AUTH`.
 
-    When `DATA_PLANE_AUTH=none` is set in the environment, `attach_auth` exits
+    When `DATA_PLANE_AUTH=off` is set in the environment, `attach_auth` exits
     early without attaching any headers. Clearing `DATA_PLANE_AUTH` ensures
     the credential-selection logic is exercised regardless of the caller's
     shell environment.
@@ -97,3 +98,16 @@ def test_api_key_is_not_sent_to_an_unlisted_host() -> None:
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(headers, "https://evil.example.com/mcp")
     assert "X-API-Key" not in headers
+
+
+def test_data_plane_auth_off_attaches_no_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Explicit opt-out via `DATA_PLANE_AUTH=off`.
+    # Situation: `DATA_PLANE_AUTH` is set to `"off"` in the environment and
+    #   `attach_auth` is called for an HTTPS endpoint.
+    # Expectation: `attach_auth` exits early and leaves `headers` empty.
+    monkeypatch.setenv("DATA_PLANE_AUTH", "off")
+    headers: dict[str, str] = {}
+    gcp_auth.attach_auth(headers, "https://api.datacommons.org/mcp")
+    assert headers == {}
