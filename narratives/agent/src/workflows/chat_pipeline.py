@@ -185,43 +185,32 @@ def run_mcp_phase(ctx):
         )
         yield f"data: {json.dumps({'data_status': data_status})}\n\n"
 
-        # Extract and send provenance sources from MCP results.
-        #
-        # This list is the ONE authority on citation numbering. The frontend
-        # numbers the Sources list by position in it, and synthesis is handed
-        # the same list already numbered, so the [n] in the prose and the [n]
-        # beside the source resolve to the same row. It is therefore stashed on
-        # ctx rather than recomputed downstream: two calls that drift apart --
-        # because a later phase appended a tool call, say -- would renumber the
-        # prose against a list the reader never sees, and nothing would fail
-        # loudly.
+        # The one authority on citation numbering. The frontend numbers the
+        # Sources list by position in it, and synthesis is handed the same list
+        # already numbered, so [n] in the prose and [n] in the list agree.
+        # Stashed on ctx rather than recomputed downstream, where a later phase
+        # appending a tool call would silently renumber one and not the other.
         mcp_sources = extract_provenance_from_mcp_results(tool_calls_list)
         if not mcp_sources and mcp_results:
-            # Observation tools ran but reported no sourceMetadata. Synthesis
-            # still has to attribute its figures to something, so fall back to
-            # the graph itself -- defined here, once, so the fallback the model
-            # cites is the same row the reader sees. Left out entirely when
-            # there are no results at all: nothing was fetched, so nothing is
-            # attributable.
+            # Tools ran but reported no sourceMetadata, and synthesis still
+            # has to attribute its figures, so fall back to the graph itself.
+            # Skipped when there are no results at all: nothing was fetched,
+            # so nothing is attributable.
             mcp_sources = [
                 {"name": "Data Commons", "url": "https://datacommons.org/"}
             ]
         if mcp_sources:
             yield f"data: {json.dumps({'mcp_sources': mcp_sources})}\n\n"
 
-        # Start chart config in background (runs parallel with KB + synthesis)
+        # Chart config, in the background alongside KB and synthesis.
         #
-        # Gated on the structural `has_data` check above, not only on the
-        # model's later reading of the synthesis prose. A chart is drawn from
-        # observations, and check_data_availability already knows whether any
-        # landed, so when none did there is nothing to configure and no Gemini
-        # call worth spending. The prose check downstream stays as a second net
-        # for the case where observations exist but do not answer the question
-        # asked; it cannot be the only net, because it is a model judging a
-        # wording -- asked about an answer that opened "I don't have this
-        # specific data in the current dataset" it still reported data found,
-        # and the turn rendered two chart cards whose own fetches then came
-        # back empty, under prose saying there was no data.
+        # Gated on the structural `has_data` check, not only on the model's
+        # later reading of the synthesis prose. Charts are drawn from
+        # observations, so when none landed there is nothing to configure. The
+        # prose check downstream stays as a second net, for observations that
+        # exist but do not answer the question; it cannot be the only net,
+        # because a model judging its own wording will report data found under
+        # prose that says there is none.
         if mcp_results and data_status.get('has_data'):
             def run_chart_config():
                 chart_result_holder['config'] = get_chart_config(mcp_results, user_message)
@@ -352,16 +341,10 @@ def run_synthesis_phase(ctx):
     # Build synthesis context with source labels for citations
     context_parts = []
     if mcp_results:
-        # Hand the model the sources ALREADY NUMBERED, in the order the
-        # frontend received them, because the reader's Sources list is numbered
-        # by position in that same list. The prompt tells the model to cite
-        # these numbers and no others, which is what makes [2] in the prose and
-        # [2] in the list the same source.
-        #
-        # This used to be a comma-joined line of markdown links carrying no
-        # numbers at all, so the model invented its own numbering -- and, being
-        # asked to print its own Sources roll-call, produced a second list that
-        # disagreed with the rendered one.
+        # Hand the model the sources already numbered, in the order the
+        # frontend received them. The prompt tells it to cite these numbers and
+        # no others; given an unnumbered list it invents its own, which then
+        # disagrees with the one the reader sees.
         if mcp_sources:
             numbered_sources = "\n".join(
                 f"[{n}] {src.get('name') or src.get('url')} - {src.get('url')}"
@@ -373,18 +356,13 @@ def run_synthesis_phase(ctx):
             )
         context_parts.append(f"**DATA RESULTS:**\n{mcp_results}")
     if kb_response:
-        # KB documents are named but deliberately NOT numbered, because they
-        # never reach the frontend's provenance list: kb_sources carries
-        # `title`/`uri`, while the reducer merges only entries with a `url`, so
-        # it drops them all. A number here would therefore point at nothing.
-        #
-        # The failure mode is safe rather than wrong -- an unmapped marker
-        # renders as plain text and lists no source, instead of attributing a
-        # document's claim to a statistical agency -- but it does mean KB
-        # citations are currently unlinkable. Fixing that means normalising
-        # kb_sources to {name, url} and appending them to mcp_sources in the
-        # same order the reducer merges them. Inert while
-        # knowledge_base.enabled is false, which it is for this instance.
+        # KB documents are named but deliberately not numbered: they never
+        # reach the frontend's provenance list, because kb_sources carries
+        # title/uri and the reducer merges only entries with a `url`. A number
+        # here would point at nothing. An unmapped marker renders as plain text,
+        # so KB citations are unlinkable rather than misattributed. To fix,
+        # normalise kb_sources to {name, url} and append to mcp_sources. Inert
+        # while knowledge_base.enabled is false.
         kb_source_names = ", ".join([s['title'] for s in kb_sources]) if kb_sources else "Knowledge Base"
         context_parts.append(f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n{kb_response}")
 

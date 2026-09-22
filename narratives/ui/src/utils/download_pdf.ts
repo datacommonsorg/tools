@@ -475,12 +475,9 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
   // the provenance icon, the follow-up questions.
   clone.querySelectorAll('[data-non-print="true"]').forEach((el) => el.remove());
 
-  // The question is the document's heading.
-  //
-  // index.css restyles it for print, but that rule lives in @media print and
-  // this path never enters print media -- so the clone inherited the on-screen
-  // one-line truncated title and the heading came out sliced in half. Applied
-  // here instead, to the same element the print rule targets.
+  // The question is the document's heading. index.css restyles it under
+  // @media print, which this path never enters, so the clone would inherit the
+  // truncated on-screen title. Applied here to the same element instead.
   clone.querySelectorAll<HTMLElement>(".print-question").forEach((q) => {
     q.style.whiteSpace = "normal";
     q.style.textOverflow = "clip";

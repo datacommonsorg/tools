@@ -1,84 +1,48 @@
-# Core resources for one Custom Data Commons instance. Each instance is a
-# fully independent deployment in its own GCP project — no shared resources
-# across instances.
+# The app plane for one Custom Data Commons instance: one Cloud Run service
+# (agent + SPA), optionally a VPC subnet for reaching a private data plane, and
+# uptime checks. Each instance is its own GCP project; nothing is shared.
 #
-#   - Two Cloud Run v2 services: a public app plane (agent + SPA) and an
-#     internal-only data plane (services image), each scaling independently
-#   - A VPC subnet so the app plane can reach the internal data plane
-#   - Cloud SQL HA (MySQL) for the upstream Mixer
-#   - Per-instance GCS data bucket
-#   - Per-instance Secret Manager entries (DC_API_KEY, MAPS_API_KEY, DB_PASS, GEMINI_API_KEYS)
-#   - Uptime checks + alert policies
+# The data plane is not built here. It is either a DCP service provisioned
+# elsewhere or public datacommons.org.
 #
-# The per-instance config bucket (gs://<project>-config/) and the Artifact
-# Registry repo are created out-of-band by deploy.sh
-# before terraform apply. The tfvars provide the image paths, the config
-# bucket name, and the brand_config_url only.
+# The config bucket, the Artifact Registry repo and the secrets all exist
+# before apply; deploy.sh creates them. The tfvars supply their names.
 
 locals {
-  # A single place that decides what exists. Every count below reads these
-  # rather than re-testing var.data_backend, so adding a backend later means
-  # adding one local, not auditing every resource.
+  # Every count below reads these rather than re-testing var.data_backend, so
+  # a new backend means one more local, not an audit of every resource.
   is_dcp = var.data_backend == "dcp"
 
-  # The one value the app plane actually needs. Everything about "which
-  # backend" collapses to this URL plus the auth attached to it at runtime.
+  # Which backend collapses to this URL, plus the auth attached at runtime.
   data_plane_url = local.is_dcp ? var.dcp_service_url : var.public_dc_url
   mcp_url        = "${local.data_plane_url}/mcp"
 
-  # Where the BROWSER's data routes go. On dcp one container serves both MCP and
-  # the website, so this is the same URL. On "none" they are two hosts:
-  # api.datacommons.org serves the versioned REST API and /mcp, while the routes
-  # the chart web components call -- /api/observations/series, /api/place/name,
-  # /core/api/... -- exist only on datacommons.org.
-  #
-  # Collapsing both onto data_plane_url meant every chart request on the "none"
-  # backend got a Cloud Endpoints 404 ("The current request is not defined by
-  # this API"). The agent answered correctly and no chart ever rendered.
+  # Where the browser's chart routes go. On dcp, one container serves both, so
+  # this is the same URL. On "none" they are two hosts: /mcp and the REST API
+  # are on api.datacommons.org, but the routes the chart components call
+  # (/api/observations/series, /api/place/name, /core/api/...) exist only on
+  # datacommons.org. Point both at data_plane_url and every chart 404s.
   data_plane_web_url = local.is_dcp ? local.data_plane_url : var.public_dc_web_url
 
-  # Direct VPC egress exists for exactly one reason: to reach a data plane whose
-  # ingress is internal. It is NOT free to switch on -- Cloud Run requires
-  # egress=ALL_TRAFFIC to reach a *.run.app host through a VPC, which routes
-  # EVERY outbound call through that subnet. Private Google Access covers
-  # *.googleapis.com, so Gemini and GCS still work, but a genuinely public host
-  # such as api.datacommons.org becomes unreachable without Cloud NAT.
-  #
-  # So only turn it on when the data plane is actually private. On "none" the
-  # backend IS api.datacommons.org, and enabling this would black-hole it.
-  # There is no derived case any more. The only plane this module ever built --
-  # and could therefore know the ingress of -- was cdc's. A DCP plane is
-  # provisioned elsewhere, so whether it needs a VPC to reach is not knowable
-  # from here. Default off; an operator whose DCP service is ingress=internal
-  # turns it on deliberately.
+  # Turn on only for a data plane with ingress=internal. Reaching one over a
+  # VPC needs egress=ALL_TRAFFIC, which routes every outbound call through the
+  # subnet; Private Google Access keeps Gemini and GCS working, but a public
+  # host like api.datacommons.org needs Cloud NAT and is otherwise unreachable.
+  # Defaults off, because this module cannot see the ingress of a data plane
+  # it does not build.
   needs_vpc_egress = coalesce(var.enable_vpc_egress, false)
 
-  # One service now. The data plane is either Google's (dcp) or public Data
-  # Commons (none); neither is ours to name.
   app_service_name = "${var.instance}-app"
 }
 
-# ---------------------------------------------------------------------------
-# Per-instance data bucket (created here)
-# ---------------------------------------------------------------------------
-
-# Reference to the per-instance config bucket (NOT managed here — created out-of-band
-# by deploy.sh before terraform apply). One bucket per instance.
+# The config bucket is created by deploy.sh before apply, not managed here.
 data "google_storage_bucket" "config" {
   name = var.config_bucket
 }
 
 # ---------------------------------------------------------------------------
-# Cloud SQL
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Secrets
-#   - DC_API_KEY is project-wide (shared across instances) — referenced via data source.
-#   - MAPS_API_KEY / DB_PASS / GEMINI_API_KEYS are per-instance, namespaced
-#     by var.secret_prefix (e.g. CDC_POC_INDIA_).
-#   - All secrets must have an enabled version BEFORE `terraform apply` —
-#     see docs/deployment.md Stage 1.
+# Secrets. Both must already hold an enabled version at apply time;
+# `deploy.sh --bootstrap-secrets` puts them there.
 # ---------------------------------------------------------------------------
 
 data "google_secret_manager_secret" "dc_api_key" {
@@ -125,15 +89,9 @@ resource "google_compute_subnetwork" "app" {
 # ---------------------------------------------------------------------------
 # APP PLANE — the agent API plus the compiled SPA, in one container.
 #
-# This is the only public surface. It serves the UI, runs the chat
-# orchestration, and reverse-proxies the browser's data routes to the data
-# plane so everything stays on one origin (required by IAP and by the two
-# same-origin iframe tools).
-#
-# There is deliberately no circular reference between the two services: the
-# data plane no longer needs to know the app plane's URL, because nginx has
-# stopped proxying /agent. Only this direction exists, so Terraform can order
-# the two on its own.
+# The only public surface. Serves the UI, runs the chat orchestration, and
+# reverse-proxies the browser's data routes to the data plane so everything
+# stays on one origin -- required by IAP and by the same-origin iframe tools.
 # ---------------------------------------------------------------------------
 resource "google_cloud_run_v2_service" "dc_app_service" {
   provider = google-beta
@@ -312,12 +270,8 @@ resource "terraform_data" "backend_preconditions" {
   }
 }
 
-# Humans reach the app plane, not the data plane. Replaces a hardcoded
-# individual account, which meant a rebuild from state alone produced a service
-# only one person could open.
-# Public exposure, opt-in. Scoped to the app plane only -- the data plane stays
-# ingress=internal in every mode, so this cannot expose Mixer, MCP or the Flask
-# pages however it is set.
+# Public exposure, opt-in. Scoped to the app plane, so it can never expose a
+# private data plane however it is set.
 resource "google_cloud_run_v2_service_iam_member" "app_public" {
   count = var.access_mode == "public" ? 1 : 0
 
@@ -347,7 +301,7 @@ resource "google_cloud_run_v2_service_iam_member" "app_invokers" {
 
 # ---------------------------------------------------------------------------
 # Artifact Registry — referenced, not created (shared across instances).
-# Create out-of-band in Stage 1 with:
+# deploy.sh creates it; by hand it is:
 #   gcloud artifacts repositories create dc-images \
 #     --repository-format=docker --location=<region>
 # ---------------------------------------------------------------------------

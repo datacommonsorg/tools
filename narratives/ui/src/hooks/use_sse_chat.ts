@@ -349,12 +349,10 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       setIsStreaming(true);
       setError(null);
 
-      // History sent to the agent excludes the current turn. The proxy
-      // expects a Gemini-format list of strictly alternating user/model roles.
-      // Only completed turns that produced model text are included: a stopped
-      // or errored turn (especially one aborted before any text arrived) would
-      // otherwise emit a lone `user` entry, producing consecutive `user`
-      // messages that Gemini rejects with a 400.
+      // History excludes the current turn, and the proxy expects strictly
+      // alternating user/model roles. Only completed turns that produced model
+      // text qualify: a stopped or errored one would emit a lone `user` entry,
+      // and Gemini rejects consecutive `user` messages with a 400.
       const history = turns
         .filter((turn) => !turn.stopped && turn.status === "done" && turn.text)
         .flatMap((turn) => [

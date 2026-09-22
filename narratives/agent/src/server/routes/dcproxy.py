@@ -48,32 +48,20 @@ dcproxy_bp = Blueprint("dcproxy", __name__)
 # below then report a clear 503 instead of proxying to nowhere.
 DATA_PLANE_URL = os.environ.get("DATA_PLANE_URL", "").rstrip("/")
 
-# Where the BROWSER's data routes go, which is not always where MCP goes.
+# Where the browser's data routes go, which is not always where MCP goes.
 #
-# On cdc and dcp one container serves both, so these are the same host and this
-# variable is unset. On the "none" backend they are genuinely two hosts:
-#
-#   api.datacommons.org  the versioned REST API and /mcp -- what the agent uses
-#   datacommons.org      the website routes the chart web components call:
-#                        /api/observations/series, /api/place/name, /core/api/...
-#
-# Sending chart traffic to the API host returns
-#   {"message":"The current request is not defined by this API.","code":404}
-# from Cloud Endpoints, for every chart, on every turn. The proxy and the auth
-# are both working at that point -- the routes simply do not exist on that host,
-# so nothing renders and nothing looks broken server-side.
-#
-# Falls back to DATA_PLANE_URL so cdc and dcp need no configuration.
+# On dcp one container serves both, so this is unset. On "none" they are two
+# hosts: api.datacommons.org serves the REST API and /mcp, while the routes the
+# chart components call (/api/observations/series, /api/place/name,
+# /core/api/...) exist only on datacommons.org. Send chart traffic to the API
+# host and Cloud Endpoints 404s every chart, with nothing looking wrong
+# server-side. Falls back to DATA_PLANE_URL.
 DATA_PLANE_WEB_URL = os.environ.get("DATA_PLANE_WEB_URL", "").rstrip("/") or DATA_PLANE_URL
 
-# Prefixes that must go to the MCP/API host rather than the web host.
-#
-# Splitting the two upstreams is only correct per-route. /mcp belongs to the API
-# host: datacommons.org answers 405 for it, so sending the browser's MCP calls
-# to the web host breaks them while the agent -- which dials MCP_SERVER_URL
-# directly and never touches this proxy -- keeps working. That asymmetry hides
-# the fault from /agent/health and from chat, and it is exactly what happened
-# when this split was first added.
+# Prefixes that must go to the API host rather than the web host. /mcp is one:
+# datacommons.org answers 405 for it. Getting this wrong breaks only the
+# browser's MCP calls -- the agent dials MCP_SERVER_URL directly and never
+# touches this proxy -- so chat and /agent/health both stay green.
 _MCP_HOST_PREFIXES = frozenset({"mcp"})
 
 

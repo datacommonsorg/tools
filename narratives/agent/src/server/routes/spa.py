@@ -43,16 +43,11 @@ STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", _DEFAULT_STATIC_ROOT))
 
 # Bare files the SPA loads from the root, e.g. /logo.png.
 #
-# Two branches previously each hardcoded their own list of these and the lists
-# barely overlapped -- merging either wholesale would have 404'd the other's
-# assets, silently, as missing images rather than as an error. Worse, adding a
-# file to ui/public/ and forgetting the list produced the same silent failure.
-#
-# So the set is derived from what the UI build actually shipped, filtered to
-# inert asset types. That keeps the security property the allowlist existed for
-# -- this process still cannot be walked into serving config.json, the logs
-# directory, or anything else that shares the image -- while removing the
-# hand-maintenance that made it wrong.
+# Derived from what the UI build shipped and filtered to inert asset types,
+# rather than hand-listed -- a hand-list goes stale the first time someone adds
+# a file to ui/public/, and 404s it silently as a missing image. Filtering by
+# suffix keeps the property the allowlist is for: this process cannot be walked
+# into serving config.json or anything else sharing the image.
 _SERVABLE_SUFFIXES = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".woff", ".woff2", ".txt"}
 )

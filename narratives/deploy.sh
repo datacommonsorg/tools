@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# CUSTOM DATA COMMONS - UNIFIED ONE-COMMAND DEPLOYER & UPDATE MANAGER
+# Custom Data Commons — deploy and update one instance.
 # ===========================================================================
 set -euo pipefail
 
@@ -34,8 +34,7 @@ for i in "${!args[@]}"; do
             PREFLIGHT=true
             ;;
         --destroy)
-            # Tear the deployment down. Clients get this wrong on their first
-            # attempt and need a way back to nothing.
+            # Tear the deployment down, back to an empty project.
             DESTROY=true
             ;;
         --bootstrap-secrets)
@@ -48,9 +47,8 @@ for i in "${!args[@]}"; do
             CODE_ONLY=true
             ;;
         --plan)
-            # Show the Terraform diff and stop. Read it before an apply in a
-            # shared project: every line should say "will be created", and no
-            # other instance's resources should appear.
+            # Show the Terraform diff and stop. In a shared project, check
+            # no other instance's resources appear in it.
             PLAN_ONLY=true
             ;;
         --infra-only)
@@ -79,8 +77,8 @@ for i in "${!args[@]}"; do
     esac
 done
 
-# Takes a service name, not a container index: the index form silently returned
-# the wrong image once the containers were separated.
+# Takes a service name, not a container index, which returns the wrong image
+# as soon as a service has more than one container.
 get_active_image() {
     local service="$1"
     gcloud run services describe "$service" \
@@ -131,8 +129,8 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 log_info "Loading configuration from $ENV_FILE..."
-# `set -a; . file`, not `export $(... | xargs)`: the old form split on
-# whitespace, silently truncating any value containing a space.
+# `set -a; . file`, not `export $(... | xargs)`, which splits on whitespace
+# and truncates any value containing a space.
 set -a
 # shellcheck disable=SC1090
 . "./$ENV_FILE"
@@ -141,9 +139,8 @@ set +a
 # Secrets are NOT required here: they live in Secret Manager, written once by
 # --bootstrap-secrets, which is what lets this repository stay public.
 #
-# Nothing below has a default. Each decides where data lives, what it costs or
-# who can reach it, and a default hides that decision until the bill shows up.
-# Reported all at once so a first setup gets the whole list, not six failures.
+# Nothing below has a default: each decides where data lives, what it costs or
+# who can reach it. Reported all at once, so a first setup gets the whole list.
 REQUIRED_VARS=(PROJECT_ID REGION INSTANCE DATA_BACKEND ACCESS_MODE)
 MISSING=()
 for var in "${REQUIRED_VARS[@]}"; do
@@ -180,17 +177,15 @@ if [[ ! "$INSTANCE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
     exit 1
 fi
 
-# Validate rather than default: a typo should stop here, not produce a
-# deployment that is subtly not the one the operator asked for.
+# Validate rather than default, so a typo stops here rather than deploying
+# something subtly different from what was asked for.
 case "$ACCESS_MODE" in
     public|iap|private) ;;
     *) log_error "ACCESS_MODE must be one of: public, iap, private (got '${ACCESS_MODE}')"; exit 1 ;;
 esac
 
-# Upload defaults/ with config/ laid over the top. Copying defaults INTO config
-# is what the old layout did, and an upstream prompt fix then never reached four
-# of five instances. An overlay carries only what a deployment truly overrides.
-#
+# Upload defaults/ with config/ laid over the top, so a deployment carries only
+# what it overrides and everything else improves when this repo is updated.
 # instance.env is excluded: it names the project and who can reach it.
 CONFIG_SRC=".build/config"
 rm -rf "$CONFIG_SRC"
@@ -216,13 +211,11 @@ if [ ! -f "${CONFIG_SRC}/branding.json" ]; then
 fi
 
 # Validate branding.json before it reaches the bucket. The schema sets
-# additionalProperties:false, so a typo'd key (`primary_color` for
-# `colors.primary`) is an error rather than one nothing reads -- which otherwise
-# deploys clean, serves, looks applied, and is missing only the colour.
+# additionalProperties:false, so a misspelled key is an error here rather than
+# a deploy that looks clean and silently drops the setting.
 #
-# validate-branding.py falls back to a stdlib walk when jsonschema is absent,
-# as it is on the system python3 here. It must never skip: a check that quietly
-# does nothing reads like coverage.
+# validate-branding.py falls back to a stdlib walk when jsonschema is missing,
+# as it is on the system python3. It must never skip.
 if ! python3 deploy/validate-branding.py "${CONFIG_SRC}/branding.json"; then
     log_error "branding.json does not match schemas/branding.schema.json (see above)."
     echo "  Colour keys live under \"colors\": {\"primary\": \"#RRGGBB\", \"accent\": ...}." >&2
@@ -240,7 +233,7 @@ case "$DATA_BACKEND" in
 esac
 
 # Fail here rather than after a 15-minute apply: an app plane pointed at an
-# empty URL answers "no data" to every question with nothing to indicate why.
+# empty URL answers "no data" to everything, with nothing to indicate why.
 if [ "$DATA_BACKEND" = "dcp" ] && { [ -z "$DCP_SERVICE_URL" ] || [ -z "$DCP_SERVICE_NAME" ]; }; then
     log_error "DATA_BACKEND=dcp needs DCP_SERVICE_URL and DCP_SERVICE_NAME in ${ENV_FILE}."
     echo "  Get them from the datacommons-cli scaffold:" >&2
@@ -250,9 +243,8 @@ if [ "$DATA_BACKEND" = "dcp" ] && { [ -z "$DCP_SERVICE_URL" ] || [ -z "$DCP_SERV
 fi
 log_info "Data backend: ${DATA_BACKEND}"
 
-# One service. Must match locals.app_service_name in main.tf. Defined after
-# instance.env is loaded -- INSTANCE does not exist before that, and under
-# `set -u` referencing it earlier aborts the script.
+# Must match locals.app_service_name in main.tf. Defined after instance.env
+# loads, because INSTANCE does not exist before that and `set -u` would abort.
 APP_SERVICE="${INSTANCE}-app"
 
 if [ "$PREFLIGHT" = true ]; then
@@ -342,8 +334,7 @@ if [ "$CODE_ONLY" = false ]; then
     if [ ${#missing[@]} -gt 0 ]; then
         log_error "These secrets have no value in Secret Manager: ${missing[*]}"
         echo "  Write them once (values are read from the environment, never stored on disk):" >&2
-        # Name the keys actually missing, not the fixed pair -- that sent you
-        # to re-enter keys already stored while the missing one went unsaid.
+        # Name the keys actually missing, not the fixed pair.
         echo "    ${missing_vars[*]} \\" >&2
         echo "      ./deploy.sh --bootstrap-secrets" >&2
         echo "  DATA_BACKEND is \"${DATA_BACKEND}\" right now, and --bootstrap-secrets only writes the" >&2
@@ -364,8 +355,7 @@ if [ "$INFRA_ONLY" = false ] && [ "$AGENT_ONLY" = false ]; then
     npm run build
     cd ..
 
-    # Staged into the agent build context, not the services one: the SPA moved
-    # to the app-plane image when the two services were split.
+    # Staged into the agent build context: the SPA ships in the app-plane image.
     log_info "Staging compiled static assets into the app-plane build context..."
     rm -rf agent/static
     cp -R ui/dist agent/static
@@ -386,9 +376,8 @@ if [ "$INFRA_ONLY" = true ]; then
         exit 1
     fi
 elif [ "$FRONTEND_ONLY" = true ] || [ "$AGENT_ONLY" = true ]; then
-    # The SPA is baked into the app-plane image, so both flags build the same
-    # image. They differ earlier: --agent-only skips the React build and reuses
-    # agent/static, --frontend-only rebuilds it first.
+    # Both flags build the same image; they differ earlier. --agent-only reuses
+    # agent/static, --frontend-only rebuilds the SPA first.
     log_info "[Surgical-Build] App-plane only. Building the agent + UI image..."
     AGENT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/agent:${IMAGE_TAG}"
     gcloud builds submit --tag="$AGENT_IMAGE" --project="$PROJECT_ID" agent || { log_error "App-plane container build failed!"; exit 1; }
@@ -432,9 +421,8 @@ fi
 TFVARS_FILE="deploy/terraform-custom-datacommons/${INSTANCE}.tfvars"
 log_info "Generating Terraform variable overrides file: $TFVARS_FILE"
 
-# Values travel through the environment, not positional argv: the positional
-# form shifted once when an argument was removed and the output path silently
-# became one of the values. A named environment cannot be reordered.
+# Values travel through the environment, not positional argv, which cannot be
+# silently reordered when an argument is added or removed.
 TPL_SRC="deploy/terraform-custom-datacommons/new-instance.tfvars.sample" \
 TPL_OUT="$TFVARS_FILE" \
 V_PROJECT_ID="$PROJECT_ID" \
@@ -462,8 +450,8 @@ replacements = {
     "REPLACE_AGENT_IMAGE":    os.environ["V_AGENT_IMAGE"],
     "REPLACE_AR_REPO":        os.environ["V_AR_REPO"],
     "REPLACE_IMAGE_TAG":      os.environ["V_IMAGE_TAG"],
-    # Comma-separated in, HCL list out. Empty is legitimate (public mode names
-    # nobody) and must render as [] rather than crash.
+    # Comma-separated in, HCL list out. Empty is legitimate -- public mode
+    # names nobody -- and must render as [].
     "REPLACE_AUTHORIZED_MEMBERS": ", ".join(
         '"%s"' % m.strip()
         for m in os.environ["V_AUTHORIZED_MEMBERS"].split(",")
@@ -497,11 +485,8 @@ cd deploy/terraform-custom-datacommons/modules
 
 # Every instance shares this module directory and points it at its own state
 # with `init -reconfigure`. The backend pointer lives in .terraform/ inside that
-# shared directory, so two instances running at once race on it: the last init
-# wins and the other's apply reads and writes the wrong state. That happened --
-# one apply wrote its resources into another's prefix, replacing all 17.
-#
-# TF_DATA_DIR makes the pointer per-instance. The directory is still shared.
+# shared directory, so two instances deploying at once race on it and the loser
+# applies against the wrong state. TF_DATA_DIR makes the pointer per-instance.
 export TF_DATA_DIR=".terraform-${INSTANCE}"
 
 log_info "Initializing Terraform backend (TF_DATA_DIR=${TF_DATA_DIR})..."
@@ -510,12 +495,10 @@ terraform init \
     -backend-config="prefix=custom-datacommons/${INSTANCE}" \
     -reconfigure
 
-# Second line of defence. If the wrong state is loaded anyway, Terraform sees
-# no mistake -- only resources whose names no longer match the config, and
-# replacing those is its job. It will delete a live stack silently.
-#
-# So refuse to apply when the state names a different deployment. Two clones
-# pointed at one project, or an INSTANCE renamed after a deploy, both land here.
+# Second line of defence. Terraform cannot tell wrong state from a rename, so
+# it would destroy and recreate a live stack without comment. Refuse to apply
+# when the state names a different deployment -- two clones sharing a project,
+# or an INSTANCE renamed after a deploy, both land here.
 if ! terraform show -json 2>/dev/null \
     | python3 ../../../deploy/check-state-owner.py "$INSTANCE"; then
     log_error "Refusing to apply: the state loaded describes a different deployment, not '${INSTANCE}'."
@@ -528,8 +511,7 @@ log_success "State ownership verified for '${INSTANCE}'."
 
 if [ "$PLAN_ONLY" = true ]; then
     log_info "[--plan] Showing the Terraform plan. Nothing will be applied."
-    # A failed plan still prints "Plan complete" without this -- exactly the
-    # false all-clear this flag exists to prevent.
+    # Without this a failed plan still prints "Plan complete".
     if ! terraform plan -var-file="../${INSTANCE}.tfvars"; then
         cd ../../..
         log_error "Plan FAILED for instance '${INSTANCE}'. Do not apply until this is resolved."
@@ -550,15 +532,13 @@ cd ../../..
 
 # 10. Run Verification Smoke Tests
 if [ "$CODE_ONLY" = false ]; then
-    # Both remaining backends answer the first probe promptly: dcp's plane is
-    # already running, and "none" is api.datacommons.org.
+    # Both backends answer the first probe promptly: a dcp plane is already
+    # running, and "none" is api.datacommons.org.
     SMOKE_WARMUP=60
 
-    # Must not run for ACCESS_MODE=public: the last step switches IAP ON,
-    # walling off a service meant to be open -- every request then 302s with
-    # "Invalid IAP credentials: empty token". Dropping the sign-in requirement
-    # mid-deploy is wrong on IAP instances too; retire this once smoke.sh can
-    # present a token.
+    # Skipped when ACCESS_MODE=public: the last step switches IAP on, which
+    # would wall off a service meant to be open. Retire this whole toggle once
+    # smoke.sh can present its own token.
     if [ "$ACCESS_MODE" = "public" ]; then
         log_info "Running post-deployment smoke tests (public access; no IAP toggle needed)..."
         SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
@@ -591,7 +571,7 @@ esac
 if [ -n "${AUTHORIZED_MEMBERS:-}" ]; then
     echo -e "Authorized:"
     # Guarded: on bash 3.2, which macOS ships, expanding an empty array under
-    # `set -u` is an unbound-variable error rather than an empty expansion.
+    # `set -u` is an error rather than an empty expansion.
     IFS=',' read -ra ADDR <<< "$AUTHORIZED_MEMBERS"
     for member in "${ADDR[@]}"; do
         echo -e "  - ${member}"

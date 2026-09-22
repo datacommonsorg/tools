@@ -27,16 +27,10 @@ from src.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 
-# One pooled session for every Gemini call.
-#
-# The MCP client and the data-plane proxy were given pooled sessions; this path
-# was missed -- and it is the busiest of the three, making 6-9 calls per chat
-# turn (tool loop iterations, KB, synthesis, chart config, follow-ups). Each
-# bare requests.post opened a fresh TCP connection and TLS handshake to
-# generativelanguage.googleapis.com.
-#
-# pool_maxsize is sized above the gunicorn thread count so concurrent turns do
-# not queue on connections.
+# One pooled session for every Gemini call. This is the busiest path in the
+# agent -- 6-9 calls per chat turn -- so a bare requests.post would mean a
+# fresh TLS handshake each time. pool_maxsize sits above the gunicorn thread
+# count so concurrent turns do not queue on connections.
 _SESSION = requests.Session()
 _SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
 

@@ -2,7 +2,7 @@
 
 A branded, conversational Data Commons instance: a React UI and a Gemini agent in
 one container, running against **any** Data Commons backend — Google's Data
-Commons Platform (Spanner) or public `datacommons.org`.
+Commons Platform or public `datacommons.org`.
 
 **The backend is a configuration value, not a branch. So is the branding.**
 
@@ -99,8 +99,6 @@ Move to `dcp` once that works. The DCP data plane is not created by this
 repository — you point at one that is already running, which is three lines in
 `config/instance.env` and a redeploy. See
 [attaching](#attaching-to-a-data-commons-instance-that-already-exists).
-
-No code changes, no branch.
 
 **`--preflight` is the step worth not skipping.** It checks the things that
 otherwise fail late or silently: credentials, billing, whether your organisation

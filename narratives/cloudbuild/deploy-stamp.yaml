@@ -32,6 +32,7 @@ steps:
           exit 1
         fi
 
+  # 1. Build and push the agent image.
   - id: build-agent
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
@@ -45,7 +46,7 @@ steps:
         docker buildx build --platform linux/amd64 -t "$$IMG" --push .
         echo "$$IMG" > /workspace/agent_image.txt
 
-  # 3. Compose the config bucket, then sync it.
+  # 2. Compose the config bucket, then sync it.
   #
   # Must mirror deploy.sh exactly: defaults/ is the upstream baseline and config/
   # is laid over the top, so a deployment carries only what it overrides and
@@ -74,7 +75,7 @@ steps:
       - '/workspace/config-bundle'
       - 'gs://$PROJECT_ID-$_INSTANCE-config'
 
-  # 4. Terraform apply with the new image tags.
+  # 3. Terraform apply with the new image tags.
   - id: terraform-apply
     name: hashicorp/terraform:1.6
     entrypoint: sh
@@ -91,7 +92,7 @@ steps:
           -var-file=../${_INSTANCE}.tfvars \
           -var="dc_agent_image=$$AGENT_IMG"
 
-  # 5. Force-restart so the new revision picks up the bucket changes immediately.
+  # 4. Force-restart so the new revision picks up the bucket changes immediately.
   - id: force-restart
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
@@ -104,7 +105,7 @@ steps:
       - '--update-env-vars'
       - 'FORCE_RESTART=$BUILD_ID'
 
-  # 6. Smoke.
+  # 5. Smoke test the deployed service.
   - id: smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash

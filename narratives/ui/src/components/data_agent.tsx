@@ -116,20 +116,14 @@ export function DataAgent() {
     prevTurnsLength.current = turns.length;
   }, [turns.length]);
 
-  // Follow the answer as it streams.
-  //
-  // The effect above fires only when a turn is APPENDED, so it does nothing
-  // while reasoning and prose stream into the turn that already exists -- which
-  // is why the view stopped tracking the agent partway through and the newest
-  // output ended up below the fold.
+  // Follow the answer as it streams. The effect above fires only when a turn is
+  // appended, not while content streams into the turn that already exists.
   //
   // Two observers, because one is not enough. A MutationObserver catches text
-  // chunks and chips arriving, but the Data Commons charts render into a shadow
-  // root and mutations there do not cross the boundary; a chart hydrating was
-  // adding hundreds of pixels invisibly and stranding the view short of the
-  // answer's end. A ResizeObserver on the turn wrappers does see it, because a
-  // chart growing grows the element containing it. Both are event-driven, so an
-  // idle page costs nothing.
+  // and chips arriving, but DC charts render into a shadow root and mutations
+  // there do not cross the boundary. A ResizeObserver on the turn wrappers does
+  // see them, because a chart growing grows its container. Both are
+  // event-driven, so an idle page costs nothing.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
@@ -180,14 +174,9 @@ export function DataAgent() {
     // empty-state InitialView is showing.
   }, [turns.length]);
 
-  // Settle once the stream closes.
-  //
-  // The observer above catches everything it can see, but the Data Commons
-  // chart components render into a shadow root, and a MutationObserver does
-  // not cross that boundary. Their hydration is the last thing to change the
-  // page height, so it lands after the final callback and left the view a few
-  // hundred pixels short of the answer's end. Pinning across a short settle
-  // window covers it without polling for the whole turn.
+  // Settle once the stream closes. Chart hydration is the last thing to change
+  // the page height and lands after the final callback, so pin the scroll
+  // across a short window rather than polling for the whole turn.
   useEffect(() => {
     const container = scrollRef.current;
     const justFinished = wasStreamingRef.current && !isStreaming;

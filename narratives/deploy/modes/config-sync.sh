@@ -20,21 +20,11 @@ run_config_sync() {
     gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env"
     log_success "Configuration assets synced."
 
-    # --restart forces a new revision, which is the ONLY way a config change
-    # reaches the running service.
-    #
-    # This block used to claim otherwise. It said branding.json "is fetched live
-    # and does not require this", then GET /agent/brand?refresh=1 and reported
-    # "Config changes are live (or will be within the cache TTL)". None of that
-    # was true: brand.py has no `refresh` parameter and no TTL -- branding,
-    # agent-config and prompts are all read once at startup and served
-    # from process memory, exactly as the README documents. The request
-    # returned 200 because it is an ordinary GET, and 200 was read as proof.
-    #
-    # So `--config-only` without `--restart` uploaded to the bucket and changed
-    # nothing about the running service, while printing three lines saying it
-    # had worked. It cost a real debugging detour: a corrected branding.json
-    # sat in the bucket while the service kept serving the old colour.
+    # --restart forces a new revision, which is the only way a config change
+    # reaches the running service. Branding, agent-config and prompts are read
+    # once at startup and served from process memory -- there is no cache TTL
+    # and no refresh endpoint, so without this the bucket changes and the
+    # service does not.
     if [ "$RESTART" = true ]; then
         log_info "[Config-Only] Forcing a new revision so the agent reloads config..."
         if gcloud run services update "${APP_SERVICE}" \

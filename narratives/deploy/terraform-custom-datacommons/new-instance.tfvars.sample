@@ -1,8 +1,8 @@
 ## new-instance.tfvars.sample
 ##
-## Template for deploying a fresh instance into a brand-new GCP project.
-## DEPLOY.md Phase 5.1 copies this file to <instance>.tfvars and uses sed
-## to substitute the REPLACE_* placeholders.
+## Template for a fresh instance in a new GCP project. deploy.sh generates
+## <instance>.tfvars from config/instance.env; copy this by hand only if you
+## are running terraform directly.
 
 project_id = "REPLACE_PROJECT_ID"
 region     = "REPLACE_REGION"
@@ -34,14 +34,12 @@ agent_config_mode = "dev"
 # Common values: "Asia/Kolkata" (India), "America/Los_Angeles" (US), "UTC" (default).
 timezone = "UTC"
 
-# Per-instance Secret Manager IDs. Created in Phase 2 of DEPLOY.md.
+# Per-instance Secret Manager IDs, created by `deploy.sh --bootstrap-secrets`.
 dc_api_key_secret_id      = "REPLACE_INSTANCE-dc-api-key"
 gemini_api_keys_secret_id = "REPLACE_INSTANCE-gemini-api-keys"
 
 
-# Resource limits for the app plane. The 4 vCPU / 16Gi pair that used to sit here
-# belonged to the cdc services container, whose NL embeddings load needed it; no
-# container in this deployment does.
+# Resource limits for the app plane
 agent_cpu       = "1"
 agent_memory    = "1Gi"
 

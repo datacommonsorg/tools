@@ -7,16 +7,13 @@
 # it, and defined the log_* helpers and colours this uses. Not runnable alone.
 
 #
-# The failure this prevents is the worst kind: a deploy that reports success and
-# produces a service nobody can open. Most commonly because the organisation
-# forbids public access, or because IAP has no consent screen to sign people in
-# with. Both are invisible until someone tries the URL.
+# Prevents a deploy that reports success and produces a service nobody can open
+# -- usually because the organisation forbids public access, or because IAP has
+# no consent screen. Both are invisible until someone tries the URL.
 run_preflight() {
     local fail=0 warn=0
-    # Never let a gcloud call block on a prompt. An expired token otherwise
-    # makes preflight hang forever instead of telling the operator to re-auth,
-    # and a check that can hang is worse than no check at all. Every call below
-    # also reads from /dev/null for the same reason.
+    # Never let a gcloud call block on a prompt: an expired token would hang
+    # preflight instead of reporting it. Every call below reads /dev/null too.
     export CLOUDSDK_CORE_DISABLE_PROMPTS=1
     STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
     CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
@@ -43,9 +40,8 @@ run_preflight() {
     else
         _bad "not authenticated — run: gcloud auth login"
     fi
-    # Terraform reads Application Default Credentials, which are a SEPARATE
-    # login from `gcloud auth login`. Missing ADC fails inside terraform, well
-    # after the deploy looks like it is working.
+    # Terraform reads Application Default Credentials, a separate login from
+    # `gcloud auth login`. Missing ADC fails deep inside terraform.
     if [ -f "${CLOUDSDK_CONFIG:-$HOME/.config/gcloud}/application_default_credentials.json" ]; then
         _ok "application-default credentials present (Terraform uses these)"
     else
@@ -68,9 +64,9 @@ run_preflight() {
     # --- the two checks that actually matter -------------------------------
     case "$ACCESS_MODE" in
       public)
-        # Domain Restricted Sharing forbids allUsers in many organisations. The
-        # deploy still succeeds; the binding is simply refused, and the result
-        # is a URL that returns 403 to everyone.
+        # Domain Restricted Sharing forbids allUsers in many organisations.
+        # The deploy still succeeds, the binding is refused, and the URL
+        # returns 403 to everyone.
         local policy
         policy=$(gcloud resource-manager org-policies describe \
                    constraints/iam.allowedPolicyMemberDomains \

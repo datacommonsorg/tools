@@ -5,11 +5,10 @@
 #
 # Sourced by deploy.sh, which has already loaded config/instance.env, validated
 # it, and defined the log_* helpers and colours this uses. Not runnable alone.
+#
+# Keys come from this process's environment, never from a file on disk, and only
+# during --bootstrap-secrets. A normal deploy only checks the secrets exist.
 
-
-    # Values come from THIS PROCESS's environment, never from a file on disk,
-    # and only during --bootstrap-secrets. A normal deploy verifies the secrets
-    # exist and never handles a plaintext key at all.
 run_bootstrap_secrets() {
     create_secret_if_missing() {
         local secret_id="$1"
@@ -37,11 +36,8 @@ run_bootstrap_secrets() {
 
         secret_pairs=("DC_SECRET:DC_API_KEY" "GEMINI_SECRET:GEMINI_API_KEY")
         if [ -n "${MAPS_API_KEY:-}" ]; then
-            # Nothing reads a Maps key any more: it was consumed by the CDC
-            # data-plane container, and that backend is gone. Supplying one used
-            # to be dropped in silence while the run still reported success, so
-            # say plainly that it is not stored rather than letting an operator
-            # believe it is.
+            # Nothing reads a Maps key any more. Say so, rather than accepting
+            # one and dropping it in silence.
             log_warn "MAPS_API_KEY was supplied but no backend reads it since the cdc plane was removed."
             log_warn "  NOTHING was stored. Drop it from your command."
         fi
@@ -54,16 +50,14 @@ run_bootstrap_secrets() {
                 continue
             fi
 
-            # Trim surrounding whitespace. A key pasted from a terminal or an
-            # email routinely carries a leading space or a trailing newline, and
-            # both are invisible in the value and fatal at the API.
+            # Trim surrounding whitespace: a pasted key routinely carries a
+            # leading space or trailing newline, invisible here and fatal at
+            # the API.
             value="$(printf '%s' "$value" | tr -d '[:space:]')"
 
-            # Validate before storing. Getting this wrong is expensive to find:
-            # the deploy succeeds, the service starts, and the only symptom is
-            # chat answering "MCP server not connected" while /agent/health
-            # reports zero tools -- which looks like a broken deployment rather
-            # than a mistyped key, and sends you into the logs for an hour.
+            # Validate before storing. A bad key deploys and starts cleanly;
+            # the only symptom is chat answering "MCP server not connected",
+            # which reads as a broken deployment rather than a typo.
             if [ "$value_var" = "DC_API_KEY" ]; then
                 dc_probe="${PUBLIC_DC_URL:-https://api.datacommons.org}"
                 log_info "Checking DC_API_KEY against ${dc_probe} ..."
@@ -90,22 +84,12 @@ run_bootstrap_secrets() {
                 fi
             fi
             if [ "$value_var" = "GEMINI_API_KEY" ]; then
-                # The agent expects a JSON array of keys, so this value has to
-                # be encoded rather than pasted into brackets. Building it as
-                # "[\"$value\"]" was wrong twice over:
-                #
-                #   * a key containing a quote or backslash produced invalid
-                #     JSON, and
-                #   * feeding back a value that was ALREADY a JSON array --
-                #     which is what you get from `gcloud secrets versions
-                #     access` on another instance, the obvious way to copy a
-                #     key between stacks -- double-wrapped it into
-                #     ["["AIza..."]"], which is not parseable at all.
-                #
-                # Both failed silently. Secret Manager stores any bytes, the
-                # deploy reported success, and the break only appeared at
-                # runtime as "No Gemini API keys configured in config.json"
-                # while the env var and the secret both looked correctly wired.
+                # The agent expects a JSON array, so encode it rather than
+                # wrapping it in brackets by hand. Hand-wrapping breaks on a key
+                # containing a quote, and double-wraps a value that is already a
+                # JSON array -- which is what copying a key out of another
+                # instance gives you. Secret Manager stores either happily; the
+                # break only shows up at runtime.
                 #
                 # So: pass an existing array through unchanged, split a
                 # comma-separated list into a pool, and encode with json.dumps.

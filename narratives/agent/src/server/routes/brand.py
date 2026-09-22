@@ -454,17 +454,11 @@ def brand_js() -> Response:
     # linking it.
     literal = json.dumps(document, separators=(",", ":"))
     literal = literal.replace("<", "\\u003c")
-    # The favicon and the tab title are set here rather than left to React.
-    # index.html's <link rel="icon"> and <title> both precede this script, so
-    # the elements already exist and rewriting them now happens before first
-    # paint. Applying them from a mount effect instead lets the browser commit
-    # the bundled fallback -- mark and the literal string "Custom DC" -- to the
-    # tab and then visibly replace it: the same flash brand.js exists to
+    # Favicon and tab title are set here, not in React. Both elements precede
+    # this script in index.html, so rewriting them happens before first paint.
+    # From a mount effect instead, the browser commits the bundled fallback to
+    # the tab and then visibly replaces it -- the same flash brand.js exists to
     # remove, in the two pieces of chrome React cannot render.
-    #
-    # The title comes from instance_name, which branding.schema.json already
-    # documents as "Shown in the header/title". Nothing had ever implemented
-    # the title half, so every instance shipped the index.html default.
     patch = (
         "(function(b){if(!b)return;"
         "if(b.favicon){var l=document.querySelector('link[rel=icon]');"

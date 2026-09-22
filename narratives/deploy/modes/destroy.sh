@@ -7,9 +7,8 @@
 # it, and defined the log_* helpers and colours this uses. Not runnable alone.
 
 #
-# Clients get the configuration wrong on a first attempt and need a way back to
-# nothing. Without this they delete resources by hand and leave state behind
-# that makes the next deploy fail in a confusing way.
+# A way back to an empty project. Deleting resources by hand instead leaves
+# Terraform state behind, which makes the next deploy fail confusingly.
 run_destroy() {
     STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
     CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"

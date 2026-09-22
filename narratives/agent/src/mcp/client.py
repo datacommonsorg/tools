@@ -47,26 +47,13 @@ _SESSION = requests.Session()
 _SESSION.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=32))
 _SESSION.mount("http://", HTTPAdapter(pool_connections=4, pool_maxsize=32))
 
-# MCP session state.
+# MCP session state, per thread rather than per module.
 #
-# This was a module-level `session_id` written from every response header with
-# no lock, which was wrong in three separate ways once anything scaled:
-#
-#   * N threads in one process -- last writer wins, so thread A would send the
-#     session that thread B had just been issued.
-#   * N data-plane instances -- an MCP streamable-HTTP session belongs to the
-#     server process that minted it. Cloud Run has no request affinity, so a
-#     session created against instance 1 gets presented to instance 2, which
-#     has never heard of it.
-#   * No recovery -- nothing cleared the value on a session-not-found reply, so
-#     the failure was sticky until the container restarted. Worse, a
-#     stale-but-truthy id was used as the "is MCP up?" test, so the agent
-#     skipped re-initialising at exactly the moment it needed to.
-#
-# Thread-local state fixes the first. `_ensure_session` + retry-once fixes the
-# second and third, and is the part that actually matters: it makes a lost
-# session a recoverable event rather than a permanent one, whichever instance
-# the next request happens to land on.
+# An MCP streamable-HTTP session belongs to the server process that minted it,
+# and Cloud Run has no request affinity, so a session is only valid for as long
+# as requests keep landing on the same data-plane instance. Thread-local state
+# keeps two threads from overwriting each other's id; `_ensure_session` plus
+# retry-once makes a lost session recoverable rather than sticky until restart.
 _local = threading.local()
 
 # The tool list is a property of the *server*, not of a session, so it is shared

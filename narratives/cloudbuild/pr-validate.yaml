@@ -33,10 +33,9 @@ steps:
     entrypoint: tfsec
     args: ['--soft-fail', 'deploy/terraform-custom-datacommons/']
 
-  # 3. JSON Schema validation. config/ holds schemas and examples only; an
-  #    deployment's own overrides live in config/ and are validated at
-  #    deploy time by deploy/validate-branding.py. So the contract to check
-  #    here is that every committed example still satisfies its schema.
+  # 3. JSON Schema validation. A deployment's own config/ is checked at deploy
+  #    time by deploy/validate-branding.py; what this checks is that every
+  #    example committed here still satisfies its schema.
   - id: schema-validate
     name: node:20
     entrypoint: bash
@@ -54,7 +53,7 @@ steps:
           ajv-cli validate -s schemas/branding.schema.json -d "$$b"
         done
 
-
+  # 4. Agent image builds, and is amd64.
   - id: build-agent
     name: gcr.io/cloud-builders/docker
     entrypoint: bash

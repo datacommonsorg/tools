@@ -1,13 +1,5 @@
 # ---------------------------------------------------------------------------
-# App-plane runtime identity
-#
-# The only service account this module creates. A second one, "<instance>-runtime",
-# used to exist for the cdc data-plane container -- it held cloudsql.client and
-# objectAdmin on the data bucket, neither of which the app plane has ever needed.
-# The container is gone and so is the identity.
-#
-# What remains needs Gemini keys, the config bucket, and (granted in main.tf)
-# invoker on the data plane when that plane is a private DCP service.
+# App-plane runtime identity. The only service account this module creates.
 # ---------------------------------------------------------------------------
 resource "google_service_account" "app" {
   project      = var.project_id
