@@ -4,9 +4,15 @@
 Run from the agent/ directory with no test framework:
     python3 tests/test_backend_generations.py
 
-The agent must run unchanged against a CDC services container (MCP 1.2.x, two
-fat tools, `place_observations` / `time_series` payloads) and a DCP or public
-instance (1.3.x, six tools, columnar `data.rows` payloads).
+The agent must run unchanged against either MCP server generation: 1.2.x (two
+fat tools, `place_observations` / `time_series` payloads) and 1.3.x (six tools,
+columnar `data.rows` payloads).
+
+1.2.x was what the removed CDC services container served. It is still pinned
+here because this is payload-shape handling, not cdc plumbing -- capability
+discovery reads whatever `tools/list` returns, and nothing guarantees every DCP
+instance serves 1.3.x. Dropping the 1.2.x path is a separate decision that
+needs a survey of deployed DCP versions first.
 
 The case that matters most is the *empty* response. The previous regex-based
 check looked for a `"time_series": [[` substring; a 1.3.x server signals "no

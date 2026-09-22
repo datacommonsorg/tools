@@ -22,16 +22,11 @@ from src.server.routes.spa import spa_bp
 from src.server.routes.system import system_bp
 from src.server.routes.tools import tools_bp
 
-# The API blueprints declare their routes at the root (/brand, /chat/stream,
-# /health) because the services container's nginx used to strip the /agent
-# prefix before proxying here. With the app plane serving its own ingress there
-# is nothing in front to strip it, so the prefix is applied here instead --
-# which keeps every URL the browser already calls working untouched, and leaves
-# the root free for the SPA.
+# Blueprints declare their routes at the root (/brand, /chat/stream, /health)
+# and get the prefix applied here, which leaves the root free for the SPA.
 #
-# brand.py reads the same variable to rewrite the asset URLs it embeds in the
-# branding document. The two must agree, or the browser requests a logo from a
-# path nothing serves.
+# brand.py reads the same variable to rewrite the asset URLs it embeds. The two
+# must agree, or the browser requests a logo from a path nothing serves.
 _API_PREFIX = os.environ.get("AGENT_API_PREFIX", "/agent")
 
 

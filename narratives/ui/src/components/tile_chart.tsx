@@ -36,15 +36,11 @@ const MAX_CHARTS = 3;
 
 /** Renders the agent's chart directive as a responsive grid of DC charts. */
 export function ChartTile({ config }: ChartTileProps) {
-  // Charts that reported no data of their own after mounting. The agent
-  // already withholds chart configs when its tool calls returned no
-  // observations, but each DC component runs its own fetch against the place
-  // and date it was handed, and that can come back empty even when the answer
-  // has numbers -- leaving a card whose whole content is "No data available."
-  // over a grey placeholder. Those cards drop out of the layout below, and if
-  // every card drops out the container goes with them rather than leaving an
-  // empty grid behind. Declared before the early returns: hooks cannot be
-  // called conditionally.
+  // Charts that reported no data after mounting. Each DC component runs its own
+  // fetch, which can come back empty even when the answer has numbers, leaving
+  // a card reading "No data available." Those drop out of the layout below, and
+  // if every card drops out so does the container. Declared before the early
+  // returns, because hooks cannot be called conditionally.
   const [emptyIndices, setEmptyIndices] = useState<ReadonlySet<number>>(
     () => new Set(),
   );

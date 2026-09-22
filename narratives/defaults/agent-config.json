@@ -22,7 +22,6 @@
     "_comment": "Substituted into {{instance.*}} placeholders in prompts/. Set these to your own deployment's identity.",
     "name": "Example Data Commons",
     "region": "the world",
-    "states_term": "regions",
-    "fiscal_year_start": "01-01"
+    "states_term": "regions"
   }
 }

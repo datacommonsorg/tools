@@ -1,378 +1,56 @@
-# Core resources for one Custom Data Commons instance. Each instance is a
-# fully independent deployment in its own GCP project — no shared resources
-# across instances.
+# The app plane for one Custom Data Commons instance: one Cloud Run service
+# (agent + SPA), optionally a VPC subnet for reaching a private data plane, and
+# uptime checks. Each instance is its own GCP project; nothing is shared.
 #
-#   - Two Cloud Run v2 services: a public app plane (agent + SPA) and an
-#     internal-only data plane (services image), each scaling independently
-#   - A VPC subnet so the app plane can reach the internal data plane
-#   - Cloud SQL HA (MySQL) for the upstream Mixer
-#   - Per-instance GCS data bucket
-#   - Per-instance Secret Manager entries (DC_API_KEY, MAPS_API_KEY, DB_PASS, GEMINI_API_KEYS)
-#   - Uptime checks + alert policies
+# The data plane is not built here. It is either a DCP service provisioned
+# elsewhere or public datacommons.org.
 #
-# The per-instance config bucket (gs://<project>-config/) and the Artifact
-# Registry repo are created out-of-band by deploy.sh
-# before terraform apply. The tfvars provide the image paths, the config
-# bucket name, and the brand_config_url only.
+# The config bucket, the Artifact Registry repo and the secrets all exist
+# before apply; deploy.sh creates them. The tfvars supply their names.
 
 locals {
-  # A single place that decides what exists. Every count below reads these
-  # rather than re-testing var.data_backend, so adding a backend later means
-  # adding one local, not auditing every resource.
-  is_cdc = var.data_backend == "cdc"
+  # Every count below reads these rather than re-testing var.data_backend, so
+  # a new backend means one more local, not an audit of every resource.
   is_dcp = var.data_backend == "dcp"
 
-  # The one value the app plane actually needs. Everything about "which
-  # backend" collapses to this URL plus the auth attached to it at runtime.
-  data_plane_url = (
-    local.is_cdc ? google_cloud_run_v2_service.dc_data_service[0].uri :
-    local.is_dcp ? var.dcp_service_url :
-    var.public_dc_url
-  )
-  mcp_url = "${local.data_plane_url}/mcp"
+  # Which backend collapses to this URL, plus the auth attached at runtime.
+  data_plane_url = local.is_dcp ? var.dcp_service_url : var.public_dc_url
+  mcp_url        = "${local.data_plane_url}/mcp"
 
-  # Where the BROWSER's data routes go. On cdc and dcp one container serves both
-  # MCP and the website, so this is the same URL. On "none" they are two hosts:
-  # api.datacommons.org serves the versioned REST API and /mcp, while the routes
-  # the chart web components call -- /api/observations/series, /api/place/name,
-  # /core/api/... -- exist only on datacommons.org.
-  #
-  # Collapsing both onto data_plane_url meant every chart request on the "none"
-  # backend got a Cloud Endpoints 404 ("The current request is not defined by
-  # this API"). The agent answered correctly and no chart ever rendered.
-  data_plane_web_url = (
-    local.is_cdc || local.is_dcp ? local.data_plane_url : var.public_dc_web_url
-  )
+  # Where the browser's chart routes go. On dcp, one container serves both, so
+  # this is the same URL. On "none" they are two hosts: /mcp and the REST API
+  # are on api.datacommons.org, but the routes the chart components call
+  # (/api/observations/series, /api/place/name, /core/api/...) exist only on
+  # datacommons.org. Point both at data_plane_url and every chart 404s.
+  data_plane_web_url = local.is_dcp ? local.data_plane_url : var.public_dc_web_url
 
-  # Direct VPC egress exists for exactly one reason: to reach a data plane whose
-  # ingress is internal. It is NOT free to switch on -- Cloud Run requires
-  # egress=ALL_TRAFFIC to reach a *.run.app host through a VPC, which routes
-  # EVERY outbound call through that subnet. Private Google Access covers
-  # *.googleapis.com, so Gemini and GCS still work, but a genuinely public host
-  # such as api.datacommons.org becomes unreachable without Cloud NAT.
-  #
-  # So only turn it on when the data plane is actually private. On "none" the
-  # backend IS api.datacommons.org, and enabling this would black-hole it.
-  needs_vpc_egress = coalesce(
-    var.enable_vpc_egress,
-    local.is_cdc && var.data_plane_ingress != "INGRESS_TRAFFIC_ALL"
-  )
+  # Turn on only for a data plane with ingress=internal. Reaching one over a
+  # VPC needs egress=ALL_TRAFFIC, which routes every outbound call through the
+  # subnet; Private Google Access keeps Gemini and GCS working, but a public
+  # host like api.datacommons.org needs Cloud NAT and is otherwise unreachable.
+  # Defaults off, because this module cannot see the ingress of a data plane
+  # it does not build.
+  needs_vpc_egress = coalesce(var.enable_vpc_egress, false)
 
-  # Two services since the split. The data plane keeps the historical name so
-  # the existing Cloud SQL instance, buckets and dashboards keep matching it;
-  # the app plane is the new, public one.
-  data_service_name = "${var.instance}-datacommons"
-  app_service_name  = "${var.instance}-app"
-  # Data bucket naming convention: <instance>-data-<project>,
-  # e.g. india-data-<project_id>.
-  data_bucket_name = "${var.instance}-data-${var.project_id}"
-  # Cloud SQL connection name + DB user — switch to an override when sharing
-  # a populated instance during the POC; otherwise use the module-created one.
-  cloudsql_connection_name = var.cloudsql_instance_override != "" ? var.cloudsql_instance_override : (local.is_cdc ? google_sql_database_instance.dc[0].connection_name : "")
-  db_user                  = var.db_user_override != "" ? var.db_user_override : (local.is_cdc ? google_sql_user.dc[0].name : "")
-  output_dir               = var.output_dir != "" ? var.output_dir : (local.is_cdc ? "gs://${google_storage_bucket.data[0].name}/output" : "")
-  input_dir                = var.input_dir != "" ? var.input_dir : (local.is_cdc ? "gs://${google_storage_bucket.data[0].name}/input" : "")
+  app_service_name = "${var.instance}-app"
 }
 
-# ---------------------------------------------------------------------------
-# Per-instance data bucket (created here)
-# ---------------------------------------------------------------------------
-
-resource "google_storage_bucket" "data" {
-  # Ingest input/output. DCP brings its own artifacts bucket; "none" has no data.
-  count = local.is_cdc ? 1 : 0
-
-  name                        = local.data_bucket_name
-  location                    = var.region
-  force_destroy               = var.force_destroy
-  uniform_bucket_level_access = true
-
-  versioning {
-    enabled = true
-  }
-}
-
-# Reference to the per-instance config bucket (NOT managed here — created out-of-band
-# by deploy.sh before terraform apply). One bucket per instance.
+# The config bucket is created by deploy.sh before apply, not managed here.
 data "google_storage_bucket" "config" {
   name = var.config_bucket
 }
 
 # ---------------------------------------------------------------------------
-# Cloud SQL
-# ---------------------------------------------------------------------------
-
-resource "google_sql_database_instance" "dc" {
-  count = local.is_cdc ? 1 : 0
-
-  name                = "dc-${var.instance}-mysql"
-  database_version    = "MYSQL_8_0"
-  region              = var.region
-  deletion_protection = var.deletion_protection
-
-  settings {
-    tier              = var.cloudsql_tier
-    availability_type = var.cloudsql_availability_type
-    disk_autoresize   = true
-    disk_size         = 20
-    disk_type         = "PD_SSD"
-
-    backup_configuration {
-      enabled                        = true
-      binary_log_enabled             = true
-      start_time                     = "03:00"
-      transaction_log_retention_days = 7
-    }
-
-    ip_configuration {
-      ipv4_enabled = true
-      # Authorised networks left empty — Cloud Run connects via the
-      # CloudSQL Auth Proxy / direct VPC egress, not via public IP allowlist.
-    }
-
-    insights_config {
-      query_insights_enabled  = true
-      query_string_length     = 1024
-      record_application_tags = true
-      record_client_address   = false
-    }
-  }
-}
-
-resource "google_sql_database" "dc" {
-  count = local.is_cdc ? 1 : 0
-
-  name     = "datacommons"
-  instance = google_sql_database_instance.dc[0].name
-}
-
-resource "google_sql_user" "dc" {
-  count = local.is_cdc ? 1 : 0
-
-  name     = "dc_runtime"
-  instance = google_sql_database_instance.dc[0].name
-  password = data.google_secret_manager_secret_version.db_pass[0].secret_data
-}
-
-# ---------------------------------------------------------------------------
-# Secrets
-#   - DC_API_KEY is project-wide (shared across instances) — referenced via data source.
-#   - MAPS_API_KEY / DB_PASS / GEMINI_API_KEYS are per-instance, namespaced
-#     by var.secret_prefix (e.g. CDC_POC_INDIA_).
-#   - All secrets must have an enabled version BEFORE `terraform apply` —
-#     see docs/deployment.md Stage 1.
+# Secrets. Both must already hold an enabled version at apply time;
+# `deploy.sh --bootstrap-secrets` puts them there.
 # ---------------------------------------------------------------------------
 
 data "google_secret_manager_secret" "dc_api_key" {
   secret_id = var.dc_api_key_secret_id
 }
 
-# Per-instance secrets are created out-of-band before first apply.
-# Rationale: secret rotation is an operational task; we don't want a tfstate
-# diff every time a key is rotated.
-data "google_secret_manager_secret" "maps_api_key" {
-  # CDC only. The Maps key is consumed by the data-plane container, which is
-  # count = 0 on dcp and none -- but a data source is read regardless of who
-  # uses it, so leaving this ungated made every deployment create a Maps secret
-  # that nothing would ever read, purely to satisfy a lookup.
-  count = local.is_cdc ? 1 : 0
-
-  secret_id = var.maps_api_key_secret_id
-}
-
-data "google_secret_manager_secret" "db_pass" {
-  count = local.is_cdc ? 1 : 0
-
-  secret_id = var.db_pass_secret_id
-}
-
 data "google_secret_manager_secret" "gemini_api_keys" {
   secret_id = var.gemini_api_keys_secret_id
-}
-
-# Read DB_PASS for the SQL user resource above. The version must exist before
-# `terraform apply`.
-data "google_secret_manager_secret_version" "db_pass" {
-  count = local.is_cdc ? 1 : 0
-
-  secret  = data.google_secret_manager_secret.db_pass[0].secret_id
-  version = "latest"
-}
-
-# ---------------------------------------------------------------------------
-# DATA PLANE — nginx + Flask + Mixer + MCP + NL server, over Cloud SQL.
-#
-# ingress = INTERNAL_ONLY: the browser no longer reaches this service at all.
-# The app plane is the sole public front door and reverse-proxies the data
-# routes here, so Mixer, MCP and the Flask pages can drop off the internet
-# entirely. That is a better posture than the coupled deployment had, and it
-# falls out of the split for free.
-# ---------------------------------------------------------------------------
-resource "google_cloud_run_v2_service" "dc_data_service" {
-  # Only the CDC plane is ours to run. DCP's equivalent is created by Google's
-  # module via datacommons-cli; "none" needs no data plane at all.
-  count = local.is_cdc ? 1 : 0
-
-  name     = local.data_service_name
-  location = var.region
-  ingress  = var.data_plane_ingress
-  # POC stamp — allow Terraform to delete/replace freely. Bump to true once
-  # demo traffic is routed at this service.
-  deletion_protection = false
-
-  template {
-    service_account = google_service_account.datacommons.email
-    timeout         = "600s"
-
-    scaling {
-      min_instance_count = var.min_instances
-      max_instance_count = var.max_instances
-    }
-
-    # Bound how many requests Cloud Run stacks into one instance. Unset, this
-    # takes Cloud Run's default of 80 -- and multiplied by max_instances that is
-    # several hundred concurrent requests against a single Cloud SQL instance
-    # that has no connection-pool sizing configured anywhere. MySQL answers that
-    # with "too many connections", not with slow queries.
-    #
-    # Not needed on the Spanner backend, which uses session pools and has no
-    # fixed connection ceiling -- but harmless there, and one less thing to
-    # remember when switching data_backend.
-    max_instance_request_concurrency = var.data_concurrency
-
-    containers {
-      name  = "services"
-      image = var.dc_web_service_image
-
-      ports {
-        container_port = 8080
-      }
-
-      resources {
-        cpu_idle = false
-        limits = {
-          cpu    = var.services_cpu
-          memory = var.services_memory
-        }
-        startup_cpu_boost = true
-      }
-
-      env {
-        name  = "FLASK_ENV"
-        value = "custom"
-      }
-      env {
-        name  = "ENABLE_MODEL"
-        value = "true"
-      }
-      env {
-        name  = "ENABLE_MCP"
-        value = "true"
-      }
-      env {
-        name  = "USE_CLOUDSQL"
-        value = "true"
-      }
-      env {
-        name  = "USE_SQLITE"
-        value = "false"
-      }
-      env {
-        name  = "DC_API_ROOT"
-        value = "https://api.datacommons.org"
-      }
-      env {
-        name  = "DC_SEARCH_SCOPE"
-        value = "base_and_custom"
-      }
-      env {
-        name  = "DISABLE_GOOGLE_MAPS"
-        value = "false"
-      }
-      env {
-        name  = "CLOUDSQL_INSTANCE"
-        value = local.cloudsql_connection_name
-      }
-      env {
-        name  = "DB_NAME"
-        value = google_sql_database.dc[0].name
-      }
-      env {
-        name  = "DB_USER"
-        value = local.db_user
-      }
-      env {
-        name  = "GOOGLE_CLOUD_PROJECT"
-        value = var.project_id
-      }
-      env {
-        name  = "GOOGLE_CLOUD_REGION"
-        value = var.region
-      }
-      env {
-        name  = "BRAND_CONFIG_URL"
-        value = var.brand_config_url
-      }
-      env {
-        name  = "INPUT_DIR"
-        value = local.input_dir
-      }
-      env {
-        name  = "OUTPUT_DIR"
-        value = local.output_dir
-      }
-      env {
-        name = "DC_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = data.google_secret_manager_secret.dc_api_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-      env {
-        name = "MAPS_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = data.google_secret_manager_secret.maps_api_key[0].secret_id
-            version = "latest"
-          }
-        }
-      }
-      env {
-        name = "DB_PASS"
-        value_source {
-          secret_key_ref {
-            secret  = data.google_secret_manager_secret.db_pass[0].secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      startup_probe {
-        http_get {
-          path = "/healthz"
-          port = 8080
-        }
-        initial_delay_seconds = 30
-        timeout_seconds       = 5
-        period_seconds        = 10
-        failure_threshold     = 30
-      }
-    }
-
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [local.cloudsql_connection_name]
-      }
-    }
-  }
-
-  traffic {
-    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
-    percent = 100
-  }
 }
 
 # ---------------------------------------------------------------------------
@@ -411,15 +89,9 @@ resource "google_compute_subnetwork" "app" {
 # ---------------------------------------------------------------------------
 # APP PLANE — the agent API plus the compiled SPA, in one container.
 #
-# This is the only public surface. It serves the UI, runs the chat
-# orchestration, and reverse-proxies the browser's data routes to the data
-# plane so everything stays on one origin (required by IAP and by the two
-# same-origin iframe tools).
-#
-# There is deliberately no circular reference between the two services: the
-# data plane no longer needs to know the app plane's URL, because nginx has
-# stopped proxying /agent. Only this direction exists, so Terraform can order
-# the two on its own.
+# The only public surface. Serves the UI, runs the chat orchestration, and
+# reverse-proxies the browser's data routes to the data plane so everything
+# stays on one origin -- required by IAP and by the same-origin iframe tools.
 # ---------------------------------------------------------------------------
 resource "google_cloud_run_v2_service" "dc_app_service" {
   provider = google-beta
@@ -570,28 +242,6 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
 # Access
 # ---------------------------------------------------------------------------
 
-# THE binding that makes a private data plane work: the app plane's service
-# account may invoke it. Without this every MCP call and every /dcproxy request
-# is refused, which surfaces as "no data" and blank charts.
-# THE grant that makes a private data plane work: the app plane's service
-# account may invoke it. Without this every MCP call and every /dcproxy request
-# is refused, which surfaces as "no data" and blank charts rather than as an
-# obvious permissions error.
-#
-# Two variants, because the service is ours on CDC and Google's on DCP -- but
-# the binding is identical either way, and both are scoped to a single service,
-# so unlike the project-level IAP bindings these are safe to hold in two
-# Terraform states at once.
-resource "google_cloud_run_v2_service_iam_member" "app_invokes_data" {
-  count = local.is_cdc ? 1 : 0
-
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.dc_data_service[0].name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.app.email}"
-}
-
 resource "google_cloud_run_v2_service_iam_member" "app_invokes_dcp" {
   # The DCP services instance is created outside this module by
   # datacommons-cli, so it is referenced by name rather than by resource.
@@ -620,12 +270,8 @@ resource "terraform_data" "backend_preconditions" {
   }
 }
 
-# Humans reach the app plane, not the data plane. Replaces a hardcoded
-# individual account, which meant a rebuild from state alone produced a service
-# only one person could open.
-# Public exposure, opt-in. Scoped to the app plane only -- the data plane stays
-# ingress=internal in every mode, so this cannot expose Mixer, MCP or the Flask
-# pages however it is set.
+# Public exposure, opt-in. Scoped to the app plane, so it can never expose a
+# private data plane however it is set.
 resource "google_cloud_run_v2_service_iam_member" "app_public" {
   count = var.access_mode == "public" ? 1 : 0
 
@@ -655,7 +301,7 @@ resource "google_cloud_run_v2_service_iam_member" "app_invokers" {
 
 # ---------------------------------------------------------------------------
 # Artifact Registry — referenced, not created (shared across instances).
-# Create out-of-band in Stage 1 with:
+# deploy.sh creates it; by hand it is:
 #   gcloud artifacts repositories create dc-images \
 #     --repository-format=docker --location=<region>
 # ---------------------------------------------------------------------------
@@ -782,22 +428,7 @@ output "app_service_account" {
   value       = google_service_account.app.email
 }
 
-output "cloudsql_connection_name" {
-  description = "Connection name for the Cloud SQL instance, used by env CLOUDSQL_INSTANCE."
-  value       = local.is_cdc ? google_sql_database_instance.dc[0].connection_name : ""
-}
-
 output "config_bucket" {
   description = "Per-instance GCS config bucket (object-versioned, public read for branding.json access)."
   value       = data.google_storage_bucket.config.name
-}
-
-output "data_bucket" {
-  description = "GCS data bucket for the upstream ingest job."
-  value       = local.is_cdc ? google_storage_bucket.data[0].name : ""
-}
-
-output "runtime_service_account" {
-  description = "Email of the runtime SA. Reference in any per-instance IAM grants."
-  value       = google_service_account.datacommons.email
 }

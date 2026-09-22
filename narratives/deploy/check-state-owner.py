@@ -36,6 +36,12 @@ import sys
 
 # Resources whose name is always "<instance>-<suffix>". These are what the
 # deployment name is recovered from.
+#
+# "-datacommons" and "-data-ingest" belonged to the cdc plane, which no deploy
+# creates any more. They stay listed on purpose: a state file written before cdc
+# was removed still contains them, and running a destroy against one of those is
+# precisely the case this guard exists to catch. Dropping them would make it
+# blind to the only states that still need checking.
 _NAMED = {
     "google_cloud_run_v2_service": ("-app", "-datacommons"),
     "google_cloud_run_v2_job": ("-data-ingest",),

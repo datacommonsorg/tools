@@ -1,14 +1,14 @@
 ## new-instance.tfvars.sample
 ##
-## Template for deploying a fresh instance into a brand-new GCP project.
-## DEPLOY.md Phase 5.1 copies this file to <instance>.tfvars and uses sed
-## to substitute the REPLACE_* placeholders.
+## Template for a fresh instance in a new GCP project. deploy.sh generates
+## <instance>.tfvars from config/instance.env; copy this by hand only if you
+## are running terraform directly.
 
 project_id = "REPLACE_PROJECT_ID"
 region     = "REPLACE_REGION"
 instance   = "REPLACE_INSTANCE"
 
-# Which data plane serves this instance: "dcp" (default), "cdc" or "none".
+# Which data plane serves this instance: "dcp" (default) or "none".
 # The app plane is identical either way -- it receives a URL and an auth mode.
 data_backend = "REPLACE_DATA_BACKEND"
 
@@ -18,8 +18,7 @@ data_backend = "REPLACE_DATA_BACKEND"
 dcp_service_url  = "REPLACE_DCP_SERVICE_URL"
 dcp_service_name = "REPLACE_DCP_SERVICE_NAME"
 
-dc_web_service_image = "REPLACE_SERVICES_IMAGE"
-dc_agent_image       = "REPLACE_AGENT_IMAGE"
+dc_agent_image = "REPLACE_AGENT_IMAGE"
 
 # Per-instance config bucket (one bucket per instance — created in Phase 4).
 # The bucket contents are the handover repo's config/ directory uploaded at
@@ -35,26 +34,12 @@ agent_config_mode = "dev"
 # Common values: "Asia/Kolkata" (India), "America/Los_Angeles" (US), "UTC" (default).
 timezone = "UTC"
 
-# Per-instance Secret Manager IDs. Created in Phase 2 of DEPLOY.md.
+# Per-instance Secret Manager IDs, created by `deploy.sh --bootstrap-secrets`.
 dc_api_key_secret_id      = "REPLACE_INSTANCE-dc-api-key"
-maps_api_key_secret_id    = "REPLACE_INSTANCE-maps-api-key"
-db_pass_secret_id         = "REPLACE_INSTANCE-db-pass"
 gemini_api_keys_secret_id = "REPLACE_INSTANCE-gemini-api-keys"
 
-# Cloud SQL — REGIONAL HA is the production default. ZONAL is cheaper for a POC
-# (~$50/mo saved) but no automatic failover.
-cloudsql_tier              = "REPLACE_CLOUDSQL_TIER"
-cloudsql_availability_type = "REPLACE_CLOUDSQL_AVAILABILITY"
 
-# Cloud Run autoscale.
-min_instances = 1
-max_instances = 10
-
-# Resource limits — the upstream image's NL embeddings load needs ~16Gi at
-# startup. Anything below will OOM at ~5 min elapsed (failure mode F10 in
-# DEPLOY.md). Do not reduce.
-services_cpu    = "4"
-services_memory = "16Gi"
+# Resource limits for the app plane
 agent_cpu       = "1"
 agent_memory    = "1Gi"
 
@@ -66,15 +51,6 @@ allowed_origin = "*"
 # Populate with channel IDs from `gcloud alpha monitoring channels list` later.
 alert_notification_channels = []
 
-# Override variables — used by cdc-poc-india.tfvars to share cdc-dev's data.
-# For a fresh-project deploy, leave all five empty; the module-created Cloud
-# SQL and per-instance data bucket are the source of truth.
-cloudsql_instance_override = ""
-db_user_override           = ""
-output_dir                 = "REPLACE_OUTPUT_DIR"
-input_dir                  = "REPLACE_INPUT_DIR"
-extra_data_buckets         = []
-
 # Who may reach the app plane. What they are granted depends on access_mode:
 # iap -> iap.httpsResourceAccessor on this service; private -> run.invoker;
 # public -> nothing, allUsers already covers everyone.
@@ -83,7 +59,7 @@ authorized_members = [REPLACE_AUTHORIZED_MEMBERS]
 # Where the "none" backend points. Two hosts, and only this backend needs both:
 # public_dc_url serves the versioned REST API and /mcp (what the agent calls),
 # while public_dc_web_url serves the website routes the chart components call
-# from the browser. Ignored on cdc and dcp.
+# from the browser. Ignored on dcp.
 public_dc_url     = "REPLACE_PUBLIC_DC_URL"
 public_dc_web_url = "REPLACE_PUBLIC_DC_WEB_URL"
 
@@ -93,6 +69,3 @@ public_dc_web_url = "REPLACE_PUBLIC_DC_WEB_URL"
 #   "private"  no public access; proxy or a listed member with run.invoker
 # The data plane is ingress=internal in every mode.
 access_mode = "REPLACE_ACCESS_MODE"
-
-deletion_protection = false
-force_destroy       = true

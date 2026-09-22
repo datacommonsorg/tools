@@ -417,10 +417,9 @@ function applyCssVars(branding: Branding) {
  */
 export function useBranding(): { branding: Branding; loaded: boolean; error: string | null } {
   // Seeded synchronously from the pre-paint global, so the first render is
-  // already this instance's. Starting at DEFAULT_BRAND unconditionally is what
-  // produced the visible flip on load: the shipped neutral headline, wordmark,
-  // logo, nav tabs and chips painted, then the fetch swapped them out a second
-  // or so later.
+  // already this instance's. Starting at DEFAULT_BRAND instead paints the
+  // neutral headline, logo and nav, then visibly swaps them when the fetch
+  // lands.
   const [branding, setBranding] = useState<Branding>(() => {
     const raw = readPrePaintBranding();
     return raw ? { ...DEFAULT_BRAND, ...mapRawToBranding(raw) } : DEFAULT_BRAND;

@@ -1,7 +1,6 @@
-# Terraform state backend.
-# State for each instance lives at gs://<project_id>-tfstate/cdc/<instance>/.
-# Bucket and versioning are created out-of-band (see docs/deployment.md Stage 1)
-# so this backend can be initialised on first apply.
+# Terraform state backend. State for each instance lives at
+# gs://<project_id>-tfstate/custom-datacommons/<instance>/. deploy.sh creates
+# the bucket before the first apply, since a backend cannot create its own.
 
 terraform {
   required_version = ">= 1.5.0"

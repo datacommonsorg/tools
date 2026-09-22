@@ -29,16 +29,11 @@ logger = logging.getLogger(__name__)
 def execute_mcp_tool_loop(
     user_message: str,
     history: list,
-    # Each iteration is one model turn, and the last one has to carry the text
-    # answer rather than a tool call. A broad question re-searches before it
-    # settles — "compare X across European countries" spent four turns on
-    # search/observe/search/observe — and exhausting the budget returns whatever
-    # was gathered with no synthesis, so leave headroom.
-    #
-    # Raised from 7 for the 1.3.0 tool surface: the recommended flow is now
-    # three steps (search → get_variable_metadata → observations) rather than
-    # two, and a bilateral question was observed spending all seven turns on
-    # search alone and returning no data at all.
+    # One iteration is one model turn, and the last must carry the text answer
+    # rather than a tool call, so leave headroom -- exhausting the budget
+    # returns what was gathered with no synthesis. Broad questions re-search
+    # before they settle, and the 1.3.0 flow is three steps (search →
+    # get_variable_metadata → observations), so this needs to be generous.
     max_iterations: int = 15,
     session_logger: Optional[SessionLogger] = None,
     effective_config: dict = None,

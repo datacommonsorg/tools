@@ -29,15 +29,11 @@ MAX_TEXT_PREVIEW_LENGTH = 500
 
 # Where session logs go.
 #
-# Every Cloud Run instance has its own ephemeral disk, so a session log written
-# to a file dies with the instance and cannot be read across the fleet --
-# exactly when scaling out makes it most needed. Emitting one JSON object per
-# line on stdout gets the same information into Cloud Logging as structured
-# entries, queryable by session_id and event_type, with no dependency and no
-# credentials.
-#
-# Files are still written off Cloud Run, because tailing one is the fastest way
-# to debug locally. SESSION_LOG_TO_FILE forces either behaviour explicitly.
+# On Cloud Run, one JSON object per line on stdout: the disk is ephemeral and
+# per-instance, so a file dies with the instance, while stdout reaches Cloud
+# Logging as structured entries queryable by session_id and event_type.
+# Off Cloud Run, a file, because tailing one is the fastest way to debug
+# locally. SESSION_LOG_TO_FILE forces either explicitly.
 _ON_CLOUD_RUN = bool(os.environ.get("K_SERVICE"))
 _FILE_LOGGING = os.environ.get(
     "SESSION_LOG_TO_FILE", "false" if _ON_CLOUD_RUN else "true"

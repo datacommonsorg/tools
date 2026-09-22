@@ -7,12 +7,12 @@
 # Set BEARER_TOKEN for an IAM/IAP-gated stack:
 #   BEARER_TOKEN=$(gcloud auth print-identity-token) bash docs/smoke.sh "$URL"
 #
-# Every check here holds on ALL THREE backends -- dcp, cdc and none. That is
+# Every check here holds on BOTH backends -- dcp and none. That is
 # the point: the app plane is supposed to be identical whichever data plane
 # serves it, so a check that only passes on one of them is testing the backend
 # rather than the architecture.
 #
-# The previous version of this script was written for the single-container CDC
+# An older version of this script was written for the long-gone single-container
 # stamp and asserted two things that are wrong here:
 #
 #   * /api/observations/series -- a *website* Flask route. The DCP plane serves
@@ -111,12 +111,15 @@ check 2 c2
 #
 #    The budget is a deadline rather than a fixed retry count because the three
 #    backends warm at very different speeds. `none` points at api.datacommons.org,
-#    which is always hot, so the first read is already correct. A fresh CDC deploy
-#    has to cold-start its own Mixer container, and that took ~60s on the first
-#    one -- comfortably past the old 3-reads-and-5-seconds ceiling, so a healthy
-#    stack reported FAIL on checks 3, 4, 5 and 7 and passed on a manual re-run
-#    minutes later. A smoke test that cries wolf on every first CDC deploy trains
-#    you to ignore it, which is worse than not having it.
+#    which is always hot, and dcp's plane is provisioned and running before this
+#    script ever sees it. Neither should need more than a read or two.
+#
+#    The deadline is kept anyway. The removed cdc backend cold-started a Mixer of
+#    its own and took ~60s to answer -- comfortably past a 3-reads-and-5-seconds
+#    ceiling, so a healthy stack reported FAIL on checks 3, 4, 5 and 7 and passed
+#    on a manual re-run minutes later. Nothing guarantees a future backend is
+#    warm, and a smoke test that cries wolf on a first deploy trains you to
+#    ignore it, which is worse than not having one.
 #
 #    This check also gates the ones after it: 4, 5 and 7 all need the same data
 #    plane, so letting 3 block until it answers keeps them from failing for a
