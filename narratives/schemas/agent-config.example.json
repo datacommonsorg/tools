@@ -3,9 +3,7 @@
   "$comment": "Canonical example mirroring additional_features/config.json.example. The deployment inherits defaults/agent-config.json and may override it with config/agent-config.json; deploy.sh lays the second over the first before uploading.",
 
   "gemini": {
-    "api_keys": [
-      "REPLACE_ME_OR_USE_SECRET_MANAGER"
-    ],
+    "api_key": "REPLACE_ME_OR_USE_SECRET_MANAGER",
     "api_base": "https://generativelanguage.googleapis.com/v1beta/models",
     "mcp_model": "gemini-3-flash-preview"
   },

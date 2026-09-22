@@ -747,20 +747,20 @@ export BRAND_CONFIG_URL="https://storage.googleapis.com/<bucket>"
 ```
 
 The Gemini key is **not** an environment variable. `get_gemini_api_key()` resolves
-`GEMINI_API_KEYS_SECRET` through Secret Manager and falls back to the
-`gemini.api_keys` array in the config document — which is the local path, since
-Secret Manager needs credentials the laptop may not have:
+`GEMINI_API_KEY_SECRET` through Secret Manager and falls back to
+`gemini.api_key` in the config document — which is the local path, since Secret
+Manager needs credentials the laptop may not have:
 
 ```json
-{ "gemini": { "api_keys": ["your-key"] } }
+{ "gemini": { "api_key": "your-key" } }
 ```
 
-The agent uses a single Gemini API key regardless of source; if `gemini.api_keys`
-contains multiple entries, the agent uses the first key and logs a warning that
-additional entries are ignored.
+The secret payload stores the bare API key string rather than JSON. If Secret
+Manager still holds a legacy `["<key>"]` JSON array, the loader rejects it and
+logs an error instructing you to re-run `./deploy.sh --bootstrap-secrets`.
 
-Do not commit that array with a value in it; it is a shape contract in the
-checked-in files, never a value.
+Do not commit a real key in `agent-config.json`; the checked-in files define
+the schema shape only.
 
 **Serve the SPA from the agent**, so routing matches production:
 

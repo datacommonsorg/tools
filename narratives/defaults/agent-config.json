@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/agent-config.schema.json",
-  "$comment": "This instance's agent config — uploaded to the per-instance config bucket root at deploy time. Edit values here to customise the instance. Secrets (gemini.api_keys) come from Secret Manager via the GEMINI_API_KEYS_SECRET env var; the array is a shape contract only and must never carry a value here. See the Customising section of README.md.",
+  "$comment": "This instance's agent config — uploaded to the per-instance config bucket root at deploy time. Edit values here to customize the instance. The Gemini credential (gemini.api_key) comes from Secret Manager via the GEMINI_API_KEY_SECRET env var and must never be committed here. See the Customising section of README.md.",
   "mcp": {
     "_comment": "Local-development default only. A deployed instance gets MCP_SERVER_URL from Terraform, pointing at the data-plane service, and the env var wins over this value. Leaving localhost here means a laptop run still finds a local MCP server, and it is never the value that ships.",
     "server_url": "http://127.0.0.1:8082",

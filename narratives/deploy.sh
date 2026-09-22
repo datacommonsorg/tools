@@ -411,7 +411,7 @@ run_preflight() {
 
     # --- secrets -----------------------------------------------------------
     local missing_secrets=""
-    for s in "${INSTANCE}-dc-api-key" "${INSTANCE}-gemini-api-keys"; do
+    for s in "${INSTANCE}-dc-api-key" "${INSTANCE}-gemini-api-key"; do
         gcloud secrets describe "$s" --project="$PROJECT_ID" >/dev/null 2>&1 </dev/null || missing_secrets="${missing_secrets} ${s}"
     done
     if [ -z "$missing_secrets" ]; then
@@ -614,7 +614,7 @@ if [ "$CODE_ONLY" = false ]; then
 
     DC_SECRET="${INSTANCE}-dc-api-key"
     MAPS_SECRET="${INSTANCE}-maps-api-key"
-    GEMINI_SECRET="${INSTANCE}-gemini-api-keys"
+    GEMINI_SECRET="${INSTANCE}-gemini-api-key"
 
     # Values come from THIS PROCESS's environment, never from a file on disk,
     # and only during --bootstrap-secrets. A normal deploy verifies the secrets
@@ -679,78 +679,29 @@ if [ "$CODE_ONLY" = false ]; then
                 fi
             fi
             if [ "$value_var" = "GEMINI_API_KEY" ]; then
-                # The agent expects a JSON array of keys, so this value has to
-                # be encoded rather than pasted into brackets. Building it as
-                # "[\"$value\"]" was wrong twice over:
-                #
-                #   * a key containing a quote or backslash produced invalid
-                #     JSON, and
-                #   * feeding back a value that was ALREADY a JSON array --
-                #     which is what you get from `gcloud secrets versions
-                #     access` on another instance, the obvious way to copy a
-                #     key between stacks -- double-wrapped it into
-                #     ["["AIza..."]"], which is not parseable at all.
-                #
-                # Both failed silently. Secret Manager stores any bytes, the
-                # deploy reported success, and the break only appeared at
-                # runtime as "No Gemini API keys configured in config.json"
-                # while the env var and the secret both looked correctly wired.
-                #
-                # So: pass an existing array through unchanged, split a
-                # comma-separated list into a pool, and encode with json.dumps.
-                value=$(GEMINI_RAW="$value" python3 -c '
-import json, os, sys
-raw = os.environ["GEMINI_RAW"].strip()
-try:
-    parsed = json.loads(raw)
-except ValueError:
-    parsed = None
-if isinstance(parsed, list) and parsed and all(isinstance(k, str) and k for k in parsed):
-    keys = parsed                      # already encoded; idempotent
-elif isinstance(parsed, str) and parsed:
-    keys = [parsed]
-else:
-    keys = [k.strip() for k in raw.split(",") if k.strip()]
-if not keys:
-    sys.stderr.write("GEMINI_API_KEY held no usable key\n")
-    sys.exit(1)
-sys.stdout.write(json.dumps(keys))
-') || { log_error "Could not encode GEMINI_API_KEY as a JSON array."; exit 1; }
-                # Refuse to write something the agent cannot read back.
-                echo -n "$value" | python3 -c '
-import json, sys
-keys = json.loads(sys.stdin.read())
-assert isinstance(keys, list) and all(isinstance(k, str) for k in keys), keys
-' || { log_error "Encoded GEMINI value is not a JSON array of strings. Refusing to write."; exit 1; }
-                log_info "Gemini key pool: $(echo -n "$value" | python3 -c 'import json,sys; print(len(json.loads(sys.stdin.read())))') key(s)."
-
-                # Same reasoning as DC_API_KEY: a rejected Gemini key produces a
-                # deployment that starts, serves the UI, and fails only when
-                # someone asks a question -- as "All N API keys failed", which
-                # reads as a quota problem rather than a bad key.
+                # Store the bare API key string in Secret Manager and verify it
+                # against the Gemini API before writing a new secret version so
+                # invalid credentials fail during bootstrap rather than at
+                # runtime.
+                case "$value" in
+                    \[*|\"*)
+                        log_error "GEMINI_API_KEY looks like a JSON array or quoted string. Supply the bare API key string. Nothing was written."
+                        exit 1 ;;
+                esac
                 gem_base="https://generativelanguage.googleapis.com/v1beta/models"
-                bad_keys=""
-                while IFS= read -r k; do
-                    [ -n "$k" ] || continue
-                    gem_code=$(curl -s --max-time 25 -o /dev/null -w "%{http_code}" \
-                        "${gem_base}?key=${k}&pageSize=1" || echo "000")
-                    case "$gem_code" in
-                        200) ;;
-                        000) log_warn "Could not reach the Gemini API to check a key; storing it unverified." ;;
-                        *)   bad_keys="${bad_keys} ${k:0:6}...(HTTP ${gem_code})" ;;
-                    esac
-                done <<EOF
-$(echo -n "$value" | python3 -c 'import json,sys; print("\n".join(json.loads(sys.stdin.read())))')
-EOF
-                if [ -n "$bad_keys" ]; then
-                    log_error "These Gemini keys were rejected:${bad_keys}. Nothing was written."
-                    echo "  Check them at https://aistudio.google.com" >&2
-                    case "$value" in
-                        *%\"*|*%\]*) echo "  One ends in '%' -- that is zsh's end-of-line marker, copied by mistake." >&2 ;;
-                    esac
-                    exit 1
-                fi
-                log_success "Gemini key(s) accepted."
+                log_info "Checking GEMINI_API_KEY against the Gemini API ..."
+                gem_code=$(curl -g -s --max-time 25 -o /dev/null -w "%{http_code}" \
+                    "${gem_base}?key=${value}&pageSize=1" || echo "000")
+                case "$gem_code" in
+                    200) log_success "GEMINI_API_KEY accepted." ;;
+                    000) log_warn "Could not reach the Gemini API to check the key; storing it unverified." ;;
+                    *)   log_error "GEMINI_API_KEY was rejected by the Gemini API (HTTP ${gem_code}). Nothing was written."
+                         echo "  Check the key at https://aistudio.google.com" >&2
+                         case "$value" in
+                             *%) echo "  The value ends in '%' -- that is zsh's end-of-line marker, copied by mistake." >&2 ;;
+                         esac
+                         exit 1 ;;
+                esac
             fi
             add_secret_version_if_changed "$secret_id" "$value"
         done

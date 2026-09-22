@@ -10,18 +10,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "api_keys": {
-          "description": "Key pool for rotation. SHAPE only \u2014 real values live in Secret Manager (GEMINI_API_KEYS_SECRET env var) in prod mode. The agent's prod-mode loader rejects inline keys with a warning.",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "minItems": 1
-        },
         "api_key": {
-          "description": "DEPRECATED single-key fallback. Agent will refuse it in prod mode; warn-only in dev mode.",
-          "type": "string"
+          "description": "The Gemini API key for local development. Production deployments resolve the key from Secret Manager via the GEMINI_API_KEY_SECRET environment variable; never commit a real credential here.",
+          "type": "string",
+          "minLength": 1
         },
         "api_base": {
           "description": "Override for regional / vNext Gemini endpoints.",

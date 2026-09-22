@@ -57,7 +57,7 @@ except ImportError:
     _SECRET_MANAGER_AVAILABLE = False
     logger.warning(
         "google-cloud-secret-manager not installed; "
-        "GEMINI_API_KEYS_SECRET will be ignored"
+        "GEMINI_API_KEY_SECRET will be ignored"
     )
 
 
@@ -313,20 +313,21 @@ def render_prompt(prompt: str) -> str:
     return rendered
 
 
-_SECRET_MANAGER_CACHE: dict[str, tuple[float, list[str]]] = {}
+_SECRET_MANAGER_CACHE: dict[str, tuple[float, str]] = {}
 _SECRET_MANAGER_TTL_SECONDS = 300
 
 
-def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
-    """Load a JSON-encoded key array from Secret Manager.
+def _fetch_key_from_secret_manager(secret_name: str) -> str:
+    """Load the Gemini API key from Secret Manager, or return an empty string.
 
-    secret_name is either "projects/<proj>/secrets/<name>/versions/<v>" (full
-    resource name) or just "<name>" (resolved against GOOGLE_CLOUD_PROJECT,
-    latest version). Cached for 5 minutes to avoid hammering Secret Manager on
-    each call.
+    The secret payload must contain the bare API key string. `secret_name` may
+    be either a full resource name
+    (`projects/<proj>/secrets/<name>/versions/<v>`) or a short secret ID
+    resolved against `GOOGLE_CLOUD_PROJECT` at version `latest`. Successful
+    lookups are cached for 5 minutes.
     """
     if not _SECRET_MANAGER_AVAILABLE:
-        return []
+        return ""
     cached = _SECRET_MANAGER_CACHE.get(secret_name)
     now = time.time()
     if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
@@ -339,86 +340,53 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
                 "name %r",
                 secret_name,
             )
-            return []
+            return ""
         full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
     else:
         full_name = secret_name
     try:
         client = secretmanager.SecretManagerServiceClient()
         response = client.access_secret_version(request={"name": full_name})
-        payload = response.payload.data.decode("utf-8")
-        keys = json.loads(payload)
-        if not isinstance(keys, list) or not all(
-            isinstance(k, str) for k in keys
-        ):
+        key = response.payload.data.decode("utf-8").strip()
+        if not key:
+            return ""
+        if key.startswith(("[", '"')):
             logger.error(
-                "Secret %s did not contain a JSON array of strings", full_name
+                "Secret %s holds a legacy JSON array of keys; re-run "
+                "./deploy.sh --bootstrap-secrets to store the bare key",
+                full_name,
             )
-            return []
-        _SECRET_MANAGER_CACHE[secret_name] = (now, keys)
-        logger.info(
-            "Loaded %d keys from Secret Manager (%s)", len(keys), full_name
-        )
-        return keys
+            return ""
+        _SECRET_MANAGER_CACHE[secret_name] = (now, key)
+        logger.info("Loaded the Gemini API key from %s", full_name)
+        return key
     except Exception as e:
         logger.error("Failed to load secret %s: %s", full_name, e)
-        return []
-
-
-def _first_key(keys: object, source: str) -> str:
-    """Return the first API key from a configured key list, or an empty string.
-
-    Logs a warning if the list contains more than one entry so operators know
-    only the first credential is used.
-    """
-    if not isinstance(keys, list) or not keys:
         return ""
-    first = keys[0]
-    if not isinstance(first, str) or not first.strip():
-        logger.error("%s did not hold a non-empty string key", source)
-        return ""
-    if len(keys) > 1:
-        logger.warning(
-            "%s holds %d keys; the agent uses one and ignores the rest",
-            source,
-            len(keys),
-        )
-    first = first.strip()
-    if first.startswith(("DEPRECATED", "REPLACE_ME")):
-        return ""
-    return first
 
 
 def get_gemini_api_key() -> str:
     """Return the configured Gemini API key, or an empty string if unavailable.
 
-    Reads `GEMINI_API_KEYS_SECRET` from Secret Manager when set, and falls back
-    to `gemini.api_keys` (or `gemini.api_key`) in `config.json` for local
-    development.
+    Resolves `GEMINI_API_KEY_SECRET` through Secret Manager when set, and falls
+    back to `gemini.api_key` in `config.json` for local development. Placeholder
+    strings (`REPLACE_ME*`, `DEPRECATED*`) are treated as unconfigured.
     """
-    secret = os.environ.get("GEMINI_API_KEYS_SECRET", "")
+    secret = os.environ.get("GEMINI_API_KEY_SECRET", "")
     if secret:
-        key = _first_key(
-            _fetch_keys_from_secret_manager(secret), "GEMINI_API_KEYS_SECRET"
-        )
+        key = _fetch_key_from_secret_manager(secret)
         if key:
             return key
         logger.warning(
-            "GEMINI_API_KEYS_SECRET set but returned no keys; falling back "
+            "GEMINI_API_KEY_SECRET set but returned no key; falling back "
             "to config"
         )
 
-    config = load_config()
-    gemini_config = config.get("gemini", {})
-    key = _first_key(gemini_config.get("api_keys"), "gemini.api_keys")
-    if key:
-        return key
-
-    single_key = str(gemini_config.get("api_key", "")).strip()
-    if single_key and not single_key.startswith(("DEPRECATED", "REPLACE_ME")):
-        logger.warning(
-            "Using deprecated scalar gemini.api_key; migrate to "
-            "api_keys[] or Secret Manager"
-        )
-        return single_key
-    return ""
+    gemini_cfg = load_config().get("gemini")
+    raw_key = (
+        gemini_cfg.get("api_key", "") if isinstance(gemini_cfg, dict) else ""
+    )
+    config_key = raw_key.strip() if isinstance(raw_key, str) else ""
+    if not config_key or config_key.startswith(("DEPRECATED", "REPLACE_ME")):
+        return ""
+    return config_key

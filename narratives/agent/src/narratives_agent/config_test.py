@@ -236,3 +236,121 @@ def test_prompt_urls_are_derived_from_the_config_url(
     # All slots share the same base directory URL and differ only in filename.
     assert fetch.urls[0] == expected
     assert len(fetch.urls) == len(config.PROMPT_SLOTS)
+
+
+# --- Gemini API key resolution ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("gemini_section", "expected"),
+    [
+        ({"api_key": "  test-valid-gemini-key  "}, "test-valid-gemini-key"),
+        ({"api_key": "REPLACE_ME_WITH_KEY"}, ""),
+        ({"api_key": "DEPRECATED_KEY"}, ""),
+        ({"api_key": None}, ""),
+        ({"api_key": ""}, ""),
+        (None, ""),
+    ],
+    ids=[
+        "trimmed valid key",
+        "replace_me placeholder",
+        "deprecated placeholder",
+        "null api_key",
+        "empty api_key",
+        "null gemini section",
+    ],
+)
+def test_get_gemini_api_key_resolves_and_validates_config_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    gemini_section: dict[str, object] | None,
+    expected: str,
+) -> None:
+    # Test: Local config fallback in get_gemini_api_key.
+    # Situation: GEMINI_API_KEY_SECRET is unset and config.json contains a
+    #   valid key, placeholder string, empty string, or null value.
+    # Expectation: Valid keys are stripped and returned; placeholders, empty
+    #   strings, and nulls return "".
+    monkeypatch.delenv("GEMINI_API_KEY_SECRET", raising=False)
+    monkeypatch.setattr(
+        config, "load_config", lambda: {"gemini": gemini_section}
+    )
+
+    assert config.get_gemini_api_key() == expected
+
+
+def test_get_gemini_api_key_prefers_secret_manager_and_falls_back_on_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Secret Manager priority and config fallback in get_gemini_api_key.
+    # Situation: GEMINI_API_KEY_SECRET is set; first Secret Manager returns a
+    #   key, then it returns "".
+    # Expectation: Secret Manager value wins when non-empty; config.json
+    #   fallback is used when Secret Manager returns "".
+    monkeypatch.setenv("GEMINI_API_KEY_SECRET", "gemini-key-secret")
+    monkeypatch.setattr(
+        config, "load_config", lambda: {"gemini": {"api_key": "fallback-key"}}
+    )
+
+    monkeypatch.setattr(
+        config, "_fetch_key_from_secret_manager", lambda name: "secret-key"
+    )
+    assert config.get_gemini_api_key() == "secret-key"
+
+    monkeypatch.setattr(
+        config, "_fetch_key_from_secret_manager", lambda name: ""
+    )
+    assert config.get_gemini_api_key() == "fallback-key"
+
+
+@pytest.mark.parametrize(
+    ("raw_payload", "expected"),
+    [
+        (b"  test-bare-gemini-key\n", "test-bare-gemini-key"),
+        (b'["test-array-gemini-key"]', ""),
+        (b'"test-quoted-gemini-key"', ""),
+        (b"   \n", ""),
+    ],
+    ids=[
+        "bare key",
+        "legacy json array",
+        "quoted json string",
+        "whitespace only",
+    ],
+)
+def test_fetch_key_from_secret_manager_validates_secret_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_payload: bytes,
+    expected: str,
+) -> None:
+    # Test: Payload validation in _fetch_key_from_secret_manager.
+    # Situation: Secret Manager returns a bare key, a legacy JSON array, a
+    #   JSON-quoted string, or whitespace.
+    # Expectation: Only the bare key is returned and cached; JSON-encoded and
+    #   empty payloads are rejected with "".
+    class _StubPayload:
+        data = raw_payload
+
+    class _StubVersionResponse:
+        payload = _StubPayload()
+
+    class _StubSecretClient:
+        def access_secret_version(
+            self, request: dict[str, str]
+        ) -> _StubVersionResponse:
+            return _StubVersionResponse()
+
+    class _StubSecretModule:
+        SecretManagerServiceClient = _StubSecretClient
+
+    monkeypatch.setattr(config, "_SECRET_MANAGER_AVAILABLE", True)
+    monkeypatch.setattr(
+        config, "secretmanager", _StubSecretModule, raising=False
+    )
+    monkeypatch.setattr(config, "_SECRET_MANAGER_CACHE", {})
+
+    secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
+    assert config._fetch_key_from_secret_manager(secret_path) == expected
+    if expected:
+        assert config._SECRET_MANAGER_CACHE[secret_path][1] == expected
+    else:
+        assert secret_path not in config._SECRET_MANAGER_CACHE

@@ -140,8 +140,8 @@ variable "db_pass_secret_id" {
   type        = string
 }
 
-variable "gemini_api_keys_secret_id" {
-  description = "Secret Manager ID for GEMINI_API_KEYS (JSON array of keys for rotation)."
+variable "gemini_api_key_secret_id" {
+  description = "Secret Manager ID for GEMINI_API_KEY (the bare key, not JSON)."
   type        = string
 }
 

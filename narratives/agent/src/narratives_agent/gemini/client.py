@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 # Name both Secret Manager and config.json so the error message is actionable
 # in both deployed and local environments.
 _NO_KEY_ERROR = (
-    "No Gemini API key configured: set GEMINI_API_KEYS_SECRET, or "
-    "gemini.api_keys in the agent config for local development"
+    "No Gemini API key configured: set GEMINI_API_KEY_SECRET, or "
+    "gemini.api_key in the agent config for local development"
 )
 
 # Shared connection pool for Gemini API requests, sized above the Gunicorn
