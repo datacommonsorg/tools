@@ -44,10 +44,18 @@ export interface CardEntry {
   shapeId: string;
   historyNodeId: string;
   type: CardType;
-  /** Key into the parent HistoryNode's `results` record. */
+  /** The place DCID targeted by this card (or '__comparison'). */
   placeDcid: string;
   /** When set, the chart card targets this specific variable instead of the first. */
   variableDcid?: string;
+  /**
+   * Key under the history node's `results` where this card's observations
+   * live, when that differs from `placeDcid` — i.e. the card is scoped to one
+   * child place inside an enclosing region's result (e.g. 'europe' for a chart
+   * of 'country/FRA'). Purely a lookup key; the geographic enclosing place for
+   * boundary rendering is `QueryResult.parentPlaceDcid`.
+   */
+  resultPlaceDcid?: string;
   /** Persisted chart style override (survives export/import). */
   chartStyle?: ChartStyle;
 }

@@ -2,6 +2,12 @@ import type { ChartStyle } from '~/server/types';
 import { CHOROPLETH_DEFAULT_MIN_ENTITIES } from './geo_service';
 
 /**
+ * Key used for a series that stands in for no particular entity, so it is
+ * excluded from entity-driven decisions such as choropleth eligibility.
+ */
+export const DEFAULT_SERIES_KEY = 'default';
+
+/**
  * Extracts and sorts non-default entity keys from a series collection.
  */
 export function extractValidEntityKeys(
@@ -10,7 +16,7 @@ export function extractValidEntityKeys(
   return (
     series
       ?.map((s) => s.key)
-      .filter((k) => k && k !== 'default')
+      .filter((k) => k && k !== DEFAULT_SERIES_KEY)
       .sort() ?? []
   );
 }
