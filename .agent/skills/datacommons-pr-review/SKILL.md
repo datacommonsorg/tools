@@ -1,9 +1,9 @@
 ---
 name: datacommons-pr-review
 description: >-
-  Pull request review workflow for the Data Commons tools repository
-  (DataWeaver and Narratives). Covers PR discovery and local checkout, the
-  standards audit, diff hygiene, local verification, PR
+  Use this skill when reviewing a pull request, branch diff, or code changes in
+  the Data Commons tools repository (datacommonsorg/tools). Covers PR discovery
+  and local checkout, the standards audit, diff hygiene, local verification, PR
   description alignment, severity-tagged reporting, and teardown. Engineering
   standards themselves are NOT restated here — they live in the repository's
   own documents.
@@ -11,14 +11,15 @@ description: >-
 
 # Data Commons PR Review
 
-The standard procedure for reviewing Pull Requests in `datacommonsorg/tools`
-(`dataweaver/`, `narratives/`). Work the sections in order.
+The standard procedure for reviewing Pull Requests in `datacommonsorg/tools`.
+Work the sections in order.
 
 > [!IMPORTANT]
 > **This skill contains review *mechanics* only.** Every engineering standard
-> — simplicity, naming, structure, TypeScript/Python rules, error handling,
-> testing, security, the Data Commons pipeline conventions, documentation, PR
-> hygiene — is defined in the repository and is the authoritative source.
+> — simplicity, naming, structure, language style guides (Google Style Guides
+> and `CODING_GUIDELINES.md`), error handling, testing, security, the Data
+> Commons pipeline conventions, documentation, PR hygiene — is defined in the
+> repository and is the authoritative source.
 
 > [!IMPORTANT]
 > **Reviewing is not fixing.** Do not edit the code, do not offer to apply
@@ -28,10 +29,13 @@ The standard procedure for reviewing Pull Requests in `datacommonsorg/tools`
 
 ## 0. Authoritative standards (read before reviewing)
 
-Resolution rule: for `CODING_GUIDELINES.md` and `FRONTEND.md`, **read the root
-copy, then the copy in the application directory being changed, where it has
-one.** An application-level copy augments the root document; it does not
-replace it. Where the two differ, the application-level copy takes precedence.
+Start at the root `AGENTS.md` to resolve which guideline documents govern the
+directories and layers touched by the PR. For any guideline document with both a
+repository-root copy and an application-level copy (e.g. `CODING_GUIDELINES.md`,
+`FRONTEND.md`), **read the root copy, then the copy in the application directory
+being changed, if it has one.** An application-level copy augments the root
+document; it does not replace it. Where the two differ, the application-level
+copy takes precedence.
 
 | Document | What it governs |
 |---|---|
@@ -43,10 +47,6 @@ replace it. Where the two differ, the application-level copy takes precedence.
 | `.github/pull_request_template.md` | The canonical PR description structure |
 | `CONTINUOUS_INTEGRATION.md` | CI orchestrator, required status check |
 
-Today: each app carries its own `FRONTEND.md`, holding the styling stack it
-uses — SCSS modules in `dataweaver/`, Tailwind in `narratives/`. Neither app has
-a local `CODING_GUIDELINES.md`, so the root copy governs both.
-
 ---
 
 ## 1. Discovery and local checkout
@@ -54,9 +54,9 @@ a local `CODING_GUIDELINES.md`, so the root copy governs both.
 Always bring the branch down locally; never review from the web diff alone.
 
 ```bash
-# Intent, prior discussion, and bot feedback
-gh pr view <PR>
-gh pr view <PR> --comments
+# Intent, prior discussion, and bot feedback (including inline diff comments)
+gh pr view <PR> --json number,title,body,author,baseRefName,headRefName,files,reviews,comments
+gh api repos/:owner/:repo/pulls/<PR>/comments
 
 # Local checkout and the true base diff
 gh pr checkout <PR>
@@ -83,12 +83,12 @@ Checklist:
 
 ## 2. The standards audit
 
-Read `CODING_GUIDELINES.md`, the applicable `FRONTEND.md`, and the
-`<app>/AGENTS.md` **in full** before forming an opinion. They are short enough
-to read entirely, and they are the checklist: walk their sections in order and
-ask, for each, whether this diff violates it. Do not work from a remembered
-summary, and do not treat any list in this skill as the set of things worth
-checking.
+Read the governing guideline documents resolved from `AGENTS.md` for the touched
+applications and layers (see Section 0) **in full** before forming an opinion.
+They are short enough to read entirely, and they are the checklist: walk their
+sections in order and ask, for each, whether this diff violates it. Do not work
+from a remembered summary, and do not treat any list in this skill as the set of
+things worth checking.
 
 When you raise a finding, cite the document and section it comes from, so the
 author can go read the rule rather than argue with the reviewer.
@@ -108,7 +108,9 @@ Three judgment calls the documents cannot make for you:
 
 ## 3. Diff hygiene and revert candidates
 
-Separately from correctness, list changes that should not be in this PR:
+Unless the PR is an explicit cleanup, formatting, or refactoring change with no
+functional modifications, list changes separately from correctness that should
+not be in this PR:
 
 * Files containing only whitespace, re-wraps, or automated formatting.
 * Comment edits with no functional consequence.
@@ -191,7 +193,17 @@ Prefix every comment:
   should be scheduled.
 * `[NIT]` — typos, wording, trivial consistency.
 
-### Report format
+### Report format and inline comments
+
+**Default to local reporting:** Always present the full review locally (in chat
+or a review artifact) using the format below. **Never post comments or submit a
+review to GitHub unless the user explicitly asks to publish the review to the
+PR.**
+
+When explicitly asked to post the review to GitHub (via CLI or API), attach
+file- and line-specific findings directly as **inline review comments** on the
+PR diff so updates to the code are easy to track and resolve, and post the
+high-level sections below as the top-level review summary:
 
 ```markdown
 ### Summary
@@ -206,8 +218,8 @@ size/splitting.]
 each responsibility sits at the right layer.]
 
 ### Standards & Conventions
-[Findings against CODING_GUIDELINES.md / FRONTEND.md / <app>/AGENTS.md, each
-citing the section.]
+[Findings against `CODING_GUIDELINES.md` / `FRONTEND.md` / `<app>/AGENTS.md`,
+each citing the section.]
 
 ### Tests
 [Coverage of new logic, assertion quality, edge cases and failure modes,

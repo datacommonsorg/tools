@@ -46,3 +46,5 @@ a local `CODING_GUIDELINES.md`, so the root copy governs both.
    and use the commands documented there — do not guess build, test, or lint
    commands.
 4. Run that application's lint, test, and build before submitting.
+5. When reviewing a pull request or branch diff, follow
+   [`.agent/skills/datacommons-pr-review/SKILL.md`](.agent/skills/datacommons-pr-review/SKILL.md).
