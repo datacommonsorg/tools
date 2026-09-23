@@ -24,7 +24,7 @@ you do there requires TypeScript or Python.
 - [Prerequisites](#prerequisites)
 - [Choosing a data plane](#choosing-a-data-plane)
 - [Setting up your deployment](#setting-up-your-deployment)
-- [Customising it](#customising-it) — branding, prompts, agent config
+- [Customizing it](#customizing-it) — branding, prompts, agent config
 - [Secrets](#secrets)
 - [Deploying](#deploying)
 - [Access modes](#access-modes)
@@ -105,7 +105,7 @@ Move to `dcp` once that works. Changing backend is editing one line in
 `config/instance.env` and redeploying.
 
 **`--preflight` is the step worth not skipping.** It checks the things that
-otherwise fail late or silently: credentials, billing, whether your organisation
+otherwise fail late or silently: credentials, billing, whether your organization
 even permits public access, and whether IAP has a consent screen to sign people
 in with. It creates nothing.
 
@@ -268,9 +268,9 @@ upstream.
 
 ---
 
-## Customising it
+## Customizing it
 
-Everything visual and behavioural is configuration. Three directories, with
+Everything visual and behavioral is configuration. Three directories, with
 clearly different jobs:
 
 | Directory | Owned by | Edit it? |
@@ -291,8 +291,8 @@ once and forgot.
 | `config/prompts/*.md` | — | `mcp`, `synthesis`, `follow_up` |
 | `config/assets/` | — | logo, favicon, CSS overrides |
 
-Both schemas set `additionalProperties: false`, so an unrecognised key is an
-error rather than a silently ignored one — a typo'd colour name fails loudly.
+Both schemas set `additionalProperties: false`, so an unrecognized key is an
+error rather than a silently ignored one — a typo'd color name fails loudly.
 
 ### Branding
 
@@ -400,7 +400,7 @@ Four routes, all served out of the same startup-loaded memory:
 
 | Route | What | Cache |
 | :--- | :--- | :--- |
-| `/agent/brand.css` | CSS custom properties for the colours | `no-store` |
+| `/agent/brand.css` | CSS custom properties for the colors | `no-store` |
 | `/agent/brand.js` | the whole document as `window.__BRAND__` | `no-store` |
 | `/agent/brand` | the same document as JSON, for the runtime fetch | `no-store` |
 | `/agent/brand/assets/<n>` | mirrored images | immutable |
@@ -408,8 +408,8 @@ Four routes, all served out of the same startup-loaded memory:
 `brand.css` and `brand.js` are **blocking tags in `<head>`**, so branding is
 correct on the *first* frame. `brand.js` is deliberately a **classic** script,
 not a module — Vite warns about this on every build, and the warning is correct
-but the behaviour is intentional: a module would be deferred, which defeats the
-point. Without it only the colours pre-paint, and the shipped headline, wordmark,
+but the behavior is intentional: a module would be deferred, which defeats the
+point. Without it only the colors pre-paint, and the shipped headline, wordmark,
 logo, tabs and chips render first and visibly flip once `/agent/brand` resolves.
 
 Four safety properties worth knowing before you put a client's config in a
@@ -525,7 +525,7 @@ the Flask pages are never reachable from the internet.
 `allUsers` gets `run.invoker`. Anyone with the URL can use it — **including the
 chat endpoint, so anyone with the URL spends your Gemini quota.**
 
-Many organisations forbid this outright through Domain Restricted Sharing. When
+Many organizations forbid this outright through Domain Restricted Sharing. When
 they do, the deploy still succeeds and the binding is simply refused, leaving a
 URL that returns 403 to everyone. `--preflight` checks the org policy and tells
 you to use `iap` instead, before you deploy rather than after.
@@ -615,7 +615,7 @@ Two things to expect:
   tools (1.2.x), not the six of 1.3.0. `/agent/health` reports what it found.
   `supports_source_attribution: false` follows from the absence of
   `get_variable_metadata`, and means answers carry a bare domain rather than a
-  named source and licence. That is correct behaviour, not a failure.
+  named source and license. That is correct behavior, not a failure.
 
 **The name matters as much as the URL** — `DCP_SERVICE_NAME` is what the app
 plane's service account is granted `run.invoker` on. Without that grant a private
@@ -854,7 +854,7 @@ curl -s "$URL/agent/health" | jq
 
 `mcp.generation` and `mcp.supports_source_attribution` tell you which MCP surface
 the agent actually found. If `supports_source_attribution` is false, answers carry
-weaker provenance — no named source, no licence.
+weaker provenance — no named source, no license.
 
 > The smoke suite's data check queries `Count_Person` / `country/IND`, which is
 > **base** Data Commons data served through the passthrough. It passes on any
@@ -890,8 +890,8 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Config or branding change does nothing | Read once at startup | `--config-only --restart` |
 | Theme flashes on load | `brand.js` not running | Check it is in `<head>` and `/agent/brand.js` returns 200 |
 | Every tab vanished | `navigation: []` in branding.json | Remove the key to restore the shipped tabs |
-| Locally the theme is the default | No reachable `BRAND_CONFIG_URL` | Correct behaviour, not a bug |
-| A colour is ignored | Not in the schema, or fails the safe-value pattern | Check the agent log for a rejection |
+| Locally the theme is the default | No reachable `BRAND_CONFIG_URL` | Correct behavior, not a bug |
+| A color is ignored | Not in the schema, or fails the safe-value pattern | Check the agent log for a rejection |
 | Logo is a broken image | Path not under `config/assets/`, or `AGENT_API_PREFIX` disagrees with what `brand.py` rewrites | |
 | `Refusing to apply: the state loaded for 'x' describes another instance` | `deploy.sh` caught a wrong state prefix | Do **not** override. Re-`init` with the right prefix |
 | A deploy reports success but the change is not live | Uncommitted work rebuilds to the same `IMAGE_TAG` | Commit, then redeploy |

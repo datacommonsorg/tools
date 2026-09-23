@@ -1,6 +1,6 @@
 {
   "$schema": "./branding.schema.json",
-  "$comment": "Neutral / white-label theme — the vanilla starting point for a new instance, with greyscale surfaces and blue links. Same layout as every other theme; only tokens differ. Unlike base DC this keeps the header menu, so `navigation` is omitted and the shipped defaults apply.",
+  "$comment": "Neutral / white-label theme — the vanilla starting point for a new instance, with grayscale surfaces and blue links. Same layout as every other theme; only tokens differ. Unlike base DC this keeps the header menu, so `navigation` is omitted and the shipped defaults apply.",
   "schema_version": "1",
   "instance_id": "neutral",
   "instance_name": "Data Commons",

@@ -19,7 +19,7 @@ ui/.env.*.local
 ui/coverage
 ui/.vite
 
-# ── Built artefacts from image/build.sh ──
+# ── Built artifacts from image/build.sh ──
 # dist/ is staged in image/ at build time from ui/dist/. Don't commit either.
 image/dist
 

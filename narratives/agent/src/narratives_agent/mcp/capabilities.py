@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 logger = logging.getLogger(__name__)
 
 # The tool whose presence decides whether we can attribute a number to a named
-# source with a licence. Only 1.3.0 serves it; without it the best available
+# source with a license. Only 1.3.0 serves it; without it the best available
 # provenance is a bare domain scraped from the observation payload.
 _METADATA_TOOL = "get_variable_metadata"
 
@@ -71,7 +71,7 @@ class Capabilities:
 
     @property
     def supports_source_attribution(self) -> bool:
-        """Can we name the source behind a number, with its licence?
+        """Can we name the source behind a number, with its license?
 
         When false, `_sources_from_variable_metadata` has nothing to work with
         and provenance degrades to whatever the observation payload carries.
@@ -91,7 +91,7 @@ class Capabilities:
     def generation(self) -> str:
         """A human label for logs and /agent/health. Not used for branching.
 
-        Behaviour is driven by which tools are present, never by this string --
+        Behavior is driven by which tools are present, never by this string --
         a version label invites `if generation == "1.3.0"` and that is exactly
         the assumption that breaks when Google ships 1.4.
         """
@@ -148,7 +148,7 @@ def current() -> Capabilities:
     elif not caps.supports_source_attribution:
         logger.warning(
             "MCP server has no %s: answers will carry weaker provenance "
-            "(no named source, no licence). Tools present: %s",
+            "(no named source, no license). Tools present: %s",
             _METADATA_TOOL,
             sorted(caps.tool_names),
         )

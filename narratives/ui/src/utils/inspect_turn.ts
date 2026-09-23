@@ -41,7 +41,7 @@ export interface FacetInfo {
   facetId: string;
   /** Dataset name, e.g. "World Development Indicators". */
   provenance?: string;
-  /** Licence terms, when reported. */
+  /** License terms, when reported. */
   license?: string;
   url?: string;
   /** Number of observations available. */
@@ -110,7 +110,7 @@ function dcidsFrom(value: unknown): string[] {
 /**
  * Builds the facet table from get_variable_metadata results.
  *
- * That tool is the only one that reports a facet's dataset name, licence, date
+ * That tool is the only one that reports a facet's dataset name, license, date
  * range and observation count; the observation tools return just an id. Joining
  * them is what turns "source_override: 16633743049422531122" into "NITI India
  * Population Projection, 2011–2026, 16 observations".
@@ -228,7 +228,7 @@ function servedFacetId(payload: Record<string, unknown> | null): string | undefi
 }
 
 /**
- * Summarises what a turn actually used.
+ * Summarizes what a turn actually used.
  *
  * Everything is derived from data already in the browser -- the tool calls the
  * agent streamed -- so this adds no request and cannot disagree with what the

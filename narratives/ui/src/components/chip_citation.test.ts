@@ -16,7 +16,7 @@ describe("sourceLabel", () => {
 
   it("is 1-based, matching the numbering SourcesList renders", () => {
     // [1] is sources[0]. Off-by-one here would label every chip with its
-    // neighbour's source, which reads as correct and is not.
+    // neighbor's source, which reads as correct and is not.
     expect(sourceLabel(2, SOURCES)).not.toBe("World Development Indicators");
   });
 

@@ -37,14 +37,14 @@ interface AnswerPanelProps {
 const COLOR_BORDER = "var(--color-border)";
 /**
  * Per Figma 3427-16727 the toolbar fills with WHITE (fill_M9951K) and
- * 3427-16728 the content body fills the narrative surface — light grey in the
+ * 3427-16728 the content body fills the narrative surface — light gray in the
  * neutral theme, tinted blue (#F5FAFF) in the Base DC one.
  *
  * The body takes --color-surface-narrative rather than --color-surface-soft:
  * the narrative token exists so an instance can tint the answer tile without
  * moving every other soft surface, and SkeletonCard already paints with it. On
  * --color-surface-soft the card rendered blue while streaming and then flipped
- * to grey the moment the content replaced the skeleton.
+ * to gray the moment the content replaced the skeleton.
  */
 const COLOR_TOOLBAR_BG = "#FFFFFF";
 const COLOR_BODY_BG = "var(--color-surface-narrative)";
@@ -102,7 +102,7 @@ export function AnswerPanel({
       style={{
         border: `1px solid ${COLOR_BORDER}`,
         borderRadius: 16,
-        // Outer takes the body colour so the rounded corners of the
+        // Outer takes the body color so the rounded corners of the
         // body section match the card. Toolbar paints white on top.
         background: COLOR_BODY_BG,
       }}

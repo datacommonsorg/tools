@@ -41,7 +41,7 @@ export function ChartTile({ config }: ChartTileProps) {
   // observations, but each DC component runs its own fetch against the place
   // and date it was handed, and that can come back empty even when the answer
   // has numbers -- leaving a card whose whole content is "No data available."
-  // over a grey placeholder. Those cards drop out of the layout below, and if
+  // over a gray placeholder. Those cards drop out of the layout below, and if
   // every card drops out the container goes with them rather than leaving an
   // empty grid behind. Declared before the early returns: hooks cannot be
   // called conditionally.

@@ -7,7 +7,7 @@ import { ExportIcon } from "./icons";
 import { Tooltip } from "./tooltip";
 
 /**
- * Material 3 "filled tonal" pill, standardised across the Data Commons apps:
+ * Material 3 "filled tonal" pill, standardized across the Data Commons apps:
  *   - container: --color-brand-container, a tint derived from the brand primary
  *   - label and icon: --color-on-brand-container
  *   - pill: border-radius 100px
@@ -19,7 +19,7 @@ import { Tooltip } from "./tooltip";
  * Both colors are theme tokens, so an instance restyles the button through
  * branding.json rather than here.
  *
- * Behaviour: the parent renders the panel to a PDF and downloads it — see
+ * Behavior: the parent renders the panel to a PDF and downloads it — see
  * utils/download_pdf.ts. The button itself is presentation only; it takes the
  * handler and a busy flag so the toolbar pill and this button stay one action
  * in two placements.

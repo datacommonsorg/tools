@@ -269,7 +269,7 @@ fi
 #
 # The failure this prevents is quiet. A file with `primary_color` instead of
 # `colors.primary` deploys clean, the agent serves it, /agent/brand echoes the
-# instance name so branding looks applied, and only the colour is missing --
+# instance name so branding looks applied, and only the color is missing --
 # from a key that was never read. CI validates agent-config.json with ajv;
 # branding had no equivalent anywhere.
 #
@@ -281,7 +281,7 @@ fi
 # machine you are standing at is worse than none; it reads like coverage.
 if ! python3 deploy/validate-branding.py "${CONFIG_SRC}/branding.json"; then
     log_error "branding.json does not match schemas/branding.schema.json (see above)."
-    echo "  Colour keys live under \"colors\": {\"primary\": \"#RRGGBB\", \"accent\": ...}." >&2
+    echo "  Color keys live under \"colors\": {\"primary\": \"#RRGGBB\", \"accent\": ...}." >&2
     echo "  Compare against schemas/branding.neutral.example.json." >&2
     exit 1
 fi
@@ -314,7 +314,7 @@ APP_SERVICE="${INSTANCE}-app"
 # ===========================================================================
 #
 # The failure this prevents is the worst kind: a deploy that reports success and
-# produces a service nobody can open. Most commonly because the organisation
+# produces a service nobody can open. Most commonly because the organization
 # forbids public access, or because IAP has no consent screen to sign people in
 # with. Both are invisible until someone tries the URL.
 run_preflight() {
@@ -378,7 +378,7 @@ run_preflight() {
     # --- the two checks that actually matter -------------------------------
     case "$ACCESS_MODE" in
       public)
-        # Domain Restricted Sharing forbids allUsers in many organisations. The
+        # Domain Restricted Sharing forbids allUsers in many organizations. The
         # deploy still succeeds; the binding is simply refused, and the result
         # is a URL that returns 403 to everyone.
         local policy
@@ -386,7 +386,7 @@ run_preflight() {
                    constraints/iam.allowedPolicyMemberDomains \
                    --effective --project="$PROJECT_ID" 2>/dev/null || true)
         if [ -n "$policy" ] && ! echo "$policy" | grep -qi "allowAll\|allValues: ALLOW"; then
-            _bad "this organisation restricts who can be granted access, so ACCESS_MODE=public will be refused"
+            _bad "this organization restricts who can be granted access, so ACCESS_MODE=public will be refused"
             echo -e "        Everyone would get 403 on a deploy that otherwise reports success." >&2
             echo -e "        Set ACCESS_MODE=\"iap\" in config/instance.env." >&2
         else
@@ -504,7 +504,7 @@ if [ "$CONFIG_ONLY" = true ]; then
     # So `--config-only` without `--restart` uploaded to the bucket and changed
     # nothing about the running service, while printing three lines saying it
     # had worked. It cost a real debugging detour: a corrected branding.json
-    # sat in the bucket while the service kept serving the old colour.
+    # sat in the bucket while the service kept serving the old color.
     if [ "$RESTART" = true ]; then
         log_info "[Config-Only] Forcing a new revision so the agent reloads config..."
         if gcloud run services update "${APP_SERVICE}" \
@@ -950,7 +950,7 @@ terraform init \
     -backend-config="prefix=custom-datacommons/${INSTANCE}" \
     -reconfigure
 
-# Second line of defence. TF_DATA_DIR should make it impossible to load another
+# Second line of defense. TF_DATA_DIR should make it impossible to load another
 # instance's state, but if it ever happens again the consequence is severe and
 # silent: Terraform does not see a mistake, it sees resources whose names no
 # longer match the configuration, and replacing those is its job. It will delete

@@ -71,7 +71,7 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                   <Detail label="coverage" value={facet.dateRange} />
                   <Detail label="observations" value={facet.obsCount} />
                   <Detail label="unit" value={facet.unit} />
-                  <Detail label="licence" value={facet.license} />
+                  <Detail label="license" value={facet.license} />
                 </span>
                 <Detail label="facet" value={facet.facetId} />
                 {facet.url && (

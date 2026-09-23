@@ -61,7 +61,7 @@ _SESSION.mount("http://", HTTPAdapter(pool_connections=4, pool_maxsize=32))
 #   * No recovery -- nothing cleared the value on a session-not-found reply, so
 #     the failure was sticky until the container restarted. Worse, a
 #     stale-but-truthy id was used as the "is MCP up?" test, so the agent
-#     skipped re-initialising at exactly the moment it needed to.
+#     skipped re-initializing at exactly the moment it needed to.
 #
 # Thread-local state fixes the first. `_ensure_session` + retry-once fixes the
 # second and third, and is the part that actually matters: it makes a lost
@@ -79,7 +79,7 @@ _TOOLS_TTL_SECONDS = 600
 
 # Substrings that identify "your session is gone" across MCP server generations.
 # Matched case-insensitively against the error payload; the JSON-RPC error code
-# for this is not standardised, so the text is what we have.
+# for this is not standardized, so the text is what we have.
 _SESSION_LOST_MARKERS = (
     "session not found",
     "invalid session",
@@ -107,7 +107,7 @@ def _looks_like_lost_session(result: dict) -> bool:
     return any(marker in text for marker in _SESSION_LOST_MARKERS)
 
 
-def _normalise_url(url: str) -> str:
+def _normalize_url(url: str) -> str:
     """Append the /mcp path when the configured value is a bare origin.
 
     Every config we ship writes `mcp.server_url` as an origin
@@ -126,7 +126,7 @@ def mcp_url() -> str:
 
     Cached after the first call. The localhost fallback keeps the co-located
     sidecar deployment working unchanged when neither override is set, so this
-    is additive rather than a behaviour change for existing instances.
+    is additive rather than a behavior change for existing instances.
     """
     if "url" in _URL_CACHE:
         return _URL_CACHE["url"]
@@ -137,7 +137,7 @@ def mcp_url() -> str:
         configured = str(mcp_config.get("server_url") or "").strip()
 
     resolved = (
-        _normalise_url(configured)
+        _normalize_url(configured)
         if configured
         else f"http://localhost:{MCP_PORT}/mcp"
     )
@@ -288,7 +288,7 @@ def mcp_call(method: str, params: dict | None = None) -> dict:
 
     This is the entry point everything except the handshake should use. It
     makes a lost session a recoverable event: whichever data-plane instance the
-    request lands on, if that instance does not recognise our session we mint a
+    request lands on, if that instance does not recognize our session we mint a
     new one and retry exactly once.
 
     Retrying once rather than looping matters -- a genuine outage should surface
@@ -302,7 +302,7 @@ def mcp_call(method: str, params: dict | None = None) -> dict:
     if _looks_like_lost_session(result):
         logger.warning(
             "MCP session rejected by the server (likely a different data-plane "
-            "instance); re-initialising and retrying %s once.",
+            "instance); re-initializing and retrying %s once.",
             method,
         )
         if initialize_mcp():
