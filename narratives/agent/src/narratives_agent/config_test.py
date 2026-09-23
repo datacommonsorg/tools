@@ -11,14 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for prompt placeholder substitution and prompt URL derivation.
+"""Tests for prompt rendering, prompt URL derivation, and Gemini key loading.
 
-Covers two configuration behaviors:
+Covers three configuration behaviors:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts.
 2. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
    bucket directory prefixes while stripping query parameters.
+3. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
+   preferring Secret Manager over `config.json` and rejecting placeholder,
+   empty, or JSON-wrapped secret payloads.
 """
 
 import pytest
@@ -346,11 +349,11 @@ def test_fetch_key_from_secret_manager_validates_secret_payload(
     monkeypatch.setattr(
         config, "secretmanager", _StubSecretModule, raising=False
     )
-    monkeypatch.setattr(config, "_SECRET_MANAGER_CACHE", {})
+    monkeypatch.setattr(config, "_secret_manager_cache", {})
 
     secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
     assert config._fetch_key_from_secret_manager(secret_path) == expected
     if expected:
-        assert config._SECRET_MANAGER_CACHE[secret_path][1] == expected
+        assert config._secret_manager_cache[secret_path][1] == expected
     else:
-        assert secret_path not in config._SECRET_MANAGER_CACHE
+        assert secret_path not in config._secret_manager_cache

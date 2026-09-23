@@ -41,8 +41,7 @@ def execute_mcp_tool_loop(
 
     Args:
         user_message: The user's query
-        config: Backend config dict, already checked to be non-empty by the
-            caller
+        config: Backend configuration dictionary
         session_logger: Optional SessionLogger for comprehensive logging
         thought_callback: Optional callback for streaming thought chunks.
                          Signature: callback(thought_text: str) -> None
@@ -56,6 +55,11 @@ def execute_mcp_tool_loop(
         returned and still usable -- but the answer is built on less data than
         the model intended to collect, and callers have no other way to tell.
     """
+    if not config:
+        if session_logger:
+            session_logger.log_error("CONFIG_ERROR", "Backend config is empty")
+        return "", [], "Backend config not loaded", False
+
     mcp_prompt = config.get("prompts", {}).get("mcp", "")
     mcp_model = get_gemini_model(config)
     thinking_level = config.get("thinking", {}).get("mcp_level", "low")

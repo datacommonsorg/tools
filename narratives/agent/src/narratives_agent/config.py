@@ -74,6 +74,10 @@ AGENT_ROOT = Path(
 _config_cache = None
 _config_mtime = 0
 
+# Secret Manager lookup cache and TTL (seconds)
+_SECRET_MANAGER_TTL_SECONDS = 300
+_secret_manager_cache: dict[str, tuple[float, str]] = {}
+
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
 # as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
 # `follow_up` is the only slot with an in-code default
@@ -313,10 +317,6 @@ def render_prompt(prompt: str) -> str:
     return rendered
 
 
-_SECRET_MANAGER_CACHE: dict[str, tuple[float, str]] = {}
-_SECRET_MANAGER_TTL_SECONDS = 300
-
-
 def _fetch_key_from_secret_manager(secret_name: str) -> str:
     """Load the Gemini API key from Secret Manager, or return an empty string.
 
@@ -328,7 +328,7 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
     """
     if not _SECRET_MANAGER_AVAILABLE:
         return ""
-    cached = _SECRET_MANAGER_CACHE.get(secret_name)
+    cached = _secret_manager_cache.get(secret_name)
     now = time.time()
     if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
         return cached[1]
@@ -357,7 +357,7 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
                 full_name,
             )
             return ""
-        _SECRET_MANAGER_CACHE[secret_name] = (now, key)
+        _secret_manager_cache[secret_name] = (now, key)
         logger.info("Loaded the Gemini API key from %s", full_name)
         return key
     except Exception as e:
