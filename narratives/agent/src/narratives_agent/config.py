@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import json
 import logging
 import os
@@ -58,7 +57,7 @@ except ImportError:
     _SECRET_MANAGER_AVAILABLE = False
     logger.warning(
         "google-cloud-secret-manager not installed; "
-        "GEMINI_API_KEYS_SECRET will be ignored"
+        "GEMINI_API_KEY_SECRET will be ignored"
     )
 
 
@@ -75,12 +74,16 @@ AGENT_ROOT = Path(
 _config_cache = None
 _config_mtime = 0
 
+# Secret Manager lookup cache and TTL (seconds)
+_SECRET_MANAGER_TTL_SECONDS = 300
+_secret_manager_cache: dict[str, tuple[float, str]] = {}
+
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
 # as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
 # `follow_up` is the only slot with an in-code default
 # (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
 # than to no system instruction.
-PROMPT_SLOTS = ("mcp", "kb", "synthesis", "follow_up")
+PROMPT_SLOTS = ("mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -177,16 +180,11 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
 
 
 def _bootstrap_config_from_url() -> None:
-    """If CONFIG_URL is set, fetch the file once at startup and save
-    it as config.json so the existing load_config() path finds it. This makes
-    the agent compatible with the bucket-driven config model (BRAND_CONFIG_URL +
-    CONFIG_URL) without rewriting the upstream loader.
+    """Fetch CONFIG_URL at startup and write the merged config to config.json.
 
-    The prompt bodies are merged in here. `config/prompts/*.md` is the authoring
-    format, but the workflows only ever read config["prompts"], and nothing
-    populated it — so the MCP tool loop, the KB phase and synthesis all ran with
-    an empty system instruction while the .md files sat unread in the bucket. An
-    inline `prompts` slot in agent-config.json still wins, per the schema.
+    Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
+    `config["prompts"]` before writing the file, while allowing non-empty inline
+    `prompts` entries in `agent-config.json` to take precedence.
     """
     url = os.environ.get("CONFIG_URL", "").strip()
     if not url:
@@ -319,21 +317,18 @@ def render_prompt(prompt: str) -> str:
     return rendered
 
 
-_SECRET_MANAGER_CACHE: dict[str, tuple[float, list[str]]] = {}
-_SECRET_MANAGER_TTL_SECONDS = 300
+def _fetch_key_from_secret_manager(secret_name: str) -> str:
+    """Load the Gemini API key from Secret Manager, or return an empty string.
 
-
-def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
-    """Load a JSON-encoded key array from Secret Manager.
-
-    secret_name is either "projects/<proj>/secrets/<name>/versions/<v>" (full
-    resource name) or just "<name>" (resolved against GOOGLE_CLOUD_PROJECT,
-    latest version). Cached for 5 minutes to avoid hammering Secret Manager on
-    each call.
+    The secret payload must contain the bare API key string. `secret_name` may
+    be either a full resource name
+    (`projects/<proj>/secrets/<name>/versions/<v>`) or a short secret ID
+    resolved against `GOOGLE_CLOUD_PROJECT` at version `latest`. Successful
+    lookups are cached for 5 minutes.
     """
     if not _SECRET_MANAGER_AVAILABLE:
-        return []
-    cached = _SECRET_MANAGER_CACHE.get(secret_name)
+        return ""
+    cached = _secret_manager_cache.get(secret_name)
     now = time.time()
     if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
         return cached[1]
@@ -345,137 +340,53 @@ def _fetch_keys_from_secret_manager(secret_name: str) -> list[str]:
                 "name %r",
                 secret_name,
             )
-            return []
+            return ""
         full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
     else:
         full_name = secret_name
     try:
         client = secretmanager.SecretManagerServiceClient()
         response = client.access_secret_version(request={"name": full_name})
-        payload = response.payload.data.decode("utf-8")
-        keys = json.loads(payload)
-        if not isinstance(keys, list) or not all(
-            isinstance(k, str) for k in keys
-        ):
+        key = response.payload.data.decode("utf-8").strip()
+        if not key:
+            return ""
+        if key.startswith(("[", '"')):
             logger.error(
-                "Secret %s did not contain a JSON array of strings", full_name
+                "Secret %s holds a legacy JSON array of keys; re-run "
+                "./deploy.sh --bootstrap-secrets to store the bare key",
+                full_name,
             )
-            return []
-        _SECRET_MANAGER_CACHE[secret_name] = (now, keys)
-        logger.info(
-            "Loaded %d keys from Secret Manager (%s)", len(keys), full_name
-        )
-        return keys
+            return ""
+        _secret_manager_cache[secret_name] = (now, key)
+        logger.info("Loaded the Gemini API key from %s", full_name)
+        return key
     except Exception as e:
         logger.error("Failed to load secret %s: %s", full_name, e)
-        return []
+        return ""
 
 
-def get_api_keys(demo_mode: bool = False) -> list:
-    """Load API keys from Secret Manager (preferred) or config (fallback).
+def get_gemini_api_key() -> str:
+    """Return the configured Gemini API key, or an empty string if unavailable.
 
-    In `prod` mode the agent reads `GEMINI_API_KEYS_SECRET` (and
-    optionally `GEMINI_DEMO_API_KEYS_SECRET`) and resolves the value via Secret
-    Manager. The on-disk config.json `gemini.api_keys` array is honoured only as
-    a dev fallback. The legacy scalar `gemini.api_key` is rejected outright.
-
-    Args:
-        demo_mode: If True, returns demo_api_keys for internal demo usage.
-                   Demo keys are reserved for events/demos and won't be
-                   affected by regular traffic rate limits.
-                   If demo_mode=True but no demo keys configured, returns
-                   empty list (will cause API call to fail - NO fallback).
+    Resolves `GEMINI_API_KEY_SECRET` through Secret Manager when set, and falls
+    back to `gemini.api_key` in `config.json` for local development. Placeholder
+    strings (`REPLACE_ME*`, `DEPRECATED*`) are treated as unconfigured.
     """
-    if demo_mode:
-        demo_secret = os.environ.get("GEMINI_DEMO_API_KEYS_SECRET", "")
-        if demo_secret:
-            keys = _fetch_keys_from_secret_manager(demo_secret)
-            if keys:
-                logger.info(
-                    "Using demo API keys pool from Secret Manager "
-                    f"({len(keys)} keys)"
-                )
-                return keys
-        config = load_config()
-        demo_keys = config.get("gemini", {}).get("demo_api_keys", [])
-        if demo_keys:
-            logger.info(
-                f"Using demo API keys pool from config ({len(demo_keys)} keys)"
-            )
-        else:
-            logger.error(
-                "Demo mode requested but no demo_api_keys configured - will "
-                "fail (no fallback to regular keys)"
-            )
-        return demo_keys
-
-    secret = os.environ.get("GEMINI_API_KEYS_SECRET", "")
+    secret = os.environ.get("GEMINI_API_KEY_SECRET", "")
     if secret:
-        keys = _fetch_keys_from_secret_manager(secret)
-        if keys:
-            return keys
+        key = _fetch_key_from_secret_manager(secret)
+        if key:
+            return key
         logger.warning(
-            "GEMINI_API_KEYS_SECRET set but returned no keys; falling back "
+            "GEMINI_API_KEY_SECRET set but returned no key; falling back "
             "to config"
         )
 
-    config = load_config()
-    gemini_config = config.get("gemini", {})
-    keys = gemini_config.get("api_keys", [])
-    if not keys:
-        single_key = gemini_config.get("api_key", "")
-        if single_key and not single_key.startswith("DEPRECATED"):
-            logger.warning(
-                "Using deprecated scalar gemini.api_key; migrate to "
-                "api_keys[] or Secret Manager"
-            )
-            keys = [single_key]
-    return keys
-
-
-def get_query_param_key() -> str:
-    """The secret gating ?key= overrides and demo mode, or "" if unconfigured.
-
-    Returns empty rather than a default: this repo is public, so any literal
-    here would be a published credential for every instance that did not
-    override it. Callers must treat "" as "no override key configured" and
-    reject every supplied key -- see routes/chat.py.
-    """
-    key = load_config().get("query_param_key", "")
-    if not isinstance(key, str):
+    gemini_cfg = load_config().get("gemini")
+    raw_key = (
+        gemini_cfg.get("api_key", "") if isinstance(gemini_cfg, dict) else ""
+    )
+    config_key = raw_key.strip() if isinstance(raw_key, str) else ""
+    if not config_key or config_key.startswith(("DEPRECATED", "REPLACE_ME")):
         return ""
-    return key.strip()
-
-
-def apply_query_overrides(config: dict, query_params: dict) -> dict:
-    """Apply query parameter overrides to config.
-
-    Returns a new config dict with overrides applied (does not modify original).
-    """
-    if not query_params:
-        return config
-
-    # Deep copy to avoid modifying cached config
-    effective = copy.deepcopy(config)
-
-    # Model override
-    if query_params.get("model"):
-        effective["gemini"]["mcp_model"] = query_params["model"]
-        effective["gemini"]["kb_model"] = query_params["model"]
-
-    # Knowledge base toggle
-    if query_params.get("kb_enabled"):
-        enabled = query_params["kb_enabled"].lower() == "true"
-        effective["knowledge_base"]["enabled"] = enabled
-
-    # MCP thinking budget override
-    if query_params.get("mcp_thinking"):
-        effective["thinking"]["mcp_level"] = query_params["mcp_thinking"]
-
-    # Synthesis thinking budget override
-    if query_params.get("synthesis_thinking"):
-        effective["thinking"]["synthesis_level"] = query_params[
-            "synthesis_thinking"
-        ]
-
-    return effective
+    return config_key

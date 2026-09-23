@@ -94,14 +94,6 @@ mypy_path = "src"
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-# Branch 2 deletes these modules outright.
-module = [
-    "narratives_agent.server.routes.tools",
-    "narratives_agent.workflows.kb_search",
-]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 # Branch 4 rewrites the web layer and decomposes config.py.
 module = [
     "main",

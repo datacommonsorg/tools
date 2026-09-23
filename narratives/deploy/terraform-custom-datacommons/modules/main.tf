@@ -7,7 +7,7 @@
 #   - A VPC subnet so the app plane can reach the internal data plane
 #   - Cloud SQL HA (MySQL) for the upstream Mixer
 #   - Per-instance GCS data bucket
-#   - Per-instance Secret Manager entries (DC_API_KEY, MAPS_API_KEY, DB_PASS, GEMINI_API_KEYS)
+#   - Per-instance Secret Manager entries (DC_API_KEY, MAPS_API_KEY, DB_PASS, GEMINI_API_KEY)
 #   - Uptime checks + alert policies
 #
 # The per-instance config bucket (gs://<project>-config/) and the Artifact
@@ -157,7 +157,7 @@ resource "google_sql_user" "dc" {
 # ---------------------------------------------------------------------------
 # Secrets
 #   - DC_API_KEY is project-wide (shared across instances) — referenced via data source.
-#   - MAPS_API_KEY / DB_PASS / GEMINI_API_KEYS are per-instance, namespaced
+#   - MAPS_API_KEY / DB_PASS / GEMINI_API_KEY are per-instance, namespaced
 #     by var.secret_prefix (e.g. CDC_POC_INDIA_).
 #   - All secrets must have an enabled version BEFORE `terraform apply` —
 #     see docs/deployment.md Stage 1.
@@ -186,8 +186,8 @@ data "google_secret_manager_secret" "db_pass" {
   secret_id = var.db_pass_secret_id
 }
 
-data "google_secret_manager_secret" "gemini_api_keys" {
-  secret_id = var.gemini_api_keys_secret_id
+data "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = var.gemini_api_key_secret_id
 }
 
 # Read DB_PASS for the SQL user resource above. The version must exist before
@@ -524,8 +524,8 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
         value = var.project_id
       }
       env {
-        name  = "GEMINI_API_KEYS_SECRET"
-        value = data.google_secret_manager_secret.gemini_api_keys.secret_id
+        name  = "GEMINI_API_KEY_SECRET"
+        value = data.google_secret_manager_secret.gemini_api_key.secret_id
       }
       # Needed only when data_backend = "none": public Data Commons
       # authenticates with an API key, not with our service account. Harmless

@@ -20,7 +20,6 @@ from narratives_agent.server.routes.chat import chat_bp
 from narratives_agent.server.routes.dcproxy import dcproxy_bp
 from narratives_agent.server.routes.spa import spa_bp
 from narratives_agent.server.routes.system import system_bp
-from narratives_agent.server.routes.tools import tools_bp
 
 # The API blueprints declare their routes at the root (/brand, /chat/stream,
 # /health) because the services container's nginx used to strip the /agent
@@ -51,7 +50,7 @@ def register_all(app):
       /core, /api, /tools, ...  the data plane, reverse-proxied by dcproxy
       everything else           the SPA
     """
-    for bp in (brand_bp, system_bp, tools_bp, chat_bp):
+    for bp in (brand_bp, system_bp, chat_bp):
         app.register_blueprint(bp, url_prefix=_API_PREFIX)
 
     # No prefix: these own the browser-facing root.

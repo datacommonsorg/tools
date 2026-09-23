@@ -30,7 +30,7 @@ export interface ToolCallEvent {
 /** A reasoning snippet emitted while the agent works, tagged by pipeline phase. */
 export interface ThoughtEvent {
   text: string;
-  phase: "mcp" | "kb" | "synthesis";
+  phase: "mcp" | "synthesis";
 }
 
 /**
@@ -164,14 +164,13 @@ export interface ProvenanceItem {
 export type TurnStatus =
   | "idle"
   | "mcp"
-  | "kb"
   | "synthesis"
   | "done"
   | "error";
 
 /**
  * Gemini token usage for one query, summed across every model call the agent
- * made (MCP tool loop, KB, synthesis, chart config). `output` includes thinking
+ * made (MCP tool loop, synthesis, chart config). `output` includes thinking
  * tokens. Temporary cost instrumentation — surfaced only under ?debug=tokens.
  */
 export interface TokenUsage {
@@ -219,7 +218,7 @@ export interface ChatTurn {
  */
 interface SseEvent {
   session_id?: string;
-  status?: "mcp_start" | "kb_start" | "synthesis_start" | "success" | "error" | string;
+  status?: "mcp_start" | "synthesis_start" | "success" | "error" | string;
   tool_call?: ToolCallEvent;
   /** Inline tool-call fields (some agent versions emit these instead of `tool_call`). */
   name?: string;
@@ -233,7 +232,6 @@ interface SseEvent {
   chart_config?: RawChartConfig;
   follow_up_questions?: string[];
   mcp_sources?: ProvenanceItem[];
-  kb_sources?: ProvenanceItem[];
   provenance?: ProvenanceItem[];
   usage?: TokenUsage;
   /**
@@ -444,8 +442,6 @@ function applyEvent(turn: ChatTurn, evt: SseEvent): ChatTurn {
 
   if (evt.status === "mcp_start") {
     next = { ...next, status: "mcp" };
-  } else if (evt.status === "kb_start") {
-    next = { ...next, status: "kb" };
   } else if (evt.status === "synthesis_start") {
     next = { ...next, status: "synthesis" };
   }
@@ -492,7 +488,6 @@ function applyEvent(turn: ChatTurn, evt: SseEvent): ChatTurn {
 
   const sourceList =
     (Array.isArray(evt.mcp_sources) ? evt.mcp_sources : null) ??
-    (Array.isArray(evt.kb_sources) ? evt.kb_sources : null) ??
     (Array.isArray(evt.provenance) ? evt.provenance : null);
   if (sourceList) {
     const seen = new Set(next.provenance.map((item) => item.url));

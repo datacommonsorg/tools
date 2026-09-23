@@ -355,10 +355,10 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
       )}
 
       {/* Narrative loading box — only once the agent starts constructing the
-          narrative (the `synthesis` phase), not during mcp (tools running) or
-          kb (knowledge base lookup). Through those earlier phases the user
-          sees just the reasoning; the narrative box appears with its loading
-          state when synthesis begins, then fills in as text streams. */}
+          narrative (the `synthesis` phase), not during mcp (tools running).
+          Through that earlier phase the user sees just the reasoning; the
+          narrative box appears with its loading state when synthesis begins,
+          then fills in as text streams. */}
       {!turn.text && turn.status === "synthesis" && (
         <div className="self-start w-full max-w-4xl">
           <SkeletonCard query={turn.userMessage} />

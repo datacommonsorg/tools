@@ -29,11 +29,7 @@ import threading
 import time
 
 import narratives_agent.mcp.client as mcp_client
-from narratives_agent.config import (
-    apply_query_overrides,
-    get_gemini_model,
-    load_config,
-)
+from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import gemini_request
 from narratives_agent.mcp.client import get_tools
 from narratives_agent.mcp.data_utils import (
@@ -46,7 +42,6 @@ from narratives_agent.workflows.chart_config import (
     validate_data_response,
 )
 from narratives_agent.workflows.follow_up import generate_follow_up_questions
-from narratives_agent.workflows.kb_search import execute_kb_query
 from narratives_agent.workflows.mcp_loop import execute_mcp_tool_loop
 
 logger = logging.getLogger(__name__)
@@ -60,9 +55,8 @@ CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
 def run_mcp_phase(ctx):
     """Phase 1: run config/MCP setup then execute the MCP tool loop.
 
-    Reads ``user_message``, ``history``, ``session_logger``, ``query_params``,
-    ``demo_mode`` and the chart holders from ``ctx``; writes
-    ``effective_config``, ``mcp_results``, ``tool_calls_list``,
+    Reads ``user_message``, ``history``, ``session_logger`` and the chart
+    holders from ``ctx``; writes ``mcp_results``, ``tool_calls_list``,
     ``mcp_sources``, ``thought_queue`` and ``thought_callback`` back into
     ``ctx`` for later phases. Sets ``ctx['aborted']`` if the backend config
     fails to load.
@@ -71,20 +65,10 @@ def run_mcp_phase(ctx):
     the single source of citation numbering, shared by the rendered Sources
     list and the numbered list synthesis is prompted with."""
     session_logger = ctx["session_logger"]
-    query_params = ctx["query_params"]
-    demo_mode = ctx["demo_mode"]
     user_message = ctx["user_message"]
     history = ctx["history"]
     chart_result_holder = ctx["chart_result_holder"]
     chart_thread = ctx["chart_thread"]
-
-    # Log query params if present
-    if query_params:
-        session_logger.log("QUERY_PARAMS_OVERRIDE", query_params)
-
-    # Log demo mode if enabled
-    if demo_mode:
-        session_logger.log("DEMO_MODE_ENABLED", {"using_demo_keys": True})
 
     # Log user message
     session_logger.log_user_message(user_message, len(history))
@@ -95,10 +79,6 @@ def run_mcp_phase(ctx):
         yield f"data: {json.dumps({'error': 'Backend config not loaded'})}\n\n"
         ctx["aborted"] = True
         return
-
-    # Apply query param overrides to config
-    effective_config = apply_query_overrides(config, query_params)
-    ctx["effective_config"] = effective_config
 
     # Ensure MCP is initialized (fix for tool calls not showing)
     # Readiness is "can we list tools?", not "do we hold a session id?".
@@ -129,7 +109,7 @@ def run_mcp_phase(ctx):
     ctx["thought_callback"] = thought_callback
 
     # Phase 1: MCP Tools
-    mcp_enabled = effective_config.get("mcp", {}).get("enabled", True)
+    mcp_enabled = config.get("mcp", {}).get("enabled", True)
     mcp_results = ""
     tool_calls_list = []
     mcp_sources = []
@@ -167,11 +147,9 @@ def run_mcp_phase(ctx):
                     mcp_result_holder["truncated"],
                 ) = execute_mcp_tool_loop(
                     user_message,
-                    history,
                     session_logger=session_logger,
-                    effective_config=effective_config,
+                    config=config,
                     thought_callback=lambda t: thought_callback(t, "mcp"),
-                    demo_mode=demo_mode,
                 )
             except Exception as e:
                 logger.error(f"MCP thread error: {e}")
@@ -260,7 +238,7 @@ def run_mcp_phase(ctx):
         if mcp_sources:
             yield f"data: {json.dumps({'mcp_sources': mcp_sources})}\n\n"
 
-        # Start chart config in background (runs parallel with KB + synthesis)
+        # Start chart config in background (runs parallel with synthesis)
         #
         # Gated on the structural `has_data` check above, not only on the
         # model's later reading of the synthesis prose. A chart is drawn from
@@ -319,90 +297,10 @@ def run_mcp_phase(ctx):
     ctx["mcp_sources"] = mcp_sources
 
 
-def run_kb_phase(ctx):
-    """Phase 2: KB Query (if enabled).
-
-    Reads ``effective_config``, ``user_message``, ``session_logger``,
-    ``demo_mode``, ``thought_queue`` and ``thought_callback`` from ``ctx``;
-    writes ``kb_response`` and ``kb_sources`` back into ``ctx``."""
-    if ctx["aborted"]:
-        return
-    session_logger = ctx["session_logger"]
-    effective_config = ctx["effective_config"]
-    user_message = ctx["user_message"]
-    demo_mode = ctx["demo_mode"]
-    thought_queue = ctx["thought_queue"]
-    thought_callback = ctx["thought_callback"]
-
-    # Phase 2: KB Query (if enabled)
-    kb_response = ""
-    kb_sources = []
-    kb_enabled = effective_config.get("knowledge_base", {}).get(
-        "enabled", False
-    )
-
-    if kb_enabled:
-        yield (
-            f"data: {
-                json.dumps(
-                    {
-                        'status': 'kb_start',
-                        'message': 'Searching knowledge base...',
-                    }
-                )
-            }\n\n"
-        )
-
-        # Run KB in thread to enable thought streaming
-        kb_result_holder = {"response": "", "sources": []}
-
-        def run_kb():
-            try:
-                kb_result = execute_kb_query(
-                    user_message,
-                    session_logger=session_logger,
-                    thought_callback=lambda t: thought_callback(t, "kb"),
-                    demo_mode=demo_mode,
-                    effective_config=effective_config,
-                )
-                kb_result_holder["response"] = kb_result.get("response", "")
-                kb_result_holder["sources"] = kb_result.get("sources", [])
-            except Exception as e:
-                logger.error(f"KB thread error: {e}")
-
-        kb_thread = threading.Thread(target=run_kb)
-        kb_thread.start()
-
-        # Stream thoughts while KB runs
-        while kb_thread.is_alive() or not thought_queue.empty():
-            try:
-                thought_data = thought_queue.get(timeout=0.1)
-                yield f"data: {json.dumps(thought_data)}\n\n"
-            except queue.Empty:
-                continue
-
-        kb_thread.join()
-
-        # Signal KB thinking complete
-        yield f"data: {json.dumps({'thinking_complete': 'kb'})}\n\n"
-
-        # Get results from thread
-        kb_response = kb_result_holder["response"]
-        kb_sources = kb_result_holder["sources"]
-
-        # Send KB sources to frontend for inline citations
-        if kb_sources:
-            yield f"data: {json.dumps({'kb_sources': kb_sources})}\n\n"
-        yield f"data: {json.dumps({'status': 'kb_complete'})}\n\n"
-
-    ctx["kb_response"] = kb_response
-    ctx["kb_sources"] = kb_sources
-
-
 def run_synthesis_phase(ctx):
-    """Phase 3: Synthesis with streaming, chart validation and the done event.
+    """Phase 2: Synthesis with streaming, chart validation and the done event.
 
-    Reads the MCP/KB results, chart holders and ``request_start_time`` from
+    Reads the MCP results, chart holders and ``request_start_time`` from
     ``ctx`` -- including ``mcp_sources``, which it numbers for the synthesis
     prompt rather than deriving its own -- and writes ``full_text`` and
     ``chart_config`` back into ``ctx``. Sets
@@ -412,20 +310,17 @@ def run_synthesis_phase(ctx):
     if ctx["aborted"]:
         return
     session_logger = ctx["session_logger"]
-    effective_config = ctx["effective_config"]
     user_message = ctx["user_message"]
     history = ctx["history"]
-    demo_mode = ctx["demo_mode"]
     mcp_results = ctx["mcp_results"]
     mcp_sources = ctx["mcp_sources"]
-    kb_response = ctx["kb_response"]
-    kb_sources = ctx["kb_sources"]
     chart_result_holder = ctx["chart_result_holder"]
     chart_thread = ctx["chart_thread"]
     request_start_time = ctx["request_start_time"]
     full_text = ctx["full_text"]
+    config = load_config()
 
-    # Phase 3: Synthesis with streaming
+    # Phase 2: Synthesis with streaming
     yield (
         f"data: {
             json.dumps(
@@ -437,25 +332,19 @@ def run_synthesis_phase(ctx):
         }\n\n"
     )
 
-    synthesis_prompt = effective_config.get("prompts", {}).get("synthesis", "")
-    synthesis_model = get_gemini_model(effective_config)
-    thinking_level = effective_config.get("thinking", {}).get(
-        "synthesis_level", "low"
-    )
+    synthesis_prompt = config.get("prompts", {}).get("synthesis", "")
+    synthesis_model = get_gemini_model(config)
+    thinking_level = config.get("thinking", {}).get("synthesis_level", "low")
 
     # Build synthesis context with source labels for citations
     context_parts = []
     if mcp_results:
-        # Hand the model the sources ALREADY NUMBERED, in the order the
-        # frontend received them, because the reader's Sources list is numbered
-        # by position in that same list. The prompt tells the model to cite
-        # these numbers and no others, which is what makes [2] in the prose and
-        # [2] in the list the same source.
-        #
-        # This used to be a comma-joined line of markdown links carrying no
-        # numbers at all, so the model invented its own numbering -- and, being
-        # asked to print its own Sources roll-call, produced a second list that
-        # disagreed with the rendered one.
+        # Number sources 1..N in the order streamed to the frontend as
+        # mcp_sources so inline [n] citations resolve to the matching entry in
+        # the rendered Sources list. Any additional source list must be
+        # normalized to {name, url} and appended to mcp_sources before
+        # numbering, because the frontend provenance reducer drops entries
+        # without a `url` field.
         if mcp_sources:
             numbered_sources = "\n".join(
                 f"[{n}] {src.get('name') or src.get('url')} - {src.get('url')}"
@@ -466,33 +355,9 @@ def run_synthesis_phase(ctx):
                 f"{numbered_sources}"
             )
         context_parts.append(f"**DATA RESULTS:**\n{mcp_results}")
-    if kb_response:
-        # KB documents are named but deliberately NOT numbered, because they
-        # never reach the frontend's provenance list: kb_sources carries
-        # `title`/`uri`, while the reducer merges only entries with a `url`, so
-        # it drops them all. A number here would therefore point at nothing.
-        #
-        # The failure mode is safe rather than wrong -- an unmapped marker
-        # renders as plain text and lists no source, instead of attributing a
-        # document's claim to a statistical agency -- but it does mean KB
-        # citations are currently unlinkable. Fixing that means normalising
-        # kb_sources to {name, url} and appending them to mcp_sources in the
-        # same order the reducer merges them. Inert while
-        # knowledge_base.enabled is false, which it is for this instance.
-        kb_source_names = (
-            ", ".join([s["title"] for s in kb_sources])
-            if kb_sources
-            else "Knowledge Base"
-        )
-        context_parts.append(
-            f"**POLICY INFORMATION [Sources: {kb_source_names}]:**\n"
-            f"{kb_response}"
-        )
 
     # Log synthesis start
-    session_logger.log_synthesis_start(
-        ["MCP" if mcp_results else None, "KB" if kb_response else None]
-    )
+    session_logger.log_synthesis_start(["MCP" if mcp_results else None])
 
     synthesis_message = f"""User Query: {user_message}
 
@@ -514,7 +379,7 @@ Please provide a comprehensive response combining all available information."""
         for msg in history:
             synthesis_messages.append(msg)
 
-        # Add current query with MCP/KB context as final user message
+        # Add current query with MCP context as final user message
         synthesis_messages.append(
             {"role": "user", "parts": [{"text": synthesis_message}]}
         )
@@ -528,7 +393,6 @@ Please provide a comprehensive response combining all available information."""
             stream=True,
             session_logger=session_logger,
             include_thoughts=True,  # Enable thought streaming
-            demo_mode=demo_mode,
         )
 
         if isinstance(stream_gen, dict) and "error" in stream_gen:
@@ -584,7 +448,7 @@ Please provide a comprehensive response combining all available information."""
                 {"data_found": False, "action": "hide_charts"},
             )
 
-    # Wait for chart config thread (started after MCP, runs parallel with KB +
+    # Wait for chart config thread (started after MCP, runs parallel with
     # synthesis)
     if chart_thread[0]:
         chart_thread[0].join(timeout=CHART_CONFIG_JOIN_TIMEOUT_SECONDS)
@@ -601,7 +465,7 @@ Please provide a comprehensive response combining all available information."""
     )
 
     # Temporary cost instrumentation: report accumulated Gemini token usage
-    # for this query (MCP + KB + synthesis + chart config). Emitted before
+    # for this query (MCP + synthesis + chart config). Emitted before
     # `done`; the UI shows it only when opened with ?debug=tokens. Follow-up
     # question generation happens after this and is intentionally excluded.
     session_logger.log("TOKEN_USAGE", session_logger.token_usage)
