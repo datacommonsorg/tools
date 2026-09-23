@@ -287,8 +287,8 @@ def _build_brand_css(document: dict | None) -> str:
     """Renders the branding document as a :root stylesheet.
 
     The result is what index.html loads before first paint, so the browser has
-    the instance's colours in hand for the very first frame instead of painting
-    index.css's fallbacks and being recoloured once React has fetched
+    the instance's colors in hand for the very first frame instead of painting
+    index.css's fallbacks and being recolored once React has fetched
     /agent/brand.
 
     Values that are not plain CSS literals are dropped: a branding.json is
@@ -436,12 +436,12 @@ def brand_css() -> Response:
     """Serves the pre-paint stylesheet held in memory since startup.
 
     index.html links this in <head>, and a stylesheet there blocks first paint,
-    so the instance's colours are applied before anything is drawn.
+    so the instance's colors are applied before anything is drawn.
 
     Deliberately uncached, matching /brand. It was previously cacheable on the
     reasoning that branding cannot change without a new revision -- true of the
     server, but not of a browser that already holds a copy: for the life of that
-    copy it would pre-paint the *previous* revision's colours and then be
+    copy it would pre-paint the *previous* revision's colors and then be
     corrected by the uncached document, which is the flicker this file exists to
     prevent. The body is a few hundred bytes of memory, so caching buys little.
     """
@@ -458,7 +458,7 @@ def brand_js() -> Response:
     `window.__BRAND__` is set before the bundle runs and useBranding() can seed
     its very first render from it.
 
-    Without it, only the *colours* arrive before first paint (via brand.css) and
+    Without it, only the *colors* arrive before first paint (via brand.css) and
     every other branded value -- headline, tagline, wordmark, logo, nav tabs,
     suggestion chips -- necessarily renders as the UI's shipped neutral defaults
     until the /brand fetch resolves, then visibly flips to the instance's own.

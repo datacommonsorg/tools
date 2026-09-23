@@ -37,7 +37,7 @@ MAX_TEXT_PREVIEW_LENGTH = 500
 # credentials.
 #
 # Files are still written off Cloud Run, because tailing one is the fastest way
-# to debug locally. SESSION_LOG_TO_FILE forces either behaviour explicitly.
+# to debug locally. SESSION_LOG_TO_FILE forces either behavior explicitly.
 _ON_CLOUD_RUN = bool(os.environ.get("K_SERVICE"))
 _FILE_LOGGING = os.environ.get(
     "SESSION_LOG_TO_FILE", "false" if _ON_CLOUD_RUN else "true"

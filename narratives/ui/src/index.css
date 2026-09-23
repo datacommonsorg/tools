@@ -76,7 +76,7 @@
   /* Lines / borders */
   --color-line: #C4C7C5;
   /* Card borders and divider rules; themeable so an instance can move them
-     with its palette instead of leaving a grey rule on a tinted surface. */
+     with its palette instead of leaving a gray rule on a tinted surface. */
   --color-border: var(--brand-border, #E3E3E3);
   --color-outline: #e5e7eb;
   --color-outline-variant: #f3f4f6;

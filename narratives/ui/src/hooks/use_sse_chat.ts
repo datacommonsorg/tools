@@ -93,7 +93,7 @@ interface RawChartItem {
  * Wire format of the chart_config SSE field. Older agent versions emit the
  * legacy single-chart fields (`viz_type`, `variable_dcids`, …) at the top
  * level instead of inside a `charts` array; {@link mapRawChartConfig}
- * normalises both shapes.
+ * normalizes both shapes.
  */
 interface RawChartConfig {
   should_render: boolean;
@@ -154,7 +154,7 @@ export interface ProvenanceItem {
   name: string;
   url: string;
   /**
-   * Licence terms, e.g. "Creative Commons Attribution License". Only
+   * License terms, e.g. "Creative Commons Attribution License". Only
    * get_variable_metadata reports this; observation calls yield a bare URL.
    */
   license?: string;
@@ -393,7 +393,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         for await (const evt of parseSseStream(reader)) {
           // The agent sometimes packs MULTIPLE fields into one event
           // (e.g. the final event has BOTH `chart_config` and `done`).
-          // We apply each recognised field independently in one patch,
+          // We apply each recognized field independently in one patch,
           // rather than using `if … continue` which would drop later
           // fields after the first match.
           patch((turn) => applyEvent(turn, evt));
@@ -427,7 +427,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
 }
 
 /**
- * Pure reducer: applies every recognised field of an SSE event to the
+ * Pure reducer: applies every recognized field of an SSE event to the
  * turn state. The agent sometimes packs multiple fields into one event
  * (e.g. the closing event has both `chart_config` AND `done` — earlier
  * `if … continue` style would silently drop the second field). Every

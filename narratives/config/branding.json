@@ -1,6 +1,6 @@
 {
   "$schema": "./branding.schema.json",
-  "$comment": "Base Data Commons theme — the blue one Google plans to launch first. Every value here is a theme token; no base-DC branch exists in component code. Colours are from the 'UI elements branded elements - Data Commons' spec slide, which names #0B57D0 (Google product blue) as primary, #EFEDED for skeleton bars and #F5FAFF for the skeleton surface; the rest were sampled from the accompanying mockups. The empty `navigation` array is deliberate — the spec calls for removing the base-DC header menu from the Narratives App altogether, not restyling it.",
+  "$comment": "Base Data Commons theme — the blue one Google plans to launch first. Every value here is a theme token; no base-DC branch exists in component code. Colors are from the 'UI elements branded elements - Data Commons' spec slide, which names #0B57D0 (Google product blue) as primary, #EFEDED for skeleton bars and #F5FAFF for the skeleton surface; the rest were sampled from the accompanying mockups. The empty `navigation` array is deliberate — the spec calls for removing the base-DC header menu from the Narratives App altogether, not restyling it.",
   "schema_version": "1",
   "instance_id": "base-dc",
   "instance_name": "Data Commons",

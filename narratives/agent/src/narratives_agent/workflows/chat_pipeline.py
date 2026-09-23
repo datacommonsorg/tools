@@ -83,7 +83,7 @@ def run_mcp_phase(ctx):
     # Ensure MCP is initialized (fix for tool calls not showing)
     # Readiness is "can we list tools?", not "do we hold a session id?".
     # The session is established on demand and re-established automatically if
-    # the data plane instance we land on does not recognise it, so a session id
+    # the data plane instance we land on does not recognize it, so a session id
     # says nothing useful about whether MCP is reachable right now.
     mcp_ready = False
     tools = get_tools()

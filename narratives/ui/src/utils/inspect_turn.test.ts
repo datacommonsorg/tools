@@ -80,7 +80,7 @@ const OBSERVATION_RESULT = JSON.stringify({
 const calls = (...items: ToolCallEvent[]) => items;
 
 describe("inspectTurn", () => {
-  it("joins a chosen source_override to its dataset name, licence and coverage", () => {
+  it("joins a chosen source_override to its dataset name, license and coverage", () => {
     const out = inspectTurn(
       calls(
         { name: "search_indicators", arguments: { query: "population" }, result: SEARCH_RESULT },

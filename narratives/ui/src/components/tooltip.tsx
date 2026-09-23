@@ -158,7 +158,7 @@ export function Tooltip({
   }, [open, preferredSide, label, title, content]);
 
   // A tooltip pinned to viewport coordinates goes stale the moment anything
-  // moves, and there is no sensible "follow" behaviour for a hover affordance
+  // moves, and there is no sensible "follow" behavior for a hover affordance
   // — so close instead. Escape closes it without moving the pointer.
   useEffect(() => {
     if (!open) return;

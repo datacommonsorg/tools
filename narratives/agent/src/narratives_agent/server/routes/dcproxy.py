@@ -139,7 +139,7 @@ DATA_PLANE_PREFIXES = (
 # Forwarding it alongside our service-account token gives the data plane a
 # mixed-identity context and it refuses the request -- which surfaces as a 401
 # on every chart *after* the user has already signed in successfully, and reads
-# like an authorisation bug rather than a header-hygiene one.
+# like an authorization bug rather than a header-hygiene one.
 _HOP_HEADERS = frozenset(
     {
         "host",
@@ -243,7 +243,7 @@ def _register_prefix(prefix: str) -> None:
     methods = ["GET", "POST", "OPTIONS", "HEAD"]
     # Flask forbids "." in an endpoint name (it separates blueprint from
     # endpoint), and several prefixes are filenames -- datacommons.js,
-    # queryStore.js. The URL rule keeps the dot; only the name is sanitised.
+    # queryStore.js. The URL rule keeps the dot; only the name is sanitized.
     name = prefix.replace(".", "_")
 
     dcproxy_bp.add_url_rule(

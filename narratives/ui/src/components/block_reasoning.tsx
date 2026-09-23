@@ -36,8 +36,8 @@ const BAR_PAD = 16;
 const BAR_INSET = BAR_WIDTH + BAR_PAD; // left offset of body text (border + pad)
 const BAR_COLOR = "var(--color-border, #E3E3E3)";
 // The reasoning icon (sparkle/loader) is ICON_SIZE wide and starts at the
-// aside's left edge, so its horizontal centre is at ICON_SIZE / 2. Shift the
-// content right so the bar is centred under that icon centre.
+// aside's left edge, so its horizontal center is at ICON_SIZE / 2. Shift the
+// content right so the bar is centered under that icon center.
 const ICON_SIZE = 20;
 const BAR_CENTER_LEFT = ICON_SIZE / 2 - BAR_WIDTH / 2;
 

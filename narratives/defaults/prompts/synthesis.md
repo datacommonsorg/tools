@@ -101,7 +101,7 @@ rendered beneath the answer.
 - Do NOT hallucinate statistics, percentages, or rankings
 - Do NOT create place or sector comparisons unless data exists for ALL items
 - Do NOT invent trends, drivers, or key factors not in the data
-- Do NOT name specific places or organisations unless they appear in the data
+- Do NOT name specific places or organizations unless they appear in the data
 - Do NOT present a partial set of countries as a world total without saying so
 - Do NOT assume a currency, or convert values into one the source did not use
 

@@ -136,7 +136,7 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
     A slot that 404s or errors is skipped with a warning instead of failing
     startup: an absent prompt leaves that phase with no system instruction,
     which is exactly how the agent behaved before the files were wired up, so a
-    partial fetch degrades to the old behaviour rather than taking the agent
+    partial fetch degrades to the old behavior rather than taking the agent
     down.
     """
     # Prompt bodies live in a `prompts/` directory beside the config object, so

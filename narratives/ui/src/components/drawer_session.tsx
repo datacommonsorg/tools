@@ -34,7 +34,7 @@ const SIDEBAR_OFFSET = 72; // desktop rail width (Sidebar.tsx lg:w-[72px])
 const FONT_DISPLAY = "var(--font-display)";
 /**
  * Menu-item text + leading icons + the ✕ read as secondary, so they use the
- * lighter "subtle" grey; the trailing chevron is the dark accent.
+ * lighter "subtle" gray; the trailing chevron is the dark accent.
  */
 const COLOR_LABEL = "var(--color-subtle)";
 const COLOR_ARROW = "var(--color-on-surface)";
@@ -49,7 +49,7 @@ const COLOR_ACTIVE = "var(--color-brand-primary)";
  * line up with the "New chat"/"Chats" labels above.
  */
 const MENU_ICON_WIDTH = 22;
-/** Inactive section-tab label — a touch darker than the menu rows' subtle grey. */
+/** Inactive section-tab label — a touch darker than the menu rows' subtle gray. */
 const COLOR_TAB_INACTIVE = "var(--color-muted)";
 
 /** The chats drawer: desktop left-anchored list and mobile two-level slide-in panel. */

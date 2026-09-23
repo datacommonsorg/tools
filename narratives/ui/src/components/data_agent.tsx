@@ -88,21 +88,21 @@ export function DataAgent() {
       // Pin once now, then again on every animation frame for ~600ms so late
       // layout shifts from the previous turn's AnswerPanel (e.g. Data Commons
       // chart hydration, FollowUpQuestions unmounting) don't leave the new
-      // bubble stranded mid-scroller. Cancelled when the user scrolls away.
+      // bubble stranded mid-scroller. Canceled when the user scrolls away.
       const start = performance.now();
       // A new turn always resumes following: the user just asked something, so
       // they want to watch the answer arrive even if they had scrolled away
       // while reading the previous one.
       followRef.current = true;
       pinUntilRef.current = start + 600;
-      let cancelled = false;
+      let canceled = false;
       const onUserScroll = () => {
-        cancelled = true;
+        canceled = true;
       };
       container?.addEventListener("wheel", onUserScroll, { passive: true });
       container?.addEventListener("touchmove", onUserScroll, { passive: true });
       const tick = () => {
-        if (cancelled) return;
+        if (canceled) return;
         scrollToLatest();
         if (performance.now() - start < 600) requestAnimationFrame(tick);
       };

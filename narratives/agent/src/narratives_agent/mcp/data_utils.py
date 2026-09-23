@@ -16,7 +16,7 @@
 import json
 from urllib.parse import urlparse
 
-# Server 1.3.0 split the two fat tools into six. Both generations are recognised
+# Server 1.3.0 split the two fat tools into six. Both generations are recognized
 # here so this keeps working against an in-container 1.2.1 endpoint and the
 # public 1.3.0 one alike.
 _SEARCH_TOOLS = ("search_indicators", "search_child_indicators")
@@ -32,7 +32,7 @@ def _parse_tool_result(result) -> dict:
 
     Results arrive as the JSON-encoded MCP envelope whose `content[0].text` is
     itself JSON. Returns None when the result is not parseable at all -- an
-    error string, or a shape this does not recognise -- which callers treat the
+    error string, or a shape this does not recognize -- which callers treat the
     same as "no data", since an unreadable result is not evidence of any.
     """
     if isinstance(result, dict):
@@ -64,7 +64,7 @@ def _has_observation_rows(payload: dict) -> bool:
     Checked structurally rather than by searching the text, because the two
     server generations disagree on both spelling and shape. 1.3.0 returns a
     columnar `data.rows` table and signals "nothing found" as `{"data": {}}`;
-    1.2.1 returned `place_observations[].time_series` and signalled empty as
+    1.2.1 returned `place_observations[].time_series` and signaled empty as
     `"time_series": []`. A text search for the 1.2.1 markers finds neither
     marker in a 1.3.0 empty response and so reports data that is not there.
     """
@@ -199,7 +199,7 @@ def _facet_index_from_variable_metadata(result_data: dict) -> dict:
     at on the way there.
 
     The name prefers `isPartOf` over `source`: `source` is the publishing
-    organisation ("World Bank"), while `isPartOf` is the dataset the numbers
+    organization ("World Bank"), while `isPartOf` is the dataset the numbers
     actually came from ("World Development Indicators"). The dataset is the
     provenance a reader needs.
 
@@ -273,7 +273,7 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
     server actually served, whether the agent pinned it with `source_override`
     or the server picked it. `get_variable_metadata` only lists *candidates* --
     every source a variable could have been answered from -- so it is read into
-    an index and used to put a name and licence on the facet that served. It
+    an index and used to put a name and license on the facet that served. It
     can no longer add a source of its own: doing that is what made an answer
     drawn entirely from one dataset credit four, because the agent had asked
     what was available before choosing.

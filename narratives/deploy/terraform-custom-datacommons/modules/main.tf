@@ -126,7 +126,7 @@ resource "google_sql_database_instance" "dc" {
 
     ip_configuration {
       ipv4_enabled = true
-      # Authorised networks left empty — Cloud Run connects via the
+      # Authorized networks left empty — Cloud Run connects via the
       # CloudSQL Auth Proxy / direct VPC egress, not via public IP allowlist.
     }
 
