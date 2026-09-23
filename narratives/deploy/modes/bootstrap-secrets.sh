@@ -84,40 +84,16 @@ run_bootstrap_secrets() {
                 fi
             fi
             if [ "$value_var" = "GEMINI_API_KEY" ]; then
-                # The agent expects a JSON array, so encode it rather than
-                # wrapping it in brackets by hand. Hand-wrapping breaks on a key
-                # containing a quote, and double-wraps a value that is already a
-                # JSON array -- which is what copying a key out of another
-                # instance gives you. Secret Manager stores either happily; the
-                # break only shows up at runtime.
-                #
-                # So: pass an existing array through unchanged, split a
-                # comma-separated list into a pool, and encode with json.dumps.
-                value=$(GEMINI_RAW="$value" python3 -c '
-import json, os, sys
-raw = os.environ["GEMINI_RAW"].strip()
-try:
-    parsed = json.loads(raw)
-except ValueError:
-    parsed = None
-if isinstance(parsed, list) and parsed and all(isinstance(k, str) and k for k in parsed):
-    keys = parsed                      # already encoded; idempotent
-elif isinstance(parsed, str) and parsed:
-    keys = [parsed]
-else:
-    keys = [k.strip() for k in raw.split(",") if k.strip()]
-if not keys:
-    sys.stderr.write("GEMINI_API_KEY held no usable key\n")
-    sys.exit(1)
-sys.stdout.write(json.dumps(keys))
-') || { log_error "Could not encode GEMINI_API_KEY as a JSON array."; exit 1; }
-                # Refuse to write something the agent cannot read back.
-                echo -n "$value" | python3 -c '
-import json, sys
-keys = json.loads(sys.stdin.read())
-assert isinstance(keys, list) and all(isinstance(k, str) for k in keys), keys
-' || { log_error "Encoded GEMINI value is not a JSON array of strings. Refusing to write."; exit 1; }
-                log_info "Gemini key pool: $(echo -n "$value" | python3 -c 'import json,sys; print(len(json.loads(sys.stdin.read())))') key(s)."
+                # The agent expects a JSON array, and deploy/encode-key-pool.py
+                # is what builds it -- in both the form Secret Manager stores
+                # and the one-per-line form the check below loops over. Its
+                # docstring has the reasons the shell must not do this itself.
+                encode_keys="${DEPLOY_ROOT}/deploy/encode-key-pool.py"
+                gemini_keys=$(printf '%s' "$value" | python3 "$encode_keys" --format lines) \
+                    || { log_error "Nothing was written to Secret Manager."; exit 1; }
+                value=$(printf '%s' "$value" | python3 "$encode_keys") \
+                    || { log_error "Could not encode GEMINI_API_KEY as a JSON array."; exit 1; }
+                log_info "Gemini key pool: $(printf '%s\n' "$gemini_keys" | wc -l | tr -d ' ') key(s)."
 
                 # Same reasoning as DC_API_KEY: a rejected Gemini key produces a
                 # deployment that starts, serves the UI, and fails only when
@@ -138,7 +114,7 @@ assert isinstance(keys, list) and all(isinstance(k, str) for k in keys), keys
                         *)   log_warn "Gemini API returned HTTP ${gem_code} for a key; storing it unverified." ;;
                     esac
                 done <<EOF
-$(echo -n "$value" | python3 -c 'import json,sys; print("\n".join(json.loads(sys.stdin.read())))')
+$gemini_keys
 EOF
                 if [ -n "$bad_keys" ]; then
                     log_error "These Gemini keys were rejected:${bad_keys}. Nothing was written."
