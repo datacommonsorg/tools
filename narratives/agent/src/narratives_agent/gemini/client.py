@@ -63,7 +63,7 @@ def _status_error(response: requests.Response) -> str | None:
     try:
         if status_code == 429:
             return "Rate limited (429)"
-        if status_code in (500, 503):
+        if 500 <= status_code < 600:
             return f"Server error ({status_code})"
         excerpt = _CREDENTIAL_PATTERN.sub(
             _CREDENTIAL_REPLACEMENT, response.text[:_ERROR_BODY_LENGTH]

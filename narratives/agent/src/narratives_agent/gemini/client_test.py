@@ -52,7 +52,7 @@ _BAD_REQUEST_BODY = json.dumps(
 _FAKE_KEY = "test-gemini-credential-for-redaction-0000"
 
 _PROXY_ERROR_BODY = (
-    "<html><head><title>502 Bad Gateway</title></head><body>"
+    "<html><head><title>403 Forbidden</title></head><body>"
     "Error fetching https://generativelanguage.googleapis.com/v1beta/"
     f"models/{_MODEL}:streamGenerateContent?key={_FAKE_KEY}&alt=sse"
     "</body></html>"
@@ -129,11 +129,11 @@ def test_an_echoed_api_key_is_redacted_from_the_error_and_the_log(
     gemini_answers: Callable[[int, str], None], caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: Redaction of the API key from upstream error bodies and logs.
-    # Situation: An intermediate proxy returns an HTTP 502 error page that
+    # Situation: An intermediate proxy returns an HTTP 403 error page that
     #   echoes the request URL containing `key=<api_key>`.
     # Expectation: Both the returned error string and the error log replace the
     #   credential with `key=[REDACTED]` and never expose the raw API key.
-    gemini_answers(502, _PROXY_ERROR_BODY)
+    gemini_answers(403, _PROXY_ERROR_BODY)
 
     with caplog.at_level(logging.ERROR, logger=client.logger.name):
         result = client.gemini_request(
@@ -185,15 +185,17 @@ def test_transport_exception_redacts_api_key_from_error_and_log(
     assert "key=[REDACTED]" in caplog.text
 
 
-@pytest.mark.parametrize("status_code", [400, 429, 500, 503])
+@pytest.mark.parametrize("status_code", [400, 429, 500, 502, 503])
 def test_non_200_streaming_responses_are_closed(
     monkeypatch: pytest.MonkeyPatch, status_code: int
 ) -> None:
-    # Test: Connection cleanup for non-200 streaming responses.
+    # Test: Connection cleanup and error formatting for non-200 streaming
+    #   responses.
     # Situation: _SESSION.post(..., stream=True) returns a non-200 status
-    #   (400, 429, 500, or 503).
+    #   (400, 429, 500, 502, or 503).
     # Expectation: _status_error calls response.close() so the underlying
-    #   socket is released back to _SESSION's connection pool.
+    #   socket is released back to _SESSION's connection pool, and all 5xx
+    #   statuses return "Server error (<code>)".
     monkeypatch.setattr(client, "load_config", lambda: {})
     monkeypatch.setattr(client, "get_gemini_api_key", lambda: _FAKE_KEY)
     closed = False
@@ -222,4 +224,6 @@ def test_non_200_streaming_responses_are_closed(
 
     assert isinstance(result, dict)
     assert "error" in result
+    if 500 <= status_code < 600:
+        assert result["error"] == f"Server error ({status_code})"
     assert closed is True
