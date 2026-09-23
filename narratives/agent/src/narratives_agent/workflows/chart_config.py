@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 # Max characters of the synthesis text sent to the data-validation check.
 SYNTHESIS_PREVIEW_LENGTH = 2000
 
+# Max characters of a raw response or parsed payload quoted in error logs.
+_LOG_EXCERPT_LENGTH = 300
+
 
 def get_chart_config(mcp_results: str, user_message: str) -> dict:
     """Get chart configuration using structured output.
@@ -135,7 +138,7 @@ Return false if the response says data is "not available", "not found", \
             "Data validation got no candidates from %s, hiding charts. "
             "Response: %s",
             model,
-            str(response)[:300],
+            str(response)[:_LOG_EXCERPT_LENGTH],
         )
         return False
 
@@ -153,7 +156,7 @@ Return false if the response says data is "not available", "not found", \
         logger.error(
             "Data validation returned no data_found boolean, hiding charts. "
             "Parsed: %s",
-            str(result)[:300],
+            str(result)[:_LOG_EXCERPT_LENGTH],
         )
         return False
     return verdict

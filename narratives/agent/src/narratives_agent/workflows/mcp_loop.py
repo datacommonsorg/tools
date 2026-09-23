@@ -33,7 +33,6 @@ MAX_ITERATIONS = 15
 
 def execute_mcp_tool_loop(
     user_message: str,
-    history: list,
     config: dict,
     session_logger: SessionLogger | None = None,
     thought_callback: Callable[[str], None] | None = None,
@@ -42,7 +41,6 @@ def execute_mcp_tool_loop(
 
     Args:
         user_message: The user's query
-        history: Conversation history
         config: Backend config dict, already checked to be non-empty by the
             caller
         session_logger: Optional SessionLogger for comprehensive logging

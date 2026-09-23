@@ -147,7 +147,6 @@ def run_mcp_phase(ctx):
                     mcp_result_holder["truncated"],
                 ) = execute_mcp_tool_loop(
                     user_message,
-                    history,
                     session_logger=session_logger,
                     config=config,
                     thought_callback=lambda t: thought_callback(t, "mcp"),
