@@ -1,6 +1,9 @@
 /**
  * Card placement: where cards land on the canvas and how the camera follows
  * them. See `PLACEMENT.md` for the full model and its trade-offs.
+ * 
+ * TODO:
+ * Split this into separate files by responsibility: camera controls, grid/geometry calculations, lifecycle place/cleanup functions.
  */
 
 import {
