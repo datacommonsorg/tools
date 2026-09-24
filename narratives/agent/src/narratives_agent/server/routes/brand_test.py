@@ -271,3 +271,50 @@ def test_unknown_brand_asset_returns_404(
     assert response.status_code == 404
 
 
+def test_build_brand_css_emits_configured_custom_properties() -> None:
+    # Test: Generation of `:root` CSS custom properties in `_build_brand_css`.
+    # Situation: A branding document configures `colors.primary`, `radius.card`,
+    #   and `fonts.primary`.
+    # Expectation: `_build_brand_css` returns a `:root` block declaring
+    #   `--brand-primary`, `--brand-radius-card`, and `--brand-font`.
+    css = brand._build_brand_css(
+        {
+            "colors": {"primary": "#0b57d0"},
+            "radius": {"card": "12px"},
+            "fonts": {"primary": "Google Sans"},
+        }
+    )
+    assert css == (
+        ":root {\n"
+        "  --brand-primary: #0b57d0;\n"
+        "  --brand-radius-card: 12px;\n"
+        "  --brand-font: Google Sans;\n"
+        "}\n"
+    )
+
+
+def test_build_brand_css_drops_unsafe_declaration_values() -> None:
+    # Test: Rejection of CSS values containing declaration-breaking characters.
+    # Situation: `colors.primary` contains a semicolon and braces (`red; } body
+    #   { display: none`) alongside a valid `colors.accent` hex value.
+    # Expectation: `_build_brand_css` drops the unsafe `primary` declaration and
+    #   emits only the valid `--brand-accent` declaration.
+    css = brand._build_brand_css(
+        {
+            "colors": {
+                "primary": "red; } body { display: none",
+                "accent": "#ff0000",
+            }
+        }
+    )
+    assert css == ":root {\n  --brand-accent: #ff0000;\n}\n"
+
+
+def test_build_brand_css_returns_empty_string_when_unconfigured() -> None:
+    # Test: `_build_brand_css` output when no CSS-mapped tokens are present.
+    # Situation: `_build_brand_css` is called with `None` or a document that
+    #   sets only non-CSS metadata (`instance_name`).
+    # Expectation: `_build_brand_css` returns `""` so default stylesheet tokens
+    #   remain untouched.
+    assert brand._build_brand_css(None) == ""
+    assert brand._build_brand_css({"instance_name": "Example"}) == ""

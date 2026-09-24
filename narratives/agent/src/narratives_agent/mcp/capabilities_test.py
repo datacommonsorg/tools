@@ -93,3 +93,66 @@ def test_generation_labels_both_known_surfaces() -> None:
     #   surface and `"1.2.x"` for the two-tool surface.
     assert capabilities.from_tools(TOOLS_130).generation == "1.3.x-or-later"
     assert capabilities.from_tools(TOOLS_121).generation == "1.2.x"
+
+
+def test_malformed_tool_entries_are_ignored() -> None:
+    # Test: Filtering of malformed entries in `capabilities.from_tools`.
+    # Situation: The `tools/list` payload contains a bare string, `None`, an
+    #   empty dictionary, a dictionary with an empty `name`, and one valid tool
+    #   dictionary.
+    # Expectation: `from_tools` retains only the valid non-empty tool name
+    #   (`"get_x"`).
+    caps = capabilities.from_tools(
+        ["get_observations", None, {}, {"name": ""}, {"name": "get_x"}]
+    )
+    assert caps.tool_names == frozenset({"get_x"})
+
+
+def test_empty_tool_list_yields_empty_tool_names() -> None:
+    # Test: `tool_names` when `tools/list` returns an empty list.
+    # Situation: `capabilities.from_tools` is called with `[]`.
+    # Expectation: `tool_names` is an empty `frozenset`.
+    assert capabilities.from_tools([]).tool_names == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("tools", "expected"),
+    [
+        (
+            TOOLS_121,
+            {
+                "generation": "1.2.x",
+                "tool_count": 2,
+                "tools": ["get_observations", "search_indicators"],
+                "supports_source_attribution": False,
+            },
+        ),
+        (
+            TOOLS_130,
+            {
+                "generation": "1.3.x-or-later",
+                "tool_count": 6,
+                "tools": [
+                    "get_child_observations",
+                    "get_multi_entity_observations",
+                    "get_observations",
+                    "get_variable_metadata",
+                    "search_child_indicators",
+                    "search_indicators",
+                ],
+                "supports_source_attribution": True,
+            },
+        ),
+    ],
+    ids=["1.2.x surface", "1.3.x surface"],
+)
+def test_describe_reports_discovered_tool_surface(
+    tools: list[dict[str, Any]], expected: dict[str, Any]
+) -> None:
+    # Test: Summary dictionary returned by `Capabilities.describe`.
+    # Situation: `describe()` is called on capabilities derived from MCP 1.2.x
+    #   and MCP 1.3.x tool lists.
+    # Expectation: `describe()` returns the generation label, tool count,
+    #   alphabetically sorted tool names, and `supports_source_attribution` flag
+    #   for each surface.
+    assert capabilities.from_tools(tools).describe() == expected
