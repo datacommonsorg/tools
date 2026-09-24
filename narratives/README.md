@@ -30,6 +30,7 @@ you do there requires TypeScript or Python.
 - [Access modes](#access-modes)
 - [Attaching to a Data Commons instance that already exists](#attaching-to-a-data-commons-instance-that-already-exists)
 - [Provisioning a new DCP data plane](#provisioning-a-new-dcp-data-plane)
+- [Developer guide](#developer-guide)
 - [Local development](#local-development)
 - [Testing](#testing)
 - [Verifying a deployment](#verifying-a-deployment)
@@ -659,6 +660,31 @@ DCP docs worth repeating:
 
 ---
 
+## Developer guide
+
+All commands run from the root of the `/narratives` directory.
+
+### Installation
+
+```bash
+corepack enable
+pnpm i
+```
+
+### Scripts
+
+| Command | What it does |
+| --- | --- |
+| `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
+| `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
+| `pnpm test:ui` | Run the frontend Vitest suite |
+| `pnpm test:agent` | Run the backend Pytest suite |
+
+> [!TIP]
+> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or updating a PR.
+
+---
+
 ## Local development
 
 Two paths. Pick by what you are changing.
@@ -674,15 +700,14 @@ A hot-reloading Vite dev server proxying every backend call to a deployed
 instance. Real Gemini, real MCP tools, real charts.
 
 ```sh
-cd ui
-npm install
+pnpm install
 
-cat > .env.local <<'EOF'
+cat > ui/.env.local <<'EOF'
 BACKEND_URL=https://<your-instance>.run.app
 AGENT_URL=https://<your-instance>.run.app
 EOF
 
-npm run dev      # http://localhost:3000
+pnpm -C ui dev      # http://localhost:3000
 ```
 
 Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
@@ -761,7 +786,7 @@ checked-in files, never a value.
 **Serve the SPA from the agent**, so routing matches production:
 
 ```sh
-(cd ui && npm ci && npm run build)
+pnpm build
 export STATIC_ROOT="$(cd ui/dist && pwd)"
 ```
 
@@ -789,15 +814,12 @@ Production runs `gunicorn main:app`; `main.py` is the development path.
 Nothing is mocked that matters.
 
 ```sh
-# Agent — from agent/
-cd agent
-uv sync                                    # once, and after a dependency change
-uv run pytest
+# Run all tests across UI and agent:
+pnpm test
 
-# UI — from ui/
-cd ui
-npx tsc --noEmit
-npx vitest run                             # 9 files, 108 tests
+# Or run by component:
+pnpm test:ui                               # Vitest UI suite (9 files, 108 tests)
+pnpm test:agent                            # Pytest agent suite
 ```
 
 Agent tests are pytest modules named `*_test.py`, colocated beside the module

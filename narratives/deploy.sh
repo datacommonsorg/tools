@@ -130,12 +130,16 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Early check for required CLI tools
-for cmd in gcloud terraform npm python3; do
+for cmd in gcloud terraform python3; do
     if ! command -v "$cmd" &>/dev/null; then
         log_error "Required tool '$cmd' is not installed or not in PATH!"
         exit 1
     fi
 done
+if ! command -v pnpm &>/dev/null && ! command -v npm &>/dev/null; then
+    log_error "Required tool 'pnpm' (or 'npm') is not installed or not in PATH!"
+    exit 1
+fi
 
 # 1. Load this deployment's configuration
 #
@@ -798,17 +802,19 @@ fi
 
 # 5. Build and Stage React UI Frontend
 if [ "$INFRA_ONLY" = false ] && [ "$AGENT_ONLY" = false ]; then
-    log_info "Compiling React UI production bundle..."
-    cd ui
-    npm ci --registry=https://registry.npmjs.org/
-    npm run build
-    cd ..
-
-    # Staged into the agent build context, not the services one: the SPA moved
-    # to the app-plane image when the two services were split.
-    log_info "Staging compiled static assets into the app-plane build context..."
-    rm -rf agent/static
-    cp -R ui/dist agent/static
+    log_info "Compiling React UI production bundle and staging assets..."
+    if command -v pnpm &>/dev/null; then
+        pnpm install --frozen-lockfile
+        pnpm build
+    else
+        log_warn "pnpm not found, falling back to npm..."
+        cd ui
+        npm install
+        npm run build
+        cd ..
+        rm -rf agent/static
+        cp -R ui/dist agent/static
+    fi
     log_success "Frontend assets staged into agent/static."
 else
     log_info "[Surgical-Build] Skipping React UI compilation."

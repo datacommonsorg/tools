@@ -1,0 +1,18 @@
+{
+  "name": "narratives",
+  "description": "Root of the `/narratives` directory.",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -C ui build && node scripts/stage_static.mjs",
+    "test": "pnpm run test:ui && pnpm run test:agent",
+    "test:ui": "pnpm -C ui test",
+    "test:agent": "cd agent && uv run pytest"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  }
+}
