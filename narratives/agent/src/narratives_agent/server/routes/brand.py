@@ -450,6 +450,9 @@ def brand_asset(name: str) -> Response:
     # its bytes, so the content behind a given name can never change and the
     # browser never needs to revalidate.
     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    # Prevent browsers from content-sniffing mirrored branding assets (such as
+    # SVG logos) served from the application origin.
+    response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
 

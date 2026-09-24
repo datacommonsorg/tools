@@ -225,3 +225,49 @@ def test_load_branding_redacts_credentials_before_publishing(
     assert _KEY_SHAPED not in js_response.get_data(as_text=True)
 
 
+def test_mirrored_asset_is_served_with_nosniff_header(
+    mirrored_svg: None,
+    client: FlaskClient,
+) -> None:
+    # Test: Content-Type and `X-Content-Type-Options` header on
+    #   `GET /agent/brand/assets/<name>`.
+    # Situation: A mirrored SVG logo is requested over HTTP from
+    #   `/agent/brand/assets/logo-a1b2c3d4.svg`.
+    # Expectation: The response has HTTP status 200, `image/svg+xml` in
+    #   `Content-Type`, `X-Content-Type-Options: nosniff`, and the SVG body.
+    response = client.get("/agent/brand/assets/logo-a1b2c3d4.svg")
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("image/svg+xml")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.data == _SVG
+
+
+def test_mirrored_asset_is_served_with_immutable_cache_control(
+    mirrored_svg: None,
+    client: FlaskClient,
+) -> None:
+    # Test: `Cache-Control` header on content-addressed brand assets.
+    # Situation: A mirrored SVG asset whose filename includes a content hash is
+    #   requested over HTTP from `/agent/brand/assets/logo-a1b2c3d4.svg`.
+    # Expectation: The response sets `Cache-Control` to
+    #   `"public, max-age=31536000, immutable"`.
+    response = client.get("/agent/brand/assets/logo-a1b2c3d4.svg")
+    assert (
+        response.headers["Cache-Control"]
+        == "public, max-age=31536000, immutable"
+    )
+
+
+def test_unknown_brand_asset_returns_404(
+    mirrored_svg: None,
+    client: FlaskClient,
+) -> None:
+    # Test: HTTP lookup of a nonexistent asset name on
+    #   `/agent/brand/assets/<name>`.
+    # Situation: A client requests `/agent/brand/assets/logo-00000000.svg`,
+    #   which is not present in `_BRAND_STATE["assets"]`.
+    # Expectation: The endpoint returns HTTP 404.
+    response = client.get("/agent/brand/assets/logo-00000000.svg")
+    assert response.status_code == 404
+
+
