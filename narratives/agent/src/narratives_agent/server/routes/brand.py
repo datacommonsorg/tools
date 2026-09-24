@@ -139,34 +139,50 @@ def _looks_like_credential(key: str, value: str) -> bool:
     return any(pattern.match(value) for pattern in _CREDENTIAL_PATTERNS)
 
 
-def find_credential_like_values(node, path: str = "") -> list[str]:
+def find_credential_like_values(
+    node, path: str = "", key: str = ""
+) -> list[str]:
     """Walks a config document and reports paths that look like credentials.
+
+    Every string in the document is inspected regardless of whether it is stored
+    directly in a dictionary or inside a nested list. Lists inherit the key of
+    their enclosing dictionary entry so that elements under secret-bearing keys
+    (such as `api_keys`) are evaluated against that key name as well as against
+    credential value patterns.
 
     Args:
         node: The config fragment to inspect: dict, list or scalar.
         path: Dotted path of `node` within the document, used for reporting.
+        key: Name of the enclosing dictionary key through which `node` was
+            reached.
 
     Returns:
         Dotted paths of every entry that appears to hold a secret.
     """
     findings: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            child = f"{path}.{key}" if path else key
-            if isinstance(value, str) and _looks_like_credential(key, value):
-                findings.append(child)
-            else:
-                findings.extend(find_credential_like_values(value, child))
+    if isinstance(node, str):
+        if _looks_like_credential(key, node):
+            findings.append(path)
+    elif isinstance(node, dict):
+        for child_key, value in node.items():
+            child = f"{path}.{child_key}" if path else child_key
+            findings.extend(
+                find_credential_like_values(value, child, child_key)
+            )
     elif isinstance(node, list):
         for index, value in enumerate(node):
             findings.extend(
-                find_credential_like_values(value, f"{path}[{index}]")
+                find_credential_like_values(value, f"{path}[{index}]", key)
             )
     return findings
 
 
 def _redact(node, paths: set[str], path: str = "") -> None:
-    """Removes the entries at `paths` from `node`, in place."""
+    """Removes the entries at `paths` from `node`, in place.
+
+    Paths refer to original list indices, so flagged elements are filtered into
+    a new list and assigned back rather than deleted during iteration.
+    """
     if isinstance(node, dict):
         for key in list(node):
             child = f"{path}.{key}" if path else key
@@ -175,8 +191,14 @@ def _redact(node, paths: set[str], path: str = "") -> None:
             else:
                 _redact(node[key], paths, child)
     elif isinstance(node, list):
+        kept = []
         for index, value in enumerate(node):
-            _redact(value, paths, f"{path}[{index}]")
+            child = f"{path}[{index}]"
+            if child in paths:
+                continue
+            _redact(value, paths, child)
+            kept.append(value)
+        node[:] = kept
 
 
 def _fetch_branding_document(base_url: str) -> dict | None:
