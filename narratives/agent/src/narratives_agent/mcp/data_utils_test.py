@@ -125,17 +125,25 @@ def test_search_matching_no_variables_reports_missing_variables() -> None:
     )
 
 
-def test_matched_variable_with_empty_observations_reports_no_data() -> None:
+@pytest.mark.parametrize(
+    "payload",
+    [V121_EMPTY, V130_EMPTY],
+    ids=["1.2.x empty", "1.3.x empty"],
+)
+def test_matched_variable_with_empty_observations_reports_no_data(
+    payload: dict[str, Any],
+) -> None:
     # Test: Status message when variables are found but hold no observations.
     # Situation: `search_indicators` returns a candidate variable, and
-    #   `get_observations` subsequently returns an empty payload.
+    #   `get_observations` subsequently returns an empty MCP 1.2.x or MCP 1.3.x
+    #   payload.
     # Expectation: `has_data` is `False`, `no_variables_found` is `False`,
     #   `no_observations_found` is `True`, and the status message reports that
     #   the variable exists but has no observations available.
     status = data_utils.check_data_availability(
         [
             tool_call("search_indicators", {"variables": ["Count_Person"]}),
-            tool_call("get_observations", V130_EMPTY),
+            tool_call("get_observations", payload),
         ]
     )
     assert status["has_data"] is False
@@ -253,21 +261,23 @@ def test_unreferenced_metadata_candidate_is_not_included_as_source() -> None:
     assert data_utils.extract_provenance_from_mcp_results(calls) == []
 
 
-def test_observation_without_metadata_uses_inline_source_fields() -> None:
+def test_observation_absent_from_metadata_uses_inline_source_fields() -> None:
     # Test: Fallback provenance construction when no metadata entry matches.
-    # Situation: `get_observations` returns a `sourceId` not present in the
-    #   metadata index, along with `provenanceUrl` and `importName`.
+    # Situation: `get_variable_metadata` describes only `facet1`, and
+    #   `get_observations` returns a different `sourceId` along with
+    #   `provenanceUrl` and `importName`.
     # Expectation: `extract_provenance_from_mcp_results` constructs the source
     #   entry from `importName` and `provenanceUrl`.
     calls = [
+        tool_call("get_variable_metadata", _CENSUS_METADATA),
         tool_call(
             "get_observations",
             _observation(
-                "facet9",
+                "facet_not_in_metadata",
                 provenanceUrl="https://www.bls.gov/",
                 importName="BLS_LAUS",
             ),
-        )
+        ),
     ]
     assert data_utils.extract_provenance_from_mcp_results(calls) == [
         {"name": "BLS_LAUS", "url": "https://www.bls.gov/"}
@@ -277,14 +287,19 @@ def test_observation_without_metadata_uses_inline_source_fields() -> None:
 def test_unnamed_observation_source_falls_back_to_domain() -> None:
     # Test: Domain-name fallback when an observation source carries only a URL.
     # Situation: `get_observations` provides `provenanceUrl` without
-    #   `importName` or `sourceName`, and no metadata call describes the facet.
+    #   `importName` or `sourceName`, and the metadata index does not describe
+    #   the facet.
     # Expectation: `extract_provenance_from_mcp_results` uses the URL's hostname
     #   with any leading `www.` removed as the source name.
     calls = [
+        tool_call("get_variable_metadata", _CENSUS_METADATA),
         tool_call(
             "get_observations",
-            _observation("facet9", provenanceUrl="https://www.example.org/x"),
-        )
+            _observation(
+                "facet_not_in_metadata",
+                provenanceUrl="https://www.example.org/x",
+            ),
+        ),
     ]
     assert data_utils.extract_provenance_from_mcp_results(calls) == [
         {"name": "example.org", "url": "https://www.example.org/x"}

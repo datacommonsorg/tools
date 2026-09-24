@@ -225,8 +225,8 @@ def test_load_branding_redacts_credentials_before_publishing(
     assert _KEY_SHAPED not in js_response.get_data(as_text=True)
 
 
+@pytest.mark.usefixtures("mirrored_svg")
 def test_mirrored_asset_is_served_with_nosniff_header(
-    mirrored_svg: None,
     client: FlaskClient,
 ) -> None:
     # Test: Content-Type and `X-Content-Type-Options` header on
@@ -242,8 +242,8 @@ def test_mirrored_asset_is_served_with_nosniff_header(
     assert response.data == _SVG
 
 
+@pytest.mark.usefixtures("mirrored_svg")
 def test_mirrored_asset_is_served_with_immutable_cache_control(
-    mirrored_svg: None,
     client: FlaskClient,
 ) -> None:
     # Test: `Cache-Control` header on content-addressed brand assets.
@@ -258,10 +258,8 @@ def test_mirrored_asset_is_served_with_immutable_cache_control(
     )
 
 
-def test_unknown_brand_asset_returns_404(
-    mirrored_svg: None,
-    client: FlaskClient,
-) -> None:
+@pytest.mark.usefixtures("mirrored_svg")
+def test_unknown_brand_asset_returns_404(client: FlaskClient) -> None:
     # Test: HTTP lookup of a nonexistent asset name on
     #   `/agent/brand/assets/<name>`.
     # Situation: A client requests `/agent/brand/assets/logo-00000000.svg`,

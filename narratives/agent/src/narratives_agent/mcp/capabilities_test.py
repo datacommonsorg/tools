@@ -101,11 +101,11 @@ def test_malformed_tool_entries_are_ignored() -> None:
     #   empty dictionary, a dictionary with an empty `name`, and one valid tool
     #   dictionary.
     # Expectation: `from_tools` retains only the valid non-empty tool name
-    #   (`"get_x"`).
+    #   (`"valid_tool"`).
     caps = capabilities.from_tools(
-        ["get_observations", None, {}, {"name": ""}, {"name": "get_x"}]
+        ["bare_string", None, {}, {"name": ""}, {"name": "valid_tool"}]
     )
-    assert caps.tool_names == frozenset({"get_x"})
+    assert caps.tool_names == frozenset({"valid_tool"})
 
 
 def test_empty_tool_list_yields_empty_tool_names() -> None:

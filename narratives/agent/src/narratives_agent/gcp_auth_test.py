@@ -77,7 +77,8 @@ def test_public_data_commons_gets_the_api_key(url: str) -> None:
     assert headers == {"X-API-Key": _API_KEY}
 
 
-def test_private_cloud_run_gets_an_id_token(stub_id_token: None) -> None:
+@pytest.mark.usefixtures("stub_id_token")
+def test_private_cloud_run_gets_an_id_token() -> None:
     # Test: Credential selection for a private Cloud Run data plane.
     # Situation: The target URL is an HTTPS Cloud Run service outside the
     #   public Data Commons host allowlist.
@@ -99,9 +100,8 @@ def test_local_http_target_gets_no_credential() -> None:
     assert headers == {}
 
 
-def test_api_key_is_not_sent_to_an_unlisted_host(
-    stub_id_token: None,
-) -> None:
+@pytest.mark.usefixtures("stub_id_token")
+def test_api_key_is_not_sent_to_an_unlisted_host() -> None:
     # Test: Enforcement of the host allowlist for `DC_API_KEY`.
     # Situation: The target URL is an external HTTPS host that is not in the
     #   public Data Commons allowlist.
@@ -156,9 +156,8 @@ def id_token_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gcp_auth, "_TOKEN_CACHE", {})
 
 
-def test_minted_id_token_is_cached(
-    monkeypatch: pytest.MonkeyPatch, id_token_cache: None
-) -> None:
+@pytest.mark.usefixtures("id_token_cache")
+def test_minted_id_token_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     # Test: Caching of a valid ID token returned by the metadata server.
     # Situation: The metadata server returns a non-empty token string, and
     #   `get_id_token` is called twice for the same audience.
@@ -172,9 +171,8 @@ def test_minted_id_token_is_cached(
     assert server.calls == 1
 
 
-def test_empty_id_token_is_not_cached(
-    monkeypatch: pytest.MonkeyPatch, id_token_cache: None
-) -> None:
+@pytest.mark.usefixtures("id_token_cache")
+def test_empty_id_token_is_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     # Test: Rejection of an empty HTTP 200 body from the metadata server.
     # Situation: The metadata server responds with HTTP 200 and an empty body.
     # Expectation: `get_id_token` returns `""` without writing to
@@ -188,8 +186,9 @@ def test_empty_id_token_is_not_cached(
     assert gcp_auth._TOKEN_CACHE == {}
 
 
+@pytest.mark.usefixtures("id_token_cache")
 def test_failed_id_token_fetch_is_not_cached(
-    monkeypatch: pytest.MonkeyPatch, id_token_cache: None
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: Handling of network errors when contacting the metadata server.
     # Situation: `requests.get` raises an `OSError` because the metadata server

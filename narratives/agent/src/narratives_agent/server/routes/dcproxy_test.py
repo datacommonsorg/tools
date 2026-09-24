@@ -136,10 +136,10 @@ def split_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dcproxy, "DATA_PLANE_WEB_URL", _WEB_HOST)
 
 
+@pytest.mark.usefixtures("split_hosts")
 def test_mcp_route_forwards_to_api_host(
     client: FlaskClient,
     recorder: _UpstreamRecorder,
-    split_hosts: None,
 ) -> None:
     # Test: Upstream target URL when proxying `/mcp`.
     # Situation: `DATA_PLANE_URL` and `DATA_PLANE_WEB_URL` point to distinct
@@ -164,11 +164,11 @@ def test_mcp_route_forwards_to_api_host(
         "/datacommons.js",
     ],
 )
+@pytest.mark.usefixtures("split_hosts")
 def test_website_routes_forward_to_web_host(
     path: str,
     client: FlaskClient,
     recorder: _UpstreamRecorder,
-    split_hosts: None,
 ) -> None:
     # Test: Upstream target URL for non-MCP data-plane routes.
     # Situation: `DATA_PLANE_URL` and `DATA_PLANE_WEB_URL` point to distinct
@@ -283,10 +283,10 @@ def test_unconfigured_data_plane_url_returns_503(
     assert recorder.calls == []
 
 
+@pytest.mark.usefixtures("split_hosts")
 def test_upstream_request_exception_returns_502(
     client: FlaskClient,
     recorder: _UpstreamRecorder,
-    split_hosts: None,
 ) -> None:
     # Test: Error handling when the upstream request fails.
     # Situation: `dcproxy._SESSION.request` raises a
@@ -299,10 +299,10 @@ def test_upstream_request_exception_returns_502(
     assert "Data plane unreachable" in response.get_json()["error"]
 
 
+@pytest.mark.usefixtures("split_hosts")
 def test_upstream_framing_headers_are_not_copied_to_response(
     client: FlaskClient,
     recorder: _UpstreamRecorder,
-    split_hosts: None,
 ) -> None:
     # Test: Filtering of upstream framing headers on proxied responses.
     # Situation: The upstream response includes `Content-Encoding: gzip`,

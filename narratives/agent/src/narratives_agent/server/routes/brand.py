@@ -194,10 +194,9 @@ def _redact(node, paths: set[str], path: str = "") -> None:
         kept = []
         for index, value in enumerate(node):
             child = f"{path}[{index}]"
-            if child in paths:
-                continue
-            _redact(value, paths, child)
-            kept.append(value)
+            if child not in paths:
+                _redact(value, paths, child)
+                kept.append(value)
         node[:] = kept
 
 
