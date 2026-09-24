@@ -11,18 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for host-based credential selection in `gcp_auth.attach_auth`.
+"""Tests for host-based credential selection and ID token caching in `gcp_auth`.
 
-Verifies how `attach_auth` selects credentials based on the target URL:
-- Allowlisted public Data Commons hosts receive the `X-API-Key` header.
-- Private HTTPS Cloud Run hosts receive a Google-signed Bearer ID token.
-- Plain HTTP localhost URLs (sidecar deployments) receive no auth headers.
-- Unlisted external HTTPS hosts do not receive `DC_API_KEY`, preventing a
-  modified remote configuration from leaking the API key to an arbitrary host.
-- Setting `DATA_PLANE_AUTH=off` disables credential attachment entirely.
+Verifies two behaviors in `gcp_auth`:
+1. `attach_auth` selects credentials based on the target URL:
+   - Allowlisted public Data Commons hosts receive the `X-API-Key` header.
+   - Private HTTPS Cloud Run hosts receive a Google-signed Bearer ID token.
+   - Plain HTTP localhost URLs (sidecar deployments) receive no auth headers.
+   - Unlisted external HTTPS hosts do not receive `DC_API_KEY`, preventing a
+     modified remote configuration from leaking the API key to an arbitrary
+     host.
+   - Setting `DATA_PLANE_AUTH=off` disables credential attachment entirely.
+2. `get_id_token` caches minted ID tokens across requests while refusing to
+   cache empty responses or failed metadata server requests.
 """
 
 import pytest
+import requests
 
 from narratives_agent import gcp_auth
 
@@ -46,6 +51,11 @@ def credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("DATA_PLANE_AUTH", raising=False)
     monkeypatch.setenv("DC_API_KEY", _API_KEY)
+
+
+@pytest.fixture
+def stub_id_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub `gcp_auth.get_id_token` for `attach_auth` tests that mint tokens."""
     monkeypatch.setattr(gcp_auth, "get_id_token", _fake_id_token)
 
 
@@ -67,7 +77,7 @@ def test_public_data_commons_gets_the_api_key(url: str) -> None:
     assert headers == {"X-API-Key": _API_KEY}
 
 
-def test_private_cloud_run_gets_an_id_token() -> None:
+def test_private_cloud_run_gets_an_id_token(stub_id_token: None) -> None:
     # Test: Credential selection for a private Cloud Run data plane.
     # Situation: The target URL is an HTTPS Cloud Run service outside the
     #   public Data Commons host allowlist.
@@ -89,7 +99,9 @@ def test_local_http_target_gets_no_credential() -> None:
     assert headers == {}
 
 
-def test_api_key_is_not_sent_to_an_unlisted_host() -> None:
+def test_api_key_is_not_sent_to_an_unlisted_host(
+    stub_id_token: None,
+) -> None:
     # Test: Enforcement of the host allowlist for `DC_API_KEY`.
     # Situation: The target URL is an external HTTPS host that is not in the
     #   public Data Commons allowlist.
@@ -111,3 +123,82 @@ def test_data_plane_auth_off_attaches_no_credential(
     headers: dict[str, str] = {}
     gcp_auth.attach_auth(headers, "https://api.datacommons.org/mcp")
     assert headers == {}
+
+
+_AUDIENCE = "https://data-plane-uc.a.run.app"
+
+
+class _StubResponse:
+    """Minimal `requests.Response` stub for metadata server responses."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _CountingMetadataServer:
+    """Callable stub for `requests.get` that counts metadata server calls."""
+
+    def __init__(self, body: str) -> None:
+        self.body = body
+        self.calls = 0
+
+    def __call__(self, *args: object, **kwargs: object) -> _StubResponse:
+        self.calls += 1
+        return _StubResponse(self.body)
+
+
+@pytest.fixture
+def id_token_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate `_TOKEN_CACHE` for each token-caching test."""
+    monkeypatch.setattr(gcp_auth, "_TOKEN_CACHE", {})
+
+
+def test_minted_id_token_is_cached(
+    monkeypatch: pytest.MonkeyPatch, id_token_cache: None
+) -> None:
+    # Test: Caching of a valid ID token returned by the metadata server.
+    # Situation: The metadata server returns a non-empty token string, and
+    #   `get_id_token` is called twice for the same audience.
+    # Expectation: Both calls return the minted token while issuing only one
+    #   HTTP request to the metadata server.
+    server = _CountingMetadataServer("minted-token")
+    monkeypatch.setattr(requests, "get", server)
+
+    assert gcp_auth.get_id_token(_AUDIENCE) == "minted-token"
+    assert gcp_auth.get_id_token(_AUDIENCE) == "minted-token"
+    assert server.calls == 1
+
+
+def test_empty_id_token_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch, id_token_cache: None
+) -> None:
+    # Test: Rejection of an empty HTTP 200 body from the metadata server.
+    # Situation: The metadata server responds with HTTP 200 and an empty body.
+    # Expectation: `get_id_token` returns `""` without writing to
+    #   `_TOKEN_CACHE`, so subsequent requests retry the metadata server.
+    server = _CountingMetadataServer("")
+    monkeypatch.setattr(requests, "get", server)
+
+    assert gcp_auth.get_id_token(_AUDIENCE) == ""
+    assert gcp_auth.get_id_token(_AUDIENCE) == ""
+    assert server.calls == 2
+    assert gcp_auth._TOKEN_CACHE == {}
+
+
+def test_failed_id_token_fetch_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch, id_token_cache: None
+) -> None:
+    # Test: Handling of network errors when contacting the metadata server.
+    # Situation: `requests.get` raises an `OSError` because the metadata server
+    #   is unreachable.
+    # Expectation: `get_id_token` returns `""` and leaves `_TOKEN_CACHE` empty.
+    def _unreachable(*args: object, **kwargs: object) -> _StubResponse:
+        raise OSError("no metadata server here")
+
+    monkeypatch.setattr(requests, "get", _unreachable)
+
+    assert gcp_auth.get_id_token(_AUDIENCE) == ""
+    assert gcp_auth._TOKEN_CACHE == {}
