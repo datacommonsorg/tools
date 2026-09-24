@@ -32,20 +32,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Model used whenever config.json names none. Read through get_gemini_model()
-# rather than repeated inline, because the deployed config sets no model at all
-# -- every caller runs on this default, so a caller that spells its own default
-# differently silently calls a different model than the rest of the pipeline.
-# That is not hypothetical: the chart-suppression check defaulted to
-# "gemini-2.0-flash", which the project's API key cannot address at all. Every
-# call 404'd, the 404 body carried no `candidates`, the check read that as
-# "data found" and charts were never suppressed.
+# Model used whenever agent-config.json names none. Read through
+# get_gemini_model() rather than repeated inline, because the deployed config
+# sets no model at all -- every caller runs on this default, so a caller that
+# spells its own default differently silently calls a different model than the
+# rest of the pipeline. That is not hypothetical: the chart-suppression check
+# defaulted to "gemini-2.0-flash", which the project's API key cannot address
+# at all. Every call 404'd, the 404 body carried no `candidates`, the check
+# read that as "data found" and charts were never suppressed.
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 
 
 def get_gemini_model(config: dict, key: str = "mcp_model") -> str:
     """Returns the configured Gemini model for `key`, or the shared default."""
-    return config.get("gemini", {}).get(key) or DEFAULT_GEMINI_MODEL
+    gemini_cfg = config.get("gemini")
+    model = gemini_cfg.get(key) if isinstance(gemini_cfg, dict) else None
+    if isinstance(model, str) and model.strip():
+        return model.strip()
+    return DEFAULT_GEMINI_MODEL
 
 
 # Secret Manager client for runtime key loading (optional import).

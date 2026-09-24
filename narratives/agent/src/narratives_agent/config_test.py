@@ -11,17 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for prompt rendering, prompt URL derivation, and Gemini key loading.
+"""Tests for prompt rendering, prompt fetching, model selection, and keys.
 
-Covers three configuration behaviors:
+Covers five configuration behaviors in `config`:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts.
 2. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
-   bucket directory prefixes while stripping query parameters.
+   bucket directory prefixes while stripping query parameters, and stripping
+   HTML authoring comments from loaded prompt files.
 3. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
    preferring Secret Manager over `config.json` and rejecting placeholder,
    empty, or JSON-wrapped secret payloads.
+4. Resolution of `get_gemini_model` across configured, empty, and null `gemini`
+   configuration sections.
+5. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
+   resolved.
 """
 
 import pytest
@@ -357,3 +362,106 @@ def test_fetch_key_from_secret_manager_validates_secret_payload(
         assert config._secret_manager_cache[secret_path][1] == expected
     else:
         assert secret_path not in config._secret_manager_cache
+
+
+# --- prompt bodies ----------------------------------------------------------
+
+
+class _BodyFetch:
+    """Callable stub that returns a fixed response body for every slot."""
+
+    def __init__(self, body: str) -> None:
+        self.body = body
+
+    def __call__(self, url: str) -> _StubResponse:
+        response = _StubResponse()
+        response.text = self.body
+        return response
+
+
+def test_html_comments_are_stripped_from_prompt_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Stripping of HTML authoring comments in `_fetch_prompt_bodies`.
+    # Situation: A fetched `.md` prompt file contains an `<!-- ... -->` comment
+    #   between two lines of instruction text.
+    # Expectation: `_fetch_prompt_bodies` removes the HTML comment before
+    #   storing the prompt text for the slot.
+    monkeypatch.setattr(
+        config,
+        "_fetch_gcs_url",
+        _BodyFetch("Answer plainly.\n<!-- keep in sync with X -->\nCite."),
+    )
+    prompts = config._fetch_prompt_bodies("https://example.com/config.json")
+    assert prompts["mcp"] == "Answer plainly.\n\nCite."
+
+
+def test_prompt_containing_only_html_comment_leaves_slot_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Handling of prompt files that are empty after HTML comment removal.
+    # Situation: A fetched `.md` prompt file contains only an HTML comment and
+    #   whitespace.
+    # Expectation: `_fetch_prompt_bodies` omits the slot from the returned
+    #   dictionary rather than setting it to an empty string.
+    monkeypatch.setattr(
+        config, "_fetch_gcs_url", _BodyFetch("<!-- not written yet -->")
+    )
+    assert config._fetch_prompt_bodies("https://example.com/c.json") == {}
+
+
+# --- model selection --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {},
+        {"gemini": None},
+        {"gemini": {}},
+        {"gemini": {"mcp_model": ""}},
+        {"gemini": {"mcp_model": "   "}},
+    ],
+    ids=[
+        "missing gemini section",
+        "null gemini section",
+        "empty gemini section",
+        "empty mcp_model string",
+        "whitespace mcp_model string",
+    ],
+)
+def test_get_gemini_model_defaults_when_unconfigured_or_null(
+    document: dict[str, object],
+) -> None:
+    # Test: Fallback to `DEFAULT_GEMINI_MODEL` in `get_gemini_model`.
+    # Situation: The configuration omits `gemini`, sets `gemini` to `None`, or
+    #   sets `gemini.mcp_model` to an empty or whitespace-only string.
+    # Expectation: `get_gemini_model` returns `config.DEFAULT_GEMINI_MODEL`.
+    assert config.get_gemini_model(document) == config.DEFAULT_GEMINI_MODEL
+
+
+def test_get_gemini_model_returns_configured_model() -> None:
+    # Test: Resolution of an explicit model name in `get_gemini_model`.
+    # Situation: `gemini.mcp_model` is set to `"gemini-3-pro"`.
+    # Expectation: `get_gemini_model` returns `"gemini-3-pro"`.
+    document = {"gemini": {"mcp_model": "gemini-3-pro"}}
+    assert config.get_gemini_model(document) == "gemini-3-pro"
+
+
+# --- prompt datetime rendering ----------------------------------------------
+
+
+def test_unresolvable_timezone_falls_back_to_utc(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Fallback to `UTC` in `get_current_datetime` on an invalid timezone.
+    # Situation: The `TIMEZONE` environment variable is set to an unknown IANA
+    #   timezone identifier (`"Mars/Olympus_Mons"`).
+    # Expectation: `get_current_datetime` logs a warning and returns a timestamp
+    #   formatted in `UTC` without raising an exception.
+    monkeypatch.setenv("TIMEZONE", "Mars/Olympus_Mons")
+    with caplog.at_level("WARNING"):
+        result = config.get_current_datetime()
+    assert result.endswith("UTC")
+    assert "Mars/Olympus_Mons" in caplog.text
