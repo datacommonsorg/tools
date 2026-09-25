@@ -19,6 +19,7 @@ import posixpath
 import re
 import time
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
@@ -43,10 +44,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 
 
-def get_gemini_model(config: dict, key: str = "mcp_model") -> str:
-    """Returns the configured Gemini model for `key`, or the shared default."""
+def get_gemini_model(config: dict[str, Any]) -> str:
+    """Returns the model `gemini.mcp_model` names, or the shared default."""
     gemini_cfg = config.get("gemini")
-    model = gemini_cfg.get(key) if isinstance(gemini_cfg, dict) else None
+    model = (
+        gemini_cfg.get("mcp_model") if isinstance(gemini_cfg, dict) else None
+    )
     if isinstance(model, str) and model.strip():
         return model.strip()
     return DEFAULT_GEMINI_MODEL
@@ -66,8 +69,8 @@ except ImportError:
 
 
 # Backend config cache
-_config_cache = None
-_config_mtime = 0
+_config_cache: dict[str, Any] | None = None
+_config_mtime = 0.0
 
 # Secret Manager lookup cache and TTL (seconds)
 _SECRET_MANAGER_TTL_SECONDS = 300
@@ -120,7 +123,7 @@ def _fetch_gcs_url(url: str) -> requests.Response:
     return response
 
 
-def _fetch_prompt_bodies(config_url: str) -> dict:
+def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     """Fetch `prompts/<slot>.md` from the config bucket, beside
     agent-config.json.
 
@@ -236,7 +239,7 @@ def _bootstrap_config_from_url() -> None:
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     """Load configuration from config.json file."""
     global _config_cache, _config_mtime
 
@@ -257,10 +260,11 @@ def load_config() -> dict:
         # prompt text with ₹ or an em-dash, an instance name -- would otherwise
         # decode by the platform locale and come back corrupted.
         with open(config_path, encoding="utf-8") as f:
-            _config_cache = json.load(f)
+            config: dict[str, Any] = json.load(f)
+            _config_cache = config
             _config_mtime = current_mtime
             logger.info("Config loaded/reloaded from config.json")
-            return _config_cache
+            return config
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
         return {}

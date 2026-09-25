@@ -95,11 +95,9 @@ mypy_path = "src"
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-# Branch 4 rewrites the web layer and decomposes config.py.
+# Branch 4 rewrites the web layer.
 module = [
     "main",
-    "narratives_agent.config",
-    "narratives_agent.gcp_auth",
     "narratives_agent.server.app",
     "narratives_agent.server.routes",
     "narratives_agent.server.routes.brand",
