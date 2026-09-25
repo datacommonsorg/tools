@@ -20,7 +20,7 @@ from flask import Flask
 from flask_cors import CORS
 
 # Configuration
-PROXY_PORT = int(os.environ.get("PROXY_PORT", 5001))
+AGENT_PORT = int(os.environ.get("AGENT_PORT", 5001))
 
 logger = logging.getLogger(__name__)
 

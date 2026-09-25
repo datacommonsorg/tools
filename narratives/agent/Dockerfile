@@ -22,7 +22,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_NO_CACHE=1 \
     AGENT_ROOT=/app \
     PATH="/app/.venv/bin:$PATH" \
-    PROXY_PORT=5001 \
+    AGENT_PORT=5001 \
     MCP_PORT=8082 \
     TIMEZONE=UTC \
     ALLOWED_ORIGIN=*
@@ -56,7 +56,7 @@ RUN uv sync --frozen --no-dev
 COPY --chown=appuser:appuser static/ ./static/
 
 # 8080 when this container is the Cloud Run ingress (the split deployment);
-# PROXY_PORT still applies when it runs as a sidecar behind nginx.
+# AGENT_PORT still applies when it runs as a sidecar behind nginx.
 EXPOSE 8080
 
 # Served by gunicorn, not Flask's development server.
@@ -75,10 +75,10 @@ EXPOSE 8080
 #                           cutting answers off mid-sentence.
 #
 # Shell form (not exec form) so ${PORT} expands: Cloud Run injects PORT when the
-# container is the ingress, and falls back to PROXY_PORT when it runs as a
+# container is the ingress, and falls back to AGENT_PORT when it runs as a
 # sidecar behind nginx. `exec` keeps gunicorn as PID 1 so it receives SIGTERM.
 CMD exec gunicorn \
-      --bind "0.0.0.0:${PORT:-${PROXY_PORT:-5001}}" \
+      --bind "0.0.0.0:${PORT:-${AGENT_PORT:-5001}}" \
       --worker-class gthread \
       --workers 1 \
       --threads 16 \

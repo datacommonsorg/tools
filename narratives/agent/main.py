@@ -33,7 +33,7 @@ from narratives_agent.mcp.client import (
     initialize_mcp,
     mcp_url,
 )
-from narratives_agent.server.app import PROXY_PORT, app
+from narratives_agent.server.app import AGENT_PORT, app
 from narratives_agent.server.routes import register_all
 
 # Startup work runs at import time, not inside main(), because production
@@ -76,12 +76,12 @@ def main():
         print("The proxy will start anyway - MCP server can be started later")
 
     # Start proxy
-    print(f"\nStarting proxy on port {PROXY_PORT}...")
-    print(f"Frontend should connect to: http://localhost:{PROXY_PORT}")
+    print(f"\nStarting proxy on port {AGENT_PORT}...")
+    print(f"Frontend should connect to: http://localhost:{AGENT_PORT}")
     print("\nPress Ctrl+C to stop")
     print("=" * 60)
 
-    app.run(host="0.0.0.0", port=PROXY_PORT, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=AGENT_PORT, debug=False, threaded=True)
 
 
 if __name__ == "__main__":
