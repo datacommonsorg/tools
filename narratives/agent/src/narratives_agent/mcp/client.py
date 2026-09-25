@@ -32,7 +32,7 @@ from narratives_agent.settings import get_settings
 logger = logging.getLogger(__name__)
 
 # Resolved on first use, not at import: load_config() reads config.json, which
-# _bootstrap_config_from_url() only writes once startup has run. A dict rather
+# bootstrap_config_from_url() only writes once startup has run. A dict rather
 # than a rebound module global so mcp_url() needs no `global` statement.
 _URL_CACHE = {}
 

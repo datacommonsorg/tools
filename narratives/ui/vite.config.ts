@@ -14,12 +14,12 @@ export default defineConfig(({mode}) => {
     target: env.BACKEND_URL || DEFAULT_BACKEND_URL,
     changeOrigin: true,
   };
-  // Path B (bare local agent): the agent registers its routes at the root
-  // (/health, /brand, /chat/stream) and relies on the deployed nginx to strip
-  // the /agent prefix. Nothing strips it in front of a local `python main.py`,
-  // so every /agent/* call 404s. Opt in with AGENT_STRIP_PREFIX=true in
-  // .env.local. Left off, Path A keeps forwarding /agent/* verbatim to a
-  // deployed instance, whose nginx expects the prefix to still be there.
+  // The agent serves its API under AGENT_API_PREFIX, which defaults to
+  // /agent, so /agent/* is forwarded verbatim by default, to a deployed
+  // instance (Path A) or to a local agent (Path B). AGENT_STRIP_PREFIX=true
+  // in .env.local strips /agent before forwarding, which is correct only for
+  // an agent run with AGENT_API_PREFIX=/ (its API at the root). An empty
+  // AGENT_API_PREFIX counts as unset and selects /agent.
   const agentProxy = {
     target: env.AGENT_URL || DEFAULT_AGENT_URL,
     changeOrigin: true,

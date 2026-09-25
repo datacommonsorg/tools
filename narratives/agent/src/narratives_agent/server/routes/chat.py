@@ -12,12 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Streams a chat turn to the browser as Server-Sent Events."""
 
 import json
 import time
+from collections.abc import Generator
+from typing import Any
 
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
+from narratives_agent.server.responses import ClosingStreamingResponse
 from narratives_agent.session_logger import SessionLogger
 from narratives_agent.workflows.chat_pipeline import (
     run_followups,
@@ -25,12 +31,24 @@ from narratives_agent.workflows.chat_pipeline import (
     run_synthesis_phase,
 )
 
-chat_bp = Blueprint("chat", __name__)
+router = APIRouter()
 
 
-@chat_bp.route("/chat/stream", methods=["POST"])
-def chat_stream():
-    """Full chat workflow with SSE streaming.
+class ChatRequest(BaseModel):
+    """The JSON body of a chat request."""
+
+    message: str = Field(min_length=1)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    # SessionLogger names the session's log file after the id, so only
+    # characters that cannot leave the logs directory are accepted.
+    session_id: str | None = Field(
+        default=None, pattern=r"^[0-9A-Za-z-]{1,64}$"
+    )
+
+
+@router.post("/chat/stream")
+def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
+    """Streams the full chat workflow as Server-Sent Events.
 
     Phases:
     1. MCP Tools - Execute data queries (send tool call details)
@@ -44,19 +62,25 @@ def chat_stream():
     }
 
     Response: Server-Sent Events stream
-    """
-    data = request.get_json()
-    if not data or not data.get("message"):
-        return jsonify({"error": "Message required"}), 400
 
-    user_message = data["message"]
-    history = data.get("history", [])
-    existing_session_id = data.get("session_id")  # From follow-up messages
+    Starlette advances the synchronous generator below one `next()` call at a
+    time, each on a thread borrowed from AnyIO's worker pool, so one turn's
+    events can run on several threads. The MCP session id is thread-local
+    (`mcp/client.py`), so a turn can use several MCP sessions, and a later turn
+    can reuse a session that an earlier one left on a pool thread. This is
+    safe: a pool thread runs one job at a time, so no two requests share a
+    session at once; the MCP tool loop runs on one dedicated thread for the
+    whole turn; and `mcp_call` opens a session when its thread has none and
+    retries once on a new session when the server rejects one.
+    """
+    user_message = body.message
+    history = body.history
+    existing_session_id = body.session_id  # From follow-up messages
 
     # Create or resume session logger
     session_logger = SessionLogger(session_id=existing_session_id)
 
-    def generate():
+    def generate() -> Generator[str]:
         nonlocal session_logger
         request_start_time = time.time()
         full_text = ""
@@ -68,7 +92,7 @@ def chat_stream():
         # Shared mutable context threaded through the phase generators so the
         # threading/queue behavior and cross-phase state match the original
         # inline generator exactly.
-        ctx = {
+        ctx: dict[str, Any] = {
             "user_message": user_message,
             "history": history,
             "session_logger": session_logger,
@@ -89,16 +113,27 @@ def chat_stream():
             f"data: {json.dumps({'session_id': session_logger.session_id})}\n\n"
         )
 
-        yield from run_mcp_phase(ctx)
-        yield from run_synthesis_phase(ctx)
-        yield from run_followups(ctx)
+        # The phase generators are unannotated until Branch 5 rewrites the
+        # pipeline.
+        yield from run_mcp_phase(ctx)  # type: ignore[no-untyped-call]
+        yield from run_synthesis_phase(ctx)  # type: ignore[no-untyped-call]
+        yield from run_followups(ctx)  # type: ignore[no-untyped-call]
 
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream",
+    events = generate()
+    return ClosingStreamingResponse(
+        events,
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         },
+        # When the client disconnects -- the UI aborts the request on Stop and
+        # when a new turn is sent mid-stream -- the stream stops and this task
+        # still runs, whatever ASGI spec version the server reports (see
+        # ClosingStreamingResponse). Closing the generator runs the pipeline's
+        # cleanup, which closes the Gemini stream, at once rather than
+        # whenever the garbage collector reaches it. close() does nothing on a
+        # generator that already finished.
+        background=BackgroundTask(events.close),
     )

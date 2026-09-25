@@ -33,16 +33,19 @@ obtain anyway.
 """
 
 import logging
+from collections.abc import Iterator
+from typing import Annotated
 
 import requests
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from narratives_agent.gcp_auth import attach_auth
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-dcproxy_bp = Blueprint("dcproxy", __name__)
+router = APIRouter()
 
 # Prefixes that must go to the MCP/API host rather than the web host.
 #
@@ -145,26 +148,46 @@ _RESPONSE_HEADER_BLOCKLIST = frozenset(
 )
 
 
-def _forward(subpath: str, prefix: str) -> Response:
-    """Replay the current request against the data plane and stream it back."""
+async def _read_body(request: Request) -> bytes | None:
+    """Returns the request body for methods that carry one, or else None.
+
+    Runs as a dependency on the event loop, so the synchronous handler
+    receives the body already read and a GET never reads one at all.
+    """
+    if request.method in ("POST", "PUT", "PATCH"):
+        return await request.body()
+    return None
+
+
+def _forward(
+    request: Request, body: bytes | None, subpath: str, prefix: str
+) -> Response:
+    """Replays `request` on the data plane and streams the response back."""
     # Named upstream_url, not upstream: the response object below is called
     # `upstream`, and letting a URL and a Response share a name is how a later
     # edit reaches for the wrong one.
     upstream_url = _upstream_for(prefix)
     if not upstream_url:
-        return jsonify(
-            {"error": "DATA_PLANE_URL is not configured on the agent"}
-        ), 503
+        return JSONResponse(
+            {"error": "DATA_PLANE_URL is not configured on the agent"},
+            status_code=503,
+        )
 
     target = f"{upstream_url}/{subpath}"
-    if request.query_string:
-        target = f"{target}?{request.query_string.decode('utf-8', 'ignore')}"
+    query_string: bytes = request.scope["query_string"]
+    if query_string:
+        target = f"{target}?{query_string.decode('utf-8', 'ignore')}"
 
-    headers = {
-        k: v
-        for k, v in request.headers.items()
-        if k.lower() not in _HOP_HEADERS
-    }
+    # A header sent on several lines is forwarded as one, its values joined
+    # with ", " (RFC 9110 section 5.3), so no value is lost. Cookie, whose
+    # values join with "; " instead, never reaches the join: it is in
+    # _HOP_HEADERS.
+    headers: dict[str, str] = {}
+    for k, v in request.headers.items():
+        name = k.lower()
+        if name in _HOP_HEADERS:
+            continue
+        headers[name] = f"{headers[name]}, {v}" if name in headers else v
     # Auth is chosen by the host actually being called, not by a single
     # global -- the two hosts differ on the "none" backend, and attaching a
     # credential scoped to the wrong host is how the API key would leak
@@ -177,16 +200,16 @@ def _forward(subpath: str, prefix: str) -> Response:
         upstream = _SESSION.request(
             request.method,
             target,
-            data=request.get_data()
-            if request.method in ("POST", "PUT", "PATCH")
-            else None,
+            data=body,
             headers=headers,
             stream=True,
             timeout=120,
         )
-    except Exception as e:  # pylint: disable=broad-except
+    except requests.RequestException as e:
         logger.error("dcproxy: %s %s failed: %s", request.method, target, e)
-        return jsonify({"error": f"Data plane unreachable: {e}"}), 502
+        return JSONResponse(
+            {"error": f"Data plane unreachable: {e}"}, status_code=502
+        )
 
     # Surface upstream failures in the log -- this is the first place to look
     # when charts or tools do not render. 401/403 = IAM or ingress, 404 = the
@@ -199,42 +222,54 @@ def _forward(subpath: str, prefix: str) -> Response:
             upstream.status_code,
         )
 
-    return Response(
-        stream_with_context(upstream.iter_content(chunk_size=8192)),
-        status=upstream.status_code,
-        headers=[
-            (k, v)
-            for k, v in upstream.raw.headers.items()
-            if k.lower() not in _RESPONSE_HEADER_BLOCKLIST
-        ],
+    response = StreamingResponse(
+        _stream_upstream(upstream), status_code=upstream.status_code
     )
+    # Appended one at a time, so a repeated header such as Set-Cookie keeps
+    # every value instead of the last one replacing the others.
+    for k, v in upstream.raw.headers.items():
+        if k.lower() not in _RESPONSE_HEADER_BLOCKLIST:
+            response.headers.append(k, v)
+    return response
+
+
+def _stream_upstream(upstream: requests.Response) -> Iterator[bytes]:
+    """Yields the upstream body in chunks, then closes the upstream response.
+
+    The `finally` block returns the connection to the pool however the stream
+    ends: completed, failed, or closed early when the client disconnects.
+    """
+    try:
+        yield from upstream.iter_content(chunk_size=8192)
+    finally:
+        upstream.close()
 
 
 def _register_prefix(prefix: str) -> None:
-    """Route both `/<prefix>` and `/<prefix>/<anything>` to the data plane.
+    """Routes both `/<prefix>` and `/<prefix>/<anything>` to the data plane.
 
-    Registered as explicit rules rather than one catch-all so that unknown
-    paths still fall through to the SPA, and so these take precedence over
-    spa.py's single-segment `/<name>` root-asset rule (Werkzeug prefers a
-    static rule part over a converter).
+    Registered as two explicit routes rather than one catch-all so that unknown
+    paths still fall through to the SPA. The closure binds the prefix: FastAPI
+    fills a handler parameter that is not in the path from the query string,
+    so a prefix parameter would let `?prefix=mcp` choose the upstream.
     """
     methods = ["GET", "POST", "OPTIONS", "HEAD"]
-    # Flask forbids "." in an endpoint name (it separates blueprint from
-    # endpoint), and several prefixes are filenames -- datacommons.js,
-    # queryStore.js. The URL rule keeps the dot; only the name is sanitized.
-    name = prefix.replace(".", "_")
 
-    dcproxy_bp.add_url_rule(
-        f"/{prefix}",
-        endpoint=f"{name}_root",
-        view_func=lambda p=prefix: _forward(p, p),
-        methods=methods,
-    )
-    dcproxy_bp.add_url_rule(
-        f"/{prefix}/<path:subpath>",
-        endpoint=name,
-        view_func=lambda subpath, p=prefix: _forward(f"{p}/{subpath}", p),
-        methods=methods,
+    def forward_root(
+        request: Request, body: Annotated[bytes | None, Depends(_read_body)]
+    ) -> Response:
+        return _forward(request, body, prefix, prefix)
+
+    def forward_subpath(
+        subpath: str,
+        request: Request,
+        body: Annotated[bytes | None, Depends(_read_body)],
+    ) -> Response:
+        return _forward(request, body, f"{prefix}/{subpath}", prefix)
+
+    router.api_route(f"/{prefix}", methods=methods)(forward_root)
+    router.api_route(f"/{prefix}/{{subpath:path}}", methods=methods)(
+        forward_subpath
     )
 
 

@@ -38,9 +38,9 @@ _NO_KEY_ERROR = (
     "gemini.api_key in the agent config for local development"
 )
 
-# Shared connection pool for Gemini API requests, sized above the Gunicorn
-# worker thread count so concurrent chat turns reuse TLS connections without
-# blocking.
+# Shared connection pool for Gemini API requests, sized above AnyIO's default
+# limit of 40 worker threads so concurrent chat turns reuse TLS connections
+# without blocking.
 _SESSION = requests.Session()
 _SESSION.mount("https://", HTTPAdapter(pool_connections=8, pool_maxsize=64))
 

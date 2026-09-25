@@ -24,16 +24,22 @@ description = "App-plane agent for Data Commons Narratives."
 requires-python = ">=3.14"
 license = "Apache-2.0"
 dependencies = [
+    "fastapi>=0.141",
     "flask>=3.1",
     "flask-cors>=6.0",
     "google-cloud-secret-manager>=2.20",
     "gunicorn>=23.0",
     "pydantic-settings>=2.15",
     "requests>=2.32",
+    "uvicorn[standard]>=0.53",
 ]
+
+[project.scripts]
+narratives-agent-dev = "narratives_agent.dev:main"
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13",
     "mypy>=2.3",
     "pytest>=8.0",
     "ruff>=0.14",
@@ -90,23 +96,9 @@ docstring-code-format = true
 [tool.mypy]
 python_version = "3.14"
 strict = true
-files = ["src", "main.py"]
+files = ["src"]
 mypy_path = "src"
 explicit_package_bases = true
-
-[[tool.mypy.overrides]]
-# Branch 4 rewrites the web layer.
-module = [
-    "main",
-    "narratives_agent.server.app",
-    "narratives_agent.server.routes",
-    "narratives_agent.server.routes.brand",
-    "narratives_agent.server.routes.chat",
-    "narratives_agent.server.routes.dcproxy",
-    "narratives_agent.server.routes.spa",
-    "narratives_agent.server.routes.system",
-]
-ignore_errors = true
 
 [[tool.mypy.overrides]]
 # Branch 5 rewrites the pipeline and replaces SessionLogger with telemetry.

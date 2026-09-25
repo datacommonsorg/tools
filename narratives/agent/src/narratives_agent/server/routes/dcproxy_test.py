@@ -27,16 +27,20 @@ test client and a stubbed upstream session:
    `Content-Length`) are stripped from the proxied response.
 5. An unconfigured `DATA_PLANE_URL` returns HTTP 503, and an upstream transport
    exception returns HTTP 502.
+6. A query parameter cannot choose the upstream: the query string is forwarded
+   unchanged, and the route's own prefix selects the host.
+7. Repeated upstream response headers, such as two `Set-Cookie` headers, reach
+   the client as separate headers.
 """
 
 from collections.abc import Iterable
 
 import pytest
 import requests
-from flask.testing import FlaskClient
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from narratives_agent import gcp_auth
-from narratives_agent.server.app import app
 from narratives_agent.server.routes import dcproxy
 
 _API_HOST = "https://api.datacommons.org"
@@ -81,6 +85,9 @@ class _UpstreamResponse:
     def iter_content(self, chunk_size: int = 8192) -> Iterable[bytes]:
         yield self._body
 
+    def close(self) -> None:
+        """Does nothing: the stub holds no connection to release."""
+
 
 class _UpstreamRecorder:
     """Stub for `dcproxy._SESSION.request` that records outbound calls."""
@@ -108,14 +115,12 @@ class _UpstreamRecorder:
         return self.response
 
 
-if "dcproxy" not in app.blueprints:
-    app.register_blueprint(dcproxy.dcproxy_bp)
-
-
 @pytest.fixture
-def client() -> FlaskClient:
-    """Return a test client for the application with `dcproxy_bp` mounted."""
-    return app.test_client()
+def client() -> TestClient:
+    """Returns a test client for an app that serves only `dcproxy.router`."""
+    app = FastAPI()
+    app.include_router(dcproxy.router)
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -138,7 +143,7 @@ def split_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("split_hosts")
 def test_mcp_route_forwards_to_api_host(
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
 ) -> None:
     # Test: Upstream target URL when proxying `/mcp`.
@@ -149,7 +154,7 @@ def test_mcp_route_forwards_to_api_host(
     #   returns the upstream HTTP 200 payload.
     response = client.get("/mcp")
     assert response.status_code == 200
-    assert response.data == b"proxied-payload"
+    assert response.content == b"proxied-payload"
     assert len(recorder.calls) == 1
     _, target_url, _ = recorder.calls[0]
     assert target_url == f"{_API_HOST}/mcp"
@@ -167,7 +172,7 @@ def test_mcp_route_forwards_to_api_host(
 @pytest.mark.usefixtures("split_hosts")
 def test_website_routes_forward_to_web_host(
     path: str,
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
 ) -> None:
     # Test: Upstream target URL for non-MCP data-plane routes.
@@ -185,7 +190,7 @@ def test_website_routes_forward_to_web_host(
 @pytest.mark.parametrize("path", ["/mcp", "/api/place/name", "/core/api/node"])
 def test_single_host_deployment_forwards_all_routes_to_same_host(
     path: str,
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -205,7 +210,7 @@ def test_single_host_deployment_forwards_all_routes_to_same_host(
 
 
 def test_incoming_caller_identity_headers_are_stripped(
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -240,8 +245,26 @@ def test_incoming_caller_identity_headers_are_stripped(
     assert "x-goog-authenticated-user-id" not in lowered
 
 
+@pytest.mark.usefixtures("split_hosts")
+def test_repeated_request_headers_are_joined(
+    client: TestClient,
+    recorder: _UpstreamRecorder,
+) -> None:
+    # Test: Forwarding of a request header sent on more than one line.
+    # Situation: A client sends two `Accept` header lines on `GET /mcp`.
+    # Expectation: The upstream request carries one `Accept` header whose
+    #   value joins both values with ", ", in the order they arrived.
+    response = client.get(
+        "/mcp",
+        headers=[("Accept", "text/html"), ("Accept", "application/json")],
+    )
+    assert response.status_code == 200
+    _, _, forwarded_headers = recorder.calls[0]
+    assert forwarded_headers["accept"] == "text/html, application/json"
+
+
 def test_api_key_is_attached_for_public_dc_and_omitted_for_unlisted_host(
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -265,7 +288,7 @@ def test_api_key_is_attached_for_public_dc_and_omitted_for_unlisted_host(
 
 
 def test_unconfigured_data_plane_url_returns_503(
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -283,7 +306,7 @@ def test_unconfigured_data_plane_url_returns_503(
 
 @pytest.mark.usefixtures("split_hosts")
 def test_upstream_request_exception_returns_502(
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
 ) -> None:
     # Test: Error handling when the upstream request fails.
@@ -294,12 +317,12 @@ def test_upstream_request_exception_returns_502(
 
     response = client.get("/api/observations")
     assert response.status_code == 502
-    assert "Data plane unreachable" in response.get_json()["error"]
+    assert "Data plane unreachable" in response.json()["error"]
 
 
 @pytest.mark.usefixtures("split_hosts")
 def test_upstream_framing_headers_are_not_copied_to_response(
-    client: FlaskClient,
+    client: TestClient,
     recorder: _UpstreamRecorder,
 ) -> None:
     # Test: Filtering of upstream framing headers on proxied responses.
@@ -324,3 +347,81 @@ def test_upstream_framing_headers_are_not_copied_to_response(
     assert "Content-Encoding" not in response.headers
     assert "Transfer-Encoding" not in response.headers
     assert response.headers.get("Content-Length") != "999"
+
+
+@pytest.mark.parametrize("name", ["p", "prefix"])
+@pytest.mark.usefixtures("split_hosts")
+def test_a_query_parameter_cannot_redirect_the_root_route(
+    name: str,
+    client: TestClient,
+    recorder: _UpstreamRecorder,
+) -> None:
+    # Test: Upstream selection for a prefix root route when the query string
+    #   names another prefix.
+    # Situation: `DATA_PLANE_URL` and `DATA_PLANE_WEB_URL` point to distinct
+    #   hosts, and a client requests `/api` with a query parameter whose value
+    #   is the `mcp` prefix.
+    # Expectation: The proxy forwards the request to `DATA_PLANE_WEB_URL/api`
+    #   with the query string unchanged, so the parameter selects neither the
+    #   host nor the path.
+    response = client.get(f"/api?{name}=mcp")
+    assert response.status_code == 200
+    assert len(recorder.calls) == 1
+    _, target_url, _ = recorder.calls[0]
+    assert target_url == f"{_WEB_HOST}/api?{name}=mcp"
+
+
+@pytest.mark.parametrize("name", ["p", "prefix"])
+@pytest.mark.usefixtures("split_hosts")
+def test_a_query_parameter_cannot_redirect_a_subpath_route(
+    name: str,
+    client: TestClient,
+    recorder: _UpstreamRecorder,
+) -> None:
+    # Test: Upstream selection for a prefix subpath route when the query
+    #   string names another prefix.
+    # Situation: `DATA_PLANE_URL` and `DATA_PLANE_WEB_URL` point to distinct
+    #   hosts, and a client requests `/api/observations` with a query
+    #   parameter whose value is the `mcp` prefix.
+    # Expectation: The proxy forwards the request to
+    #   `DATA_PLANE_WEB_URL/api/observations` with the query string unchanged,
+    #   so the parameter selects neither the host nor the path.
+    response = client.get(f"/api/observations?{name}=mcp")
+    assert response.status_code == 200
+    assert len(recorder.calls) == 1
+    _, target_url, _ = recorder.calls[0]
+    assert target_url == f"{_WEB_HOST}/api/observations?{name}=mcp"
+
+
+@pytest.mark.usefixtures("split_hosts")
+def test_repeated_response_headers_are_not_collapsed(
+    client: TestClient,
+    recorder: _UpstreamRecorder,
+) -> None:
+    # Test: Preservation of repeated upstream response headers.
+    # Situation: The upstream response carries two `Set-Cookie` headers and
+    #   two `Vary` headers.
+    # Expectation: The proxied response carries all four as separate headers,
+    #   in upstream order, rather than keeping one value per name.
+    recorder.response = _UpstreamResponse(
+        headers=[
+            ("Set-Cookie", "a=1"),
+            ("Set-Cookie", "b=2"),
+            ("Vary", "Accept"),
+            ("Vary", "Origin"),
+        ],
+    )
+
+    response = client.get("/mcp")
+    assert response.status_code == 200
+    repeated = [
+        (key, value)
+        for key, value in response.headers.multi_items()
+        if key in ("set-cookie", "vary")
+    ]
+    assert repeated == [
+        ("set-cookie", "a=1"),
+        ("set-cookie", "b=2"),
+        ("vary", "Accept"),
+        ("vary", "Origin"),
+    ]

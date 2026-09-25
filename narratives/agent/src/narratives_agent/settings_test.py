@@ -19,7 +19,8 @@ Verifies that `Settings`:
 3. Strips trailing slashes from the API prefix and the base URLs, so "/"
    selects the root prefix.
 4. Falls back to `data_plane_url` for `data_plane_web_url`.
-5. Derives the default `static_root` from `agent_root`.
+5. Derives the default `static_root` from `agent_root`, and rejects a
+   `static_root` that equals or contains `agent_root`.
 6. Defaults `session_log_to_file` by `K_SERVICE`, and parses an explicit value
    after stripping and lowercasing it.
 7. Rejects a port that is not a number.
@@ -187,6 +188,38 @@ def test_static_root_follows_agent_root(
     assert settings.static_root == tmp_path / default.static_root.relative_to(
         default.agent_root
     )
+
+
+@pytest.mark.parametrize(
+    ("static_root", "is_rejected"),
+    [
+        pytest.param(None, False, id="default"),
+        pytest.param(".", True, id="agent-root"),
+        pytest.param("..", True, id="parent-of-agent-root"),
+    ],
+)
+def test_static_root_must_not_contain_agent_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    static_root: str | None,
+    is_rejected: bool,
+) -> None:
+    # Test: Containment check between `static_root` and `agent_root`.
+    # Situation: `AGENT_ROOT` names a directory under `tmp_path`, and
+    #   `STATIC_ROOT` is unset, names `AGENT_ROOT` itself, or names its parent.
+    # Expectation: The default is accepted. `AGENT_ROOT` itself and its parent
+    #   are rejected with a `ValidationError` naming `STATIC_ROOT`, because
+    #   serving either would publish config.json.
+    agent_root = tmp_path / "agent"
+    env = {"AGENT_ROOT": str(agent_root)}
+    if static_root is not None:
+        env["STATIC_ROOT"] = str(agent_root / static_root)
+    if is_rejected:
+        with pytest.raises(ValidationError, match="STATIC_ROOT"):
+            _read_settings(monkeypatch, env)
+    else:
+        settings = _read_settings(monkeypatch, env)
+        assert settings.static_root == agent_root / "static"
 
 
 @pytest.mark.parametrize(

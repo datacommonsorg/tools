@@ -177,7 +177,7 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     return prompts
 
 
-def _bootstrap_config_from_url() -> None:
+def bootstrap_config_from_url() -> None:
     """Fetch CONFIG_URL at startup and write the merged config to config.json.
 
     Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
@@ -255,7 +255,7 @@ def load_config() -> dict[str, Any]:
         return _config_cache
 
     try:
-        # config.json is UTF-8 on both sides: _bootstrap_config_from_url pins
+        # config.json is UTF-8 on both sides: bootstrap_config_from_url pins
         # the same encoding when it writes. A config carrying non-ASCII --
         # prompt text with ₹ or an em-dash, an instance name -- would otherwise
         # decode by the platform locale and come back corrupted.

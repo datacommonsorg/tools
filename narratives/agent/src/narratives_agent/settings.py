@@ -102,18 +102,20 @@ class Settings(BaseSettings):
 
     # The compiled UI is served from here. The Dockerfile copies the `ui` build
     # to the default, `static` under `agent_root`. Overridable so a local
-    # `python main.py` can point straight at ui/dist without a container build.
+    # `uv run narratives-agent-dev` can point straight at ui/dist without a
+    # container build.
     static_root: Path = Field(default_factory=_default_static_root)
 
-    # The local development server (`python main.py`) listens on this port.
+    # The local development server (`uv run narratives-agent-dev`) listens on
+    # this port.
     agent_port: int = 5001
 
-    # The agent API is served under this path prefix. The API blueprints
-    # declare their routes at the root (/brand, /chat/stream, /health) and are
-    # registered under this prefix, since nothing in front of the app plane
-    # strips one; that leaves the root free for the SPA. "/" selects the root
-    # itself, because an empty variable counts as unset. Brand asset URLs in
-    # the branding document are built from the same value.
+    # The agent API is served under this path prefix. The API routers declare
+    # their routes at the root (/brand, /chat/stream, /health) and are included
+    # under this prefix, since nothing in front of the app plane strips one;
+    # that leaves the root free for the SPA. "/" selects the root itself,
+    # because an empty variable counts as unset. Brand asset URLs in the
+    # branding document are built from the same value.
     agent_api_prefix: _NoTrailingSlashStr = "/agent"
 
     # CORS allows the comma-separated origins listed here. Left unset, it
@@ -224,6 +226,25 @@ class Settings(BaseSettings):
             for name, value in data.items()
             if not (isinstance(value, str) and not value.strip())
         }
+
+    @model_validator(mode="after")
+    def _keep_agent_root_out_of_static_root(self) -> Settings:
+        """Rejects a `static_root` that equals or contains `agent_root`.
+
+        Every file under `static_root` is served to the browser. A
+        `static_root` that is `agent_root` or one of its ancestors would
+        publish config.json, which can hold the Gemini API key.
+
+        Raises:
+            ValueError: `static_root` equals or contains `agent_root`.
+        """
+        if self.agent_root.resolve().is_relative_to(self.static_root.resolve()):
+            raise ValueError(
+                f"STATIC_ROOT ({self.static_root}) must not be AGENT_ROOT "
+                f"({self.agent_root}) or a directory that contains it: every "
+                "file under STATIC_ROOT is served, including config.json."
+            )
+        return self
 
 
 @functools.lru_cache(maxsize=1)
