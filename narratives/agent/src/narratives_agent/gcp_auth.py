@@ -80,6 +80,16 @@ def get_id_token(audience: str) -> str:
         )
         return ""
 
+    # Do not cache an empty response body from the metadata server, as caching
+    # an empty string would suppress token refreshes and leave requests to the
+    # data plane unauthenticated until the cache entry expires.
+    if not token:
+        logger.warning(
+            "Metadata server returned an empty ID token for %s; not caching",
+            audience,
+        )
+        return ""
+
     _TOKEN_CACHE[audience] = {
         "token": token,
         "exp": time.time() + _TOKEN_TTL_SECONDS,
