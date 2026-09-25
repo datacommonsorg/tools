@@ -58,6 +58,7 @@ Contribution process and PR expectations:
 
 Run from the root of the `/narratives` directory:
 
+- `nvm use` (or `nvm install`) — switch to the Node version pinned in `.nvmrc`.
 - `corepack enable && pnpm i` — install workspace dependencies (the pnpm version is
   pinned via `packageManager`).
 - `pnpm build` — compile the React UI and stage static assets into `agent/static/`.

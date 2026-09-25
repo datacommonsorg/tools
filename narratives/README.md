@@ -129,7 +129,7 @@ in with. It creates nothing.
 `uv run <command>`. Regenerate the lockfile with `uv lock` after a dependency
 change, and never hand-edit it. The container pins `python:3.14-slim`.
 
-**Node 20+** for the UI.
+**Node 24+** for the UI.
 
 **IAM roles:** Owner, or the combination from the DCP documentation — Service
 Usage Admin, Service Account Admin, Project IAM Admin, Storage Admin, Run Admin,
@@ -667,6 +667,7 @@ All commands run from the root of the `/narratives` directory.
 ### Installation
 
 ```bash
+nvm use        # switch to the Node version pinned in .nvmrc (or run 'nvm install' if not yet installed)
 corepack enable
 pnpm i
 ```
@@ -716,7 +717,7 @@ Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
 so `vite build` ignores it. Defaults are `localhost:5001` and `localhost:8080` if
 unset. Vite picks up `.env.local` changes on **restart**, not live.
 
-You need Node 20+ and nothing else — no Docker, no Python, no gcloud.
+You need Node 24+ and nothing else — no Docker, no Python, no gcloud.
 
 ### Path B — the agent locally
 
