@@ -92,7 +92,7 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 Repo-wide rules live in [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md);
 frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
 
-- **Enforcement (UI)** — `npm run lint` currently runs only the TypeScript
+- **Enforcement (UI)** — `pnpm -C ui run lint` currently runs only the TypeScript
   compiler (`tsc --noEmit`). ESLint, Biome, and Stylelint are not yet configured
   (linting is to follow), so style rules outside type-checking must be verified
   manually.
@@ -126,8 +126,8 @@ Choose the workflow below based on which component you are changing. The MCP ser
 not run as part of this deployment; connect either to a deployed backend, public Data
 Commons or a local MCP server as preferred.
 
-- **UI (`narratives/ui/`)** — run `npm install`, configure `BACKEND_URL` and
-  `AGENT_URL` in `ui/.env.local`, and run `npm run dev`. In development, Vite's
+- **UI (`narratives/ui/`)** — run `pnpm install`, configure `BACKEND_URL` and
+  `AGENT_URL` in `ui/.env.local`, and run `pnpm -C ui run dev`. In development, Vite's
   `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*` and Data Commons
   routes to those URLs; in production, the Python server in `agent/` serves the
   compiled SPA (`server/routes/spa.py`) and proxies Data Commons routes

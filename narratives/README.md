@@ -118,7 +118,7 @@ in with. It creates nothing.
 | :--- | :--- |
 | A GCP project with **billing enabled** | |
 | `gcloud`, authenticated | `gcloud auth login` **and** `gcloud auth application-default login` — separate; Terraform uses ADC |
-| `terraform`, `npm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
+| `terraform`, `pnpm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
 | A **Data Commons API key** | https://apikeys.datacommons.org |
 | A **Gemini API key** | https://aistudio.google.com |
 | [`uv`](https://docs.astral.sh/uv/) | The agent's dependencies; also `uv tool install datacommons-cli`, to provision a *new* DCP plane |
@@ -1012,11 +1012,12 @@ that visible in `/agent/health` instead.
 Before opening a PR, run what CI runs:
 
 ```sh
+pnpm test
+pnpm build
+
 cd agent && uv sync --frozen \
   && uv run ruff format --check . && uv run ruff check . \
-  && uv run mypy && uv run pytest
-
-cd ../ui && npm ci && npx tsc --noEmit && npx vitest run
+  && uv run mypy
 
 cd .. && bash -n deploy.sh
 cd deploy/terraform-custom-datacommons/modules \
