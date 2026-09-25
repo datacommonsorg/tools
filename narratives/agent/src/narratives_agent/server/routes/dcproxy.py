@@ -33,14 +33,18 @@ obtain anyway.
 """
 
 import logging
-from collections.abc import Iterator
-from typing import Annotated
+from collections.abc import AsyncIterator
+from urllib.parse import urlsplit, urlunsplit
 
-import requests
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+import httpx2
+from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse, Response
+from starlette.background import BackgroundTask
+from starlette.requests import ClientDisconnect
 
 from narratives_agent.gcp_auth import attach_auth
+from narratives_agent.server.responses import ClosingStreamingResponse
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -68,17 +72,32 @@ def _upstream_for(prefix: str) -> str:
     )
 
 
-# One pooled session, for the same reason the MCP client has one: a single page
-# of charts fires many of these and each would otherwise pay a TLS handshake.
-_SESSION = requests.Session()
-_SESSION.mount(
-    "https://",
-    requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=64),
-)
-_SESSION.mount(
-    "http://",
-    requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=64),
-)
+# Upper bound on each phase of an upstream request: connect, write, read,
+# and waiting for a pooled connection.
+_UPSTREAM_TIMEOUT_SECONDS = 120.0
+# Idle upstream connections kept open for reuse.
+_MAX_IDLE_CONNECTIONS = 64
+
+
+def create_client() -> httpx2.AsyncClient:
+    """Builds the client that sends every proxied request.
+
+    The application opens one for its lifetime, for the same reason the MCP
+    client has one pooled session: a single page of charts fires many of these
+    requests and each would otherwise pay a TLS handshake. Up to
+    _MAX_IDLE_CONNECTIONS idle connections stay open for reuse, and concurrent
+    requests are not capped. Redirects are returned to the browser rather than
+    followed; see _same_origin_location.
+    """
+    return httpx2.AsyncClient(
+        timeout=httpx2.Timeout(_UPSTREAM_TIMEOUT_SECONDS),
+        limits=httpx2.Limits(
+            max_connections=None,
+            max_keepalive_connections=_MAX_IDLE_CONNECTIONS,
+        ),
+        follow_redirects=False,
+    )
+
 
 # Top-level path segments owned by the data plane. Derived from the route list
 # in ui/vite.config.ts, which is the same set the dev proxy has always
@@ -140,28 +159,32 @@ _HOP_HEADERS = frozenset(
         "x-goog-authenticated-user-id",
         "x-serverless-authorization",
         "cookie",
+        # The agent attaches its own key for the host it calls (attach_auth).
+        # A caller's key would otherwise be sent alongside it, first.
+        "x-api-key",
     }
 )
 
+# Upstream response headers that are not copied to the browser, as lowercase
+# bytes. Uvicorn writes its own Date and Server, so copying the upstream's
+# would send each twice.
 _RESPONSE_HEADER_BLOCKLIST = frozenset(
-    {"content-encoding", "transfer-encoding", "connection", "content-length"}
+    {
+        b"content-encoding",
+        b"transfer-encoding",
+        b"connection",
+        b"content-length",
+        b"date",
+        b"server",
+    }
 )
 
-
-async def _read_body(request: Request) -> bytes | None:
-    """Returns the request body for methods that carry one, or else None.
-
-    Runs as a dependency on the event loop, so the synchronous handler
-    receives the body already read and a GET never reads one at all.
-    """
-    if request.method in ("POST", "PUT", "PATCH"):
-        return await request.body()
-    return None
+# The status codes Uvicorn can send (RFC 9110 section 15).
+_MIN_STATUS = 100
+_MAX_STATUS = 599
 
 
-def _forward(
-    request: Request, body: bytes | None, subpath: str, prefix: str
-) -> Response:
+async def _forward(request: Request, subpath: str, prefix: str) -> Response:
     """Replays `request` on the data plane and streams the response back."""
     # Named upstream_url, not upstream: the response object below is called
     # `upstream`, and letting a URL and a Response share a name is how a later
@@ -173,11 +196,6 @@ def _forward(
             status_code=503,
         )
 
-    target = f"{upstream_url}/{subpath}"
-    query_string: bytes = request.scope["query_string"]
-    if query_string:
-        target = f"{target}?{query_string.decode('utf-8', 'ignore')}"
-
     # A header sent on several lines is forwarded as one, its values joined
     # with ", " (RFC 9110 section 5.3), so no value is lost. Cookie, whose
     # values join with "; " instead, never reaches the join: it is in
@@ -188,61 +206,196 @@ def _forward(
         if name in _HOP_HEADERS:
             continue
         headers[name] = f"{headers[name]}, {v}" if name in headers else v
+
+    body: AsyncIterator[bytes] | None = None
+    if request.method in ("POST", "PUT", "PATCH"):
+        body = request.stream()
+        # The body is relayed byte for byte, so the caller's Content-Length
+        # still describes it, even though content-length is in _HOP_HEADERS.
+        # Without it the client would send the body chunked.
+        if "content-length" in request.headers:
+            headers["content-length"] = request.headers["content-length"]
+
     # Auth is chosen by the host actually being called, not by a single
     # global -- the two hosts differ on the "none" backend, and attaching a
     # credential scoped to the wrong host is how the API key would leak
     # somewhere it does not belong.
-    attach_auth(headers, upstream_url)
+    #
+    # attach_auth runs in a worker thread: on a token-cache miss it blocks on
+    # the metadata server for up to 5 seconds, which would stall every
+    # request on the event loop.
+    await run_in_threadpool(attach_auth, headers, upstream_url)
+    # Sent as bytes, which httpx2 does not re-encode. The server decoded each
+    # header as Latin-1, so encoding it back yields the bytes the caller sent;
+    # httpx2 would encode a str as ASCII and raise on any byte above 0x7F.
+    raw_headers = [
+        (name.encode("latin-1"), value.encode("latin-1"))
+        for name, value in headers.items()
+    ]
 
-    # TODO(juliawu): stream the body once this service is on FastAPI (see
-    # comment in PR 472)
+    client: httpx2.AsyncClient = request.app.state.data_plane_client
     try:
-        upstream = _SESSION.request(
+        upstream_request = client.build_request(
             request.method,
-            target,
-            data=body,
-            headers=headers,
-            stream=True,
-            timeout=120,
+            _target_url(request, upstream_url),
+            content=body,
+            headers=raw_headers,
         )
-    except requests.RequestException as e:
-        logger.error("dcproxy: %s %s failed: %s", request.method, target, e)
+    except (httpx2.InvalidURL, UnicodeDecodeError) as e:
+        logger.warning(
+            "dcproxy: %s /%s rejected: invalid URL: %s",
+            request.method,
+            subpath,
+            e,
+        )
+        return JSONResponse({"error": "Invalid request URL"}, status_code=400)
+    try:
+        upstream = await client.send(upstream_request, stream=True)
+    except httpx2.RequestError as e:
+        logger.error(
+            "dcproxy: %s %s failed: %s", request.method, upstream_request.url, e
+        )
         return JSONResponse(
             {"error": f"Data plane unreachable: {e}"}, status_code=502
         )
+    except ClientDisconnect:
+        # The browser went away while its body was being relayed. Nothing
+        # reads this response; returning it only ends the request.
+        logger.info(
+            "dcproxy: %s /%s canceled: client disconnected during upload",
+            request.method,
+            subpath,
+        )
+        return Response(status_code=400)
 
+    # From here on the upstream response is open, and only the response
+    # returned below will close it. Anything that fails before then closes it
+    # here, or its connection would stay checked out until shutdown.
+    try:
+        return await _relay(upstream, upstream_url, request.method, subpath)
+    except BaseException:
+        await upstream.aclose()
+        raise
+
+
+def _target_url(request: Request, upstream_url: str) -> str:
+    """Returns the data-plane URL for `request`.
+
+    The path is taken still percent-encoded from `raw_path`, so it reaches the
+    data plane as the browser sent it: a decoded `%23` or `%3F` would become a
+    fragment or query delimiter, and a decoded control character would make
+    the URL invalid.
+
+    Raises:
+        UnicodeDecodeError: `raw_path` holds a byte outside ASCII.
+    """
+    raw_path: bytes = request.scope["raw_path"]
+    target = f"{upstream_url}{raw_path.decode('ascii')}"
+    query_string: bytes = request.scope["query_string"]
+    if query_string:
+        target = f"{target}?{query_string.decode('utf-8', 'ignore')}"
+    return target
+
+
+async def _relay(
+    upstream: httpx2.Response, upstream_url: str, method: str, subpath: str
+) -> Response:
+    """Returns the response that streams `upstream` back to the browser."""
+    status = upstream.status_code
     # Surface upstream failures in the log -- this is the first place to look
     # when charts or tools do not render. 401/403 = IAM or ingress, 404 = the
     # path is not served by the data plane, 5xx = the backend itself.
-    if upstream.status_code >= 400:
+    if status >= 400:
         logger.warning(
             "dcproxy: %s /%s -> HTTP %d from data plane",
-            request.method,
+            method,
             subpath,
-            upstream.status_code,
+            status,
+        )
+    # Uvicorn cannot send a status line outside this range, and would fail
+    # after the response had already been handed over.
+    if not _MIN_STATUS <= status <= _MAX_STATUS:
+        await upstream.aclose()
+        logger.error(
+            "dcproxy: %s /%s -> invalid status %d from data plane",
+            method,
+            subpath,
+            status,
+        )
+        return JSONResponse(
+            {"error": "Invalid response from data plane"}, status_code=502
         )
 
-    response = StreamingResponse(
-        _stream_upstream(upstream), status_code=upstream.status_code
+    response = ClosingStreamingResponse(
+        _stream_upstream(upstream),
+        status_code=status,
+        # Also closes the upstream response when streaming stops before the
+        # generator's `finally` can run, as it does when the client
+        # disconnects, whatever ASGI spec version the server reports (see
+        # ClosingStreamingResponse). aclose() does nothing on a closed
+        # response.
+        background=BackgroundTask(upstream.aclose),
     )
+    # Copied as the bytes the data plane sent. Decoding and re-encoding would
+    # raise on a UTF-8 value, such as a non-ASCII filename in
+    # Content-Disposition, and would silently change one in the Latin-1 range.
     # Appended one at a time, so a repeated header such as Set-Cookie keeps
     # every value instead of the last one replacing the others.
-    for k, v in upstream.raw.headers.items():
-        if k.lower() not in _RESPONSE_HEADER_BLOCKLIST:
-            response.headers.append(k, v)
+    for raw_name, raw_value in upstream.headers.raw:
+        name = raw_name.lower()
+        if name in _RESPONSE_HEADER_BLOCKLIST:
+            continue
+        value = raw_value
+        if name == b"location" and 300 <= status < 400:
+            value = _same_origin_location(
+                raw_value.decode("latin-1"), upstream_url
+            ).encode("latin-1")
+        response.raw_headers.append((name, value))
     return response
 
 
-def _stream_upstream(upstream: requests.Response) -> Iterator[bytes]:
-    """Yields the upstream body in chunks, then closes the upstream response.
+def _same_origin_location(location: str, upstream_url: str) -> str:
+    """Points a redirect to the data plane's own host back through the proxy.
 
-    The `finally` block returns the connection to the pool however the stream
-    ends: completed, failed, or closed early when the client disconnects.
+    The client does not follow redirects; the browser does. A Location that
+    names the data plane's host would take the browser off this origin, and
+    datacommons.org answers `/browser` with `http://datacommons.org/browser/`.
+    Such a Location becomes a path on this origin, which the proxy serves.
+    Any other Location, including one that does not parse, is returned
+    unchanged.
     """
     try:
-        yield from upstream.iter_content(chunk_size=8192)
+        target = urlsplit(location)
+        upstream_netloc = urlsplit(upstream_url).netloc
+    except ValueError:
+        return location
+    if target.netloc.lower() != upstream_netloc.lower():
+        return location
+    # Browsers read a path that starts with "//" or "/\" as a scheme-relative
+    # URL naming another host, so `https://<data plane>//evil.example/x`
+    # would otherwise become a redirect to evil.example. One leading slash is
+    # kept and the rest are dropped.
+    path = "/" + target.path.lstrip("/\\")
+    return urlunsplit(("", "", path, target.query, target.fragment))
+
+
+async def _stream_upstream(upstream: httpx2.Response) -> AsyncIterator[bytes]:
+    """Yields the upstream body in chunks.
+
+    aiter_bytes() decodes any Content-Encoding, which is why content-encoding
+    is in _RESPONSE_HEADER_BLOCKLIST. httpx2 closes the upstream response
+    itself when iteration completes or raises. When the client disconnects,
+    streaming stops while this generator is suspended, so neither httpx2 nor
+    the `finally` block runs; the response's background task closes the
+    upstream instead. The `finally` block closes it when the generator
+    itself is closed early. A response closed before its body is fully read
+    closes its connection rather than returning it to the pool.
+    """
+    try:
+        async for chunk in upstream.aiter_bytes():
+            yield chunk
     finally:
-        upstream.close()
+        await upstream.aclose()
 
 
 def _register_prefix(prefix: str) -> None:
@@ -255,17 +408,11 @@ def _register_prefix(prefix: str) -> None:
     """
     methods = ["GET", "POST", "OPTIONS", "HEAD"]
 
-    def forward_root(
-        request: Request, body: Annotated[bytes | None, Depends(_read_body)]
-    ) -> Response:
-        return _forward(request, body, prefix, prefix)
+    async def forward_root(request: Request) -> Response:
+        return await _forward(request, prefix, prefix)
 
-    def forward_subpath(
-        subpath: str,
-        request: Request,
-        body: Annotated[bytes | None, Depends(_read_body)],
-    ) -> Response:
-        return _forward(request, body, f"{prefix}/{subpath}", prefix)
+    async def forward_subpath(subpath: str, request: Request) -> Response:
+        return await _forward(request, f"{prefix}/{subpath}", prefix)
 
     router.api_route(f"/{prefix}", methods=methods)(forward_root)
     router.api_route(f"/{prefix}/{{subpath:path}}", methods=methods)(

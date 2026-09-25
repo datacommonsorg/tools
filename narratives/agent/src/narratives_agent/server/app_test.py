@@ -21,13 +21,15 @@ Verifies that:
    same name, at `/<prefix>` and below it.
 4. Every GET route also answers HEAD, and a trailing slash returns 404 rather
    than a redirect.
-5. Startup writes config.json before it loads branding.
+5. Startup writes config.json before it loads branding, and the lifespan opens
+   the proxy's HTTP client and closes it at shutdown.
 """
 
-from collections.abc import Iterator
 from pathlib import Path
 
+import httpx2
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from narratives_agent.mcp.capabilities import Capabilities
@@ -39,39 +41,28 @@ _ORIGIN = "https://narratives.example.com"
 _DATA_PLANE = "http://data-plane.test"
 
 
-class _RawResponse:
-    """Minimal `upstream.raw` stub carrying no headers."""
-
-    def __init__(self) -> None:
-        self.headers: dict[str, str] = {}
-
-
-class _UpstreamResponse:
-    """Minimal streaming `requests.Response` stub with a fixed body."""
-
-    status_code = 200
-
-    def __init__(self) -> None:
-        self.raw = _RawResponse()
-
-    def iter_content(self, chunk_size: int = 8192) -> Iterator[bytes]:
-        yield b"proxied"
-
-    def close(self) -> None:
-        """Does nothing: the stub holds no connection to release."""
-
-
-class _UpstreamRecorder:
-    """Stub for `dcproxy._SESSION.request` that records each target URL."""
+class _Upstream:
+    """`MockTransport` handler that records each target URL."""
 
     def __init__(self) -> None:
         self.urls: list[str] = []
 
-    def __call__(
-        self, method: str, url: str, **kwargs: object
-    ) -> _UpstreamResponse:
-        self.urls.append(url)
-        return _UpstreamResponse()
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
+        self.urls.append(str(request.url))
+        return httpx2.Response(200, content=b"proxied")
+
+
+def _app_with(upstream: _Upstream) -> FastAPI:
+    """Builds the application with its data-plane client sending to `upstream`.
+
+    The test client does not run the lifespan, which would otherwise open the
+    data-plane client.
+    """
+    app = create_app()
+    app.state.data_plane_client = httpx2.AsyncClient(
+        transport=httpx2.MockTransport(upstream)
+    )
+    return app
 
 
 @pytest.fixture(autouse=True)
@@ -90,14 +81,12 @@ def static_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
-def recorder(monkeypatch: pytest.MonkeyPatch) -> _UpstreamRecorder:
-    """Stubs the proxy's upstream session and points it at one test host."""
-    rec = _UpstreamRecorder()
-    monkeypatch.setattr(dcproxy._SESSION, "request", rec)
+def recorder(monkeypatch: pytest.MonkeyPatch) -> _Upstream:
+    """Returns the stub upstream and points the proxy at one test host."""
     monkeypatch.setenv("DATA_PLANE_URL", _DATA_PLANE)
     monkeypatch.delenv("DATA_PLANE_WEB_URL", raising=False)
     monkeypatch.setenv("DATA_PLANE_AUTH", "off")
-    return rec
+    return _Upstream()
 
 
 def test_cors_echoes_a_configured_origin(
@@ -176,7 +165,7 @@ def test_api_documentation_routes_are_absent(path: str) -> None:
 def test_data_plane_prefix_reaches_the_proxy_before_a_static_file(
     prefix: str,
     static_root: Path,
-    recorder: _UpstreamRecorder,
+    recorder: _Upstream,
 ) -> None:
     # Test: Route precedence between a proxy root route and the static mount.
     # Situation: The static root holds a file named after the prefix, which
@@ -184,7 +173,7 @@ def test_data_plane_prefix_reaches_the_proxy_before_a_static_file(
     # Expectation: `GET /<prefix>` reaches the proxy, which forwards it to the
     #   data plane and returns the upstream body.
     (static_root / prefix).write_bytes(b"static")
-    client = TestClient(create_app())
+    client = TestClient(_app_with(recorder))
 
     response = client.get(f"/{prefix}")
 
@@ -196,7 +185,7 @@ def test_data_plane_prefix_reaches_the_proxy_before_a_static_file(
 def test_data_plane_subpath_reaches_the_proxy_before_a_static_file(
     prefix: str,
     static_root: Path,
-    recorder: _UpstreamRecorder,
+    recorder: _Upstream,
 ) -> None:
     # Test: Route precedence between a proxy subpath route and the static
     #   mount.
@@ -206,7 +195,7 @@ def test_data_plane_subpath_reaches_the_proxy_before_a_static_file(
     #   it to the data plane and returns the upstream body.
     (static_root / prefix).mkdir()
     (static_root / prefix / "page.js").write_bytes(b"static")
-    client = TestClient(create_app())
+    client = TestClient(_app_with(recorder))
 
     response = client.get(f"/{prefix}/page.js")
 
@@ -230,7 +219,7 @@ def test_data_plane_subpath_reaches_the_proxy_before_a_static_file(
 def test_every_get_route_also_answers_head(
     path: str,
     monkeypatch: pytest.MonkeyPatch,
-    recorder: _UpstreamRecorder,
+    recorder: _Upstream,
 ) -> None:
     # Test: HEAD support on each GET route of the application.
     # Situation: A client sends HEAD to one path per GET handler: the liveness
@@ -244,7 +233,7 @@ def test_every_get_route_also_answers_head(
     monkeypatch.setitem(
         brand._BRAND_STATE, "assets", {"logo-a1b2c3d4.svg": b"<svg/>"}
     )
-    client = TestClient(create_app())
+    client = TestClient(_app_with(recorder))
 
     response = client.head(path)
 
@@ -286,3 +275,23 @@ def test_startup_writes_config_before_loading_branding(
     with TestClient(create_app()) as client:
         assert calls == ["config", "branding"]
         assert client.get("/healthz").status_code == 200
+
+
+def test_lifespan_opens_the_data_plane_client_and_closes_it_at_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Ownership of the proxy's HTTP client by the lifespan.
+    # Situation: The config bootstrap and the branding load are stubbed, and
+    #   the application starts and then shuts down.
+    # Expectation: While the application runs, `app.state` holds an open
+    #   `httpx2.AsyncClient`; after shutdown that client is closed.
+    monkeypatch.setattr(server_app, "bootstrap_config_from_url", lambda: None)
+    monkeypatch.setattr(brand, "load_branding", lambda: None)
+    app = create_app()
+
+    with TestClient(app):
+        data_plane_client = app.state.data_plane_client
+        assert isinstance(data_plane_client, httpx2.AsyncClient)
+        assert not data_plane_client.is_closed
+
+    assert data_plane_client.is_closed

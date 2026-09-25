@@ -66,7 +66,7 @@ def _allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Writes config.json and loads branding before the first request.
+    """Writes config.json, loads branding, and opens the data-plane client.
 
     The config bootstrap writes config.json, which every later load_config()
     reads. Branding is then read from GCS once, so every later request is
@@ -74,10 +74,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     swallows its own failures: a missing, unreachable or malformed config
     leaves the UI on its shipped design tokens rather than stopping the server
     from starting.
+
+    The proxy's HTTP client is shared by every request and closed, with its
+    pooled connections, at shutdown.
     """
     bootstrap_config_from_url()
     brand.load_branding()
-    yield
+    async with dcproxy.create_client() as client:
+        app.state.data_plane_client = client
+        yield
 
 
 def create_app() -> FastAPI:

@@ -691,6 +691,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "google-cloud-secret-manager" },
+    { name = "httpx2" },
     { name = "pydantic-settings" },
     { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
@@ -698,7 +699,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx2" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -709,6 +709,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.141" },
     { name = "google-cloud-secret-manager", specifier = ">=2.20" },
+    { name = "httpx2", specifier = ">=2.13" },
     { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "requests", specifier = ">=2.32" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.53" },
@@ -716,7 +717,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx2", specifier = ">=2.13" },
     { name = "mypy", specifier = ">=2.3" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.14" },

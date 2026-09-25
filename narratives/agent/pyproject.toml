@@ -26,6 +26,7 @@ license = "Apache-2.0"
 dependencies = [
     "fastapi>=0.141",
     "google-cloud-secret-manager>=2.20",
+    "httpx2>=2.13",
     "pydantic-settings>=2.15",
     "requests>=2.32",
     "uvicorn[standard]>=0.53",
@@ -36,7 +37,6 @@ narratives-agent-dev = "narratives_agent.dev:main"
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.13",
     "mypy>=2.3",
     "pytest>=8.0",
     "ruff>=0.14",
