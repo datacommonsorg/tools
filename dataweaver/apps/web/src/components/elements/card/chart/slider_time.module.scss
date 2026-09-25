@@ -108,7 +108,9 @@
 .labels-row {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+
+  @include type-caption-small;
+
   color: rgb(var(--color-content-subtle));
 }
 
@@ -120,7 +122,9 @@
   min-width: 48px;
   padding: 2px 8px;
   font-family: inherit;
-  font-size: 12px;
+
+  @include type-label-small(false);
+
   font-weight: 600;
   color: rgb(var(--color-accent));
   background-color: rgb(var(--color-accent-subtle) / 40%);

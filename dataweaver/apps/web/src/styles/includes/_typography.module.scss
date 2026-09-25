@@ -1,6 +1,20 @@
 @use "sass:list";
 @use "./breakpoints.module" as breakpoints;
 
+// Shared font-size scale backing the 'type-*' mixins below. Private to this
+// module - we should always reach for a 'type-*' mixin instead of a
+// literal px value or one of these variables directly.
+$-font-size-10: 10px;
+$-font-size-11: 11px;
+$-font-size-12: 12px;
+$-font-size-13: 13px;
+$-font-size-14: 14px;
+$-font-size-16: 16px;
+$-font-size-18: 18px;
+$-font-size-20: 20px;
+$-font-size-24: 24px;
+$-font-size-32: 32px;
+
 @mixin -font-weight-google-sans($font-weight, $supportedFontWeights) {
   @if not list.index($supportedFontWeights, $font-weight) {
     @error "Invalid font weight used '#{$font-weight}'. Please use one of the supported weights - '#{$supportedFontWeights}'.";
@@ -18,12 +32,12 @@
 }
 
 @mixin type-display {
-  font-size: 24px;
+  font-size: $-font-size-24;
   font-weight: 500;
   line-height: 1.2;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 32px;
+    font-size: $-font-size-32;
   }
 }
 
@@ -35,11 +49,15 @@ $-supported-headline-font-weights: 400, 700;
     $-supported-headline-font-weights
   );
 
-  font-size: 18px;
+  font-size: $-font-size-16;
   line-height: 1.2;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 20px;
+    font-size: $-font-size-18;
+  }
+
+  @include breakpoints.breakpoint(desktop) {
+    font-size: $-font-size-20;
   }
 }
 
@@ -51,11 +69,11 @@ $-supported-title-font-weights: 500, 700;
     $-supported-title-font-weights
   );
 
-  font-size: 14px;
+  font-size: $-font-size-14;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 16px;
+    font-size: $-font-size-16;
   }
 }
 
@@ -67,11 +85,15 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
-  font-size: 16px;
+  font-size: $-font-size-14;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 18px;
+    font-size: $-font-size-16;
+  }
+
+  @include breakpoints.breakpoint(laptop) {
+    font-size: $-font-size-18;
   }
 }
 
@@ -81,11 +103,11 @@ $-supported-body-font-weights: 400, 500;
     $-supported-body-font-weights
   );
 
-  font-size: 12px;
+  font-size: $-font-size-12;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 14px;
+    font-size: $-font-size-14;
   }
 }
 
@@ -96,17 +118,17 @@ $-supported-body-font-weights: 400, 500;
   );
 
   font-family: "Google Sans", sans-serif;
-  font-size: 10px;
+  font-size: $-font-size-10;
   line-height: 1.4;
 }
 
 @mixin type-label-large($has-text-box-trim: true) {
-  font-size: 14px;
+  font-size: $-font-size-14;
   font-weight: 500;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 16px;
+    font-size: $-font-size-16;
   }
 
   @if $has-text-box-trim {
@@ -115,12 +137,16 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-extra-large($has-text-box-trim: true) {
-  font-size: 18px;
+  font-size: $-font-size-16;
   font-weight: 500;
   line-height: 1.1;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 20px;
+    font-size: $-font-size-18;
+  }
+
+  @include breakpoints.breakpoint(laptop) {
+    font-size: $-font-size-20;
   }
 
   @if $has-text-box-trim {
@@ -129,12 +155,12 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-medium($has-text-box-trim: true) {
-  font-size: 13px;
+  font-size: $-font-size-13;
   font-weight: 500;
   line-height: 1.4;
 
   @include breakpoints.breakpoint(tablet) {
-    font-size: 14px;
+    font-size: $-font-size-14;
   }
 
   @if $has-text-box-trim {
@@ -143,11 +169,45 @@ $-supported-body-font-weights: 400, 500;
 }
 
 @mixin type-label-small($has-text-box-trim: true) {
-  font-size: 12px;
+  font-size: $-font-size-12;
   font-weight: 500;
   line-height: 1.4;
 
   @if $has-text-box-trim {
     text-box: trim-both cap alphabetic;
   }
+}
+
+// Captions: fixed-size (no breakpoint scaling), for dense chart/control UI text
+// that shouldn't grow on larger viewports.
+$-supported-caption-font-weights: 400, 500, 700;
+
+@mixin type-caption-small($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-caption-font-weights
+  );
+
+  font-size: $-font-size-11;
+  line-height: 1.4;
+}
+
+@mixin type-caption-medium($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-caption-font-weights
+  );
+
+  font-size: $-font-size-13;
+  line-height: 1.4;
+}
+
+@mixin type-caption-large($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-caption-font-weights
+  );
+
+  font-size: $-font-size-14;
+  line-height: 1.4;
 }

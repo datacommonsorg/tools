@@ -55,7 +55,9 @@
 .arrow {
   flex-shrink: 0;
   place-self: center end;
-  font-size: 14px;
+
+  @include type-caption-large;
+
   line-height: 16.4px;
 }
 

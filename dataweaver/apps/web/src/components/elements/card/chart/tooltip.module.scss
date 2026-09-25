@@ -98,13 +98,17 @@
 
 .hint {
   margin-top: 4px;
-  font-size: 10px;
+
+  @include type-body-small;
+
   font-style: italic;
   color: rgb(var(--color-card-content-muted));
 }
 
 .empty {
   margin-top: 2px;
-  font-size: 11px;
+
+  @include type-caption-small;
+
   color: rgb(var(--color-card-content-muted));
 }

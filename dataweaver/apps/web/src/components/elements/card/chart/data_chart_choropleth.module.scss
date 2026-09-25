@@ -82,8 +82,9 @@
   width: 26px;
   height: 26px;
   padding: 0;
-  font-size: 11px;
-  font-weight: 600;
+
+  @include type-caption-small(700);
+
   color: rgb(var(--color-content));
   cursor: pointer;
   background-color: rgb(var(--color-surface-raised));
@@ -120,7 +121,9 @@
   justify-content: center;
   width: 100%;
   min-height: 240px;
-  font-size: 13px;
+
+  @include type-caption-medium;
+
   color: rgb(var(--color-content-subtle));
   background-color: rgb(var(--color-surface-subtle));
   border-radius: 8px;
@@ -132,7 +135,9 @@
   align-items: center;
   justify-content: center;
   padding: 2px 0;
-  font-size: 11px;
+
+  @include type-caption-small;
+
   color: rgb(var(--color-content-subtle));
 }
 

@@ -1,4 +1,5 @@
 {
+  "breakpoint-mobile": 480,
   "breakpoint-tablet": 768,
   "breakpoint-laptop": 1280,
   "breakpoint-desktop": 1600
