@@ -61,6 +61,7 @@ Run from the root of the `/narratives` directory:
 - `corepack enable && pnpm i` — install workspace dependencies (the pnpm version is
   pinned via `packageManager`).
 - `pnpm build` — compile the React UI and stage static assets into `agent/static/`.
+- `pnpm build:ui` — compile the React UI bundle into `ui/dist/` without staging.
 - `pnpm test` — run unit tests across the whole application (Vitest for UI + Pytest for agent).
 - `pnpm test:ui` — run the UI unit test suite (`vitest run`).
 - `pnpm test:agent` — run the Python agent unit test suite (`uv run pytest`).

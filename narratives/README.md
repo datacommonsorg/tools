@@ -676,6 +676,7 @@ pnpm i
 | Command | What it does |
 | --- | --- |
 | `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
+| `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
 | `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
 | `pnpm test:ui` | Run the frontend Vitest suite |
 | `pnpm test:agent` | Run the backend Pytest suite |

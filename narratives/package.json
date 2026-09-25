@@ -5,7 +5,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "pnpm -C ui build && node scripts/stage_static.mjs",
+    "build": "pnpm run build:ui && node scripts/stage_static.mjs",
+    "build:ui": "pnpm -C ui build",
     "test": "pnpm run test:ui && pnpm run test:agent",
     "test:ui": "pnpm -C ui test",
     "test:agent": "cd agent && uv run pytest"

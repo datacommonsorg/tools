@@ -24,33 +24,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uiDist = path.resolve(__dirname, '../ui/dist');
-const staticDir = path.resolve(__dirname, '../agent/static');
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const sourceUiDistDir = path.resolve(scriptsDir, '../ui/dist');
+const targetAgentStaticDir = path.resolve(scriptsDir, '../agent/static');
 
-const indexHtml = path.join(uiDist, 'index.html');
+const indexHtml = path.join(sourceUiDistDir, 'index.html');
 if (!fs.existsSync(indexHtml)) {
   console.error(
-    `FATAL: ${indexHtml} not found — build the UI first with 'pnpm -C ui build'`,
+    `FATAL: ${indexHtml} not found — build the UI first with 'pnpm build'`,
   );
   process.exit(1);
 }
 
-fs.rmSync(staticDir, { recursive: true, force: true });
-fs.cpSync(uiDist, staticDir, { recursive: true });
+fs.rmSync(targetAgentStaticDir, { recursive: true, force: true });
+fs.cpSync(sourceUiDistDir, targetAgentStaticDir, { recursive: true });
 
-function countFiles(dir) {
-  let count = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      count += countFiles(fullPath);
-    } else {
-      count++;
-    }
-  }
-  return count;
-}
-
-const fileCount = countFiles(staticDir);
-console.log(`✓ Staged UI build into agent/static (${fileCount} files)`);
+console.log('✓ Staged UI build into agent/static');
