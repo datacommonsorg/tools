@@ -61,7 +61,7 @@ LATEST_IMAGE="${IMAGE_BASE}:latest"
 UI_DIST="${DIR}/../ui/dist"
 if [[ ! -f "${UI_DIST}/index.html" ]]; then
     echo "FATAL: ${UI_DIST}/index.html not found — build the UI first:" >&2
-    echo "  (cd ui && npm ci && npm run build)" >&2
+    echo "  (pnpm build)" >&2
     exit 1
 fi
 rm -rf "${DIR}/static"

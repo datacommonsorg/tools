@@ -30,6 +30,7 @@ you do there requires TypeScript or Python.
 - [Access modes](#access-modes)
 - [Attaching to a Data Commons instance that already exists](#attaching-to-a-data-commons-instance-that-already-exists)
 - [Provisioning a new DCP data plane](#provisioning-a-new-dcp-data-plane)
+- [Developer guide](#developer-guide)
 - [Local development](#local-development)
 - [Testing](#testing)
 - [Verifying a deployment](#verifying-a-deployment)
@@ -117,7 +118,7 @@ in with. It creates nothing.
 | :--- | :--- |
 | A GCP project with **billing enabled** | |
 | `gcloud`, authenticated | `gcloud auth login` **and** `gcloud auth application-default login` — separate; Terraform uses ADC |
-| `terraform`, `npm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
+| `terraform`, `pnpm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
 | A **Data Commons API key** | https://apikeys.datacommons.org |
 | A **Gemini API key** | https://aistudio.google.com |
 | [`uv`](https://docs.astral.sh/uv/) | The agent's dependencies; also `uv tool install datacommons-cli`, to provision a *new* DCP plane |
@@ -128,7 +129,7 @@ in with. It creates nothing.
 `uv run <command>`. Regenerate the lockfile with `uv lock` after a dependency
 change, and never hand-edit it. The container pins `python:3.14-slim`.
 
-**Node 20+** for the UI.
+**Node 24+** for the UI.
 
 **IAM roles:** Owner, or the combination from the DCP documentation — Service
 Usage Admin, Service Account Admin, Project IAM Admin, Storage Admin, Run Admin,
@@ -659,6 +660,33 @@ DCP docs worth repeating:
 
 ---
 
+## Developer guide
+
+All commands run from the root of the `/narratives` directory.
+
+### Installation
+
+```bash
+nvm use        # switch to the Node version pinned in .nvmrc (or run 'nvm install' if not yet installed)
+corepack enable
+pnpm i
+```
+
+### Scripts
+
+| Command | What it does |
+| --- | --- |
+| `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
+| `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
+| `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
+| `pnpm test:ui` | Run the frontend Vitest suite |
+| `pnpm test:agent` | Run the backend Pytest suite |
+
+> [!TIP]
+> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or updating a PR.
+
+---
+
 ## Local development
 
 Two paths. Pick by what you are changing.
@@ -674,15 +702,14 @@ A hot-reloading Vite dev server proxying every backend call to a deployed
 instance. Real Gemini, real MCP tools, real charts.
 
 ```sh
-cd ui
-npm install
+pnpm install
 
-cat > .env.local <<'EOF'
+cat > ui/.env.local <<'EOF'
 BACKEND_URL=https://<your-instance>.run.app
 AGENT_URL=https://<your-instance>.run.app
 EOF
 
-npm run dev      # http://localhost:3000
+pnpm -C ui dev      # http://localhost:3000
 ```
 
 Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
@@ -690,7 +717,7 @@ Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
 so `vite build` ignores it. Defaults are `localhost:5001` and `localhost:8080` if
 unset. Vite picks up `.env.local` changes on **restart**, not live.
 
-You need Node 20+ and nothing else — no Docker, no Python, no gcloud.
+You need Node 24+ and nothing else — no Docker, no Python, no gcloud.
 
 ### Path B — the agent locally
 
@@ -765,7 +792,7 @@ the schema shape only.
 **Serve the SPA from the agent**, so routing matches production:
 
 ```sh
-(cd ui && npm ci && npm run build)
+pnpm build
 export STATIC_ROOT="$(cd ui/dist && pwd)"
 ```
 
@@ -792,15 +819,12 @@ Production runs `gunicorn main:app`; `main.py` is the development path.
 Nothing is mocked that matters.
 
 ```sh
-# Agent — from agent/
-cd agent
-uv sync                                    # once, and after a dependency change
-uv run pytest
+# Run all tests across UI and agent:
+pnpm test
 
-# UI — from ui/
-cd ui
-npx tsc --noEmit
-npx vitest run                             # 9 files, 108 tests
+# Or run by component:
+pnpm test:ui                               # Vitest UI suite (9 files, 108 tests)
+pnpm test:agent                            # Pytest agent suite
 ```
 
 Agent tests are pytest modules named `*_test.py`, colocated beside the module
@@ -998,11 +1022,12 @@ that visible in `/agent/health` instead.
 Before opening a PR, run what CI runs:
 
 ```sh
+pnpm test
+pnpm build
+
 cd agent && uv sync --frozen \
   && uv run ruff format --check . && uv run ruff check . \
-  && uv run mypy && uv run pytest
-
-cd ../ui && npm ci && npx tsc --noEmit && npx vitest run
+  && uv run mypy
 
 cd .. && bash -n deploy.sh
 cd deploy/terraform-custom-datacommons/modules \

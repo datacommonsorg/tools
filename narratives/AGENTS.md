@@ -6,7 +6,7 @@ and commands below are relative to `/narratives` (or to `/narratives/ui` and
 
 The application consists of two components packaged into a single container in
 production:
-- `ui/` — React 19 + Vite single-page application (npm).
+- `ui/` — React 19 + Vite single-page application (pnpm).
 - `agent/` — Python 3.14 server that hosts the `/agent/*` API, serves the
   compiled SPA (`server/routes/spa.py`), and reverse-proxies Data Commons data
   routes (`server/routes/dcproxy.py`) to the configured `DATA_PLANE_URL` (uv).
@@ -32,8 +32,7 @@ Contribution process and PR expectations:
 
 ## Layout
 
-- `ui/` — React + Vite SPA (`package-lock.json` lives in `ui/`; use **npm**,
-  not pnpm):
+- `ui/` — React + Vite SPA (workspace package managed with **pnpm**):
   - `src/api/` — Data Commons REST callers.
   - `src/components/` — flat directory of presentational and feature
     components (does not use the layered `primitives / elements / scopes /
@@ -57,13 +56,27 @@ Contribution process and PR expectations:
 
 ## Commands
 
-UI, from `narratives/ui/` (requires **Node 20+**):
+Run from the root of the `/narratives` directory:
 
-- `npm install` — install dependencies.
-- `npm run dev` — start the Vite dev server on port 3000.
-- `npm run build` — build production assets into `ui/dist/`.
-- `npm run lint` — type-check (`tsc --noEmit`).
-- `npm run test` — run unit tests once (`vitest run`).
+- `nvm use` (or `nvm install`) — switch to the Node version pinned in `.nvmrc`.
+- `corepack enable && pnpm i` — install workspace dependencies (the pnpm version is
+  pinned via `packageManager`).
+- `pnpm build` — compile the React UI and stage static assets into `agent/static/`.
+- `pnpm build:ui` — compile the React UI bundle into `ui/dist/` without staging.
+- `pnpm test` — run unit tests across the whole application (Vitest for UI + Pytest for agent).
+- `pnpm test:ui` — run the UI unit test suite (`vitest run`).
+- `pnpm test:agent` — run the Python agent unit test suite (`uv run pytest`).
+
+Run `pnpm test` (and `pnpm build` for UI changes) before considering work done.
+
+Component-level commands:
+
+UI, from `narratives/ui/` (or via `pnpm -C ui <command>`):
+
+- `pnpm run dev` — start the Vite dev server on port 3000.
+- `pnpm run build` — build production assets into `ui/dist/`.
+- `pnpm run lint` — type-check (`tsc --noEmit`).
+- `pnpm run test` — run unit tests once (`vitest run`).
 
 Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 
@@ -81,7 +94,7 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 Repo-wide rules live in [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md);
 frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
 
-- **Enforcement (UI)** — `npm run lint` currently runs only the TypeScript
+- **Enforcement (UI)** — `pnpm -C ui run lint` currently runs only the TypeScript
   compiler (`tsc --noEmit`). ESLint, Biome, and Stylelint are not yet configured
   (linting is to follow), so style rules outside type-checking must be verified
   manually.
@@ -115,8 +128,8 @@ Choose the workflow below based on which component you are changing. The MCP ser
 not run as part of this deployment; connect either to a deployed backend, public Data
 Commons or a local MCP server as preferred.
 
-- **UI (`narratives/ui/`)** — run `npm install`, configure `BACKEND_URL` and
-  `AGENT_URL` in `ui/.env.local`, and run `npm run dev`. In development, Vite's
+- **UI (`narratives/ui/`)** — run `pnpm install`, configure `BACKEND_URL` and
+  `AGENT_URL` in `ui/.env.local`, and run `pnpm -C ui run dev`. In development, Vite's
   `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*` and Data Commons
   routes to those URLs; in production, the Python server in `agent/` serves the
   compiled SPA (`server/routes/spa.py`) and proxies Data Commons routes
@@ -132,18 +145,19 @@ Commons or a local MCP server as preferred.
 
 ## Verify
 
-Run the full verification suite locally before opening or updating a PR (mirrors
-[`cloudbuild/pr-validate.yaml`](cloudbuild/pr-validate.yaml)):
+`pnpm test` for every change; `pnpm build` and a manual check for UI changes.
 
-1. **Agent** (from `narratives/agent/`):
+To run individual layer checks locally (mirrors [`cloudbuild/pr-validate.yaml`](cloudbuild/pr-validate.yaml)):
+
+1. **Test suites**: `pnpm test` (or `pnpm test:ui` and `pnpm test:agent`).
+2. **Build**: `pnpm build` (compiles React UI and stages static assets into `agent/static/`).
+3. **Agent style** (from `narratives/agent/`):
    `uv sync --frozen`, `uv run ruff format --check .`, `uv run ruff check .`,
-   `uv run mypy`, and `uv run pytest`.
-2. **UI** (from `narratives/ui/`):
-   `npx tsc --noEmit && npx vitest run` (plus `npm run build` for UI changes).
-3. **Terraform** (if `deploy/` changed):
+   and `uv run mypy`.
+4. **Terraform** (if `deploy/` changed):
    `terraform fmt -check -recursive deploy/terraform-custom-datacommons/` and
    `terraform validate` in `deploy/terraform-custom-datacommons/modules`.
-4. **Schemas** (if `schemas/` or `defaults/` changed):
+5. **Schemas** (if `schemas/` or `defaults/` changed):
    validate each example and default config against its JSON Schema in
    `schemas/` with `ajv-cli`.
 
