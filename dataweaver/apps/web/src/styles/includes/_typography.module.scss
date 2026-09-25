@@ -178,22 +178,36 @@ $-supported-body-font-weights: 400, 500;
   }
 }
 
-// Fixed-size (no breakpoint scaling), for dense chart/control UI text that
-// shouldn't grow on larger viewports.
+// Captions: fixed-size (no breakpoint scaling), for dense chart/control UI text
+// that shouldn't grow on larger viewports.
+$-supported-caption-font-weights: 400, 500, 700;
+
 @mixin type-caption-small($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-caption-font-weights
+  );
+
   font-size: $-font-size-11;
-  font-weight: $font-weight;
   line-height: 1.4;
 }
 
 @mixin type-caption-medium($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-caption-font-weights
+  );
+
   font-size: $-font-size-13;
-  font-weight: $font-weight;
   line-height: 1.4;
 }
 
 @mixin type-caption-large($font-weight: 400) {
+  @include -font-weight-google-sans(
+    $font-weight,
+    $-supported-caption-font-weights
+  );
+
   font-size: $-font-size-14;
-  font-weight: $font-weight;
   line-height: 1.4;
 }
