@@ -26,21 +26,14 @@ the content-hashed assets it points at are immutable.
 """
 
 import logging
-import os
-from pathlib import Path
 
 from flask import Blueprint, Response, abort, send_from_directory
 
-from narratives_agent.config import AGENT_ROOT
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 spa_bp = Blueprint("spa", __name__)
-
-# The Dockerfile copies the `ui` build here. Overridable so a local
-# `python main.py` can point straight at ui/dist without a container build.
-_DEFAULT_STATIC_ROOT = AGENT_ROOT / "static"
-STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", _DEFAULT_STATIC_ROOT))
 
 # Bare files the SPA loads from the root, e.g. /logo.png.
 #
@@ -72,16 +65,14 @@ _SERVABLE_SUFFIXES = frozenset(
 
 def _discover_root_assets() -> frozenset:
     """Inert files sitting at the root of the built SPA."""
-    if not STATIC_ROOT.is_dir():
+    static_root = get_settings().static_root
+    if not static_root.is_dir():
         return frozenset()
     return frozenset(
         entry.name
-        for entry in STATIC_ROOT.iterdir()
+        for entry in static_root.iterdir()
         if entry.is_file() and entry.suffix.lower() in _SERVABLE_SUFFIXES
     )
-
-
-_ROOT_ASSETS = _discover_root_assets()
 
 
 @spa_bp.route("/healthz", methods=["GET"])
@@ -102,7 +93,7 @@ def healthz():
 @spa_bp.route("/", methods=["GET"])
 def index():
     """The SPA shell. Never cached: it names the hashed bundle."""
-    response = send_from_directory(STATIC_ROOT, "index.html")
+    response = send_from_directory(get_settings().static_root, "index.html")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -110,7 +101,7 @@ def index():
 @spa_bp.route("/assets/<path:name>", methods=["GET"])
 def asset(name: str):
     """Content-hashed JS/CSS. Safe to cache forever -- the name changes."""
-    response = send_from_directory(STATIC_ROOT / "assets", name)
+    response = send_from_directory(get_settings().static_root / "assets", name)
     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
@@ -122,8 +113,8 @@ def root_asset(name: str):
     Not immutable: these names carry no content hash, so a swapped logo has to
     be able to take effect. An hour matches what nginx served.
     """
-    if name not in _ROOT_ASSETS:
+    if name not in _discover_root_assets():
         abort(404)
-    response = send_from_directory(STATIC_ROOT, name)
+    response = send_from_directory(get_settings().static_root, name)
     response.headers["Cache-Control"] = "public, max-age=3600"
     return response

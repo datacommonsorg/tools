@@ -13,25 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 from narratives_agent.server.routes.brand import brand_bp, load_branding
 from narratives_agent.server.routes.chat import chat_bp
 from narratives_agent.server.routes.dcproxy import dcproxy_bp
 from narratives_agent.server.routes.spa import spa_bp
 from narratives_agent.server.routes.system import system_bp
-
-# The API blueprints declare their routes at the root (/brand, /chat/stream,
-# /health) because the services container's nginx used to strip the /agent
-# prefix before proxying here. With the app plane serving its own ingress there
-# is nothing in front to strip it, so the prefix is applied here instead --
-# which keeps every URL the browser already calls working untouched, and leaves
-# the root free for the SPA.
-#
-# brand.py reads the same variable to rewrite the asset URLs it embeds in the
-# branding document. The two must agree, or the browser requests a logo from a
-# path nothing serves.
-_API_PREFIX = os.environ.get("AGENT_API_PREFIX", "/agent")
+from narratives_agent.settings import get_settings
 
 
 def register_all(app):
@@ -50,8 +37,9 @@ def register_all(app):
       /core, /api, /tools, ...  the data plane, reverse-proxied by dcproxy
       everything else           the SPA
     """
+    api_prefix = get_settings().agent_api_prefix
     for bp in (brand_bp, system_bp, chat_bp):
-        app.register_blueprint(bp, url_prefix=_API_PREFIX)
+        app.register_blueprint(bp, url_prefix=api_prefix)
 
     # No prefix: these own the browser-facing root.
     app.register_blueprint(dcproxy_bp)

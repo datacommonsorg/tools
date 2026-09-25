@@ -28,13 +28,13 @@ Usage:
 
 from narratives_agent.config import _bootstrap_config_from_url
 from narratives_agent.mcp.client import (
-    MCP_PORT,
     get_tools,
     initialize_mcp,
     mcp_url,
 )
-from narratives_agent.server.app import AGENT_PORT, app
+from narratives_agent.server.app import app
 from narratives_agent.server.routes import register_all
+from narratives_agent.settings import get_settings
 
 # Startup work runs at import time, not inside main(), because production
 # serves `main:app` through gunicorn and never calls main() at all. Importing
@@ -55,13 +55,15 @@ def main():
     developer can still `python main.py` and get the same app on a plain
     threaded server, with the MCP connection reported at startup.
     """
+    settings = get_settings()
     print("=" * 60)
     print("Data Commons MCP Proxy Server (Proxy-Only Mode)")
     print("=" * 60)
     print(f"\nMCP endpoint: {mcp_url()}")
     print("\nIf that is a localhost URL, make sure the MCP server is running:")
     print(
-        f"  python3 -m uv tool run datacommons-mcp serve http --port {MCP_PORT}"
+        "  python3 -m uv tool run datacommons-mcp serve http --port "
+        f"{settings.mcp_port}"
     )
 
     # Try to connect to MCP server
@@ -76,12 +78,14 @@ def main():
         print("The proxy will start anyway - MCP server can be started later")
 
     # Start proxy
-    print(f"\nStarting proxy on port {AGENT_PORT}...")
-    print(f"Frontend should connect to: http://localhost:{AGENT_PORT}")
+    print(f"\nStarting proxy on port {settings.agent_port}...")
+    print(f"Frontend should connect to: http://localhost:{settings.agent_port}")
     print("\nPress Ctrl+C to stop")
     print("=" * 60)
 
-    app.run(host="0.0.0.0", port=AGENT_PORT, debug=False, threaded=True)
+    app.run(
+        host="0.0.0.0", port=settings.agent_port, debug=False, threaded=True
+    )
 
 
 if __name__ == "__main__":

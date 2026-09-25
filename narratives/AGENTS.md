@@ -48,6 +48,7 @@ Contribution process and PR expectations:
   - `main.py` — server entry point (`gunicorn main:app` in production).
   - `src/narratives_agent/` — installable Python package (`config.py`,
     `gcp_auth.py`, `server/`, `workflows/`, `mcp/`, `gemini/`).
+    - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `branding.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.

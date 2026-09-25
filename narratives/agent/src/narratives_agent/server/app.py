@@ -14,13 +14,11 @@
 # limitations under the License.
 
 import logging
-import os
 
 from flask import Flask
 from flask_cors import CORS
 
-# Configuration
-AGENT_PORT = int(os.environ.get("AGENT_PORT", 5001))
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +36,15 @@ def _allowed_origins() -> list[str]:
     Returns:
         The configured origins, or the loopback origins when unset locally.
     """
-    configured = os.environ.get("ALLOWED_ORIGIN", "").strip()
+    settings = get_settings()
+    configured = settings.allowed_origin
     if configured:
         return [
             origin.strip() for origin in configured.split(",") if origin.strip()
         ]
 
     # K_SERVICE is set by Cloud Run; its presence means "not local dev".
-    if os.environ.get("K_SERVICE"):
+    if settings.k_service:
         logger.error(
             "ALLOWED_ORIGIN is unset in a deployed environment; refusing to "
             "allow all origins. Set it to the service URL."

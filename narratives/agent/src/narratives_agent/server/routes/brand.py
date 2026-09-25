@@ -26,13 +26,13 @@ syncs the bucket.
 import hashlib
 import json
 import logging
-import os
 import posixpath
 import re
 
 from flask import Blueprint, Response, jsonify
 
 from narratives_agent.config import _fetch_gcs_url
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +41,6 @@ brand_bp = Blueprint("brand", __name__)
 # Branding fields naming an image that must be mirrored into memory so the
 # browser never fetches it from the bucket. `logo_url` is the legacy alias.
 _ASSET_FIELDS = ("logo", "logo_url", "favicon")
-
-# Browser-visible prefix the SPA reaches this blueprint through. The services
-# container's nginx strips it before proxying, so it is configuration rather
-# than something the routes themselves see.
-# Must match the prefix the API blueprints are registered under
-# (routes/__init__.py). This module rewrites asset URLs into the served
-# document, so if the two disagree the browser requests a logo from a path
-# nothing serves -- a broken image with no error anywhere.
-_PUBLIC_PREFIX = os.environ.get("AGENT_API_PREFIX", "/agent").rstrip("/")
 
 _ASSET_CONTENT_TYPES = {
     ".png": "image/png",
@@ -300,7 +291,14 @@ def _mirror_assets(document: dict, base_url: str) -> dict[str, bytes]:
             name = f"{stem}-{digest}{extension}"
             assets[name] = content
             mirrored[source] = name
-        document[field] = f"{_PUBLIC_PREFIX}/brand/assets/{name}"
+        # The API prefix is the browser-visible path the SPA reaches this
+        # blueprint through, and the asset route is registered under it
+        # (routes/__init__.py). The rewritten URL must carry the same prefix: if
+        # the two disagree, the browser requests a logo from a path nothing
+        # serves -- a broken image with no error anywhere.
+        document[field] = (
+            f"{get_settings().agent_api_prefix}/brand/assets/{name}"
+        )
     return assets
 
 
@@ -357,7 +355,7 @@ def load_branding() -> None:
     config bucket is missing, unreachable or holds a corrupt document, in which
     case the UI falls back to its shipped design tokens.
     """
-    base_url = os.environ.get("BRAND_CONFIG_URL", "").rstrip("/")
+    base_url = get_settings().brand_config_url
     if not base_url:
         logger.info(
             "BRAND_CONFIG_URL is unset; serving the UI's default branding"
@@ -405,7 +403,7 @@ def _brand_payload() -> dict:
         The instance id and the branding document held since startup.
     """
     return {
-        "instance": os.environ.get("INSTANCE_ID", ""),
+        "instance": get_settings().instance_id,
         "branding": _BRAND_STATE["branding"],
     }
 

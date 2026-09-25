@@ -28,6 +28,7 @@ dependencies = [
     "flask-cors>=6.0",
     "google-cloud-secret-manager>=2.20",
     "gunicorn>=23.0",
+    "pydantic-settings>=2.15",
     "requests>=2.32",
 ]
 

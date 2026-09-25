@@ -26,11 +26,12 @@ path for both the ingress=internal and the IAM-gated deployments.
 """
 
 import logging
-import os
 import time
 from urllib.parse import urlparse
 
 import requests
+
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,8 @@ def attach_auth(headers: dict, target_url: str) -> None:
     co-located sidecar deployment is unaffected, and no-ops off GCP where the
     metadata server is unreachable.
     """
-    if os.environ.get("DATA_PLANE_AUTH", "auto").lower() == "off":
+    settings = get_settings()
+    if settings.data_plane_auth.lower() == "off":
         return
 
     parsed = urlparse(target_url)
@@ -133,7 +135,7 @@ def attach_auth(headers: dict, target_url: str) -> None:
     # Public Data Commons: API key, never an ID token -- our service account
     # means nothing to it.
     if parsed.hostname in _API_KEY_HOSTS:
-        key = os.environ.get("DC_API_KEY", "").strip()
+        key = settings.dc_api_key
         if key:
             headers["X-API-Key"] = key
         else:

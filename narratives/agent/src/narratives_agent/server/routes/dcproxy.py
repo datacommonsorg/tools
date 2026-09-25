@@ -33,41 +33,16 @@ obtain anyway.
 """
 
 import logging
-import os
 
 import requests
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from narratives_agent.gcp_auth import attach_auth
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 dcproxy_bp = Blueprint("dcproxy", __name__)
-
-# Base URL of the data-plane service. Empty means "not split yet" -- the routes
-# below then report a clear 503 instead of proxying to nowhere.
-DATA_PLANE_URL = os.environ.get("DATA_PLANE_URL", "").rstrip("/")
-
-# Where the BROWSER's data routes go, which is not always where MCP goes.
-#
-# On cdc and dcp one container serves both, so these are the same host and this
-# variable is unset. On the "none" backend they are genuinely two hosts:
-#
-#   api.datacommons.org  the versioned REST API and /mcp -- what the agent uses
-#   datacommons.org      the website routes the chart web components call:
-#                        /api/observations/series, /api/place/name,
-#                        /core/api/...
-#
-# Sending chart traffic to the API host returns
-#   {"message":"The current request is not defined by this API.","code":404}
-# from Cloud Endpoints, for every chart, on every turn. The proxy and the auth
-# are both working at that point -- the routes simply do not exist on that host,
-# so nothing renders and nothing looks broken server-side.
-#
-# Falls back to DATA_PLANE_URL so cdc and dcp need no configuration.
-DATA_PLANE_WEB_URL = (
-    os.environ.get("DATA_PLANE_WEB_URL", "").rstrip("/") or DATA_PLANE_URL
-)
 
 # Prefixes that must go to the MCP/API host rather than the web host.
 #
@@ -82,8 +57,11 @@ _MCP_HOST_PREFIXES = frozenset({"mcp"})
 
 def _upstream_for(prefix: str) -> str:
     """Which host serves this prefix. Identical on cdc and dcp."""
+    settings = get_settings()
     return (
-        DATA_PLANE_URL if prefix in _MCP_HOST_PREFIXES else DATA_PLANE_WEB_URL
+        settings.data_plane_url
+        if prefix in _MCP_HOST_PREFIXES
+        else settings.data_plane_web_url
     )
 
 

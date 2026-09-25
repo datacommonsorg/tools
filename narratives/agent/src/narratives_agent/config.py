@@ -15,16 +15,16 @@
 
 import json
 import logging
-import os
 import posixpath
 import re
 import time
 from datetime import datetime
-from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 import requests
+
+from narratives_agent.settings import get_settings
 
 # Setup logging
 logging.basicConfig(
@@ -64,15 +64,6 @@ except ImportError:
         "GEMINI_API_KEY_SECRET will be ignored"
     )
 
-
-# The `agent/` directory, where config.json, logs, and the staged SPA live.
-# Set via `AGENT_ROOT` in the container (`Dockerfile`); falls back to three
-# levels above `agent/src/narratives_agent/config.py` in a local checkout.
-# Anything resolving a path against the agent directory should read this
-# rather than counting parents of its own `__file__`.
-AGENT_ROOT = Path(
-    os.environ.get("AGENT_ROOT") or Path(__file__).resolve().parents[2]
-)
 
 # Backend config cache
 _config_cache = None
@@ -190,10 +181,11 @@ def _bootstrap_config_from_url() -> None:
     `config["prompts"]` before writing the file, while allowing non-empty inline
     `prompts` entries in `agent-config.json` to take precedence.
     """
-    url = os.environ.get("CONFIG_URL", "").strip()
+    settings = get_settings()
+    url = settings.config_url
     if not url:
         return
-    config_path = AGENT_ROOT / "config.json"
+    config_path = settings.agent_root / "config.json"
     try:
         r = _fetch_gcs_url(url)
         r.raise_for_status()
@@ -248,7 +240,7 @@ def load_config() -> dict:
     """Load configuration from config.json file."""
     global _config_cache, _config_mtime
 
-    config_path = AGENT_ROOT / "config.json"
+    config_path = get_settings().agent_root / "config.json"
 
     if not config_path.exists():
         logger.warning(f"Config file not found at {config_path}")
@@ -282,7 +274,7 @@ def get_current_datetime() -> str:
     ("IST", "PT", ...) is the zone abbreviation resolved at runtime.
     Falls back to UTC when TIMEZONE names a zone that cannot be resolved.
     """
-    tz_name = os.environ.get("TIMEZONE", "UTC")
+    tz_name = get_settings().timezone
     try:
         tz = ZoneInfo(tz_name)
     except Exception:
@@ -336,7 +328,7 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
     now = time.time()
     if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
         return cached[1]
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    project = get_settings().google_cloud_project
     if not secret_name.startswith("projects/"):
         if not project:
             logger.error(
@@ -376,7 +368,7 @@ def get_gemini_api_key() -> str:
     back to `gemini.api_key` in `config.json` for local development. Placeholder
     strings (`REPLACE_ME*`, `DEPRECATED*`) are treated as unconfigured.
     """
-    secret = os.environ.get("GEMINI_API_KEY_SECRET", "")
+    secret = get_settings().gemini_api_key_secret
     if secret:
         key = _fetch_key_from_secret_manager(secret)
         if key:

@@ -132,8 +132,8 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _UpstreamRecorder:
 @pytest.fixture
 def split_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Configure distinct API and website hosts for public Data Commons."""
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_URL", _API_HOST)
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_WEB_URL", _WEB_HOST)
+    monkeypatch.setenv("DATA_PLANE_URL", _API_HOST)
+    monkeypatch.setenv("DATA_PLANE_WEB_URL", _WEB_HOST)
 
 
 @pytest.mark.usefixtures("split_hosts")
@@ -195,8 +195,8 @@ def test_single_host_deployment_forwards_all_routes_to_same_host(
     #   same Cloud Run service URL.
     # Expectation: Every proxied path is forwarded to that single host.
     one_host = "https://data-plane-uc.a.run.app"
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_URL", one_host)
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_WEB_URL", one_host)
+    monkeypatch.setenv("DATA_PLANE_URL", one_host)
+    monkeypatch.setenv("DATA_PLANE_WEB_URL", one_host)
 
     response = client.get(path)
     assert response.status_code == 200
@@ -217,7 +217,7 @@ def test_incoming_caller_identity_headers_are_stripped(
     #   outbound auth header of its own.
     # Expectation: None of the caller identity headers reach the upstream
     #   request, while `X-Request-Id` is preserved.
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_URL", "http://localhost:8082")
+    monkeypatch.setenv("DATA_PLANE_URL", "http://localhost:8082")
     monkeypatch.setenv("DATA_PLANE_AUTH", "off")
 
     response = client.get(
@@ -251,10 +251,8 @@ def test_api_key_is_attached_for_public_dc_and_omitted_for_unlisted_host(
     #   (`https://unlisted.example.com`).
     # Expectation: Forwarding `/mcp` attaches `X-API-Key`, whereas forwarding
     #   `/api/observations` to the unlisted host does not attach `X-API-Key`.
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_URL", _API_HOST)
-    monkeypatch.setattr(
-        dcproxy, "DATA_PLANE_WEB_URL", "https://unlisted.example.com"
-    )
+    monkeypatch.setenv("DATA_PLANE_URL", _API_HOST)
+    monkeypatch.setenv("DATA_PLANE_WEB_URL", "https://unlisted.example.com")
 
     client.get("/mcp")
     client.get("/api/observations")
@@ -275,8 +273,8 @@ def test_unconfigured_data_plane_url_returns_503(
     # Situation: Both `DATA_PLANE_URL` and `DATA_PLANE_WEB_URL` are empty.
     # Expectation: `GET /api/observations` returns HTTP 503 without invoking
     #   the upstream session.
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_URL", "")
-    monkeypatch.setattr(dcproxy, "DATA_PLANE_WEB_URL", "")
+    monkeypatch.setenv("DATA_PLANE_URL", "")
+    monkeypatch.setenv("DATA_PLANE_WEB_URL", "")
 
     response = client.get("/api/observations")
     assert response.status_code == 503
