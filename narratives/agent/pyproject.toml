@@ -25,10 +25,7 @@ requires-python = ">=3.14"
 license = "Apache-2.0"
 dependencies = [
     "fastapi>=0.141",
-    "flask>=3.1",
-    "flask-cors>=6.0",
     "google-cloud-secret-manager>=2.20",
-    "gunicorn>=23.0",
     "pydantic-settings>=2.15",
     "requests>=2.32",
     "uvicorn[standard]>=0.53",
@@ -128,11 +125,6 @@ module = [
     "narratives_agent.mcp.schema",
 ]
 ignore_errors = true
-
-[[tool.mypy.overrides]]
-# Third-party packages that ship no type information.
-module = ["flask_cors.*"]
-ignore_missing_imports = true
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
