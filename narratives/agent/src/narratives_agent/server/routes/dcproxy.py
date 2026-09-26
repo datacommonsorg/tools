@@ -49,6 +49,12 @@ from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+# httpx2 logs every request it sends at INFO, with the full upstream URL. The
+# proxy sends one for each browser data request, which Uvicorn's access log
+# already records, and logs upstream failures itself, so only httpx2's
+# warnings and errors are kept.
+logging.getLogger("httpx2").setLevel(logging.WARNING)
+
 router = APIRouter()
 
 # Prefixes that must go to the MCP/API host rather than the web host.
@@ -208,7 +214,7 @@ async def _forward(request: Request, subpath: str, prefix: str) -> Response:
         headers[name] = f"{headers[name]}, {v}" if name in headers else v
 
     body: AsyncIterator[bytes] | None = None
-    if request.method in ("POST", "PUT", "PATCH"):
+    if request.method == "POST":
         body = request.stream()
         # The body is relayed byte for byte, so the caller's Content-Length
         # still describes it, even though content-length is in _HOP_HEADERS.
@@ -284,16 +290,22 @@ def _target_url(request: Request, upstream_url: str) -> str:
     The path is taken still percent-encoded from `raw_path`, so it reaches the
     data plane as the browser sent it: a decoded `%23` or `%3F` would become a
     fragment or query delimiter, and a decoded control character would make
-    the URL invalid.
+    the URL invalid. The query string is forwarded as sent, too.
+
+    A URL is ASCII (RFC 3986 section 2.1), and browsers percent-encode
+    everything else, so a raw byte above 0x7F in either part is an invalid
+    request. It is rejected rather than dropped or re-encoded: httpx2 would
+    encode a decoded non-ASCII character as UTF-8, changing the bytes.
 
     Raises:
-        UnicodeDecodeError: `raw_path` holds a byte outside ASCII.
+        UnicodeDecodeError: `raw_path` or the query string holds a byte
+            outside ASCII.
     """
     raw_path: bytes = request.scope["raw_path"]
     target = f"{upstream_url}{raw_path.decode('ascii')}"
     query_string: bytes = request.scope["query_string"]
     if query_string:
-        target = f"{target}?{query_string.decode('utf-8', 'ignore')}"
+        target = f"{target}?{query_string.decode('ascii')}"
     return target
 
 

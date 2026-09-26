@@ -20,7 +20,7 @@ Verifies that:
    omitted history reaches it as an empty list.
 3. Invalid request bodies, including a session id that could name a file
    outside the logs directory, are rejected with 422 before the pipeline
-   runs.
+   runs, while a session id `SessionLogger` issued is accepted.
 4. A client disconnect closes the pipeline generator before the response
    ends, under ASGI spec 2.3 and 2.4, without relying on the garbage
    collector.
@@ -40,6 +40,7 @@ from starlette.requests import ClientDisconnect
 from starlette.types import Message
 
 from narratives_agent.server.routes import chat
+from narratives_agent.session_logger import SessionLogger
 
 _HISTORY = [{"role": "user", "content": "What is the population of France?"}]
 
@@ -214,6 +215,30 @@ def test_invalid_request_body_returns_422(
 
     assert response.status_code == 422
     assert pipeline.contexts == []
+
+
+def test_a_session_id_the_server_issued_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+    pipeline: _Pipeline,
+    client: TestClient,
+) -> None:
+    # Test: The contract between the session ids the server issues and the
+    #   ids the route accepts.
+    # Situation: A real `SessionLogger`, with file logging off, issues a new
+    #   session id, and a follow-up request sends it back, as the UI does.
+    # Expectation: The route accepts the id and resumes that session, rather
+    #   than rejecting every follow-up turn with 422.
+    monkeypatch.setenv("SESSION_LOG_TO_FILE", "false")
+    issued = SessionLogger().session_id
+
+    response = client.post(
+        "/agent/chat/stream",
+        json={"message": "And Spain?", "session_id": issued},
+    )
+
+    assert response.status_code == 200
+    [ctx] = pipeline.contexts
+    assert ctx["session_logger"].session_id == issued
 
 
 @pytest.mark.parametrize("spec_version", ["2.3", "2.4"])

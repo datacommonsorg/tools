@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from narratives_agent.server.responses import ClosingStreamingResponse
-from narratives_agent.session_logger import SessionLogger
+from narratives_agent.session_logger import SESSION_ID_PATTERN, SessionLogger
 from narratives_agent.workflows.chat_pipeline import (
     run_followups,
     run_mcp_phase,
@@ -39,11 +39,9 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1)
     history: list[dict[str, Any]] = Field(default_factory=list)
-    # SessionLogger names the session's log file after the id, so only
-    # characters that cannot leave the logs directory are accepted.
-    session_id: str | None = Field(
-        default=None, pattern=r"^[0-9A-Za-z-]{1,64}$"
-    )
+    # SessionLogger names the session's log file after the id; the pattern
+    # it owns accepts only characters that cannot leave the logs directory.
+    session_id: str | None = Field(default=None, pattern=SESSION_ID_PATTERN)
 
 
 @router.post("/chat/stream")

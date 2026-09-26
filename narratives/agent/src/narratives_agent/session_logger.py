@@ -26,6 +26,12 @@ from narratives_agent.settings import get_settings
 # (the full text_length is recorded separately).
 MAX_TEXT_PREVIEW_LENGTH = 500
 
+# Session IDs a client may send back to resume a session. The log file is
+# named after the ID, so only characters that cannot leave the logs directory
+# are accepted. Every ID `SessionLogger._generate_session_id` issues must
+# match, or the UI's follow-up turns, which echo it back, are rejected.
+SESSION_ID_PATTERN = r"^[0-9A-Za-z-]{1,64}$"
+
 
 def _emit_structured(session_id: str, event_type: str, data: dict) -> None:
     """Write one JSON object per line to stdout for Cloud Logging to pick up.

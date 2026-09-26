@@ -44,14 +44,15 @@ test client and an upstream served by `httpx2.MockTransport`:
     response that is not a redirect is relayed unchanged, and an upstream
     status outside 100-599 returns HTTP 502; the upstream is closed in each
     case.
-12. The path is forwarded still percent-encoded, and a path that is not ASCII
-    returns HTTP 400.
+12. The path is forwarded still percent-encoded, and a path or query string
+    that is not ASCII returns HTTP 400.
 13. A caller's `X-API-Key` never reaches the upstream, and the upstream's
     `Date` and `Server` headers are not copied.
 14. Request header values reach the upstream byte for byte, including bytes
     outside ASCII.
 15. A client that disconnects during a streamed upload ends the request
     without an error escaping the application.
+16. A proxied request writes no INFO record to the `httpx2` logger.
 """
 
 import asyncio
@@ -101,6 +102,7 @@ def _http_scope(
     *,
     method: str = "GET",
     headers: Sequence[tuple[bytes, bytes]] = (),
+    query_string: bytes = b"",
     spec_version: str = "2.3",
 ) -> Scope:
     """Returns the scope of a request as Uvicorn builds it.
@@ -118,7 +120,7 @@ def _http_scope(
         "path": path,
         "raw_path": raw_path,
         "root_path": "",
-        "query_string": b"",
+        "query_string": query_string,
         "headers": list(headers),
         "client": ("127.0.0.1", 50000),
         "server": ("127.0.0.1", 5001),
@@ -131,13 +133,15 @@ def _asgi_get(
     path: str,
     raw_path: bytes,
     headers: Sequence[tuple[bytes, bytes]] = (),
+    query_string: bytes = b"",
 ) -> Message:
     """Sends `GET` to `app` over ASGI and returns its response start message.
 
     The test client encodes request header values as UTF-8 and decodes
     response header values as UTF-8 before re-encoding them as ASCII, so it
     can neither send nor read an arbitrary header byte; this carries the
-    headers exactly as given and as the application sent them.
+    headers exactly as given and as the application sent them. It likewise
+    percent-encodes the query string, which this passes through raw.
     """
     starts: list[Message] = []
     request_delivered = False
@@ -155,9 +159,10 @@ def _asgi_get(
         if message["type"] == "http.response.start":
             starts.append(message)
 
-    asyncio.run(
-        app(_http_scope(path, raw_path, headers=headers), receive, send)
+    scope = _http_scope(
+        path, raw_path, headers=headers, query_string=query_string
     )
+    asyncio.run(app(scope, receive, send))
     return starts[0]
 
 
@@ -764,6 +769,53 @@ def test_a_path_that_is_not_ascii_returns_400(
 
     assert start["status"] == 400
     assert recorder.requests == []
+
+
+@pytest.mark.parametrize(
+    "query_string",
+    [
+        pytest.param(b"q=\xe9", id="latin-1"),
+        pytest.param(b"q=\xc3\xa9", id="utf-8"),
+        pytest.param(b"q=\xff", id="invalid-utf-8"),
+    ],
+)
+@pytest.mark.usefixtures("split_hosts")
+def test_a_query_that_is_not_ascii_returns_400(
+    query_string: bytes,
+    client: TestClient,
+    recorder: _Upstream,
+) -> None:
+    # Test: A request line whose query string holds a byte outside ASCII.
+    # Situation: The app is driven over ASGI with an ASCII path and a raw
+    #   query holding `\xe9`, the UTF-8 bytes of `é`, or `\xff`. A browser
+    #   percent-encodes these; only a raw client sends them.
+    # Expectation: The proxy returns HTTP 400 without calling the upstream,
+    #   rather than dropping the bytes or re-encoding them.
+    start = _asgi_get(
+        client.app, "/api/x", b"/api/x", query_string=query_string
+    )
+
+    assert start["status"] == 400
+    assert recorder.requests == []
+
+
+@pytest.mark.usefixtures("split_hosts")
+def test_a_proxied_request_logs_nothing_from_httpx2_at_info(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Log volume of a successful proxied request.
+    # Situation: Logging is captured at INFO, as `config.py` configures the
+    #   root logger, and a client sends `GET /api/x?q=1`, which the upstream
+    #   answers with HTTP 200.
+    # Expectation: No record comes from the `httpx2` logger, which would
+    #   otherwise log the upstream URL of every proxied request.
+    caplog.set_level(logging.INFO)
+
+    response = client.get("/api/x?q=1")
+
+    assert response.status_code == 200
+    assert [r for r in caplog.records if r.name == "httpx2"] == []
 
 
 @pytest.mark.usefixtures("split_hosts")
