@@ -694,9 +694,13 @@ You need Node 20+ and nothing else — no Docker, no Python, no gcloud.
 
 ### Path B — the agent locally
 
+Run every command in this section from `narratives/`, in one shell, so the
+variables you export reach the server.
+
+**Install:**
+
 ```sh
-cd agent
-uv sync          # creates .venv and installs from uv.lock
+(cd agent && uv sync)   # creates agent/.venv and installs from uv.lock
 ```
 
 There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
@@ -771,18 +775,30 @@ export STATIC_ROOT="$(cd ui/dist && pwd)"
 
 Skip it if you only care about the API — `/` will 404 and `/agent/*` still works.
 
-**Run and check:**
+**Start the server:**
 
 ```sh
-cd agent && uv run narratives-agent-dev  # http://localhost:5001
+(cd agent && uv run narratives-agent-dev)   # http://localhost:5001
+```
 
-curl -s localhost:5001/agent/health | jq    # mcp.tool_count is the probed tool surface
+It listens on `127.0.0.1` and restarts when a source file changes. Set
+`AGENT_PORT` to use another port. Stop it with Ctrl+C.
+
+**Check it**, from a second terminal:
+
+```sh
+curl -s localhost:5001/agent/health | jq    # mcp_url is the resolved MCP endpoint
 curl -sN -X POST localhost:5001/agent/chat/stream \
   -H 'Content-Type: application/json' \
   -d '{"message":"What is the population of France?","history":[]}'
 ```
 
-The stream should carry `session_id`, `mcp_start`, tool events, text, and `done`.
+The server does not contact MCP at startup, and `/agent/health` never does:
+it reports the resolved `mcp_url` and the cached tool surface, which is empty
+until a chat turn has listed the tools. The chat request is therefore the first
+call to reach MCP. Its stream should carry `session_id`, `mcp_start`, tool
+events, text, and `done`.
+
 Production runs `uvicorn narratives_agent.server.app:app`; `dev.py` is the
 development path.
 
