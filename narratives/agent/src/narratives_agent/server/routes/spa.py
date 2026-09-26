@@ -14,79 +14,28 @@
 # limitations under the License.
 """Serves the compiled React UI and the path Cloud Run probes for liveness.
 
-Until the app plane was split out, the services container's nginx did three
-jobs this process now takes on: serve the SPA and its assets, strip the /agent
-prefix off agent calls, and answer /healthz. The prefix is handled by
-registering the API blueprints under url_prefix (see routes/__init__.py); the
-other two live here.
-
-Cache headers deliberately mirror the nginx config they replace. The shell is
-never cached -- a stale index.html can reference a superseded bundle -- while
-the content-hashed assets it points at are immutable.
+`SpaStaticFiles` serves any file under the static root, which holds only the
+UI build: `index.html`, the content-hashed bundle under `assets/`, and the
+bare files the UI loads from the root, such as `logo.png`. `config.json` and
+`logs/` live under `agent_root`, outside the static root, so no file needs to
+be filtered by name or suffix.
 """
 
-import logging
 import os
-from pathlib import Path
+from pathlib import PurePath
 
-from flask import Blueprint, Response, abort, send_from_directory
+from fastapi import APIRouter
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
-from narratives_agent.config import AGENT_ROOT
-
-logger = logging.getLogger(__name__)
-
-spa_bp = Blueprint("spa", __name__)
-
-# The Dockerfile copies the `ui` build here. Overridable so a local
-# `python main.py` can point straight at ui/dist without a container build.
-_DEFAULT_STATIC_ROOT = AGENT_ROOT / "static"
-STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", _DEFAULT_STATIC_ROOT))
-
-# Bare files the SPA loads from the root, e.g. /logo.png.
-#
-# Two branches previously each hardcoded their own list of these and the lists
-# barely overlapped -- merging either wholesale would have 404'd the other's
-# assets, silently, as missing images rather than as an error. Worse, adding a
-# file to ui/public/ and forgetting the list produced the same silent failure.
-#
-# So the set is derived from what the UI build actually shipped, filtered to
-# inert asset types. That keeps the security property the allowlist existed for
-# -- this process still cannot be walked into serving config.json, the logs
-# directory, or anything else that shares the image -- while removing the
-# hand-maintenance that made it wrong.
-_SERVABLE_SUFFIXES = frozenset(
-    {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".svg",
-        ".ico",
-        ".webp",
-        ".woff",
-        ".woff2",
-        ".txt",
-    }
-)
+router = APIRouter()
 
 
-def _discover_root_assets() -> frozenset:
-    """Inert files sitting at the root of the built SPA."""
-    if not STATIC_ROOT.is_dir():
-        return frozenset()
-    return frozenset(
-        entry.name
-        for entry in STATIC_ROOT.iterdir()
-        if entry.is_file() and entry.suffix.lower() in _SERVABLE_SUFFIXES
-    )
-
-
-_ROOT_ASSETS = _discover_root_assets()
-
-
-@spa_bp.route("/healthz", methods=["GET"])
-def healthz():
-    """Liveness for the Cloud Run startup probe and the uptime check.
+@router.api_route("/healthz", methods=["GET", "HEAD"])
+async def healthz() -> PlainTextResponse:
+    """Reports liveness to the Cloud Run startup probe and the uptime check.
 
     Kept at /healthz rather than folded into /agent/health because the probe
     and the monitoring config already point here, and neither has any reason
@@ -96,34 +45,50 @@ def healthz():
     forwarding -- so this works for the startup probe, which hits the container
     port directly, but an external uptime check must target /agent/health.
     """
-    return Response("ok\n", mimetype="text/plain")
+    return PlainTextResponse("ok\n")
 
 
-@spa_bp.route("/", methods=["GET"])
-def index():
-    """The SPA shell. Never cached: it names the hashed bundle."""
-    response = send_from_directory(STATIC_ROOT, "index.html")
-    response.headers["Cache-Control"] = "no-store"
-    return response
+class SpaStaticFiles(StaticFiles):
+    """Serves the UI build with a cache policy for each kind of file.
 
-
-@spa_bp.route("/assets/<path:name>", methods=["GET"])
-def asset(name: str):
-    """Content-hashed JS/CSS. Safe to cache forever -- the name changes."""
-    response = send_from_directory(STATIC_ROOT / "assets", name)
-    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    return response
-
-
-@spa_bp.route("/<name>", methods=["GET"])
-def root_asset(name: str):
-    """One of the bare files the SPA loads from the root.
-
-    Not immutable: these names carry no content hash, so a swapped logo has to
-    be able to take effect. An hour matches what nginx served.
+    The shell is never cached -- a stale index.html can reference a superseded
+    bundle -- while the content-hashed assets it points at are immutable. Every
+    other file is cached for an hour: its name carries no content hash, so a
+    replaced file has to be able to take effect.
     """
-    if name not in _ROOT_ASSETS:
-        abort(404)
-    response = send_from_directory(STATIC_ROOT, name)
-    response.headers["Cache-Control"] = "public, max-age=3600"
-    return response
+
+    def file_response(
+        self,
+        full_path: str | os.PathLike[str],
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        """Returns the file's response with the Cache-Control for its kind.
+
+        The header is set after the base class chooses between the file and a
+        304, so a 304 carries the same policy as the file it stands for.
+        """
+        response = super().file_response(
+            full_path, stat_result, scope, status_code
+        )
+        if PurePath(full_path).name == "index.html":
+            cache_control = "no-store"
+        elif PurePath(self.get_path(scope)).parts[:1] == ("assets",):
+            cache_control = "public, max-age=31536000, immutable"
+        else:
+            cache_control = "public, max-age=3600"
+        response.headers["Cache-Control"] = cache_control
+        return response
+
+    async def check_config(self) -> None:
+        """Skips the configuration check when the static root is missing.
+
+        Without a UI build every path then answers 404, as a missing file does,
+        instead of every request failing on the base class's `RuntimeError`.
+        """
+        if self.directory is not None and not await run_in_threadpool(
+            os.path.isdir, self.directory
+        ):
+            return
+        await super().check_config()

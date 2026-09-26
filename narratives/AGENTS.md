@@ -45,9 +45,12 @@ Contribution process and PR expectations:
 - `agent/` — Python 3.14 server managed with [uv](https://docs.astral.sh/uv/):
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
     `mypy`, `pytest`).
-  - `main.py` — server entry point (`gunicorn main:app` in production).
   - `src/narratives_agent/` — installable Python package (`config.py`,
     `gcp_auth.py`, `server/`, `workflows/`, `mcp/`, `gemini/`).
+    - `server/app.py` — the FastAPI application
+      (`uvicorn narratives_agent.server.app:app` in production).
+    - `dev.py` — local development server (`uv run narratives-agent-dev`).
+    - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `branding.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
@@ -68,7 +71,7 @@ UI, from `narratives/ui/` (requires **Node 20+**):
 Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 
 - `uv sync` — create `.venv` and install dependencies from `uv.lock`.
-- `uv run python main.py` — start the development server on port 5001.
+- `uv run narratives-agent-dev` — start the development server on port 5001.
 - `uv run pytest` — run the Python unit test suite.
 - `uv run ruff format .` — format Python files.
 - `uv run ruff check .` — lint Python files.
@@ -122,8 +125,8 @@ Commons or a local MCP server as preferred.
   compiled SPA (`server/routes/spa.py`) and proxies Data Commons routes
   (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, export `MCP_SERVER_URL`,
-  `DATA_PLANE_URL`, and `DC_API_KEY`, and run `uv run python main.py`. When
-  pointing at public Data Commons, set both
+  `DATA_PLANE_URL`, and `DC_API_KEY`, and run `uv run narratives-agent-dev`.
+  When pointing at public Data Commons, set both
   `DATA_PLANE_URL=https://api.datacommons.org` (for MCP and versioned REST) and
   `DATA_PLANE_WEB_URL=https://datacommons.org` (for website routes used by the
   chart web components).

@@ -482,7 +482,7 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
       }
 
       env {
-        name  = "PROXY_PORT"
+        name  = "AGENT_PORT"
         value = "8080"
       }
       # Where the MCP tool loop and the /dcproxy reverse proxy send their

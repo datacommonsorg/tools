@@ -118,7 +118,7 @@
       }
     },
     "proxy_url": {
-      "description": "Legacy: where the agent itself binds. Container env (PROXY_PORT) is the source of truth in the target deployment; schema accepts this key for backward compatibility with upstream config.json.example.",
+      "description": "Legacy: where the agent itself binds. Container env (AGENT_PORT) is the source of truth in the target deployment; schema accepts this key for backward compatibility with upstream config.json.example.",
       "type": "string",
       "format": "uri"
     },

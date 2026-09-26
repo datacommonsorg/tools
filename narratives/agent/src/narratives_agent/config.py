@@ -15,16 +15,17 @@
 
 import json
 import logging
-import os
 import posixpath
 import re
 import time
 from datetime import datetime
-from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 import requests
+
+from narratives_agent.settings import get_settings
 
 # Setup logging
 logging.basicConfig(
@@ -43,10 +44,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
 
 
-def get_gemini_model(config: dict, key: str = "mcp_model") -> str:
-    """Returns the configured Gemini model for `key`, or the shared default."""
+def get_gemini_model(config: dict[str, Any]) -> str:
+    """Returns the model `gemini.mcp_model` names, or the shared default."""
     gemini_cfg = config.get("gemini")
-    model = gemini_cfg.get(key) if isinstance(gemini_cfg, dict) else None
+    model = (
+        gemini_cfg.get("mcp_model") if isinstance(gemini_cfg, dict) else None
+    )
     if isinstance(model, str) and model.strip():
         return model.strip()
     return DEFAULT_GEMINI_MODEL
@@ -65,18 +68,9 @@ except ImportError:
     )
 
 
-# The `agent/` directory, where config.json, logs, and the staged SPA live.
-# Set via `AGENT_ROOT` in the container (`Dockerfile`); falls back to three
-# levels above `agent/src/narratives_agent/config.py` in a local checkout.
-# Anything resolving a path against the agent directory should read this
-# rather than counting parents of its own `__file__`.
-AGENT_ROOT = Path(
-    os.environ.get("AGENT_ROOT") or Path(__file__).resolve().parents[2]
-)
-
 # Backend config cache
-_config_cache = None
-_config_mtime = 0
+_config_cache: dict[str, Any] | None = None
+_config_mtime = 0.0
 
 # Secret Manager lookup cache and TTL (seconds)
 _SECRET_MANAGER_TTL_SECONDS = 300
@@ -129,7 +123,7 @@ def _fetch_gcs_url(url: str) -> requests.Response:
     return response
 
 
-def _fetch_prompt_bodies(config_url: str) -> dict:
+def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     """Fetch `prompts/<slot>.md` from the config bucket, beside
     agent-config.json.
 
@@ -183,17 +177,18 @@ def _fetch_prompt_bodies(config_url: str) -> dict:
     return prompts
 
 
-def _bootstrap_config_from_url() -> None:
+def bootstrap_config_from_url() -> None:
     """Fetch CONFIG_URL at startup and write the merged config to config.json.
 
     Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
     `config["prompts"]` before writing the file, while allowing non-empty inline
     `prompts` entries in `agent-config.json` to take precedence.
     """
-    url = os.environ.get("CONFIG_URL", "").strip()
+    settings = get_settings()
+    url = settings.config_url
     if not url:
         return
-    config_path = AGENT_ROOT / "config.json"
+    config_path = settings.agent_root / "config.json"
     try:
         r = _fetch_gcs_url(url)
         r.raise_for_status()
@@ -244,11 +239,11 @@ def _bootstrap_config_from_url() -> None:
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     """Load configuration from config.json file."""
     global _config_cache, _config_mtime
 
-    config_path = AGENT_ROOT / "config.json"
+    config_path = get_settings().agent_root / "config.json"
 
     if not config_path.exists():
         logger.warning(f"Config file not found at {config_path}")
@@ -260,15 +255,16 @@ def load_config() -> dict:
         return _config_cache
 
     try:
-        # config.json is UTF-8 on both sides: _bootstrap_config_from_url pins
+        # config.json is UTF-8 on both sides: bootstrap_config_from_url pins
         # the same encoding when it writes. A config carrying non-ASCII --
         # prompt text with ₹ or an em-dash, an instance name -- would otherwise
         # decode by the platform locale and come back corrupted.
         with open(config_path, encoding="utf-8") as f:
-            _config_cache = json.load(f)
+            config: dict[str, Any] = json.load(f)
+            _config_cache = config
             _config_mtime = current_mtime
             logger.info("Config loaded/reloaded from config.json")
-            return _config_cache
+            return config
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
         return {}
@@ -282,7 +278,7 @@ def get_current_datetime() -> str:
     ("IST", "PT", ...) is the zone abbreviation resolved at runtime.
     Falls back to UTC when TIMEZONE names a zone that cannot be resolved.
     """
-    tz_name = os.environ.get("TIMEZONE", "UTC")
+    tz_name = get_settings().timezone
     try:
         tz = ZoneInfo(tz_name)
     except Exception:
@@ -336,7 +332,7 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
     now = time.time()
     if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
         return cached[1]
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    project = get_settings().google_cloud_project
     if not secret_name.startswith("projects/"):
         if not project:
             logger.error(
@@ -376,7 +372,7 @@ def get_gemini_api_key() -> str:
     back to `gemini.api_key` in `config.json` for local development. Placeholder
     strings (`REPLACE_ME*`, `DEPRECATED*`) are treated as unconfigured.
     """
-    secret = os.environ.get("GEMINI_API_KEY_SECRET", "")
+    secret = get_settings().gemini_api_key_secret
     if secret:
         key = _fetch_key_from_secret_manager(secret)
         if key:

@@ -15,7 +15,6 @@
 
 import json
 import logging
-import os
 import threading
 import time
 from typing import Any
@@ -28,14 +27,12 @@ from narratives_agent.config import load_config
 from narratives_agent.gcp_auth import attach_auth
 from narratives_agent.mcp.schema import fix_tool_arguments
 from narratives_agent.session_logger import SessionLogger
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-MCP_PORT = int(os.environ.get("MCP_PORT", 3000))
-
 # Resolved on first use, not at import: load_config() reads config.json, which
-# _bootstrap_config_from_url() only writes once startup has run. A dict rather
+# bootstrap_config_from_url() only writes once startup has run. A dict rather
 # than a rebound module global so mcp_url() needs no `global` statement.
 _URL_CACHE = {}
 
@@ -131,7 +128,8 @@ def mcp_url() -> str:
     if "url" in _URL_CACHE:
         return _URL_CACHE["url"]
 
-    configured = os.environ.get("MCP_SERVER_URL", "").strip()
+    settings = get_settings()
+    configured = settings.mcp_server_url
     if not configured:
         mcp_config = load_config().get("mcp", {})
         configured = str(mcp_config.get("server_url") or "").strip()
@@ -139,7 +137,7 @@ def mcp_url() -> str:
     resolved = (
         _normalize_url(configured)
         if configured
-        else f"http://localhost:{MCP_PORT}/mcp"
+        else f"http://localhost:{settings.mcp_port}/mcp"
     )
     _URL_CACHE["url"] = resolved
     logger.info("MCP endpoint resolved to %s", resolved)
