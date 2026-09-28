@@ -439,18 +439,9 @@ reliability — when they are, note the upstream fix they stand in for.
 ## 16. Verification before submitting
 
 Run the application's full verification suite locally before opening or updating
-a PR. Do not guess commands — each app documents its own in `<app>/AGENTS.md`:
-
-| App | Lint / types | Tests | Build |
-|---|---|---|---|
-| `dataweaver` | `pnpm lint` | `pnpm test` | `pnpm build` |
-| `narratives`, `ui/` | `npm run lint` | `npm run test` | `npm run build` |
-| `narratives`, `agent/` | `uv run ruff check .`, `uv run mypy` | `uv run pytest` | — |
-
-`narratives` has two toolchains and both gate the merge; running only the npm
-commands leaves the Python side unchecked. The agent also runs
-`uv run ruff format --check .`, which has no column above because it is a
-formatter rather than a linter.
+a PR. Do not guess commands — consult the `<app>/AGENTS.md` of the application
+being worked on for its exact lint, test, and build commands before running
+verification.
 
 For UI changes, also run the production build and verify the change manually in
 the browser. Every app must be wired into the CI orchestrator so that
