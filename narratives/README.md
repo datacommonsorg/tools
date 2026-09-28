@@ -789,7 +789,6 @@ checked-in files, never a value.
 
 ```sh
 pnpm build
-export STATIC_ROOT="$(cd ui/dist && pwd)"
 ```
 
 Skip it if you only care about the API — `/` will 404 and `/agent/*` still works.
