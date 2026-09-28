@@ -49,7 +49,7 @@
 .title {
   @include type-label-small(false);
 
-  font-weight: 600;
+  font-weight: 700;
   color: rgb(var(--color-card-content));
 }
 
@@ -97,18 +97,16 @@
 }
 
 .hint {
-  margin-top: 4px;
-
   @include type-body-small;
 
+  margin-top: 4px;
   font-style: italic;
   color: rgb(var(--color-card-content-muted));
 }
 
 .empty {
-  margin-top: 2px;
-
   @include type-caption-small;
 
+  margin-top: 2px;
   color: rgb(var(--color-card-content-muted));
 }

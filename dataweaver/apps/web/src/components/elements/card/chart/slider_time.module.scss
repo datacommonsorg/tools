@@ -106,15 +106,16 @@
 }
 
 .labels-row {
-  display: flex;
-  justify-content: space-between;
-
   @include type-caption-small;
 
+  display: flex;
+  justify-content: space-between;
   color: rgb(var(--color-content-subtle));
 }
 
 .badge-date {
+  @include type-label-small(false);
+
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -122,10 +123,7 @@
   min-width: 48px;
   padding: 2px 8px;
   font-family: inherit;
-
-  @include type-label-small(false);
-
-  font-weight: 600;
+  font-weight: 700;
   color: rgb(var(--color-accent));
   background-color: rgb(var(--color-accent-subtle) / 40%);
   border-radius: 12px;

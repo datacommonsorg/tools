@@ -53,11 +53,10 @@
 }
 
 .arrow {
-  flex-shrink: 0;
-  place-self: center end;
-
   @include type-caption-large;
 
+  flex-shrink: 0;
+  place-self: center end;
   line-height: 16.4px;
 }
 

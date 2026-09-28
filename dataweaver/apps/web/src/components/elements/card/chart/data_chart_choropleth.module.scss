@@ -75,6 +75,8 @@
 }
 
 .button-zoom {
+  @include type-caption-small(700);
+
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -82,9 +84,6 @@
   width: 26px;
   height: 26px;
   padding: 0;
-
-  @include type-caption-small(700);
-
   color: rgb(var(--color-content));
   cursor: pointer;
   background-color: rgb(var(--color-surface-raised));
@@ -116,28 +115,26 @@
 
 .loading-container,
 .empty-container {
+  @include type-caption-medium;
+
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   min-height: 240px;
-
-  @include type-caption-medium;
-
   color: rgb(var(--color-content-subtle));
   background-color: rgb(var(--color-surface-subtle));
   border-radius: 8px;
 }
 
 .legend-container {
+  @include type-caption-small;
+
   display: flex;
   gap: 8px;
   align-items: center;
   justify-content: center;
   padding: 2px 0;
-
-  @include type-caption-small;
-
   color: rgb(var(--color-content-subtle));
 }
 

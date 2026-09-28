@@ -152,6 +152,10 @@ check `~/styles/includes/_helpers.module.scss` for the full set:
 - 2-space indent. SCSS strings use double quotes; plain `.css` uses single
   quotes (Biome owns `.css`, Stylelint owns `.scss`).
 - No redundant nesting selectors (Stylelint enforces).
+- **Mixin includes go first in the block**, followed by a blank line, then the
+  plain declarations — e.g. `@include type-body-medium;` before `color`. This
+  applies to declaration-only mixins (`type-*`); mixins that take a content
+  block (`hover`, `breakpoint`, `prefers-motion`) stay at the end.
 
 ### 3.2 Class naming vocabulary
 
