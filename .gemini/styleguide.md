@@ -1,4 +1,13 @@
-# Gemini Code Assist Review Style Guide
+# Gemini Code Assist review style guide
+
+> [!NOTE]
+> This document is a flattened, derived review checklist for automated code
+> reviews by Gemini Code Assist on GitHub pull requests. Its authoritative
+> sources are [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md),
+> [`FRONTEND.md`](../FRONTEND.md), and
+> [`.agent/skills/datacommons-pr-review/SKILL.md`](../.agent/skills/datacommons-pr-review/SKILL.md).
+> When standards evolve, those source documents govern and this file should
+> be updated accordingly.
 
 This style guide defines the automated code review checklist for pull requests
 in `datacommonsorg/tools`. Focus on correctness, architecture, security, and
@@ -7,22 +16,23 @@ formatters.
 
 ---
 
-## 1. Comment Protocol & Severity Tags
+## 1. Comment protocol and severity tags
 
 Prefix every review comment with an appropriate severity tag:
 
-* `[BLOCKER]` — Correctness bugs, memory/resource leaks, unhandled failure
-  paths, missing cleanup, security or secret exposure, broken typing (`any`),
-  and regressions.
-* `[WARNING]` — Performance bottlenecks under load, excessive complexity, or
-  risky architectural patterns.
-* `[SUGGESTION]` — Readability improvements, naming, constant extraction, or
-  simplification. Non-blocking.
-* `[FOLLOWUP]` — Pre-existing technical debt adjacent to the change; acceptable
-  now, should be tracked separately.
-* `[NIT]` — Typos, prose clarity, or trivial consistency.
+* `[BLOCKER]` — Correctness bugs, races, unhandled failure paths, missing
+  cleanup, security or secret exposure, missing regression test for a bug
+  fix, architectural violations, unvetted heavyweight dependencies,
+  misplaced files.
+* `[WARNING]` — Oversized or multi-concern PR, performance risk under
+  realistic load.
+* `[SUGGESTION]` — Readability, naming, constant extraction, simplification,
+  diff pruning. Non-blocking.
+* `[FOLLOWUP]` — Pre-existing debt the PR sits on top of; acceptable now,
+  should be scheduled.
+* `[NIT]` — Typos, wording, trivial consistency.
 
-### Tone & Structure
+### Tone and structure
 * **Name the flaw** in the first clause.
 * **Explain the mechanism**: cite line numbers and walk the execution path.
 * **Prescribe the fix**: provide concrete replacement snippets or suggestions.
@@ -31,7 +41,7 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 2. General Principles
+## 2. General principles
 
 * **Simplicity first**: Write the minimum code that solves the problem. Flag
   speculative features, unused parameters, or abstractions for single-use code.
@@ -49,11 +59,12 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 3. Structure & File Conventions
+## 3. Structure and file conventions
 
 * **Source file naming**: `snake_case` by default (`chat_pipeline.py`,
   `card_chart.tsx`). Next.js App Router folders use `dash-case`.
-* **Classes & Components**: `PascalCase` (`CardChart`), regardless of file name.
+* **Classes and components**: `PascalCase` (`CardChart`), regardless of file
+  name.
 * **Imports**: No relative parent imports (`../`). Use project path aliases
   (`~/`, `@/`).
 * **License headers**: Every new source file must carry the standard Apache 2.0
@@ -63,7 +74,7 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 4. TypeScript & JavaScript
+## 4. TypeScript and JavaScript
 
 * **Object shapes**: Use `interface` for object shapes and props
   (`ComponentNameProps`). Use `type` for unions, tuples, and mapped types.
@@ -71,17 +82,17 @@ Prefix every review comment with an appropriate severity tag:
   framework requires it (Next.js route files, config files).
 * **Type imports**: Use `import type` and `export type` for type-only symbols.
 * **Strict typing**: No `any`. Use `unknown` and narrow with type guards.
-* **Equality & Control**: `===` and `!==` only. `const` by default. Mark a
+* **Equality and control**: `===` and `!==` only. `const` by default. Mark a
   function `async` only when it contains an `await`.
-* **Tests**: Colocate tests (`foo.test.ts` next to `foo.ts`). Never assign
+* **Test stubs**: Colocate tests (`foo.test.ts` next to `foo.ts`). Never assign
   `process.env.KEY = undefined`; use `vi.stubEnv` and `vi.unstubAllEnvs`.
 
 ---
 
 ## 5. Python
 
-* **Style & Types**: Follow Google Python Style Guide. 4-space indent,
-  `snake_case` functions/modules. All new code must pass `mypy --strict`.
+* **Style and types**: Follow Google Python Style Guide: 4-space indent,
+  `snake_case` functions and modules.
 * **Signatures**: Explicit type hints on public functions. Optional parameters
   must be typed as `X | None`, never bare `X = None`.
 * **Logging**: Use the `logging` module, never `print`, for server or pipeline
@@ -92,11 +103,11 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 6. Concurrency, Lifecycle & Resilience
+## 6. Concurrency, lifecycle, and resilience
 
 * **Re-entrancy**: Guard rapid user interactions or overlapping async actions
   with in-progress flags.
-* **DOM Liveness**: Check `if (!target?.isConnected) return;` before mutating
+* **DOM liveness**: Check `if (!target?.isConnected) return;` before mutating
   DOM nodes after asynchronous pauses.
 * **Guaranteed cleanup**: Subscriptions, event listeners, intervals, and
   temporary state must be cleaned up in `finally` blocks or `useEffect`
@@ -107,7 +118,22 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 7. Security & Secrets
+## 7. Testing
+
+* **Coverage**: Every new feature, endpoint, hook, or utility must ship
+  with tests. Every bug fix must ship with a regression test for the bug.
+* **Colocation**: Colocate tests with the code they test (`*.test.ts` /
+  `*.test.tsx` for TypeScript, `*_test.py` for Python).
+* **Assert behavior**: Assert external behavior and contracts, not internal
+  implementation details or trivial mock invocations.
+* **Failure modes**: Cover edge cases, empty collections, nullish values, and
+  error paths, not only the happy path.
+* **Determinism**: Tests must be deterministic; no reliance on real network
+  calls, wall-clock sleeps, or test execution order.
+
+---
+
+## 8. Security and secrets
 
 * **No secrets in code**: Never commit secrets, credentials, API keys, or
   tokens. Do not include API keys in client-side bundles.
@@ -120,7 +146,7 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 8. Data Commons Pipeline Conventions
+## 9. Data Commons pipeline conventions
 
 * **Server-side payload shaping**: Reshape and prune heavy Data Commons
   responses on the server before sending to the client. Keep the client light.
@@ -131,7 +157,7 @@ Prefix every review comment with an appropriate severity tag:
 
 ---
 
-## 9. Frontend & Accessibility
+## 10. Frontend and accessibility
 
 * **Semantic HTML**: Use `<button>` for actions, `<a>` for navigation. Do not
   attach click listeners to `<div>` or `<span>` without button semantics.
@@ -140,3 +166,19 @@ Prefix every review comment with an appropriate severity tag:
 * **Accessible labels**: Buttons without visible text (e.g. icon buttons) must
   have an `aria-label`. Form inputs must have associated `<label>` tags.
 * **Motion**: Respect `prefers-reduced-motion` for decorative animations.
+
+---
+
+## 11. Application-specific conventions
+
+* **DataWeaver (`dataweaver/`)**:
+  * Use CSS/SCSS modules (`*.module.scss`) co-located with `.tsx` files.
+  * No Tailwind, no inline styles, no styled-jsx.
+  * Class names use `kebab-case`.
+  * Design tokens come from `@package/tokens`.
+* **Narratives (`narratives/`)**:
+  * Use Tailwind CSS utility classes. No SCSS, no CSS modules, no inline styles.
+  * Standard utilities only; avoid arbitrary values (e.g. `h-[3px]`).
+  * No inline hex colors; reusable colors live in the Tailwind theme.
+  * Brand colors come from runtime CSS variables (`var(--brand-*, <fallback>)`),
+    never hardcoded values.
