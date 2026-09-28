@@ -23,7 +23,6 @@ export function DataAgent() {
   // survive when the user navigates to another SPA tab and back, and across
   // browser refreshes (persisted to localStorage).
   const { turns, isStreaming, error, send, stop } = useChatSession();
-  const isExpanded = query.trim().length > 0;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Track the turn count we last reacted to so we only scroll when a NEW
@@ -53,14 +52,17 @@ export function DataAgent() {
   };
 
   useEffect(() => {
-    if (!textareaRef.current) return;
-    if (isExpanded) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    } else {
-      textareaRef.current.style.height = "";
-    }
-  }, [query, isExpanded]);
+    const el = textareaRef.current;
+    if (!el) return;
+    // Measure at auto, then restore and flush the old height so a CSS height
+    // transition on the textarea animates from it to the new one.
+    const prev = el.style.height;
+    el.style.height = "auto";
+    const next = `${el.scrollHeight}px`;
+    el.style.height = prev;
+    void el.offsetHeight;
+    el.style.height = next;
+  }, [query]);
 
   // When a new turn is appended (typed prompt OR follow-up question click),
   // pin the user's new question to the top of the chat surface so they can
