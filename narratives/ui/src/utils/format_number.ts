@@ -130,7 +130,12 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
   const fixed = value.toFixed(DISPLAY_DECIMALS);
   // Rounding wiped out a value that is not zero. "0.00" would be read as an
   // exact nothing, which is a different -- and wrong -- claim.
-  if (Number(fixed) === 0) {
+  //
+  // An exact zero is excluded, and not by belt and braces: "0.0000" rounds to
+  // zero because it *is* zero, and the threshold form would state the one
+  // thing this branch exists to avoid stating. It falls through and is capped
+  // like any other figure.
+  if (Number(fixed) === 0 && value !== 0) {
     return { display: value > 0 ? "< 0.01" : "> -0.01", full };
   }
 

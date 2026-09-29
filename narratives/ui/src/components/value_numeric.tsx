@@ -50,12 +50,15 @@ export function NumericValue({ value }: { value: FormattedNumber }) {
             "color-mix(in srgb, currentColor 35%, transparent)",
           textUnderlineOffset: 3,
         }}
-        // A reader who cannot hover cannot reach the value the rounding took
-        // away, so the accessible name carries both. Only shortened numbers
-        // get one -- everywhere else the visible text is already the value.
-        aria-label={`${value.display}, full value ${value.full}`}
       >
-        {value.display}
+        {/* A reader who cannot hover cannot reach the value the rounding took
+            away, so it is in the text too. Visually-hidden rather than an
+            aria-label: a span carries no role, and an aria-label on one is not
+            reliably announced. */}
+        <span aria-hidden="true">{value.display}</span>
+        <span className="sr-only">
+          {value.display}, full value {value.full}
+        </span>
       </span>
     </Tooltip>
   );

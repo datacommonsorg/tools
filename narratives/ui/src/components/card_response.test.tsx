@@ -56,13 +56,11 @@ describe("ResponseCard tables", () => {
   it("keeps the unrounded value reachable on the shortened figure", () => {
     // Test: Nothing is lost to rounding.
     // Situation: A figure the renderer shortened.
-    // Expectation: Its accessible name carries the full value, so a reader who
-    //   cannot hover can still check it against the source.
+    // Expectation: Visually-hidden text carries the full value, so a reader
+    //   who cannot hover can still check it against the source.
     const { container } = renderMarkdown(TABLE);
-    const shortened = Array.from(container.querySelectorAll("span")).find(
-      (node) => node.textContent === "84.04",
-    );
-    expect(shortened?.getAttribute("aria-label")).toBe(
+    const shortened = container.querySelector(".dc-numeric");
+    expect(shortened?.querySelector(".sr-only")?.textContent).toBe(
       "84.04, full value 84.0412195122",
     );
   });

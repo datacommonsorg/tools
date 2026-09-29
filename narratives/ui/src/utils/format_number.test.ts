@@ -109,6 +109,16 @@ describe("formatNumericToken", () => {
     expect(formatNumericToken("0.00")).toBeNull();
   });
 
+  it("caps a long-form zero instead of calling it a threshold", () => {
+    // Test: An exact zero written past the cap.
+    // Situation: "0.0000" rounds to zero because it is zero, which used to
+    //   land in the zero-suppression branch and render as "> -0.01".
+    // Expectation: Capped like any other figure -- the one reading this
+    //   branch exists to avoid is "zero" being shown as "not quite zero".
+    expect(shown("0.0000")).toBe("0.00");
+    expect(shown("-0.0000")).toBe("0.00");
+  });
+
   it("keeps the grouping style the token was written in", () => {
     // Test: Thousands separators are preserved, not introduced.
     // Situation: The same value written with and without separators.
