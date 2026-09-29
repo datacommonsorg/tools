@@ -3,6 +3,7 @@
  */
 
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import { renderNumbers } from "./value_numeric";
 import { Tooltip } from "./tooltip";
 
 /**
@@ -91,50 +92,70 @@ export function CitationChip({
   );
 }
 
+/** How a subtree should treat the `[n]` markers it finds. */
+export interface CitationRenderOptions {
+  /**
+   * Drop the markers instead of rendering them.
+   *
+   * Set on the body cells of a column whose citation was lifted onto its
+   * header: the reference still applies, it is just stated once for the series
+   * rather than repeated on every row.
+   */
+  hideCitations?: boolean;
+}
+
 /**
  * Walk a children array and replace `[N]` patterns inside strings with
- * <CitationChip /> elements. Returns a new children array suitable for
- * React rendering. Pass any react-markdown component's `children` through
- * this helper to apply citation styling consistently inside p, li, td,
- * strong, headings, em, etc.
+ * <CitationChip /> elements, shortening any long numbers alongside them.
+ * Returns a new children array suitable for React rendering. Pass any
+ * react-markdown component's `children` through this helper to apply citation
+ * styling consistently inside p, li, td, strong, headings, em, etc.
  */
 export function renderWithCitations(
   children: React.ReactNode,
   sources?: ProvenanceItem[],
+  options?: CitationRenderOptions,
 ): React.ReactNode {
   if (children == null) return children;
   if (Array.isArray(children)) {
     return children.map((c, i) => (
-      <ChildWithCitations key={i} sources={sources}>
+      <ChildWithCitations key={i} sources={sources} options={options}>
         {c}
       </ChildWithCitations>
     ));
   }
-  return <ChildWithCitations sources={sources}>{children}</ChildWithCitations>;
+  return (
+    <ChildWithCitations sources={sources} options={options}>
+      {children}
+    </ChildWithCitations>
+  );
 }
 
 /** Splits child text on [n] markers and renders each as a CitationChip. */
 function ChildWithCitations({
   children,
   sources,
+  options,
 }: {
   children: React.ReactNode;
   sources?: ProvenanceItem[];
+  options?: CitationRenderOptions;
 }) {
   if (typeof children !== "string") {
     return <>{children}</>;
   }
-  return <>{splitWithCitations(children, sources)}</>;
+  return <>{splitWithCitations(children, sources, options)}</>;
 }
 
 /**
- * Split a string into a mixed array of text fragments and CitationChip
- * elements, matching `[N]` where N is 1-99. Handles multiple adjacent
- * citations like `[1] [2]` or `[1][2]`.
+ * Split a string into a mixed array of text fragments, shortened numbers and
+ * CitationChip elements, matching `[N]` where N is 1-99. Handles multiple
+ * adjacent citations like `[1] [2]` or `[1][2]`.
  */
 function splitWithCitations(
   s: string,
   sources?: ProvenanceItem[],
+  options?: CitationRenderOptions,
 ): React.ReactNode[] {
   const pattern = /\[(\d{1,2})\]/g;
   const out: React.ReactNode[] = [];
@@ -143,13 +164,18 @@ function splitWithCitations(
   let i = 0;
   while ((match = pattern.exec(s)) !== null) {
     if (match.index > last) {
-      out.push(s.slice(last, match.index));
+      out.push(...renderNumbers(s.slice(last, match.index), `n${last}`));
     }
-    out.push(
-      <CitationChip key={`c-${i++}`} n={Number(match[1])} sources={sources} />,
-    );
+    if (!options?.hideCitations) {
+      out.push(
+        <CitationChip key={`c-${i++}`} n={Number(match[1])} sources={sources} />,
+      );
+    }
     last = match.index + match[0].length;
   }
-  if (last < s.length) out.push(s.slice(last));
-  return out.length === 0 ? [s] : out;
+  if (last < s.length) out.push(...renderNumbers(s.slice(last), `n${last}`));
+  // Nothing came out because there was nothing in: either an empty string, or
+  // -- when the markers are being hidden -- a cell that held only a marker.
+  if (out.length > 0) return out;
+  return options?.hideCitations ? [] : [s];
 }

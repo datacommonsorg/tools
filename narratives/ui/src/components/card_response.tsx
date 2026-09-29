@@ -2,9 +2,27 @@
  * @fileoverview Renders streamed agent markdown with inline citations.
  */
 
+import {
+  Children,
+  cloneElement,
+  createContext,
+  isValidElement,
+  useContext,
+  useMemo,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { renderWithCitations } from "./chip_citation";
+import { CitationChip, renderWithCitations } from "./chip_citation";
+import {
+  analyzeMarkdownTable,
+  citationsIn,
+  textOf,
+  type MarkdownNode,
+  type TableAnalysis,
+} from "../utils/markdown_table";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 interface ResponseCardProps {
@@ -156,26 +174,13 @@ function ReactMarkdownInner({
                 {renderWithCitations(children, sources)}
               </blockquote>
             ),
-            table: ({ children }) => (
-              <div className="overflow-x-auto mb-3">
-                <table className="min-w-full text-sm border-collapse">
-                  {children}
-                </table>
-              </div>
-            ),
+            table: (props) => <MarkdownTable {...props} />,
             thead: ({ children }) => (
               <thead className="bg-surface-soft">{children}</thead>
             ),
-            th: ({ children }) => (
-              <th className="border border-outline px-3 py-2 text-left font-medium">
-                {renderWithCitations(children, sources)}
-              </th>
-            ),
-            td: ({ children }) => (
-              <td className="border border-outline px-3 py-2">
-                {renderWithCitations(children, sources)}
-              </td>
-            ),
+            tr: (props) => <MarkdownRow {...props} />,
+            th: (props) => <HeaderCell {...props} sources={sources} />,
+            td: (props) => <DataCell {...props} sources={sources} />,
             strong: ({ children }) => (
               <strong className="font-semibold">
                 {renderWithCitations(children, sources)}
@@ -190,5 +195,133 @@ function ReactMarkdownInner({
           <span className="inline-block animate-pulse">▍</span>
         )}
     </>
+  );
+}
+
+/** What a cell needs from the table around it; empty outside a table. */
+const EMPTY_ANALYSIS: TableAnalysis = {
+  numericColumns: new Set<number>(),
+  hoistedCitations: new Map<number, number[]>(),
+};
+
+const TableAnalysisContext = createContext<TableAnalysis>(EMPTY_ANALYSIS);
+
+/** Props a markdown cell or row gets, plus what this file threads through. */
+interface MarkdownCellProps {
+  children?: ReactNode;
+  /** The hast node react-markdown built this element from. */
+  node?: unknown;
+  /** Position in the row, injected by {@link MarkdownRow}. */
+  colIndex?: number;
+  /** Alignment the markdown asked for explicitly (`:---:`), if any. */
+  style?: CSSProperties;
+  sources?: ProvenanceItem[];
+}
+
+/**
+ * A markdown table, with the whole-column facts its cells cannot work out
+ * alone read off the AST once and handed down.
+ */
+function MarkdownTable({ children, node }: MarkdownCellProps) {
+  const analysis = useMemo(
+    () => analyzeMarkdownTable(node as MarkdownNode | undefined),
+    [node],
+  );
+  return (
+    <TableAnalysisContext.Provider value={analysis}>
+      <div className="overflow-x-auto mb-3">
+        <table className="min-w-full text-sm border-collapse">{children}</table>
+      </div>
+    </TableAnalysisContext.Provider>
+  );
+}
+
+/**
+ * A table row that tells each of its cells which column it is in.
+ *
+ * A cell has no other way to find out: react-markdown hands it its own node and
+ * nothing about its siblings, and both of the things this file decides per
+ * column -- alignment and whether the citation moved to the header -- are
+ * useless without the index.
+ */
+function MarkdownRow({ children }: MarkdownCellProps) {
+  let column = 0;
+  return (
+    <tr>
+      {Children.map(children, (child) =>
+        isValidElement(child)
+          ? cloneElement(child as ReactElement<MarkdownCellProps>, {
+              colIndex: column++,
+            })
+          : child,
+      )}
+    </tr>
+  );
+}
+
+/** Alignment: what the markdown asked for, else right when numeric. */
+function cellAlignment(
+  style: CSSProperties | undefined,
+  numeric: boolean,
+  fallback: CSSProperties["textAlign"],
+): CSSProperties["textAlign"] {
+  if (style?.textAlign) return style.textAlign;
+  return numeric ? "right" : fallback;
+}
+
+/**
+ * A header cell, carrying the citation for its column when every row agreed.
+ *
+ * The marker is appended rather than replacing the header text, and only when
+ * the header does not already state it -- an agent that wrote the reference
+ * into the header itself would otherwise get it twice.
+ */
+function HeaderCell({
+  children,
+  node,
+  colIndex,
+  style,
+  sources,
+}: MarkdownCellProps) {
+  const { numericColumns, hoistedCitations } = useContext(TableAnalysisContext);
+  const numeric = colIndex !== undefined && numericColumns.has(colIndex);
+  const hoisted =
+    (colIndex !== undefined ? hoistedCitations.get(colIndex) : undefined) ?? [];
+  const alreadyStated = new Set(citationsIn(textOf(node as MarkdownNode)));
+  const toAppend = hoisted.filter((n) => !alreadyStated.has(n));
+
+  return (
+    <th
+      className="border border-outline px-3 py-2 font-medium"
+      style={{ ...style, textAlign: cellAlignment(style, numeric, "left") }}
+    >
+      {renderWithCitations(children, sources)}
+      {toAppend.map((n) => (
+        <span key={n}> <CitationChip n={n} sources={sources} /></span>
+      ))}
+    </th>
+  );
+}
+
+/**
+ * A body cell, set right when its column holds values.
+ *
+ * `tabular-nums` as well as the alignment: proportional digits in a column of
+ * figures put the decimal points out of line even when the text is flush right.
+ */
+function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
+  const { numericColumns, hoistedCitations } = useContext(TableAnalysisContext);
+  const numeric = colIndex !== undefined && numericColumns.has(colIndex);
+  const hoisted = colIndex !== undefined && hoistedCitations.has(colIndex);
+
+  return (
+    <td
+      className={`border border-outline px-3 py-2${
+        numeric ? " tabular-nums" : ""
+      }`}
+      style={{ ...style, textAlign: cellAlignment(style, numeric, undefined) }}
+    >
+      {renderWithCitations(children, sources, { hideCitations: hoisted })}
+    </td>
   );
 }
