@@ -179,12 +179,12 @@ export function SessionDrawer() {
 
             <nav className="flex flex-col py-2 shrink-0">
               <MenuItem
-                icon={<ChatsIcon size="lg" />}
+                icon={<ChatsIcon />}
                 label="Chats"
                 onClick={() => setView("chats")}
               />
               <MenuItem
-                icon={<NewChatIcon size="lg" />}
+                icon={<NewChatIcon />}
                 label="New chat"
                 onClick={handleNewChat}
               />

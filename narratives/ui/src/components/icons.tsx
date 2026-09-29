@@ -85,12 +85,9 @@ export function GeminiInfoIcon({ size = "sm", ...props }: IconProps) {
 /**
  * `pen_spark` — New chat.
  *
- * The viewBox is padded rather than tight to the path. Material's 24dp icons
- * draw their ink inside a 20dp live area, and this asset was exported with the
- * glyph running edge to edge — so at the same size token it rendered about 7%
- * larger than every Material glyph beside it, which is what made the rail read
- * as oversized. The padding puts it back on the Material grid: 14.569 units of
- * ink in a 17.483-unit box is the same 20-in-24 ratio.
+ * The fractional viewBox bounds are intentional: includes extra padding so the
+ * glyph optically matches the scale of adjacent Material icons (matching
+ * Material's 20dp live area in a 24dp box).
  */
 export function NewChatIcon({ size = "lg", ...props }: IconProps) {
   return (
@@ -100,10 +97,7 @@ export function NewChatIcon({ size = "lg", ...props }: IconProps) {
   );
 }
 
-/**
- * `notes_spark` — Chats. A stock Material Symbols export, so its 960-unit
- * viewBox already holds the ink to the 20-in-24 live area.
- */
+/** `notes_spark` — Chats. */
 export function ChatsIcon({ size = "lg", ...props }: IconProps) {
   return (
     <svg viewBox="0 -960 960 960" {...getSvgProps(size, props)}>

@@ -12,11 +12,6 @@ import { Tooltip } from "./tooltip";
  * so the page layout doesn't jump as the user navigates. Only the two icons
  * (the "accordion" hamburger and the "start new chat" pencil) are tied to
  * the Agent tab; on every other tab the rail renders empty.
- *
- * Both icons are 24px, per the M3 navigation rail spec
- * (m3.material.io/components/navigation-rail/specs). They used to be 24 and 22
- * with mismatched ink ratios, so they neither matched each other nor the size
- * a Google product's rail icon is expected to be.
  */
 export function Sidebar() {
   const [route] = useHashRoute();
@@ -41,7 +36,7 @@ export function Sidebar() {
                 : "hover:bg-button-hover text-on-surface-variant"
             }`}
           >
-            <ChatsIcon size="lg" />
+            <ChatsIcon />
           </button>
           </Tooltip>
           {/* Start a fresh chat thread — does NOT delete other sessions; they
@@ -53,7 +48,7 @@ export function Sidebar() {
             onClick={newSession}
             className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant"
           >
-            <NewChatIcon size="lg" />
+            <NewChatIcon />
           </button>
           </Tooltip>
         </>
