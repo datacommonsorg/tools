@@ -433,11 +433,11 @@ philosophy increase cognitive load and obscure bugs.
 * **Use standard domain terminology.** Do not invent colloquial shorthand or
   use regional idioms. Use established terms from networking, compilers,
   TypeScript, and data structures.
-  * *Avoid:* `magic sauce`, `quick and dirty hack`, `belt and suspenders`.
+  * *Avoid:* `magic sauce`, `quick and dirty hack`, `belt and braces`.
   * *Prefer:* `hash collision fallback`, `temporary polyfill`,
     `redundant boundary check`.
 * **Neutral and egoless.** Avoid first-person pronouns ("I", "we"), venting
-  about libraries or APIs, or rhetorical flourishes ("leaves much to be
+  about libraries or APIs ("annoying quirk of React"), or rhetorical flourishes ("leaves much to be
   desired", "pointless churn"). Focus strictly on the technical invariant.
 
 #### 14.1.2 Length and proportionality
