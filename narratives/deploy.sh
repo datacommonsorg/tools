@@ -345,7 +345,7 @@ run_preflight() {
         _bad "uv missing — install from https://docs.astral.sh/uv/"
     fi
     node_major=$(node -v 2>/dev/null | sed 's/^v//; s/\..*//' || echo 0)
-    if [ "${node_major:-0}" -ge 24 ]; then _ok "node ${node_major}"; else _bad "node ${node_major:-missing} — the UI build needs 24"; fi
+    if [ "${node_major:-0}" -eq 24 ]; then _ok "node ${node_major}"; else _bad "node ${node_major:-missing} — the UI build needs 24"; fi
     if command -v pnpm &>/dev/null; then _ok "pnpm $(pnpm --version)"; else _bad "pnpm missing — run: corepack enable"; fi
 
     # --- credentials -------------------------------------------------------
