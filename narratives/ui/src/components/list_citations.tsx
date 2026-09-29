@@ -31,6 +31,9 @@ const FONT_STACK =
  */
 const PROCESSING_NOTE = "with minor processing by Data Commons";
 
+/** Section heading. Held here with the other user-facing strings. */
+const CITATIONS_HEADING = "Citations";
+
 interface CitationsListProps {
   sources: ProvenanceItem[];
 }
@@ -77,7 +80,7 @@ export function CitationsList({ sources }: CitationsListProps) {
           paddingTop: 12,
         }}
       >
-        Citations
+        {CITATIONS_HEADING}
       </h2>
       <ol
         className="list-none p-0 m-0 mt-2 flex flex-col gap-1"

@@ -224,7 +224,9 @@ def _year_of(date: str) -> str:
         str: The leading four digits, or "" when they are not digits.
     """
     head = date[:4]
-    return head if head.isdigit() else ""
+    # Length as well as digits: a two-character date would otherwise yield a
+    # two-character "year".
+    return head if len(head) == 4 and head.isdigit() else ""
 
 
 def _date_range(facet: dict) -> str:

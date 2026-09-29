@@ -470,3 +470,17 @@ def test_observation_without_metadata_invents_no_citation_fields() -> None:
     assert len(sources) == 1
     assert sources[0]["url"] == _WDI_URL
     assert not {"provider", "dataset", "dateRange"} & set(sources[0])
+
+
+def test_a_date_too_short_to_hold_a_year_reports_none() -> None:
+    # Test: A malformed date in the facet metadata.
+    # Situation: The facet reports "90" as its earliest date.
+    # Expectation: No range at all, rather than a two-character "year".
+    index = data_utils._facet_index_from_variable_metadata(
+        _metadata(
+            {"url": _WDI_URL, "isPartOf": "WDI"},
+            earliestDate="90",
+            latestDate="202",
+        )
+    )
+    assert "dateRange" not in index["facet1"]
