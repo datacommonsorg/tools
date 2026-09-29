@@ -12,19 +12,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Serves the agent's health report under the agent API prefix."""
 
-from flask import Blueprint, jsonify
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from narratives_agent.mcp.capabilities import current_cached as mcp_capabilities
 from narratives_agent.mcp.client import mcp_url
 
-system_bp = Blueprint("system", __name__)
+router = APIRouter()
 
 
-@system_bp.route("/health", methods=["GET"])
-def health():
-    """Return service health status, resolved MCP endpoint, and tool surface."""
-    return jsonify(
+@router.api_route("/health", methods=["GET", "HEAD"])
+def health() -> JSONResponse:
+    """Returns service health status, resolved MCP endpoint, and tool surface.
+
+    Returns:
+        A JSON response with the keys `status`, `mcp_url`, and `mcp`.
+    """
+    return JSONResponse(
         {
             "status": "ok",
             "mcp_url": mcp_url(),

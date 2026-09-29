@@ -14,34 +14,23 @@
 # limitations under the License.
 
 import json
-import os
 import sys
 import threading
 import uuid
 from datetime import datetime
 from typing import Any
 
-from narratives_agent.config import AGENT_ROOT
+from narratives_agent.settings import get_settings
 
 # Max characters of the final response text kept as a preview in the log
 # (the full text_length is recorded separately).
 MAX_TEXT_PREVIEW_LENGTH = 500
 
-# Where session logs go.
-#
-# Every Cloud Run instance has its own ephemeral disk, so a session log written
-# to a file dies with the instance and cannot be read across the fleet --
-# exactly when scaling out makes it most needed. Emitting one JSON object per
-# line on stdout gets the same information into Cloud Logging as structured
-# entries, queryable by session_id and event_type, with no dependency and no
-# credentials.
-#
-# Files are still written off Cloud Run, because tailing one is the fastest way
-# to debug locally. SESSION_LOG_TO_FILE forces either behavior explicitly.
-_ON_CLOUD_RUN = bool(os.environ.get("K_SERVICE"))
-_FILE_LOGGING = os.environ.get(
-    "SESSION_LOG_TO_FILE", "false" if _ON_CLOUD_RUN else "true"
-).strip().lower() in ("1", "true", "yes")
+# Session IDs a client may send back to resume a session. The log file is
+# named after the ID, so only characters that cannot leave the logs directory
+# are accepted. Every ID `SessionLogger._generate_session_id` issues must
+# match, or the UI's follow-up turns, which echo it back, are rejected.
+SESSION_ID_PATTERN = r"^[0-9A-Za-z-]{1,64}$"
 
 
 def _emit_structured(session_id: str, event_type: str, data: dict) -> None:
@@ -84,9 +73,9 @@ class SessionLogger:
                         If None, generates a new session ID.
         """
         self.session_id = session_id or self._generate_session_id()
-        self.logs_dir = AGENT_ROOT / "logs"
+        self.logs_dir = get_settings().agent_root / "logs"
         self.log_file = self.logs_dir / f"{self.session_id}.log"
-        if _FILE_LOGGING:
+        if get_settings().session_log_to_file:
             self.logs_dir.mkdir(exist_ok=True)
         # Temporary cost instrumentation: accumulate Gemini token usage across
         # every model call in a single /chat/stream request (MCP tool loop,
@@ -137,7 +126,7 @@ class SessionLogger:
                 "started": datetime.now().isoformat(),
             },
         )
-        if not _FILE_LOGGING:
+        if not get_settings().session_log_to_file:
             return
         if self.log_file.exists():
             # Resuming existing session - add continuation marker
@@ -158,7 +147,7 @@ class SessionLogger:
         timestamp = datetime.now().isoformat()
         _emit_structured(self.session_id, event_type, data)
 
-        if _FILE_LOGGING:
+        if get_settings().session_log_to_file:
             with open(self.log_file, "a") as f:
                 f.write(f"\n--- {event_type} @ {timestamp} ---\n")
                 f.write(json.dumps(data, indent=2, default=str))
