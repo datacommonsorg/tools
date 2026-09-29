@@ -2,7 +2,7 @@
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { ChartTile } from "./tile_chart";
 import { DisclaimerNote } from "./note_disclaimer";
@@ -99,6 +99,13 @@ export function AnswerPanel({
   // single confirmation rather than each raising their own.
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
+  // Memoized: a fresh object here re-renders every CitationChip in the answer
+  // on any state change of this panel, including each keystroke of the export
+  // flags above.
+  const numbering = useMemo(
+    () => ({ numbers: citationNumbers, turnIndex }),
+    [citationNumbers, turnIndex],
+  );
 
   const onExport = async () => {
     if (exporting) return;
@@ -112,7 +119,7 @@ export function AnswerPanel({
   };
 
   return (
-    <CitationNumberingProvider value={{ numbers: citationNumbers, turnIndex }}>
+    <CitationNumberingProvider value={numbering}>
     <div
       ref={panelRef}
       className="self-start shrink-0 w-full max-w-4xl flex flex-col overflow-hidden"

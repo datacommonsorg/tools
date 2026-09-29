@@ -78,6 +78,20 @@ describe("assignCitationNumbers", () => {
     ]);
   });
 
+  it("survives a turn rehydrated without provenance", () => {
+    // Test: A turn restored from storage by an older build.
+    // Situation: chat_session_context JSON.parses persisted turns and filters
+    //   them by status alone, so a turn can reach here without the array its
+    //   type promises.
+    // Expectation: An empty row, not a TypeError that blanks the chat
+    //   surface.
+    const legacy = {
+      ...turn([]),
+      provenance: undefined,
+    } as unknown as ChatTurn;
+    expect(assignCitationNumbers([legacy, turn([WDI])])).toEqual([[], [1]]);
+  });
+
   it("copes with an answer that cited nothing", () => {
     // Test: Empty inputs.
     // Situation: An answer with no provenance, and an empty thread.

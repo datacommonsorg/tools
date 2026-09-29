@@ -170,6 +170,12 @@ export interface ProvenanceItem {
  * twice lands on the same dataset both times.
  *
  * Returns one array per turn, parallel to that turn's `provenance`.
+ *
+ * `provenance` is typed as required and is still read defensively: turns are
+ * rehydrated from localStorage, where `chat_session_context` JSON.parses them
+ * and filters by `status` alone. A turn persisted by an older build arrives
+ * without the array the type promises, and reading it directly would throw
+ * here and blank the whole chat surface.
  */
 export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   const assigned = new Map<string, number>();
