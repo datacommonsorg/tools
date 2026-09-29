@@ -412,6 +412,96 @@ reliability — when they are, note the upstream fix they stand in for.
   # permissions and limitations under the License.
   ```
 
+### 14.1 Comment style: tone, length, and content
+
+Comments explain *why* code exists and define its *contracts*; the code itself
+explains *how* it works. High-quality comments reduce cognitive load for future
+readers. Comments that read as conversational essays, personify code, or debate
+philosophy increase cognitive load and obscure bugs.
+
+#### 14.1.1 Tone
+
+* **Technical, declarative, and direct.** Write clear, neutral technical prose.
+  Use imperative or declarative phrasing ("Formats values for display",
+  "Guards against negative zero"). Avoid conversational filler, stream of
+  consciousness, or casual editorializing.
+* **No anthropomorphism.** Do not attribute feelings, knowledge, perception, or
+  agency to code, AST nodes, DOM elements, or data structures. Code does not
+  "know", "want", "fear", "agree", "speak", or "refuse".
+  * *Avoid:* `// The socket wants to close, but the queue fears data loss.`
+  * *Prefer:* `// Drain pending messages before closing the socket connection.`
+* **Use standard domain terminology.** Do not invent colloquial shorthand or
+  use regional idioms. Use established terms from networking, compilers,
+  TypeScript, and data structures.
+  * *Avoid:* `magic sauce`, `quick and dirty hack`, `belt and suspenders`.
+  * *Prefer:* `hash collision fallback`, `temporary polyfill`,
+    `redundant boundary check`.
+* **Neutral and egoless.** Avoid first-person pronouns ("I", "we"), venting
+  about libraries or APIs, or rhetorical flourishes ("leaves much to be
+  desired", "pointless churn"). Focus strictly on the technical invariant.
+
+#### 14.1.2 Length and proportionality
+
+* **Proportionality rule.** The visual and cognitive weight of a comment must
+  match the complexity of what it annotates. A five-line function should not
+  carry a twenty-line comment.
+* **Inline comments (1–2 lines).** Inline comments are brief signposts
+  explaining non-obvious branches, workarounds, or subtle regex logic. If an
+  explanation requires multiple paragraphs, summarize the invariant in 1–2
+  lines in the code and document the fuller context in a PR description, issue,
+  or design document.
+* **JSDocs / Docstrings (2–4 lines typical).** Begin with a concise summary
+  sentence describing what the symbol does or represents. Follow with any
+  non-obvious constraints, side effects, or parameters.
+* **File-overview headers (3–5 lines).** State the file's architectural scope
+  and single responsibility. Do not list internal implementation steps.
+
+#### 14.1.3 What is wrong: comment anti-patterns
+
+Avoid these patterns when writing comments and docstrings:
+
+* **Syntax narration (paraphrasing the code).** Do not restate in English what
+  the code already expresses in syntax. Trust the reader to know the language.
+  * *Avoid:* `// Increment counter by one` above `counter += 1;`.
+* **Philosophical and epistemological treatises.** Source code is not the place
+  to debate the philosophy of floating-point numbers, ontological taxonomy,
+  or abstract theory. Keep comments focused on programmatic bounds and
+  concrete requirements.
+  * *Avoid:* Mini-essays debating whether `null` represents an "existential
+    absence" versus `undefined` denoting "uncertainty".
+* **Conflating anecdotal test queries with general invariants.** Never hardcode
+  transient data points from a specific local test run or fixture (e.g.
+  "the five records in Alice's profile", "the three mock responses") into
+  general utility comments. Comments must describe general behavior for all
+  callers.
+* **Inverted JSDocs (rationale without contract).** A docstring that explains
+  why a feature was conceived but fails to document inputs, outputs, or
+  behavioral guarantees leaves callers guessing.
+* **Negative phrasing and litotes.** Avoid convoluted double negatives or
+  inverted clauses ("does not fail to disallow", "prevents non-missing states
+  from not triggering"). State conditions positively and directly.
+* **Commit history and review chatter.** Never write `// Added per PR review`
+  or `// Used to do X in v1`. Git history tracks changes and rationale across
+  time.
+
+#### 14.1.4 What to write: positive patterns
+
+Good comments capture information that cannot be expressed through types or
+clean identifiers alone:
+
+* **The contract (abstraction).** Document assumptions, preconditions,
+  postconditions, and guarantees that the compiler cannot enforce (e.g.
+  "Assumes observations are pre-sorted by date in ascending order").
+* **The "why" behind non-obvious decisions.** Explain why an intuitive or
+  standard approach was rejected in favor of an unexpected one (e.g. why an
+  in-memory ring buffer was chosen over a database queue to handle transient
+  spikes without database locking).
+* **Platform and library workarounds.** Document browser quirks, external API
+  irregularities, or third-party AST structure behaviors that necessitate
+  defensive handling.
+* **Invariants and boundary conditions.** Clarify edge-case thresholds, sign
+  preservation rules, or rounding guarantees (e.g. preventing negative zero).
+
 ---
 
 ## 15. Shell scripts and CLIs
