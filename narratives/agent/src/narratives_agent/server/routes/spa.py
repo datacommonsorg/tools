@@ -75,8 +75,10 @@ class SpaStaticFiles(StaticFiles):
         if PurePath(full_path).name == "index.html":
             cache_control = "no-store"
         elif PurePath(self.get_path(scope)).parts[:1] == ("assets",):
+            # One year.
             cache_control = "public, max-age=31536000, immutable"
         else:
+            # One hour.
             cache_control = "public, max-age=3600"
         response.headers["Cache-Control"] = cache_control
         return response

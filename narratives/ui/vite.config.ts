@@ -14,12 +14,13 @@ export default defineConfig(({mode}) => {
     target: env.BACKEND_URL || DEFAULT_BACKEND_URL,
     changeOrigin: true,
   };
-  // The agent serves its API under AGENT_API_PREFIX, which defaults to
-  // /agent, so /agent/* is forwarded verbatim by default, to a deployed
-  // instance (Path A) or to a local agent (Path B). AGENT_STRIP_PREFIX=true
-  // in .env.local strips /agent before forwarding, which is correct only for
-  // an agent run with AGENT_API_PREFIX=/ (its API at the root). An empty
-  // AGENT_API_PREFIX counts as unset and selects /agent.
+  // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
+  // /agent/* requests are forwarded verbatim to AGENT_URL, whether a deployed
+  // instance (Path A) or a local agent (Path B).
+  //
+  // Set AGENT_STRIP_PREFIX=true in .env.local only when the agent serves its
+  // API at the root (AGENT_API_PREFIX=/). An empty AGENT_API_PREFIX counts as
+  // unset and selects /agent.
   const agentProxy = {
     target: env.AGENT_URL || DEFAULT_AGENT_URL,
     changeOrigin: true,

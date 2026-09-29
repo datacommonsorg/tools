@@ -41,8 +41,8 @@ def _strip_trailing_slashes(value: str) -> str:
     return value.rstrip("/")
 
 
-def _parse_session_log_to_file(value: bool | str) -> bool:
-    """Returns the file-logging flag parsed from `value`.
+def _is_session_log_to_file_enabled(value: bool | str) -> bool:
+    """Returns whether `value` turns file logging on.
 
     Args:
         value: The raw SESSION_LOG_TO_FILE string, or the bool the field's
@@ -63,7 +63,7 @@ def _default_static_root(data: dict[str, Any]) -> Path:
     return agent_root / "static"
 
 
-def _fall_back_to_data_plane_url(value: str, info: ValidationInfo) -> str:
+def _resolve_data_plane_web_url(value: str, info: ValidationInfo) -> str:
     """Returns `value` without trailing slashes, or else `data_plane_url`.
 
     The validated `data_plane_url` replaces a value that is empty once its
@@ -73,7 +73,7 @@ def _fall_back_to_data_plane_url(value: str, info: ValidationInfo) -> str:
     return value.rstrip("/") or data_plane_url
 
 
-def _default_session_log_to_file(data: dict[str, Any]) -> bool:
+def _should_log_session_to_file_by_default(data: dict[str, Any]) -> bool:
     """Returns True off Cloud Run, where `k_service` is empty."""
     return not data["k_service"]
 
@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     #
     # Falls back to `data_plane_url` so cdc and dcp need no configuration.
     data_plane_web_url: Annotated[
-        str, AfterValidator(_fall_back_to_data_plane_url)
+        str, AfterValidator(_resolve_data_plane_web_url)
     ] = ""
 
     # "off", compared case-insensitively, stops credentials from being attached
@@ -209,8 +209,8 @@ class Settings(BaseSettings):
     # way to debug locally. SESSION_LOG_TO_FILE forces either behavior
     # explicitly.
     session_log_to_file: Annotated[
-        bool, BeforeValidator(_parse_session_log_to_file)
-    ] = Field(default_factory=_default_session_log_to_file)
+        bool, BeforeValidator(_is_session_log_to_file_enabled)
+    ] = Field(default_factory=_should_log_session_to_file_by_default)
 
     @model_validator(mode="before")
     @classmethod

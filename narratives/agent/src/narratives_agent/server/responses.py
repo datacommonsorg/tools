@@ -18,7 +18,7 @@ from starlette.types import Receive, Scope, Send
 
 
 class ClosingStreamingResponse(StreamingResponse):
-    """A `StreamingResponse` whose background task runs however it ends.
+    """A `StreamingResponse` that always runs its background task.
 
     Starlette runs `background` after a client disconnect only when the server
     reports an ASGI spec version below 2.4, as Uvicorn 0.54 does. From 2.4 on,

@@ -19,7 +19,7 @@ both in the container and in local development.
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -65,7 +65,7 @@ def _allowed_origins() -> list[str]:
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Writes config.json, loads branding, and opens the data-plane client.
 
     The config bootstrap writes config.json, which every later load_config()
