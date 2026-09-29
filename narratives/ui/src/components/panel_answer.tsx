@@ -15,7 +15,7 @@ import { ExportPdfButton } from "./button_export_pdf";
 import { FollowUpQuestions } from "./questions_follow_up";
 import { ResponseCard } from "./card_response";
 import { Tooltip } from "./tooltip";
-import { SourcesList } from "./list_sources";
+import { CitationsList } from "./list_citations";
 import { downloadPdf } from "../utils/download_pdf";
 import { Toast } from "./toast";
 
@@ -77,7 +77,7 @@ export function AnswerPanel({
    * figures with no attribution at all. Selection belongs where the evidence
    * is -- the tool results -- not in the renderer.
    */
-  const hasSources = turn.provenance.length > 0;
+  const hasCitations = turn.provenance.length > 0;
   // One export state for the card: the toolbar pill and the in-content button
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.
@@ -166,18 +166,15 @@ export function AnswerPanel({
           bare
         />
 
-        {/* 2. Sources */}
-        {hasSources && <SourcesList sources={turn.provenance} />}
-
-        {/* 3. Charts */}
+        {/* 2. Charts */}
         {hasCharts && (
           <ChartTile config={turn.chartConfig!} provenance={turn.provenance} />
         )}
 
-        {/* 4. Truncation notice — the agent ran out of research steps
+        {/* 3. Truncation notice — the agent ran out of research steps
             before it was done, so this answer rests on less data than it
-            intended to gather. Above the disclaimer because it is specific
-            to this answer, where the disclaimer is generic. Deliberately not
+            intended to gather. Above the citations because it is about how
+            the answer was gathered, not where it came from. Deliberately not
             styled as an error: the answer is usable, just less complete. */}
         {turn.truncated && (
           <p
@@ -189,8 +186,15 @@ export function AnswerPanel({
           </p>
         )}
 
+        {/* 4. Citations — last thing in the document, immediately above the
+            disclaimer. They sat between the prose and the charts, which put a
+            reference list in the middle of the reading: a reader who has
+            finished the answer and wants to check a figure now finds the
+            citations where they expect them, at the end. */}
+        {hasCitations && <CitationsList sources={turn.provenance} />}
+
         {/* 5. Disclaimer */}
-        {(hasCharts || hasSources) && <DisclaimerNote />}
+        {(hasCharts || hasCitations) && <DisclaimerNote />}
 
         {/* 6. Export PDF (filled, in-content) */}
         {turn.status === "done" && (

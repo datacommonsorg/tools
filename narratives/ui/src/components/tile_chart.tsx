@@ -87,7 +87,10 @@ export function ChartTile({ config }: ChartTileProps) {
   const isGrid = visibleCount >= 2;
   return (
     <div
-      className="dc-charts-container mt-4"
+      /* No top margin: every section of the answer card is spaced by the
+         card's own 16px flex gap, and the extra 16 here doubled it above the
+         charts alone. */
+      className="dc-charts-container"
       style={{
         display: "grid",
         gridTemplateColumns: isGrid

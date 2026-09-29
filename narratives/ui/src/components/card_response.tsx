@@ -13,7 +13,7 @@ interface ResponseCardProps {
   streaming?: boolean;
   // The answer's provenance list, so an inline [n] chip can name the source
   // it points at rather than showing a bare number. Position n is chip [n] --
-  // the same order the synthesis prompt numbered and SourcesList renders.
+  // the same order the synthesis prompt numbered and CitationsList renders.
   sources?: ProvenanceItem[];
   // When true, renders the markdown body only — no outer card, no title
   // bar. Used inside AnswerPanel's "Side panel" card where the user's

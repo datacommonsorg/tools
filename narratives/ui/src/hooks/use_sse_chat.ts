@@ -158,6 +158,25 @@ export interface ProvenanceItem {
    * get_variable_metadata reports this; observation calls yield a bare URL.
    */
   license?: string;
+  /**
+   * The organization that published the data, e.g. "World Bank".
+   *
+   * Separate from {@link ProvenanceItem.name} because a citation names both
+   * the publisher and the dataset, and the two are different things: "World
+   * Bank" published "World Development Indicators". Absent whenever the data
+   * plane reported only a machine identifier, in which case the citation
+   * simply omits it.
+   */
+  provider?: string;
+  /** The dataset the numbers came from, e.g. "World Development Indicators". */
+  dataset?: string;
+  /**
+   * The years the source covers, e.g. "1960 – 2023" or a single "2023".
+   *
+   * Reported by the data plane's variable metadata; absent when it did not
+   * say.
+   */
+  dateRange?: string;
 }
 
 /** Lifecycle of one chat turn, driven by the agent's status events. */
