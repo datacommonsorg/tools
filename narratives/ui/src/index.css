@@ -323,14 +323,10 @@ select:not(:disabled) {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  /* Charts read on white, not on the answer tile's tint.
-     The Data Commons web component draws its own card but leaves the fill to
-     whatever is behind it, so on a tinted narrative surface the plot area
-     picked up the tint and the chart stopped looking like a chart. Painting
-     the host is the only lever from out here -- the component's internals are
-     in a shadow root -- and it is enough, because the tint was only ever
-     showing through. */
-  background: var(--color-surface);
+  /* Provide an opaque background so parent container tints do not show through
+     the transparent Data Commons web components (which are isolated in shadow
+     roots). */
+  background-color: var(--color-surface);
   border-radius: var(--radius-card);
 }
 .dc-chart-card datacommons-line,
@@ -346,7 +342,7 @@ select:not(:disabled) {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  background: var(--color-surface);
+  background-color: var(--color-surface);
 }
 
 /* ────────────────────────────────────────────────────────────────────
