@@ -21,7 +21,7 @@ interface ToastProps {
 }
 
 /**
- * A single snackbar, pinned bottom-centre above the prompt box.
+ * A single snackbar, pinned bottom-center above the prompt box.
  *
  * Deliberately self-dismissing rather than a queue: the only caller is the PDF
  * export, one message at a time. `role="status"` rather than `alert` — this

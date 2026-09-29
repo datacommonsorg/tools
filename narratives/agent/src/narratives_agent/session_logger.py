@@ -14,34 +14,23 @@
 # limitations under the License.
 
 import json
-import os
 import sys
 import threading
 import uuid
 from datetime import datetime
 from typing import Any
 
-from narratives_agent.config import AGENT_ROOT
+from narratives_agent.settings import get_settings
 
 # Max characters of the final response text kept as a preview in the log
 # (the full text_length is recorded separately).
 MAX_TEXT_PREVIEW_LENGTH = 500
 
-# Where session logs go.
-#
-# Every Cloud Run instance has its own ephemeral disk, so a session log written
-# to a file dies with the instance and cannot be read across the fleet --
-# exactly when scaling out makes it most needed. Emitting one JSON object per
-# line on stdout gets the same information into Cloud Logging as structured
-# entries, queryable by session_id and event_type, with no dependency and no
-# credentials.
-#
-# Files are still written off Cloud Run, because tailing one is the fastest way
-# to debug locally. SESSION_LOG_TO_FILE forces either behaviour explicitly.
-_ON_CLOUD_RUN = bool(os.environ.get("K_SERVICE"))
-_FILE_LOGGING = os.environ.get(
-    "SESSION_LOG_TO_FILE", "false" if _ON_CLOUD_RUN else "true"
-).strip().lower() in ("1", "true", "yes")
+# Session IDs a client may send back to resume a session. The log file is
+# named after the ID, so only characters that cannot leave the logs directory
+# are accepted. Every ID `SessionLogger._generate_session_id` issues must
+# match, or the UI's follow-up turns, which echo it back, are rejected.
+SESSION_ID_PATTERN = r"^[0-9A-Za-z-]{1,64}$"
 
 
 def _emit_structured(session_id: str, event_type: str, data: dict) -> None:
@@ -84,17 +73,16 @@ class SessionLogger:
                         If None, generates a new session ID.
         """
         self.session_id = session_id or self._generate_session_id()
-        self.logs_dir = AGENT_ROOT / "logs"
+        self.logs_dir = get_settings().agent_root / "logs"
         self.log_file = self.logs_dir / f"{self.session_id}.log"
-        if _FILE_LOGGING:
+        if get_settings().session_log_to_file:
             self.logs_dir.mkdir(exist_ok=True)
-        self.entries = []
         # Temporary cost instrumentation: accumulate Gemini token usage across
-        # every model call in a single /chat/stream request (MCP tool loop, KB,
+        # every model call in a single /chat/stream request (MCP tool loop,
         # synthesis, chart config). Emitted to the UI as a `usage` SSE event and
         # gated behind ?debug=tokens on the client. `output` includes thinking
         # tokens (thoughtsTokenCount) since Gemini bills those as output.
-        # Guarded by a lock because MCP/KB/chart calls run in parallel threads.
+        # Guarded by a lock because MCP/chart calls run in parallel threads.
         self.token_usage = {"input": 0, "output": 0, "total": 0}
         self._usage_lock = threading.Lock()
         self._write_header()
@@ -138,7 +126,7 @@ class SessionLogger:
                 "started": datetime.now().isoformat(),
             },
         )
-        if not _FILE_LOGGING:
+        if not get_settings().session_log_to_file:
             return
         if self.log_file.exists():
             # Resuming existing session - add continuation marker
@@ -157,12 +145,9 @@ class SessionLogger:
     def log(self, event_type: str, data: dict):
         """Log an event with full request/response details."""
         timestamp = datetime.now().isoformat()
-        entry = {"timestamp": timestamp, "event_type": event_type, "data": data}
-        self.entries.append(entry)
-
         _emit_structured(self.session_id, event_type, data)
 
-        if _FILE_LOGGING:
+        if get_settings().session_log_to_file:
             with open(self.log_file, "a") as f:
                 f.write(f"\n--- {event_type} @ {timestamp} ---\n")
                 f.write(json.dumps(data, indent=2, default=str))
@@ -222,18 +207,6 @@ class SessionLogger:
                 "status": status,
                 # No truncation - full result for debugging
                 "result": result_str,
-            },
-        )
-
-    def log_kb_query(self, message: str, result: str, duration_ms: float):
-        """Log Knowledge Base query."""
-        self.log(
-            "KB_QUERY",
-            {
-                "query": message,
-                "duration_ms": round(duration_ms, 2),
-                "result_length": len(result),
-                "result": result,  # No truncation - full result for debugging
             },
         )
 

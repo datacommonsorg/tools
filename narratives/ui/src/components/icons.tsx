@@ -5,7 +5,7 @@
 import type { SVGProps } from "react";
 
 /**
- * Icon pixel sizes keyed by a semantic token. Centralised here so icon sizing
+ * Icon pixel sizes keyed by a semantic token. Centralized here so icon sizing
  * is consistent and adjustable in one place, rather than hard-coded as magic
  * numbers at each call site.
  *
@@ -59,7 +59,7 @@ export function getSvgProps(
 export function SendIcon({ size = "xs", ...props }: IconProps) {
   // The source asset was a 40x40 button, so its coordinate space includes the
   // circular background; the glyph itself only spans x 13-26.7, y 14.4-25.7.
-  // The viewBox is tightened to a 16-unit square centred on that, otherwise the
+  // The viewBox is tightened to a 16-unit square centered on that, otherwise the
   // arrow renders at roughly a third of the requested size inside its button.
   //
   // Size defaults to `xs` (16px) because the asset draws the arrow at 34% of

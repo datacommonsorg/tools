@@ -39,7 +39,7 @@ timezone = "UTC"
 dc_api_key_secret_id      = "REPLACE_INSTANCE-dc-api-key"
 maps_api_key_secret_id    = "REPLACE_INSTANCE-maps-api-key"
 db_pass_secret_id         = "REPLACE_INSTANCE-db-pass"
-gemini_api_keys_secret_id = "REPLACE_INSTANCE-gemini-api-keys"
+gemini_api_key_secret_id  = "REPLACE_INSTANCE-gemini-api-key"
 
 # Cloud SQL — REGIONAL HA is the production default. ZONAL is cheaper for a POC
 # (~$50/mo saved) but no automatic failover.

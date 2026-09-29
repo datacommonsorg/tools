@@ -12,39 +12,45 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Streams a chat turn to the browser as Server-Sent Events."""
 
 import json
-import logging
-import secrets
 import time
+from collections.abc import Generator
+from typing import Any
 
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
-from narratives_agent.config import get_query_param_key
-from narratives_agent.session_logger import SessionLogger
+from narratives_agent.server.responses import ClosingStreamingResponse
+from narratives_agent.session_logger import SESSION_ID_PATTERN, SessionLogger
 from narratives_agent.workflows.chat_pipeline import (
     run_followups,
-    run_kb_phase,
     run_mcp_phase,
     run_synthesis_phase,
 )
 
-logger = logging.getLogger(__name__)
-
-chat_bp = Blueprint("chat", __name__)
+router = APIRouter()
 
 
-@chat_bp.route("/api/chat/stream", methods=["POST"])
-@chat_bp.route(
-    "/chat/stream", methods=["POST"]
-)  # alias for the SPA served under /agent/*
-def chat_stream():
-    """Full chat workflow with SSE streaming.
+class ChatRequest(BaseModel):
+    """The JSON body of a chat request."""
+
+    message: str = Field(min_length=1)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    # SessionLogger names the session's log file after the id; the pattern
+    # it owns accepts only characters that cannot leave the logs directory.
+    session_id: str | None = Field(default=None, pattern=SESSION_ID_PATTERN)
+
+
+@router.post("/chat/stream")
+def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
+    """Streams the full chat workflow as Server-Sent Events.
 
     Phases:
     1. MCP Tools - Execute data queries (send tool call details)
-    2. KB Query - Search knowledge base (if enabled)
-    3. Synthesis - Stream final response with chart config
+    2. Synthesis - Stream final response with chart config
 
     Request body:
     {
@@ -53,89 +59,47 @@ def chat_stream():
         "session_id": "optional session ID for follow-up messages"
     }
 
-    Query params (optional, requires valid key):
-    - key: Secret key for config overrides (must match query_param_key in
-      config)
-    - model: Override mcp_model and kb_model
-    - kb: "true" or "false" to toggle knowledge base
-    - mcp_thinking: Override MCP thinking level
-    - synthesis_thinking: Override synthesis thinking level
-
     Response: Server-Sent Events stream
+
+    Starlette advances the synchronous generator below one `next()` call at a
+    time, each on a thread borrowed from AnyIO's worker pool, so one turn's
+    events can run on several threads. The MCP session id is thread-local
+    (`mcp/client.py`), so a turn can use several MCP sessions, and a later turn
+    can reuse a session that an earlier one left on a pool thread. This is
+    safe: a pool thread runs one job at a time, so no two requests share a
+    session at once; the MCP tool loop runs on one dedicated thread for the
+    whole turn; and `mcp_call` opens a session when its thread has none and
+    retries once on a new session when the server rejects one.
     """
-    data = request.get_json()
-    if not data or not data.get("message"):
-        return jsonify({"error": "Message required"}), 400
-
-    user_message = data["message"]
-    history = data.get("history", [])
-    existing_session_id = data.get("session_id")  # From follow-up messages
-
-    # Parse query parameters for config overrides
-    query_params = {}
-    secret_key = request.args.get("key", "")
-    expected_key = get_query_param_key()
-    demo_mode = False
-
-    # An unconfigured key disables overrides outright. Comparing equal-and-empty
-    # would hand every anonymous caller the demo API keys and model overrides.
-    if expected_key and secrets.compare_digest(secret_key, expected_key):
-        # Valid key - extract override params
-        query_params = {
-            "model": request.args.get(
-                "model"
-            ),  # e.g., "gemini-3-flash-preview"
-            "kb_enabled": request.args.get("kb"),  # "true" or "false"
-            "mcp_thinking": request.args.get(
-                "mcp_thinking"
-            ),  # "low", "medium", "high", or budget number
-            "synthesis_thinking": request.args.get(
-                "synthesis_thinking"
-            ),  # same options
-        }
-        # Remove None values
-        query_params = {k: v for k, v in query_params.items() if v is not None}
-        if query_params:
-            logger.info(f"Query params override applied: {query_params}")
-
-        # Check for demo mode - uses reserved API keys for internal demos
-        if request.args.get("demo", "").lower() == "true":
-            demo_mode = True
-            logger.info("Demo mode ENABLED - using reserved demo API keys")
-    elif secret_key:
-        # Invalid key provided - log warning but continue with defaults
-        logger.warning("Invalid query param key provided, ignoring overrides")
+    user_message = body.message
+    history = body.history
+    existing_session_id = body.session_id  # From follow-up messages
 
     # Create or resume session logger
     session_logger = SessionLogger(session_id=existing_session_id)
 
-    def generate():
+    def generate() -> Generator[str]:
         nonlocal session_logger
         request_start_time = time.time()
         full_text = ""
 
-        # Chart config runs in parallel with KB + synthesis
+        # Chart config runs in parallel with synthesis
         chart_result_holder = {"config": {"should_render": False}}
         chart_thread = [None]  # Use list to avoid nonlocal issues
 
         # Shared mutable context threaded through the phase generators so the
         # threading/queue behavior and cross-phase state match the original
         # inline generator exactly.
-        ctx = {
+        ctx: dict[str, Any] = {
             "user_message": user_message,
             "history": history,
             "session_logger": session_logger,
-            "query_params": query_params,
-            "demo_mode": demo_mode,
             "request_start_time": request_start_time,
             "full_text": full_text,
             "chart_result_holder": chart_result_holder,
             "chart_thread": chart_thread,
-            "effective_config": None,
             "mcp_results": "",
             "tool_calls_list": [],
-            "kb_response": "",
-            "kb_sources": [],
             "thought_queue": None,
             "thought_callback": None,
             "chart_config": None,
@@ -147,17 +111,27 @@ def chat_stream():
             f"data: {json.dumps({'session_id': session_logger.session_id})}\n\n"
         )
 
-        yield from run_mcp_phase(ctx)
-        yield from run_kb_phase(ctx)
-        yield from run_synthesis_phase(ctx)
-        yield from run_followups(ctx)
+        # The phase generators are unannotated until Branch 5 rewrites the
+        # pipeline.
+        yield from run_mcp_phase(ctx)  # type: ignore[no-untyped-call]
+        yield from run_synthesis_phase(ctx)  # type: ignore[no-untyped-call]
+        yield from run_followups(ctx)  # type: ignore[no-untyped-call]
 
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream",
+    events = generate()
+    return ClosingStreamingResponse(
+        events,
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         },
+        # When the client disconnects -- the UI aborts the request on Stop and
+        # when a new turn is sent mid-stream -- the stream stops and this task
+        # still runs, whatever ASGI spec version the server reports (see
+        # ClosingStreamingResponse). Closing the generator runs the pipeline's
+        # cleanup, which closes the Gemini stream, at once rather than
+        # whenever the garbage collector reaches it. close() does nothing on a
+        # generator that already finished.
+        background=BackgroundTask(events.close),
     )

@@ -11,21 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for prompt placeholder substitution, query_param_key validation, and
-prompt URL derivation.
+"""Tests for prompt rendering, prompt fetching, model selection, and keys.
 
-Covers three configuration behaviors:
+Covers five configuration behaviors in `config`:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts.
-2. `query_param_key` validation for gating model/thinking overrides and
-   `?demo=true`, ensuring an unconfigured key defaults to an empty string and
-   rejects all callers.
-3. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
-   bucket directory prefixes while stripping query parameters.
+2. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
+   bucket directory prefixes while stripping query parameters, and stripping
+   HTML authoring comments from loaded prompt files.
+3. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
+   preferring Secret Manager over `config.json` and rejecting placeholder,
+   empty, or JSON-wrapped secret payloads.
+4. Resolution of `get_gemini_model` across configured, empty, and null `gemini`
+   configuration sections.
+5. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
+   resolved.
 """
-
-import secrets
 
 import pytest
 
@@ -37,11 +39,6 @@ def _with_config(
 ) -> None:
     """Stub `config.load_config` to return `doc` for the current test."""
     monkeypatch.setattr(config, "load_config", lambda: doc)
-
-
-def _gate(expected: str, supplied: str) -> bool:
-    """Replicate the `query_param_key` check used in `routes/chat.py`."""
-    return bool(expected) and secrets.compare_digest(supplied, expected)
 
 
 # --- {{instance.*}} substitution -------------------------------------------
@@ -188,85 +185,6 @@ def test_datetime_is_substituted_alongside_instance_vars(
     assert rendered.endswith("at Example DC")
 
 
-# --- the ?key= override gate ------------------------------------------------
-
-
-def test_unconfigured_key_reads_as_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Default return value of get_query_param_key when unconfigured.
-    # Situation: The configuration dictionary does not set query_param_key.
-    # Expectation: get_query_param_key returns an empty string rather than a
-    #   hardcoded fallback secret.
-    _with_config(monkeypatch, {})
-    assert config.get_query_param_key() == ""
-
-
-@pytest.mark.parametrize(
-    "supplied",
-    ["", "AISummit2026"],
-    ids=["none supplied", "key guessed"],
-)
-def test_gate_refuses_when_no_key_is_configured(
-    monkeypatch: pytest.MonkeyPatch, supplied: str
-) -> None:
-    # Test: Override gate behavior when query_param_key is not configured.
-    # Situation: query_param_key is omitted from the config, and a caller passes
-    #   either an empty string or a candidate key.
-    # Expectation: The gate evaluates to False in both cases so that an empty
-    #   configuration never matches an empty caller parameter.
-    _with_config(monkeypatch, {})
-    assert _gate(config.get_query_param_key(), supplied) is False
-
-
-def test_configured_key_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Test: Whitespace normalization on a configured query_param_key.
-    # Situation: The query_param_key value in the config contains leading and
-    #   trailing whitespace.
-    # Expectation: get_query_param_key strips surrounding whitespace before
-    #   returning the key.
-    _with_config(
-        monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
-    )
-    assert config.get_query_param_key() == "a-long-non-guessable-value"
-
-
-def test_gate_refuses_a_wrong_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Test: Override gate rejection of an incorrect key.
-    # Situation: A valid query_param_key is configured, and the caller supplies
-    #   a non-matching string.
-    # Expectation: The gate evaluates to False.
-    _with_config(
-        monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
-    )
-    assert _gate(config.get_query_param_key(), "nope") is False
-
-
-def test_gate_allows_the_configured_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Override gate acceptance of a matching key.
-    # Situation: A valid query_param_key is configured, and the caller supplies
-    #   the exact stripped key.
-    # Expectation: The gate evaluates to True, enabling request overrides.
-    _with_config(
-        monkeypatch, {"query_param_key": "  a-long-non-guessable-value  "}
-    )
-    assert _gate(config.get_query_param_key(), "a-long-non-guessable-value")
-
-
-def test_non_string_key_reads_as_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Handling of a non-string query_param_key in the config.
-    # Situation: query_param_key is set to an integer instead of a string.
-    # Expectation: get_query_param_key returns an empty string so that
-    #   secrets.compare_digest does not raise a TypeError and the gate remains
-    #   closed.
-    _with_config(monkeypatch, {"query_param_key": 12345})
-    assert config.get_query_param_key() == ""
-
-
 # --- prompt URLs derived from CONFIG_URL ------------------------------------
 
 
@@ -326,3 +244,224 @@ def test_prompt_urls_are_derived_from_the_config_url(
     # All slots share the same base directory URL and differ only in filename.
     assert fetch.urls[0] == expected
     assert len(fetch.urls) == len(config.PROMPT_SLOTS)
+
+
+# --- Gemini API key resolution ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("gemini_section", "expected"),
+    [
+        ({"api_key": "  test-valid-gemini-key  "}, "test-valid-gemini-key"),
+        ({"api_key": "REPLACE_ME_WITH_KEY"}, ""),
+        ({"api_key": "DEPRECATED_KEY"}, ""),
+        ({"api_key": None}, ""),
+        ({"api_key": ""}, ""),
+        (None, ""),
+    ],
+    ids=[
+        "trimmed valid key",
+        "replace_me placeholder",
+        "deprecated placeholder",
+        "null api_key",
+        "empty api_key",
+        "null gemini section",
+    ],
+)
+def test_get_gemini_api_key_resolves_and_validates_config_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    gemini_section: dict[str, object] | None,
+    expected: str,
+) -> None:
+    # Test: Local config fallback in get_gemini_api_key.
+    # Situation: GEMINI_API_KEY_SECRET is unset and config.json contains a
+    #   valid key, placeholder string, empty string, or null value.
+    # Expectation: Valid keys are stripped and returned; placeholders, empty
+    #   strings, and nulls return "".
+    monkeypatch.delenv("GEMINI_API_KEY_SECRET", raising=False)
+    monkeypatch.setattr(
+        config, "load_config", lambda: {"gemini": gemini_section}
+    )
+
+    assert config.get_gemini_api_key() == expected
+
+
+def test_get_gemini_api_key_prefers_secret_manager_and_falls_back_on_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Secret Manager priority and config fallback in get_gemini_api_key.
+    # Situation: GEMINI_API_KEY_SECRET is set; first Secret Manager returns a
+    #   key, then it returns "".
+    # Expectation: Secret Manager value wins when non-empty; config.json
+    #   fallback is used when Secret Manager returns "".
+    monkeypatch.setenv("GEMINI_API_KEY_SECRET", "gemini-key-secret")
+    monkeypatch.setattr(
+        config, "load_config", lambda: {"gemini": {"api_key": "fallback-key"}}
+    )
+
+    monkeypatch.setattr(
+        config, "_fetch_key_from_secret_manager", lambda name: "secret-key"
+    )
+    assert config.get_gemini_api_key() == "secret-key"
+
+    monkeypatch.setattr(
+        config, "_fetch_key_from_secret_manager", lambda name: ""
+    )
+    assert config.get_gemini_api_key() == "fallback-key"
+
+
+@pytest.mark.parametrize(
+    ("raw_payload", "expected"),
+    [
+        (b"  test-bare-gemini-key\n", "test-bare-gemini-key"),
+        (b'["test-array-gemini-key"]', ""),
+        (b'"test-quoted-gemini-key"', ""),
+        (b"   \n", ""),
+    ],
+    ids=[
+        "bare key",
+        "legacy json array",
+        "quoted json string",
+        "whitespace only",
+    ],
+)
+def test_fetch_key_from_secret_manager_validates_secret_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_payload: bytes,
+    expected: str,
+) -> None:
+    # Test: Payload validation in _fetch_key_from_secret_manager.
+    # Situation: Secret Manager returns a bare key, a legacy JSON array, a
+    #   JSON-quoted string, or whitespace.
+    # Expectation: Only the bare key is returned and cached; JSON-encoded and
+    #   empty payloads are rejected with "".
+    class _StubPayload:
+        data = raw_payload
+
+    class _StubVersionResponse:
+        payload = _StubPayload()
+
+    class _StubSecretClient:
+        def access_secret_version(
+            self, request: dict[str, str]
+        ) -> _StubVersionResponse:
+            return _StubVersionResponse()
+
+    class _StubSecretModule:
+        SecretManagerServiceClient = _StubSecretClient
+
+    monkeypatch.setattr(config, "_SECRET_MANAGER_AVAILABLE", True)
+    monkeypatch.setattr(
+        config, "secretmanager", _StubSecretModule, raising=False
+    )
+    monkeypatch.setattr(config, "_secret_manager_cache", {})
+
+    secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
+    assert config._fetch_key_from_secret_manager(secret_path) == expected
+    if expected:
+        assert config._secret_manager_cache[secret_path][1] == expected
+    else:
+        assert secret_path not in config._secret_manager_cache
+
+
+# --- prompt bodies ----------------------------------------------------------
+
+
+class _BodyFetch:
+    """Callable stub that returns a fixed response body for every slot."""
+
+    def __init__(self, body: str) -> None:
+        self.body = body
+
+    def __call__(self, url: str) -> _StubResponse:
+        response = _StubResponse()
+        response.text = self.body
+        return response
+
+
+def test_html_comments_are_stripped_from_prompt_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Stripping of HTML authoring comments in `_fetch_prompt_bodies`.
+    # Situation: A fetched `.md` prompt file contains an `<!-- ... -->` comment
+    #   between two lines of instruction text.
+    # Expectation: `_fetch_prompt_bodies` removes the HTML comment before
+    #   storing the prompt text for the slot.
+    monkeypatch.setattr(
+        config,
+        "_fetch_gcs_url",
+        _BodyFetch("Answer plainly.\n<!-- keep in sync with X -->\nCite."),
+    )
+    prompts = config._fetch_prompt_bodies("https://example.com/config.json")
+    assert prompts["mcp"] == "Answer plainly.\n\nCite."
+
+
+def test_prompt_containing_only_html_comment_leaves_slot_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Handling of prompt files that are empty after HTML comment removal.
+    # Situation: A fetched `.md` prompt file contains only an HTML comment and
+    #   whitespace.
+    # Expectation: `_fetch_prompt_bodies` omits the slot from the returned
+    #   dictionary rather than setting it to an empty string.
+    monkeypatch.setattr(
+        config, "_fetch_gcs_url", _BodyFetch("<!-- not written yet -->")
+    )
+    assert config._fetch_prompt_bodies("https://example.com/c.json") == {}
+
+
+# --- model selection --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {},
+        {"gemini": None},
+        {"gemini": {}},
+        {"gemini": {"mcp_model": ""}},
+        {"gemini": {"mcp_model": "   "}},
+    ],
+    ids=[
+        "missing gemini section",
+        "null gemini section",
+        "empty gemini section",
+        "empty mcp_model string",
+        "whitespace mcp_model string",
+    ],
+)
+def test_get_gemini_model_defaults_when_unconfigured_or_null(
+    document: dict[str, object],
+) -> None:
+    # Test: Fallback to `DEFAULT_GEMINI_MODEL` in `get_gemini_model`.
+    # Situation: The configuration omits `gemini`, sets `gemini` to `None`, or
+    #   sets `gemini.mcp_model` to an empty or whitespace-only string.
+    # Expectation: `get_gemini_model` returns `config.DEFAULT_GEMINI_MODEL`.
+    assert config.get_gemini_model(document) == config.DEFAULT_GEMINI_MODEL
+
+
+def test_get_gemini_model_returns_configured_model() -> None:
+    # Test: Resolution of an explicit model name in `get_gemini_model`.
+    # Situation: `gemini.mcp_model` is set to `"gemini-3-pro"`.
+    # Expectation: `get_gemini_model` returns `"gemini-3-pro"`.
+    document = {"gemini": {"mcp_model": "gemini-3-pro"}}
+    assert config.get_gemini_model(document) == "gemini-3-pro"
+
+
+# --- prompt datetime rendering ----------------------------------------------
+
+
+def test_unresolvable_timezone_falls_back_to_utc(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Fallback to `UTC` in `get_current_datetime` on an invalid timezone.
+    # Situation: The `TIMEZONE` environment variable is set to an unknown IANA
+    #   timezone identifier (`"Mars/Olympus_Mons"`).
+    # Expectation: `get_current_datetime` logs a warning and returns a timestamp
+    #   formatted in `UTC` without raising an exception.
+    monkeypatch.setenv("TIMEZONE", "Mars/Olympus_Mons")
+    with caplog.at_level("WARNING"):
+        result = config.get_current_datetime()
+    assert result.endswith("UTC")
+    assert "Mars/Olympus_Mons" in caplog.text

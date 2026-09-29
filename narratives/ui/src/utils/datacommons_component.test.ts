@@ -149,7 +149,7 @@ describe("dcChartRenderState", () => {
   });
 
   it("does not read a per-capita failure as no data", () => {
-    // A different errorMsg from the same catalogue. It means the chart could
+    // A different errorMsg from the same catalog. It means the chart could
     // not divide, not that the fetch came back empty, so it is left alone.
     expect(
       dcChartRenderState(

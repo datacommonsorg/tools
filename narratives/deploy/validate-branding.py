@@ -12,7 +12,7 @@ rather than a silently ignored one. Nothing enforced that at deploy time, and
 the resulting failure is quiet in the worst way: a file carrying
 `primary_color` instead of `colors.primary` deploys clean, the agent serves it,
 /agent/brand echoes the instance name so branding looks applied -- and only the
-colour is missing, from a key nothing ever reads. CI validated
+color is missing, from a key nothing ever reads. CI validated
 agent-config.json with ajv; branding had no equivalent anywhere.
 
 jsonschema is used when installed. It usually is not: the fallback below walks

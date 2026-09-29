@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Routers for the agent API, the data-plane proxy, and the UI.
+"""Runs the agent for local development as `uv run narratives-agent-dev`."""
 
-Each module defines a module-level `router`. `create_app()` in
-`narratives_agent.server.app` includes them and owns their order.
-"""
+import uvicorn
+
+from narratives_agent.settings import get_settings
+
+
+def main() -> None:
+    """Serves the container's application on 127.0.0.1 with auto-reload.
+
+    The port is AGENT_PORT, 5001 by default.
+    """
+    uvicorn.run(
+        "narratives_agent.server.app:app",
+        host="127.0.0.1",
+        port=get_settings().agent_port,
+        reload=True,
+    )

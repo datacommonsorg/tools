@@ -114,7 +114,7 @@ export function DataCommonsComponent({
     }
     lastAttrsRef.current = { ...attrs };
     // attrs is intentionally diffed via the ref above rather than listed
-    // as a dep — that would require deep-equality memoisation in every
+    // as a dep — that would require deep-equality memoization in every
     // caller, and getting it wrong replays the original bug.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   });
@@ -125,7 +125,7 @@ export function DataCommonsComponent({
 /**
  * The message a DC component renders in place of a chart when its own fetch
  * came back with nothing to draw. `noDataErrorMessage` in the bundle's message
- * catalogue: an `<h4 class="text-danger">` above the header in the shared chart
+ * catalog: an `<h4 class="text-danger">` above the header in the shared chart
  * container (line / bar / map / pie / scatter / gauge), and a bare element in
  * the ranking and highlight tiles. Matched without the trailing period so a
  * punctuation change upstream doesn't silently stop the check working.
@@ -152,11 +152,11 @@ const SETTLE_POLL_MS = 300;
  * data from {@link API_ROOT} after mount, so a chart the agent configured
  * against variables it did hold observations for can still come back with
  * nothing for the place or date it was given — and then renders a card whose
- * only content is "No data available." over a grey placeholder. The only place
+ * only content is "No data available." over a gray placeholder. The only place
  * that outcome is visible is the component's own shadow DOM (open mode, so
  * readable), which is what this inspects.
  *
- * Deliberately fail-safe: every shape it does not recognise reads as
+ * Deliberately fail-safe: every shape it does not recognize reads as
  * `pending`, so a change to the upstream bundle can only leave a card on
  * screen — never hide one that has data.
  */

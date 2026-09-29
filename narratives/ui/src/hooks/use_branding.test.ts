@@ -154,7 +154,7 @@ describe("useBranding", () => {
       await waitFor(() => expect(result.current.loaded).toBe(true));
       expect(result.current.error).toBe("offline");
       expect(result.current.branding).toEqual(DEFAULT_BRAND);
-      // A failed refresh must not overwrite colours brand.css may have set.
+      // A failed refresh must not overwrite colors brand.css may have set.
       expect(document.documentElement.style.getPropertyValue("--brand-primary")).toBe("");
     });
   });

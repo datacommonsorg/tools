@@ -25,7 +25,7 @@ const MARGIN_MM = 12;
 const A4_CONTENT_WIDTH_MM = A4_WIDTH_MM - MARGIN_MM * 2;
 const A4_CONTENT_HEIGHT_MM = A4_HEIGHT_MM - MARGIN_MM * 2;
 
-/** Rasterisation factor. 2 keeps chart labels legible without huge files. */
+/** Rasterization factor. 2 keeps chart labels legible without huge files. */
 const CANVAS_SCALE = 2;
 /** JPEG quality for the page images. */
 const JPEG_QUALITY = 0.92;
@@ -159,7 +159,7 @@ function cloneWithComputedStyles(source: Element): Element {
  * that component drew.
  *
  * html2canvas cannot see into a shadow root, so without this every chart would
- * rasterise as an empty box. `original` supplies the live shadow content;
+ * rasterize as an empty box. `original` supplies the live shadow content;
  * `clone` is the detached copy being prepared for rendering.
  */
 function inlineCharts(clone: HTMLElement, original: HTMLElement) {
@@ -243,7 +243,7 @@ function applyChartScale(inner: HTMLElement, box: HTMLElement, factor: number) {
   // The transform does not affect layout, so the flow height must be reserved
   // explicitly or the chart overlaps whatever follows it.
   box.style.height = `${Math.round(inner.offsetHeight * factor)}px`;
-  // A chart held back by the height cap is narrower than its card. Centre it,
+  // A chart held back by the height cap is narrower than its card. Center it,
   // rather than leaving it pinned left against a ragged gutter.
   const slack = box.clientWidth - inner.offsetWidth * factor;
   inner.style.marginLeft = slack > 1 ? `${Math.round(slack / 2)}px` : "0";
@@ -342,7 +342,7 @@ export function chartScaleFactor(available: number, natural: number): number {
  * Vertical bands, in canvas pixels, that should not be split across a page.
  *
  * Measured after mounting and scaling, relative to the clone's own top, then
- * multiplied by the rasterisation scale so the numbers are directly comparable
+ * multiplied by the rasterization scale so the numbers are directly comparable
  * with canvas offsets during pagination.
  */
 function unbreakableBands(clone: HTMLElement): Band[] {
@@ -416,7 +416,7 @@ function fileNameFor(question: string): string {
  *
  * Deliberately not the browser print pipeline: window.print() can only open
  * the platform print dialog, and the requirement is a file that downloads on
- * click. The trade-off is that the page is rasterised, so the PDF has no
+ * click. The trade-off is that the page is rasterized, so the PDF has no
  * selectable text layer.
  *
  * Elements marked `data-non-print` are dropped, so the exported document is

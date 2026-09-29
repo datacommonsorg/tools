@@ -52,7 +52,7 @@ export interface MetricsTile {
   endDate?: string;
 }
 
-/** One dashboard tab: a labelled group of tiles. */
+/** One dashboard tab: a labeled group of tiles. */
 export interface MetricsTab {
   id: string;
   label: string;

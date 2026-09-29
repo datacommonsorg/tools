@@ -16,7 +16,7 @@ function box(left: number, top: number, width: number, height: number): Box {
 const TIP = box(0, 0, 80, 24);
 
 describe("place", () => {
-  it("puts the tooltip above the anchor, gap of 4, centred", () => {
+  it("puts the tooltip above the anchor, gap of 4, centered", () => {
     const anchor = box(500, 400, 40, 40);
     expect(place(anchor, TIP, "top")).toEqual({
       top: 400 - 24 - 4,
@@ -24,7 +24,7 @@ describe("place", () => {
     });
   });
 
-  it("puts it to the right, gap of 4, centred on the anchor's middle", () => {
+  it("puts it to the right, gap of 4, centered on the anchor's middle", () => {
     const anchor = box(12, 400, 48, 48);
     expect(place(anchor, TIP, "right")).toEqual({
       top: 400 + 24 - 12,
@@ -49,7 +49,7 @@ describe("place", () => {
     expect(top + 400).toBeLessThanOrEqual(VIEWPORT.height);
   });
 
-  it("puts it below the anchor, gap of 4, centred on the anchor's middle", () => {
+  it("puts it below the anchor, gap of 4, centered on the anchor's middle", () => {
     const anchor = box(500, 200, 40, 40);
     expect(place(anchor, TIP, "bottom")).toEqual({
       top: 200 + 40 + 4,
@@ -57,7 +57,7 @@ describe("place", () => {
     });
   });
 
-  it("puts it to the left, gap of 4, centred on the anchor's middle", () => {
+  it("puts it to the left, gap of 4, centered on the anchor's middle", () => {
     const anchor = box(400, 400, 48, 48);
     expect(place(anchor, TIP, "left")).toEqual({
       top: 400 + 24 - 12,
@@ -74,7 +74,7 @@ describe("place", () => {
   });
 
   it("clamps horizontally so an edge control's tooltip stays on screen", () => {
-    // Centring on an anchor in the corner would push the tooltip negative.
+    // Centering on an anchor in the corner would push the tooltip negative.
     const anchor = box(0, 400, 20, 20);
     expect(place(anchor, TIP, "top").left).toBe(8);
   });

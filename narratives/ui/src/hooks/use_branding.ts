@@ -435,12 +435,12 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
       // only re-request the very same startup-loaded document. Re-assert the CSS
       // variables it implies: brand.css normally applied them before first
       // paint, but if that request was the one that failed, this keeps the
-      // colours consistent with the content rather than leaving them mismatched.
+      // colors consistent with the content rather than leaving them mismatched.
       if (prePaint) applyCssVars(mapRawToBranding(prePaint));
       return;
     }
 
-    let cancelled = false;
+    let canceled = false;
 
     async function load() {
       try {
@@ -462,7 +462,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
           // nothing: /agent/brand.css and index.css's own fallbacks already
           // describe this state, and writing DEFAULT_BRAND inline here would
           // outrank the stylesheet and undo a correct pre-paint render.
-          if (!cancelled) {
+          if (!canceled) {
             setLoaded(true);
           }
           return;
@@ -473,7 +473,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
         // fields so defaults aren't clobbered with undefined).
         const configured = mapRawToBranding(rawBranding);
         const merged = { ...DEFAULT_BRAND, ...configured };
-        if (!cancelled) {
+        if (!canceled) {
           setBranding(merged);
           // Only what branding.json actually set. Passing `merged` would write
           // DEFAULT_BRAND's values inline for every key the instance omitted,
@@ -483,7 +483,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (!cancelled) {
+        if (!canceled) {
           console.warn(`[branding] falling back to the shipped design: ${msg}`);
           // Deliberately no applyCssVars here. The pre-paint stylesheet may
           // already have applied correct values; writing DEFAULT_BRAND inline
@@ -498,7 +498,7 @@ export function useBranding(): { branding: Branding; loaded: boolean; error: str
 
     void load();
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, []);
 

@@ -124,7 +124,7 @@ most countries.
 - When several variables answer the question, prefer the one whose provenance
   and geographic coverage best match what was asked. Custom data ingested into
   this instance is usually the most specific answer available and should not be
-  passed over in favour of a broader international series.
+  passed over in favor of a broader international series.
 
 ### Fallback Protocol
 

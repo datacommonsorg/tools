@@ -26,30 +26,28 @@ syncs the bucket.
 import hashlib
 import json
 import logging
-import os
 import posixpath
 import re
+from typing import TypedDict
 
-from flask import Blueprint, Response, jsonify
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from narratives_agent.config import _fetch_gcs_url
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-brand_bp = Blueprint("brand", __name__)
+router = APIRouter()
+
+# A value parsed from JSON, such as branding.json or a fragment of it.
+type JsonValue = (
+    str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
+)
 
 # Branding fields naming an image that must be mirrored into memory so the
 # browser never fetches it from the bucket. `logo_url` is the legacy alias.
 _ASSET_FIELDS = ("logo", "logo_url", "favicon")
-
-# Browser-visible prefix the SPA reaches this blueprint through. The services
-# container's nginx strips it before proxying, so it is configuration rather
-# than something the routes themselves see.
-# Must match the prefix the API blueprints are registered under
-# (routes/__init__.py). This module rewrites asset URLs into the served
-# document, so if the two disagree the browser requests a logo from a path
-# nothing serves -- a broken image with no error anywhere.
-_PUBLIC_PREFIX = os.environ.get("AGENT_API_PREFIX", "/agent").rstrip("/")
 
 _ASSET_CONTENT_TYPES = {
     ".png": "image/png",
@@ -82,8 +80,18 @@ _CREDENTIAL_KEY_HINTS = (
     "token",
 )
 
+
+class _BrandState(TypedDict):
+    """Holds the branding that this module's routes publish."""
+
+    branding: dict[str, JsonValue] | None
+    assets: dict[str, bytes]
+    css: str
+    loaded: bool
+
+
 # Populated once by load_branding(); read-only thereafter.
-_BRAND_STATE: dict = {
+_BRAND_STATE: _BrandState = {
     "branding": None,
     "assets": {},
     "css": "",
@@ -139,34 +147,50 @@ def _looks_like_credential(key: str, value: str) -> bool:
     return any(pattern.match(value) for pattern in _CREDENTIAL_PATTERNS)
 
 
-def find_credential_like_values(node, path: str = "") -> list[str]:
+def find_credential_like_values(
+    node: JsonValue, path: str = "", key: str = ""
+) -> list[str]:
     """Walks a config document and reports paths that look like credentials.
+
+    Every string in the document is inspected regardless of whether it is stored
+    directly in a dictionary or inside a nested list. Lists inherit the key of
+    their enclosing dictionary entry so that elements under secret-bearing keys
+    (such as `api_keys`) are evaluated against that key name as well as against
+    credential value patterns.
 
     Args:
         node: The config fragment to inspect: dict, list or scalar.
         path: Dotted path of `node` within the document, used for reporting.
+        key: Name of the enclosing dictionary key through which `node` was
+            reached.
 
     Returns:
         Dotted paths of every entry that appears to hold a secret.
     """
     findings: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            child = f"{path}.{key}" if path else key
-            if isinstance(value, str) and _looks_like_credential(key, value):
-                findings.append(child)
-            else:
-                findings.extend(find_credential_like_values(value, child))
+    if isinstance(node, str):
+        if _looks_like_credential(key, node):
+            findings.append(path)
+    elif isinstance(node, dict):
+        for child_key, value in node.items():
+            child = f"{path}.{child_key}" if path else child_key
+            findings.extend(
+                find_credential_like_values(value, child, child_key)
+            )
     elif isinstance(node, list):
         for index, value in enumerate(node):
             findings.extend(
-                find_credential_like_values(value, f"{path}[{index}]")
+                find_credential_like_values(value, f"{path}[{index}]", key)
             )
     return findings
 
 
-def _redact(node, paths: set[str], path: str = "") -> None:
-    """Removes the entries at `paths` from `node`, in place."""
+def _redact(node: JsonValue, paths: set[str], path: str = "") -> None:
+    """Removes the entries at `paths` from `node`, in place.
+
+    Paths refer to original list indices, so flagged elements are filtered into
+    a new list and assigned back rather than deleted during iteration.
+    """
     if isinstance(node, dict):
         for key in list(node):
             child = f"{path}.{key}" if path else key
@@ -175,11 +199,16 @@ def _redact(node, paths: set[str], path: str = "") -> None:
             else:
                 _redact(node[key], paths, child)
     elif isinstance(node, list):
+        kept: list[JsonValue] = []
         for index, value in enumerate(node):
-            _redact(value, paths, f"{path}[{index}]")
+            child = f"{path}[{index}]"
+            if child not in paths:
+                _redact(value, paths, child)
+                kept.append(value)
+        node[:] = kept
 
 
-def _fetch_branding_document(base_url: str) -> dict | None:
+def _fetch_branding_document(base_url: str) -> dict[str, JsonValue] | None:
     """Reads branding.json from the config bucket.
 
     Returns:
@@ -232,11 +261,13 @@ def _fetch_asset(base_url: str, relative_path: str) -> bytes | None:
     return response.content
 
 
-def _mirror_assets(document: dict, base_url: str) -> dict[str, bytes]:
+def _mirror_assets(
+    document: dict[str, JsonValue], base_url: str
+) -> dict[str, bytes]:
     """Pulls every referenced image into memory and rewrites its path.
 
     Each asset field naming a bucket-relative path is fetched once and
-    rewritten to this blueprint's own asset route, so a browser rendering the
+    rewritten to this router's own asset route, so a browser rendering the
     branding never issues a request to GCS. Absolute URLs and data: URIs are
     left alone -- they are already not our bucket.
 
@@ -279,16 +310,23 @@ def _mirror_assets(document: dict, base_url: str) -> dict[str, bytes]:
             name = f"{stem}-{digest}{extension}"
             assets[name] = content
             mirrored[source] = name
-        document[field] = f"{_PUBLIC_PREFIX}/brand/assets/{name}"
+        # The API prefix is the browser-visible path the SPA reaches this
+        # router through: create_app() in server/app.py includes the router
+        # under it. The rewritten URL must carry the same prefix: if the two
+        # disagree, the browser requests a logo from a path nothing serves --
+        # a broken image with no error anywhere.
+        document[field] = (
+            f"{get_settings().agent_api_prefix}/brand/assets/{name}"
+        )
     return assets
 
 
-def _build_brand_css(document: dict | None) -> str:
+def _build_brand_css(document: dict[str, JsonValue] | None) -> str:
     """Renders the branding document as a :root stylesheet.
 
     The result is what index.html loads before first paint, so the browser has
-    the instance's colours in hand for the very first frame instead of painting
-    index.css's fallbacks and being recoloured once React has fetched
+    the instance's colors in hand for the very first frame instead of painting
+    index.css's fallbacks and being recolored once React has fetched
     /agent/brand.
 
     Values that are not plain CSS literals are dropped: a branding.json is
@@ -307,7 +345,7 @@ def _build_brand_css(document: dict | None) -> str:
 
     declarations: list[str] = []
     for path, css_variable in _CSS_VARIABLES:
-        node = document
+        node: JsonValue = document
         for key in path:
             node = node.get(key) if isinstance(node, dict) else None
             if node is None:
@@ -336,7 +374,7 @@ def load_branding() -> None:
     config bucket is missing, unreachable or holds a corrupt document, in which
     case the UI falls back to its shipped design tokens.
     """
-    base_url = os.environ.get("BRAND_CONFIG_URL", "").rstrip("/")
+    base_url = get_settings().brand_config_url
     if not base_url:
         logger.info(
             "BRAND_CONFIG_URL is unset; serving the UI's default branding"
@@ -373,7 +411,7 @@ def load_branding() -> None:
     )
 
 
-def _brand_payload() -> dict:
+def _brand_payload() -> dict[str, JsonValue]:
     """Builds the payload that /brand and /brand.js both publish.
 
     One helper so the two cannot drift: they carry the same in-memory state and
@@ -384,13 +422,13 @@ def _brand_payload() -> dict:
         The instance id and the branding document held since startup.
     """
     return {
-        "instance": os.environ.get("INSTANCE_ID", ""),
+        "instance": get_settings().instance_id,
         "branding": _BRAND_STATE["branding"],
     }
 
 
-@brand_bp.route("/brand", methods=["GET"])
-def brand_alias() -> Response:
+@router.api_route("/brand", methods=["GET", "HEAD"])
+async def brand_alias() -> JSONResponse:
     """Returns the branding document held in memory since startup.
 
     The config bucket URL is deliberately absent from the payload: the browser
@@ -401,13 +439,13 @@ def brand_alias() -> Response:
         # look like "this instance has no branding".
         logger.warning("/brand served before startup load completed")
 
-    response = jsonify(_brand_payload())
+    response = JSONResponse(_brand_payload())
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-@brand_bp.route("/brand/assets/<path:name>", methods=["GET"])
-def brand_asset(name: str) -> Response:
+@router.api_route("/brand/assets/{name:path}", methods=["GET", "HEAD"])
+async def brand_asset(name: str) -> Response:
     """Serves one branding image from memory.
 
     Args:
@@ -415,12 +453,12 @@ def brand_asset(name: str) -> Response:
     """
     content = _BRAND_STATE["assets"].get(posixpath.basename(name))
     if content is None:
-        return Response("Not found", status=404, mimetype="text/plain")
+        return PlainTextResponse("Not found", status_code=404)
 
     extension = posixpath.splitext(name)[1].lower()
     response = Response(
         content,
-        mimetype=_ASSET_CONTENT_TYPES.get(
+        media_type=_ASSET_CONTENT_TYPES.get(
             extension, "application/octet-stream"
         ),
     )
@@ -428,37 +466,40 @@ def brand_asset(name: str) -> Response:
     # its bytes, so the content behind a given name can never change and the
     # browser never needs to revalidate.
     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    # Prevent browsers from content-sniffing mirrored branding assets (such as
+    # SVG logos) served from the application origin.
+    response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
 
-@brand_bp.route("/brand.css", methods=["GET"])
-def brand_css() -> Response:
+@router.api_route("/brand.css", methods=["GET", "HEAD"])
+async def brand_css() -> Response:
     """Serves the pre-paint stylesheet held in memory since startup.
 
     index.html links this in <head>, and a stylesheet there blocks first paint,
-    so the instance's colours are applied before anything is drawn.
+    so the instance's colors are applied before anything is drawn.
 
     Deliberately uncached, matching /brand. It was previously cacheable on the
     reasoning that branding cannot change without a new revision -- true of the
     server, but not of a browser that already holds a copy: for the life of that
-    copy it would pre-paint the *previous* revision's colours and then be
+    copy it would pre-paint the *previous* revision's colors and then be
     corrected by the uncached document, which is the flicker this file exists to
     prevent. The body is a few hundred bytes of memory, so caching buys little.
     """
-    response = Response(_BRAND_STATE["css"], mimetype="text/css")
+    response = Response(_BRAND_STATE["css"], media_type="text/css")
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-@brand_bp.route("/brand.js", methods=["GET"])
-def brand_js() -> Response:
+@router.api_route("/brand.js", methods=["GET", "HEAD"])
+async def brand_js() -> Response:
     """Publishes the branding document as a global, before the SPA evaluates.
 
     index.html loads this as a blocking classic script in <head>, so
     `window.__BRAND__` is set before the bundle runs and useBranding() can seed
     its very first render from it.
 
-    Without it, only the *colours* arrive before first paint (via brand.css) and
+    Without it, only the *colors* arrive before first paint (via brand.css) and
     every other branded value -- headline, tagline, wordmark, logo, nav tabs,
     suggestion chips -- necessarily renders as the UI's shipped neutral defaults
     until the /brand fetch resolves, then visibly flips to the instance's own.
@@ -493,7 +534,7 @@ def brand_js() -> Response:
     )
     response = Response(
         f"window.__BRAND__={literal};{patch}",
-        mimetype="text/javascript",
+        media_type="text/javascript",
     )
     # Same no-store as /brand and brand.css: a cached copy would seed the
     # previous revision's branding into the first render.
