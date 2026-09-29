@@ -42,7 +42,11 @@ export function DisclaimerNote({ text = DISCLAIMER_TEXT }: DisclaimerNoteProps) 
       aria-label="Disclaimer"
     >
       <hr style={{ border: 0, borderTop: `1px solid ${COLOR_DIVIDER}` }} />
-      <div className="flex items-start gap-2.5" style={{ paddingTop: 10 }}>
+      {/* No bottom padding: the rule above now closes the answer, and the
+          answer card already puts a 16px gap between this note and whatever
+          follows it. Keeping the old 16px here would stack on that gap, which
+          is the doubled whitespace this change is undoing. */}
+      <div className="flex items-start gap-2.5 pt-2.5">
         <GeminiInfoIcon
           size="xs"
           style={{ flexShrink: 0, marginTop: 4 }}
