@@ -2,7 +2,7 @@
  * @fileoverview Data Agent chat surface: prompt input, streaming turns, stop control, and follow-up handling.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SendIcon } from "./icons";
 import { InitialView } from "./view_initial";
 import { SkeletonCard } from "./card_skeleton";
@@ -10,7 +10,7 @@ import { ReasoningBlock } from "./block_reasoning";
 import { AnswerPanel } from "./panel_answer";
 import { DISCLAIMER_TEXT } from "./note_disclaimer";
 import { Tooltip } from "./tooltip";
-import type { ChatTurn } from "../hooks/use_sse_chat";
+import { assignCitationNumbers, type ChatTurn } from "../hooks/use_sse_chat";
 import { useChatSession } from "../hooks/chat_session_context";
 
 /**
@@ -23,6 +23,10 @@ export function DataAgent() {
   // survive when the user navigates to another SPA tab and back, and across
   // browser refreshes (persisted to localStorage).
   const { turns, isStreaming, error, send, stop } = useChatSession();
+  // Citation labels are a property of the thread, not of one answer: a number
+  // has to mean the same source in the fifth answer as it did in the first.
+  // Worked out here, where every turn is in view, and handed down.
+  const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
   const isExpanded = query.trim().length > 0;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -230,6 +234,7 @@ export function DataAgent() {
               key={i}
               turn={t}
               index={i}
+              citationNumbers={citationNumbers[i]}
               isLast={i === turns.length - 1}
               isStreaming={isStreaming && i === turns.length - 1}
               onAsk={(question) => send(question)}
@@ -310,15 +315,24 @@ export function DataAgent() {
 interface TurnViewProps {
   turn: ChatTurn;
   // Index in the turn list — emitted as data-turn-index on the user bubble so
-  // the auto-scroll effect in DataAgent can find the new turn's anchor.
+  // the auto-scroll effect in DataAgent can find the new turn's anchor, and
+  // used to scope this answer's citation anchors.
   index: number;
+  /** Thread-wide label for each of this turn's provenance rows. */
+  citationNumbers?: number[];
   isLast: boolean;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
 }
 
 /** One conversation turn: the user's bubble plus the streamed agent response. */
-function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
+function TurnView({
+  turn,
+  index,
+  citationNumbers,
+  isStreaming,
+  onAsk,
+}: TurnViewProps) {
   return (
     <>
       {/* User bubble — Figma uses Type scale Body L (16/28/400). The
@@ -368,7 +382,13 @@ function TurnView({ turn, index, isStreaming, onAsk }: TurnViewProps) {
       {/* Streaming + final answer — full Figma AnswerPanel. Hidden when the
           turn was stopped so we don't show a truncated partial answer. */}
       {turn.text && !turn.stopped && (
-        <AnswerPanel turn={turn} isStreaming={isStreaming} onAsk={onAsk} />
+        <AnswerPanel
+          turn={turn}
+          isStreaming={isStreaming}
+          onAsk={onAsk}
+          citationNumbers={citationNumbers}
+          turnIndex={index}
+        />
       )}
 
       {/* Stopped note — shown in place of the reasoning/answer when the user

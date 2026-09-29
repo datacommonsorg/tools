@@ -2,6 +2,7 @@
  * @fileoverview Renders the list of provenance sources for an answer.
  */
 
+import { citationAnchorId, displayCitationNumber } from "./chip_citation";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 /**
@@ -9,7 +10,9 @@ import type { ProvenanceItem } from "../hooks/use_sse_chat";
  * numbered list). Each source is a numbered line — the number stays in
  * the default body color, the source name itself is rendered in
  * #175C75 (AI Dark Blue, token "ts4") as a hyperlink to provenanceUrl.
- * Each row receives id="source-N" so inline CitationChips can anchor.
+ *
+ * Each row receives the id the inline CitationChips anchor to, scoped per turn
+ * so two answers citing one source do not both claim the same anchor.
  */
 
 const COLOR_TITLE = "var(--color-on-surface)";
@@ -20,10 +23,18 @@ const FONT_STACK =
 
 interface SourcesListProps {
   sources: ProvenanceItem[];
+  /** Display label for each position; defaults to the position itself. */
+  numbers?: number[];
+  /** Which turn these sources belong to, so the anchors stay unique. */
+  turnIndex?: number;
 }
 
 /** Numbered list of source links matching the [n] citation chips in the answer. */
-export function SourcesList({ sources }: SourcesListProps) {
+export function SourcesList({
+  sources,
+  numbers,
+  turnIndex,
+}: SourcesListProps) {
   if (!sources || sources.length === 0) return null;
 
   return (
@@ -54,14 +65,14 @@ export function SourcesList({ sources }: SourcesListProps) {
         }}
       >
         {sources.map((source, index) => {
-          const position = index + 1;
+          const shown = displayCitationNumber(index + 1, numbers);
           return (
             <li
               key={`${source.url}-${index}`}
-              id={`source-${position}`}
+              id={citationAnchorId(turnIndex, shown)}
               className="flex items-baseline gap-1.5"
             >
-              <span aria-hidden="true">[{position}]</span>
+              <span aria-hidden="true">[{shown}]</span>
               <a
                 href={source.url}
                 target="_blank"

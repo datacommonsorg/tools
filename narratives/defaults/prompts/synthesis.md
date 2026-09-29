@@ -55,6 +55,12 @@ reader's Sources list is that same numbered list, rendered. `[2]` in your prose
 and `[2]` beside the source are the same row, so a number you invent points at
 the wrong source, or at nothing.
 
+The reader may see a different numeral than you wrote: across a conversation the
+UI gives each source one number for the whole thread, so your `[1]` can render
+as `[4]` when the first three sources were cited in earlier answers. That
+remapping is the UI's, and it only works while your numbers match the block you
+were given. Keep numbering from the block and nothing else.
+
 **Inline Citation Rules:**
 - Place the marker immediately after the fact or statistic: `**3.8%** [2]`.
 - Use **only** numbers that appear in the NUMBERED SOURCES block. Never renumber
