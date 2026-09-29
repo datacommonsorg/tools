@@ -37,13 +37,16 @@ steps:
   #    deployment's own overrides live in config/ and are validated at
   #    deploy time by deploy/validate-branding.py.
   - id: schema-validate
-    name: node:20
+    name: node:24
     entrypoint: bash
     args:
       - '-c'
       - |
         set -e
-        npm install -g ajv-cli@5 ajv-formats@3
+        corepack enable
+        export PNPM_HOME="/root/.local/share/pnpm"
+        export PATH="$$PNPM_HOME:$$PATH"
+        pnpm add -g ajv-cli@5 ajv-formats@3
         ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/agent-config.schema.json -d schemas/agent-config.example.json
         ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/agent-config.schema.json -d defaults/agent-config.json
         for b in schemas/branding.example.json \
@@ -101,16 +104,16 @@ steps:
 
   # 6. UI typecheck and tests.
   - id: ui-tests
-    name: node:20
+    name: node:24
     entrypoint: bash
     args:
       - '-c'
       - |
         set -e
-        cd ui
-        npm ci
-        npx tsc --noEmit
-        npx vitest run
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm -C ui run lint
+        pnpm test:ui
 
 options:
   logging: CLOUD_LOGGING_ONLY

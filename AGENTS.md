@@ -9,12 +9,11 @@ guide lives.
 | Directory | What it is | App guide |
 |---|---|---|
 | `dataweaver/` | Next.js 16 / React 19 app (pnpm workspaces) | [`dataweaver/AGENTS.md`](dataweaver/AGENTS.md) |
-| `narratives/` | React + Vite SPA and the Python server that hosts it | [`narratives/AGENTS.md`](narratives/AGENTS.md) |
+| `narratives/` | React + Vite SPA and Python server (pnpm workspace) | [`narratives/AGENTS.md`](narratives/AGENTS.md) |
 | `bigtable_automation/`, `gcf/` | Older standalone tools; no app guide | — |
 
-`narratives/` splits into two toolchains: npm for the SPA in `ui/`, and uv
-for the Python app plane in `agent/`. Its guide covers both; do not assume
-the npm commands are the whole gate.
+Each application manages its own developer workflows and toolchains. Refer to
+the application's `AGENTS.md` for commands governing lint, test, and build.
 
 ## Which document governs what
 
