@@ -5,6 +5,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "dev:ui": "pnpm -C ui dev",
+    "dev:agent": "node scripts/stage_config.mjs && cd agent && uv run --env-file .env narratives-agent-dev",
+    "setup:config": "node scripts/stage_config.mjs",
     "build": "pnpm run build:ui && node scripts/stage_static.mjs",
     "build:ui": "pnpm -C ui build",
     "test": "pnpm run test:ui && pnpm run test:agent",
