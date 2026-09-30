@@ -22,11 +22,8 @@
 import { isNeutralText, isNumericText, isYearText } from "./format_number";
 
 /**
- * The part of a hast node this module reads.
- *
- * Declared locally rather than imported from `hast`: all we need is the tag
- * name and the text underneath it, and a structural type keeps the analysis
- * testable from a plain object literal.
+ * The part of a hast node this module reads. Declared locally rather than
+ * imported from `hast`, so the analysis is testable from an object literal.
  */
 export interface MarkdownNode {
   type?: string;
@@ -43,12 +40,9 @@ export interface TableAnalysis {
   /** Columns whose body cells are all values — these are set right. */
   numericColumns: ReadonlySet<number>;
   /**
-   * Citations lifted out of a column's cells onto its header.
-   *
-   * A time series carries one source for the whole column, so repeating the
-   * marker on all fourteen rows is noise; the reference belongs on the header
-   * that names the series. Only columns whose every cell agreed are in here,
-   * so a column citing different sources per row keeps its per-row markers.
+   * Citations lifted out of a column's cells onto its header. Only columns
+   * whose every cell agreed, so one citing different sources per row keeps
+   * its per-row markers.
    */
   hoistedCitations: ReadonlyMap<number, number[]>;
 }
@@ -92,9 +86,7 @@ function rowsOf(
   };
   for (const child of node.children ?? []) {
     if (isTag(child, section)) (child.children ?? []).forEach(collect);
-    // remark-gfm always emits thead/tbody, but a table assembled by hand (or
-    // by a future plugin) can put rows straight under <table>. Those count as
-    // body rows: a bare <tr> has no header semantics.
+    // A bare <tr> under <table> has no header semantics, so it is a body row.
     else if (section === "tbody" && isTag(child, "tr")) collect(child);
   }
   return rows;
@@ -102,10 +94,7 @@ function rowsOf(
 
 /**
  * Works out which columns hold values and which carry one shared citation.
- *
- * Both answers need the whole column, which is why this reads the table node
- * rather than leaving each cell to decide for itself: a cell knows its own
- * text and nothing about the fourteen below it.
+ * Both answers need the whole column, which a single cell cannot see.
  */
 export function analyzeMarkdownTable(
   node: MarkdownNode | undefined,

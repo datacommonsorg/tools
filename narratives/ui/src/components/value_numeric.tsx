@@ -27,16 +27,10 @@ import {
 import { Tooltip } from "./tooltip";
 
 /**
- * A number the renderer rounded or compacted, carrying the original underneath.
+ * A number the renderer shortened, with the original on hover.
  *
- * The dotted underline and the help cursor are the only signal that anything
- * was taken away; without them a reader has no reason to hover, and the raw
- * value -- the thing they need to check a figure against its source -- is
- * effectively hidden rather than merely tucked away. Numbers we left alone get
- * neither, so the marking means something.
- *
- * Nothing here reaches the data: the chart's own Download and API code hand
- * back what the data plane served, at the precision it served it.
+ * The dotted underline and help cursor are the only signal that something was
+ * taken away; numbers left alone get neither.
  */
 export function NumericValue({ value }: { value: FormattedNumber }) {
   return (
@@ -51,10 +45,8 @@ export function NumericValue({ value }: { value: FormattedNumber }) {
           textUnderlineOffset: 3,
         }}
       >
-        {/* A reader who cannot hover cannot reach the value the rounding took
-            away, so it is in the text too. Visually-hidden rather than an
-            aria-label: a span carries no role, and an aria-label on one is not
-            reliably announced. */}
+        {/* Visually-hidden text rather than an aria-label: a span carries no
+            role, and an aria-label on one is not reliably announced. */}
         <span aria-hidden="true">{value.display}</span>
         <span className="sr-only">
           {value.display}, full value {value.full}
@@ -65,15 +57,12 @@ export function NumericValue({ value }: { value: FormattedNumber }) {
 }
 
 /**
- * Renders a run of text with its long numbers shortened.
+ * Renders a run of text with its long numbers shortened, or returns the string
+ * untouched when there is nothing to shorten.
  *
- * Returns the string untouched when there is nothing to shorten, so prose with
- * no figures in it costs no extra elements.
- *
- * `keyPrefix` distinguishes one run from the next. The caller splits a
- * paragraph on its citation markers and renders each run through here, so the
- * pieces end up siblings in one array: without a per-run prefix the second
- * run's first number would reuse the first run's key.
+ * `keyPrefix` separates one run from the next: a caller splits a paragraph on
+ * its citation markers, so the runs become siblings in one array and would
+ * otherwise reuse each other's keys.
  */
 export function renderNumbers(text: string, keyPrefix = "n"): ReactNode[] {
   const segments = splitFormattedNumbers(text);

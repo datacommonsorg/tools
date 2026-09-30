@@ -218,10 +218,7 @@ interface MarkdownCellProps {
   sources?: ProvenanceItem[];
 }
 
-/**
- * A markdown table, with the whole-column facts its cells cannot work out
- * alone read off the AST once and handed down.
- */
+/** A markdown table, with the whole-column facts read off the AST once. */
 function MarkdownTable({ children, node }: MarkdownCellProps) {
   const analysis = useMemo(
     () => analyzeMarkdownTable(node as MarkdownNode | undefined),
@@ -237,12 +234,9 @@ function MarkdownTable({ children, node }: MarkdownCellProps) {
 }
 
 /**
- * A table row that tells each of its cells which column it is in.
- *
- * A cell has no other way to find out: react-markdown hands it its own node and
- * nothing about its siblings, and both of the things this file decides per
- * column -- alignment and whether the citation moved to the header -- are
- * useless without the index.
+ * A table row that tells each cell which column it is in. react-markdown hands
+ * a cell its own node and nothing about its siblings, so there is no other way
+ * for it to find out.
  */
 function MarkdownRow({ children }: MarkdownCellProps) {
   let column = 0;
@@ -271,10 +265,7 @@ function cellAlignment(
 
 /**
  * A header cell, carrying the citation for its column when every row agreed.
- *
- * The marker is appended rather than replacing the header text, and only when
- * the header does not already state it -- an agent that wrote the reference
- * into the header itself would otherwise get it twice.
+ * Appended only when the header does not already state it.
  */
 function HeaderCell({
   children,
@@ -304,10 +295,8 @@ function HeaderCell({
 }
 
 /**
- * A body cell, set right when its column holds values.
- *
- * `tabular-nums` as well as the alignment: proportional digits in a column of
- * figures put the decimal points out of line even when the text is flush right.
+ * A body cell, set right when its column holds values. `tabular-nums` too:
+ * proportional digits leave the decimal points ragged even when flush right.
  */
 function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
   const { numericColumns, hoistedCitations } = useContext(TableAnalysisContext);

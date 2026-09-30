@@ -20,15 +20,9 @@
  */
 
 /**
- * Display rounding for the answer body and its tables.
- *
- * Two decimals, after Ehrenberg's two-digit rule: a reader scanning a column
- * compares two effective digits and nothing more, so the eleven decimals the
- * data plane returns cost legibility and buy nothing. The raw value is never
- * lost -- it rides along on every formatted token as
- * {@link FormattedNumber.full} and is shown on hover -- and nothing here
- * touches what the chart's own
- * Download/API-code actions hand back, which stay at source precision.
+ * Display rounding for the answer body and its tables, after Ehrenberg's
+ * two-digit rule. The unrounded value is kept on every shortened token as
+ * {@link FormattedNumber.full}.
  */
 export const DISPLAY_DECIMALS = 2;
 
@@ -42,13 +36,7 @@ const COMPACT_UNITS = [
   { value: 1e6, suffix: "M" },
 ] as const;
 
-/**
- * A number the renderer shortened, and the value it shortened.
- *
- * Both halves travel together on purpose: the shortened form is what a reader
- * scans, and `full` is what they get on hover when they need to check a figure
- * against the source. A token we leave alone never becomes one of these.
- */
+/** A number the renderer shortened, and the value it shortened. */
 export interface FormattedNumber {
   /** What the reader sees, e.g. "84.04", "1.23M", "< 0.01". */
   display: string;
@@ -60,9 +48,8 @@ export interface FormattedNumber {
 export type TextSegment = string | FormattedNumber;
 
 /**
- * One number as it appears in prose: optional sign, digits with or without
- * thousands separators, optional decimal part. Currency symbols and `%` are
- * deliberately outside the match so they stay put as literal text.
+ * One number as it appears in prose. Currency symbols and `%` sit outside the
+ * match so they stay put as literal text.
  */
 const NUMBER_TOKEN = /-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/g;
 
@@ -100,9 +87,8 @@ function trimZeros(value: string): string {
 /**
  * Shortens one numeric token, or returns null to leave it exactly as written.
  *
- * Returning null for anything already short enough is what keeps years, counts
- * and ids intact: `2023` has no decimals and is nowhere near the compact
- * threshold, so it is never rewritten as `2,023` or `2.02K`.
+ * Null for anything already short enough is what keeps years and ids intact:
+ * `2023` is never rewritten as `2,023` or `2.02K`.
  */
 export function formatNumericToken(raw: string): FormattedNumber | null {
   const plain = raw.replace(/,/g, "");
@@ -112,7 +98,6 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
   const full = raw.includes(",") ? raw : group(raw);
   const magnitude = Math.abs(value);
 
-  // Six zeros or more: nobody counts them, so scale and name the magnitude.
   if (magnitude >= COMPACT_FROM) {
     const unit =
       COMPACT_UNITS.find((candidate) => magnitude >= candidate.value) ??
@@ -128,13 +113,9 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
   if (decimals <= DISPLAY_DECIMALS) return null;
 
   const fixed = value.toFixed(DISPLAY_DECIMALS);
-  // Rounding wiped out a value that is not zero. "0.00" would be read as an
-  // exact nothing, which is a different -- and wrong -- claim.
-  //
-  // An exact zero is excluded, and not by belt and braces: "0.0000" rounds to
-  // zero because it *is* zero, and the threshold form would state the one
-  // thing this branch exists to avoid stating. It falls through and is capped
-  // like any other figure.
+  // "0.00" would read as an exact nothing, which is a different claim. An
+  // exact zero is excluded: it rounds away because it *is* zero, so it falls
+  // through and is capped like any other figure.
   if (Number(fixed) === 0 && value !== 0) {
     return { display: value > 0 ? "< 0.01" : "> -0.01", full };
   }
@@ -144,11 +125,10 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
 }
 
 /**
- * Splits prose into plain runs and the numbers within it worth shortening.
+ * Splits prose into plain runs and the numbers worth shortening.
  *
- * A digit run touching a letter or an underscore on either side is skipped:
- * `Count_Person_2023` and `v1.2` are labels, not measurements, and rewriting
- * them would corrupt an identifier rather than tidy a figure.
+ * A digit run touching a letter or underscore is skipped: `Count_Person_2023`
+ * is an identifier, not a measurement.
  */
 export function splitFormattedNumbers(text: string): TextSegment[] {
   const out: TextSegment[] = [];
@@ -180,12 +160,8 @@ export function isNeutralText(text: string): boolean {
 }
 
 /**
- * True for a bare year.
- *
- * A year is digits without being a measurement: nothing here rounds it, and a
- * column of them is the row-label column of a time series, not a column of
- * figures to line up decimal points in. Setting it right would push the labels
- * away from the values they label.
+ * True for a bare year. A year labels a row rather than measuring anything, so
+ * its column is not set right with the figures.
  */
 export function isYearText(text: string): boolean {
   return YEAR_CELL.test(text.trim());
