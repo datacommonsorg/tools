@@ -83,15 +83,12 @@ export function AnswerPanel({
    * in here. Position n is `[n]`, in the prose and in the list below, because
    * the synthesis prompt was handed this same list already numbered.
    *
-   * Nothing is filtered or dropped here, on purpose. Doing either would make
-   * what the reader sees depend on the agent having cited exactly right, and it
-   * does not: it under-cites, and a source dropped for want of a marker leaves
-   * its figures with no attribution at all. Selection belongs where the
-   * evidence is -- the tool results -- not in the renderer.
-   *
-   * The labels are remapped, which is a different thing: `citationNumbers` only
-   * changes which numeral position n wears, and every place that numeral
-   * appears reads it from the same array.
+   * Nothing is filtered or dropped here, on purpose. Either would make what
+   * the reader sees depend on the agent having cited exactly right, and it does
+   * not: it under-cites, and a source dropped for want of a marker leaves its
+   * figures with no attribution at all. Selection belongs where the evidence
+   * is -- the tool results -- not in the renderer. Relabelling is a different
+   * thing: `citationNumbers` changes only which numeral a position wears.
    */
   const hasSources = turn.provenance.length > 0;
   // One export state for the card: the toolbar pill and the in-content button
@@ -99,9 +96,8 @@ export function AnswerPanel({
   // single confirmation rather than each raising their own.
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
-  // Memoized: a fresh object here re-renders every CitationChip in the answer
-  // on any state change of this panel, including each keystroke of the export
-  // flags above.
+  // Memoized: a fresh object re-renders every chip on any state change here,
+  // including the export flags above.
   const numbering = useMemo(
     () => ({ numbers: citationNumbers, turnIndex }),
     [citationNumbers, turnIndex],

@@ -10,12 +10,11 @@ import { Tooltip } from "./tooltip";
  * Small inline pill that renders [N] inside the markdown body as a
  * clickable badge linking to the matching entry in the Sources block.
  *
- * The agent's own numbering is never rewritten. `[n]` is position n of this
- * turn's provenance list, which is the same numbered list the synthesis prompt
- * was given. What changes on the way to the screen is only which label that
- * position wears, and that mapping lives in one place -- the
- * {@link CitationNumbering} an answer panel provides -- so the chip, the anchor
- * it jumps to and the row it lands on cannot disagree.
+ * The agent's own numbering is never rewritten: `[n]` is position n of this
+ * turn's provenance, the same list the synthesis prompt was given. Only the
+ * label that position wears changes, from the {@link CitationNumbering} an
+ * answer panel provides, so the chip, its anchor and its row cannot
+ * disagree.
  *
  * Visual spec (Figma node 3427-16728, token "ts1"):
  *   color: #175C75 (AI Dark Blue)
@@ -25,15 +24,7 @@ import { Tooltip } from "./tooltip";
 
 const COLOR = "var(--color-brand-primary)";
 
-/**
- * How one answer's citations are labelled and anchored on the page.
- *
- * Without this every answer numbered itself from 1, so the third answer's `[1]`
- * and the first answer's `[1]` were two different sources wearing one number --
- * and, because both emitted `id="source-1"`, clicking the later one scrolled to
- * the earlier one's row. `numbers` fixes the label and `turnIndex` fixes the
- * anchor.
- */
+/** How one answer's citations are labelled and anchored on the page. */
 export interface CitationNumbering {
   /** Display label for each provenance position: `numbers[n - 1]` labels `[n]`. */
   numbers?: number[];
@@ -57,11 +48,8 @@ export function displayCitationNumber(n: number, numbers?: number[]): number {
 }
 
 /**
- * The DOM id of a Citations row.
- *
- * Scoped by turn as well as by number because a source cited in two answers
- * keeps one label across the whole thread -- so the label alone is not unique,
- * and each answer anchors its own copy of the row.
+ * The DOM id of a Citations row. Scoped by turn as well as number: a source
+ * cited twice keeps one label, so the label alone is not unique.
  */
 export function citationAnchorId(
   turnIndex: number | undefined,

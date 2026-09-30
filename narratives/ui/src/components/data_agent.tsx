@@ -23,9 +23,8 @@ export function DataAgent() {
   // survive when the user navigates to another SPA tab and back, and across
   // browser refreshes (persisted to localStorage).
   const { turns, isStreaming, error, send, stop } = useChatSession();
-  // Citation labels are a property of the thread, not of one answer: a number
-  // has to mean the same source in the fifth answer as it did in the first.
-  // Worked out here, where every turn is in view, and handed down.
+  // Citation labels belong to the thread, not to one answer, so they are
+  // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
   const isExpanded = query.trim().length > 0;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
