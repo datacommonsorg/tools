@@ -31,9 +31,14 @@ import httpx
 import pytest
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 from narratives_agent.gemini import client
-from narratives_agent.gemini.schemas import CHART_CONFIG_SCHEMA
+from narratives_agent.gemini.schemas import (
+    ChartConfigResponse,
+    DataValidationResponse,
+    FollowUpResponse,
+)
 
 _MODEL = "gemini-3-flash-preview"
 _MESSAGES = [{"role": "user", "parts": [{"text": "What is the population?"}]}]
@@ -452,7 +457,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
         system_instruction="Extract charts.",
         temperature=0.2,
         thinking_level="minimal",
-        response_schema=CHART_CONFIG_SCHEMA,
+        response_schema=ChartConfigResponse,
     )
 
     config = gemini.body()["generationConfig"]
@@ -582,6 +587,69 @@ def test_an_api_key_crossing_the_error_length_limit_is_redacted(
     key_start = _FAKE_KEY[:8]
     assert key_start not in result["error"]
     assert key_start not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("schema", "required"),
+    [
+        (ChartConfigResponse, ["should_render"]),
+        (DataValidationResponse, ["data_found"]),
+        (FollowUpResponse, ["questions"]),
+    ],
+)
+def test_each_schema_is_sent_to_gemini_as_expected(
+    gemini: _FakeGemini, schema: type[BaseModel], required: list[str]
+) -> None:
+    # Test: The response schema each workflow sends on the wire.
+    # Situation: A structured-output request is made with each of the three
+    #   workflow schemas.
+    # Expectation: The request carries the required fields and typed
+    #   properties, and omits additional_properties (which the Gemini
+    #   Developer API rejects with HTTP 400).
+    gemini.respond(_answer(200, json=_response_json([{"text": "{}"}])))
+
+    client.gemini_request(_MESSAGES, "", _MODEL, response_schema=schema)
+
+    sent = gemini.body()["generationConfig"]["responseSchema"]
+    assert sent["type"] == "OBJECT"
+    assert sent["required"] == required
+    assert "additional_properties" not in sent
+    assert set(sent["properties"]) == set(schema.model_fields)
+
+
+def test_the_chart_schema_constrains_each_chart_on_the_wire(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: The nested chart item in the chart config schema.
+    # Situation: A request is made with the chart config schema.
+    # Expectation: Each chart item requires a title, enumerates only the
+    #   supported chart types, marks optional fields nullable, and omits
+    #   additional_properties.
+    gemini.respond(_answer(200, json=_response_json([{"text": "{}"}])))
+
+    client.gemini_request(
+        _MESSAGES, "", _MODEL, response_schema=ChartConfigResponse
+    )
+
+    charts = gemini.body()["generationConfig"]["responseSchema"]["properties"][
+        "charts"
+    ]
+    item = charts["items"]
+    assert charts["nullable"] is True
+    assert item["required"] == ["title"]
+    assert "additional_properties" not in item
+    assert item["properties"]["viz_type"]["enum"] == [
+        "line",
+        "bar",
+        "ranking",
+        "pie",
+        "highlight",
+        "gauge",
+        "scatter",
+        "slider",
+    ]
+    assert item["properties"]["viz_type"]["nullable"] is True
+    assert item["properties"]["date"]["nullable"] is True
 
 
 def test_an_empty_response_omits_candidates(gemini: _FakeGemini) -> None:

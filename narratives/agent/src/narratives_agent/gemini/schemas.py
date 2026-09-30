@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,108 +11,117 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Structured-output schemas for Gemini calls.
 
-# Chart config schema for Gemini structured output (hardcoded - not user
-# configurable)
-# Supports multiple charts for variables with different units/scales
-CHART_CONFIG_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "should_render": {
-            "type": "boolean",
-            "description": "True if at least one chart should be rendered",
-        },
-        "charts": {
-            "type": "array",
-            "description": (
-                "Array of chart configurations (max 3). Group compatible "
-                "variables together."
-            ),
-            "items": {
-                "type": "object",
-                "properties": {
-                    "viz_type": {
-                        "type": "string",
-                        "enum": [
-                            "line",
-                            "bar",
-                            "ranking",
-                            "pie",
-                            "highlight",
-                            "gauge",
-                            "scatter",
-                            "slider",
-                        ],
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Descriptive chart title",
-                    },
-                    "variable_dcids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
-                    "place_dcids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
-                    "parent_place": {"type": "string"},
-                    "child_place_type": {"type": "string"},
-                    "date": {
-                        "type": "string",
-                        "description": (
-                            "Single comparison date in YYYY, YYYY-MM, or "
-                            "YYYY-MM-DD"
-                        ),
-                    },
-                },
-                # A chart with no title renders a blank header strip, not an
-                # untitled chart: the web components resolve their heading as
-                # `header || title`, both of which are attributes we supply, so
-                # when neither carries text there is nothing to fall back to
-                # and .chart-headers still reserves its 2.2rem. Asking for a
-                # title in the prompt was not enough on its own -- the model
-                # dropped the field often enough to be noticed, and an optional
-                # field in a structured-output schema is genuinely optional.
-                "required": ["title"],
-            },
-        },
-    },
-    "required": ["should_render"],
-}
+Each model is passed to `GenerateContentConfig(response_schema=...)`, which
+constrains the model's JSON output, and can validate that output locally.
+The schemas are fixed in code and are not user configurable.
+"""
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+ChartVizType = Literal[
+    "line",
+    "bar",
+    "ranking",
+    "pie",
+    "highlight",
+    "gauge",
+    "scatter",
+    "slider",
+]
 
 
-# Schema for validating if synthesis response contains actual data
-DATA_VALIDATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "data_found": {
-            "type": "boolean",
-            "description": (
-                "True if the response contains actual data/statistics that "
-                "answer the query. False if data is unavailable, not found, "
-                "or the response says data doesn't exist."
-            ),
-        }
-    },
-    "required": ["data_found"],
-}
+def _strip_additional_properties(schema: dict[str, Any]) -> None:
+    """Omits `additionalProperties` from the generated JSON schema.
+
+    `extra="forbid"` emits `additionalProperties: false`, which `google-genai`
+    forwards as `additional_properties: false` inside `responseSchema`. The
+    Gemini Developer API `v1beta` schema protobuf has no such field and rejects
+    the request with HTTP 400, so the key is removed from the wire schema while
+    keeping `extra="forbid"` for local Pydantic validation.
+    """
+    schema.pop("additionalProperties", None)
 
 
-# Schema for structured follow-up question generation.
-FOLLOW_UP_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "questions": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Self-contained follow-up questions, one per related topic."
-            ),
-        }
-    },
-    "required": ["questions"],
-}
+_SCHEMA_CONFIG = ConfigDict(
+    extra="forbid",
+    json_schema_extra=_strip_additional_properties,
+)
+
+
+class ChartItem(BaseModel):
+    """One chart configuration within a chart config response."""
+
+    model_config = _SCHEMA_CONFIG
+
+    viz_type: ChartVizType | None = None
+    # A chart with no title renders a blank header strip, not an
+    # untitled chart: the web components resolve their heading as
+    # `header || title`, both of which are attributes we supply, so
+    # when neither carries text there is nothing to fall back to
+    # and .chart-headers still reserves its 2.2rem. Asking for a
+    # title in the prompt was not enough on its own -- the model
+    # dropped the field often enough to be noticed, and an optional
+    # field in a structured-output schema is genuinely optional.
+    title: str = Field(description="Descriptive chart title")
+    variable_dcids: list[str] | None = None
+    place_dcids: list[str] | None = None
+    parent_place: str | None = None
+    child_place_type: str | None = None
+    date: str | None = Field(
+        default=None,
+        description="Single comparison date in YYYY, YYYY-MM, or YYYY-MM-DD",
+    )
+
+
+class ChartConfigResponse(BaseModel):
+    """Chart configurations, one per group of compatible variables."""
+
+    model_config = _SCHEMA_CONFIG
+
+    should_render: bool = Field(
+        description="True if at least one chart should be rendered"
+    )
+    charts: list[ChartItem] | None = Field(
+        default=None,
+        description=(
+            "Array of chart configurations (max 3). Group compatible "
+            "variables together."
+        ),
+    )
+
+
+class DataValidationResponse(BaseModel):
+    """Verdict on whether a synthesized answer contains actual data."""
+
+    model_config = _SCHEMA_CONFIG
+
+    data_found: bool = Field(
+        description=(
+            "True if the response contains actual data/statistics that "
+            "answer the query. False if data is unavailable, not found, "
+            "or the response says data doesn't exist."
+        )
+    )
+
+
+class FollowUpResponse(BaseModel):
+    """Suggested follow-up questions for a completed answer."""
+
+    model_config = _SCHEMA_CONFIG
+
+    questions: list[str] = Field(
+        description="Self-contained follow-up questions, one per related topic."
+    )
+
+
+# The workflows pass these names as `response_schema`.
+CHART_CONFIG_SCHEMA = ChartConfigResponse
+DATA_VALIDATION_SCHEMA = DataValidationResponse
+FOLLOW_UP_SCHEMA = FollowUpResponse
 
 # Default system prompt for follow-up generation. Ported from the
 # datacommons.org explore feature (server/lib/nl/explore/gemini_prompts.py,
