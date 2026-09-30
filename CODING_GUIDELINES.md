@@ -433,12 +433,11 @@ otherwise not focused nor clear increase cognitive load and obscure bugs.
 * **Use standard domain terminology.** Do not invent colloquial shorthand or
   use regional idioms. Use established terms from networking, compilers,
   TypeScript, and data structures.
-  * *Avoid:* `magic sauce`, `quick and dirty hack`, `belt and braces`.
-  * *Prefer:* `hash collision fallback`, `temporary polyfill`,
-    `redundant boundary check`.
-* **Neutral and egoless.** Avoid first-person pronouns ("I", "we"), venting
-  about libraries or APIs ("annoying quirk of React"), or rhetorical flourishes ("leaves much to be
-  desired", "pointless churn"). Focus strictly on the technical invariant.
+* **Neutral and egoless.** Avoid first-person pronouns ("I", "we") or rhetorical
+  flourishes ("leaves much to be desired", "pointless churn"). Avoid criticizing
+  libraries or APIs, but do indicate where you had to take measures to circumvent
+  library or API behavior. Focus strictly on the technical invariant. All comments
+  should be measured, professional, and neutral.
 
 #### 14.1.2 Length and proportionality
 
