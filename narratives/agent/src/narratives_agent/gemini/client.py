@@ -98,6 +98,7 @@ _THINKING_LEVELS = {
 _DEFAULT_THINKING_LEVEL = "low"
 
 # Upper bound on a single Gemini call, including a full streamed response.
+# `HttpOptions.timeout` is in milliseconds.
 _REQUEST_TIMEOUT_MS = 300_000
 
 # All Gemini calls share one SDK client so that they reuse open TLS
