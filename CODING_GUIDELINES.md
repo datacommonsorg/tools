@@ -530,6 +530,8 @@ the browser. Every app must be wired into the CI orchestrator so that
   convention must update the relevant document **in the same PR**.
 * Put each rule in exactly one place: general rules here, UI rules in
   `FRONTEND.md`, app-specific rules in `<app>/AGENTS.md`. Cross-reference
-  instead of duplicating.
+  instead of duplicating. Changes to core standards must also update the
+  flattened review checklist in `.gemini/styleguide.md` so automated GitHub PR
+  reviews stay aligned.
 * Reviewers — human or agent — flag changes that violate these guidelines, and
   flag guidelines that the codebase has outgrown.
