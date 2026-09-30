@@ -9,11 +9,6 @@ import { GeminiInfoIcon } from "./icons";
  * Thin divider + info icon + body text.
  * Token "ts5" (the \_ space character) maps to color #F9F9F9, used only
  * inside the text — we collapse it back to a regular space.
- *
- * The rule sits above the note rather than below it: its job is to mark where
- * the answer ends, and the disclaimer is not part of the answer. Underneath,
- * it closed off the disclaimer instead and left a rule with nothing after it
- * but the export button.
  */
 
 const COLOR_TEXT = "#5C5F5E";
@@ -42,10 +37,6 @@ export function DisclaimerNote({ text = DISCLAIMER_TEXT }: DisclaimerNoteProps) 
       aria-label="Disclaimer"
     >
       <hr style={{ border: 0, borderTop: `1px solid ${COLOR_DIVIDER}` }} />
-      {/* No bottom padding: the rule above now closes the answer, and the
-          answer card already puts a 16px gap between this note and whatever
-          follows it. Keeping the old 16px here would stack on that gap, which
-          is the doubled whitespace this change is undoing. */}
       <div className="flex items-start gap-2.5 pt-2.5">
         <GeminiInfoIcon
           size="xs"
