@@ -1,4 +1,3 @@
-import { createRef } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { InitialView } from "./view_initial";
@@ -18,14 +17,12 @@ beforeAll(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
-  Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
-    configurable: true,
-    get: () => lines * LINE_HEIGHT,
-  });
-  Object.defineProperty(HTMLTextAreaElement.prototype, "clientHeight", {
-    configurable: true,
-    get: () => LINE_HEIGHT,
-  });
+  vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(
+    () => lines * LINE_HEIGHT,
+  );
+  vi.spyOn(HTMLTextAreaElement.prototype, "clientHeight", "get").mockReturnValue(
+    LINE_HEIGHT,
+  );
 });
 
 afterEach(() => {
@@ -34,10 +31,8 @@ afterEach(() => {
 });
 
 afterAll(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  // Deleting the own properties falls back to happy-dom's Element getters.
-  Reflect.deleteProperty(HTMLTextAreaElement.prototype, "scrollHeight");
-  Reflect.deleteProperty(HTMLTextAreaElement.prototype, "clientHeight");
 });
 
 /** Renders the view with `query` and returns the search box element. */
@@ -47,7 +42,6 @@ function renderSearchBox(query: string) {
       query={query}
       setQuery={() => {}}
       onSend={() => {}}
-      textareaRef={createRef<HTMLTextAreaElement>()}
     />,
   );
   const searchBox = screen.getByRole("textbox").parentElement!;
@@ -73,6 +67,16 @@ describe("InitialView search box", () => {
     expect(searchBox.className).toContain("rounded-input");
   });
 
+  it("stays a pill when empty even if the placeholder wraps", () => {
+    // Test: Empty query on a narrow viewport.
+    // Situation: The placeholder wraps, so the textarea reports two lines.
+    // Expectation: The box keeps its pill shape; only typed text expands it.
+    lines = 2;
+    const { searchBox } = renderSearchBox("");
+    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).not.toContain("rounded-input");
+  });
+
   it("collapses back to a pill when the text fits again", () => {
     // Test: Shrinking query.
     // Situation: An expanded box has its text shortened to a single line.
@@ -85,8 +89,7 @@ describe("InitialView search box", () => {
         query="short"
         setQuery={() => {}}
         onSend={() => {}}
-        textareaRef={createRef<HTMLTextAreaElement>()}
-      />,
+        />,
     );
     expect(searchBox.className).toContain("rounded-[28px]");
   });

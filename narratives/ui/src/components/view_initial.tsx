@@ -2,20 +2,28 @@
  * @fileoverview Renders the empty-state landing view: heading, prompt box, and suggestion chips.
  */
 
-import { ChangeEvent, RefObject, useLayoutEffect, useState } from "react";
+import { ChangeEvent, useRef } from "react";
 import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
 import { SendIcon } from "./icons";
 import { SuggestionChip } from "./chip_suggestion";
 import { Tooltip } from "./tooltip";
 import { useBrand } from "../hooks/branding_context";
+import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
 import { EASE_OUT } from "../config/motion";
 
 // Intro cascade: each child fades up in turn; the chip row cascades its own
 // chips when its turn comes.
-const cascade: Variants = { show: { transition: { staggerChildren: 0.08 } } };
+/** Delay between successive children of the intro cascade, in seconds. */
+const CASCADE_STAGGER_S = 0.08;
+/** Distance each element rises from while fading in, in pixels. */
+const FADE_UP_OFFSET_PX = 12;
+/** Duration of each element's fade-up, in seconds. */
+const FADE_UP_DURATION_S = 0.4;
+
+const cascade: Variants = { show: { transition: { staggerChildren: CASCADE_STAGGER_S } } };
 const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE_OUT } },
+  hidden: { opacity: 0, y: FADE_UP_OFFSET_PX },
+  show: { opacity: 1, y: 0, transition: { duration: FADE_UP_DURATION_S, ease: EASE_OUT } },
 };
 
 interface InitialViewProps {
@@ -25,27 +33,15 @@ interface InitialViewProps {
   // chip text is submitted immediately rather than waiting on a React state
   // update of `query`.
   onSend: (override?: string) => void;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
 /** Empty-state landing view: hero heading, prompt input, and suggestion chips. */
-export function InitialView({ query, setQuery, onSend, textareaRef }: InitialViewProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isExpanded = useTextareaAutosize(textareaRef, query);
   const brand = useBrand();
   const suggestions = brand.suggestions ?? [];
   const reduceMotion = useReducedMotion();
-
-  // Expand once the text runs past one line — wrapped or an explicit newline.
-  // At height auto a rows={1} textarea reports one line as its clientHeight.
-  // The height is restored so DataAgent's effect can animate from it.
-  useLayoutEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const prev = el.style.height;
-    el.style.height = "auto";
-    setIsExpanded(el.scrollHeight > el.clientHeight);
-    el.style.height = prev;
-  }, [query, textareaRef]);
 
   return (
     <LazyMotion features={domAnimation} strict>
@@ -65,7 +61,10 @@ export function InitialView({ query, setQuery, onSend, textareaRef }: InitialVie
         {/* GM3 Search Box */}
         <m.div
           variants={fadeUp}
-          className={`w-full max-w-[720px] bg-surface border border-outline shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] motion-safe:transition-[border-radius,box-shadow] duration-200 ease-out flex flex-row items-center min-h-[56px] px-4 py-2 ${
+          className={`w-full max-w-[720px] bg-surface border border-outline shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] motion-safe:transition-[border-radius,box-shadow] duration-200 ease-out flex flex-row items-start min-h-14 px-4 py-[7px] ${
+            // The 56px pill is 7px padding + 40px button + 7px padding + 2px
+            // border; py-2 would overshoot to 58px. The button sits at the top
+            // so it stays on the first row as the box grows.
             // Pill radius is exactly half the 56px min-height, not rounded-full:
             // a 9999px radius stays visually round for the whole transition
             // and snaps to rounded-input at the end.

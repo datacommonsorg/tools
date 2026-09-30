@@ -12,6 +12,7 @@ import { DISCLAIMER_TEXT } from "./note_disclaimer";
 import { Tooltip } from "./tooltip";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { useChatSession } from "../hooks/chat_session_context";
+import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -51,18 +52,7 @@ export function DataAgent() {
     await send(message);
   };
 
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    // Measure at auto, then restore and flush the old height so a CSS height
-    // transition on the textarea animates from it to the new one.
-    const prev = el.style.height;
-    el.style.height = "auto";
-    const next = `${el.scrollHeight}px`;
-    el.style.height = prev;
-    void el.offsetHeight;
-    el.style.height = next;
-  }, [query]);
+  useTextareaAutosize(textareaRef, query);
 
   // When a new turn is appended (typed prompt OR follow-up question click),
   // pin the user's new question to the top of the chat surface so they can
@@ -215,7 +205,6 @@ export function DataAgent() {
         query={query}
         setQuery={setQuery}
         onSend={handleSend}
-        textareaRef={textareaRef}
       />
     );
   }
