@@ -189,15 +189,10 @@ def _first_present(mapping: dict, *keys: str) -> str:
 def _looks_like_a_name(value: str) -> bool:
     """True when a property value is something to print rather than an id.
 
-    The provenance properties mix human-readable names with machine handles in
-    the same fields: `source` is "World Bank" on one import and "dc/base/..."
-    or a bare URL on the next. A citation that prints the handle is worse than
-    one that leaves the publisher out, so anything that looks like a locator is
-    rejected and the caller simply omits the field.
-
-    A dotted single token ("worldbank.org") is rejected too: that is the
-    `domain` property wearing another hat, and a domain is where the data
-    lives, not who published it.
+    `source` holds "World Bank" on one import and "dc/base/..." or a bare URL
+    on the next. A citation that prints the handle is worse than one that
+    leaves the publisher out, so locators are rejected and the caller omits
+    the field.
 
     Args:
         value: The property value to judge.
@@ -223,20 +218,16 @@ def _year_of(date: str) -> str:
     Returns:
         str: The leading four digits, or "" when they are not digits.
     """
+    # Length as well as digits: a short date would yield a short "year".
     head = date[:4]
-    # Length as well as digits: a two-character date would otherwise yield a
-    # two-character "year".
     return head if len(head) == 4 and head.isdigit() else ""
 
 
 def _date_range(facet: dict) -> str:
     """Renders a facet's coverage as "1960 - 2023", one year, or nothing.
 
-    A citation states the years it covers so a reader can tell at a glance
-    whether the figure they just read is inside the source's range. Only what
-    the facet itself reports is used -- nothing is inferred from the rows that
-    happened to be fetched, which would describe this query rather than the
-    dataset.
+    Only what the facet itself reports: inferring from the rows that happened
+    to be fetched would describe this query rather than the dataset.
 
     Args:
         facet: One facet description from a get_variable_metadata result.
@@ -269,12 +260,9 @@ def _facet_index_from_variable_metadata(result_data: dict) -> dict:
     actually came from ("World Development Indicators"). The dataset is the
     provenance a reader needs.
 
-    `provider`, `dataset` and `dateRange` are carried alongside `name` because
-    a citation names the publisher, the dataset and the years separately --
-    "World Bank, World Development Indicators (1960 - 2023)" -- and a single
-    display name cannot be split back into those parts. Each is omitted when
-    the server did not report it, or reported an identifier in its place, and
-    the citation then renders without it.
+    `provider`, `dataset` and `dateRange` ride alongside `name` because a
+    citation names them separately and a display name cannot be split back
+    into its parts. Each is omitted when the server did not report it.
 
     Args:
         result_data: The parsed tool result.

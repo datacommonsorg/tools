@@ -6,14 +6,7 @@ import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 /**
  * Figma node 3427-16738 (section heading) + 3427-16739 ("Body" with the
- * numbered list), retitled "Citations" and moved to the foot of the answer.
- *
- * The heading is "Citations" rather than "Sources" because a reader arriving
- * here is not browsing a list of datasets; they are checking a figure against
- * the place it came from, which is what a citation is for. The same research
- * is why a row spells out its provider, range and dataset instead of showing
- * only a name: a bare name gives a reader no way to tell whether the number
- * they just read is the number the source publishes.
+ * numbered list).
  *
  * Each row receives id="source-N" so inline CitationChips can anchor.
  */
@@ -24,14 +17,10 @@ const COLOR_LINK = "var(--color-brand-primary)";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-/**
- * The attribution Data Commons asks every citation to carry: the numbers are
- * the provider's, re-served after Data Commons' own normalization, and the
- * line says so rather than leaving a reader to assume one or the other.
- */
+/** The attribution every citation carries. */
 const PROCESSING_NOTE = "with minor processing by Data Commons";
 
-/** Section heading. Held here with the other user-facing strings. */
+/** Section heading. */
 const CITATIONS_HEADING = "Citations";
 
 interface CitationsListProps {
@@ -44,16 +33,14 @@ export function citationUrlLabel(url: string): string {
 }
 
 /**
- * The prose part of a citation: who published it, what it is, and over what
- * years. Each piece is dropped when the data plane did not report it, so a
- * source known only by name still renders a sensible line.
+ * The prose part of a citation: publisher, dataset, years. Each piece is
+ * dropped when the data plane did not report it.
  */
 export function citationLead(source: ProvenanceItem): string {
   const parts = [source.provider, source.dataset || source.name].filter(
     (part): part is string => !!part && part.trim() !== "",
   );
-  // The provider and the dataset are often the same string when the data plane
-  // reported only one of them; saying it twice reads as an error.
+  // The two fields are often the same string; saying it twice reads as a bug.
   const unique = parts.filter((part, index) => parts.indexOf(part) === index);
   const lead = unique.join(", ");
   return source.dateRange ? `${lead} (${source.dateRange})` : lead;
@@ -63,8 +50,8 @@ export function citationLead(source: ProvenanceItem): string {
 export function CitationsList({ sources }: CitationsListProps) {
   if (!sources || sources.length === 0) return null;
 
-  // No top margin on the section: it is spaced by the answer card's own 16px
-  // flex gap plus the heading's padding, and the margin stacked on both.
+  // No top margin: the answer card's flex gap and the heading's padding
+  // already space this, and a margin stacked on both.
   return (
     <section aria-labelledby="citations-heading">
       <h2

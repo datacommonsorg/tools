@@ -171,11 +171,9 @@ export function AnswerPanel({
           <ChartTile config={turn.chartConfig!} provenance={turn.provenance} />
         )}
 
-        {/* 3. Truncation notice — the agent ran out of research steps
-            before it was done, so this answer rests on less data than it
-            intended to gather. Above the citations because it is about how
-            the answer was gathered, not where it came from. Deliberately not
-            styled as an error: the answer is usable, just less complete. */}
+        {/* 3. Truncation notice — the agent ran out of research steps, so
+            this answer rests on less data than it meant to gather. Not styled
+            as an error: the answer is usable, just less complete. */}
         {turn.truncated && (
           <p
             className="m-0 text-body-medium text-on-surface-variant"
@@ -186,11 +184,8 @@ export function AnswerPanel({
           </p>
         )}
 
-        {/* 4. Citations — last thing in the document, immediately above the
-            disclaimer. They sat between the prose and the charts, which put a
-            reference list in the middle of the reading: a reader who has
-            finished the answer and wants to check a figure now finds the
-            citations where they expect them, at the end. */}
+        {/* 4. Citations — at the end of the document, above the disclaimer,
+            where a reader who has finished the answer looks for them. */}
         {hasCitations && <CitationsList sources={turn.provenance} />}
 
         {/* 5. Disclaimer */}
