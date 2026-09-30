@@ -126,3 +126,8 @@ ignore_errors = true
 [tool.pytest.ini_options]
 testpaths = ["src"]
 python_files = ["*_test.py"]
+filterwarnings = [
+    # google-genai 2.25.0 references typing._UnionGenericAlias, deprecated
+    # in Python 3.14. Remove when the SDK stops using it.
+    "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai.types",
+]
