@@ -26,11 +26,13 @@ path for both the ingress=internal and the IAM-gated deployments.
 """
 
 import logging
-import os
 import time
+from typing import TypedDict
 from urllib.parse import urlparse
 
 import requests
+
+from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +41,17 @@ _METADATA_TOKEN_URL = (
     "service-accounts/default/identity"
 )
 
+
+class _CachedToken(TypedDict):
+    """An ID token and the time after which it is minted again."""
+
+    token: str
+    exp: float
+
+
 # audience -> {"token": str, "exp": float}. Tokens are valid for an hour; we
 # refresh at 50 minutes so a request never carries one that expires mid-flight.
-_TOKEN_CACHE: dict = {}
+_TOKEN_CACHE: dict[str, _CachedToken] = {}
 _TOKEN_TTL_SECONDS = 50 * 60
 
 
@@ -109,7 +119,7 @@ def get_id_token(audience: str) -> str:
 _API_KEY_HOSTS = frozenset({"api.datacommons.org", "datacommons.org"})
 
 
-def attach_auth(headers: dict, target_url: str) -> None:
+def attach_auth(headers: dict[str, str], target_url: str) -> None:
     """Attach whatever credential `target_url` expects.
 
     Two backends, two mechanisms, chosen by host rather than by a backend flag:
@@ -121,7 +131,8 @@ def attach_auth(headers: dict, target_url: str) -> None:
     co-located sidecar deployment is unaffected, and no-ops off GCP where the
     metadata server is unreachable.
     """
-    if os.environ.get("DATA_PLANE_AUTH", "auto").lower() == "off":
+    settings = get_settings()
+    if settings.data_plane_auth.lower() == "off":
         return
 
     parsed = urlparse(target_url)
@@ -133,7 +144,7 @@ def attach_auth(headers: dict, target_url: str) -> None:
     # Public Data Commons: API key, never an ID token -- our service account
     # means nothing to it.
     if parsed.hostname in _API_KEY_HOSTS:
-        key = os.environ.get("DC_API_KEY", "").strip()
+        key = settings.dc_api_key
         if key:
             headers["X-API-Key"] = key
         else:

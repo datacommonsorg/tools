@@ -32,9 +32,9 @@ steps:
           exit 1
         fi
 
-  # 1. Build + push services image.
-  - id: build-services
-    name: gcr.io/cloud-builders/docker
+  # 1. Build and stage React UI.
+  - id: build-ui
+    name: node:24
     entrypoint: bash
     args:
       - '-c'
@@ -42,18 +42,29 @@ steps:
         set -e
         # Stage React UI build (ui is expected at repo root).
         if [ -d ui ]; then
-          ( cd ui && npm ci && npm run build )
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
           rm -rf image/dist && cp -r ui/dist image/dist
         else
           mkdir -p image/dist; echo "stub" > image/dist/index.html
         fi
+
+  # 2. Build + push services image.
+  - id: build-services
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
         cd image
         TAG="$SHORT_SHA"
         IMG="${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/services:$$TAG"
         docker buildx build --platform linux/amd64 -t "$$IMG" --push .
         echo "$$IMG" > /workspace/services_image.txt
 
-  # 2. Build + push agent image.
+  # 3. Build + push agent image.
   - id: build-agent
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
@@ -67,7 +78,7 @@ steps:
         docker buildx build --platform linux/amd64 -t "$$IMG" --push .
         echo "$$IMG" > /workspace/agent_image.txt
 
-  # 3. Compose the config bucket, then sync it.
+  # 4. Compose the config bucket, then sync it.
   #
   # Must mirror deploy.sh exactly: defaults/ is the upstream baseline and config/
   # is laid over the top, so a deployment carries only what it overrides and
@@ -96,7 +107,7 @@ steps:
       - '/workspace/config-bundle'
       - 'gs://$PROJECT_ID-$_INSTANCE-config'
 
-  # 4. Terraform apply with the new image tags.
+  # 5. Terraform apply with the new image tags.
   - id: terraform-apply
     name: hashicorp/terraform:1.6
     entrypoint: sh
@@ -115,7 +126,7 @@ steps:
           -var="dc_web_service_image=$$SERVICES_IMG" \
           -var="dc_agent_image=$$AGENT_IMG"
 
-  # 5. Force-restart so the new revision picks up the bucket changes immediately.
+  # 6. Force-restart so the new revision picks up the bucket changes immediately.
   - id: force-restart
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
@@ -128,7 +139,7 @@ steps:
       - '--update-env-vars'
       - 'FORCE_RESTART=$BUILD_ID'
 
-  # 6. Smoke.
+  # 7. Smoke.
   - id: smoke
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash

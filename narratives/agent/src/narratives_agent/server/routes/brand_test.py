@@ -24,9 +24,9 @@ Verifies that:
 """
 
 import pytest
-from flask.testing import FlaskClient
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from narratives_agent.server.app import app
 from narratives_agent.server.routes import brand
 
 # Matches the Google API key regex in `brand._CREDENTIAL_PATTERNS` while using
@@ -40,7 +40,7 @@ def test_credential_inside_list_is_found() -> None:
     #   known credential pattern.
     # Expectation: `find_credential_like_values` returns the indexed path
     #   (`"keys[0]"`).
-    document = {"keys": [_KEY_SHAPED]}
+    document: dict[str, brand.JsonValue] = {"keys": [_KEY_SHAPED]}
     assert brand.find_credential_like_values(document) == ["keys[0]"]
 
 
@@ -50,7 +50,9 @@ def test_credential_nested_below_list_is_found() -> None:
     #   list.
     # Expectation: `find_credential_like_values` returns the full dotted and
     #   indexed path (`"providers[1].secret"`).
-    document = {"providers": [{"name": "x"}, {"secret": "hunter2"}]}
+    document: dict[str, brand.JsonValue] = {
+        "providers": [{"name": "x"}, {"secret": "hunter2"}]
+    }
     assert brand.find_credential_like_values(document) == [
         "providers[1].secret"
     ]
@@ -62,7 +64,10 @@ def test_credential_in_dict_value_is_found() -> None:
     #   non-secret key name alongside valid color settings.
     # Expectation: `find_credential_like_values` flags only the key whose value
     #   matches the credential pattern (`"analytics"`).
-    document = {"colors": {"primary": "#123456"}, "analytics": _KEY_SHAPED}
+    document: dict[str, brand.JsonValue] = {
+        "colors": {"primary": "#123456"},
+        "analytics": _KEY_SHAPED,
+    }
     assert brand.find_credential_like_values(document) == ["analytics"]
 
 
@@ -72,7 +77,7 @@ def test_list_elements_inherit_parent_key_for_credential_check() -> None:
     #   strings that do not match a standalone credential regex.
     # Expectation: Both list elements are flagged because they inherit the
     #   enclosing `"api_keys"` key name.
-    document = {"api_keys": ["short", "also-short"]}
+    document: dict[str, brand.JsonValue] = {"api_keys": ["short", "also-short"]}
     assert brand.find_credential_like_values(document) == [
         "api_keys[0]",
         "api_keys[1]",
@@ -84,7 +89,7 @@ def test_empty_value_under_secret_key_is_not_flagged() -> None:
     # Situation: `"api_key"` and `"api_keys"` contain empty strings (`""`),
     #   which configuration files use to represent unset fields.
     # Expectation: `find_credential_like_values` returns an empty list.
-    document = {"api_key": "", "api_keys": [""]}
+    document: dict[str, brand.JsonValue] = {"api_key": "", "api_keys": [""]}
     assert brand.find_credential_like_values(document) == []
 
 
@@ -94,7 +99,7 @@ def test_ordinary_branding_document_is_not_flagged() -> None:
     #   `logo`, `colors`, `fonts`, and `nav_tabs`).
     # Expectation: `find_credential_like_values` returns an empty list so valid
     #   branding fields are preserved.
-    document = {
+    document: dict[str, brand.JsonValue] = {
         "instance_name": "Example Data Commons",
         "logo": "/assets/logo.png",
         "colors": {"primary": "#0b57d0", "text": "#1f1f1f"},
@@ -113,7 +118,9 @@ def test_flagged_list_element_is_removed_during_redaction() -> None:
     #   pattern.
     # Expectation: `_redact` removes the flagged element and preserves the
     #   remaining elements in their original order.
-    document = {"integrations": ["alpha", _KEY_SHAPED, "omega"]}
+    document: dict[str, brand.JsonValue] = {
+        "integrations": ["alpha", _KEY_SHAPED, "omega"]
+    }
     findings = brand.find_credential_like_values(document)
     assert findings == ["integrations[1]"]
     brand._redact(document, set(findings))
@@ -127,7 +134,7 @@ def test_redaction_removes_non_contiguous_flagged_list_elements() -> None:
     #   non-empty strings while indices 1 and 3 are empty strings.
     # Expectation: `_redact` removes both flagged indices without index-shift
     #   errors, leaving the two unflagged empty strings.
-    document = {"api_keys": ["a", "", "c", ""]}
+    document: dict[str, brand.JsonValue] = {"api_keys": ["a", "", "c", ""]}
     findings = brand.find_credential_like_values(document)
     assert findings == ["api_keys[0]", "api_keys[2]"]
     brand._redact(document, set(findings))
@@ -141,7 +148,7 @@ def test_redaction_removes_dict_and_nested_dict_entries() -> None:
     #   secret-named key inside a list of dictionaries.
     # Expectation: `_redact` deletes both flagged dictionary keys while leaving
     #   unflagged sibling keys intact.
-    document = {
+    document: dict[str, brand.JsonValue] = {
         "analytics": _KEY_SHAPED,
         "providers": [{"name": "x"}, {"name": "y", "secret": "hunter2"}],
     }
@@ -156,14 +163,16 @@ def test_redaction_removes_dict_and_nested_dict_entries() -> None:
 _SVG = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'
 
 
-if "brand" not in app.blueprints:
-    app.register_blueprint(brand.brand_bp, url_prefix="/agent")
-
-
 @pytest.fixture
-def client() -> FlaskClient:
-    """Return a test client for the application with `brand_bp` mounted."""
-    return app.test_client()
+def client() -> TestClient:
+    """Returns a test client for an app that serves only `brand.router`.
+
+    Building the app reads no settings, so a test that sets environment
+    variables after requesting this fixture still sees them.
+    """
+    app = FastAPI()
+    app.include_router(brand.router, prefix="/agent")
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -176,7 +185,7 @@ def mirrored_svg(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_load_branding_redacts_credentials_before_publishing(
     monkeypatch: pytest.MonkeyPatch,
-    client: FlaskClient,
+    client: TestClient,
 ) -> None:
     # Test: End-to-end credential redaction inside `load_branding`.
     # Situation: `BRAND_CONFIG_URL` points to a bucket whose `branding.json`
@@ -211,23 +220,23 @@ def test_load_branding_redacts_credentials_before_publishing(
 
     brand_response = client.get("/agent/brand")
     assert brand_response.status_code == 200
-    assert brand_response.get_json() == {
+    assert brand_response.json() == {
         "instance": "",
         "branding": {
             "instance_name": "Example Data Commons",
             "keys": [],
         },
     }
-    assert _KEY_SHAPED not in brand_response.get_data(as_text=True)
+    assert _KEY_SHAPED not in brand_response.text
 
     js_response = client.get("/agent/brand.js")
     assert js_response.status_code == 200
-    assert _KEY_SHAPED not in js_response.get_data(as_text=True)
+    assert _KEY_SHAPED not in js_response.text
 
 
 @pytest.mark.usefixtures("mirrored_svg")
 def test_mirrored_asset_is_served_with_nosniff_header(
-    client: FlaskClient,
+    client: TestClient,
 ) -> None:
     # Test: Content-Type and `X-Content-Type-Options` header on
     #   `GET /agent/brand/assets/<name>`.
@@ -239,12 +248,12 @@ def test_mirrored_asset_is_served_with_nosniff_header(
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("image/svg+xml")
     assert response.headers["X-Content-Type-Options"] == "nosniff"
-    assert response.data == _SVG
+    assert response.content == _SVG
 
 
 @pytest.mark.usefixtures("mirrored_svg")
 def test_mirrored_asset_is_served_with_immutable_cache_control(
-    client: FlaskClient,
+    client: TestClient,
 ) -> None:
     # Test: `Cache-Control` header on content-addressed brand assets.
     # Situation: A mirrored SVG asset whose filename includes a content hash is
@@ -259,7 +268,7 @@ def test_mirrored_asset_is_served_with_immutable_cache_control(
 
 
 @pytest.mark.usefixtures("mirrored_svg")
-def test_unknown_brand_asset_returns_404(client: FlaskClient) -> None:
+def test_unknown_brand_asset_returns_404(client: TestClient) -> None:
     # Test: HTTP lookup of a nonexistent asset name on
     #   `/agent/brand/assets/<name>`.
     # Situation: A client requests `/agent/brand/assets/logo-00000000.svg`,

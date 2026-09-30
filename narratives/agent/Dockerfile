@@ -22,7 +22,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_NO_CACHE=1 \
     AGENT_ROOT=/app \
     PATH="/app/.venv/bin:$PATH" \
-    PROXY_PORT=5001 \
+    AGENT_PORT=5001 \
     MCP_PORT=8082 \
     TIMEZONE=UTC \
     ALLOWED_ORIGIN=*
@@ -47,7 +47,6 @@ USER appuser
 COPY --chown=appuser:appuser pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY --chown=appuser:appuser main.py ./
 COPY --chown=appuser:appuser src/ ./src/
 RUN uv sync --frozen --no-dev
 
@@ -56,33 +55,21 @@ RUN uv sync --frozen --no-dev
 COPY --chown=appuser:appuser static/ ./static/
 
 # 8080 when this container is the Cloud Run ingress (the split deployment);
-# PROXY_PORT still applies when it runs as a sidecar behind nginx.
+# AGENT_PORT still applies when it runs as a sidecar behind nginx.
 EXPOSE 8080
 
-# Served by gunicorn, not Flask's development server.
+# Served by Uvicorn in a single process: on 1 vCPU extra worker processes only
+# contend. Scale out with Cloud Run instances, not in with workers.
 #
-# Why the specific flags:
-#   --worker-class gthread  chat responses are SSE streams held open for tens of
-#                           seconds while Gemini thinks. Sync workers would tie
-#                           up a whole process per stream -- worse than the dev
-#                           server. Threads let one worker hold many streams.
-#   --workers 1             on 1 vCPU extra worker processes only contend. Scale
-#                           out with Cloud Run instances, not in with workers.
-#   --timeout 0             gunicorn otherwise kills a worker whose request has
-#                           "hung" -- which is what a long SSE stream looks like.
-#   --graceful-timeout 120  Cloud Run sends SIGTERM before every deploy and
-#                           scale-in; this drains in-flight streams instead of
-#                           cutting answers off mid-sentence.
+# --timeout-graceful-shutdown 120: on SIGTERM, Uvicorn stops accepting
+# connections and waits up to 120 s for in-flight requests, such as a chat
+# stream, to finish before it closes them. On Cloud Run the drain is bounded
+# at about 10 s instead, because Cloud Run sends SIGKILL 10 s after SIGTERM.
 #
 # Shell form (not exec form) so ${PORT} expands: Cloud Run injects PORT when the
-# container is the ingress, and falls back to PROXY_PORT when it runs as a
-# sidecar behind nginx. `exec` keeps gunicorn as PID 1 so it receives SIGTERM.
-CMD exec gunicorn \
-      --bind "0.0.0.0:${PORT:-${PROXY_PORT:-5001}}" \
-      --worker-class gthread \
-      --workers 1 \
-      --threads 16 \
-      --timeout 0 \
-      --graceful-timeout 120 \
-      --access-logfile - \
-      main:app
+# container is the ingress, and falls back to AGENT_PORT when it runs as a
+# sidecar behind nginx. `exec` keeps Uvicorn as PID 1 so it receives SIGTERM.
+CMD exec uvicorn narratives_agent.server.app:app \
+      --host 0.0.0.0 \
+      --port "${PORT:-${AGENT_PORT:-5001}}" \
+      --timeout-graceful-shutdown 120
