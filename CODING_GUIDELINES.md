@@ -416,8 +416,8 @@ reliability — when they are, note the upstream fix they stand in for.
 
 Comments explain *why* code exists and define its *contracts*; the code itself
 explains *how* it works. High-quality comments reduce cognitive load for future
-readers. Comments that read as conversational essays, personify code, or debate
-philosophy increase cognitive load and obscure bugs.
+readers. Comments that read as conversational essays, personify code, or are 
+otherwise not focused nor clear increase cognitive load and obscure bugs.
 
 #### 14.1.1 Tone
 
@@ -425,9 +425,9 @@ philosophy increase cognitive load and obscure bugs.
   Use imperative or declarative phrasing ("Formats values for display",
   "Guards against negative zero"). Avoid conversational filler, stream of
   consciousness, or casual editorializing.
-* **No anthropomorphism.** Do not attribute feelings, knowledge, perception, or
-  agency to code, AST nodes, DOM elements, or data structures. Code does not
-  "know", "want", "fear", "agree", "speak", or "refuse".
+* **Idiomatic, professional language.** Write clear, idiomatic technical prose.
+  Describe system behavior directly, avoiding informal jargon and anthropomorphic
+  framing (attributing intent, feelings, or agency to code and data structures).
   * *Avoid:* `// The socket wants to close, but the queue fears data loss.`
   * *Prefer:* `// Drain pending messages before closing the socket connection.`
 * **Use standard domain terminology.** Do not invent colloquial shorthand or
@@ -460,27 +460,19 @@ philosophy increase cognitive load and obscure bugs.
 
 Avoid these patterns when writing comments and docstrings:
 
-* **Syntax narration (paraphrasing the code).** Do not restate in English what
+* **Avoid paraphrasing the code.** Do not restate in English what
   the code already expresses in syntax. Trust the reader to know the language.
   * *Avoid:* `// Increment counter by one` above `counter += 1;`.
-* **Philosophical and epistemological treatises.** Source code is not the place
-  to debate the philosophy of floating-point numbers, ontological taxonomy,
-  or abstract theory. Keep comments focused on programmatic bounds and
-  concrete requirements.
-  * *Avoid:* Mini-essays debating whether `null` represents an "existential
-    absence" versus `undefined` denoting "uncertainty".
-* **Conflating anecdotal test queries with general invariants.** Never hardcode
-  transient data points from a specific local test run or fixture (e.g.
-  "the five records in Alice's profile", "the three mock responses") into
+* **Avoid conflating anecdotal test queries with general invariants.** Never hardcode
+  transient data points from a specific local test run or fixture into
   general utility comments. Comments must describe general behavior for all
   callers.
-* **Inverted JSDocs (rationale without contract).** A docstring that explains
+* **Avoid rationale without contract.** A docstring that explains
   why a feature was conceived but fails to document inputs, outputs, or
   behavioral guarantees leaves callers guessing.
-* **Negative phrasing and litotes.** Avoid convoluted double negatives or
-  inverted clauses ("does not fail to disallow", "prevents non-missing states
-  from not triggering"). State conditions positively and directly.
-* **Commit history and review chatter.** Never write `// Added per PR review`
+* **Avoid needless complexity.** Avoid double negatives or
+  inverted clauses. State conditions positively and directly.
+* **Avoid commit history and review chatter.** Never write `// Added per PR review`
   or `// Used to do X in v1`. Git history tracks changes and rationale across
   time.
 
@@ -492,10 +484,11 @@ clean identifiers alone:
 * **The contract (abstraction).** Document assumptions, preconditions,
   postconditions, and guarantees that the compiler cannot enforce (e.g.
   "Assumes observations are pre-sorted by date in ascending order").
+* **Programmatic bounds and concrete requirements.** Write clearly and
+  concisely without being clipped. Keep comments focused on programmatic bounds
+  and concrete requirements.
 * **The "why" behind non-obvious decisions.** Explain why an intuitive or
-  standard approach was rejected in favor of an unexpected one (e.g. why an
-  in-memory ring buffer was chosen over a database queue to handle transient
-  spikes without database locking).
+  standard approach was rejected in favor of an unexpected one.
 * **Platform and library workarounds.** Document browser quirks, external API
   irregularities, or third-party AST structure behaviors that necessitate
   defensive handling.
