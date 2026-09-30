@@ -466,9 +466,8 @@ Avoid these patterns when writing comments and docstrings:
   transient data points from a specific local test run or fixture into
   general utility comments. Comments must describe general behavior for all
   callers.
-* **Avoid rationale without contract.** A docstring that explains
-  why a feature was conceived but fails to document inputs, outputs, or
-  behavioral guarantees leaves callers guessing.
+* **Avoid rationale without contract.** A docstring should both explain the functionality
+  and document inputs, outputs, and behavioral guarantees.
 * **Avoid needless complexity.** Avoid double negatives or
   inverted clauses. State conditions positively and directly.
 * **Avoid commit history and review chatter.** Never write `// Added per PR review`
