@@ -6,7 +6,7 @@ import { GeminiInfoIcon } from "./icons";
 
 /**
  * Figma node 3427-16777 "Disclaimer" → 3427-16778 "DisclaimerNote".
- * Info icon + body text + thin divider below.
+ * Thin divider + info icon + body text.
  * Token "ts5" (the \_ space character) maps to color #F9F9F9, used only
  * inside the text — we collapse it back to a regular space.
  */
@@ -36,10 +36,8 @@ export function DisclaimerNote({ text = DISCLAIMER_TEXT }: DisclaimerNoteProps) 
       style={{ alignSelf: "stretch" }}
       aria-label="Disclaimer"
     >
-      <div
-        className="flex items-start gap-2.5"
-        style={{ padding: "10px 0 16px" }}
-      >
+      <hr style={{ border: 0, borderTop: `1px solid ${COLOR_DIVIDER}` }} />
+      <div className="flex items-start gap-2.5 pt-2.5">
         <GeminiInfoIcon
           size="xs"
           style={{ flexShrink: 0, marginTop: 4 }}
@@ -57,7 +55,6 @@ export function DisclaimerNote({ text = DISCLAIMER_TEXT }: DisclaimerNoteProps) 
           {text}
         </p>
       </div>
-      <hr style={{ border: 0, borderTop: `1px solid ${COLOR_DIVIDER}` }} />
     </section>
   );
 }
