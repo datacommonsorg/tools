@@ -122,9 +122,16 @@ type StreamItem = dict[str, str] | str
 class _ClientKey(NamedTuple):
     """The credential inputs that select a cached SDK client."""
 
+    # Whether to call Vertex AI with Application Default Credentials (`True`)
+    # or the Gemini Developer API with `api_key` (`False`).
     use_vertexai: bool
+    # GCP project ID for Vertex AI calls; empty in API-key mode.
     project: str = ""
+    # GCP region for Vertex AI calls (for example, `"us-central1"`); empty in
+    # API-key mode.
     location: str = ""
+    # Resolved raw Gemini API key (already read from Secret Manager or
+    # `config.json` by `get_gemini_api_key()`); empty in Vertex AI mode.
     api_key: str = ""
 
 
