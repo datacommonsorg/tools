@@ -412,6 +412,87 @@ reliability — when they are, note the upstream fix they stand in for.
   # permissions and limitations under the License.
   ```
 
+### 14.1 Comment style: tone, length, and content
+
+Comments explain *why* code exists and define its *contracts*; the code itself
+explains *how* it works. High-quality comments reduce cognitive load for future
+readers. Comments that read as conversational essays, personify code, or are 
+otherwise not focused nor clear increase cognitive load and obscure bugs.
+
+#### 14.1.1 Tone
+
+* **Technical, declarative, and direct.** Write clear, neutral technical prose.
+  Use imperative or declarative phrasing ("Formats values for display",
+  "Guards against negative zero"). Avoid conversational filler, stream of
+  consciousness, or casual editorializing.
+* **Idiomatic, professional language.** Write clear, idiomatic technical prose.
+  Describe system behavior directly, avoiding informal jargon and anthropomorphic
+  framing (attributing intent, feelings, or agency to code and data structures).
+  * *Avoid:* `// The socket wants to close, but the queue fears data loss.`
+  * *Prefer:* `// Drain pending messages before closing the socket connection.`
+* **Use standard domain terminology.** Do not invent colloquial shorthand or
+  use regional idioms. Use established terms from networking, compilers,
+  TypeScript, and data structures.
+* **Neutral and egoless.** Avoid first-person pronouns ("I", "we") or rhetorical
+  flourishes ("leaves much to be desired", "pointless churn"). Avoid criticizing
+  libraries or APIs, but do indicate where you had to take measures to circumvent
+  library or API behavior. Focus strictly on the technical invariant. All comments
+  should be measured, professional, and neutral.
+
+#### 14.1.2 Length and proportionality
+
+* **Proportionality rule.** The visual and cognitive weight of a comment must
+  match the complexity of what it annotates. A five-line function should not
+  carry a twenty-line comment.
+* **Inline comments (1–2 lines).** Inline comments are brief signposts
+  explaining non-obvious branches, workarounds, or subtle regex logic. If an
+  explanation requires multiple paragraphs, summarize the invariant in 1–2
+  lines in the code and document the fuller context in a PR description, issue,
+  or design document.
+* **JSDocs / Docstrings (2–4 lines typical).** Begin with a concise summary
+  sentence describing what the symbol does or represents. Follow with any
+  non-obvious constraints, side effects, or parameters.
+* **File-overview headers (3–5 lines).** State the file's architectural scope
+  and single responsibility. Do not list internal implementation steps.
+
+#### 14.1.3 What is wrong: comment anti-patterns
+
+Avoid these patterns when writing comments and docstrings:
+
+* **Avoid paraphrasing the code.** Do not restate in English what
+  the code already expresses in syntax. Trust the reader to know the language.
+  * *Avoid:* `// Increment counter by one` above `counter += 1;`.
+* **Avoid conflating anecdotal test queries with general invariants.** Never hardcode
+  transient data points from a specific local test run or fixture into
+  general utility comments. Comments must describe general behavior for all
+  callers.
+* **Avoid rationale without contract.** A docstring should both explain the functionality
+  and document inputs, outputs, and behavioral guarantees.
+* **Avoid needless complexity.** Avoid double negatives or
+  inverted clauses. State conditions positively and directly.
+* **Avoid commit history and review chatter.** Never write `// Added per PR review`
+  or `// Used to do X in v1`. Git history tracks changes and rationale across
+  time.
+
+#### 14.1.4 What to write: positive patterns
+
+Good comments capture information that cannot be expressed through types or
+clean identifiers alone:
+
+* **The contract (abstraction).** Document assumptions, preconditions,
+  postconditions, and guarantees that the compiler cannot enforce (e.g.
+  "Assumes observations are pre-sorted by date in ascending order").
+* **Programmatic bounds and concrete requirements.** Write clearly and
+  concisely without being clipped. Keep comments focused on programmatic bounds
+  and concrete requirements.
+* **The "why" behind non-obvious decisions.** Explain why an intuitive or
+  standard approach was rejected in favor of an unexpected one.
+* **Platform and library workarounds.** Document browser quirks, external API
+  irregularities, or third-party AST structure behaviors that necessitate
+  defensive handling.
+* **Invariants and boundary conditions.** Clarify edge-case thresholds, sign
+  preservation rules, or rounding guarantees (e.g. preventing negative zero).
+
 ---
 
 ## 15. Shell scripts and CLIs
@@ -449,6 +530,8 @@ the browser. Every app must be wired into the CI orchestrator so that
   convention must update the relevant document **in the same PR**.
 * Put each rule in exactly one place: general rules here, UI rules in
   `FRONTEND.md`, app-specific rules in `<app>/AGENTS.md`. Cross-reference
-  instead of duplicating.
+  instead of duplicating. Changes to core standards must also update the
+  flattened review checklist in `.gemini/styleguide.md` so automated GitHub PR
+  reviews stay aligned.
 * Reviewers — human or agent — flag changes that violate these guidelines, and
   flag guidelines that the codebase has outgrown.
