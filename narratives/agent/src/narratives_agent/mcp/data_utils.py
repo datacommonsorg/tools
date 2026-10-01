@@ -12,8 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Inspects MCP tool results for data availability and source provenance.
+
+`check_data_availability` and `annotate_truncation` determine whether the MCP
+tool loop retrieved any statistical observations, and
+`extract_provenance_from_mcp_results` builds the ordered list of data sources
+referenced by citation numbers in the synthesized answer. Both functions
+support the response formats of MCP server 1.2.1 and 1.3.0.
+"""
 
 import json
+from collections.abc import Sequence
+from typing import Any
 from urllib.parse import urlparse
 
 # Server 1.3.0 split the two fat tools into six. Both generations are recognized
@@ -27,7 +37,7 @@ _OBSERVATION_TOOLS = (
 )
 
 
-def _parse_tool_result(result) -> dict:
+def _parse_tool_result(result: Any) -> dict[str, Any] | None:
     """Unwraps an MCP tool result into the payload the server actually returned.
 
     Results arrive as the JSON-encoded MCP envelope whose `content[0].text` is
@@ -58,7 +68,7 @@ def _parse_tool_result(result) -> dict:
     return payload if isinstance(payload, dict) else None
 
 
-def _has_observation_rows(payload: dict) -> bool:
+def _has_observation_rows(payload: dict[str, Any] | None) -> bool:
     """True when an observations payload carries at least one dated value.
 
     Checked structurally rather than by searching the text, because the two
@@ -79,7 +89,7 @@ def _has_observation_rows(payload: dict) -> bool:
     return False
 
 
-def _has_search_candidates(payload: dict) -> bool:
+def _has_search_candidates(payload: dict[str, Any] | None) -> bool:
     """True when a search payload names at least one topic or variable.
 
     1.3.0 answers either with `variables` / `topics` lists or, when the match is
@@ -97,7 +107,9 @@ def _has_search_candidates(payload: dict) -> bool:
     return False
 
 
-def check_data_availability(tool_calls_list: list) -> dict:
+def check_data_availability(
+    tool_calls_list: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
     """Check if MCP tool calls returned useful data.
 
     Returns:
@@ -130,7 +142,7 @@ def check_data_availability(tool_calls_list: list) -> dict:
     has_data = has_any_observations
     no_observations = observations_called and not has_any_observations
 
-    message = None
+    message: str | None = None
     if not has_data:
         if no_variables:
             message = (
@@ -154,7 +166,9 @@ def check_data_availability(tool_calls_list: list) -> dict:
     }
 
 
-def annotate_truncation(status: dict, truncated: bool) -> dict:
+def annotate_truncation(
+    status: dict[str, Any], truncated: bool
+) -> dict[str, Any]:
     """Records on `status` that the tool loop stopped before it was finished.
 
     Mutates and returns `status`. check_data_availability only sees the tool
@@ -172,7 +186,7 @@ def annotate_truncation(status: dict, truncated: bool) -> dict:
     return status
 
 
-def _first_present(mapping: dict, *keys: str) -> str:
+def _first_present(mapping: dict[str, Any], *keys: str) -> str:
     """Returns the first non-empty value among `keys`, or an empty string.
 
     The MCP server returns camelCase, while earlier revisions of this code and
@@ -186,7 +200,9 @@ def _first_present(mapping: dict, *keys: str) -> str:
     return ""
 
 
-def _facet_index_from_variable_metadata(result_data: dict) -> dict:
+def _facet_index_from_variable_metadata(
+    result_data: dict[str, Any],
+) -> dict[str, dict[str, str]]:
     """Maps facet id -> {name, url, license} from a get_variable_metadata
     result.
 
@@ -214,7 +230,7 @@ def _facet_index_from_variable_metadata(result_data: dict) -> dict:
     if not isinstance(provenances, dict) or not isinstance(variables, dict):
         return {}
 
-    index = {}
+    index: dict[str, dict[str, str]] = {}
     for variable in variables.values():
         if not isinstance(variable, dict):
             continue
@@ -260,7 +276,9 @@ def _facet_index_from_variable_metadata(result_data: dict) -> dict:
     return index
 
 
-def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
+def extract_provenance_from_mcp_results(
+    tool_calls_list: Sequence[dict[str, Any]],
+) -> list[dict[str, str]]:
     """Returns the sources that actually supplied the answer's numbers.
 
     This list is the citation numbering: position 1 is `[1]`, both in the
@@ -297,7 +315,7 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
                          "license": "..." (when reported)}]
     """
     # Pass 1: index every candidate facet the metadata calls described.
-    facet_index = {}
+    facet_index: dict[str, dict[str, str]] = {}
     for tc in tool_calls_list:
         if tc.get("name") != "get_variable_metadata":
             continue
@@ -313,8 +331,8 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
             continue
 
     # Pass 2: the observation calls decide which of them are sources at all.
-    sources = []
-    seen_urls = set()
+    sources: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
     for tc in tool_calls_list:
         if tc.get("name") not in _OBSERVATION_TOOLS:
             continue
@@ -337,11 +355,11 @@ def extract_provenance_from_mcp_results(tool_calls_list: list) -> list:
             if facet_id == "unknown":
                 facet_id = ""
 
-            entry = facet_index.get(facet_id) if facet_id else None
-            if entry is not None:
+            indexed = facet_index.get(facet_id) if facet_id else None
+            if indexed is not None:
                 # Copied so a later mutation cannot reach back into the index
                 # and rename a source that a previous call already listed.
-                entry = dict(entry)
+                entry = dict(indexed)
             else:
                 # No metadata call described this facet -- either none was made
                 # or it served something the candidates did not cover. The

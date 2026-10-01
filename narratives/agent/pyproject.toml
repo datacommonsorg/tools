@@ -115,10 +115,7 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 # Branch 7 replaces the hand-rolled JSON-RPC client with the official MCP SDK.
 module = [
-    "narratives_agent.mcp.capabilities",
     "narratives_agent.mcp.client",
-    "narratives_agent.mcp.data_utils",
-    "narratives_agent.mcp.schema",
 ]
 ignore_errors = true
 

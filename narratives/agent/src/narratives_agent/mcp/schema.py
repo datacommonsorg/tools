@@ -12,13 +12,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Adapts MCP tool schemas and arguments for Gemini function calling.
+
+`transform_schema_for_gemini` rewrites an MCP tool's `inputSchema` into the
+OpenAPI subset that Gemini function calling accepts, and `fix_tool_arguments`
+repairs common argument mistakes made by the model before a call is sent to the
+MCP server.
+"""
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def _describe_value_shape(schema: dict) -> str:
+def _describe_value_shape(schema: Any) -> str:
     """Names the shape a sub-schema describes, for use in prose.
 
     Used only to explain map-valued objects, which Gemini's schema subset has no
@@ -32,7 +40,7 @@ def _describe_value_shape(schema: dict) -> str:
     return f"{value_type} values" if value_type else "values"
 
 
-def transform_schema_for_gemini(schema: dict) -> dict:
+def transform_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
     """Transform MCP inputSchema to Gemini-compatible format.
 
     Gemini function calling only supports a subset of OpenAPI 3.0.3 schema.
@@ -47,7 +55,7 @@ def transform_schema_for_gemini(schema: dict) -> dict:
     if not isinstance(schema, dict):
         return schema
 
-    result = {}
+    result: dict[str, Any] = {}
 
     # Handle anyOf (union types) - common for nullable fields in MCP schemas
     # e.g., {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null}
@@ -116,7 +124,7 @@ _OBSERVATION_TOOLS = (
 )
 
 
-def fix_tool_arguments(name: str, arguments: dict) -> dict:
+def fix_tool_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Fix common parameter mistakes made by LLMs."""
     args = arguments.copy()
 
