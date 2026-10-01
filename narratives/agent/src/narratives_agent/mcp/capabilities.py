@@ -37,6 +37,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from narratives_agent.mcp import client
+
 logger = logging.getLogger(__name__)
 
 # The tool whose presence decides whether we can attribute a number to a named
@@ -129,24 +131,12 @@ def current_cached() -> Capabilities:
 
     Use where blocking is unacceptable, e.g. a health endpoint.
     """
-    from narratives_agent.mcp.client import (
-        cached_tools,
-    )
-
-    return from_tools(cached_tools())
+    return from_tools(client.cached_tools())
 
 
 def current() -> Capabilities:
-    """Capabilities of the configured MCP server.
-
-    Imported lazily so this module stays independent of the client -- the
-    client's schema helpers would otherwise import it back.
-    """
-    from narratives_agent.mcp.client import (
-        get_tools,
-    )
-
-    caps = from_tools(get_tools())
+    """Returns the capabilities of the configured MCP server."""
+    caps = from_tools(client.get_tools())
     if not caps.tool_names:
         logger.warning(
             "MCP exposed no tools; running with no data-fetching capability."

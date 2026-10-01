@@ -1001,10 +1001,11 @@ re-derived. Which is exactly why the clone must be private.
 
 ### Two seams, and only one is stable
 
-**Agent → backend, over MCP: stable, abstract here.** Four JSON-RPC methods —
-`initialize`, `notifications/initialized`, `tools/list`, `tools/call` — over
-Streamable-HTTP, session in the `Mcp-Session-Id` header, protocol version
-config-driven. This genuinely works unchanged across every backend.
+**Agent → backend, over MCP: stable, abstract here.** The official `mcp`
+SDK speaks `initialize`, `notifications/initialized`, `ping`,
+`tools/list`, and `tools/call` over Streamable HTTP, with the session in
+the `Mcp-Session-Id` header and the protocol version negotiated by the
+SDK. This works unchanged across every backend.
 
 **Browser → backend, over HTTP: not stable, proxy it, do not translate it.** The
 two REST generations return different shapes (`data[var][entity].series` +

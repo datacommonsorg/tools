@@ -21,11 +21,12 @@ names from the tool definitions returned by either MCP server generation:
   `get_multi_entity_observations`
 """
 
+import logging
 from typing import Any
 
 import pytest
 
-from narratives_agent.mcp import capabilities
+from narratives_agent.mcp import capabilities, client
 
 TOOLS_121 = [{"name": "search_indicators"}, {"name": "get_observations"}]
 TOOLS_130 = [
@@ -156,3 +157,58 @@ def test_describe_reports_discovered_tool_surface(
     #   alphabetically sorted tool names, and `supports_source_attribution` flag
     #   for each surface.
     assert capabilities.from_tools(tools).describe() == expected
+
+
+@pytest.mark.parametrize(
+    ("tools", "expected_names", "expected_warning"),
+    [
+        ([], frozenset(), "MCP exposed no tools"),
+        (
+            TOOLS_121,
+            frozenset({"search_indicators", "get_observations"}),
+            "MCP server has no get_variable_metadata",
+        ),
+    ],
+    ids=["no tools", "1.2.x without metadata tool"],
+)
+def test_current_warns_on_degraded_tool_surface(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tools: list[dict[str, Any]],
+    expected_names: frozenset[str],
+    expected_warning: str,
+) -> None:
+    # Test: `current` discovers server capabilities and logs warnings when
+    #   expected tools are missing.
+    # Situation: `capabilities.current` is called when the MCP client returns
+    #   either an empty tool list or an MCP 1.2.x tool list that does not
+    #   include `get_variable_metadata`.
+    # Expectation: The returned `Capabilities` instance reflects the discovered
+    #   tools and logs the corresponding warning.
+    monkeypatch.setattr(client, "get_tools", lambda force_refresh=False: tools)
+
+    with caplog.at_level(logging.WARNING, logger=capabilities.logger.name):
+        caps = capabilities.current()
+
+    assert caps.tool_names == expected_names
+    assert expected_warning in caplog.text
+
+
+def test_current_cached_reads_cached_tools_without_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: `current_cached` builds capabilities from `client.cached_tools`
+    #   without logging gap warnings.
+    # Situation: `client.cached_tools` returns an MCP 1.2.x tool list.
+    # Expectation: `current_cached` returns the corresponding `Capabilities`
+    #   snapshot and logs no warning.
+    monkeypatch.setattr(client, "cached_tools", lambda: TOOLS_121)
+
+    with caplog.at_level(logging.WARNING, logger=capabilities.logger.name):
+        caps = capabilities.current_cached()
+
+    assert caps.tool_names == frozenset(
+        {"search_indicators", "get_observations"}
+    )
+    assert caplog.text == ""

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,71 +11,84 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""MCP client built on the official `mcp` Python SDK.
 
-import json
+The client communicates with the MCP server over the Streamable HTTP transport
+using `mcp.ClientSession` and `streamable_http_client` backed by
+`httpx2.AsyncClient`.
+
+Each MCP operation is available in both asynchronous and synchronous forms:
+
+- `async_initialize_mcp`, `async_get_tools`, and `async_call_tool` are
+  asynchronous functions for callers running on an event loop.
+- `initialize_mcp`, `get_tools`, and `call_tool` are synchronous wrappers for
+  the existing blocking callers in `workflows/`. They will be removed in the
+  next migration stage when `workflows/` is converted to asynchronous code.
+
+Each operation opens its own HTTP connection, while the MCP session persists
+across operations within the same turn. The handshake stores the server-issued
+session ID and the negotiated `InitializeResult`. Subsequent operations send
+that session ID in the `Mcp-Session-Id` header and restore the negotiated
+protocol state with `ClientSession.adopt`, avoiding repeated handshakes while
+preserving the negotiated protocol version header. Connections are opened with
+`terminate_on_close=False` so that closing an individual HTTP connection does
+not send an `HTTP DELETE` request that would terminate the session on the
+server.
+
+Session state is stored in a `contextvars.ContextVar` so that concurrent
+asyncio tasks and threads maintain separate MCP sessions without overwriting
+one another's session IDs.
+
+Functions return plain dictionaries matching the MCP wire format expected by
+`workflows/` and `mcp/data_utils.py`: `get_tools` returns tool definitions
+with `"name"`, `"description"`, and `"inputSchema"`, and `call_tool` returns
+the tool result dictionary (`"content"` and optional `"structuredContent"`) or
+`{"error": <message>}` when a call fails.
+"""
+
+import asyncio
+import contextvars
 import logging
 import threading
 import time
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
-import requests
-from requests.adapters import HTTPAdapter
+import httpx2
+from mcp import ClientSession, MCPError, types
+from mcp.client.streamable_http import streamable_http_client
 
 from narratives_agent.config import load_config
 from narratives_agent.gcp_auth import attach_auth
 from narratives_agent.mcp.schema import fix_tool_arguments
-from narratives_agent.session_logger import SessionLogger
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Resolved on first use, not at import: load_config() reads config.json, which
-# bootstrap_config_from_url() only writes once startup has run. A dict rather
-# than a rebound module global so mcp_url() needs no `global` statement.
-_URL_CACHE = {}
+# Each HTTP exchange with the MCP server, including streamed tool results,
+# times out after 300 seconds.
+_REQUEST_TIMEOUT_SECONDS = 300.0
 
-# One pooled session for every MCP call. Bare requests.post() opened a fresh
-# TCP connection per call -- free over localhost, but once the MCP server moves
-# out of this container each of the 5-15 tool calls in a single chat turn also
-# pays a TLS handshake. Keep-alive turns that into one handshake per worker.
-_SESSION = requests.Session()
-_SESSION.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=32))
-_SESSION.mount("http://", HTTPAdapter(pool_connections=4, pool_maxsize=32))
+_SESSION_ID_HEADER = "Mcp-Session-Id"
+_HTTP_NOT_FOUND = 404
 
-# MCP session state.
-#
-# This was a module-level `session_id` written from every response header with
-# no lock, which was wrong in three separate ways once anything scaled:
-#
-#   * N threads in one process -- last writer wins, so thread A would send the
-#     session that thread B had just been issued.
-#   * N data-plane instances -- an MCP streamable-HTTP session belongs to the
-#     server process that minted it. Cloud Run has no request affinity, so a
-#     session created against instance 1 gets presented to instance 2, which
-#     has never heard of it.
-#   * No recovery -- nothing cleared the value on a session-not-found reply, so
-#     the failure was sticky until the container restarted. Worse, a
-#     stale-but-truthy id was used as the "is MCP up?" test, so the agent
-#     skipped re-initializing at exactly the moment it needed to.
-#
-# Thread-local state fixes the first. `_ensure_session` + retry-once fixes the
-# second and third, and is the part that actually matters: it makes a lost
-# session a recoverable event rather than a permanent one, whichever instance
-# the next request happens to land on.
-_local = threading.local()
+_DEFAULT_CLIENT_NAME = "dc-mcp-proxy"
+_DEFAULT_CLIENT_VERSION = "1.0.0"
 
-# The tool list is a property of the *server*, not of a session, so it is shared
-# across threads -- but it is refreshed on a TTL and negative results are not
-# cached, because a permanent None meant every later request retried a failing
-# tools/list and added two round trips per turn during an outage.
-_TOOLS_LOCK = threading.Lock()
-_TOOLS_CACHE = {"tools": None, "fetched_at": 0.0}
-_TOOLS_TTL_SECONDS = 600
+# The endpoint URL is resolved on first use rather than at import time because
+# `load_config()` reads `config.json`, which `bootstrap_config_from_url()`
+# writes during application startup. Storing the cached URL in a dictionary
+# avoids rebinding a module-level variable with `global`.
+_URL_CACHE: dict[str, str] = {}
 
-# Substrings that identify "your session is gone" across MCP server generations.
-# Matched case-insensitively against the error payload; the JSON-RPC error code
-# for this is not standardized, so the text is what we have.
+# Different MCP server versions report an unrecognized or expired session with
+# different error text and do not share a standard JSON-RPC error code. We
+# match these substrings case-insensitively against the error message to detect
+# when a session must be re-initialized.
 _SESSION_LOST_MARKERS = (
     "session not found",
     "invalid session",
@@ -85,32 +97,117 @@ _SESSION_LOST_MARKERS = (
     "missing session",
 )
 
+# The list of available tools is a property of the MCP server rather than an
+# individual session, so it is cached across threads and tasks. Expiring the
+# cache after a fixed TTL allows the agent to pick up tool changes on the data
+# plane without restarting.
+_TOOLS_TTL_SECONDS = 600
+
+
+class SessionLoggerLike(Protocol):
+    """Defines the `SessionLogger` methods used by the MCP client.
+
+    `SessionLogger` is not yet type-annotated, so the client depends on this
+    protocol instead of importing the untyped class directly.
+    """
+
+    def log_mcp_tool_call(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> None: ...
+
+    def log_mcp_tool_result(
+        self, tool_name: str, result: Any, duration_ms: float, status: str
+    ) -> None: ...
+
+
+@dataclass(frozen=True)
+class _Session:
+    """Holds the state of an established MCP session.
+
+    `session_id` is `None` when the server completes the initialization
+    handshake without issuing a session ID, as a stateless MCP server does.
+    """
+
+    session_id: str | None
+    initialize_result: types.InitializeResult
+
+
+@dataclass
+class _ToolCache:
+    """Holds the most recently fetched tool list and when it was fetched."""
+
+    tools: list[dict[str, Any]] | None = None
+    fetched_at: float = 0.0
+
+
+class _SessionLostError(Exception):
+    """Raised when the MCP server no longer recognizes the current session."""
+
+
+@dataclass
+class _ResponseObserver:
+    """Captures HTTP response details that `streamable_http_client` hides.
+
+    `streamable_http_client` keeps the `Mcp-Session-Id` response header private
+    to its internal transport and converts a bare HTTP 404 response into a
+    generic `MCPError`. Attaching this observer as an `httpx2` response event
+    hook on each connection lets the client read the server-issued session ID
+    and detect bare HTTP 404 responses directly.
+    """
+
+    session_id: str | None = None
+    saw_not_found: bool = False
+
+    async def __call__(self, response: httpx2.Response) -> None:
+        """Records `Mcp-Session-Id` and whether a bare HTTP 404 occurred.
+
+        An HTTP 404 response with a JSON body is ignored here because the SDK
+        parses and raises the JSON-RPC error, which `_is_session_lost` inspects
+        by message.
+        """
+        session_id = response.headers.get(_SESSION_ID_HEADER)
+        if session_id and self.session_id is None:
+            self.session_id = session_id
+        content_type = response.headers.get("content-type", "").lower()
+        if response.status_code == _HTTP_NOT_FOUND and not (
+            content_type.startswith("application/json")
+        ):
+            self.saw_not_found = True
+
+
+_session_var: ContextVar[_Session | None] = ContextVar(
+    "mcp_session", default=None
+)
+
+_TOOLS_LOCK = threading.Lock()
+_TOOLS_CACHE = _ToolCache()
+
+_REFRESH_LOCK = threading.Lock()
+_refresh_in_flight = False
+
 
 def get_session_id() -> str | None:
-    """This thread's MCP session id, if it has one."""
-    return getattr(_local, "session_id", None)
+    """Returns the MCP session ID for the current context, or `None`."""
+    session = _session_var.get()
+    return session.session_id if session else None
 
 
-def _set_session_id(value: str | None) -> None:
-    _local.session_id = value
-
-
-def _looks_like_lost_session(result: dict) -> bool:
-    """True when the server is telling us our session is no longer valid."""
-    error = result.get("error")
-    if not error:
-        return False
-    text = json.dumps(error, default=str).lower()
-    return any(marker in text for marker in _SESSION_LOST_MARKERS)
+def reset_client() -> None:
+    """Clears the cached URL, the tool cache, and the current session."""
+    _URL_CACHE.clear()
+    with _TOOLS_LOCK:
+        _TOOLS_CACHE.tools = None
+        _TOOLS_CACHE.fetched_at = 0.0
+    _session_var.set(None)
 
 
 def _normalize_url(url: str) -> str:
-    """Append the /mcp path when the configured value is a bare origin.
+    """Appends `/mcp` when the configured URL is a bare origin with no path.
 
-    Every config we ship writes `mcp.server_url` as an origin
-    ("http://127.0.0.1:8082") while the endpoint itself lives at /mcp.
-    Accepting both spellings stops a config author from silently producing a
-    URL that 404s.
+    Configuration files often specify `mcp.server_url` as a bare origin such as
+    `http://127.0.0.1:8082`, while the MCP endpoint is served at `/mcp`.
+    Normalizing bare origins prevents configuration values without a path from
+    failing with HTTP 404.
     """
     if urlparse(url).path in ("", "/"):
         return url.rstrip("/") + "/mcp"
@@ -118,12 +215,12 @@ def _normalize_url(url: str) -> str:
 
 
 def mcp_url() -> str:
-    """The MCP endpoint: MCP_SERVER_URL, then config, then in-container
-    localhost.
+    """Resolves and caches the MCP server endpoint URL.
 
-    Cached after the first call. The localhost fallback keeps the co-located
-    sidecar deployment working unchanged when neither override is set, so this
-    is additive rather than a behavior change for existing instances.
+    Checks `MCP_SERVER_URL` first, then `mcp.server_url` in the agent
+    configuration, and finally falls back to `http://localhost:<mcp_port>/mcp`
+    for co-located sidecar deployments. The resolved URL is cached after the
+    first call.
     """
     if "url" in _URL_CACHE:
         return _URL_CACHE["url"]
@@ -144,184 +241,478 @@ def mcp_url() -> str:
     return resolved
 
 
-def mcp_request(
-    method: str, params: dict | None = None, is_notification: bool = False
-) -> dict:
-    """Send one JSON-RPC request or notification. No session recovery.
+def _create_http_client(headers: dict[str, str]) -> httpx2.AsyncClient:
+    """Returns an `httpx2.AsyncClient` configured for a single MCP operation.
 
-    Prefer `mcp_call` for anything that needs a live session -- this is the raw
-    transport, used directly only by the handshake itself (which must not
-    recurse into session recovery).
-
-    Args:
-        method: The JSON-RPC method name
-        params: Optional parameters
-        is_notification: If True, sends as notification (no id, no response
-            expected)
+    Each operation opens its own client, so each of the 5 to 15 tool calls in a
+    chat turn opens its own connection and, when the MCP server runs outside
+    this container, performs its own TLS handshake. A shared keep-alive pool
+    will be introduced once the synchronous wrappers (which create a fresh
+    event loop per call) are removed.
     """
-    payload = {"jsonrpc": "2.0", "method": method}
-
-    # Notifications don't have an id
-    if not is_notification:
-        payload["id"] = int(time.time() * 1000)
-
-    if params:
-        payload["params"] = params
-
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-
-    current_session = get_session_id()
-    if current_session:
-        headers["Mcp-Session-Id"] = current_session
-
-    url = mcp_url()
-    # No-op while the MCP server is a localhost sidecar; once it is a separate
-    # IAM-gated service this is what makes the call succeed.
-    attach_auth(headers, url)
-
-    try:
-        # For notifications, we send but don't expect a response
-        if is_notification:
-            _SESSION.post(url, json=payload, headers=headers, timeout=5)
-            return {"result": "notification sent"}
-
-        response = _SESSION.post(
-            url, json=payload, headers=headers, timeout=300, stream=True
-        )
-
-        # Log response details for debugging
-        logger.info(
-            f"MCP Response - Status: {response.status_code}, "
-            f"Headers: {dict(response.headers)}"
-        )
-
-        # Get session ID from response (try multiple header variations)
-        session_header = (
-            response.headers.get("Mcp-Session-Id")
-            or response.headers.get("mcp-session-id")
-            or response.headers.get("MCP-Session-ID")
-        )
-        if session_header:
-            _set_session_id(session_header)
-            logger.info("Got MCP session ID from headers: %s", session_header)
-        else:
-            logger.debug(
-                "No session ID in response headers; keeping the current one. "
-                "Available headers: %s",
-                list(response.headers.keys()),
-            )
-
-        content_type = response.headers.get("content-type", "")
-
-        if "text/event-stream" in content_type:
-            # Parse SSE response
-            result = None
-            for line in response.iter_lines():
-                if line:
-                    line_str = line.decode("utf-8")
-                    if line_str.startswith("data: "):
-                        try:
-                            data = json.loads(line_str[6:])
-                            if "result" in data:
-                                result = data["result"]
-                            elif "error" in data:
-                                return {"error": data["error"]}
-                        except json.JSONDecodeError:
-                            continue
-            return {"result": result} if result else {"error": "No result"}
-        else:
-            return response.json()
-
-    except requests.exceptions.ConnectionError:
-        return {
-            "error": (
-                f"Cannot connect to MCP server at {url}. Make sure it's "
-                "running!"
-            )
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def initialize_mcp() -> bool:
-    """Perform the MCP handshake for the calling thread.
-
-    Safe to call repeatedly: it simply mints a fresh session. Uses mcp_request
-    directly rather than mcp_call, because the recovery path in mcp_call calls
-    this -- routing the handshake through it would recurse.
-    """
-    logger.info("Initializing MCP session...")
-
-    _set_session_id(None)
-    mcp_config = load_config().get("mcp", {})
-    result = mcp_request(
-        "initialize",
-        {
-            "protocolVersion": mcp_config.get("protocol_version", "2024-11-05"),
-            "capabilities": {"roots": {"listChanged": True}},
-            "clientInfo": {
-                "name": mcp_config.get("client_name", "dc-mcp-proxy"),
-                "version": mcp_config.get("client_version", "1.0.0"),
-            },
-        },
+    return httpx2.AsyncClient(
+        headers=headers, timeout=httpx2.Timeout(_REQUEST_TIMEOUT_SECONDS)
     )
 
-    if "error" in result:
-        logger.error("Failed to initialize MCP: %s", result["error"])
-        _set_session_id(None)
-        return False
 
-    logger.info("MCP session initialized: %s", get_session_id())
-
-    # Send initialized notification (no id, no response expected)
-    mcp_request("notifications/initialized", {}, is_notification=True)
-    return True
+def _client_info() -> types.Implementation:
+    """Returns the client name and version sent during the MCP handshake."""
+    mcp_config = load_config().get("mcp", {})
+    return types.Implementation(
+        name=mcp_config.get("client_name", _DEFAULT_CLIENT_NAME),
+        version=mcp_config.get("client_version", _DEFAULT_CLIENT_VERSION),
+    )
 
 
-def mcp_call(method: str, params: dict | None = None) -> dict:
-    """Send a request, establishing or re-establishing the session as needed.
+@asynccontextmanager
+async def _connect(
+    session: _Session | None, observer: _ResponseObserver
+) -> AsyncIterator[ClientSession]:
+    """Opens a Streamable HTTP connection and yields a `ClientSession`.
 
-    This is the entry point everything except the handshake should use. It
-    makes a lost session a recoverable event: whichever data-plane instance the
-    request lands on, if that instance does not recognize our session we mint a
-    new one and retry exactly once.
+    When resuming an existing `session`, the session ID is sent via the
+    `AsyncClient` default headers rather than `streamable_http_client`'s
+    `session_id` parameter, and no `notifications/initialized` message is sent.
+    Because the transport's internal `session_id` remains `None`, the SDK never
+    opens its background `GET` SSE stream on a resumed connection. This makes
+    it safe for `_is_session_lost` to treat any non-JSON HTTP 404 recorded by
+    `observer` on the connection as a rejected session ID on the `POST`
+    request.
 
-    Retrying once rather than looping matters -- a genuine outage should surface
-    as an error, not as an unbounded retry storm against a struggling backend.
+    Args:
+        session: Existing session to resume on the new connection, or `None`
+            when opening a connection for the initial handshake.
+        observer: Response event hook that records the session ID header and
+            any bare HTTP 404 responses on the connection.
     """
-    if not get_session_id():
-        initialize_mcp()
+    url = mcp_url()
+    headers: dict[str, str] = {}
+    if session is not None and session.session_id:
+        headers[_SESSION_ID_HEADER] = session.session_id
+    # We attach authentication headers on every operation because credentials
+    # depend on the target host and Google Cloud ID tokens expire over time.
+    # For a localhost sidecar this is a no-op, whereas for a remote IAM-gated
+    # MCP service it attaches a fresh bearer token or API key.
+    attach_auth(headers, url)
+    http_client = _create_http_client(headers)
+    http_client.event_hooks["response"].append(observer)
+    async with (
+        http_client,
+        streamable_http_client(
+            url, http_client=http_client, terminate_on_close=False
+        ) as (read_stream, write_stream),
+        ClientSession(
+            read_stream,
+            write_stream,
+            client_info=_client_info() if session is None else None,
+        ) as client_session,
+    ):
+        if session is not None:
+            client_session.adopt(session.initialize_result)
+        yield client_session
 
-    result = mcp_request(method, params)
 
-    if _looks_like_lost_session(result):
+def _leaf_errors(error: BaseException) -> list[BaseException]:
+    """Flattens `error` and any nested exception groups into leaf exceptions.
+
+    The MCP SDK runs transport tasks inside AnyIO task groups, which wrap
+    exceptions in one `ExceptionGroup` per nesting level.
+    """
+    if isinstance(error, BaseExceptionGroup):
+        return [
+            leaf for inner in error.exceptions for leaf in _leaf_errors(inner)
+        ]
+    return [error]
+
+
+def _describe_error(error: BaseException) -> str:
+    """Returns a human-readable error message for a failed MCP operation."""
+    leaves = _leaf_errors(error)
+    if any(isinstance(leaf, httpx2.ConnectError) for leaf in leaves):
+        return (
+            f"Cannot connect to MCP server at {mcp_url()}. Make sure it's "
+            "running!"
+        )
+    # When the HTTP writer task fails, closing its stream causes
+    # `ClientSession` to fail any pending request with `CONNECTION_CLOSED`.
+    # Prefer the underlying transport or protocol exception over that
+    # secondary stream-closure error.
+    leaf = next(
+        (
+            item
+            for item in leaves
+            if not (
+                isinstance(item, MCPError)
+                and item.error.code == types.CONNECTION_CLOSED
+            )
+        ),
+        leaves[0],
+    )
+    return str(leaf) or type(leaf).__name__
+
+
+def _is_session_lost(
+    error: BaseException, observer: _ResponseObserver, session: _Session
+) -> bool:
+    """Returns whether `error` means the server does not recognize `session`.
+
+    Some MCP server versions return a JSON-RPC error message stating that the
+    session was not found, whereas the MCP Streamable HTTP specification allows
+    a server to respond with a bare HTTP 404 when given an unknown session ID.
+    """
+    if session.session_id is not None and observer.saw_not_found:
+        return True
+    return any(
+        marker in str(leaf).lower()
+        for leaf in _leaf_errors(error)
+        for marker in _SESSION_LOST_MARKERS
+    )
+
+
+async def _initialize() -> _Session:
+    """Performs the MCP handshake and stores the new session in the context.
+
+    Raises:
+        Exception: Any transport or protocol error from the handshake. When an
+            error occurs, the current context is left without a session.
+    """
+    logger.info("Initializing MCP session...")
+    _session_var.set(None)
+    observer = _ResponseObserver()
+    async with _connect(None, observer) as client_session:
+        result = await client_session.initialize()
+        # `ClientSession.initialize()` returns as soon as the
+        # `notifications/initialized` message is queued to the internal memory
+        # stream, before the HTTP writer task finishes sending the POST
+        # request. Sending a ping waits for the writer to flush that
+        # notification before `_connect` closes the HTTP connection. If the
+        # server rejects `ping`, we log and ignore the error because the
+        # handshake itself has already completed.
+        try:
+            await client_session.send_ping()
+        except MCPError as error:
+            logger.debug("MCP ping after the handshake failed: %s", error)
+    session = _Session(session_id=observer.session_id, initialize_result=result)
+    _session_var.set(session)
+    logger.info(
+        "MCP session initialized (server-issued session ID: %s).",
+        "yes" if session.session_id else "no",
+    )
+    return session
+
+
+async def _run_once[T](
+    session: _Session, operation: Callable[[ClientSession], Awaitable[T]]
+) -> T:
+    """Runs `operation` on a new connection that resumes `session`.
+
+    Raises:
+        _SessionLostError: If the server no longer recognizes `session`.
+    """
+    observer = _ResponseObserver()
+    try:
+        async with _connect(session, observer) as client_session:
+            return await operation(client_session)
+    except Exception as error:
+        if _is_session_lost(error, observer, session):
+            raise _SessionLostError(_describe_error(error)) from error
+        raise
+
+
+# An MCP Streamable HTTP session is held in memory on the server instance that
+# created it. Because Cloud Run does not guarantee request affinity, a later
+# request in the same turn can reach a different data-plane instance that does
+# not recognize the session ID. `_run_with_session` recovers from this by
+# initializing a new session and retrying the operation once.
+async def _run_with_session[T](
+    description: str, operation: Callable[[ClientSession], Awaitable[T]]
+) -> T:
+    """Runs `operation`, initializing or recovering the MCP session if needed.
+
+    If the current context has no session, this function performs the handshake
+    first; if the handshake fails, the error is raised without sending
+    `operation`. If the server rejects an existing session as unknown, this
+    function initializes a fresh session and retries `operation` once. Retrying
+    at most once ensures that a persistent backend failure surfaces immediately
+    instead of looping indefinitely.
+
+    Args:
+        description: Human-readable name of the operation for log messages.
+        operation: Async callable that performs the MCP request on a connected
+            `ClientSession`.
+
+    Raises:
+        Exception: Any transport or protocol error, including a second session
+            rejection after retrying.
+    """
+    session = _session_var.get()
+    if session is None:
+        session = await _initialize()
+    try:
+        return await _run_once(session, operation)
+    except _SessionLostError:
         logger.warning(
             "MCP session rejected by the server (likely a different data-plane "
             "instance); re-initializing and retrying %s once.",
-            method,
+            description,
         )
-        if initialize_mcp():
-            result = mcp_request(method, params)
-
-    return result
+    session = await _initialize()
+    return await _run_once(session, operation)
 
 
-_REFRESH_LOCK = threading.Lock()
-_refresh_in_flight = False
+def _tool_dict(tool: types.Tool) -> dict[str, Any]:
+    """Converts an `mcp.types.Tool` model into a wire-format dictionary."""
+    definition = tool.model_dump(
+        mode="json", by_alias=True, exclude_unset=True, exclude_none=True
+    )
+    definition.setdefault("description", "")
+    return definition
+
+
+async def _send_tool_call(
+    client_session: ClientSession, name: str, arguments: dict[str, Any]
+) -> types.CallToolResult:
+    """Sends a `tools/call` request on `client_session`.
+
+    `ClientSession.call_tool` validates structured tool output against the
+    tool's schema, which triggers an extra `tools/list` request whenever the
+    `ClientSession` instance has not cached the tool list. Because each
+    operation creates a new `ClientSession`, calling `client_session.call_tool`
+    would add an extra `tools/list` round trip to every tool call. Sending
+    `CallToolRequest` directly via `send_request` avoids that extra request.
+    """
+    return await client_session.send_request(
+        types.CallToolRequest(
+            params=types.CallToolRequestParams(name=name, arguments=arguments)
+        ),
+        types.CallToolResult,
+    )
+
+
+def _tool_error_message(result: types.CallToolResult) -> str:
+    """Extracts the error message text from a failed `CallToolResult`."""
+    texts = [
+        block.text
+        for block in result.content
+        if isinstance(block, types.TextContent)
+    ]
+    return "\n".join(texts) or "Tool call failed"
+
+
+def _elapsed_ms(start: float) -> float:
+    """Returns the time elapsed since `start` in milliseconds."""
+    return (time.monotonic() - start) * 1000
+
+
+async def async_initialize_mcp() -> bool:
+    """Performs the MCP initialization handshake for the current context.
+
+    Calling this function when a session already exists replaces it with a new
+    session.
+
+    Returns:
+        `True` if the handshake succeeded, or `False` if it failed. On failure,
+        the error is logged and the current context is left without a session.
+    """
+    try:
+        await _initialize()
+    except Exception as error:
+        logger.error("Failed to initialize MCP: %s", _describe_error(error))
+        _session_var.set(None)
+        return False
+    return True
+
+
+async def async_get_tools(
+    force_refresh: bool = False,
+) -> list[dict[str, Any]]:
+    """Returns the server's tool definitions, cached for `_TOOLS_TTL_SECONDS`.
+
+    Args:
+        force_refresh: If `True`, fetches the tool list from the server even
+            when the cached list has not expired.
+
+    Returns:
+        A list of tool definition dictionaries containing `"name"`,
+        `"description"`, and `"inputSchema"`. If the fetch fails, returns the
+        most recently cached tool list, or `[]` if the cache is empty.
+    """
+    now = time.monotonic()
+    with _TOOLS_LOCK:
+        fresh = (now - _TOOLS_CACHE.fetched_at) < _TOOLS_TTL_SECONDS
+        if _TOOLS_CACHE.tools and fresh and not force_refresh:
+            return _TOOLS_CACHE.tools
+
+    tools: list[dict[str, Any]] = []
+    try:
+        result = await _run_with_session(
+            "tools/list", lambda client_session: client_session.list_tools()
+        )
+        tools = [_tool_dict(tool) for tool in result.tools]
+    except Exception as error:
+        logger.error("MCP tools/list failed: %s", _describe_error(error))
+
+    if tools:
+        with _TOOLS_LOCK:
+            _TOOLS_CACHE.tools = tools
+            _TOOLS_CACHE.fetched_at = now
+        return tools
+
+    # If refreshing the tool list fails, return the previously cached list
+    # rather than an empty list so that a transient failure does not disable
+    # all tools for subsequent turns.
+    with _TOOLS_LOCK:
+        return _TOOLS_CACHE.tools or []
+
+
+def _tool_failure(
+    name: str,
+    message: str,
+    start: float,
+    session_logger: SessionLoggerLike | None,
+    level: int = logging.ERROR,
+) -> dict[str, Any]:
+    """Logs a failed tool call and returns its error result dictionary."""
+    logger.log(level, "MCP tool %s failed: %s", name, message)
+    error_result = {"error": message}
+    if session_logger:
+        session_logger.log_mcp_tool_result(
+            name, error_result, _elapsed_ms(start), "error"
+        )
+    return error_result
+
+
+async def async_call_tool(
+    name: str,
+    arguments: dict[str, Any],
+    session_logger: SessionLoggerLike | None = None,
+) -> dict[str, Any]:
+    """Calls a tool on the MCP server.
+
+    Args:
+        name: Name of the MCP tool to invoke.
+        arguments: Tool arguments produced by the model. These are normalized
+            with `fix_tool_arguments` before the request is sent.
+        session_logger: Optional logger that records the tool call and its
+            result.
+
+    Returns:
+        The tool result dictionary in its MCP wire format (`"content"` and
+        optional `"structuredContent"`), or `{"error": <message>}` if the
+        request failed or the tool returned `isError: true`.
+    """
+    fixed_args = fix_tool_arguments(name, arguments)
+    if fixed_args != arguments:
+        logger.info("Fixed arguments: %s -> %s", arguments, fixed_args)
+
+    if session_logger:
+        session_logger.log_mcp_tool_call(name, fixed_args)
+
+    start = time.monotonic()
+    try:
+        result = await _run_with_session(
+            f"tools/call {name}",
+            lambda client_session: _send_tool_call(
+                client_session, name, fixed_args
+            ),
+        )
+    except Exception as error:
+        return _tool_failure(
+            name, _describe_error(error), start, session_logger
+        )
+
+    if result.is_error:
+        # When `is_error` is True, the MCP request succeeded at the transport
+        # layer, but the tool itself reported an execution error that the model
+        # can react to.
+        return _tool_failure(
+            name,
+            _tool_error_message(result),
+            start,
+            session_logger,
+            level=logging.WARNING,
+        )
+
+    # Pass `exclude_unset=True` and `exclude_none=True` so that Pydantic
+    # serializes only the fields returned by the server without injecting
+    # default values for omitted fields.
+    payload = result.model_dump(
+        mode="json", by_alias=True, exclude_unset=True, exclude_none=True
+    )
+    if session_logger:
+        session_logger.log_mcp_tool_result(
+            name, payload, _elapsed_ms(start), "success"
+        )
+    return payload
+
+
+def _run_sync[T](operation: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """Runs an async MCP operation to completion from synchronous code.
+
+    `asyncio.Runner.run` executes the coroutine inside a task using the
+    provided `context`. Copying the context before running and restoring
+    `_session_var` in the `finally` block ensures that any session created or
+    cleared inside the coroutine is preserved in the calling thread's context,
+    both when the coroutine returns normally and when it raises an exception.
+
+    Raises:
+        RuntimeError: If called from a thread that already has a running event
+            loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError(
+            "Synchronous MCP functions cannot be called from a running event "
+            "loop; await the async_* function instead."
+        )
+    context = contextvars.copy_context()
+    try:
+        with asyncio.Runner() as runner:
+            return runner.run(operation(), context=context)
+    finally:
+        _session_var.set(context.get(_session_var))
+
+
+def initialize_mcp() -> bool:
+    """Synchronously performs the MCP handshake for the calling thread.
+
+    See `async_initialize_mcp` for details.
+    """
+    return _run_sync(async_initialize_mcp)
+
+
+def get_tools(force_refresh: bool = False) -> list[dict[str, Any]]:
+    """Synchronously returns the MCP server's tool definitions.
+
+    See `async_get_tools` for details.
+    """
+    return _run_sync(lambda: async_get_tools(force_refresh))
+
+
+def call_tool(
+    name: str,
+    arguments: dict[str, Any],
+    session_logger: SessionLoggerLike | None = None,
+) -> dict[str, Any]:
+    """Synchronously calls a tool on the MCP server.
+
+    See `async_call_tool` for details.
+    """
+    return _run_sync(lambda: async_call_tool(name, arguments, session_logger))
 
 
 def _refresh_tools_in_background() -> None:
-    """Populate the tool cache off the request path, at most one at a time."""
+    """Starts a background thread to refresh the tool cache if needed."""
     global _refresh_in_flight
     with _REFRESH_LOCK:
         if _refresh_in_flight:
             return
         _refresh_in_flight = True
 
-    def run():
+    def run() -> None:
         global _refresh_in_flight
         try:
             get_tools(force_refresh=True)
@@ -334,91 +725,25 @@ def _refresh_tools_in_background() -> None:
     threading.Thread(target=run, name="mcp-tools-refresh", daemon=True).start()
 
 
-def cached_tools() -> list:
-    """Whatever tools we already know about, without blocking on the network.
+def cached_tools() -> list[dict[str, Any]]:
+    """Returns the currently cached tool list without blocking on the network.
 
-    For callers that must not block on the data plane -- notably /agent/health,
-    which is what Cloud Run's uptime check hits. Calling get_tools() there meant
-    a cold cache turned a health check into a live MCP round trip with a 300s
-    timeout, so an unreachable backend made the agent look hung rather than
-    unhealthy.
+    This function is used by latency-sensitive endpoints such as `/agent/health`
+    that are polled by Cloud Run uptime checks. Fetching tools synchronously on
+    a cold cache would block the health check on an MCP network round trip with
+    a 300-second timeout, causing an unreachable data plane to make the agent
+    appear hung rather than unhealthy.
 
-    An empty cache additionally kicks off a background refresh. Without that,
-    reading the cache alone made health *under-report* rather than hang: if the
-    startup probe failed, health kept reporting zero tools indefinitely while a
-    live call would have succeeded. That is the normal case on a fresh CDC
-    deploy, where the app plane starts before its run.invoker binding on the
-    private data plane has propagated -- the probe fails once, and the stack
-    then looks broken long after it is fine.
+    When the cache is empty, this function starts an asynchronous background
+    refresh and immediately returns `[]`. Without the background refresh, a
+    failed startup probe would leave `/agent/health` reporting zero tools
+    indefinitely if no chat traffic arrived. This commonly occurs on a fresh
+    Custom Data Commons deployment when the app container starts before its
+    `roles/run.invoker` IAM binding on the private data plane has finished
+    propagating.
     """
     with _TOOLS_LOCK:
-        tools = _TOOLS_CACHE["tools"] or []
+        tools = _TOOLS_CACHE.tools or []
     if not tools:
         _refresh_tools_in_background()
     return tools
-
-
-def get_tools(force_refresh: bool = False) -> list:
-    """Available tools, cached with a TTL and a lock.
-
-    The previous cache was permanent-on-success and absent-on-failure, which
-    meant (a) a tool-surface change on the data plane needed an agent restart,
-    and (b) during an outage every request retried tools/list, adding two
-    failing round trips per chat turn on top of the failure already happening.
-    """
-    now = time.time()
-    with _TOOLS_LOCK:
-        fresh = (now - _TOOLS_CACHE["fetched_at"]) < _TOOLS_TTL_SECONDS
-        if _TOOLS_CACHE["tools"] and fresh and not force_refresh:
-            return _TOOLS_CACHE["tools"]
-
-    result = mcp_call("tools/list", {})
-    tools = (result.get("result") or {}).get("tools")
-
-    if tools:
-        with _TOOLS_LOCK:
-            _TOOLS_CACHE["tools"] = tools
-            _TOOLS_CACHE["fetched_at"] = now
-        return tools
-
-    # Serve a stale list rather than nothing: an expired-but-known tool surface
-    # is far more useful than an empty one, which would silently disable every
-    # tool the model can call.
-    with _TOOLS_LOCK:
-        return _TOOLS_CACHE["tools"] or []
-
-
-def call_tool(
-    name: str, arguments: dict, session_logger: SessionLogger | None = None
-) -> Any:
-    """Call a tool on the MCP server with optional logging."""
-    # Fix common parameter mistakes
-    fixed_args = fix_tool_arguments(name, arguments)
-    if fixed_args != arguments:
-        logger.info(f"Fixed arguments: {arguments} -> {fixed_args}")
-
-    # Log tool call request
-    if session_logger:
-        session_logger.log_mcp_tool_call(name, fixed_args)
-
-    start_time = time.time()
-
-    result = mcp_call("tools/call", {"name": name, "arguments": fixed_args})
-
-    duration_ms = (time.time() - start_time) * 1000
-
-    if "result" in result:
-        # Log successful result
-        if session_logger:
-            session_logger.log_mcp_tool_result(
-                name, result["result"], duration_ms, "success"
-            )
-        return result["result"]
-
-    # Log error result
-    error_result = {"error": result.get("error", "Unknown error")}
-    if session_logger:
-        session_logger.log_mcp_tool_result(
-            name, error_result, duration_ms, "error"
-        )
-    return error_result
