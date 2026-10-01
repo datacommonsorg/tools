@@ -45,10 +45,10 @@ const COLOR_ARROW = "var(--color-on-surface)";
 const COLOR_ACTIVE = "var(--color-brand-primary)";
 /**
  * Leading-icon column width in the menu rows (NewChatIcon/ChatsIcon render at
- * 22px). The section-tab dot sits in a box of the same width so tab labels
- * line up with the "New chat"/"Chats" labels above.
+ * 24px, the M3 leading-icon size). The section-tab dot sits in a box of the
+ * same width so tab labels line up with the "New chat"/"Chats" labels above.
  */
-const MENU_ICON_WIDTH = 22;
+const MENU_ICON_WIDTH = 24;
 /** Inactive section-tab label — a touch darker than the menu rows' subtle gray. */
 const COLOR_TAB_INACTIVE = "var(--color-muted)";
 
@@ -179,12 +179,12 @@ export function SessionDrawer() {
 
             <nav className="flex flex-col py-2 shrink-0">
               <MenuItem
-                icon={<ChatsIcon size="md" />}
+                icon={<ChatsIcon />}
                 label="Chats"
                 onClick={() => setView("chats")}
               />
               <MenuItem
-                icon={<NewChatIcon size="md" />}
+                icon={<NewChatIcon />}
                 label="New chat"
                 onClick={handleNewChat}
               />

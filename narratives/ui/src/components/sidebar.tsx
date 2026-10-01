@@ -36,7 +36,7 @@ export function Sidebar() {
                 : "hover:bg-button-hover text-on-surface-variant"
             }`}
           >
-            <ChatsIcon size="lg" />
+            <ChatsIcon />
           </button>
           </Tooltip>
           {/* Start a fresh chat thread — does NOT delete other sessions; they
@@ -48,7 +48,7 @@ export function Sidebar() {
             onClick={newSession}
             className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant"
           >
-            <NewChatIcon size="md" />
+            <NewChatIcon />
           </button>
           </Tooltip>
         </>
