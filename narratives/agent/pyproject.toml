@@ -26,6 +26,8 @@ license = "Apache-2.0"
 dependencies = [
     "fastapi>=0.141",
     "google-cloud-secret-manager>=2.20",
+    "google-genai>=1.0",
+    "httpx>=0.28",
     "httpx2>=2.13",
     "pydantic-settings>=2.15",
     "requests>=2.32",
@@ -39,6 +41,7 @@ narratives-agent-dev = "narratives_agent.dev:main"
 dev = [
     "mypy>=2.3",
     "pytest>=8.0",
+    "pytest-asyncio>=0.25",
     "ruff>=0.14",
     "types-requests>=2.32",
 ]
@@ -109,14 +112,6 @@ module = [
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-# Branch 6 replaces the hand-rolled Gemini REST client with google-genai.
-module = [
-    "narratives_agent.gemini.client",
-    "narratives_agent.gemini.schemas",
-]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
 # Branch 7 replaces the hand-rolled JSON-RPC client with the official MCP SDK.
 module = [
     "narratives_agent.mcp.capabilities",
@@ -131,3 +126,8 @@ ignore_errors = true
 [tool.pytest.ini_options]
 testpaths = ["src"]
 python_files = ["*_test.py"]
+filterwarnings = [
+    # google-genai 2.25.0 references typing._UnionGenericAlias, deprecated
+    # in Python 3.14. Remove when the SDK stops using it.
+    "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai.types",
+]
