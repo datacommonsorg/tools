@@ -31,9 +31,10 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# SESSION_LOG_TO_FILE turns file logging on with one of these values, compared
-# after stripping and lowercasing, and off with any other value.
-_SESSION_LOG_TO_FILE_ON = ("1", "true", "yes")
+# Boolean environment variables (`GOOGLE_GENAI_USE_VERTEXAI` and
+# `SESSION_LOG_TO_FILE`) turn on with one of these values, compared after
+# stripping and lowercasing, and off with any other value.
+_TRUTHY_ENV_VALUES = ("1", "true", "yes")
 
 
 def _strip_trailing_slashes(value: str) -> str:
@@ -41,20 +42,20 @@ def _strip_trailing_slashes(value: str) -> str:
     return value.rstrip("/")
 
 
-def _is_session_log_to_file_enabled(value: bool | str) -> bool:
-    """Returns whether `value` turns file logging on.
+def _is_truthy_env_value(value: bool | str) -> bool:
+    """Returns whether `value` is one of `_TRUTHY_ENV_VALUES`.
 
     Args:
-        value: The raw SESSION_LOG_TO_FILE string, or the bool the field's
-            default factory computed, which is validated like any input.
+        value: The raw environment string, or the bool the field's default or
+            default factory produced, which is validated like any input.
 
     Returns:
         A bool `value` unchanged; otherwise whether the stripped, lowercased
-        string is one of `_SESSION_LOG_TO_FILE_ON`.
+        string is one of `_TRUTHY_ENV_VALUES`.
     """
     if isinstance(value, bool):
         return value
-    return value.strip().lower() in _SESSION_LOG_TO_FILE_ON
+    return value.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def _default_static_root(data: dict[str, Any]) -> Path:
@@ -81,6 +82,7 @@ def _should_log_session_to_file_by_default(data: dict[str, Any]) -> bool:
 # Trailing slashes are stripped from these strings, so a base URL or path
 # prefix joins with "/<path>" without doubling the separator.
 _NoTrailingSlashStr = Annotated[str, AfterValidator(_strip_trailing_slashes)]
+_EnvBool = Annotated[bool, BeforeValidator(_is_truthy_env_value)]
 
 
 class Settings(BaseSettings):
@@ -188,8 +190,17 @@ class Settings(BaseSettings):
     # zone falls back to UTC.
     timezone: str = "UTC"
 
-    # A short `gemini_api_key_secret` name resolves against this project.
+    # A short `gemini_api_key_secret` name resolves against this project, and
+    # Vertex AI calls run against it when `google_genai_use_vertexai` is true.
     google_cloud_project: str = ""
+
+    # Region for Vertex AI Gemini calls when `google_genai_use_vertexai` is
+    # true.
+    google_cloud_location: str = "us-central1"
+
+    # When true, Gemini calls authenticate with Application Default Credentials
+    # against Vertex AI instead of using a Gemini API key.
+    google_genai_use_vertexai: _EnvBool = False
 
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`
@@ -208,9 +219,9 @@ class Settings(BaseSettings):
     # Files are still written off Cloud Run, because tailing one is the fastest
     # way to debug locally. SESSION_LOG_TO_FILE forces either behavior
     # explicitly.
-    session_log_to_file: Annotated[
-        bool, BeforeValidator(_is_session_log_to_file_enabled)
-    ] = Field(default_factory=_should_log_session_to_file_by_default)
+    session_log_to_file: _EnvBool = Field(
+        default_factory=_should_log_session_to_file_by_default
+    )
 
     @model_validator(mode="before")
     @classmethod

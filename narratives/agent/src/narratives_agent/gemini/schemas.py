@@ -38,8 +38,9 @@ def _strip_additional_properties(schema: dict[str, Any]) -> None:
     """Removes `additionalProperties` from the generated JSON schema.
 
     Pydantic's `extra="forbid"` adds `additionalProperties: false`, which the
-    Gemini API rejects with HTTP 400. Stripping it here keeps the schema
-    compatible with Gemini while retaining strict local Pydantic validation.
+    Gemini Developer API rejects with HTTP 400. Stripping it here keeps the
+    schema compatible with Gemini while retaining strict local Pydantic
+    validation.
     """
     schema.pop("additionalProperties", None)
 
@@ -58,6 +59,8 @@ class ChartItem(BaseModel):
     viz_type: ChartVizType | None = None
     # Required to prevent blank UI headers: forces the model to always
     # generate a descriptive title rather than rendering an empty header strip.
+    # Asking for a title in the prompt alone was not enough; the model dropped
+    # it often enough to notice.
     title: str = Field(description="Descriptive chart title")
     variable_dcids: list[str] | None = None
     place_dcids: list[str] | None = None

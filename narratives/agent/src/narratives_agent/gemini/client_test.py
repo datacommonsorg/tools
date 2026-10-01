@@ -24,7 +24,6 @@ import json
 import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -148,6 +147,7 @@ def gemini(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeGemini]:
     """Routes every SDK client the module builds through a mock transport."""
     client.reset_client()
     monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     monkeypatch.delenv("GOOGLE_CLOUD_LOCATION", raising=False)
     monkeypatch.setattr(client, "get_gemini_api_key", lambda: _FAKE_KEY)
     monkeypatch.setattr(client, "render_prompt", lambda p: f"rendered:{p}")
@@ -367,12 +367,8 @@ def test_vertex_ai_mode_builds_an_adc_client_for_the_project(
     #   the configured location, defaulting to us-central1, and no API key is
     #   resolved.
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "dc-narratives")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", location_env)
-    monkeypatch.setattr(
-        client,
-        "get_settings",
-        lambda: SimpleNamespace(google_cloud_project="dc-narratives"),
-    )
 
     def fail() -> str:
         raise AssertionError("API key resolved in Vertex AI mode")
@@ -397,13 +393,10 @@ async def test_vertex_ai_mode_without_a_project_names_the_variable(
 ) -> None:
     # Test: Vertex AI mode with no project configured.
     # Situation: GOOGLE_GENAI_USE_VERTEXAI is "1" but GOOGLE_CLOUD_PROJECT is
-    #   empty.
+    #   unset.
     # Expectation: The entry point returns an error message mentioning
     #   GOOGLE_CLOUD_PROJECT without instantiating a client.
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "1")
-    monkeypatch.setattr(
-        client, "get_settings", lambda: SimpleNamespace(google_cloud_project="")
-    )
 
     result = await _call(mode)
 

@@ -23,7 +23,9 @@ Verifies that `Settings`:
    `static_root` that equals or contains `agent_root`.
 6. Defaults `session_log_to_file` by `K_SERVICE`, and parses an explicit value
    after stripping and lowercasing it.
-7. Rejects a port that is not a number.
+7. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
+   value after stripping and lowercasing it.
+8. Rejects a port that is not a number.
 """
 
 from pathlib import Path
@@ -66,6 +68,12 @@ def _read_settings(
     [
         pytest.param("DC_API_KEY", f" {_KEY_SHAPED}\n", _KEY_SHAPED, id="str"),
         pytest.param("TIMEZONE", "\tAsia/Tokyo ", "Asia/Tokyo", id="tab"),
+        pytest.param(
+            "GOOGLE_CLOUD_LOCATION",
+            " europe-west4\n",
+            "europe-west4",
+            id="location",
+        ),
         pytest.param("AGENT_PORT", " 6001 ", 6001, id="int"),
         pytest.param(
             "STATIC_ROOT", " /srv/ui/dist ", Path("/srv/ui/dist"), id="path"
@@ -264,6 +272,32 @@ def test_session_log_to_file_explicit_value_overrides_default(
         monkeypatch, {"K_SERVICE": k_service, "SESSION_LOG_TO_FILE": raw}
     )
     assert settings.session_log_to_file is expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, False, id="unset"),
+        pytest.param(" TRUE ", True, id="padded-true"),
+        pytest.param("yes", True, id="yes"),
+        pytest.param("1", True, id="one"),
+        pytest.param(" 0 ", False, id="padded-zero"),
+        pytest.param("false", False, id="false"),
+        pytest.param("on", False, id="unrecognized"),
+    ],
+)
+def test_google_genai_use_vertexai_parses_truthy_values(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: bool
+) -> None:
+    # Test: Default and parsing of `GOOGLE_GENAI_USE_VERTEXAI`.
+    # Situation: `GOOGLE_GENAI_USE_VERTEXAI` is unset, or set to a truthy or
+    #   non-truthy string, with or without surrounding whitespace.
+    # Expectation: When unset or set to any value other than "1", "true", or
+    #   "yes" (in any case), Vertex AI mode is disabled; those three values
+    #   enable it.
+    env = {} if raw is None else {"GOOGLE_GENAI_USE_VERTEXAI": raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.google_genai_use_vertexai is expected
 
 
 @pytest.mark.parametrize("name", ["AGENT_PORT", "MCP_PORT"])

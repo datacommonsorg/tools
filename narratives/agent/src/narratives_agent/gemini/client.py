@@ -49,7 +49,6 @@ In both cases, the API key is removed from the error message.
 
 import copy
 import logging
-import os
 import re
 import threading
 import time
@@ -85,9 +84,6 @@ _NO_PROJECT_ERROR = (
     "Vertex AI mode is enabled by GOOGLE_GENAI_USE_VERTEXAI, but the "
     "GOOGLE_CLOUD_PROJECT environment variable is not set"
 )
-
-_TRUTHY_ENV_VALUES = ("1", "true", "yes")
-_DEFAULT_VERTEX_LOCATION = "us-central1"
 
 _THINKING_LEVELS = {
     "minimal": types.ThinkingLevel.MINIMAL,
@@ -178,12 +174,6 @@ def reset_client() -> None:
         _cached_client = None
 
 
-def _is_vertexai_enabled() -> bool:
-    """Returns whether `GOOGLE_GENAI_USE_VERTEXAI` selects Vertex AI."""
-    value = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "")
-    return value.strip().lower() in _TRUTHY_ENV_VALUES
-
-
 def _build_client(key: _ClientKey) -> genai.Client:
     """Builds an SDK client for the given credential selection."""
     http_options = types.HttpOptions(
@@ -210,15 +200,15 @@ def _get_client() -> genai.Client | str:
     connection pools survive across calls.
     """
     global _cached_client
-    if _is_vertexai_enabled():
-        project = get_settings().google_cloud_project
-        if not project:
+    settings = get_settings()
+    if settings.google_genai_use_vertexai:
+        if not settings.google_cloud_project:
             return _NO_PROJECT_ERROR
-        location = (
-            os.environ.get("GOOGLE_CLOUD_LOCATION", "").strip()
-            or _DEFAULT_VERTEX_LOCATION
+        key = _ClientKey(
+            use_vertexai=True,
+            project=settings.google_cloud_project,
+            location=settings.google_cloud_location,
         )
-        key = _ClientKey(use_vertexai=True, project=project, location=location)
     else:
         api_key = get_gemini_api_key()
         if not api_key:
