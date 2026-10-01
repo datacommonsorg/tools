@@ -35,13 +35,11 @@ ChartVizType = Literal[
 
 
 def _strip_additional_properties(schema: dict[str, Any]) -> None:
-    """Omits `additionalProperties` from the generated JSON schema.
+    """Removes `additionalProperties` from the generated JSON schema.
 
-    `extra="forbid"` emits `additionalProperties: false`, which `google-genai`
-    forwards as `additional_properties: false` inside `responseSchema`. The
-    Gemini Developer API `v1beta` schema protobuf has no such field and rejects
-    the request with HTTP 400, so the key is removed from the wire schema while
-    keeping `extra="forbid"` for local Pydantic validation.
+    Pydantic's `extra="forbid"` adds `additionalProperties: false`, which the
+    Gemini API rejects with HTTP 400. Stripping it here keeps the schema
+    compatible with Gemini while retaining strict local Pydantic validation.
     """
     schema.pop("additionalProperties", None)
 
@@ -58,14 +56,8 @@ class ChartItem(BaseModel):
     model_config = _SCHEMA_CONFIG
 
     viz_type: ChartVizType | None = None
-    # A chart with no title renders a blank header strip, not an
-    # untitled chart: the web components resolve their heading as
-    # `header || title`, both of which are attributes we supply, so
-    # when neither carries text there is nothing to fall back to
-    # and .chart-headers still reserves its 2.2rem. Asking for a
-    # title in the prompt was not enough on its own -- the model
-    # dropped the field often enough to be noticed, and an optional
-    # field in a structured-output schema is genuinely optional.
+    # Required to prevent blank UI headers: forces the model to always
+    # generate a descriptive title rather than rendering an empty header strip.
     title: str = Field(description="Descriptive chart title")
     variable_dcids: list[str] | None = None
     place_dcids: list[str] | None = None

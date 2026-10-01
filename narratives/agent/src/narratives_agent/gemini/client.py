@@ -62,7 +62,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 import httpx
 from google import genai
@@ -82,8 +82,8 @@ _NO_KEY_ERROR = (
 )
 
 _NO_PROJECT_ERROR = (
-    "Vertex AI mode is enabled by GOOGLE_GENAI_USE_VERTEXAI but no project is "
-    "configured: set GOOGLE_CLOUD_PROJECT"
+    "Vertex AI mode is enabled by GOOGLE_GENAI_USE_VERTEXAI, but the "
+    "GOOGLE_CLOUD_PROJECT environment variable is not set"
 )
 
 _TRUTHY_ENV_VALUES = ("1", "true", "yes")
@@ -99,7 +99,7 @@ _DEFAULT_THINKING_LEVEL = "low"
 
 # Upper bound on a single Gemini call, including a full streamed response.
 # `HttpOptions.timeout` is in milliseconds.
-_REQUEST_TIMEOUT_MS = 300_000
+_REQUEST_TIMEOUT_MS = 300_000  # 5 minutes
 
 # All Gemini calls share one SDK client so that they reuse open TLS
 # connections instead of opening a new one for each call. The keep-alive pool
@@ -122,8 +122,15 @@ type Message = types.Content | dict[str, Any]
 type ResponseSchema = type[BaseModel] | dict[str, Any]
 type StreamItem = dict[str, str] | str
 
-# (use_vertexai, project, location, api_key) — the inputs that select a client.
-type _ClientKey = tuple[bool, str, str, str]
+
+class _ClientKey(NamedTuple):
+    """The credential inputs that select a cached SDK client."""
+
+    use_vertexai: bool
+    project: str = ""
+    location: str = ""
+    api_key: str = ""
+
 
 _client_lock = threading.Lock()
 _cached_client: tuple[_ClientKey, genai.Client] | None = None
@@ -179,20 +186,21 @@ def _is_vertexai_enabled() -> bool:
 
 def _build_client(key: _ClientKey) -> genai.Client:
     """Builds an SDK client for the given credential selection."""
-    use_vertexai, project, location, api_key = key
     http_options = types.HttpOptions(
         timeout=_REQUEST_TIMEOUT_MS,
         client_args={"limits": _CONNECTION_LIMITS},
         async_client_args={"limits": _CONNECTION_LIMITS},
     )
-    if use_vertexai:
+    if key.use_vertexai:
         return genai.Client(
             vertexai=True,
-            project=project,
-            location=location,
+            project=key.project,
+            location=key.location,
             http_options=http_options,
         )
-    return genai.Client(api_key=api_key, http_options=http_options)
+    return genai.Client(
+        vertexai=False, api_key=key.api_key, http_options=http_options
+    )
 
 
 def _get_client() -> genai.Client | str:
@@ -210,12 +218,12 @@ def _get_client() -> genai.Client | str:
             os.environ.get("GOOGLE_CLOUD_LOCATION", "").strip()
             or _DEFAULT_VERTEX_LOCATION
         )
-        key: _ClientKey = (True, project, location, "")
+        key = _ClientKey(use_vertexai=True, project=project, location=location)
     else:
         api_key = get_gemini_api_key()
         if not api_key:
             return _NO_KEY_ERROR
-        key = (False, "", "", api_key)
+        key = _ClientKey(use_vertexai=False, api_key=api_key)
 
     with _client_lock:
         if _cached_client is None or _cached_client[0] != key:
@@ -229,7 +237,7 @@ def _get_client() -> genai.Client | str:
 def _active_api_key() -> str:
     """Returns the API key of the cached client, or "" in Vertex AI mode."""
     with _client_lock:
-        return _cached_client[0][3] if _cached_client else ""
+        return _cached_client[0].api_key if _cached_client else ""
 
 
 def _redact(text: str) -> str:
@@ -440,7 +448,7 @@ def _prepare_call(
 
 
 def _dump_part(part: types.Part) -> dict[str, Any]:
-    """Returns a part in REST shape, preserving any thought signature."""
+    """Serializes an SDK `types.Part` in REST shape, keeping any signature."""
     return part.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 

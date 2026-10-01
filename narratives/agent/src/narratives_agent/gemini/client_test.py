@@ -431,6 +431,7 @@ def test_the_client_is_reused_until_its_credentials_change(
     client.gemini_request(_MESSAGES, "", _MODEL)
 
     assert len(gemini.constructions) == 2
+    assert gemini.constructions[0]["vertexai"] is False
     assert gemini.sent[0].headers["x-goog-api-key"] == _FAKE_KEY
     assert _FAKE_KEY not in str(gemini.sent[0].url)
 
