@@ -14,7 +14,7 @@ describe("sourceLabel", () => {
     expect(sourceLabel(3, SOURCES)).toBe("OECD");
   });
 
-  it("is 1-based, matching the numbering SourcesList renders", () => {
+  it("is 1-based, matching the order the Citations list renders", () => {
     // [1] is sources[0]. Off-by-one here would label every chip with its
     // neighbor's source, which reads as correct and is not.
     expect(sourceLabel(2, SOURCES)).not.toBe("World Development Indicators");
@@ -39,7 +39,7 @@ describe("sourceLabel", () => {
 });
 
 describe("isCitable", () => {
-  it("accepts every number the Sources list actually renders", () => {
+  it("accepts every number the Citations list actually renders", () => {
     // The whole numbering contract: [n] is row n, never rewritten, so every
     // in-range marker links and no in-range source is skipped.
     expect(isCitable(1, SOURCES)).toBe(true);
