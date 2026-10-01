@@ -676,6 +676,8 @@ pnpm i
 
 | Command | What it does |
 | --- | --- |
+| `pnpm dev:ui` | Start the frontend Vite development server on port 3000 (`ui/`) |
+| `pnpm dev:agent` | Stage config and start the Python agent development server on port 5001 (`agent/`) |
 | `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
 | `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
 | `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
@@ -704,12 +706,13 @@ instance. Real Gemini, real MCP tools, real charts.
 ```sh
 pnpm install
 
+# Point at your deployed Cloud Run instance
 cat > ui/.env.local <<'EOF'
 BACKEND_URL=https://<your-instance>.run.app
 AGENT_URL=https://<your-instance>.run.app
 EOF
 
-pnpm -C ui dev      # http://localhost:3000
+pnpm dev:ui         # http://localhost:3000
 ```
 
 Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
@@ -721,10 +724,9 @@ You need Node 24 and nothing else — no Docker, no Python, no gcloud.
 
 ### Path B — the agent locally
 
-Run every command in this section from `narratives/`, in one shell, so the
-variables you export reach the server.
+Run commands in this section from `narratives/`.
 
-**Install:**
+**Install dependencies:**
 
 ```sh
 (cd agent && uv sync)   # creates agent/.venv and installs from uv.lock
@@ -733,84 +735,41 @@ variables you export reach the server.
 There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
 uses it.
 
-Choose what it talks to — the same three backends, selected the same way, by URL.
+**1. Configure local environment:**
 
-**Public Data Commons.** Nothing to provision, but note it takes **two** hosts:
-
-```sh
-export MCP_SERVER_URL="https://api.datacommons.org/mcp"
-export DC_API_KEY="..."
-export DATA_PLANE_URL="https://api.datacommons.org"      # MCP + versioned REST
-export DATA_PLANE_WEB_URL="https://datacommons.org"      # website routes the charts call
-```
-
-`api.datacommons.org` serves `/v1`, `/v2` and `/mcp`. It does **not** serve the
-website routes the chart web components fetch — `/api/observations/series`,
-`/api/place/name`, `/core/api/...` — which live on `datacommons.org` only. Set
-only `DATA_PLANE_URL` and the agent answers correctly with real numbers while
-every chart silently 404s, because the failure is entirely browser-side:
-
-```json
-{"message":"The current request is not defined by this API.","code":404}
-```
-
-`DATA_PLANE_WEB_URL` defaults to `DATA_PLANE_URL`, so a deployed plane needs only
-the one URL — one container serves both MCP and the website.
-
-**A deployed data plane:**
+Copy `.env.example` to `.env.local` and add your Gemini API key:
 
 ```sh
-export MCP_SERVER_URL="https://<data-plane>-uc.a.run.app/mcp"
-export DATA_PLANE_URL="https://<data-plane>-uc.a.run.app"
+cp .env.example .env.local
+$EDITOR .env.local      # Add your GEMINI_API_KEY="..."
 ```
 
-> A private data plane expects a Google-signed ID token, which the agent mints
-> from the **metadata server** — unavailable off GCP, so `attach_auth` is a no-op
-> on a laptop and the call is refused. Either widen that service's ingress
-> temporarily, or run against public Data Commons. Local development against a
-> private backend is not a supported path.
+The template is pre-configured with public Data Commons endpoints:
+```sh
+MCP_SERVER_URL="https://api.datacommons.org/mcp"
+DATA_PLANE_URL="https://api.datacommons.org"
+DATA_PLANE_WEB_URL="https://datacommons.org"
+BACKEND_URL="https://datacommons.org"
+AGENT_URL="http://localhost:5001"
+```
 
-**Config and keys:**
+*(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL` and `DATA_PLANE_URL` to your Cloud Run service URL.)*
+
+**2. Start local development:**
+
+Run the agent and UI in two separate terminals:
 
 ```sh
-export CONFIG_URL="https://storage.googleapis.com/<bucket>/agent-config.json"
-export BRAND_CONFIG_URL="https://storage.googleapis.com/<bucket>"
+# Terminal 1: backend agent (port 5001)
+pnpm dev:agent
+
+# Terminal 2: frontend Vite dev server (port 3000)
+pnpm dev:ui
 ```
 
-The Gemini key is **not** an environment variable. `get_gemini_api_key()` resolves
-`GEMINI_API_KEY_SECRET` through Secret Manager and falls back to
-`gemini.api_key` in the config document — which is the local path, since Secret
-Manager needs credentials the laptop may not have:
+`pnpm dev:agent` automatically stages `agent/config.json` from `defaults/` + `prompts/` (incorporating your `GEMINI_API_KEY` from `.env.local`) before starting the Uvicorn server with auto-reload and `--env-file ../.env.local`.
 
-```json
-{ "gemini": { "api_key": "your-key" } }
-```
-
-The secret payload stores the bare API key string rather than JSON. If Secret
-Manager still holds a legacy `["<key>"]` JSON array, the loader rejects it and
-logs an error instructing you to re-run `./deploy.sh --bootstrap-secrets`.
-
-Do not commit a real key in `agent-config.json`; the checked-in files define
-the schema shape only.
-
-**Serve the SPA from the agent**, so routing matches production:
-
-```sh
-pnpm build
-```
-
-Skip it if you only care about the API — `/` will 404 and `/agent/*` still works.
-
-**Start the server:**
-
-```sh
-(cd agent && uv run narratives-agent-dev)   # http://localhost:5001
-```
-
-It listens on `127.0.0.1` and restarts when a source file changes. Set
-`AGENT_PORT` to use another port. Stop it with Ctrl+C.
-
-**Check it**, from a second terminal:
+**Check it**, from a terminal:
 
 ```sh
 curl -s localhost:5001/agent/health | jq    # mcp_url is the resolved MCP endpoint
