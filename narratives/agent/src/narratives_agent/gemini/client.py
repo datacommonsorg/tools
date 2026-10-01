@@ -346,17 +346,22 @@ def _build_config(
     include_thoughts: bool,
 ) -> types.GenerateContentConfig:
     """Builds the `GenerateContentConfig` shared by every entry point."""
+    thinking_config: types.ThinkingConfig | None = None
+    if thinking_level:
+        thinking_config = build_thinking_config(
+            thinking_level, include_thoughts
+        )
+    elif include_thoughts:
+        # No level given: request thought summaries only, so the model keeps
+        # its own default thinking level.
+        thinking_config = types.ThinkingConfig(include_thoughts=True)
     return types.GenerateContentConfig(
         temperature=temperature,
         system_instruction=(
             render_prompt(system_instruction) if system_instruction else None
         ),
         tools=_normalize_tools(tools),
-        thinking_config=(
-            build_thinking_config(thinking_level, include_thoughts)
-            if thinking_level
-            else None
-        ),
+        thinking_config=thinking_config,
         response_mime_type=(
             "application/json" if response_schema is not None else None
         ),

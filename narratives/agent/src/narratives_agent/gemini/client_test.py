@@ -663,17 +663,29 @@ def test_an_empty_response_omits_candidates(gemini: _FakeGemini) -> None:
 @pytest.mark.parametrize(
     "mode", ["sync_thought_streaming", "async_thought_streaming"]
 )
+@pytest.mark.parametrize(
+    ("thinking_level", "expected_thinking_config"),
+    [
+        (None, {"include_thoughts": True}),
+        ("medium", {"thinking_level": "MEDIUM", "include_thoughts": True}),
+    ],
+)
 async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
-    gemini: _FakeGemini, mode: str
+    gemini: _FakeGemini,
+    mode: str,
+    thinking_level: str | None,
+    expected_thinking_config: dict[str, Any],
 ) -> None:
     # Test: Thought streaming with a function call.
     # Situation: The stream delivers two thought chunks, a text chunk, and a
     #   function call carrying a thought signature, with usage on the final
-    #   chunk.
+    #   chunk, when thinking_level is either omitted (None) or explicitly set.
     # Expectation: The callback receives each thought in order; the result
     #   holds the function call (with its signature) followed by the text;
     #   the usage is accumulated once; and tools and thinking settings are
-    #   sent on a streamGenerateContent request with thoughts included.
+    #   sent on a streamGenerateContent request with thoughts included. When
+    #   thinking_level is omitted, no level is sent, so the model uses its
+    #   default.
     signature = base64.b64encode(_SIGNATURE).decode()
     gemini.respond(
         _answer(
@@ -712,7 +724,7 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     result = await _call(
         mode,
         tools=[tool],
-        thinking_level="low",
+        thinking_level=thinking_level,
         session_logger=session_logger,
         thought_callback=thoughts.append,
     )
@@ -733,10 +745,9 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
         "get_observations"
     )
     # The SDK sends ThinkingConfig fields in snake_case (see above).
-    assert body["generationConfig"]["thinkingConfig"] == {
-        "thinking_level": "LOW",
-        "include_thoughts": True,
-    }
+    assert (
+        body["generationConfig"]["thinkingConfig"] == expected_thinking_config
+    )
 
 
 def test_returned_function_call_parts_can_be_sent_back_unchanged(
