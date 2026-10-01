@@ -160,6 +160,31 @@ export interface ProvenanceItem {
   license?: string;
 }
 
+/**
+ * Labels every answer's citations so one number means one source thread-wide.
+ *
+ * A source keeps the number it was first given; anything new takes the next
+ * free one. Returns one array per turn, parallel to that turn's `provenance`.
+ *
+ * `provenance` is typed as required and still read defensively: turns are
+ * rehydrated from localStorage, which `chat_session_context` parses and
+ * filters by `status` alone, so one persisted by an older build arrives
+ * without the array the type promises.
+ */
+export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
+  const assigned = new Map<string, number>();
+  let next = 1;
+  return turns.map((turn) =>
+    (turn.provenance ?? []).map((source) => {
+      const key = source.url || source.name;
+      const existing = assigned.get(key);
+      if (existing !== undefined) return existing;
+      assigned.set(key, next);
+      return next++;
+    }),
+  );
+}
+
 /** Lifecycle of one chat turn, driven by the agent's status events. */
 export type TurnStatus =
   | "idle"

@@ -2,6 +2,7 @@
  * @fileoverview Renders an inline numbered citation chip.
  */
 
+import { createContext, useContext } from "react";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 import { Tooltip } from "./tooltip";
 
@@ -9,11 +10,11 @@ import { Tooltip } from "./tooltip";
  * Small inline pill that renders [N] inside the markdown body as a
  * clickable badge linking to the matching entry in the Sources block.
  *
- * The number is never rewritten. `[n]` is position n of the provenance list,
- * which is the same numbered list the synthesis prompt was given, and the same
- * order SourcesList renders. One numbering, three places, nothing to keep in
- * sync -- so a marker this file never sees (inside an element with no override
- * of its own, or in exported or copied text) is still correct, just not a link.
+ * The agent's own numbering is never rewritten: `[n]` is position n of this
+ * turn's provenance, the same list the synthesis prompt was given. Only the
+ * label that position wears changes, from the {@link CitationNumbering} an
+ * answer panel provides, so the chip, its anchor and its row cannot
+ * disagree.
  *
  * Visual spec (Figma node 3427-16728, token "ts1"):
  *   color: #175C75 (AI Dark Blue)
@@ -22,6 +23,40 @@ import { Tooltip } from "./tooltip";
  */
 
 const COLOR = "var(--color-brand-primary)";
+
+/** How one answer's citations are labelled and anchored on the page. */
+export interface CitationNumbering {
+  /** Display label for each provenance position: `numbers[n - 1]` labels `[n]`. */
+  numbers?: number[];
+  /** Which turn this answer is, so its anchors cannot collide with another's. */
+  turnIndex?: number;
+}
+
+const CitationNumberingContext = createContext<CitationNumbering>({});
+
+/** Supplies the labels and anchor scope for one answer's citations. */
+export const CitationNumberingProvider = CitationNumberingContext.Provider;
+
+/** The numbering in force for the answer currently rendering. */
+export function useCitationNumbering(): CitationNumbering {
+  return useContext(CitationNumberingContext);
+}
+
+/** The label shown for the agent's `[n]`, which is `n` when nothing remapped it. */
+export function displayCitationNumber(n: number, numbers?: number[]): number {
+  return numbers?.[n - 1] ?? n;
+}
+
+/**
+ * The DOM id of a Citations row. Scoped by turn as well as number: a source
+ * cited twice keeps one label, so the label alone is not unique.
+ */
+export function citationAnchorId(
+  turnIndex: number | undefined,
+  shown: number,
+): string {
+  return `citation-${turnIndex ?? 0}-${shown}`;
+}
 
 /**
  * Name of the source a `[n]` chip points at.
@@ -36,11 +71,15 @@ export function sourceLabel(n: number, sources?: ProvenanceItem[]): string {
 }
 
 /** Accessible name for a chip: the number, plus the source when we know it. */
-function citationAriaLabel(n: number, sources?: ProvenanceItem[]): string {
+function citationAriaLabel(
+  n: number,
+  shown: number,
+  sources?: ProvenanceItem[],
+): string {
   const label = sourceLabel(n, sources);
   // Past the end of the list sourceLabel already returns "Source n"; prefixing
   // it again would have a screen reader announce "Source 9: Source 9".
-  return label === `Source ${n}` ? label : `Source ${n}: ${label}`;
+  return label === `Source ${n}` ? label : `Source ${shown}: ${label}`;
 }
 
 /**
@@ -62,18 +101,22 @@ export function CitationChip({
   n: number;
   sources?: ProvenanceItem[];
 }) {
+  const { numbers, turnIndex } = useCitationNumbering();
+
   if (!isCitable(n, sources)) {
     return <>[{n}]</>;
   }
 
+  const shown = displayCitationNumber(n, numbers);
+  const anchor = citationAnchorId(turnIndex, shown);
   const label = sourceLabel(n, sources);
   return (
     <Tooltip label={label}>
     <a
-      href={`#source-${n}`}
+      href={`#${anchor}`}
       onClick={(e) => {
         // Smooth scroll instead of jumping abruptly
-        const target = document.getElementById(`source-${n}`);
+        const target = document.getElementById(anchor);
         if (target) {
           e.preventDefault();
           target.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -83,9 +126,9 @@ export function CitationChip({
       style={{ color: COLOR, fontWeight: 500 }}
       // The number alone tells a screen-reader user nothing about where the
       // claim came from; the visible tooltip's text belongs here too.
-      aria-label={citationAriaLabel(n, sources)}
+      aria-label={citationAriaLabel(n, shown, sources)}
     >
-      [{n}]
+      [{shown}]
     </a>
     </Tooltip>
   );

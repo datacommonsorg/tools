@@ -2,7 +2,7 @@
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { ChartTile } from "./tile_chart";
 import { DisclaimerNote } from "./note_disclaimer";
@@ -15,6 +15,7 @@ import { ExportPdfButton } from "./button_export_pdf";
 import { FollowUpQuestions } from "./questions_follow_up";
 import { ResponseCard } from "./card_response";
 import { Tooltip } from "./tooltip";
+import { CitationNumberingProvider } from "./chip_citation";
 import { SourcesList } from "./list_sources";
 import { downloadPdf } from "../utils/download_pdf";
 import { Toast } from "./toast";
@@ -32,6 +33,15 @@ interface AnswerPanelProps {
   turn: ChatTurn;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
+  /**
+   * Display label for each of this turn's provenance rows, as
+   * `assignCitationNumbers` worked them out across the whole thread. Left
+   * undefined the panel falls back to numbering itself from 1, which is what a
+   * single panel rendered on its own should do.
+   */
+  citationNumbers?: number[];
+  /** Which turn this is, so its anchors cannot collide with another's. */
+  turnIndex?: number;
 }
 
 const COLOR_BORDER = "var(--color-border)";
@@ -61,6 +71,8 @@ export function AnswerPanel({
   turn,
   isStreaming,
   onAsk,
+  citationNumbers,
+  turnIndex,
 }: AnswerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const hasCharts = !!turn.chartConfig;
@@ -71,11 +83,12 @@ export function AnswerPanel({
    * in here. Position n is `[n]`, in the prose and in the list below, because
    * the synthesis prompt was handed this same list already numbered.
    *
-   * Nothing is filtered or renumbered here, on purpose. Either would make what
+   * Nothing is filtered or dropped here, on purpose. Either would make what
    * the reader sees depend on the agent having cited exactly right, and it does
    * not: it under-cites, and a source dropped for want of a marker leaves its
    * figures with no attribution at all. Selection belongs where the evidence
-   * is -- the tool results -- not in the renderer.
+   * is -- the tool results -- not in the renderer. Relabelling is a different
+   * thing: `citationNumbers` changes only which numeral a position wears.
    */
   const hasSources = turn.provenance.length > 0;
   // One export state for the card: the toolbar pill and the in-content button
@@ -83,6 +96,12 @@ export function AnswerPanel({
   // single confirmation rather than each raising their own.
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
+  // Memoized: a fresh object re-renders every chip on any state change here,
+  // including the export flags above.
+  const numbering = useMemo(
+    () => ({ numbers: citationNumbers, turnIndex }),
+    [citationNumbers, turnIndex],
+  );
 
   const onExport = async () => {
     if (exporting) return;
@@ -96,6 +115,7 @@ export function AnswerPanel({
   };
 
   return (
+    <CitationNumberingProvider value={numbering}>
     <div
       ref={panelRef}
       className="self-start shrink-0 w-full max-w-4xl flex flex-col overflow-hidden"
@@ -167,7 +187,13 @@ export function AnswerPanel({
         />
 
         {/* 2. Sources */}
-        {hasSources && <SourcesList sources={turn.provenance} />}
+        {hasSources && (
+          <SourcesList
+            sources={turn.provenance}
+            numbers={citationNumbers}
+            turnIndex={turnIndex}
+          />
+        )}
 
         {/* 3. Charts */}
         {hasCharts && (
@@ -214,6 +240,7 @@ export function AnswerPanel({
         <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
       )}
     </div>
+    </CitationNumberingProvider>
   );
 }
 
