@@ -131,7 +131,7 @@ lists only what is specific to — or stricter in — Dataweaver:
 CSS Modules only (`*.module.scss`), imported as
 `import s from './x.module.scss'`.
 
-`~/styles/includes` (breakpoint / helper / z-index mixins) is **auto-injected**
+~/styles/includes (breakpoint / helper / typography / z-index / effect mixins, plus the SCSS tokens) is auto-injected.
 into every module via `next.config.ts` `additionalData` — do **not** re-`@use`
 it. Reach for these helpers before hand-rolling a media query or pseudo-class;
 check `~/styles/includes/_helpers.module.scss` for the full set:
@@ -152,6 +152,10 @@ check `~/styles/includes/_helpers.module.scss` for the full set:
 - 2-space indent. SCSS strings use double quotes; plain `.css` uses single
   quotes (Biome owns `.css`, Stylelint owns `.scss`).
 - No redundant nesting selectors (Stylelint enforces).
+- **Mixin includes go first in the block**, followed by a blank line, then the
+  plain declarations — e.g. `@include type-body-medium;` before `color`. This
+  applies to declaration-only mixins (`type-*`); mixins that take a content
+  block (`hover`, `breakpoint`, `prefers-motion`) stay at the end.
 
 ### 3.2 Class naming vocabulary
 
@@ -238,11 +242,10 @@ skip layout/paint).
 - Prefer **grid-stack** (`display: grid` + `grid-area: 1 / 1`) over absolute
   positioning to overlap siblings.
 - When removing a property at a breakpoint, use `unset`, not a hardcoded zero.
-- **Don't restate the reset.** `styles/core/_reset.scss` already neutralises
-  margins, `button` chrome, `a` decoration, list bullets, etc. Check it before
-  adding `padding: 0` / `border: 0` / `background: none`.
-- Typography mixins live in `~/styles/typography.module.scss` — `@use` it where
-  needed (it isn't part of the auto-injected includes).
+- Typography mixins (`type-*`) live in
+  `~/styles/includes/_typography.module.scss` and are auto-injected with the
+  rest of `~/styles/includes` — call `@include type-*` directly; never `@use`
+  the file or set a literal `font-size` / `font-weight`.
 - Cascade layers, low → high: `reset, root, primitive, base`
   (`~/styles/layers.css`).
 
