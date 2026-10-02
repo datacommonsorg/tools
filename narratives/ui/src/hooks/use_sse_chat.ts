@@ -344,28 +344,37 @@ export async function* parseSseStream(
   // Set when a chunk ends in CR, which is held back until the next chunk
   // shows whether it is the first half of a CRLF pair.
   let pendingCr = false;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    let chunk = decoder.decode(value, { stream: true });
-    if (pendingCr) chunk = "\r" + chunk;
-    pendingCr = chunk.endsWith("\r");
-    if (pendingCr) chunk = chunk.slice(0, -1);
-    // A separator that straddles the previous chunk and this one starts in
-    // the last character of the existing buffer, so the search starts there.
-    let searchFrom = Math.max(
-      0,
-      buffer.length - (SSE_EVENT_SEPARATOR.length - 1),
-    );
-    buffer += normalizeLineEndings(chunk);
-    let idx;
-    while ((idx = buffer.indexOf(SSE_EVENT_SEPARATOR, searchFrom)) >= 0) {
-      const frame = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + SSE_EVENT_SEPARATOR.length);
-      searchFrom = 0;
-      const event = decodeFrame(frame);
-      if (event) yield event;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      let chunk = decoder.decode(value, { stream: true });
+      if (pendingCr) chunk = "\r" + chunk;
+      pendingCr = chunk.endsWith("\r");
+      if (pendingCr) chunk = chunk.slice(0, -1);
+      // A separator that straddles the previous chunk and this one starts in
+      // the last character of the existing buffer, so the search starts
+      // there.
+      let searchFrom = Math.max(
+        0,
+        buffer.length - (SSE_EVENT_SEPARATOR.length - 1),
+      );
+      buffer += normalizeLineEndings(chunk);
+      let idx;
+      while ((idx = buffer.indexOf(SSE_EVENT_SEPARATOR, searchFrom)) >= 0) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + SSE_EVENT_SEPARATOR.length);
+        searchFrom = 0;
+        const event = decodeFrame(frame);
+        if (event) yield event;
+      }
     }
+  } finally {
+    // This block runs even when the caller stops reading early. It cancels
+    // the download and releases the stream. If the stream has already
+    // failed, `cancel` returns a rejected promise, which is ignored.
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 }
 

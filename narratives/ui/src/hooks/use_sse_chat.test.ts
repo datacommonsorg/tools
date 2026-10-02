@@ -147,6 +147,51 @@ describe("parseSseStream", () => {
 
     expect(events).toEqual([{ event: "heartbeat", data: {} }]);
   });
+
+  it("cancels and releases the stream when the caller stops early", async () => {
+    // Test: Cleanup when iteration ends before the stream does.
+    // Situation: The stream holds two frames and stays open, and the caller
+    //   breaks out of the loop after the first event.
+    // Expectation: The stream is canceled, so the response stops
+    //   downloading, and it is no longer locked to the reader.
+    const encoder = new TextEncoder();
+    let canceled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(frame("status", { phase: "mcp" })));
+        controller.enqueue(encoder.encode(frame("content", { text: "x" })));
+      },
+      cancel() {
+        canceled = true;
+      },
+    });
+
+    for await (const event of parseSseStream(stream.getReader())) {
+      expect(event.event).toBe("status");
+      break;
+    }
+
+    expect(canceled).toBe(true);
+    expect(stream.locked).toBe(false);
+  });
+
+  it("releases the stream and keeps the original error when a read fails", async () => {
+    // Test: Cleanup when the stream fails.
+    // Situation: The stream fails with a network error before any frame
+    //   arrives.
+    // Expectation: The parser rejects with that network error, not with an
+    //   error from the cleanup, and the stream is no longer locked.
+    const stream = failingStreamOf([], new TypeError("network error"));
+
+    const consume = async () => {
+      for await (const _event of parseSseStream(stream.getReader())) {
+        // The stream yields no events.
+      }
+    };
+
+    await expect(consume()).rejects.toThrow("network error");
+    expect(stream.locked).toBe(false);
+  });
 });
 
 describe("applyEvent", () => {
