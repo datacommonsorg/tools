@@ -8,8 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "lint": "pnpm run lint:type-check && pnpm --dir .. run lint:biome",
+    "lint:type-check": "tsc --noEmit",
+    "fix": "pnpm --dir .. run fix:ui",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
