@@ -11,9 +11,7 @@ const DEFAULT_AGENT_URL = 'http://localhost:5001';
 export default defineConfig(({mode}) => {
   const envDir = path.resolve(__dirname, '..');
   // Load environment variables from narratives/.env.local
-  const env = {
-    ...loadEnv(mode, envDir, ''),
-  };
+  const env = loadEnv(mode, envDir, '');
   const backendProxy = {
     target: env.BACKEND_URL || DEFAULT_BACKEND_URL,
     changeOrigin: true,

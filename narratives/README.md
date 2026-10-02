@@ -707,7 +707,7 @@ instance. Real Gemini, real MCP tools, real charts.
 pnpm install
 
 # Point at your deployed Cloud Run instance
-cp .env.example .env.local
+cp .env.local.example .env.local
 $EDITOR .env.local
 # Set BACKEND_URL and AGENT_URL to your deployed instance:
 #   BACKEND_URL=https://<your-instance>.run.app
@@ -738,10 +738,10 @@ uses it.
 
 **1. Configure local environment:**
 
-Copy `.env.example` to `.env.local` and add your Gemini API key:
+Copy `.env.local.example` to `.env.local` and add your Gemini API key:
 
 ```sh
-cp .env.example .env.local
+cp .env.local.example .env.local
 $EDITOR .env.local      # Add your GEMINI_API_KEY="..."
 ```
 
@@ -754,7 +754,8 @@ BACKEND_URL="https://datacommons.org"
 AGENT_URL="http://localhost:5001"
 ```
 
-*(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL` and `DATA_PLANE_URL` to your Cloud Run service URL.)*
+*(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL`
+and `DATA_PLANE_URL` to your Cloud Run service URL.)*
 
 **2. Start local development:**
 
@@ -768,7 +769,10 @@ pnpm dev:agent
 pnpm dev:ui
 ```
 
-`pnpm dev:agent` automatically stages `agent/config.json` from `defaults/` + `prompts/` (incorporating your `GEMINI_API_KEY` from `.env.local`) before starting the Uvicorn server with auto-reload and `--env-file ../.env.local`.
+`pnpm dev:agent` (or `uv run narratives-agent-dev`) loads `.env.local` and
+stages `agent/config.json` from `defaults/` + `config/` + `prompts/`
+(incorporating your `GEMINI_API_KEY`) before starting the Uvicorn server with
+auto-reload.
 
 **Check it**, from a terminal:
 
@@ -913,6 +917,7 @@ structured JSON queryable by `session_id` and `event_type`.
 ```
 README.md                  this file — the only prose doc in the repo
 deploy.sh                  the one deploy entry point; no --instance flag
+.env.local.example         template for local .env.local development settings
 
 config/                    YOURS — this deployment's settings and overrides
   instance.env             required: project, region, backend, access
@@ -921,6 +926,7 @@ config/                    YOURS — this deployment's settings and overrides
   prompts/  assets/        optional overrides
 defaults/                  upstream baseline; config/ is laid over this
 schemas/                   JSON Schemas + example branding — code, not config
+scripts/                   build-time static asset staging (stage_static.mjs)
 
 agent/                     app plane — API + SPA, one uvicorn process
   pyproject.toml           direct dependencies; ruff, mypy and pytest config
