@@ -1,6 +1,7 @@
 /**
  * @fileoverview Tests for the SSE chat hook: the typed frame parser, the turn
- * reducer, and the rule that a turn is finished only by a terminal event.
+ * reducer, the rule that a turn is finished only by a terminal event, and the
+ * signed transcript the hook stores and sends back.
  */
 
 import { act, renderHook } from "@testing-library/react";
@@ -8,19 +9,47 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   INTERRUPTED_TURN_ERROR,
+  TRANSCRIPT_REJECTED_ERROR,
   applyEvent,
+  applySignedWindow,
   parseSseStream,
+  transcriptRequestFields,
   useSseChat,
   type ChatStreamEvent,
   type ChatTurn,
+  type ConversationStateSlots,
+  type WireTurn,
 } from "./use_sse_chat";
 
-const TERMINAL_FIELDS = {
-  idempotency_key: "key-1",
-  hmac: "",
-  state_slots: { scopes: [] },
-  compacted_summary: null,
+/** Represents the JSON body that the hook posts to the agent. */
+interface WireRequest {
+  message: string;
+  idempotency_key: string;
+  turns: WireTurn[];
+  compacted_summary: string | null;
+}
+
+/** Parses a posted body once into its declared shape. */
+function parseRequest(body: unknown): WireRequest {
+  return JSON.parse(String(body)) as WireRequest;
+}
+
+const TERMINAL_FIELDS = { idempotency_key: "key-1" };
+
+const SLOTS: ConversationStateSlots = {
+  scopes: [
+    {
+      places: { "country/FRA": "France" },
+      parent_place: null,
+      child_place_type: null,
+      variables: { Count_Person: "Total Population" },
+      date_range: ["2023", "2023"],
+    },
+  ],
 };
+
+/** Returns a 64-character hex signature made of one repeated digit. */
+const sig = (digit: string): string => digit.repeat(64);
 
 /** Encodes one frame the way the agent does: CRLF line endings. */
 function frame(event: string, data: unknown, id?: number): string {
@@ -80,6 +109,114 @@ const blankTurn = (): ChatTurn => ({
   thoughts: [],
   text: "",
   provenance: [],
+});
+
+/** Returns a completed turn the agent signed at the given index. */
+const signedTurn = (
+  index: number,
+  overrides: Partial<ChatTurn> = {},
+): ChatTurn => ({
+  ...blankTurn(),
+  userMessage: `Question ${index}`,
+  text: `Answer ${index}`,
+  status: "done",
+  idempotencyKey: `key-${index}`,
+  turnIndex: index,
+  hmac: sig(String(index)),
+  stateSlots: SLOTS,
+  compactedSummary: null,
+  ...overrides,
+});
+
+describe("transcriptRequestFields", () => {
+  it("sends only signed turns, verbatim, with the latest summary", () => {
+    // Test: Verify the selection and wire mapping of context turns.
+    // Situation: Two signed turns (the second under a summary) are mixed with
+    //   an error turn, a stopped turn, and an unsigned complete turn.
+    // Expectation: Only the signed turns are sent, in order, with the query,
+    //   answer, and state slots exactly as stored, and the summary comes from
+    //   the last signed turn.
+    const turns: ChatTurn[] = [
+      signedTurn(0),
+      { ...blankTurn(), status: "error", error: "failed" },
+      signedTurn(1, { compactedSummary: "Earlier turns." }),
+      { ...signedTurn(2), stopped: true },
+      { ...blankTurn(), status: "done", text: "Unsigned answer" },
+    ];
+
+    expect(transcriptRequestFields(turns)).toEqual({
+      turns: [0, 1].map((index) => ({
+        turn_index: index,
+        idempotency_key: `key-${index}`,
+        user_query: `Question ${index}`,
+        model_response: `Answer ${index}`,
+        state_slots: SLOTS,
+        hmac: sig(String(index)),
+      })),
+      compacted_summary: "Earlier turns.",
+    });
+  });
+
+  it("sends an empty window when no turn is signed", () => {
+    // Test: Verify the request fields for the first turn of a conversation.
+    // Situation: The turn list is empty.
+    // Expectation: Both the turns list and the compacted summary are empty.
+    expect(transcriptRequestFields([])).toEqual({
+      turns: [],
+      compacted_summary: null,
+    });
+  });
+});
+
+describe("applySignedWindow", () => {
+  it("re-signs retained turns and unsigns compacted ones", () => {
+    // Test: Verify that applying a signed window updates turns after
+    //   compaction.
+    // Situation: Two signed turns and an in-flight turn exist, and the
+    //   terminal event's window drops turn 0 and re-signs turn 1 under a new
+    //   summary.
+    // Expectation: Turn 0 loses its signature, turn 1 takes the new one and
+    //   drops its stored summary, and the in-flight turn receives its index,
+    //   signature, slots, and the summary.
+    const turns = [signedTurn(0), signedTurn(1), blankTurn()];
+
+    const next = applySignedWindow(turns, 2, {
+      state: "complete",
+      idempotency_key: "key-2",
+      turn_index: 2,
+      hmac: sig("c"),
+      state_slots: SLOTS,
+      compacted_summary: "Turn 0 summary.",
+      window: [
+        { turn_index: 1, idempotency_key: "key-1", hmac: sig("b") },
+        { turn_index: 2, idempotency_key: "key-2", hmac: sig("c") },
+      ],
+    });
+
+    expect(next[0].hmac).toBeUndefined();
+    expect(next[0].turnIndex).toBeUndefined();
+    expect(next[1].hmac).toBe(sig("b"));
+    expect(next[1].compactedSummary).toBeUndefined();
+    expect(next[2]).toMatchObject({
+      turnIndex: 2,
+      hmac: sig("c"),
+      stateSlots: SLOTS,
+      compactedSummary: "Turn 0 summary.",
+    });
+  });
+
+  it("leaves the turns unchanged for an unsigned complete event", () => {
+    // Test: Verify that an unsigned complete terminal event leaves the turns
+    //   unchanged.
+    // Situation: The agent did not sign the turn because its answer was too
+    //   long.
+    // Expectation: No turn changes, so earlier signed turns remain context.
+    const turns = [signedTurn(0), blankTurn()];
+
+    expect(
+      applySignedWindow(turns, 1, { state: "complete", idempotency_key: "k" }),
+    ).toBe(turns);
+  });
 });
 
 describe("parseSseStream", () => {
@@ -261,7 +398,10 @@ describe("applyEvent", () => {
 
 describe("useSseChat", () => {
   /** Renders the hook over local turn state and stubs fetch with the body. */
-  function renderChat(body: string[] | ReadableStream<Uint8Array>) {
+  function renderChat(
+    body: string[] | ReadableStream<Uint8Array>,
+    initialTurns: ChatTurn[] = [],
+  ) {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -270,11 +410,157 @@ describe("useSseChat", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const view = renderHook(() => {
-      const [turns, setTurns] = useState<ChatTurn[]>([]);
+      const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
       return { turns, chat: useSseChat({ turns, setTurns }) };
     });
     return { ...view, fetchMock };
   }
+
+  /** Returns the parsed JSON body of the fetch call at `index`. */
+  function requestBody(
+    fetchMock: ReturnType<typeof vi.fn>,
+    index: number,
+  ): WireRequest {
+    const init = fetchMock.mock.calls[index][1] as RequestInit;
+    return parseRequest(init.body);
+  }
+
+  it("stores the signed turn and sends it back with the next request", async () => {
+    // Test: The signed transcript round-trips across turns.
+    // Situation: The first turn completes with a signed terminal event, and
+    //   the user asks a follow-up.
+    // Expectation: The turn stores its key, index, signature, and slots, and
+    //   the follow-up request carries it verbatim with the summary and no
+    //   `history` field.
+    const { result, fetchMock } = renderChat([]);
+    // Signs each request's turn the way the agent does: the window lists the
+    // turns the request carried, then the new turn under the request's key.
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const request = parseRequest(init.body);
+      const index = request.turns.length;
+      const entry = {
+        turn_index: index,
+        idempotency_key: request.idempotency_key,
+        hmac: sig(String(index)),
+      };
+      const window = [
+        ...request.turns.map((turn) => ({
+          turn_index: turn.turn_index,
+          idempotency_key: turn.idempotency_key,
+          hmac: turn.hmac,
+        })),
+        entry,
+      ];
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        body: streamOf([
+          frame("content", { text: "About 68 million." }, 1),
+          frame(
+            "terminal",
+            {
+              state: "complete",
+              ...entry,
+              state_slots: SLOTS,
+              compacted_summary: null,
+              window,
+            },
+            2,
+          ),
+        ]),
+      };
+    });
+
+    await act(() => result.current.chat.send("What is the population of France?"));
+    await act(() => result.current.chat.send("And Germany?"));
+
+    const first = requestBody(fetchMock, 0);
+    expect(first.turns).toEqual([]);
+    expect(first.compacted_summary).toBeNull();
+    expect(result.current.turns[0]).toMatchObject({
+      idempotencyKey: first.idempotency_key,
+      turnIndex: 0,
+      hmac: sig("0"),
+      stateSlots: SLOTS,
+    });
+    expect(result.current.turns[1]).toMatchObject({
+      turnIndex: 1,
+      hmac: sig("1"),
+    });
+    const second = requestBody(fetchMock, 1);
+    expect(second).not.toHaveProperty("history");
+    expect(second.idempotency_key).not.toBe(first.idempotency_key);
+    expect(second.turns).toEqual([
+      {
+        turn_index: 0,
+        idempotency_key: first.idempotency_key,
+        user_query: "What is the population of France?",
+        model_response: "About 68 million.",
+        state_slots: SLOTS,
+        hmac: sig("0"),
+      },
+    ]);
+    expect(second.compacted_summary).toBeNull();
+  });
+
+  it("clears every signature when the agent rejects the transcript", async () => {
+    // Test: An unverifiable transcript clears stored signatures so the session
+    //   recovers.
+    // Situation: Two signed turns exist, and the agent answers the next
+    //   request with HTTP 400 and reason `transcript_invalid`.
+    // Expectation: The new turn ends with the rejection message, every
+    //   earlier turn loses its signature and summary, and the next request
+    //   sends no context.
+    const { result, fetchMock } = renderChat(
+      [],
+      [signedTurn(0), signedTurn(1, { compactedSummary: "Earlier turns." })],
+    );
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      body: null,
+      json: async () => ({ detail: { reason: "transcript_invalid" } }),
+    });
+
+    await act(() => result.current.chat.send("And Germany?"));
+
+    expect(requestBody(fetchMock, 0).turns).toHaveLength(2);
+    const turns = result.current.turns;
+    expect(turns[2].status).toBe("error");
+    expect(turns[2].error).toBe(TRANSCRIPT_REJECTED_ERROR);
+    expect(result.current.chat.error).toBe(TRANSCRIPT_REJECTED_ERROR);
+    expect(turns.slice(0, 2).map((turn) => turn.hmac)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(turns[1].compactedSummary).toBeUndefined();
+    expect(transcriptRequestFields(turns).turns).toEqual([]);
+  });
+
+  it("keeps signatures on a 400 that is not a transcript rejection", async () => {
+    // Test: Only the agent's transcript rejection clears context.
+    // Situation: A 400 response arrives whose body is not the agent's
+    //   rejection, as from a proxy.
+    // Expectation: The turn fails with the HTTP status, and earlier turns
+    //   keep their signatures.
+    const { result, fetchMock } = renderChat([], [signedTurn(0)]);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      body: null,
+      json: async () => {
+        throw new SyntaxError("not json");
+      },
+    });
+
+    await act(() => result.current.chat.send("And Germany?"));
+
+    expect(result.current.turns[1].error).toBe("HTTP 400 Bad Request");
+    expect(result.current.turns[0].hmac).toBe(sig("0"));
+  });
 
   it("marks a stream that ends without a terminal event as interrupted", async () => {
     // Test: EOF without a terminal event.
@@ -314,7 +600,7 @@ describe("useSseChat", () => {
     expect(turn.status).toBe("done");
     expect(turn.followUps).toEqual(["And Spain?"]);
     expect(result.current.chat.error).toBeNull();
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const body = requestBody(fetchMock, 0);
     expect(typeof body.idempotency_key).toBe("string");
     expect(body.idempotency_key).not.toBe("");
     expect(body).not.toHaveProperty("session_id");
