@@ -335,6 +335,42 @@ async def test_a_failed_chart_validation_hides_the_charts(
 
 
 @pytest.mark.asyncio
+async def test_malformed_chart_entries_do_not_fail_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Tolerance of malformed entries in a chart configuration.
+    # Situation: Chart configuration returns an object whose `charts` list
+    #   mixes a well-formed chart with a null entry, a string, and a chart
+    #   whose title is not a string.
+    # Expectation: The turn completes, and the follow-ups are grounded in
+    #   the one well-formed title.
+    topics: list[list[str]] = []
+    malformed = {
+        "should_render": True,
+        "charts": [None, "Population", {"title": 7}, {"title": "GDP"}],
+    }
+
+    async def chart_config(*args: Any) -> dict[str, Any]:
+        return malformed
+
+    async def follow_ups(
+        question: str, chart_topics: list[str], usage: TokenUsage
+    ) -> list[str]:
+        topics.append(chart_topics)
+        return list(_FOLLOW_UPS)
+
+    monkeypatch.setattr(chat_pipeline, "get_chart_config", chart_config)
+    monkeypatch.setattr(
+        chat_pipeline, "generate_follow_up_questions", follow_ups
+    )
+
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
+
+    assert topics == [["GDP"]]
+    assert turn.finished == [("complete", None)]
+
+
+@pytest.mark.asyncio
 async def test_cancel_mid_turn_cancels_the_chart_task(turn: _Turn) -> None:
     # Test: Cancellation while synthesis is streaming.
     # Situation: Synthesis and chart configuration are both held open, and

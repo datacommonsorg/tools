@@ -398,13 +398,18 @@ async def resolve_chart_config(
 
 def _chart_topics(chart_config: dict[str, Any]) -> list[str]:
     """Returns the chart titles that ground the follow-up questions."""
+    charts = chart_config.get("charts")
     topics = [
         chart["title"]
-        for chart in chart_config.get("charts") or []
-        if chart.get("title")
+        for chart in (charts if isinstance(charts, list) else [])
+        if isinstance(chart, dict)
+        and isinstance(chart.get("title"), str)
+        and chart["title"]
     ]
-    if not topics and chart_config.get("title"):  # legacy single-chart shape
-        topics.append(chart_config["title"])
+    title = chart_config.get("title")
+    if not topics and isinstance(title, str) and title:
+        # Legacy single-chart shape.
+        topics.append(title)
     return topics
 
 

@@ -103,7 +103,16 @@ Set should_render to false if no meaningful data for visualization."""
             text = response["candidates"][0]["content"]["parts"][0].get(
                 "text", "{}"
             )
-            chart_config: dict[str, Any] = json.loads(text)
+            chart_config = json.loads(text)
+            # The model can return valid JSON that is not an object, such as
+            # `null` or `[]`. The caller expects a dict, so anything else is
+            # treated as "no charts".
+            if not isinstance(chart_config, dict):
+                logger.error(
+                    "Chart config returned %s instead of an object",
+                    type(chart_config).__name__,
+                )
+                return {"should_render": False}
             # The configuration is derived from the user's query, so it is
             # logged only at DEBUG, below the agent's INFO log level.
             logger.debug(

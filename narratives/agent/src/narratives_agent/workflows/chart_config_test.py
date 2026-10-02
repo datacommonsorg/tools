@@ -11,12 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for `validate_data_response` in the chart configuration workflow.
+"""Tests for the chart configuration workflow.
 
 Verifies that `validate_data_response` fails closed (returns `False`) when the
 Gemini validation call returns an error dict, invalid JSON, or a JSON object
 without a boolean `data_found` field, and returns the model's boolean verdict
-when `data_found` is present.
+when `data_found` is present. Verifies that `get_chart_config` returns a dict
+whatever JSON value the model produces.
 """
 
 import json
@@ -29,6 +30,7 @@ from narratives_agent.workflows import chart_config
 
 _SYNTHESIS = "Population reached 39,538,223 in 2020."
 _QUESTION = "What is the population of California?"
+_RESULTS = "Tool: get_observations\nResult: 39538223"
 
 
 def _candidates(text: str) -> dict[str, Any]:
@@ -139,3 +141,33 @@ async def test_a_clear_verdict_is_passed_through(
         await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
         is data_found
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", ["null", "[]", "false", "123"])
+async def test_a_non_object_chart_config_is_replaced_by_no_charts(
+    gemini_answers: Callable[[dict[str, Any]], None], payload: str
+) -> None:
+    # Test: `get_chart_config` never returns a value that is not a dict.
+    # Situation: The chart-config response is valid JSON that is None, a
+    #   list, a bool, or an int rather than an object.
+    # Expectation: `get_chart_config` returns `{"should_render": False}`
+    #   rather than the parsed value, so the caller can index the result.
+    gemini_answers(_candidates(payload))
+
+    assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == {
+        "should_render": False
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_object_chart_config_is_passed_through(
+    gemini_answers: Callable[[dict[str, Any]], None],
+) -> None:
+    # Test: Pass-through of a well-formed chart configuration.
+    # Situation: The chart-config response is a JSON object.
+    # Expectation: `get_chart_config` returns that object unchanged.
+    config = {"should_render": True, "charts": [{"title": "Population"}]}
+    gemini_answers(_candidates(json.dumps(config)))
+
+    assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == config
