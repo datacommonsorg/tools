@@ -12,6 +12,7 @@ import { DISCLAIMER_TEXT } from "./note_disclaimer";
 import { Tooltip } from "./tooltip";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { useChatSession } from "../hooks/chat_session_context";
+import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -23,7 +24,6 @@ export function DataAgent() {
   // survive when the user navigates to another SPA tab and back, and across
   // browser refreshes (persisted to localStorage).
   const { turns, isStreaming, error, send, stop } = useChatSession();
-  const isExpanded = query.trim().length > 0;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Track the turn count we last reacted to so we only scroll when a NEW
@@ -52,15 +52,7 @@ export function DataAgent() {
     await send(message);
   };
 
-  useEffect(() => {
-    if (!textareaRef.current) return;
-    if (isExpanded) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    } else {
-      textareaRef.current.style.height = "";
-    }
-  }, [query, isExpanded]);
+  useTextareaAutosize(textareaRef, query);
 
   // When a new turn is appended (typed prompt OR follow-up question click),
   // pin the user's new question to the top of the chat surface so they can
@@ -213,7 +205,6 @@ export function DataAgent() {
         query={query}
         setQuery={setQuery}
         onSend={handleSend}
-        textareaRef={textareaRef}
       />
     );
   }
