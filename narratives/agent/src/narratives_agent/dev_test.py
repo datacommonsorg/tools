@@ -79,17 +79,16 @@ def test_touches_empty_env_local_when_example_missing(
     assert "GEMINI_API_KEY is not set" in caplog.text
 
 
-def test_parses_env_local_quotes_exports_and_inline_comments(
+def test_parses_env_local_quotes_and_inline_comments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: Parsing of .env.local with export prefixes, quotes, escaped quotes,
-    #   and inline comments.
-    # Situation: .env.local contains `export` prefixes, double-quoted values
-    #   with escaped quotes and trailing inline comments, single-quoted values,
-    #   and unquoted values with inline comments.
+    # Test: Parsing of .env.local with quotes, escaped quotes, and inline
+    #   comments.
+    # Situation: .env.local contains double-quoted values with escaped quotes
+    #   and trailing inline comments, single-quoted values, and unquoted values
+    #   with inline comments.
     # Expectation: Keys and values are cleanly extracted with escaped quotes
-    #   unescaped and without leaking surrounding quotes, `export` prefixes, or
-    #   inline comments.
+    #   unescaped and without leaking surrounding quotes or inline comments.
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("MCP_SERVER_URL", raising=False)
     monkeypatch.delenv("DC_API_KEY", raising=False)
@@ -97,7 +96,7 @@ def test_parses_env_local_quotes_exports_and_inline_comments(
     _write_baseline_checkout(tmp_path, {})
     (tmp_path / ".env.local").write_text(
         "# Comment line\n"
-        'export GEMINI_API_KEY="quoted-gemini-key" # inline comment\n'
+        'GEMINI_API_KEY="quoted-gemini-key" # inline comment\n'
         "MCP_SERVER_URL='https://api.datacommons.org/mcp' # single-quoted\n"
         "DC_API_KEY=unquoted-dc-key # trailing note\n"
         r'CUSTOM_QUOTED="value\"with\"escaped" # comment after escaped quotes'

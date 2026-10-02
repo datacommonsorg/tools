@@ -79,11 +79,38 @@ def _load_env_vars(env_file: Path) -> dict[str, str]:
             continue
         raw_key, raw_value = stripped.split("=", 1)
         key = raw_key.strip()
-        if key.startswith("export "):
-            key = key.removeprefix("export ").strip()
         if key:
             vars_dict[key] = _parse_env_value(raw_value)
     return vars_dict
+
+
+def _ensure_env_file(root_dir: Path) -> Path:
+    """Returns `.env.local`, creating it from `.env.local.example` if absent."""
+    env_file = root_dir / ".env.local"
+    if env_file.is_file():
+        return env_file
+
+    example_env_file = root_dir / ".env.local.example"
+    if example_env_file.is_file():
+        shutil.copy(example_env_file, env_file)
+        logger.warning(
+            "Created .env.local from .env.local.example — please add your "
+            "GEMINI_API_KEY"
+        )
+    else:
+        env_file.touch()
+    return env_file
+
+
+def _populate_environment(root_dir: Path) -> dict[str, str]:
+    """Ensures `.env.local` exists and loads unset vars into `os.environ`."""
+    env_file = _ensure_env_file(root_dir)
+    env_vars = _load_env_vars(env_file)
+    for key, value in env_vars.items():
+        if value and not os.environ.get(key, "").strip():
+            os.environ[key] = value
+    get_settings.cache_clear()
+    return env_vars
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
@@ -127,8 +154,10 @@ def _load_base_config(defaults_dir: Path, config_dir: Path) -> dict[str, Any]:
     return config
 
 
-def _load_prompts(defaults_dir: Path, config_dir: Path) -> dict[str, str]:
-    """Inlines prompt markdown files, preferring `config/` over `defaults/`."""
+def _load_prompts(
+    defaults_dir: Path, config_dir: Path, inline_prompts: Any = None
+) -> dict[str, str]:
+    """Inlines prompt markdown files and merges inline `prompts` overrides."""
     prompt_files: dict[str, Path] = {}
     for directory in (defaults_dir / "prompts", config_dir / "prompts"):
         if not directory.is_dir():
@@ -144,6 +173,11 @@ def _load_prompts(defaults_dir: Path, config_dir: Path) -> dict[str, str]:
         if cleaned:
             prompts[slot] = cleaned
 
+    if isinstance(inline_prompts, dict):
+        for slot, body in inline_prompts.items():
+            if isinstance(body, str) and body.strip():
+                prompts[slot] = body
+
     return prompts
 
 
@@ -152,33 +186,39 @@ def _is_usable_api_key(value: str) -> bool:
     return bool(value) and not value.startswith(_PLACEHOLDER_API_KEY_PREFIX)
 
 
+def _read_existing_api_key(target_config_file: Path) -> str:
+    """Extracts `gemini.api_key` from an existing `agent/config.json` file."""
+    if not target_config_file.is_file():
+        return ""
+    # Target config may be corrupted or unreadable; ignore and overwrite.
+    with contextlib.suppress(json.JSONDecodeError, OSError):
+        existing = json.loads(target_config_file.read_text(encoding="utf-8"))
+        if isinstance(existing, dict) and isinstance(
+            existing.get("gemini"), dict
+        ):
+            api_key = existing["gemini"].get("api_key", "")
+            if isinstance(api_key, str):
+                return api_key.strip()
+    return ""
+
+
 def _resolve_gemini_api_key(
     env_vars: dict[str, str], target_config_file: Path
 ) -> str:
     """Resolves the Gemini API key from env, `.env.local`, or staged config."""
-    shell_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if _is_usable_api_key(shell_key):
-        return shell_key
+    candidates = (
+        os.environ.get("GEMINI_API_KEY", "").strip(),
+        env_vars.get("GEMINI_API_KEY", "").strip(),
+        _read_existing_api_key(target_config_file),
+    )
+    for candidate in candidates:
+        if _is_usable_api_key(candidate):
+            return candidate
 
-    dotenv_key = env_vars.get("GEMINI_API_KEY", "").strip()
-    if _is_usable_api_key(dotenv_key):
-        return dotenv_key
-
-    if target_config_file.is_file():
-        # Target config may be corrupted or unreadable; ignore and overwrite.
-        with contextlib.suppress(json.JSONDecodeError, OSError):
-            existing = json.loads(
-                target_config_file.read_text(encoding="utf-8")
-            )
-            if isinstance(existing, dict):
-                gemini_section = existing.get("gemini")
-                if isinstance(gemini_section, dict):
-                    api_key = gemini_section.get("api_key", "")
-                    if isinstance(api_key, str) and _is_usable_api_key(
-                        api_key.strip()
-                    ):
-                        return api_key.strip()
-
+    logger.warning(
+        "GEMINI_API_KEY is not set in .env.local or the environment; "
+        "chat requests will fail until a key is configured"
+    )
     return _DEFAULT_PLACEHOLDER_API_KEY
 
 
@@ -197,50 +237,24 @@ def stage_local_environment(narratives_dir: Path | None = None) -> Path:
             baseline or override config file is not a valid JSON object.
     """
     root_dir = narratives_dir or _NARRATIVES_DIR
-    env_file = root_dir / ".env.local"
-    example_env_file = root_dir / ".env.local.example"
     defaults_dir = root_dir / "defaults"
     config_dir = root_dir / "config"
-    agent_dir = root_dir / "agent"
-    target_config_file = agent_dir / "config.json"
+    target_config_file = root_dir / "agent" / "config.json"
 
-    if not env_file.is_file():
-        if example_env_file.is_file():
-            shutil.copy(example_env_file, env_file)
-            logger.warning(
-                "Created .env.local from .env.local.example — please add your "
-                "GEMINI_API_KEY"
-            )
-        else:
-            env_file.touch()
-
-    env_vars = _load_env_vars(env_file)
-    for key, value in env_vars.items():
-        if value and not os.environ.get(key, "").strip():
-            os.environ[key] = value
-    get_settings.cache_clear()
-
+    env_vars = _populate_environment(root_dir)
     config = _load_base_config(defaults_dir, config_dir)
-    prompts = _load_prompts(defaults_dir, config_dir)
-    inline_prompts = config.get("prompts")
-    if isinstance(inline_prompts, dict):
-        for slot, body in inline_prompts.items():
-            if isinstance(body, str) and body.strip():
-                prompts[slot] = body
+
+    prompts = _load_prompts(defaults_dir, config_dir, config.get("prompts"))
     if prompts:
         config["prompts"] = prompts
 
     if not isinstance(config.get("gemini"), dict):
         config["gemini"] = {}
-    api_key = _resolve_gemini_api_key(env_vars, target_config_file)
-    if api_key == _DEFAULT_PLACEHOLDER_API_KEY:
-        logger.warning(
-            "GEMINI_API_KEY is not set in .env.local or the environment; "
-            "chat requests will fail until a key is configured"
-        )
-    config["gemini"]["api_key"] = api_key
+    config["gemini"]["api_key"] = _resolve_gemini_api_key(
+        env_vars, target_config_file
+    )
 
-    agent_dir.mkdir(parents=True, exist_ok=True)
+    target_config_file.parent.mkdir(parents=True, exist_ok=True)
     target_config_file.write_text(
         json.dumps(config, indent=2) + "\n", encoding="utf-8"
     )
