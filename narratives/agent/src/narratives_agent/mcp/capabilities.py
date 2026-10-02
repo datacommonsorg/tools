@@ -33,7 +33,11 @@ which tools exist, and does source attribution work here.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any
+
+from narratives_agent.mcp import client
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,7 @@ class Capabilities:
     tool_names: frozenset[str] = field(default_factory=frozenset)
 
     def has(self, tool: str) -> bool:
+        """Returns whether the MCP server exposes `tool`."""
         return tool in self.tool_names
 
     @property
@@ -81,10 +86,12 @@ class Capabilities:
 
     @property
     def observation_tools(self) -> frozenset[str]:
+        """Returns the observation-fetching tools exposed by the server."""
         return _OBSERVATION_TOOLS & self.tool_names
 
     @property
     def search_tools(self) -> frozenset[str]:
+        """Returns the indicator-search tools exposed by the server."""
         return _SEARCH_TOOLS & self.tool_names
 
     @property
@@ -99,7 +106,8 @@ class Capabilities:
             return "unknown"
         return "1.3.x-or-later" if self.supports_source_attribution else "1.2.x"
 
-    def describe(self) -> dict:
+    def describe(self) -> dict[str, Any]:
+        """Returns a JSON-serializable summary of the server's capabilities."""
         return {
             "generation": self.generation,
             "tool_count": len(self.tool_names),
@@ -108,10 +116,10 @@ class Capabilities:
         }
 
 
-def from_tools(tools: list) -> Capabilities:
+def from_tools(tools: Sequence[Any] | None) -> Capabilities:
     """Build a snapshot from whatever `tools/list` returned."""
-    names = frozenset(
-        t.get("name")
+    names: frozenset[str] = frozenset(
+        t["name"]
         for t in (tools or [])
         if isinstance(t, dict) and t.get("name")
     )
@@ -123,24 +131,12 @@ def current_cached() -> Capabilities:
 
     Use where blocking is unacceptable, e.g. a health endpoint.
     """
-    from narratives_agent.mcp.client import (
-        cached_tools,
-    )
-
-    return from_tools(cached_tools())
+    return from_tools(client.cached_tools())
 
 
 def current() -> Capabilities:
-    """Capabilities of the configured MCP server.
-
-    Imported lazily so this module stays independent of the client -- the
-    client's schema helpers would otherwise import it back.
-    """
-    from narratives_agent.mcp.client import (
-        get_tools,
-    )
-
-    caps = from_tools(get_tools())
+    """Returns the capabilities of the configured MCP server."""
+    caps = from_tools(client.get_tools())
     if not caps.tool_names:
         logger.warning(
             "MCP exposed no tools; running with no data-fetching capability."

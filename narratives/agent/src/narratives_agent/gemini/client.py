@@ -652,7 +652,7 @@ def _iterate_stream(
     stream.finish(start, session_logger)
 
 
-async def _aiterate_stream(
+async def _async_iterate_stream(
     first: types.GenerateContentResponse | None,
     chunks: AsyncIterator[types.GenerateContentResponse],
     stream: _TextStream,
@@ -916,7 +916,7 @@ async def async_gemini_stream(
         first = await anext(chunks, None)
     except Exception as error:
         return _report_failure(_describe_error(error), model, session_logger)
-    return _aiterate_stream(
+    return _async_iterate_stream(
         first,
         chunks,
         _TextStream(return_dicts=include_thoughts),

@@ -29,6 +29,7 @@ dependencies = [
     "google-genai>=1.0",
     "httpx>=0.28",
     "httpx2>=2.13",
+    "mcp>=2.2",
     "pydantic-settings>=2.15",
     "requests>=2.32",
     "uvicorn[standard]>=0.53",
@@ -108,16 +109,6 @@ module = [
     "narratives_agent.workflows.chat_pipeline",
     "narratives_agent.workflows.follow_up",
     "narratives_agent.workflows.mcp_loop",
-]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-# Branch 7 replaces the hand-rolled JSON-RPC client with the official MCP SDK.
-module = [
-    "narratives_agent.mcp.capabilities",
-    "narratives_agent.mcp.client",
-    "narratives_agent.mcp.data_utils",
-    "narratives_agent.mcp.schema",
 ]
 ignore_errors = true
 

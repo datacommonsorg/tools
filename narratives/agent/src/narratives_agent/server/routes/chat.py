@@ -61,15 +61,13 @@ def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
 
     Response: Server-Sent Events stream
 
-    Starlette advances the synchronous generator below one `next()` call at a
-    time, each on a thread borrowed from AnyIO's worker pool, so one turn's
-    events can run on several threads. The MCP session id is thread-local
-    (`mcp/client.py`), so a turn can use several MCP sessions, and a later turn
-    can reuse a session that an earlier one left on a pool thread. This is
-    safe: a pool thread runs one job at a time, so no two requests share a
-    session at once; the MCP tool loop runs on one dedicated thread for the
-    whole turn; and `mcp_call` opens a session when its thread has none and
-    retries once on a new session when the server rejects one.
+    FastAPI advances the synchronous generator below one `next()` call at a
+    time on its worker thread pool, running each step in a fresh copy of the
+    request's context. Because the MCP session is stored in a `ContextVar`
+    (`mcp/client.py`), a session opened in one generator step does not carry
+    over to the next step or to later HTTP requests. The MCP tool loop runs on
+    a single dedicated thread for the whole turn, so all tool calls in a turn
+    share one MCP session.
     """
     user_message = body.message
     history = body.history
