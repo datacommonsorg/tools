@@ -263,7 +263,7 @@ def ensure_session_scope() -> None:
 
 
 def reset_client() -> None:
-    """Clears the cached URL, the tool cache, and the current session scope.
+    """Clears the cached URL, tool cache, refresh tasks, and session scope.
 
     The shared HTTP client is not closed here, because closing requires the
     event loop that owns it; call `aclose` from that loop.
@@ -272,6 +272,7 @@ def reset_client() -> None:
     with _TOOLS_LOCK:
         _TOOLS_CACHE.tools = None
         _TOOLS_CACHE.fetched_at = 0.0
+    _REFRESH_TASKS.clear()
     _session_scope_var.set(None)
 
 
@@ -374,12 +375,28 @@ def _http_client() -> httpx2.AsyncClient:
 
 
 async def aclose() -> None:
-    """Closes the shared HTTP client, if one is open on the running loop."""
+    """Closes the shared HTTP client, if one is open on the running loop.
+
+    Background tool refreshes on this loop are canceled first, so that none
+    of them is still using the client when it closes.
+    """
+    running = asyncio.get_running_loop()
+    # The list is a copy because each task removes itself from the set when
+    # it finishes.
+    pending = [
+        task
+        for task in _REFRESH_TASKS
+        if task.get_loop() is running and not task.done()
+    ]
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
     holder = _HTTP_CLIENT
     client, loop = holder.client, holder.loop
     holder.client = None
     holder.loop = None
-    if client is not None and loop is asyncio.get_running_loop():
+    if client is not None and loop is running:
         await client.aclose()
 
 

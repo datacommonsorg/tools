@@ -677,6 +677,41 @@ async def test_cached_tools_on_a_warm_cache_sends_nothing(
 
 
 @pytest.mark.asyncio
+async def test_aclose_cancels_a_running_background_refresh(
+    server: _FakeMcpServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: `aclose` cancels background tool refreshes before it closes the
+    #   shared client.
+    # Situation: `cached_tools` starts a background refresh on a cold cache.
+    #   The refresh waits on an event that is never set. `aclose` is then
+    #   called.
+    # Expectation: The refresh is canceled, and no refresh task is held
+    #   afterwards.
+    started = asyncio.Event()
+    canceled = asyncio.Event()
+
+    async def blocked_refresh(
+        *, force_refresh: bool = False
+    ) -> list[dict[str, Any]]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            canceled.set()
+            raise
+        return []
+
+    monkeypatch.setattr(client, "async_get_tools", blocked_refresh)
+    client.cached_tools()
+    await started.wait()
+
+    await client.aclose()
+
+    assert canceled.is_set()
+    assert not client._REFRESH_TASKS
+
+
+@pytest.mark.asyncio
 async def test_call_tool_sends_normalized_arguments(
     server: _FakeMcpServer,
 ) -> None:
