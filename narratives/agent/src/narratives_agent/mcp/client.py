@@ -175,15 +175,14 @@ class _ResponseObserver:
             self.saw_not_found = True
 
 
+# The MCP session of the current thread or asyncio task.
 _session_var: ContextVar[_Session | None] = ContextVar(
     "mcp_session", default=None
 )
 
+# The tool list shared by all threads and tasks, and the lock that guards it.
 _TOOLS_LOCK = threading.Lock()
 _TOOLS_CACHE = _ToolCache()
-
-_REFRESH_LOCK = threading.Lock()
-_refresh_in_flight = False
 
 
 def get_session_id() -> str | None:
@@ -534,35 +533,32 @@ async def async_get_tools(
 
     Returns:
         A list of tool definition dictionaries containing `"name"`,
-        `"description"`, and `"inputSchema"`. If the fetch fails, returns the
-        most recently cached tool list, or `[]` if the cache is empty.
+        `"description"`, and `"inputSchema"`. A successful response is cached
+        even when it lists no tools. If the fetch fails, returns the most
+        recently cached tool list, or `[]` if no list has been fetched yet.
     """
     now = time.monotonic()
     with _TOOLS_LOCK:
         fresh = (now - _TOOLS_CACHE.fetched_at) < _TOOLS_TTL_SECONDS
-        if _TOOLS_CACHE.tools and fresh and not force_refresh:
+        if _TOOLS_CACHE.tools is not None and fresh and not force_refresh:
             return _TOOLS_CACHE.tools
 
-    tools: list[dict[str, Any]] = []
     try:
         result = await _run_with_session(
             "tools/list", lambda client_session: client_session.list_tools()
         )
-        tools = [_tool_dict(tool) for tool in result.tools]
     except Exception as error:
         logger.error("MCP tools/list failed: %s", _describe_error(error))
-
-    if tools:
+        # Return the previously cached list rather than an empty list so that
+        # a transient failure does not disable all tools for later turns.
         with _TOOLS_LOCK:
-            _TOOLS_CACHE.tools = tools
-            _TOOLS_CACHE.fetched_at = now
-        return tools
+            return _TOOLS_CACHE.tools or []
 
-    # If refreshing the tool list fails, return the previously cached list
-    # rather than an empty list so that a transient failure does not disable
-    # all tools for subsequent turns.
+    tools = [_tool_dict(tool) for tool in result.tools]
     with _TOOLS_LOCK:
-        return _TOOLS_CACHE.tools or []
+        _TOOLS_CACHE.tools = tools
+        _TOOLS_CACHE.fetched_at = now
+    return tools
 
 
 def _tool_failure(
@@ -704,6 +700,10 @@ def call_tool(
     return _run_sync(lambda: async_call_tool(name, arguments, session_logger))
 
 
+_REFRESH_LOCK = threading.Lock()
+_refresh_in_flight = False
+
+
 def _refresh_tools_in_background() -> None:
     """Starts a background thread to refresh the tool cache if needed."""
     global _refresh_in_flight
@@ -734,7 +734,7 @@ def cached_tools() -> list[dict[str, Any]]:
     a 300-second timeout, causing an unreachable data plane to make the agent
     appear hung rather than unhealthy.
 
-    When the cache is empty, this function starts an asynchronous background
+    When no tool list has been fetched yet, this function starts a background
     refresh and immediately returns `[]`. Without the background refresh, a
     failed startup probe would leave `/agent/health` reporting zero tools
     indefinitely if no chat traffic arrived. This commonly occurs on a fresh
@@ -743,7 +743,8 @@ def cached_tools() -> list[dict[str, Any]]:
     propagating.
     """
     with _TOOLS_LOCK:
-        tools = _TOOLS_CACHE.tools or []
-    if not tools:
+        tools = _TOOLS_CACHE.tools
+    if tools is None:
         _refresh_tools_in_background()
+        return []
     return tools

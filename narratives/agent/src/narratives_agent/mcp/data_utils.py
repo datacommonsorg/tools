@@ -186,7 +186,7 @@ def annotate_truncation(
     return status
 
 
-def _first_present(mapping: dict[str, Any], *keys: str) -> str:
+def _get_first_present_value(mapping: dict[str, Any], *keys: str) -> str:
     """Returns the first non-empty value among `keys`, or an empty string.
 
     The MCP server returns camelCase, while earlier revisions of this code and
@@ -200,7 +200,7 @@ def _first_present(mapping: dict[str, Any], *keys: str) -> str:
     return ""
 
 
-def _facet_index_from_variable_metadata(
+def _get_facet_index_from_variable_metadata(
     result_data: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
     """Maps facet id -> {name, url, license} from a get_variable_metadata
@@ -257,18 +257,18 @@ def _facet_index_from_variable_metadata(
             if not isinstance(properties, dict):
                 continue
 
-            url = _first_present(properties, "url", "descriptionUrl")
+            url = _get_first_present_value(properties, "url", "descriptionUrl")
             if not url:
                 continue
 
             entry = {
-                "name": _first_present(
+                "name": _get_first_present_value(
                     properties, "isPartOf", "source", "domain"
                 )
                 or url,
                 "url": url,
             }
-            license_type = _first_present(properties, "licenseType")
+            license_type = _get_first_present_value(properties, "licenseType")
             if license_type:
                 entry["license"] = license_type
             index[facet_id] = entry
@@ -323,7 +323,7 @@ def extract_provenance_from_mcp_results(
             result_data = _parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
-            for facet_id, entry in _facet_index_from_variable_metadata(
+            for facet_id, entry in _get_facet_index_from_variable_metadata(
                 result_data
             ).items():
                 facet_index.setdefault(facet_id, entry)
@@ -348,7 +348,9 @@ def extract_provenance_from_mcp_results(
             if not isinstance(metadata, dict):
                 continue
 
-            facet_id = _first_present(metadata, "sourceId", "source_id")
+            facet_id = _get_first_present_value(
+                metadata, "sourceId", "source_id"
+            )
             # Server 1.2.1 wrote the literal "unknown" for a result that
             # carried no data rather than omitting the block, so it is not an
             # id and must not be looked up as one.
@@ -365,12 +367,12 @@ def extract_provenance_from_mcp_results(
                 # or it served something the candidates did not cover. The
                 # observation result still knows where the numbers came from,
                 # it just has no dataset name to offer.
-                url = _first_present(
+                url = _get_first_present_value(
                     metadata, "provenanceUrl", "provenance_url"
                 )
                 if not url:
                     continue
-                name = _first_present(
+                name = _get_first_present_value(
                     metadata,
                     "importName",
                     "import_name",

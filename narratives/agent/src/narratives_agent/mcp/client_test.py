@@ -567,6 +567,24 @@ async def test_a_failing_refresh_serves_the_stale_list(
     assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
 
+def test_an_empty_tool_list_is_cached(server: _FakeMcpServer) -> None:
+    # Test: Caching of a successful `tools/list` response that lists no tools.
+    # Situation: The cache holds the server's tools. The server then lists no
+    #   tools, a forced refresh runs, and `get_tools` and `cached_tools` are
+    #   called within the TTL.
+    # Expectation: The empty list replaces the previous list, later calls
+    #   return it without another `tools/list` request, and `cached_tools`
+    #   starts no background refresh.
+    client.get_tools(force_refresh=True)
+    server.tools = []
+
+    assert client.get_tools(force_refresh=True) == []
+    assert client.get_tools() == []
+    assert client.cached_tools() == []
+    _join_background_refresh()
+    assert server.count("tools/list") == 2
+
+
 def test_tool_definitions_keep_the_wire_key_names(
     server: _FakeMcpServer,
 ) -> None:
