@@ -411,13 +411,26 @@ async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
 
     This phase runs after the terminal event so the UI can display the
     answer and charts immediately and show the follow-up questions when they
-    arrive. It emits nothing when no chart topics are available.
+    arrive. If there are no chart topics or generation fails, nothing is
+    emitted.
     """
-    follow_ups = await generate_follow_up_questions(
-        ctx.user_message, _chart_topics(chart_config), ctx.telemetry.tokens
-    )
+    try:
+        follow_ups = await generate_follow_up_questions(
+            ctx.user_message, _chart_topics(chart_config), ctx.telemetry.tokens
+        )
+    except Exception:
+        logger.exception("Follow-up generation failed")
+        return
     if follow_ups:
         ctx.emit("follow_ups", {"follow_up_questions": follow_ups})
+
+
+def _load_turn_config() -> dict[str, Any]:
+    """Returns the agent configuration, or raises `TurnAbortedError`."""
+    config = load_config()
+    if not config:
+        raise TurnAbortedError("config_missing", "Backend config not loaded")
+    return config
 
 
 def terminal_frame(
@@ -468,12 +481,9 @@ async def run_turn(
     error_type: str | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
-        config = load_config()
-        if not config:
-            raise TurnAbortedError(
-                "config_missing", "Backend config not loaded"
-            )
-        ctx = TurnContext(user_message, history, config, telemetry, emit)
+        ctx = TurnContext(
+            user_message, history, _load_turn_config(), telemetry, emit
+        )
         with telemetry.phase("mcp"):
             mcp = await run_mcp_phase(ctx)
         chart_task = mcp.chart_task
@@ -493,14 +503,10 @@ async def run_turn(
         state = state or "canceled"
         raise
     except Exception:
-        if state is None:
-            logger.exception("Chat turn failed")
-            internal = TurnAbortedError("internal_error", _INTERNAL_ERROR)
-            state, error_type = "error", internal.error_type
-            emit("terminal", terminal_frame(state, idempotency_key, internal))
-        else:
-            # The answer was already delivered; only the follow-ups failed.
-            logger.exception("Follow-up generation failed")
+        logger.exception("Chat turn failed")
+        internal = TurnAbortedError("internal_error", _INTERNAL_ERROR)
+        state, error_type = "error", internal.error_type
+        emit("terminal", terminal_frame(state, idempotency_key, internal))
     finally:
         _settle_chart_task(chart_task)
         telemetry.finish(state or "error", error_type)
