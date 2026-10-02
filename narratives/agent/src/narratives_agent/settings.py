@@ -26,7 +26,9 @@ from pydantic import (
     AfterValidator,
     BeforeValidator,
     Field,
+    SecretStr,
     ValidationInfo,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +37,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # with one of these values, compared after stripping and lowercasing, and off
 # with any other value.
 _TRUTHY_ENV_VALUES = ("1", "true", "yes")
+
+# `MIN_SECRET_BYTES` is the shortest `TRANSCRIPT_HMAC_SECRET` accepted: the
+# 256 bits of an HMAC-SHA256 key.
+MIN_SECRET_BYTES = 32
 
 
 def _strip_trailing_slashes(value: str) -> str:
@@ -202,6 +208,13 @@ class Settings(BaseSettings):
     # in config.json applies.
     gemini_api_key_secret: str = ""
 
+    # Transcript turns are signed with HMAC-SHA256 under this secret, so a
+    # turn signed by one instance verifies on any other. When it is unset,
+    # each process signs with a random key of its own, and a transcript then
+    # verifies only on the process that signed it. `SecretStr` keeps the value
+    # out of `repr()` output and logs.
+    transcript_hmac_secret: SecretStr = SecretStr("")
+
     @model_validator(mode="before")
     @classmethod
     def _drop_blank_values(cls, data: Any) -> Any:
@@ -216,6 +229,26 @@ class Settings(BaseSettings):
             for name, value in data.items()
             if not (isinstance(value, str) and not value.strip())
         }
+
+    @field_validator("transcript_hmac_secret")
+    @classmethod
+    def _require_a_strong_secret(cls, value: SecretStr) -> SecretStr:
+        """Rejects a transcript secret shorter than `MIN_SECRET_BYTES`.
+
+        A short secret can be guessed offline from any signed turn, which
+        would let a client forge its own transcript. Unset is allowed, in
+        which case each process generates its own key.
+
+        Raises:
+            ValueError: The secret is set and shorter than the minimum.
+        """
+        secret = value.get_secret_value()
+        if secret and len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
+            raise ValueError(
+                f"TRANSCRIPT_HMAC_SECRET must be at least {MIN_SECRET_BYTES} "
+                "bytes; generate one with `openssl rand -hex 32`."
+            )
+        return value
 
     @model_validator(mode="after")
     def _keep_agent_root_out_of_static_root(self) -> Settings:

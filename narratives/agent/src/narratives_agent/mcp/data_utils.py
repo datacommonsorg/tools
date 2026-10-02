@@ -19,6 +19,8 @@ tool loop retrieved any statistical observations, and
 `extract_provenance_from_mcp_results` builds the ordered list of data sources
 referenced by citation numbers in the synthesized answer. Both functions
 support the response formats of MCP server 1.2.1 and 1.3.0.
+`parse_tool_result` and `has_observation_rows` are public because
+conversation state-slot extraction reads the same payloads.
 """
 
 import json
@@ -37,7 +39,7 @@ _OBSERVATION_TOOLS = (
 )
 
 
-def _parse_tool_result(result: Any) -> dict[str, Any] | None:
+def parse_tool_result(result: Any) -> dict[str, Any] | None:
     """Unwraps an MCP tool result into the payload the server actually returned.
 
     Results arrive as the JSON-encoded MCP envelope whose `content[0].text` is
@@ -68,7 +70,7 @@ def _parse_tool_result(result: Any) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _has_observation_rows(payload: dict[str, Any] | None) -> bool:
+def has_observation_rows(payload: dict[str, Any] | None) -> bool:
     """True when an observations payload carries at least one dated value.
 
     Checked structurally rather than by searching the text, because the two
@@ -126,7 +128,7 @@ def check_data_availability(
 
     for tc in tool_calls_list:
         tool_name = tc.get("name", "")
-        payload = _parse_tool_result(tc.get("result", ""))
+        payload = parse_tool_result(tc.get("result", ""))
 
         if tool_name in _SEARCH_TOOLS:
             search_called = True
@@ -134,7 +136,7 @@ def check_data_availability(
                 no_variables = True
         elif tool_name in _OBSERVATION_TOOLS:
             observations_called = True
-            if _has_observation_rows(payload):
+            if has_observation_rows(payload):
                 has_any_observations = True
 
     # Numbers are the only thing that counts as data: a search that found
@@ -321,7 +323,7 @@ def extract_provenance_from_mcp_results(
         if tc.get("name") != "get_variable_metadata":
             continue
         try:
-            result_data = _parse_tool_result(tc.get("result", ""))
+            result_data = parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
             for facet_id, entry in _get_facet_index_from_variable_metadata(
@@ -339,7 +341,7 @@ def extract_provenance_from_mcp_results(
             continue
 
         try:
-            result_data = _parse_tool_result(tc.get("result", ""))
+            result_data = parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
 
