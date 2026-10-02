@@ -92,8 +92,10 @@ UI, from `narratives/ui/` (or via `pnpm -C ui <command>`):
 
 - `pnpm run dev` — start the Vite dev server on port 3000.
 - `pnpm run build` — build production assets into `ui/dist/`.
-- `pnpm run lint` — type-check (`tsc --noEmit`) and run Biome (`biome check .`).
-- `pnpm run fix` — format and auto-fix lint issues (`biome check --write .`).
+- `pnpm run lint` — type-check (`tsc --noEmit`) and run Biome
+  (`biome check ui scripts`).
+- `pnpm run fix` — format and auto-fix lint issues
+  (`biome check --write ui scripts`).
 - `pnpm run test` — run unit tests once (`vitest run`).
 
 Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):

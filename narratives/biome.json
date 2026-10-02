@@ -10,7 +10,8 @@
   "files": {
     "ignoreUnknown": true,
     "includes": [
-      "**",
+      "ui/**",
+      "scripts/**",
       "!ui/src/api/dc_observations.test.ts",
       "!ui/src/api/dc_observations.ts",
       "!ui/src/app.tsx",
