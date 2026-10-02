@@ -82,21 +82,26 @@ def test_touches_empty_env_local_when_example_missing(
 def test_parses_env_local_quotes_exports_and_inline_comments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: Parsing of .env.local with export prefixes, quotes, and comments.
-    # Situation: .env.local contains `export` prefixes, double- and
-    #   single-quoted values with trailing inline comments, and unquoted values
-    #   with inline comments.
-    # Expectation: Keys and values are cleanly extracted without leaking quotes,
-    #   `export` prefixes, or inline comments.
+    # Test: Parsing of .env.local with export prefixes, quotes, escaped quotes,
+    #   and inline comments.
+    # Situation: .env.local contains `export` prefixes, double-quoted values
+    #   with escaped quotes and trailing inline comments, single-quoted values,
+    #   and unquoted values with inline comments.
+    # Expectation: Keys and values are cleanly extracted with escaped quotes
+    #   unescaped and without leaking surrounding quotes, `export` prefixes, or
+    #   inline comments.
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("MCP_SERVER_URL", raising=False)
     monkeypatch.delenv("DC_API_KEY", raising=False)
+    monkeypatch.delenv("CUSTOM_QUOTED", raising=False)
     _write_baseline_checkout(tmp_path, {})
     (tmp_path / ".env.local").write_text(
         "# Comment line\n"
         'export GEMINI_API_KEY="quoted-gemini-key" # inline comment\n'
         "MCP_SERVER_URL='https://api.datacommons.org/mcp' # single-quoted\n"
-        "DC_API_KEY=unquoted-dc-key # trailing note\n",
+        "DC_API_KEY=unquoted-dc-key # trailing note\n"
+        r'CUSTOM_QUOTED="value\"with\"escaped" # comment after escaped quotes'
+        "\n",
         encoding="utf-8",
     )
 
@@ -104,6 +109,7 @@ def test_parses_env_local_quotes_exports_and_inline_comments(
 
     assert os.environ.get("MCP_SERVER_URL") == "https://api.datacommons.org/mcp"
     assert os.environ.get("DC_API_KEY") == "unquoted-dc-key"
+    assert os.environ.get("CUSTOM_QUOTED") == 'value"with"escaped'
     staged = json.loads(config_path.read_text(encoding="utf-8"))
     assert staged["gemini"]["api_key"] == "quoted-gemini-key"
 

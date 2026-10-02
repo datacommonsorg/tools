@@ -36,6 +36,7 @@ import contextlib
 import json
 import logging
 import os
+import shlex
 import shutil
 from pathlib import Path
 from typing import Any
@@ -58,11 +59,10 @@ _DEFAULT_PLACEHOLDER_API_KEY = "REPLACE_ME_WITH_GEMINI_API_KEY"
 def _parse_env_value(raw: str) -> str:
     """Extracts a dotenv value, stripping quotes and inline comments."""
     value = raw.strip()
-    for quote in ("'", '"'):
-        if value.startswith(quote):
-            end = value.find(quote, 1)
-            if end != -1:
-                return value[1:end]
+    if value.startswith(("'", '"')):
+        with contextlib.suppress(ValueError):
+            tokens = shlex.split(value, comments=True)
+            return tokens[0] if tokens else ""
     return value.split(" #", 1)[0].split("\t#", 1)[0].strip()
 
 
