@@ -4,14 +4,20 @@
 
 import { useCallback, useRef, useState } from "react";
 
-/** SSE framing: events are separated by a blank line. */
+/** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = "\n\n";
+/** SSE framing: the event name line is prefixed with `event:`. */
+const SSE_EVENT_NAME_PREFIX = "event:";
 /** SSE framing: payload lines are prefixed with `data:`. */
 const SSE_EVENT_DATA_PREFIX = "data:";
+/** Specifies the base-36 radix used for the random suffix of a fallback idempotency key. */
+const FALLBACK_KEY_RADIX = 36;
+/** Specifies how many random characters are kept after the leading "0." in a fallback idempotency key. */
+const FALLBACK_KEY_RANDOM_CHARS = 8;
 
 /**
- * A tool invocation emitted by the agent sidecar's /agent/chat/stream
- * endpoint. Mirrors what mcp_proxy_only.py's chat_stream() generator produces.
+ * Represents a tool invocation emitted by the `/agent/chat/stream` endpoint.
+ * Mirrors the tool-call records that `workflows/mcp_loop.py` builds.
  */
 export interface ToolCallEvent {
   name: string;
@@ -73,7 +79,8 @@ export interface ChartConfig {
 
 /**
  * Wire format of one chart item as emitted by the agent
- * (mcp_proxy_only.py CHART_CONFIG_SCHEMA + homepage.html renderDCComponent).
+ * (the agent's `gemini/schemas.py` CHART_CONFIG_SCHEMA + homepage.html
+ * renderDCComponent).
  * snake_case matches the SSE payload; {@link mapRawChartItem} converts to the
  * camelCase {@link ChartItem} the UI consumes, so an upstream schema rename
  * only requires updating the mapper.
@@ -160,7 +167,7 @@ export interface ProvenanceItem {
   license?: string;
 }
 
-/** Lifecycle of one chat turn, driven by the agent's status events. */
+/** Represents the lifecycle of one chat turn, driven by `status` and `terminal` events. */
 export type TurnStatus =
   | "idle"
   | "mcp"
@@ -169,33 +176,23 @@ export type TurnStatus =
   | "error";
 
 /**
- * Gemini token usage for one query, summed across every model call the agent
- * made (MCP tool loop, synthesis, chart config). `output` includes thinking
- * tokens. Temporary cost instrumentation — surfaced only under ?debug=tokens.
+ * Defines the error message shown when a turn's stream ends without a
+ * terminal event because the connection dropped or the page closed mid-stream.
  */
-export interface TokenUsage {
-  /** Prompt (input) tokens billed. */
-  input: number;
-  /** Candidate + thinking (output) tokens billed. */
-  output: number;
-  /** Total tokens billed for the query. */
-  total: number;
-}
+export const INTERRUPTED_TURN_ERROR =
+  "The connection was interrupted before the response finished.";
 
 /** Accumulated UI state for one user message and its streamed response. */
 export interface ChatTurn {
   userMessage: string;
-  sessionId?: string;
   status: TurnStatus;
   toolCalls: ToolCallEvent[];
   thoughts: ThoughtEvent[];
   text: string;
   chartConfig?: ChartConfig;
   provenance: ProvenanceItem[];
-  /** Self-contained follow-up questions emitted by the agent after `done`. */
+  /** Holds self-contained follow-up questions emitted by the agent after the terminal event. */
   followUps?: string[];
-  /** Token usage for this query; present once the agent emits its `usage` event. */
-  usage?: TokenUsage;
   error?: string;
   /**
    * Set when the user aborts the turn via Stop. Drives the "Stopped per your
@@ -211,37 +208,61 @@ export interface ChatTurn {
   truncated?: boolean;
 }
 
+/** Identifies the terminal state of a turn as reported by its `terminal` event. */
+type TerminalState = "complete" | "error" | "refused" | "canceled";
+
 /**
- * One decoded SSE event from /agent/chat/stream. The agent packs a varying
- * subset of these fields into each event (the closing event, for example,
- * carries both `chart_config` and `done`), so every field is optional.
+ * Represents the payload of a `content` event, which carries one content field
+ * per frame.
  */
-interface SseEvent {
-  session_id?: string;
-  status?: "mcp_start" | "synthesis_start" | "success" | "error" | string;
-  tool_call?: ToolCallEvent;
-  /** Inline tool-call fields (some agent versions emit these instead of `tool_call`). */
-  name?: string;
-  type?: string;
-  arguments?: Record<string, unknown>;
-  /** Raw tool response, emitted alongside the inline tool-call fields. */
-  result?: string;
-  thought?: string;
-  phase?: ThoughtEvent["phase"];
+interface ContentPayload {
   text?: string;
-  chart_config?: RawChartConfig;
-  follow_up_questions?: string[];
-  mcp_sources?: ProvenanceItem[];
-  provenance?: ProvenanceItem[];
-  usage?: TokenUsage;
+  tool_call?: ToolCallEvent;
+  sources?: ProvenanceItem[];
   /**
-   * Completeness of the data behind the answer; `truncated` is the flag we
-   * act on.
+   * Reports the completeness of the data behind the answer; `truncated` is
+   * the flag the UI acts on.
    */
   data_status?: { truncated?: boolean; has_data?: boolean };
-  done?: boolean;
-  error?: string;
+  chart_config?: RawChartConfig;
 }
+
+/**
+ * Represents the payload of a `terminal` event. An `error` event carries a
+ * user-safe `error` message and a machine-readable `reason` (for example,
+ * `mcp_timeout`). `hmac`, `state_slots`, and `compacted_summary` are
+ * placeholders until the agent signs transcripts.
+ */
+interface TerminalPayload {
+  state: TerminalState;
+  error?: string;
+  reason?: string;
+  idempotency_key: string;
+  hmac: string;
+  state_slots: { scopes: unknown[] };
+  compacted_summary: string | null;
+}
+
+/** Represents one decoded event from `/agent/chat/stream`, discriminated by its `event:` name. */
+export type ChatStreamEvent =
+  | {
+      event: "status";
+      data: { phase: "mcp" | "synthesis" | "chart_config"; message?: string };
+    }
+  | { event: "thought"; data: { thought: string; phase?: ThoughtEvent["phase"] } }
+  | { event: "content"; data: ContentPayload }
+  | { event: "terminal"; data: TerminalPayload }
+  | { event: "follow_ups"; data: { follow_up_questions: string[] } }
+  | { event: "heartbeat"; data: Record<string, never> };
+
+const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set<ChatStreamEvent["event"]>([
+  "status",
+  "thought",
+  "content",
+  "terminal",
+  "follow_ups",
+  "heartbeat",
+]);
 
 const newTurn = (userMessage: string): ChatTurn => ({
   userMessage,
@@ -252,37 +273,98 @@ const newTurn = (userMessage: string): ChatTurn => ({
   provenance: [],
 });
 
+/** Returns a fresh idempotency key for one submission. */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  // `crypto.randomUUID` exists only in secure contexts (HTTPS or localhost),
+  // so a deployment served over plain HTTP lands here, as do old browsers.
+  const random = Math.random()
+    .toString(FALLBACK_KEY_RADIX)
+    .slice(2, 2 + FALLBACK_KEY_RANDOM_CHARS);
+  return `k_${Date.now()}_${random}`;
+}
+
 /**
- * Parses the SSE byte stream into decoded events.
- *
- * Splits chunks on the blank-line event boundary, then extracts each `data:`
- * payload as JSON. The Python proxy always emits a single `data: {json}\n\n`
- * per event, so multi-line data payloads are not a concern.
+ * Decodes one SSE frame (the lines between two blank lines). Returns null for
+ * frames that carry no known event, such as comments, unknown event names,
+ * malformed JSON, or JSON values that are not objects, so the caller can skip
+ * them without interrupting the stream.
  */
-async function* parseSseStream(
+function decodeFrame(frame: string): ChatStreamEvent | null {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of frame.split("\n")) {
+    // Lines starting with ":" are comments; `id:` lines are not needed here.
+    if (line.startsWith(SSE_EVENT_NAME_PREFIX)) {
+      event = line.slice(SSE_EVENT_NAME_PREFIX.length).trim();
+    } else if (line.startsWith(SSE_EVENT_DATA_PREFIX)) {
+      dataLines.push(line.slice(SSE_EVENT_DATA_PREFIX.length).trimStart());
+    }
+  }
+  if (!CHAT_STREAM_EVENTS.has(event) || dataLines.length === 0) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(dataLines.join("\n"));
+  } catch {
+    data = undefined;
+  }
+  // Every event's payload is an object; the reducer reads fields off it.
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    console.warn("Skipping malformed SSE payload:", dataLines.join("\n"));
+    return null;
+  }
+  return { event, data } as ChatStreamEvent;
+}
+
+/** Converts CRLF and CR line endings to LF. */
+function normalizeLineEndings(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
+}
+
+/**
+ * Parses the SSE byte stream into typed events.
+ *
+ * Normalizes CRLF and CR line endings (the agent sends CRLF), splits on the
+ * blank-line frame boundary, and decodes each frame's `event:` name and
+ * `data:` payload.
+ *
+ * Each chunk is normalized and searched for frame boundaries once, when it
+ * arrives, so the work done stays proportional to the size of the stream. A
+ * `tool_call` frame carries a full MCP result and can span many chunks;
+ * rescanning the whole buffer on every chunk would make parsing it
+ * quadratic.
+ */
+export async function* parseSseStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-): AsyncGenerator<SseEvent, void, unknown> {
+): AsyncGenerator<ChatStreamEvent, void, unknown> {
   const decoder = new TextDecoder();
   let buffer = "";
+  // Set when a chunk ends in CR, which is held back until the next chunk
+  // shows whether it is the first half of a CRLF pair.
+  let pendingCr = false;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    let chunk = decoder.decode(value, { stream: true });
+    if (pendingCr) chunk = "\r" + chunk;
+    pendingCr = chunk.endsWith("\r");
+    if (pendingCr) chunk = chunk.slice(0, -1);
+    // A separator that straddles the previous chunk and this one starts in
+    // the last character of the existing buffer, so the search starts there.
+    let searchFrom = Math.max(
+      0,
+      buffer.length - (SSE_EVENT_SEPARATOR.length - 1),
+    );
+    buffer += normalizeLineEndings(chunk);
     let idx;
-    while ((idx = buffer.indexOf(SSE_EVENT_SEPARATOR)) >= 0) {
-      const rawEvent = buffer.slice(0, idx);
+    while ((idx = buffer.indexOf(SSE_EVENT_SEPARATOR, searchFrom)) >= 0) {
+      const frame = buffer.slice(0, idx);
       buffer = buffer.slice(idx + SSE_EVENT_SEPARATOR.length);
-      for (const line of rawEvent.split("\n")) {
-        if (!line.startsWith(SSE_EVENT_DATA_PREFIX)) continue;
-        const payload = line.slice(SSE_EVENT_DATA_PREFIX.length).trim();
-        if (!payload) continue;
-        try {
-          yield JSON.parse(payload) as SseEvent;
-        } catch {
-          // Malformed JSON — warn and skip rather than break the stream.
-          console.warn("Skipping malformed SSE payload:", payload);
-        }
-      }
+      searchFrom = 0;
+      const event = decodeFrame(frame);
+      if (event) yield event;
     }
   }
 }
@@ -296,17 +378,15 @@ export interface UseSseChatResult {
 }
 
 /**
- * Inputs for {@link useSseChat}. Controlled hook — turns and sessionId live in
- * the parent (ChatSessionProvider) so multiple chat threads can share one
+ * Configures {@link useSseChat}. This is a controlled hook: turns live in the
+ * parent (`ChatSessionProvider`) so multiple chat threads can share one
  * streaming machine. Switching the current session is a parent-level decision;
- * this hook just reads/writes whichever turns array it's been pointed at.
+ * this hook reads and writes whichever turns array it is given.
  */
 export interface UseSseChatProps {
   endpoint?: string;
   turns: ChatTurn[];
   setTurns: (updater: (prev: ChatTurn[]) => ChatTurn[]) => void;
-  sessionId: string | undefined;
-  setSessionId: (id: string | undefined) => void;
 }
 
 /**
@@ -314,13 +394,7 @@ export interface UseSseChatProps {
  * controlled `turns` array as they arrive.
  */
 export function useSseChat(props: UseSseChatProps): UseSseChatResult {
-  const {
-    endpoint = "/agent/chat/stream",
-    turns,
-    setTurns,
-    sessionId,
-    setSessionId,
-  } = props;
+  const { endpoint = "/agent/chat/stream", turns, setTurns } = props;
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -369,6 +443,13 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           return next;
         });
 
+      // Holds the terminal event payload once it arrives. If an error or abort
+      // occurs after that point while follow-up questions are streaming, the
+      // turn keeps the state set by its terminal event.
+      let terminal: TerminalPayload | null = null;
+      // Tracks whether the HTTP response headers have arrived. Any network
+      // error after this point is reported as an interrupted stream.
+      let streamStarted = false;
       try {
         const controller = new AbortController();
         abortRef.current = controller;
@@ -378,7 +459,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           body: JSON.stringify({
             message,
             history,
-            session_id: sessionId,
+            idempotency_key: newIdempotencyKey(),
           }),
           signal: controller.signal,
         });
@@ -389,29 +470,50 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           return;
         }
 
+        streamStarted = true;
         const reader = resp.body.getReader();
         for await (const evt of parseSseStream(reader)) {
-          // The agent sometimes packs MULTIPLE fields into one event
-          // (e.g. the final event has BOTH `chart_config` and `done`).
-          // We apply each recognized field independently in one patch,
-          // rather than using `if … continue` which would drop later
-          // fields after the first match.
+          // Heartbeat frames carry no state changes, so skipping them avoids
+          // an unnecessary re-render.
+          if (evt.event === "heartbeat") continue;
           patch((turn) => applyEvent(turn, evt));
-          if (typeof evt.error === "string") {
-            setError(evt.error);
-          }
-          if (typeof evt.session_id === "string") {
-            setSessionId(evt.session_id);
+          if (evt.event === "terminal") {
+            terminal = evt.data;
+            if (evt.data.state !== "complete") {
+              setError(terminalError(evt.data));
+            }
           }
         }
+        // A turn is finished only once its terminal event arrives. A stream
+        // that ends without one was cut off, however much text it delivered.
+        if (!terminal) {
+          patch((turn) => ({
+            ...turn,
+            status: "error",
+            error: INTERRUPTED_TURN_ERROR,
+          }));
+          setError(INTERRUPTED_TURN_ERROR);
+        }
       } catch (e) {
+        if (terminal) {
+          // The turn already ended; only the follow-ups were cut off, and
+          // the turn keeps the state its terminal event gave it.
+          return;
+        }
         if (e instanceof DOMException && e.name === "AbortError") {
           // User clicked Stop — mark the turn done and flag it stopped so the
           // UI shows a clear "Stopped per your request" note instead of the
           // half-finished reasoning/answer.
           patch((turn) => ({ ...turn, status: "done", stopped: true }));
         } else {
-          const msg = e instanceof Error ? e.message : String(e);
+          // Before the response starts, report the browser's fetch error; once
+          // the stream has started, report the fixed interrupted-stream error
+          // because browser stream error messages vary across engines.
+          const msg = streamStarted
+            ? INTERRUPTED_TURN_ERROR
+            : e instanceof Error
+              ? e.message
+              : String(e);
           patch((turn) => ({ ...turn, status: "error", error: msg }));
           setError(msg);
         }
@@ -420,79 +522,35 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         setIsStreaming(false);
       }
     },
-    [endpoint, turns, setTurns, sessionId, setSessionId, isStreaming],
+    [endpoint, turns, setTurns, isStreaming],
   );
 
   return { isStreaming, error, send, stop };
 }
 
-/**
- * Pure reducer: applies every recognized field of an SSE event to the
- * turn state. The agent sometimes packs multiple fields into one event
- * (e.g. the closing event has both `chart_config` AND `done` — earlier
- * `if … continue` style would silently drop the second field). Every
- * field is independent and additive.
- */
-function applyEvent(turn: ChatTurn, evt: SseEvent): ChatTurn {
+/** Returns the message shown for a terminal event that is not `complete`. */
+function terminalError(terminal: TerminalPayload): string {
+  if (terminal.error) return terminal.error;
+  if (terminal.state === "refused") return "The request was declined.";
+  if (terminal.state === "canceled") {
+    return "The response was canceled before it finished.";
+  }
+  return "The response failed. Please try again.";
+}
+
+/** Applies one `content` payload to the turn state. */
+function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
   let next = turn;
-
-  if (typeof evt.session_id === "string") {
-    next = { ...next, sessionId: evt.session_id };
+  if (typeof content.text === "string") {
+    next = { ...next, text: next.text + content.text };
   }
-
-  if (evt.status === "mcp_start") {
-    next = { ...next, status: "mcp" };
-  } else if (evt.status === "synthesis_start") {
-    next = { ...next, status: "synthesis" };
+  if (content.tool_call) {
+    next = { ...next, toolCalls: [...next.toolCalls, content.tool_call] };
   }
-
-  if (evt.tool_call) {
-    next = {
-      ...next,
-      toolCalls: [...next.toolCalls, evt.tool_call],
-    };
-  }
-  // Some agent versions also emit the tool result inline as its own field.
-  if (evt.name && evt.type === "tool_call") {
-    const toolCall: ToolCallEvent = {
-      name: evt.name,
-      arguments: evt.arguments ?? {},
-      status: evt.status === "success" || evt.status === "error" ? evt.status : undefined,
-      result: typeof evt.result === "string" ? evt.result : undefined,
-    };
-    next = { ...next, toolCalls: [...next.toolCalls, toolCall] };
-  }
-
-  if (typeof evt.thought === "string") {
-    const phase = evt.phase ?? "synthesis";
-    next = {
-      ...next,
-      thoughts: [...next.thoughts, { text: evt.thought, phase }],
-    };
-  }
-
-  if (typeof evt.text === "string") {
-    next = { ...next, text: next.text + evt.text };
-  }
-
-  if (evt.chart_config) {
-    next = { ...next, chartConfig: mapRawChartConfig(evt.chart_config) };
-  }
-
-  if (Array.isArray(evt.follow_up_questions)) {
-    next = {
-      ...next,
-      followUps: evt.follow_up_questions,
-    };
-  }
-
-  const sourceList =
-    (Array.isArray(evt.mcp_sources) ? evt.mcp_sources : null) ??
-    (Array.isArray(evt.provenance) ? evt.provenance : null);
-  if (sourceList) {
+  if (Array.isArray(content.sources)) {
     const seen = new Set(next.provenance.map((item) => item.url));
     const merged = [...next.provenance];
-    for (const source of sourceList) {
+    for (const source of content.sources) {
       if (source && source.url && !seen.has(source.url)) {
         merged.push(source);
         seen.add(source.url);
@@ -500,24 +558,44 @@ function applyEvent(turn: ChatTurn, evt: SseEvent): ChatTurn {
     }
     next = { ...next, provenance: merged };
   }
-
-  if (evt.usage) {
-    next = { ...next, usage: evt.usage };
-  }
-
   // Sticky: once a turn is known to be truncated it stays truncated, so a later
   // event without data_status cannot quietly clear the warning.
-  if (evt.data_status?.truncated) {
+  if (content.data_status?.truncated) {
     next = { ...next, truncated: true };
   }
-
-  if (evt.done) {
-    next = { ...next, status: "done" };
+  if (content.chart_config) {
+    next = { ...next, chartConfig: mapRawChartConfig(content.chart_config) };
   }
-
-  if (typeof evt.error === "string") {
-    next = { ...next, status: "error", error: evt.error };
-  }
-
   return next;
+}
+
+/** Applies one typed SSE event to the turn state. */
+export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
+  switch (evt.event) {
+    case "status":
+      if (evt.data.phase === "mcp" || evt.data.phase === "synthesis") {
+        return { ...turn, status: evt.data.phase };
+      }
+      return turn;
+    case "thought":
+      return {
+        ...turn,
+        thoughts: [
+          ...turn.thoughts,
+          { text: evt.data.thought, phase: evt.data.phase ?? "synthesis" },
+        ],
+      };
+    case "content":
+      return applyContent(turn, evt.data);
+    case "terminal":
+      return evt.data.state === "complete"
+        ? { ...turn, status: "done" }
+        : { ...turn, status: "error", error: terminalError(evt.data) };
+    case "follow_ups":
+      return Array.isArray(evt.data.follow_up_questions)
+        ? { ...turn, followUps: evt.data.follow_up_questions }
+        : turn;
+    case "heartbeat":
+      return turn;
+  }
 }

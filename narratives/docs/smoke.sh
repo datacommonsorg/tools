@@ -246,9 +246,9 @@ c7() {
         -d '{"message":"What is the population of the United States?","history":[]}' \
         > "$out" 2>/dev/null
     [ -s "$out" ] || { echo "chat stream returned nothing (timeout or cold start)"; return 1; }
-    grep -q 'mcp_start'  "$out" || { echo "no mcp_start event -- the model answered without consulting data"; return 1; }
-    grep -q '"done": true' "$out" || { echo "the turn did not complete: $(grep -m1 '"error"' "$out")"; return 1; }
-    echo "chat streamed $(grep -c 'data:' "$out") events"
+    grep -q '"tool_call"' "$out" || { echo "no tool_call content: the model answered without consulting data"; return 1; }
+    grep -q '"state": "complete"' "$out" || { echo "no complete terminal event: $(grep -m1 -A1 '^event: terminal' "$out" | tail -1)"; return 1; }
+    echo "chat streamed $(grep -c '^id:' "$out") events"
 }
 check 7 c7
 

@@ -17,8 +17,16 @@
 `run_turn` drives a turn through its phases in order: the MCP tool loop,
 streamed synthesis, chart configuration, the final event, and follow-up
 questions. Each phase reports progress by calling the turn's `emit`
-callback with one SSE payload at a time, and hands its results to the next
-phase as typed values rather than through shared mutable state.
+callback with one typed SSE event at a time (an event name from
+`EventName` and its JSON payload) and hands its results to the next phase
+as typed values rather than through shared mutable state.
+
+Every turn that is not canceled ends in exactly one `terminal` event. An
+`error` terminal event carries a user-safe `error` message and a
+machine-readable `reason`. Its `hmac`, `state_slots`, and
+`compacted_summary` fields are placeholders that transcript signing will
+populate; they are sent now so that the event's shape does not change when
+transcript signing lands.
 
 Chart configuration runs as an `asyncio.Task` concurrently with synthesis
 and is awaited, with a timeout, once synthesis has finished streaming.
@@ -26,10 +34,9 @@ and is awaited, with a timeout, once synthesis has finished streaming.
 
 import asyncio
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
@@ -80,7 +87,10 @@ _MCP_UNAVAILABLE = "The data service is unavailable. Please try again."
 _MCP_TOOLS_TIMEOUT = "The data service did not respond. Please try again."
 _INTERNAL_ERROR = "An internal error occurred. Please try again."
 
-type Emit = Callable[[dict[str, Any]], None]
+type EventName = Literal[
+    "status", "thought", "content", "terminal", "follow_ups"
+]
+type Emit = Callable[[EventName, dict[str, Any]], None]
 
 
 class TurnAbortedError(Exception):
@@ -156,7 +166,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
         logger.warning("MCP unavailable: not connected or no tools available")
         raise TurnAbortedError("mcp_unavailable", _MCP_UNAVAILABLE)
 
-    ctx.emit({"status": "mcp_start", "message": "Querying data tools..."})
+    ctx.emit("status", {"phase": "mcp", "message": "Querying data tools..."})
     try:
         loop_result = await execute_mcp_tool_loop(
             ctx.user_message,
@@ -164,20 +174,18 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             tools,
             ctx.telemetry,
             thought_callback=lambda text: ctx.emit(
-                {"thought": text, "phase": "mcp"}
+                "thought", {"thought": text, "phase": "mcp"}
             ),
         )
     except McpLoopError as error:
         raise TurnAbortedError(error.error_type, str(error)) from error
-    ctx.emit({"thinking_complete": "mcp"})
 
     result.results = loop_result.results_text
     result.tool_calls = loop_result.tool_calls
     for call in result.tool_calls:
-        ctx.emit({"type": "tool_call", **call})
-    ctx.emit({"status": "mcp_complete", "tool_count": len(result.tool_calls)})
+        ctx.emit("content", {"tool_call": call})
 
-    # `truncated` rides along in data_status rather than in an event of its
+    # `truncated` rides along in data_status rather than in a frame of its
     # own: the frontend already consumes data_status, and truncation is a
     # statement about how complete the data is. Without it, a cut-short
     # answer is indistinguishable from a complete one because it still has
@@ -185,7 +193,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
     data_status = annotate_truncation(
         check_data_availability(result.tool_calls), loop_result.truncated
     )
-    ctx.emit({"data_status": data_status})
+    ctx.emit("content", {"data_status": data_status})
 
     # This list is the ONE authority on citation numbering. The frontend
     # numbers the Sources list by position in it, and synthesis is handed
@@ -205,7 +213,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
         # attributable.
         result.sources = [dict(_FALLBACK_SOURCE)]
     if result.sources:
-        ctx.emit({"mcp_sources": result.sources})
+        ctx.emit("content", {"sources": result.sources})
 
     # Gated on the structural `has_data` check above, not only on the
     # model's later reading of the synthesis prose. A chart is drawn from
@@ -243,7 +251,7 @@ def _synthesis_message(user_message: str, mcp: McpPhaseResult) -> str:
     context_parts = []
     if mcp.results:
         # Number sources 1..N in the order streamed to the frontend as
-        # mcp_sources so inline [n] citations resolve to the matching entry
+        # `sources` so inline [n] citations resolve to the matching entry
         # in the rendered Sources list. Any additional source list must be
         # normalized to {name, url} and appended to the sources before
         # numbering, because the frontend provenance reducer drops entries
@@ -283,7 +291,9 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
             follow-up generation would spend more Gemini calls judging an
             incomplete answer.
     """
-    ctx.emit({"status": "synthesis_start", "message": "Generating response..."})
+    ctx.emit(
+        "status", {"phase": "synthesis", "message": "Generating response..."}
+    )
     config = ctx.config
     # Conversation history (already in Gemini format from the frontend)
     # comes first, then the current query with the MCP context.
@@ -313,12 +323,15 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
         async for chunk in stream:
             if isinstance(chunk, str):
                 full_text += chunk
-                ctx.emit({"text": chunk})
+                ctx.emit("content", {"text": chunk})
             elif chunk["type"] == "thought":
-                ctx.emit({"thought": chunk["content"], "phase": "synthesis"})
+                ctx.emit(
+                    "thought",
+                    {"thought": chunk["content"], "phase": "synthesis"},
+                )
             else:
                 full_text += chunk["content"]
-                ctx.emit({"text": chunk["content"]})
+                ctx.emit("content", {"text": chunk["content"]})
     except GeminiStreamError as error:
         raise TurnAbortedError(
             "synthesis_stream_error", _SYNTHESIS_FAILED
@@ -328,7 +341,6 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
     if not full_text.strip():
         logger.warning("Synthesis returned no answer text")
         raise TurnAbortedError("synthesis_empty", _SYNTHESIS_FAILED)
-    ctx.emit({"thinking_complete": "synthesis"})
     return full_text
 
 
@@ -345,6 +357,9 @@ async def resolve_chart_config(
     """
     if mcp.chart_task is None:
         return dict(_NO_CHARTS)
+    ctx.emit(
+        "status", {"phase": "chart_config", "message": "Preparing charts..."}
+    )
     show_charts = True
     if full_text:
         try:
@@ -396,30 +411,61 @@ def _chart_topics(chart_config: dict[str, Any]) -> list[str]:
 async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
     """Emits follow-up questions grounded in the chart topics.
 
-    This phase runs after the final event so the UI can display the answer
-    and charts immediately and show the follow-up questions when they
+    This phase runs after the terminal event so the UI can display the
+    answer and charts immediately and show the follow-up questions when they
     arrive. It emits nothing when no chart topics are available.
     """
     follow_ups = await generate_follow_up_questions(
         ctx.user_message, _chart_topics(chart_config), ctx.telemetry.tokens
     )
     if follow_ups:
-        ctx.emit({"follow_up_questions": follow_ups})
+        ctx.emit("follow_ups", {"follow_up_questions": follow_ups})
+
+
+def terminal_frame(
+    state: TerminalState,
+    idempotency_key: str,
+    error: TurnAbortedError | None = None,
+) -> dict[str, Any]:
+    """Builds the payload of a `terminal` event.
+
+    An `error` frame adds the user-safe `error` message and the
+    machine-readable `reason`. `hmac`, `state_slots`, and
+    `compacted_summary` are empty placeholders until transcript signing
+    populates them.
+    """
+    frame: dict[str, Any] = {
+        "state": state,
+        "idempotency_key": idempotency_key,
+        "hmac": "",
+        "state_slots": {"scopes": []},
+        "compacted_summary": None,
+    }
+    if error is not None:
+        frame["error"] = str(error)
+        frame["reason"] = error.error_type
+    return frame
 
 
 async def run_turn(
-    user_message: str, history: list[dict[str, Any]], emit: Emit
+    user_message: str,
+    history: list[dict[str, Any]],
+    idempotency_key: str,
+    emit: Emit,
 ) -> None:
-    """Runs one chat turn and emits its SSE payloads through `emit`.
+    """Runs one chat turn and emits its typed SSE events through `emit`.
 
-    Every failure is reported to the client as an `error` payload and
-    recorded in telemetry. Only `asyncio.CancelledError` is re-raised to the
-    caller, and it is recorded as `canceled` unless the turn has already
-    completed. The background chart task is settled whenever the turn ends,
-    so no orphaned task outlives the request.
+    The turn ends in one `terminal` event: `complete` once the answer and
+    chart config are delivered, or `error` with a user-safe message. Every
+    failure is reported through that event and recorded in telemetry. Only
+    `asyncio.CancelledError` is re-raised to the caller; cancellation emits
+    no terminal event because the client that would read it has already
+    disconnected, and it is recorded as `canceled` unless the turn has
+    already completed. Follow-up questions are emitted after the terminal
+    event. The background chart task is settled whenever the turn ends, so
+    no orphaned task outlives the request.
     """
     telemetry = TurnTelemetry()
-    start = time.monotonic()
     state: TerminalState | None = None
     error_type: str | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
@@ -437,27 +483,23 @@ async def run_turn(
             full_text = await run_synthesis_phase(ctx, mcp)
         with telemetry.phase("chart_config"):
             chart_config = await resolve_chart_config(ctx, mcp, full_text)
-        emit(
-            {
-                "chart_config": chart_config,
-                "done": True,
-                "duration_ms": round((time.monotonic() - start) * 1000),
-            }
-        )
+        emit("content", {"chart_config": chart_config})
         state = "complete"
+        emit("terminal", terminal_frame(state, idempotency_key))
         with telemetry.phase("follow_ups"):
             await run_followups(ctx, chart_config)
     except TurnAbortedError as error:
         state, error_type = "error", error.error_type
-        emit({"error": str(error)})
+        emit("terminal", terminal_frame(state, idempotency_key, error))
     except asyncio.CancelledError:
         state = state or "canceled"
         raise
     except Exception:
         if state is None:
             logger.exception("Chat turn failed")
-            state, error_type = "error", "internal_error"
-            emit({"error": _INTERNAL_ERROR})
+            internal = TurnAbortedError("internal_error", _INTERNAL_ERROR)
+            state, error_type = "error", internal.error_type
+            emit("terminal", terminal_frame(state, idempotency_key, internal))
         else:
             # The answer was already delivered; only the follow-ups failed.
             logger.exception("Follow-up generation failed")

@@ -14,15 +14,19 @@
 """Tests for `run_turn` in the chat pipeline.
 
 Verifies that:
-1. A complete turn emits the final payload, then the follow-ups, and is
-   recorded as `complete`.
-2. Missing or timed-out MCP tools, a failed MCP loop, or a failed or empty
-   synthesis stream ends the turn with an error payload and records the
-   matching error type in telemetry.
-3. A chart config that misses its join timeout is canceled and the turn
-   completes without charts.
-4. Cancellation mid-turn cancels the background chart task and is recorded
-   as `canceled`; cancellation after the final payload stays `complete`.
+1. A complete turn emits the answer, the chart config, a `complete`
+   terminal event carrying the idempotency key and the placeholder signing
+   fields, then the follow-ups, and is recorded as `complete`.
+2. A failed MCP loop, an empty or slow tool list, and a failed, broken, or
+   empty synthesis end the turn with one `error` terminal event carrying a
+   fixed message and the machine-readable `reason`, and are recorded as
+   `error` with that reason. MCP failures end the turn before synthesis.
+3. An unexpected exception ends the turn as `internal_error`; a follow-up
+   failure after the terminal event leaves the turn `complete`.
+4. A chart config that misses its join timeout is canceled and the turn
+   completes without charts; a chart config that failed is retrieved.
+5. Cancellation mid-turn cancels the background chart task and is recorded
+   as `canceled`; cancellation after the terminal event stays `complete`.
 """
 
 import asyncio
@@ -37,9 +41,11 @@ from narratives_agent.gemini.client import GeminiStreamError
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
 from narratives_agent.workflows import chat_pipeline
+from narratives_agent.workflows.chat_pipeline import EventName
 from narratives_agent.workflows.mcp_loop import McpLoopError, McpLoopResult
 
 _QUESTION = "What is the population of France?"
+_KEY = "3f1c2a9e-key"
 _ANSWER = "About 68 million."
 _CHARTS = {"should_render": True, "charts": [{"title": "Population"}]}
 _FOLLOW_UPS = ["And Spain?"]
@@ -67,7 +73,7 @@ class _RecordingTelemetry(TurnTelemetry):
 class _Turn:
     """Holds the stubbed collaborators of one turn and their recorded state."""
 
-    payloads: list[dict[str, Any]] = field(default_factory=list)
+    events: list[tuple[EventName, dict[str, Any]]] = field(default_factory=list)
     finished: list[tuple[TerminalState, str | None]] = field(
         default_factory=list
     )
@@ -77,8 +83,12 @@ class _Turn:
     synthesis_release: asyncio.Event = field(default_factory=asyncio.Event)
     follow_ups_release: asyncio.Event = field(default_factory=asyncio.Event)
 
-    def emit(self, payload: dict[str, Any]) -> None:
-        self.payloads.append(payload)
+    def emit(self, event: EventName, data: dict[str, Any]) -> None:
+        self.events.append((event, data))
+
+    def names(self) -> list[EventName]:
+        """Returns the names of the events emitted so far, in order."""
+        return [event for event, _ in self.events]
 
 
 @pytest.fixture
@@ -157,12 +167,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
 
 
 async def _start_and_wait_for(
-    turn: _Turn, predicate_key: str
+    turn: _Turn, name: EventName
 ) -> asyncio.Task[None]:
-    """Starts the turn and waits until it emits a payload with the key."""
-    task = asyncio.create_task(chat_pipeline.run_turn(_QUESTION, [], turn.emit))
+    """Starts the turn and waits until it emits an event with the given name."""
+    task = asyncio.create_task(
+        chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
+    )
     async with asyncio.timeout(1):
-        while not any(predicate_key in p for p in turn.payloads):
+        while name not in turn.names():
             await asyncio.sleep(0)
     return task
 
@@ -171,20 +183,31 @@ async def _start_and_wait_for(
 async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     turn: _Turn,
 ) -> None:
-    # Test: The payload sequence of a turn in which every phase succeeds.
+    # Test: The event sequence of a turn in which every phase succeeds.
     # Situation: Tools, synthesis, chart config, and follow-ups all succeed.
-    # Expectation: The answer text is emitted first, followed by the final
-    #   payload with the chart config and then the follow-up questions, and
-    #   the turn is recorded as `complete`.
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    # Expectation: The answer text and then the chart config are emitted as
+    #   content, followed by one `complete` terminal event with the
+    #   request's idempotency key and empty signing placeholders, and last
+    #   the follow-ups; the turn is recorded as `complete`.
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    keys = [next(iter(payload)) for payload in turn.payloads]
-    assert keys.index("text") < keys.index("chart_config")
-    assert keys.index("chart_config") < keys.index("follow_up_questions")
-    final = next(p for p in turn.payloads if "chart_config" in p)
-    assert final["chart_config"] == _CHARTS
-    assert final["done"] is True
-    assert turn.payloads[-1] == {"follow_up_questions": _FOLLOW_UPS}
+    content = [data for event, data in turn.events if event == "content"]
+    assert {"text": _ANSWER} in content
+    assert content[-1] == {"chart_config": _CHARTS}
+    assert turn.events[-2:] == [
+        (
+            "terminal",
+            {
+                "state": "complete",
+                "idempotency_key": _KEY,
+                "hmac": "",
+                "state_slots": {"scopes": []},
+                "compacted_summary": None,
+            },
+        ),
+        ("follow_ups", {"follow_up_questions": _FOLLOW_UPS}),
+    ]
+    assert turn.names().count("terminal") == 1
     assert turn.finished == [("complete", None)]
 
 
@@ -194,19 +217,51 @@ async def test_failed_tool_loop_ends_the_turn_before_synthesis(
 ) -> None:
     # Test: Fail-closed handling of an MCP loop failure.
     # Situation: The tool loop raises `McpLoopError` of type `mcp_timeout`.
-    # Expectation: The turn emits one error payload with the loop's message,
-    #   never calls synthesis, and is recorded as `error` with `mcp_timeout`.
+    # Expectation: The turn ends in one `error` terminal event with the
+    #   loop's message, never calls synthesis, and is recorded as `error`
+    #   with `mcp_timeout`.
     async def failing_loop(*args: Any, **kwargs: Any) -> McpLoopResult:
         raise McpLoopError("mcp_timeout", "The data request took too long.")
 
     monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", failing_loop)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert turn.payloads[-1] == {"error": "The data request took too long."}
-    assert not any("done" in payload for payload in turn.payloads)
+    event, terminal = turn.events[-1]
+    assert event == "terminal"
+    assert terminal["state"] == "error"
+    assert terminal["error"] == "The data request took too long."
+    assert terminal["reason"] == "mcp_timeout"
+    assert terminal["idempotency_key"] == _KEY
+    assert turn.names().count("terminal") == 1
     assert turn.synthesis_calls == 0
     assert turn.finished == [("error", "mcp_timeout")]
+
+
+@pytest.mark.asyncio
+async def test_failed_synthesis_reports_a_fixed_message(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The user-facing message of a failed synthesis request.
+    # Situation: The synthesis request fails with upstream error text.
+    # Expectation: The turn ends in an `error` terminal event whose message
+    #   is the fixed synthesis failure rather than the upstream text, and is
+    #   recorded as `error` with `synthesis_error`.
+    upstream = "HTTP 500: upstream detail"
+
+    async def failing_synthesis(**kwargs: Any) -> dict[str, str]:
+        return {"error": upstream}
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", failing_synthesis)
+
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
+
+    event, terminal = turn.events[-1]
+    assert event == "terminal"
+    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["reason"] == "synthesis_error"
+    assert upstream not in terminal["error"]
+    assert turn.finished == [("error", "synthesis_error")]
 
 
 @pytest.mark.asyncio
@@ -223,10 +278,10 @@ async def test_slow_chart_config_is_canceled_and_charts_are_dropped(
     )
     turn.chart_release.clear()
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    final = next(p for p in turn.payloads if "chart_config" in p)
-    assert final["chart_config"] == {"should_render": False}
+    content = [data for event, data in turn.events if event == "content"]
+    assert content[-1] == {"chart_config": {"should_render": False}}
     assert turn.chart_canceled.is_set()
     assert turn.finished == [("complete", None)]
 
@@ -244,13 +299,13 @@ async def test_a_failed_chart_task_leaves_the_turn_complete(
 
     monkeypatch.setattr(chat_pipeline, "get_chart_config", failing_chart_config)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert {"text": _ANSWER} in turn.payloads
-    final = next(p for p in turn.payloads if "chart_config" in p)
-    assert final["chart_config"] == {"should_render": False}
-    assert final["done"] is True
-    assert not any("error" in payload for payload in turn.payloads)
+    content = [data for event, data in turn.events if event == "content"]
+    assert {"text": _ANSWER} in content
+    assert content[-1] == {"chart_config": {"should_render": False}}
+    terminals = [data for event, data in turn.events if event == "terminal"]
+    assert [terminal["state"] for terminal in terminals] == ["complete"]
     assert turn.finished == [("complete", None)]
 
 
@@ -270,12 +325,12 @@ async def test_a_failed_chart_validation_hides_the_charts(
         chat_pipeline, "validate_data_response", failing_validate
     )
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    final = next(p for p in turn.payloads if "chart_config" in p)
-    assert final["chart_config"] == {**_CHARTS, "hide_charts": True}
-    assert final["done"] is True
-    assert not any("error" in payload for payload in turn.payloads)
+    content = [data for event, data in turn.events if event == "content"]
+    assert content[-1] == {"chart_config": {**_CHARTS, "hide_charts": True}}
+    terminals = [data for event, data in turn.events if event == "terminal"]
+    assert [terminal["state"] for terminal in terminals] == ["complete"]
     assert turn.finished == [("complete", None)]
 
 
@@ -284,9 +339,9 @@ async def test_cancel_mid_turn_cancels_the_chart_task(turn: _Turn) -> None:
     # Test: Cancellation while synthesis is streaming.
     # Situation: Synthesis and chart configuration are both held open, and
     #   the turn is canceled once synthesis has started.
-    # Expectation: `CancelledError` is raised to the caller, the background
-    #   chart task is canceled with the turn, and the turn is recorded as
-    #   `canceled`.
+    # Expectation: `CancelledError` is raised to the caller without a
+    #   terminal event, the background chart task is canceled with the turn,
+    #   and the turn is recorded as `canceled`.
     turn.synthesis_release.clear()
     turn.chart_release.clear()
     task = await _start_and_wait_for(turn, "status")
@@ -300,20 +355,21 @@ async def test_cancel_mid_turn_cancels_the_chart_task(turn: _Turn) -> None:
 
     async with asyncio.timeout(1):
         await turn.chart_canceled.wait()
+    assert "terminal" not in turn.names()
     assert turn.finished == [("canceled", None)]
 
 
 @pytest.mark.asyncio
-async def test_cancel_after_the_final_payload_stays_complete(
+async def test_cancel_after_the_terminal_event_stays_complete(
     turn: _Turn,
 ) -> None:
     # Test: Cancellation while follow-ups are generated.
     # Situation: Follow-up generation is held open, and the turn is canceled
-    #   after the final payload has been emitted.
+    #   after the terminal event has been emitted.
     # Expectation: The turn is recorded as `complete` because the answer was
     #   already delivered.
     turn.follow_ups_release.clear()
-    task = await _start_and_wait_for(turn, "done")
+    task = await _start_and_wait_for(turn, "terminal")
 
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -322,23 +378,32 @@ async def test_cancel_after_the_final_payload_stays_complete(
     assert turn.finished == [("complete", None)]
 
 
+def _only_terminal(turn: _Turn) -> dict[str, Any]:
+    """Returns the turn's single terminal payload and asserts it came last."""
+    assert turn.names().count("terminal") == 1
+    event, terminal = turn.events[-1]
+    assert event == "terminal"
+    return terminal
+
+
 @pytest.mark.asyncio
 async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
     # Test: Fail-closed handling when no MCP tools are available.
     # Situation: MCP is enabled, but `async_get_tools` returns an empty list.
-    # Expectation: The turn emits an error payload with the fixed
-    #   unavailable message, never calls synthesis, and is recorded as
-    #   `error` with `mcp_unavailable`.
+    # Expectation: The turn ends in an `error` terminal event with reason
+    #   `mcp_unavailable` and a fixed message, without calling synthesis.
     async def no_tools() -> list[dict[str, Any]]:
         return []
 
     monkeypatch.setattr(mcp_client, "async_get_tools", no_tools)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert turn.payloads == [{"error": chat_pipeline._MCP_UNAVAILABLE}]
+    terminal = _only_terminal(turn)
+    assert terminal["reason"] == "mcp_unavailable"
+    assert terminal["error"] == chat_pipeline._MCP_UNAVAILABLE
     assert turn.synthesis_calls == 0
     assert turn.finished == [("error", "mcp_unavailable")]
 
@@ -350,8 +415,8 @@ async def test_a_slow_tool_list_fails_the_turn(
     # Test: The timeout for fetching the MCP tool list.
     # Situation: `MCP_TOOLS_TIMEOUT_SECONDS` is shortened to 10 ms and
     #   `async_get_tools` never returns.
-    # Expectation: The turn emits an error payload, never calls synthesis,
-    #   and is recorded as `error` with `mcp_timeout`.
+    # Expectation: The turn ends in an `error` terminal event with reason
+    #   `mcp_timeout`, without calling synthesis.
     async def hung_tools() -> list[dict[str, Any]]:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
@@ -359,9 +424,9 @@ async def test_a_slow_tool_list_fails_the_turn(
     monkeypatch.setattr(chat_pipeline, "MCP_TOOLS_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(mcp_client, "async_get_tools", hung_tools)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert turn.payloads == [{"error": chat_pipeline._MCP_TOOLS_TIMEOUT}]
+    assert _only_terminal(turn)["reason"] == "mcp_timeout"
     assert turn.synthesis_calls == 0
     assert turn.finished == [("error", "mcp_timeout")]
 
@@ -373,9 +438,9 @@ async def test_an_empty_synthesis_fails_the_turn(
     # Test: Fail-closed handling of empty synthesis output.
     # Situation: The synthesis stream finishes after yielding only
     #   whitespace.
-    # Expectation: The turn emits an error payload with the fixed synthesis
-    #   error message, emits no `done` payload, and is recorded as `error`
-    #   with `synthesis_empty`.
+    # Expectation: The turn ends in an `error` terminal event with reason
+    #   `synthesis_empty` and the fixed synthesis message, and no chart
+    #   config is emitted.
     async def blank() -> AsyncIterator[str]:
         yield " \n"
 
@@ -384,10 +449,12 @@ async def test_an_empty_synthesis_fails_the_turn(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blank_synthesis)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert turn.payloads[-1] == {"error": chat_pipeline._SYNTHESIS_FAILED}
-    assert not any("done" in payload for payload in turn.payloads)
+    terminal = _only_terminal(turn)
+    assert terminal["reason"] == "synthesis_empty"
+    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert not any("chart_config" in data for _, data in turn.events)
     assert turn.finished == [("error", "synthesis_empty")]
 
 
@@ -398,9 +465,9 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     # Test: Fail-closed handling of a synthesis stream that fails mid-stream.
     # Situation: The synthesis stream yields part of the answer and then
     #   raises `GeminiStreamError` with upstream error text.
-    # Expectation: The partial text is emitted, and the turn ends with the
-    #   fixed synthesis error message rather than the upstream text and is
-    #   recorded as `error` with `synthesis_stream_error`.
+    # Expectation: The partial text is emitted, and the turn ends in an
+    #   `error` terminal event with reason `synthesis_stream_error` and the
+    #   fixed message rather than the upstream text.
     upstream = "HTTP 503: upstream detail"
 
     async def broken() -> AsyncIterator[str]:
@@ -412,10 +479,12 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", broken_synthesis)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert {"text": "About "} in turn.payloads
-    assert turn.payloads[-1] == {"error": chat_pipeline._SYNTHESIS_FAILED}
+    assert ("content", {"text": "About "}) in turn.events
+    terminal = _only_terminal(turn)
+    assert terminal["reason"] == "synthesis_stream_error"
+    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
     assert turn.finished == [("error", "synthesis_stream_error")]
 
 
@@ -426,8 +495,8 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
     # Test: Catch-all handling for unexpected exceptions inside a phase.
     # Situation: `check_data_availability` raises an unexpected
     #   `RuntimeError` containing internal details.
-    # Expectation: The turn emits the fixed internal-error message and is
-    #   recorded as `error` with `internal_error`.
+    # Expectation: The turn ends in an `error` terminal event with reason
+    #   `internal_error` and the fixed internal-error message.
     detail = "internal detail"
 
     def broken_check(tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
@@ -435,9 +504,11 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
 
     monkeypatch.setattr(chat_pipeline, "check_data_availability", broken_check)
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert turn.payloads[-1] == {"error": chat_pipeline._INTERNAL_ERROR}
+    terminal = _only_terminal(turn)
+    assert terminal["reason"] == "internal_error"
+    assert terminal["error"] == chat_pipeline._INTERNAL_ERROR
     assert turn.finished == [("error", "internal_error")]
 
 
@@ -447,9 +518,9 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
 ) -> None:
     # Test: Best-effort handling of follow-up question generation.
     # Situation: `generate_follow_up_questions` raises a `RuntimeError`
-    #   after the final payload has been emitted.
-    # Expectation: The final payload has already been emitted, no follow-ups
-    #   are emitted, and the turn is recorded as `complete`.
+    #   after the terminal event has been emitted.
+    # Expectation: The single terminal event is `complete`, no follow-ups are
+    #   emitted, and the turn is recorded as `complete`.
     async def failing_follow_ups(
         question: str, topics: list[str], usage: TokenUsage
     ) -> list[str]:
@@ -459,10 +530,10 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
         chat_pipeline, "generate_follow_up_questions", failing_follow_ups
     )
 
-    await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+    await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert any(p.get("done") is True for p in turn.payloads)
-    assert not any("follow_up_questions" in p for p in turn.payloads)
+    assert _only_terminal(turn)["state"] == "complete"
+    assert "follow_ups" not in turn.names()
     assert turn.finished == [("complete", None)]
 
 
@@ -475,8 +546,8 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
     # Test: Cleanup of a failed chart task when a later phase fails.
     # Situation: `get_chart_config` raises a `ValueError`, and synthesis
     #   fails after the chart task has finished.
-    # Expectation: The turn emits an error payload, and the chart task's
-    #   exception is retrieved and logged by type.
+    # Expectation: The turn ends in an `error` terminal event, and the chart
+    #   task's exception is retrieved and logged by type.
     chart_failed = asyncio.Event()
 
     async def failing_chart_config(
@@ -496,7 +567,7 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
     )
 
     with caplog.at_level(logging.WARNING, logger=chat_pipeline.__name__):
-        await chat_pipeline.run_turn(_QUESTION, [], turn.emit)
+        await chat_pipeline.run_turn(_QUESTION, [], _KEY, turn.emit)
 
-    assert turn.payloads[-1] == {"error": chat_pipeline._SYNTHESIS_FAILED}
+    assert _only_terminal(turn)["reason"] == "synthesis_error"
     assert "Chart config failed: ValueError" in caplog.text
