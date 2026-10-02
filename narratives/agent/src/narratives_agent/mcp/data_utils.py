@@ -169,13 +169,14 @@ def check_data_availability(
 def annotate_truncation(
     status: dict[str, Any], truncated: bool
 ) -> dict[str, Any]:
-    """Records on `status` that the tool loop stopped before it was finished.
+    """Updates `status` when the tool loop stops before finishing its search.
 
-    Mutates and returns `status`. check_data_availability only sees the tool
-    calls that happened, so when none of them fetched observations it concludes
-    the data does not exist. If the loop ran out of iterations that is the wrong
-    story -- we stopped looking -- and telling a user the data is missing when
-    it may not be is worse than saying nothing.
+    `check_data_availability` only sees the tool calls that completed, and
+    when none of them fetched observations it concludes that the data does
+    not exist. If the loop stops at its iteration or time limit, that
+    conclusion may be wrong because the loop ended before it could finish
+    searching. In that case, this function replaces `status["message"]` so
+    the user is not told that the data is missing.
     """
     status["truncated"] = truncated
     if truncated and not status.get("has_data"):

@@ -26,6 +26,7 @@ path for both the ingress=internal and the IAM-gated deployments.
 """
 
 import logging
+import threading
 import time
 from typing import TypedDict
 from urllib.parse import urlparse
@@ -54,6 +55,12 @@ class _CachedToken(TypedDict):
 _TOKEN_CACHE: dict[str, _CachedToken] = {}
 _TOKEN_TTL_SECONDS = 50 * 60
 
+# `attach_auth` runs on worker threads (`asyncio.to_thread`,
+# `run_in_threadpool`), so several requests can miss the cache at once. The
+# lock makes them share one metadata-server request instead of each minting
+# a token.
+_TOKEN_LOCK = threading.Lock()
+
 
 def _audience_for(url: str) -> str:
     """Cloud Run expects the audience to be the service's origin, not the
@@ -74,7 +81,16 @@ def get_id_token(audience: str) -> str:
     cached = _TOKEN_CACHE.get(audience)
     if cached and cached["exp"] > time.time():
         return cached["token"]
+    with _TOKEN_LOCK:
+        # Another thread may have minted the token while this one waited.
+        cached = _TOKEN_CACHE.get(audience)
+        if cached and cached["exp"] > time.time():
+            return cached["token"]
+        return _mint_id_token(audience)
 
+
+def _mint_id_token(audience: str) -> str:
+    """Requests an ID token for `audience` and caches a non-empty one."""
     try:
         response = requests.get(
             _METADATA_TOKEN_URL,

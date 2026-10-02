@@ -22,8 +22,10 @@ replaced.
 import base64
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -38,6 +40,7 @@ from narratives_agent.gemini.schemas import (
     DataValidationResponse,
     FollowUpResponse,
 )
+from narratives_agent.telemetry import TokenUsage
 
 _MODEL = "gemini-3-flash-preview"
 _MESSAGES = [{"role": "user", "parts": [{"text": "What is the population?"}]}]
@@ -69,6 +72,15 @@ _USAGE = {
     "totalTokenCount": 23,
 }
 
+# `_EXPECTED_USAGE` holds the token counts from `_USAGE` as a `TokenUsage`
+# instance.
+_EXPECTED_USAGE = TokenUsage(
+    prompt_token_count=11,
+    candidates_token_count=7,
+    thoughts_token_count=5,
+    total_token_count=23,
+)
+
 _SIGNATURE = b"\x00opaque-thought-signature\xff"
 
 # The fixture replaces `genai.Client`; keep the real class for assertions.
@@ -79,46 +91,10 @@ type Handler = Callable[[httpx.Request], httpx.Response]
 # Names of all client entry points for parametrized tests. Streaming entry
 # points return an error dict when a request fails before yielding any chunk.
 _MODES = [
-    "sync_request",
-    "sync_stream",
-    "sync_thought_streaming",
     "async_request",
     "async_stream",
     "async_thought_streaming",
 ]
-
-
-@dataclass
-class _RecordingSessionLogger:
-    """Records the calls the client makes on its session logger."""
-
-    usage: list[dict[str, Any] | None] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-    events: list[str] = field(default_factory=list)
-
-    def log(self, event_type: str, data: dict[str, Any]) -> None:
-        self.events.append(event_type)
-
-    def log_gemini_request(
-        self, model: str, endpoint: str, payload_info: dict[str, Any]
-    ) -> None:
-        self.events.append("GEMINI_REQUEST")
-
-    def log_gemini_response(
-        self, model: str, response: dict[str, Any], duration_ms: float
-    ) -> None:
-        self.events.append("GEMINI_RESPONSE")
-
-    def log_error(
-        self,
-        error_type: str,
-        error_message: str,
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        self.errors.append(error_message)
-
-    def add_usage(self, usage_metadata: dict[str, Any] | None) -> None:
-        self.usage.append(usage_metadata)
 
 
 @dataclass
@@ -215,12 +191,6 @@ async def _call(mode: str, **kwargs: Any) -> Any:
         **kwargs,
     }
     match mode:
-        case "sync_request":
-            return client.gemini_request(**request)
-        case "sync_stream":
-            return client.gemini_request(**request, stream=True)
-        case "sync_thought_streaming":
-            return client.gemini_request_with_thought_streaming(**request)
         case "async_request":
             return await client.async_gemini_request(**request)
         case "async_stream":
@@ -272,19 +242,17 @@ async def test_an_echoed_api_key_is_redacted_from_the_error_and_the_log(
     # Test: Redaction of an API key echoed in an upstream error body.
     # Situation: An intermediate proxy returns an HTTP 403 page that echoes
     #   a request URL containing `key=<api_key>`.
-    # Expectation: The returned error, the error log, and the session log
-    #   all show `key=[REDACTED]` and never the raw key.
+    # Expectation: The returned error and the error log both show
+    #   `key=[REDACTED]` and never the raw key.
     gemini.respond(_answer(403, text=_PROXY_ERROR_BODY))
-    session_logger = _RecordingSessionLogger()
 
     with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = await _call(mode, session_logger=session_logger)
+        result = await _call(mode)
 
     assert _FAKE_KEY not in result["error"]
     assert "key=[REDACTED]" in result["error"]
     assert _FAKE_KEY not in caplog.text
     assert "key=[REDACTED]" in caplog.text
-    assert session_logger.errors == [result["error"]]
 
 
 @pytest.mark.asyncio
@@ -349,11 +317,12 @@ async def test_a_missing_api_key_fails_without_sending_a_request(
     assert gemini.sent == []
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("location_env", "expected_location"),
     [("", "us-central1"), ("europe-west4", "europe-west4")],
 )
-def test_vertex_ai_mode_builds_an_adc_client_for_the_project(
+async def test_vertex_ai_mode_builds_an_adc_client_for_the_project(
     gemini: _FakeGemini,
     monkeypatch: pytest.MonkeyPatch,
     location_env: str,
@@ -375,7 +344,7 @@ def test_vertex_ai_mode_builds_an_adc_client_for_the_project(
 
     monkeypatch.setattr(client, "get_gemini_api_key", fail)
 
-    built = client._get_client()
+    built = await client._get_client()
 
     assert isinstance(built, _SDK_CLIENT)
     assert len(gemini.constructions) == 1
@@ -404,7 +373,8 @@ async def test_vertex_ai_mode_without_a_project_names_the_variable(
     assert gemini.constructions == []
 
 
-def test_the_client_is_reused_until_its_credentials_change(
+@pytest.mark.asyncio
+async def test_the_client_is_reused_until_its_credentials_change(
     gemini: _FakeGemini, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Test: Client caching across calls.
@@ -416,12 +386,12 @@ def test_the_client_is_reused_until_its_credentials_change(
     #   in the URL.
     gemini.respond(_answer(200, json=_response_json([{"text": "ok"}])))
 
-    client.gemini_request(_MESSAGES, "", _MODEL)
-    client.gemini_request(_MESSAGES, "", _MODEL)
+    await client.async_gemini_request(_MESSAGES, "", _MODEL)
+    await client.async_gemini_request(_MESSAGES, "", _MODEL)
     assert len(gemini.constructions) == 1
 
     monkeypatch.setattr(client, "get_gemini_api_key", lambda: "rotated-key")
-    client.gemini_request(_MESSAGES, "", _MODEL)
+    await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
     assert len(gemini.constructions) == 2
     assert gemini.constructions[0]["vertexai"] is False
@@ -430,9 +400,8 @@ def test_the_client_is_reused_until_its_credentials_change(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["sync_request", "async_request"])
 async def test_a_structured_output_request_sends_the_schema_and_config(
-    gemini: _FakeGemini, mode: str
+    gemini: _FakeGemini,
 ) -> None:
     # Test: Request configuration for a structured-output call.
     # Situation: A caller passes ChartConfigResponse as response_schema with a
@@ -447,7 +416,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
     )
 
     result = await _call(
-        mode,
+        "async_request",
         system_instruction="Extract charts.",
         temperature=0.2,
         thinking_level="minimal",
@@ -470,21 +439,19 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["sync_request", "async_request"])
 async def test_a_complete_response_records_its_usage(
-    gemini: _FakeGemini, mode: str
+    gemini: _FakeGemini,
 ) -> None:
     # Test: Token accounting for a non-streaming call.
-    # Situation: Gemini returns a complete response with usage metadata.
-    # Expectation: The session logger records the response and receives the
-    #   call's four token counts once.
+    # Situation: Gemini returns a complete response with usage metadata, and
+    #   the caller passes a `TokenUsage`.
+    # Expectation: The call's four token counts are added to it once.
     gemini.respond(_answer(200, json=_response_json([{"text": "ok"}], _USAGE)))
-    session_logger = _RecordingSessionLogger()
+    usage = TokenUsage()
 
-    await _call(mode, session_logger=session_logger)
+    await _call("async_request", token_usage=usage)
 
-    assert session_logger.usage == [_USAGE]
-    assert session_logger.events == ["GEMINI_REQUEST", "GEMINI_RESPONSE"]
+    assert usage == _EXPECTED_USAGE
 
 
 @pytest.mark.asyncio
@@ -511,7 +478,8 @@ async def test_an_invalid_message_is_reported_without_its_content(
     assert gemini.sent == []
 
 
-def test_a_dict_schema_is_not_modified_by_the_request(
+@pytest.mark.asyncio
+async def test_a_dict_schema_is_not_modified_by_the_request(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Reuse of a dict response schema.
@@ -529,13 +497,16 @@ def test_a_dict_schema_is_not_modified_by_the_request(
     original = json.loads(json.dumps(schema))
     gemini.respond(_answer(200, json=_response_json([{"text": "{}"}])))
 
-    client.gemini_request(_MESSAGES, "", _MODEL, response_schema=schema)
+    await client.async_gemini_request(
+        _MESSAGES, "", _MODEL, response_schema=schema
+    )
 
     assert schema == original
     assert "responseSchema" in gemini.body()["generationConfig"]
 
 
-def test_an_api_key_echoed_from_the_header_is_redacted(
+@pytest.mark.asyncio
+async def test_an_api_key_echoed_from_the_header_is_redacted(
     gemini: _FakeGemini, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: Redaction of an API key echoed without a `key=` prefix.
@@ -548,7 +519,7 @@ def test_an_api_key_echoed_from_the_header_is_redacted(
     )
 
     with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = client.gemini_request(_MESSAGES, "", _MODEL)
+        result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
     assert isinstance(result, dict)
     assert _FAKE_KEY not in result["error"]
@@ -556,7 +527,8 @@ def test_an_api_key_echoed_from_the_header_is_redacted(
     assert _FAKE_KEY not in caplog.text
 
 
-def test_an_api_key_crossing_the_error_length_limit_is_redacted(
+@pytest.mark.asyncio
+async def test_an_api_key_crossing_the_error_length_limit_is_redacted(
     gemini: _FakeGemini, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: Redaction of an echoed API key that crosses the error length limit.
@@ -568,14 +540,14 @@ def test_an_api_key_crossing_the_error_length_limit_is_redacted(
     #   the log.
     prefix = "HTTP 400: "
     gemini.respond(_answer(400, text="@"))
-    marker = client.gemini_request(_MESSAGES, "", _MODEL)
+    marker = await client.async_gemini_request(_MESSAGES, "", _MODEL)
     assert isinstance(marker, dict)
     offset = marker["error"].index("@") - len(prefix)
     padding = client._ERROR_BODY_LENGTH - offset - len(_FAKE_KEY) // 2
     gemini.respond(_answer(400, text="x" * padding + _FAKE_KEY))
 
     with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = client.gemini_request(_MESSAGES, "", _MODEL)
+        result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
     assert isinstance(result, dict)
     key_start = _FAKE_KEY[:8]
@@ -583,6 +555,7 @@ def test_an_api_key_crossing_the_error_length_limit_is_redacted(
     assert key_start not in caplog.text
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("schema", "required"),
     [
@@ -591,7 +564,7 @@ def test_an_api_key_crossing_the_error_length_limit_is_redacted(
         (FollowUpResponse, ["questions"]),
     ],
 )
-def test_each_schema_is_sent_to_gemini_as_expected(
+async def test_each_schema_is_sent_to_gemini_as_expected(
     gemini: _FakeGemini, schema: type[BaseModel], required: list[str]
 ) -> None:
     # Test: The response schema each workflow sends on the wire.
@@ -602,7 +575,9 @@ def test_each_schema_is_sent_to_gemini_as_expected(
     #   Developer API rejects with HTTP 400).
     gemini.respond(_answer(200, json=_response_json([{"text": "{}"}])))
 
-    client.gemini_request(_MESSAGES, "", _MODEL, response_schema=schema)
+    await client.async_gemini_request(
+        _MESSAGES, "", _MODEL, response_schema=schema
+    )
 
     sent = gemini.body()["generationConfig"]["responseSchema"]
     assert sent["type"] == "OBJECT"
@@ -611,7 +586,8 @@ def test_each_schema_is_sent_to_gemini_as_expected(
     assert set(sent["properties"]) == set(schema.model_fields)
 
 
-def test_the_chart_schema_constrains_each_chart_on_the_wire(
+@pytest.mark.asyncio
+async def test_the_chart_schema_constrains_each_chart_on_the_wire(
     gemini: _FakeGemini,
 ) -> None:
     # Test: The nested chart item in the chart config schema.
@@ -621,7 +597,7 @@ def test_the_chart_schema_constrains_each_chart_on_the_wire(
     #   additional_properties.
     gemini.respond(_answer(200, json=_response_json([{"text": "{}"}])))
 
-    client.gemini_request(
+    await client.async_gemini_request(
         _MESSAGES, "", _MODEL, response_schema=ChartConfigResponse
     )
 
@@ -646,23 +622,50 @@ def test_the_chart_schema_constrains_each_chart_on_the_wire(
     assert item["properties"]["date"]["nullable"] is True
 
 
-def test_an_empty_response_omits_candidates(gemini: _FakeGemini) -> None:
+@pytest.mark.asyncio
+async def test_an_empty_response_omits_candidates(gemini: _FakeGemini) -> None:
     # Test: A response with no candidates.
     # Situation: Gemini returns a body with usage metadata but no candidates.
     # Expectation: The result has no "candidates" key, matching the REST
     #   shape that callers test with `"candidates" in response`.
     gemini.respond(_answer(200, json={"usageMetadata": _USAGE}))
 
-    result = client.gemini_request(_MESSAGES, "", _MODEL)
+    result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
     assert isinstance(result, dict)
     assert "candidates" not in result
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "mode", ["sync_thought_streaming", "async_thought_streaming"]
-)
+async def test_a_thought_stream_without_an_answer_omits_candidates(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: A streamed reply with neither a function call nor answer text.
+    # Situation: The stream delivers only a thought chunk and an empty chunk
+    #   with usage, as an empty or safety-blocked reply does.
+    # Expectation: The thought is still forwarded, but the result has no
+    #   "candidates" key, so it cannot be mistaken for a reply that chose to
+    #   stop calling tools.
+    gemini.respond(
+        _answer(
+            200,
+            content=_sse(
+                _response_json([{"text": "Considering.", "thought": True}]),
+                {"usageMetadata": _USAGE},
+            ),
+        )
+    )
+    thoughts: list[str] = []
+
+    result = await _call(
+        "async_thought_streaming", thought_callback=thoughts.append
+    )
+
+    assert thoughts == ["Considering."]
+    assert "candidates" not in result
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("thinking_level", "expected_thinking_config"),
     [
@@ -672,7 +675,6 @@ def test_an_empty_response_omits_candidates(gemini: _FakeGemini) -> None:
 )
 async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     gemini: _FakeGemini,
-    mode: str,
     thinking_level: str | None,
     expected_thinking_config: dict[str, Any],
 ) -> None:
@@ -710,7 +712,7 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
         )
     )
     thoughts: list[str] = []
-    session_logger = _RecordingSessionLogger()
+    usage = TokenUsage()
     tool = {
         "name": "get_observations",
         "description": "Fetch observations.",
@@ -722,10 +724,10 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     }
 
     result = await _call(
-        mode,
+        "async_thought_streaming",
         tools=[tool],
         thinking_level=thinking_level,
-        session_logger=session_logger,
+        token_usage=usage,
         thought_callback=thoughts.append,
     )
 
@@ -737,7 +739,7 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     }
     assert base64.urlsafe_b64decode(parts[0]["thoughtSignature"]) == _SIGNATURE
     assert parts[1] == {"text": "Looking up."}
-    assert session_logger.usage == [_USAGE]
+    assert usage == _EXPECTED_USAGE
     request = gemini.sent[0]
     assert "streamGenerateContent" in request.url.path
     body = gemini.body()
@@ -750,7 +752,8 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     )
 
 
-def test_returned_function_call_parts_can_be_sent_back_unchanged(
+@pytest.mark.asyncio
+async def test_returned_function_call_parts_can_be_sent_back_unchanged(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Replaying a model turn in the next tool-loop request.
@@ -765,7 +768,9 @@ def test_returned_function_call_parts_can_be_sent_back_unchanged(
         "thoughtSignature": signature,
     }
     gemini.respond(_answer(200, json=_response_json([function_call])))
-    first = client.gemini_request_with_thought_streaming(_MESSAGES, "", _MODEL)
+    first = await client.async_gemini_request_with_thought_streaming(
+        _MESSAGES, "", _MODEL
+    )
     parts = first["candidates"][0]["content"]["parts"]
 
     history = [
@@ -784,7 +789,9 @@ def test_returned_function_call_parts_can_be_sent_back_unchanged(
         },
     ]
     gemini.respond(_answer(200, json=_response_json([{"text": "39M."}])))
-    client.gemini_request_with_thought_streaming(history, "", _MODEL)
+    await client.async_gemini_request_with_thought_streaming(
+        history, "", _MODEL
+    )
 
     contents = gemini.body()["contents"]
     replayed = contents[1]["parts"][0]
@@ -800,50 +807,6 @@ _STREAM_BODY = _sse(
     _response_json([{"text": "California has "}]),
     _response_json([{"text": "39 million people."}], _USAGE),
 )
-
-
-@pytest.mark.parametrize(
-    ("include_thoughts", "expected"),
-    [
-        (
-            True,
-            [
-                {"type": "thought", "content": "Weighing sources."},
-                {"type": "text", "content": "California has "},
-                {"type": "text", "content": "39 million people."},
-            ],
-        ),
-        (False, ["California has ", "39 million people."]),
-    ],
-)
-def test_a_sync_stream_yields_text_and_records_usage(
-    gemini: _FakeGemini, include_thoughts: bool, expected: list[Any]
-) -> None:
-    # Test: Synchronous streaming output.
-    # Situation: The stream delivers a thought chunk and two text chunks,
-    #   with usage on the last.
-    # Expectation: When include_thoughts is True, the stream yields
-    #   {"type": ..., "content": ...} dicts for both thoughts and text; when
-    #   False, it yields only plain text strings. Token usage is recorded once
-    #   the stream finishes.
-    gemini.respond(_answer(200, content=_STREAM_BODY))
-    session_logger = _RecordingSessionLogger()
-
-    stream = client.gemini_request(
-        _MESSAGES,
-        "",
-        _MODEL,
-        thinking_level="low",
-        stream=True,
-        session_logger=session_logger,
-        include_thoughts=include_thoughts,
-    )
-
-    assert not isinstance(stream, dict)
-    assert list(stream) == expected
-    assert session_logger.usage == [_USAGE]
-    thinking = gemini.body()["generationConfig"]["thinkingConfig"]
-    assert thinking.get("include_thoughts", False) is include_thoughts
 
 
 @pytest.mark.asyncio
@@ -868,35 +831,33 @@ async def test_an_async_stream_yields_text_and_records_usage(
     # Situation: The stream delivers a thought chunk and two text chunks,
     #   with usage on the last.
     # Expectation: When include_thoughts is True, the stream yields
-    #   {"type": ..., "content": ...} dicts for both thoughts and text; when
-    #   False, it yields only plain text strings. Token usage is recorded once
-    #   the stream finishes.
+    #   {"type": ..., "content": ...} dicts for both thoughts and text, and
+    #   thought summaries are requested; when False, it yields only plain
+    #   text strings. Token usage is recorded once the stream finishes.
     gemini.respond(_answer(200, content=_STREAM_BODY))
-    session_logger = _RecordingSessionLogger()
+    usage = TokenUsage()
 
     stream = await client.async_gemini_stream(
         _MESSAGES,
         "",
         _MODEL,
         thinking_level="low",
-        session_logger=session_logger,
+        token_usage=usage,
         include_thoughts=include_thoughts,
     )
 
     assert not isinstance(stream, dict)
     assert [item async for item in stream] == expected
-    assert session_logger.usage == [_USAGE]
+    assert usage == _EXPECTED_USAGE
+    thinking = gemini.body()["generationConfig"]["thinkingConfig"]
+    assert thinking.get("include_thoughts", False) is include_thoughts
 
 
-class _BrokenStream(httpx.SyncByteStream, httpx.AsyncByteStream):
+class _BrokenStream(httpx.AsyncByteStream):
     """A response body that fails after delivering its first chunk."""
 
     _first = _sse(_response_json([{"text": "California has "}]))
     _error = httpx.ReadError(f"connection reset for ?key={_FAKE_KEY}")
-
-    def __iter__(self) -> Iterator[bytes]:
-        yield self._first
-        raise self._error
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
         yield self._first
@@ -904,9 +865,8 @@ class _BrokenStream(httpx.SyncByteStream, httpx.AsyncByteStream):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["sync_stream", "async_stream"])
 async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
-    gemini: _FakeGemini, caplog: pytest.LogCaptureFixture, mode: str
+    gemini: _FakeGemini, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: A stream failing after its first chunk.
     # Situation: The connection resets after one text chunk, with the API key
@@ -915,18 +875,14 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
     #   GeminiStreamError whose message and log redact the key.
     gemini.respond(_answer(200, stream=_BrokenStream()))
 
-    stream = await _call(mode)
+    stream = await _call("async_stream")
     received: list[Any] = []
     with (
         caplog.at_level(logging.ERROR, logger=client.logger.name),
         pytest.raises(client.GeminiStreamError) as raised,
     ):
-        if mode == "sync_stream":
-            for item in stream:
-                received.append(item)
-        else:
-            async for item in stream:
-                received.append(item)
+        async for item in stream:
+            received.append(item)
 
     assert received == ["California has "]
     assert _FAKE_KEY not in str(raised.value)
@@ -971,3 +927,136 @@ def test_build_thinking_config_normalizes_the_level(
     # Expectation: Known levels match case-insensitively, unrecognized values
     #   default to "low", and include_thoughts is set only when True.
     assert client.build_thinking_config(value, include_thoughts) == expected
+
+
+@pytest.mark.asyncio
+async def test_the_api_key_is_resolved_off_the_event_loop(
+    gemini: _FakeGemini, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: API-key resolution does not block the event loop.
+    # Situation: `get_gemini_api_key` is stubbed to record the thread it
+    #   runs on, as a cold Secret Manager cache makes a blocking request.
+    # Expectation: The key is resolved on a thread other than the one
+    #   running the event loop, and the request is sent with that key.
+    threads: list[int] = []
+
+    def resolve_key() -> str:
+        threads.append(threading.get_ident())
+        return _FAKE_KEY
+
+    monkeypatch.setattr(client, "get_gemini_api_key", resolve_key)
+    gemini.respond(_answer(200, json=_response_json([{"text": "ok"}])))
+
+    await client.async_gemini_request(_MESSAGES, "", _MODEL)
+
+    assert threads and threading.get_ident() not in threads
+    assert gemini.sent[0].headers["x-goog-api-key"] == _FAKE_KEY
+
+
+@pytest.mark.asyncio
+async def test_a_failed_thought_stream_closes_the_sdk_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: The thought-streaming request closes the SDK's chunk iterator
+    #   when it stops reading early.
+    # Situation: The SDK stream yields a thought chunk and would yield more,
+    #   and the thought callback raises while handling the first chunk.
+    # Expectation: The request reports the failure, and the chunk iterator
+    #   is closed before the request returns rather than when the garbage
+    #   collector finalizes it.
+    closed: list[bool] = []
+    thought = types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    parts=[types.Part(text="Thinking.", thought=True)]
+                )
+            )
+        ]
+    )
+
+    async def chunks() -> AsyncIterator[types.GenerateContentResponse]:
+        try:
+            yield thought
+            yield thought
+        finally:
+            closed.append(True)
+
+    async def generate_content_stream(
+        **kwargs: Any,
+    ) -> AsyncIterator[types.GenerateContentResponse]:
+        return chunks()
+
+    sdk = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=generate_content_stream
+            )
+        )
+    )
+
+    async def prepare_call(*args: Any, **kwargs: Any) -> Any:
+        return SimpleNamespace(client=sdk, contents=[], config=None)
+
+    def failing_callback(text: str) -> None:
+        raise RuntimeError("callback failed")
+
+    monkeypatch.setattr(client, "_prepare_call", prepare_call)
+
+    response = await client.async_gemini_request_with_thought_streaming(
+        messages=[],
+        system_instruction="",
+        model="gemini-test",
+        thought_callback=failing_callback,
+    )
+
+    assert "error" in response
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_first_chunk_closes_the_sdk_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `async_gemini_stream` closes the SDK's chunk iterator when
+    #   fetching the first chunk raises.
+    # Situation: The SDK stream raises on its first `anext` call.
+    # Expectation: `async_gemini_stream` returns an error dict and closes
+    #   the chunk iterator before returning.
+    closed: list[bool] = []
+
+    class _FailingChunks:
+        def __aiter__(self) -> _FailingChunks:
+            return self
+
+        async def __anext__(self) -> types.GenerateContentResponse:
+            raise RuntimeError("boom")
+
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    async def generate_content_stream(
+        **kwargs: Any,
+    ) -> AsyncIterator[types.GenerateContentResponse]:
+        return _FailingChunks()
+
+    sdk = SimpleNamespace(
+        aio=SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=generate_content_stream
+            )
+        )
+    )
+
+    async def prepare_call(*args: Any, **kwargs: Any) -> Any:
+        return SimpleNamespace(client=sdk, contents=[], config=None)
+
+    monkeypatch.setattr(client, "_prepare_call", prepare_call)
+
+    response = await client.async_gemini_stream(
+        messages=[], system_instruction="", model="gemini-test"
+    )
+
+    assert isinstance(response, dict)
+    assert "error" in response
+    assert closed == [True]

@@ -17,6 +17,7 @@ import json
 import logging
 import posixpath
 import re
+import threading
 import time
 from datetime import datetime
 from typing import Any
@@ -74,7 +75,15 @@ _config_mtime = 0.0
 
 # Secret Manager lookup cache and TTL (seconds)
 _SECRET_MANAGER_TTL_SECONDS = 300
+# `_SECRET_MANAGER_TIMEOUT_SECONDS` bounds a single Secret Manager read.
+# Concurrent cache misses wait on the thread performing the read, so an
+# unbounded read would stall all of them.
+_SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
 _secret_manager_cache: dict[str, tuple[float, str]] = {}
+# The Gemini client resolves the key on a worker thread
+# (`asyncio.to_thread`), so concurrent turns can miss the cache together. The
+# lock makes them share one Secret Manager request.
+_secret_manager_lock = threading.Lock()
 
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
 # as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
@@ -329,9 +338,19 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
     if not _SECRET_MANAGER_AVAILABLE:
         return ""
     cached = _secret_manager_cache.get(secret_name)
-    now = time.time()
-    if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
+    if cached and time.time() - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
         return cached[1]
+    with _secret_manager_lock:
+        # Another thread may have loaded the key while this one waited.
+        cached = _secret_manager_cache.get(secret_name)
+        now = time.time()
+        if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
+            return cached[1]
+        return _load_secret(secret_name, now)
+
+
+def _load_secret(secret_name: str, now: float) -> str:
+    """Reads `secret_name` from Secret Manager and caches a usable key."""
     project = get_settings().google_cloud_project
     if not secret_name.startswith("projects/"):
         if not project:
@@ -346,7 +365,10 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
         full_name = secret_name
     try:
         client = secretmanager.SecretManagerServiceClient()
-        response = client.access_secret_version(request={"name": full_name})
+        response = client.access_secret_version(
+            request={"name": full_name},
+            timeout=_SECRET_MANAGER_TIMEOUT_SECONDS,
+        )
         key = response.payload.data.decode("utf-8").strip()
         if not key:
             return ""

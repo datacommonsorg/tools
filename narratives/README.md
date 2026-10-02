@@ -822,8 +822,34 @@ curl -sN -X POST localhost:5001/agent/chat/stream \
 The server does not contact MCP at startup, and `/agent/health` never does:
 it reports the resolved `mcp_url` and the cached tool surface, which is empty
 until a chat turn has listed the tools. The chat request is therefore the first
-call to reach MCP. Its stream should carry `session_id`, `mcp_start`, tool
-events, text, and `done`.
+call to reach MCP.
+
+The stream uses typed Server-Sent Events. Every frame names its `event:` and
+carries a JSON `data:` payload, and every frame except `heartbeat` carries an
+`id:` counting up from 1:
+
+| Event | Payload |
+|---|---|
+| `status` | `{phase, message}` (`mcp`, `synthesis`, or `chart_config`) |
+| `thought` | `{thought, phase}` (a reasoning summary from `mcp` or `synthesis`) |
+| `content` | one of `{text}`, `{tool_call}`, `{sources}`, `{data_status}`, `{chart_config}` |
+| `terminal` | `{state, error?, reason?, idempotency_key, hmac, state_slots, compacted_summary}` |
+| `follow_ups` | `{follow_up_questions}`, sent after `terminal` when any are generated |
+| `heartbeat` | `{}`, sent every 15 seconds so proxies keep the connection open |
+
+A turn is finished only by its single `terminal` frame, whose `state` is
+`complete` or `error` (with a user-safe `error` and a machine-readable `reason`
+such as `mcp_unavailable`, `mcp_timeout`, or `synthesis_empty`). A stream that
+ends without a `terminal` frame was cut off, and the UI displays the turn as
+interrupted. MCP is a hard dependency: when no tools can be listed or a tool
+call fails at the transport layer, the turn ends in `error` rather than
+answering without data. A disconnected client receives no terminal frame; the
+turn is canceled and recorded as `canceled`. `hmac`, `state_slots`, and
+`compacted_summary` are empty placeholders until transcripts are signed. The
+request may carry an `idempotency_key`, which the UI generates per submission
+and the terminal frame echoes. A healthy local turn emits `content` frames
+carrying `tool_call`, then the answer `text`, and then a `complete` terminal
+frame.
 
 Production runs `uvicorn narratives_agent.server.app:app`; `dev.py` is the
 development path.
@@ -839,7 +865,7 @@ Nothing is mocked that matters.
 pnpm test
 
 # Or run by component:
-pnpm test:ui                               # Vitest UI suite (9 files, 108 tests)
+pnpm test:ui                               # Vitest UI suite
 pnpm test:agent                            # Pytest agent suite
 ```
 
@@ -856,11 +882,8 @@ uv run ruff check .                        # lint
 uv run mypy                                # types, strict
 ```
 
-> The agent type-checks under `mypy --strict`. Modules written before that
-> standard are exempted one at a time in `agent/pyproject.toml`, and each
-> exemption names the branch that rewrites or deletes the module it covers. An
-> exemption is retired by deleting that module, never by annotating code that is
-> about to be replaced — the list only shrinks.
+> The agent type-checks under `mypy --strict`, tests included, with no
+> per-module exemptions.
 
 The agent suites cover six behaviors whose failure is **silent**:
 
@@ -943,8 +966,10 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
 | `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
 
-For anything else, start with the app plane's Cloud Run logs — session events are
-structured JSON queryable by `session_id` and `event_type`.
+For anything else, start with the app plane's Cloud Run logs. Each chat turn
+writes one structured `chat_turn` record (terminal state, error type, phase
+durations, tool names, and token counts, never user content) keyed by a
+server-minted `turn_id` that also tags the turn's trace spans.
 
 ---
 

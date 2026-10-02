@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  INTERRUPTED_TURN_ERROR,
   useSseChat,
   type ChatTurn,
   type UseSseChatResult,
@@ -21,16 +22,15 @@ import {
  * "Persistent questions per session — multiple threads, lightweight tracking,
  * duration-of-the-session, no formal sign-up" (client spec).
  *
- * Data model: a flat array of ChatSession objects, each with its own turns
- * and (optional) server-side session_id. The active session is identified by
- * `currentId`. localStorage envelope is versioned (`cdc:chat:v2`) and
- * migrates a single v1 transcript into one session if found, so users don't
- * lose chat history across the upgrade.
+ * Data model: a flat array of ChatSession objects, each with its own turns.
+ * The active session is identified by `currentId`. localStorage envelope is
+ * versioned (`cdc:chat:v2`) and migrates a single v1 transcript into one
+ * session if found, so users don't lose chat history across the upgrade.
  *
- * useSseChat is now controlled — turns and sessionId come from props. The
- * provider plumbs them in from whichever session is current. Switching
- * sessions is just a `currentId` change; the same useSseChat instance keeps
- * running, now wired to the new session's turns.
+ * useSseChat is controlled: turns come from props. The provider plumbs them
+ * in from whichever session is current. Switching sessions is just a
+ * `currentId` change; the same useSseChat instance keeps running, now wired
+ * to the new session's turns.
  */
 
 const STORAGE_KEY = "cdc:chat:v2";
@@ -38,12 +38,11 @@ const LEGACY_STORAGE_KEY = "cdc:chat:v1";
 
 /** One saved chat thread: its turns plus list-ordering metadata. */
 export interface ChatSession {
-  id: string; // local UUID — not the server's session id
+  id: string; // local UUID
   title: string;
   createdAt: number;
   updatedAt: number;
   turns: ChatTurn[];
-  serverSessionId?: string;
 }
 
 /** In-memory session store: all saved sessions plus the active one. */
@@ -99,14 +98,25 @@ function emptySession(): ChatSession {
 }
 
 /**
- * Drop turns that were mid-stream when the page closed — their SSE source is
- * dead, they'll never resolve. Same defensive cleaning as v1.
+ * Settles turns restored from storage. A turn that was still streaming when
+ * the page closed will never receive a terminal event because its stream is
+ * gone, so it is converted into an interrupted error turn rather than being
+ * dropped. This preserves the user's question and any partial answer across a
+ * page reload.
  */
-function cleanTurns(turns: ChatTurn[]): ChatTurn[] {
+export function cleanTurns(turns: ChatTurn[]): ChatTurn[] {
   if (!Array.isArray(turns)) return [];
-  return turns.filter(
-    (turn) => turn && (turn.status === "done" || turn.status === "error"),
-  );
+  return turns
+    .filter((turn) => turn && typeof turn === "object")
+    .map((turn) =>
+      turn.status === "done" || turn.status === "error"
+        ? turn
+        : {
+            ...turn,
+            status: "error",
+            error: turn.error ?? INTERRUPTED_TURN_ERROR,
+          },
+    );
 }
 
 /** Migrates a legacy v1 single-transcript localStorage entry into one session. */
@@ -118,7 +128,6 @@ function migrateV1(): ChatSession | null {
     const v1 = JSON.parse(raw) as {
       version?: number;
       turns?: ChatTurn[];
-      sessionId?: string;
     };
     const turns = cleanTurns(v1.turns ?? []);
     if (turns.length === 0) {
@@ -132,7 +141,6 @@ function migrateV1(): ChatSession | null {
       createdAt: now,
       updatedAt: now,
       turns,
-      serverSessionId: v1.sessionId,
     };
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     return session;
@@ -235,7 +243,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     store.sessions[0];
 
   const turns = currentSession.turns;
-  const sessionId = currentSession.serverSessionId;
 
   // Controlled setters into the current session's slot.
   const setTurns = useCallback(
@@ -265,25 +272,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const setSessionId = useCallback((id: string | undefined) => {
-    setStore((prev) => {
-      const idx = prev.sessions.findIndex(
-        (session) => session.id === prev.currentId,
-      );
-      if (idx < 0) return prev;
-      if (prev.sessions[idx].serverSessionId === id) return prev;
-      const sessions = prev.sessions.slice();
-      sessions[idx] = { ...sessions[idx], serverSessionId: id };
-      return { ...prev, sessions };
-    });
-  }, []);
-
-  const { isStreaming, error, send, stop } = useSseChat({
-    turns,
-    setTurns,
-    sessionId,
-    setSessionId,
-  });
+  const { isStreaming, error, send, stop } = useSseChat({ turns, setTurns });
 
   // ---- multi-session controls ----
 
