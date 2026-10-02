@@ -40,7 +40,7 @@ from narratives_agent.server.routes import chat
 from narratives_agent.workflows.chat_pipeline import Emit, EventName
 
 _HISTORY = [{"role": "user", "content": "What is the population of France?"}]
-_KEY = "3f1c2a9e-key"
+_IDEMPOTENCY_KEY = "test-idempotency-key"
 # `_CLEANUP_STEPS` sets the number of event-loop iterations a canceled stub
 # turn spends in cleanup. Using more than one iteration verifies that a second
 # cancellation does not interrupt cleanup mid-way.
@@ -86,8 +86,8 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.mark.usefixtures("turn")
 def test_stream_sends_each_event_as_a_typed_frame_byte_for_byte(
-    turn: _Turn,
     client: TestClient,
 ) -> None:
     # Test: Wire format of `POST /agent/chat/stream`.
@@ -129,12 +129,12 @@ def test_request_fields_reach_the_turn(
         json={
             "message": "And Spain?",
             "history": _HISTORY,
-            "idempotency_key": _KEY,
+            "idempotency_key": _IDEMPOTENCY_KEY,
         },
     )
 
     assert response.status_code == 200
-    assert turn.calls == [("And Spain?", _HISTORY, _KEY)]
+    assert turn.calls == [("And Spain?", _HISTORY, _IDEMPOTENCY_KEY)]
 
 
 def test_omitted_optional_fields_reach_the_turn_defaulted(
