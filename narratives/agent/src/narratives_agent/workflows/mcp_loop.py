@@ -46,6 +46,10 @@ from narratives_agent.gemini.client import (
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.schema import transform_schema_for_gemini
 from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.workflows.transcript import (
+    Transcript,
+    transcript_contents,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +76,12 @@ MAX_CONCURRENT_TOOL_CALLS = 8
 _UNDECLARED_TOOL = "unknown"
 
 _MCP_TEMPERATURE = 0.2
+
+# `MCP_HISTORY_RESPONSE_CHARS` limits how much of each earlier answer the
+# loop quotes. The loop resends its contents on every iteration, and the
+# earlier questions, the summary, and the data scopes carry what resolving
+# a reference needs; the full answers are reserved for synthesis.
+MCP_HISTORY_RESPONSE_CHARS = 2_000
 
 
 class McpLoopError(Exception):
@@ -210,7 +220,7 @@ async def _run_tools(
 
 
 async def _iterate(
-    user_message: str,
+    transcript: Transcript,
     config: dict[str, Any],
     tools: list[dict[str, Any]],
     telemetry: TurnTelemetry,
@@ -230,11 +240,13 @@ async def _iterate(
     declared = frozenset(tool["name"] for tool in gemini_tools)
     limit = asyncio.Semaphore(MAX_CONCURRENT_TOOL_CALLS)
 
-    # No history for MCP calls (a fresh search every time); history is used
-    # only in the synthesis phase for context.
-    contents: list[dict[str, Any]] = [
-        {"role": "user", "parts": [{"text": user_message}]}
-    ]
+    # The verified window comes first so that a follow-up such as "and for
+    # Texas?" is resolved against the places and variables already queried.
+    contents = transcript_contents(
+        transcript,
+        transcript.current_query,
+        max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
+    )
 
     for iteration in range(MAX_ITERATIONS):
         telemetry.mcp_iterations = iteration + 1
@@ -310,7 +322,7 @@ async def _iterate(
 
 
 async def execute_mcp_tool_loop(
-    user_message: str,
+    transcript: Transcript,
     config: dict[str, Any],
     tools: list[dict[str, Any]],
     telemetry: TurnTelemetry,
@@ -319,7 +331,8 @@ async def execute_mcp_tool_loop(
     """Runs the MCP tool-calling loop for one user query.
 
     Args:
-        user_message: The user's query.
+        transcript: The verified transcript, holding the user's query and
+            the conversation context it is resolved against.
         config: Agent configuration, for prompts, model, and thinking level.
         tools: MCP tool definitions available to the model.
         telemetry: The turn's telemetry, which receives token counts, the
@@ -343,7 +356,7 @@ async def execute_mcp_tool_loop(
     try:
         async with asyncio.timeout(MCP_LOOP_TIMEOUT_SECONDS):
             await _iterate(
-                user_message,
+                transcript,
                 config,
                 tools,
                 telemetry,

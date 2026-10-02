@@ -28,13 +28,21 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import anyio
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sse_starlette import ServerSentEvent
 from starlette.background import BackgroundTask
 
 from narratives_agent.server.responses import ClosingEventSourceResponse
 from narratives_agent.workflows.chat_pipeline import EventName, run_turn
+from narratives_agent.workflows.transcript import (
+    MAX_QUERY_CHARS,
+    IdempotencyKey,
+    Transcript,
+    TranscriptError,
+    load_transcript,
+)
 
 router = APIRouter()
 
@@ -44,26 +52,35 @@ HEARTBEAT_INTERVAL_SECONDS = 15
 # model streams and MCP connections before the response stops waiting for it.
 TURN_CANCEL_GRACE_SECONDS = 5
 
-# `_MAX_IDEMPOTENCY_KEY_LENGTH` bounds the client-supplied key that is echoed
-# in the terminal event.
-_MAX_IDEMPOTENCY_KEY_LENGTH = 128
+# `MAX_REQUEST_BYTES` caps the request body, which is read in full before
+# it is parsed. The largest window the agent signs is about 3 MiB: six turns
+# of a 4,000-character query, a 32,000-character answer, and eight scopes of
+# up to 51 DCID-and-name entries each, with every name in multi-byte UTF-8,
+# plus an 8,000-character summary.
+MAX_REQUEST_BYTES = 4 * 1024 * 1024
 
 
 class ChatRequest(BaseModel):
-    """The JSON body of a chat request."""
+    """The JSON body of a chat request.
 
-    message: str = Field(min_length=1)
-    history: list[dict[str, Any]] = Field(default_factory=list)
-    # The browser sends a new key with each chat request, and the server copies
-    # it unchanged into the terminal event. The server does not otherwise use
-    # the key yet. Its purpose is to let a future server-side session store
-    # detect a request that repeats an earlier one, such as a retry after a
-    # dropped connection, and return the stored answer instead of running the
-    # turn again.
-    idempotency_key: str = Field(
-        default_factory=lambda: uuid.uuid4().hex,
-        min_length=1,
-        max_length=_MAX_IDEMPOTENCY_KEY_LENGTH,
+    `turns` and `compacted_summary` are the signed transcript window from
+    the previous turn's terminal event. They are kept as decoded JSON here
+    and validated by `load_transcript`, so that a window that fails its
+    schema or caps is rejected with HTTP 400 `transcript_invalid`, which
+    the browser recovers from, rather than with HTTP 422.
+    """
+
+    message: str = Field(min_length=1, max_length=MAX_QUERY_CHARS)
+    turns: list[Any] = Field(default_factory=list)
+    compacted_summary: Any = None
+    # The browser sends a new key with each chat request, and the server signs
+    # it into the completed turn and copies it into the terminal event, where
+    # the browser uses it to match the signed window to its turns. A future
+    # server-side session store can also use it to detect a request that
+    # repeats an earlier one, such as a retry after a dropped connection, and
+    # return the stored answer instead of running the turn again.
+    idempotency_key: IdempotencyKey = Field(
+        default_factory=lambda: uuid.uuid4().hex
     )
 
 
@@ -73,7 +90,7 @@ def _heartbeat() -> ServerSentEvent:
 
 
 async def _turn_events(
-    request: ChatRequest,
+    transcript: Transcript,
 ) -> AsyncGenerator[ServerSentEvent]:
     """Runs the turn in a task and yields its events as they arrive.
 
@@ -95,9 +112,7 @@ async def _turn_events(
 
     async def produce() -> None:
         try:
-            await run_turn(
-                request.message, request.history, request.idempotency_key, emit
-            )
+            await run_turn(transcript, emit)
         finally:
             queue.put_nowait(None)
 
@@ -125,18 +140,77 @@ async def _turn_events(
             task.result()
 
 
+def _too_large() -> HTTPException:
+    """Returns the error for a request body over `MAX_REQUEST_BYTES`."""
+    return HTTPException(
+        status_code=413,
+        detail={
+            "reason": "request_too_large",
+            "message": f"The request exceeds {MAX_REQUEST_BYTES} bytes.",
+        },
+    )
+
+
+async def _read_body(request: Request) -> bytes:
+    """Reads the request body, stopping once it exceeds `MAX_REQUEST_BYTES`.
+
+    A declared `Content-Length` over the cap is rejected before any of the
+    body is read, and a body without one, such as a chunked upload, is
+    rejected as soon as the bytes read pass the cap.
+
+    Raises:
+        HTTPException: The request body exceeds `MAX_REQUEST_BYTES` (HTTP 413).
+    """
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_REQUEST_BYTES:
+        raise _too_large()
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_REQUEST_BYTES:
+            raise _too_large()
+    return bytes(body)
+
+
 @router.post("/chat/stream")
-async def chat_stream(body: ChatRequest) -> ClosingEventSourceResponse:
+async def chat_stream(request: Request) -> ClosingEventSourceResponse:
     """Streams one chat turn as typed Server-Sent Events.
+
+    The body is read under `MAX_REQUEST_BYTES` and then parsed as a
+    `ChatRequest`, rather than declared as a parameter, because FastAPI
+    reads a declared body in full before any route code can bound it.
 
     Request body:
     {
         "message": "user query",
-        "history": [...optional conversation history...],
+        "turns": [...signed turns from the previous terminal event...],
+        "compacted_summary": "summary of compacted turns, or null",
         "idempotency_key": "optional client-generated key"
     }
+
+    Raises:
+        HTTPException: The body exceeds `MAX_REQUEST_BYTES` (HTTP 413), or
+            the transcript fails its schema or verification (HTTP 400 with
+            reason `transcript_invalid`). Both are raised before the stream
+            opens, so the browser receives a plain JSON error.
+        RequestValidationError: The body is not JSON or the message or
+            idempotency key is invalid, which FastAPI reports as HTTP 422.
     """
-    events = _turn_events(body)
+    raw = await _read_body(request)
+    try:
+        body = ChatRequest.model_validate_json(raw)
+    except ValidationError as error:
+        raise RequestValidationError(
+            error.errors(include_url=False, include_context=False)
+        ) from error
+    try:
+        transcript = load_transcript(body)
+    except TranscriptError as error:
+        raise HTTPException(
+            status_code=400,
+            detail={"reason": "transcript_invalid", "message": str(error)},
+        ) from error
+    events = _turn_events(transcript)
 
     async def close_events() -> None:
         # `events.aclose` itself cannot be the task: it is a builtin method,

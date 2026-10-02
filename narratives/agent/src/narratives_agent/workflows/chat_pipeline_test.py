@@ -15,8 +15,9 @@
 
 Verifies that:
 1. A complete turn emits the answer, the chart config, a `complete`
-   terminal event carrying the idempotency key and the placeholder signing
-   fields, then the follow-ups, and is recorded as `complete`.
+   terminal event carrying the idempotency key and the signed window, then
+   the follow-ups, and is recorded as `complete`. The signed turn verifies
+   on the next request, and an answer too long to sign is left unsigned.
 2. A failed MCP loop, an empty or slow tool list, and a failed, broken, or
    empty synthesis end the turn with one `error` terminal event carrying a
    fixed message and the machine-readable `reason`, and are recorded as
@@ -27,11 +28,16 @@ Verifies that:
    completes without charts; a chart config that failed is retrieved.
 5. Cancellation mid-turn cancels the background chart task and is recorded
    as `canceled`; cancellation after the terminal event stays `complete`.
+6. Synthesis receives the verified window before the current query, an
+   `error` terminal event carries no signing fields, and a failure while
+   signing leaves the delivered turn complete and unsigned.
 """
 
 import asyncio
+import json
 import logging
-from collections.abc import AsyncIterator
+import re
+from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -41,20 +47,78 @@ from narratives_agent.gemini.client import GeminiStreamError
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
 from narratives_agent.workflows import chat_pipeline
+from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.chat_pipeline import EventName
 from narratives_agent.workflows.mcp_loop import McpLoopError, McpLoopResult
+from narratives_agent.workflows.transcript import (
+    MAX_RESPONSE_CHARS,
+    ConversationStateSlots,
+    Transcript,
+    Turn,
+    load_transcript,
+)
 
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
 _ANSWER = "About 68 million."
 _CHARTS = {"should_render": True, "charts": [{"title": "Population"}]}
 _FOLLOW_UPS = ["And Spain?"]
+_TRANSCRIPT = Transcript(
+    turns=[],
+    compacted_summary=None,
+    current_query=_QUESTION,
+    current_idempotency_key=_IDEMPOTENCY_KEY,
+)
 _TOOL_CALL = {
     "name": "get_observations",
-    "arguments": {},
-    "result": "68000000",
+    "arguments": {"variable_dcid": "Count_Person", "place_dcid": "country/FRA"},
+    "result": json.dumps(
+        {
+            "data": {
+                "rows": [
+                    {"entity": "country/FRA", "date": "2023", "value": 68e6}
+                ]
+            },
+            "dcid_name_mappings": {
+                "country/FRA": "France",
+                "Count_Person": "Total Population",
+            },
+        }
+    ),
     "status": "success",
 }
+_SCOPES = {
+    "scopes": [
+        {
+            "places": {"country/FRA": "France"},
+            "parent_place": None,
+            "child_place_type": None,
+            "variables": {"Count_Person": "Total Population"},
+            "date_range": ["2023", "2023"],
+        }
+    ]
+}
+
+
+@pytest.fixture(autouse=True)
+def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Signs transcripts with a fixed secret resolved afresh per test."""
+    monkeypatch.setenv(
+        "TRANSCRIPT_HMAC_SECRET", "pipeline-test-secret-0123456789abcdef"
+    )
+    transcript_module.reset_signing_key()
+    yield
+    transcript_module.reset_signing_key()
+
+
+@dataclass(frozen=True)
+class _Request:
+    """Carries the transcript fields of a chat request."""
+
+    message: str
+    idempotency_key: str
+    turns: Sequence[Turn] = ()
+    compacted_summary: str | None = None
 
 
 class _RecordingTelemetry(TurnTelemetry):
@@ -78,6 +142,7 @@ class _Turn:
         default_factory=list
     )
     synthesis_calls: int = 0
+    synthesis_messages: list[list[dict[str, Any]]] = field(default_factory=list)
     chart_canceled: asyncio.Event = field(default_factory=asyncio.Event)
     chart_release: asyncio.Event = field(default_factory=asyncio.Event)
     synthesis_release: asyncio.Event = field(default_factory=asyncio.Event)
@@ -119,6 +184,7 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
 
     async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
         stub.synthesis_calls += 1
+        stub.synthesis_messages.append(list(kwargs["messages"]))
         return answer()
 
     async def chart_config(
@@ -170,9 +236,7 @@ async def _start_and_wait_for(
     turn: _Turn, name: EventName
 ) -> asyncio.Task[None]:
     """Starts the turn and waits until it emits an event with the given name."""
-    task = asyncio.create_task(
-        chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
-    )
+    task = asyncio.create_task(chat_pipeline.run_turn(_TRANSCRIPT, turn.emit))
     async with asyncio.timeout(1):
         while name not in turn.names():
             await asyncio.sleep(0)
@@ -187,28 +251,152 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     # Situation: Tools, synthesis, chart config, and follow-ups all succeed.
     # Expectation: The answer text and then the chart config are emitted as
     #   content, followed by one `complete` terminal event with the
-    #   request's idempotency key and empty signing placeholders, and last
-    #   the follow-ups; the turn is recorded as `complete`.
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    #   request's idempotency key, the signed turn, its state slots, and a
+    #   one-turn window, and last the follow-ups; the turn is recorded as
+    #   `complete`.
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     content = [data for event, data in turn.events if event == "content"]
     assert {"text": _ANSWER} in content
     assert content[-1] == {"chart_config": _CHARTS}
-    assert turn.events[-2:] == [
-        (
-            "terminal",
+    event, terminal = turn.events[-2]
+    assert event == "terminal"
+    signature = terminal["hmac"]
+    assert re.fullmatch(r"[0-9a-f]{64}", signature)
+    assert terminal == {
+        "state": "complete",
+        "idempotency_key": _IDEMPOTENCY_KEY,
+        "turn_index": 0,
+        "hmac": signature,
+        "state_slots": _SCOPES,
+        "compacted_summary": None,
+        "window": [
             {
-                "state": "complete",
+                "turn_index": 0,
                 "idempotency_key": _IDEMPOTENCY_KEY,
-                "hmac": "",
-                "state_slots": {"scopes": []},
-                "compacted_summary": None,
-            },
-        ),
-        ("follow_ups", {"follow_up_questions": _FOLLOW_UPS}),
-    ]
+                "hmac": signature,
+            }
+        ],
+    }
+    assert turn.events[-1] == (
+        "follow_ups",
+        {"follow_up_questions": _FOLLOW_UPS},
+    )
     assert turn.names().count("terminal") == 1
     assert turn.finished == [("complete", None)]
+
+
+@pytest.mark.asyncio
+async def test_the_signed_turn_verifies_on_the_next_request(
+    turn: _Turn,
+) -> None:
+    # Test: The terminal event carries everything the next request needs.
+    # Situation: A completed turn is rebuilt as the browser stores it from the
+    #   query, the streamed answer, and the terminal event.
+    # Expectation: The next request carrying that turn verifies.
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+    _, terminal = turn.events[-2]
+    stored = Turn.model_validate(
+        {
+            "turn_index": terminal["turn_index"],
+            "idempotency_key": terminal["idempotency_key"],
+            "user_query": _QUESTION,
+            "model_response": _ANSWER,
+            "state_slots": terminal["state_slots"],
+            "hmac": terminal["hmac"],
+        }
+    )
+
+    loaded = load_transcript(_Request("And Spain?", "key-2", [stored]))
+
+    assert loaded.turns == [stored]
+
+
+@pytest.mark.asyncio
+async def test_synthesis_receives_the_window_before_the_query(
+    turn: _Turn,
+) -> None:
+    # Test: Multi-turn context reaches synthesis.
+    # Situation: A transcript holds one earlier turn.
+    # Expectation: Synthesis receives the earlier query and full answer as
+    #   alternating messages, then the current query with the data results.
+    earlier = Turn(
+        turn_index=0,
+        idempotency_key="key-0",
+        user_query="Population of Spain?",
+        model_response="About 48 million.",
+        state_slots=ConversationStateSlots(),
+        hmac="0" * 64,
+    )
+    follow_up = Transcript(
+        turns=[earlier],
+        compacted_summary=None,
+        current_query=_QUESTION,
+        current_idempotency_key=_IDEMPOTENCY_KEY,
+    )
+
+    await chat_pipeline.run_turn(follow_up, turn.emit)
+
+    (messages,) = turn.synthesis_messages
+    assert [message["role"] for message in messages] == [
+        "user",
+        "model",
+        "user",
+    ]
+    assert messages[1]["parts"] == [{"text": "About 48 million."}]
+    assert f"User Query: {_QUESTION}" in messages[2]["parts"][0]["text"]
+    _, terminal = turn.events[-2]
+    assert [entry["turn_index"] for entry in terminal["window"]] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_a_signing_failure_completes_the_turn_unsigned(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: A signing failure after the answer is delivered leaves the turn
+    #   complete and unsigned.
+    # Situation: Signing raises once the answer and chart config have been
+    #   emitted.
+    # Expectation: The turn still ends `complete`, without signing fields,
+    #   and is recorded as `complete`.
+    async def failing_finalize(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("signing failed")
+
+    monkeypatch.setattr(chat_pipeline, "finalize_turn", failing_finalize)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    _, terminal = turn.events[-2]
+    assert terminal == {
+        "state": "complete",
+        "idempotency_key": _IDEMPOTENCY_KEY,
+    }
+    assert turn.finished == [("complete", None)]
+
+
+@pytest.mark.asyncio
+async def test_an_answer_too_long_to_sign_completes_unsigned(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: An answer longer than `MAX_RESPONSE_CHARS` completes unsigned.
+    # Situation: Synthesis streams more than `MAX_RESPONSE_CHARS` characters.
+    # Expectation: The turn completes, and its terminal event carries no
+    #   signing fields, so the browser leaves the turn out of later context.
+    async def long_answer() -> AsyncIterator[str]:
+        yield "x" * (MAX_RESPONSE_CHARS + 1)
+
+    async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
+        return long_answer()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    _, terminal = turn.events[-2]
+    assert terminal == {
+        "state": "complete",
+        "idempotency_key": _IDEMPOTENCY_KEY,
+    }
 
 
 @pytest.mark.asyncio
@@ -225,7 +413,7 @@ async def test_failed_tool_loop_ends_the_turn_before_synthesis(
 
     monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", failing_loop)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     event, terminal = turn.events[-1]
     assert event == "terminal"
@@ -233,6 +421,8 @@ async def test_failed_tool_loop_ends_the_turn_before_synthesis(
     assert terminal["error"] == "The data request took too long."
     assert terminal["reason"] == "mcp_timeout"
     assert terminal["idempotency_key"] == _IDEMPOTENCY_KEY
+    assert "hmac" not in terminal
+    assert "window" not in terminal
     assert turn.names().count("terminal") == 1
     assert turn.synthesis_calls == 0
     assert turn.finished == [("error", "mcp_timeout")]
@@ -254,7 +444,7 @@ async def test_failed_synthesis_reports_a_fixed_message(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", failing_synthesis)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     event, terminal = turn.events[-1]
     assert event == "terminal"
@@ -278,7 +468,7 @@ async def test_slow_chart_config_is_canceled_and_charts_are_dropped(
     )
     turn.chart_release.clear()
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     content = [data for event, data in turn.events if event == "content"]
     assert content[-1] == {"chart_config": {"should_render": False}}
@@ -299,7 +489,7 @@ async def test_a_failed_chart_task_leaves_the_turn_complete(
 
     monkeypatch.setattr(chat_pipeline, "get_chart_config", failing_chart_config)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     content = [data for event, data in turn.events if event == "content"]
     assert {"text": _ANSWER} in content
@@ -325,7 +515,7 @@ async def test_a_failed_chart_validation_hides_the_charts(
         chat_pipeline, "validate_data_response", failing_validate
     )
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     content = [data for event, data in turn.events if event == "content"]
     assert content[-1] == {"chart_config": {**_CHARTS, "hide_charts": True}}
@@ -364,7 +554,7 @@ async def test_malformed_chart_entries_do_not_fail_the_turn(
         chat_pipeline, "generate_follow_up_questions", follow_ups
     )
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert topics == [["GDP"]]
     assert turn.finished == [("complete", None)]
@@ -435,7 +625,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
 
     monkeypatch.setattr(mcp_client, "async_get_tools", no_tools)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "mcp_unavailable"
@@ -460,7 +650,7 @@ async def test_a_slow_tool_list_fails_the_turn(
     monkeypatch.setattr(chat_pipeline, "MCP_TOOLS_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(mcp_client, "async_get_tools", hung_tools)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert _only_terminal(turn)["reason"] == "mcp_timeout"
     assert turn.synthesis_calls == 0
@@ -485,7 +675,7 @@ async def test_an_empty_synthesis_fails_the_turn(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blank_synthesis)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "synthesis_empty"
@@ -515,7 +705,7 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", broken_synthesis)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert ("content", {"text": "About "}) in turn.events
     terminal = _only_terminal(turn)
@@ -540,7 +730,7 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
 
     monkeypatch.setattr(chat_pipeline, "check_data_availability", broken_check)
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "internal_error"
@@ -566,7 +756,7 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
         chat_pipeline, "generate_follow_up_questions", failing_follow_ups
     )
 
-    await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert _only_terminal(turn)["state"] == "complete"
     assert "follow_ups" not in turn.names()
@@ -603,7 +793,7 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
     )
 
     with caplog.at_level(logging.WARNING, logger=chat_pipeline.__name__):
-        await chat_pipeline.run_turn(_QUESTION, [], _IDEMPOTENCY_KEY, turn.emit)
+        await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert _only_terminal(turn)["reason"] == "synthesis_error"
     assert "Chart config failed: ValueError" in caplog.text

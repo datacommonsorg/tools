@@ -23,10 +23,13 @@ as typed values rather than through shared mutable state.
 
 Every turn that is not canceled ends in exactly one `terminal` event. An
 `error` terminal event carries a user-safe `error` message and a
-machine-readable `reason`. Its `hmac`, `state_slots`, and
-`compacted_summary` fields are placeholders that transcript signing will
-populate; they are sent now so that the event's shape does not change when
-transcript signing lands.
+machine-readable `reason`. A `complete` terminal event carries the signed
+transcript window that the browser sends with its next request; see
+`terminal_frame`.
+
+Every phase reads the conversation through the verified `Transcript` that
+the route loaded, and the turn is appended to it and signed by
+`finalize_turn` before the `complete` event is sent.
 
 Chart configuration runs as an `asyncio.Task` concurrently with synthesis
 and is awaited, with a timeout, once synthesis has finished streaming.
@@ -58,6 +61,13 @@ from narratives_agent.workflows.follow_up import generate_follow_up_questions
 from narratives_agent.workflows.mcp_loop import (
     McpLoopError,
     execute_mcp_tool_loop,
+)
+from narratives_agent.workflows.state_slots import extract_state_slots
+from narratives_agent.workflows.transcript import (
+    SignedWindow,
+    Transcript,
+    finalize_turn,
+    transcript_contents,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,8 +120,7 @@ class TurnAbortedError(Exception):
 class TurnContext:
     """Holds the inputs and callbacks shared across every phase of a turn."""
 
-    user_message: str
-    history: list[dict[str, Any]]
+    transcript: Transcript
     config: dict[str, Any]
     telemetry: TurnTelemetry
     emit: Emit
@@ -169,7 +178,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
     ctx.emit("status", {"phase": "mcp", "message": "Querying data tools..."})
     try:
         loop_result = await execute_mcp_tool_loop(
-            ctx.user_message,
+            ctx.transcript,
             ctx.config,
             tools,
             ctx.telemetry,
@@ -222,7 +231,9 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
     if result.results and data_status.get("has_data"):
         result.chart_task = asyncio.create_task(
             get_chart_config(
-                result.results, ctx.user_message, ctx.telemetry.tokens
+                result.results,
+                ctx.transcript.current_query,
+                ctx.telemetry.tokens,
             ),
             name="chart-config",
         )
@@ -288,15 +299,12 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
         "status", {"phase": "synthesis", "message": "Generating response..."}
     )
     config = ctx.config
-    # Conversation history (already in Gemini format from the frontend)
-    # comes first, then the current query with the MCP context.
-    messages = [
-        *ctx.history,
-        {
-            "role": "user",
-            "parts": [{"text": _synthesis_message(ctx.user_message, mcp)}],
-        },
-    ]
+    # The verified window comes first, with earlier answers in full, then
+    # the current query with the MCP context.
+    messages = transcript_contents(
+        ctx.transcript,
+        _synthesis_message(ctx.transcript.current_query, mcp),
+    )
     stream = await async_gemini_stream(
         messages=messages,
         system_instruction=config.get("prompts", {}).get("synthesis", ""),
@@ -357,7 +365,7 @@ async def resolve_chart_config(
     if full_text:
         try:
             show_charts = await validate_data_response(
-                full_text, ctx.user_message, ctx.telemetry.tokens
+                full_text, ctx.transcript.current_query, ctx.telemetry.tokens
             )
         except Exception as error:
             logger.warning(
@@ -416,7 +424,9 @@ async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
     """
     try:
         follow_ups = await generate_follow_up_questions(
-            ctx.user_message, _chart_topics(chart_config), ctx.telemetry.tokens
+            ctx.transcript.current_query,
+            _chart_topics(chart_config),
+            ctx.telemetry.tokens,
         )
         if follow_ups:
             ctx.emit("follow_ups", {"follow_up_questions": follow_ups})
@@ -435,38 +445,63 @@ def _load_turn_config() -> dict[str, Any]:
 def terminal_frame(
     state: TerminalState,
     idempotency_key: str,
+    *,
     error: TurnAbortedError | None = None,
+    window: SignedWindow | None = None,
 ) -> dict[str, Any]:
     """Builds the payload of a `terminal` event.
 
     An `error` frame adds the user-safe `error` message and the
-    machine-readable `reason`. `hmac`, `state_slots`, and
-    `compacted_summary` are empty placeholders until transcript signing
-    populates them.
+    machine-readable `reason`. A frame with a signed `window` adds the
+    completed turn's `turn_index`, `hmac`, and `state_slots`, the window's
+    `compacted_summary`, and `window`: the `turn_index`,
+    `idempotency_key`, and `hmac` of every turn the browser must send next,
+    oldest first. Compaction re-signs the whole window, so the browser
+    replaces the signatures it holds with these and drops any turn that
+    `window` does not list. A `complete` frame without a window marks a
+    turn that was not signed, which the browser leaves out of later
+    requests.
+
+    Args:
+        state: The terminal state of the turn (`"complete"`, `"error"`, or
+            `"canceled"`).
+        idempotency_key: The request's idempotency key echoed back to the
+            client.
+        error: The optional `TurnAbortedError` when `state == "error"`.
+        window: The optional `SignedWindow` when the completed turn was signed.
+
+    Returns:
+        The JSON-serializable payload dict for the `terminal` SSE frame.
     """
-    frame: dict[str, Any] = {
-        "state": state,
-        "idempotency_key": idempotency_key,
-        "hmac": "",
-        "state_slots": {"scopes": []},
-        "compacted_summary": None,
-    }
+    frame: dict[str, Any] = {"state": state, "idempotency_key": idempotency_key}
     if error is not None:
         frame["error"] = str(error)
         frame["reason"] = error.error_type
+    if window is not None:
+        turn = window.turn
+        frame.update(
+            turn_index=turn.turn_index,
+            hmac=turn.hmac,
+            state_slots=turn.state_slots.model_dump(mode="json"),
+            compacted_summary=window.compacted_summary,
+            window=[
+                {
+                    "turn_index": signed.turn_index,
+                    "idempotency_key": signed.idempotency_key,
+                    "hmac": signed.hmac,
+                }
+                for signed in window.turns
+            ],
+        )
     return frame
 
 
-async def run_turn(
-    user_message: str,
-    history: list[dict[str, Any]],
-    idempotency_key: str,
-    emit: Emit,
-) -> None:
+async def run_turn(transcript: Transcript, emit: Emit) -> None:
     """Runs one chat turn and emits its typed SSE events through `emit`.
 
     The turn ends in one `terminal` event: `complete` once the answer and
-    chart config are delivered, or `error` with a user-safe message. Every
+    chart config are delivered and the turn is signed into the transcript,
+    or `error` with a user-safe message. Every
     failure is reported through that event and recorded in telemetry. Only
     `asyncio.CancelledError` is re-raised to the caller; cancellation emits
     no terminal event because the client that would read it has already
@@ -474,15 +509,19 @@ async def run_turn(
     already completed. Follow-up questions are emitted after the terminal
     event. The background chart task is settled whenever the turn ends, so
     no orphaned task outlives the request.
+
+    Args:
+        transcript: The verified transcript holding the current query,
+            idempotency key, and prior turns.
+        emit: The callback invoked with each typed SSE event name and payload.
     """
+    idempotency_key = transcript.current_idempotency_key
     telemetry = TurnTelemetry()
     state: TerminalState | None = None
     error_type: str | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
-        ctx = TurnContext(
-            user_message, history, _load_turn_config(), telemetry, emit
-        )
+        ctx = TurnContext(transcript, _load_turn_config(), telemetry, emit)
         with telemetry.phase("mcp"):
             mcp = await run_mcp_phase(ctx)
         chart_task = mcp.chart_task
@@ -491,13 +530,17 @@ async def run_turn(
         with telemetry.phase("chart_config"):
             chart_config = await resolve_chart_config(ctx, mcp, full_text)
         emit("content", {"chart_config": chart_config})
+        with telemetry.phase("finalize"):
+            window = await _sign_turn(
+                transcript, full_text, mcp, chart_config, ctx
+            )
         state = "complete"
-        emit("terminal", terminal_frame(state, idempotency_key))
+        emit("terminal", terminal_frame(state, idempotency_key, window=window))
         with telemetry.phase("follow_ups"):
             await run_followups(ctx, chart_config)
     except TurnAbortedError as error:
         state, error_type = "error", error.error_type
-        emit("terminal", terminal_frame(state, idempotency_key, error))
+        emit("terminal", terminal_frame(state, idempotency_key, error=error))
     except asyncio.CancelledError:
         state = state or "canceled"
         raise
@@ -505,10 +548,40 @@ async def run_turn(
         logger.exception("Chat turn failed")
         internal = TurnAbortedError("internal_error", _INTERNAL_ERROR)
         state, error_type = "error", internal.error_type
-        emit("terminal", terminal_frame(state, idempotency_key, internal))
+        emit("terminal", terminal_frame(state, idempotency_key, error=internal))
     finally:
         _settle_chart_task(chart_task)
         telemetry.finish(state or "error", error_type)
+
+
+async def _sign_turn(
+    transcript: Transcript,
+    full_text: str,
+    mcp: McpPhaseResult,
+    chart_config: dict[str, Any],
+    ctx: TurnContext,
+) -> SignedWindow | None:
+    """Extracts the turn's state slots and signs it into the window.
+
+    The answer and chart config have already been delivered, so a failure
+    here must not turn the turn into an error. It is logged, and the turn
+    completes unsigned, as an answer too long to sign does: the browser
+    leaves it out of later context and keeps the window it holds.
+    """
+    try:
+        return await finalize_turn(
+            transcript,
+            full_text,
+            extract_state_slots(mcp.tool_calls, chart_config),
+            ctx.config,
+            ctx.telemetry.tokens,
+        )
+    except Exception as error:
+        logger.error(
+            "Signing the turn failed with %s; completing it unsigned",
+            type(error).__name__,
+        )
+        return None
 
 
 def _settle_chart_task(task: asyncio.Task[dict[str, Any]] | None) -> None:

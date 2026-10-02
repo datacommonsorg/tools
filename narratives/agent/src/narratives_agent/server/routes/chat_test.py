@@ -16,10 +16,12 @@
 Verifies that:
 1. `/chat/stream` sends each event the turn emits as a typed SSE frame with
    an `id:` counting up from 1, byte for byte, with the streaming headers.
-2. The request's message, history, and idempotency key reach the turn; an
-   omitted history reaches it as an empty list and an omitted key as a
-   server-generated one.
-3. Invalid request bodies are rejected with 422 before the turn runs.
+2. The request's message, signed turns, and idempotency key reach the turn
+   as a verified transcript; omitted turns reach it as an empty window and
+   an omitted key as a server-generated one.
+3. Invalid request bodies are rejected with 422, transcripts that fail
+   their schema, caps, or verification with 400, and bodies over
+   `MAX_REQUEST_BYTES` with 413, before the turn runs.
 4. A heartbeat frame is sent while the turn is idle.
 5. A client disconnect cancels the turn before the response ends, under ASGI
    spec 2.3 and 2.4, without relying on the garbage collector.
@@ -28,6 +30,7 @@ Verifies that:
 import asyncio
 import gc
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -37,9 +40,18 @@ from sse_starlette import ServerSentEvent
 from starlette.types import Message
 
 from narratives_agent.server.routes import chat
+from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.chat_pipeline import Emit, EventName
+from narratives_agent.workflows.transcript import (
+    MAX_IDEMPOTENCY_KEY_CHARS,
+    MAX_QUERY_CHARS,
+    MAX_SUMMARY_CHARS,
+    MAX_VERBATIM_TURNS,
+    ConversationStateSlots,
+    Transcript,
+    finalize_turn,
+)
 
-_HISTORY = [{"role": "user", "content": "What is the population of France?"}]
 _IDEMPOTENCY_KEY = "test-idempotency-key"
 # `_CLEANUP_STEPS` sets the number of event-loop iterations a canceled stub
 # turn spends in cleanup. Using more than one iteration verifies that a second
@@ -56,18 +68,42 @@ class _Turn:
     """Stubs `run_turn` by recording its inputs and emitting fixed events."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, list[dict[str, Any]], str]] = []
+        self.calls: list[Transcript] = []
 
-    async def __call__(
-        self,
-        user_message: str,
-        history: list[dict[str, Any]],
-        idempotency_key: str,
-        emit: Emit,
-    ) -> None:
-        self.calls.append((user_message, history, idempotency_key))
+    async def __call__(self, transcript: Transcript, emit: Emit) -> None:
+        self.calls.append(transcript)
         for event, data in _EVENTS:
             emit(event, data)
+
+
+@pytest.fixture(autouse=True)
+def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Signs transcripts with a fixed secret resolved afresh per test."""
+    monkeypatch.setenv(
+        "TRANSCRIPT_HMAC_SECRET", "route-test-secret-0123456789abcdef"
+    )
+    transcript_module.reset_signing_key()
+    yield
+    transcript_module.reset_signing_key()
+
+
+def _signed_turn() -> dict[str, Any]:
+    """Returns the wire form of one signed turn, as the browser sends it."""
+    window = asyncio.run(
+        finalize_turn(
+            Transcript(
+                turns=[],
+                compacted_summary=None,
+                current_query="What is the population of France?",
+                current_idempotency_key="key-0",
+            ),
+            "About 68 million.",
+            ConversationStateSlots(),
+            {},
+        )
+    )
+    assert window is not None
+    return window.turn.model_dump(mode="json")
 
 
 @pytest.fixture
@@ -121,20 +157,27 @@ def test_request_fields_reach_the_turn(
     client: TestClient,
 ) -> None:
     # Test: Mapping of the request body onto the turn's inputs.
-    # Situation: A follow-up request carries a message, a one-turn history,
+    # Situation: A follow-up request carries a message, one signed turn,
     #   and an idempotency key.
-    # Expectation: The turn receives all three unchanged.
+    # Expectation: The turn receives a verified transcript holding all
+    #   three unchanged.
+    signed = _signed_turn()
     response = client.post(
         "/agent/chat/stream",
         json={
             "message": "And Spain?",
-            "history": _HISTORY,
+            "turns": [signed],
+            "compacted_summary": None,
             "idempotency_key": _IDEMPOTENCY_KEY,
         },
     )
 
     assert response.status_code == 200
-    assert turn.calls == [("And Spain?", _HISTORY, _IDEMPOTENCY_KEY)]
+    (received,) = turn.calls
+    assert received.current_query == "And Spain?"
+    assert received.current_idempotency_key == _IDEMPOTENCY_KEY
+    assert [t.model_dump(mode="json") for t in received.turns] == [signed]
+    assert received.compacted_summary is None
 
 
 def test_omitted_optional_fields_reach_the_turn_defaulted(
@@ -142,31 +185,42 @@ def test_omitted_optional_fields_reach_the_turn_defaulted(
     client: TestClient,
 ) -> None:
     # Test: Defaults for a request body with only a message.
-    # Situation: A client posts only a message, twice.
-    # Expectation: The turn receives an empty history and a server-generated
-    #   idempotency key that differs between the two requests.
+    # Situation: A client posts only a message, then a message with the
+    #   `history` field that earlier clients sent.
+    # Expectation: The turn receives an empty window and a server-generated
+    #   idempotency key that differs between the two requests; the obsolete
+    #   field is ignored.
     client.post("/agent/chat/stream", json={"message": "Hello"})
-    response = client.post("/agent/chat/stream", json={"message": "Hello"})
+    response = client.post(
+        "/agent/chat/stream",
+        json={"message": "Hello", "history": [{"role": "user"}]},
+    )
 
     assert response.status_code == 200
-    (_, first_history, first_key), (_, _, second_key) = turn.calls
-    assert first_history == []
-    assert first_key
-    assert first_key != second_key
+    first, second = turn.calls
+    assert first.turns == []
+    assert first.compacted_summary is None
+    assert second.turns == []
+    assert first.current_idempotency_key
+    assert first.current_idempotency_key != second.current_idempotency_key
 
 
 @pytest.mark.parametrize(
     "request_kwargs",
     [
-        pytest.param({"json": {"history": []}}, id="missing-message"),
+        pytest.param({"json": {"turns": []}}, id="missing-message"),
         pytest.param({"json": {"message": ""}}, id="empty-message"),
         pytest.param(
-            {"json": {"message": "Hello", "history": None}},
-            id="null-history",
+            {"json": {"message": "q" * (MAX_QUERY_CHARS + 1)}},
+            id="overlong-message",
         ),
         pytest.param(
-            {"json": {"message": "Hello", "history": "Hello"}},
-            id="history-not-a-list",
+            {"json": {"message": "Hello", "turns": None}},
+            id="null-turns",
+        ),
+        pytest.param(
+            {"json": {"message": "Hello", "turns": "Hello"}},
+            id="turns-not-a-list",
         ),
         pytest.param(
             {"json": {"message": "Hello", "idempotency_key": ""}},
@@ -176,8 +230,7 @@ def test_omitted_optional_fields_reach_the_turn_defaulted(
             {
                 "json": {
                     "message": "Hello",
-                    "idempotency_key": "k"
-                    * (chat._MAX_IDEMPOTENCY_KEY_LENGTH + 1),
+                    "idempotency_key": "k" * (MAX_IDEMPOTENCY_KEY_CHARS + 1),
                 }
             },
             id="overlong-idempotency-key",
@@ -197,13 +250,101 @@ def test_invalid_request_body_returns_422(
     client: TestClient,
 ) -> None:
     # Test: Validation of the chat request body.
-    # Situation: A client posts a body with no message, an empty message, a
-    #   null history, a history that is not a list, an empty or overlong
+    # Situation: A client posts a body with no message, an empty or overlong
+    #   message, null turns, turns that are not a list, an empty or overlong
     #   idempotency key, or bytes that are not JSON.
     # Expectation: The route answers 422, and the turn never runs.
     response = client.post("/agent/chat/stream", **request_kwargs)
 
     assert response.status_code == 422
+    assert turn.calls == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "altered-answer",
+        "altered-signature",
+        "invented-summary",
+        "orphan-summary",
+        "incomplete-turn",
+        "too-many-turns",
+        "overlong-summary",
+        "non-string-summary",
+    ],
+)
+def test_an_unverifiable_transcript_returns_400(
+    change: str, turn: _Turn, client: TestClient
+) -> None:
+    # Test: Transcript verification happens before the stream opens.
+    # Situation: A request carries a signed turn whose answer or signature was
+    #   altered, a window from turn 0 with an invented summary, a summary
+    #   without turns, or a window outside its schema or caps (an incomplete
+    #   turn, more than MAX_VERBATIM_TURNS turns, an overlong summary, or a
+    #   non-string summary).
+    # Expectation: The route answers 400 with a JSON body whose reason is
+    #   `transcript_invalid`, and the turn never runs.
+    signed = _signed_turn()
+    bodies: dict[str, dict[str, Any]] = {
+        "altered-answer": {"turns": [{**signed, "model_response": "Altered."}]},
+        "altered-signature": {"turns": [{**signed, "hmac": "f" * 64}]},
+        "invented-summary": {
+            "turns": [signed],
+            "compacted_summary": "Invented summary",
+        },
+        "orphan-summary": {"compacted_summary": "Orphan summary"},
+        "incomplete-turn": {"turns": [{"turn_index": 0, "user_query": "Hi"}]},
+        "too-many-turns": {"turns": [signed] * (MAX_VERBATIM_TURNS + 1)},
+        "overlong-summary": {
+            "turns": [signed],
+            "compacted_summary": "s" * (MAX_SUMMARY_CHARS + 1),
+        },
+        "non-string-summary": {
+            "turns": [signed],
+            "compacted_summary": 123,
+        },
+    }
+    body = bodies[change]
+
+    response = client.post(
+        "/agent/chat/stream", json={"message": "Hello", **body}
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/json"
+    assert response.json()["detail"]["reason"] == "transcript_invalid"
+    assert turn.calls == []
+
+
+def test_an_oversized_body_returns_413(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, client: TestClient
+) -> None:
+    # Test: Request bodies exceeding `MAX_REQUEST_BYTES` are rejected with 413.
+    # Situation: The cap is lowered to 1 KiB, and a client posts a body over
+    #   it, first with a Content-Length header, then chunked without one.
+    # Expectation: Both requests are answered 413 with reason
+    #   `request_too_large`, and the turn never runs.
+    monkeypatch.setattr(chat, "MAX_REQUEST_BYTES", 1024)
+    body = json.dumps({"message": "Hello", "padding": "x" * 2048}).encode()
+
+    def chunks() -> Iterator[bytes]:
+        yield body[:512]
+        yield body[512:]
+
+    sized = client.post(
+        "/agent/chat/stream",
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+    chunked = client.post(
+        "/agent/chat/stream",
+        content=chunks(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    for response in (sized, chunked):
+        assert response.status_code == 413
+        assert response.json()["detail"]["reason"] == "request_too_large"
     assert turn.calls == []
 
 
@@ -227,12 +368,7 @@ def test_client_disconnect_cancels_the_turn_before_the_response_ends(
     canceled = asyncio.Event()
     cleaned_up = asyncio.Event()
 
-    async def blocked_turn(
-        user_message: str,
-        history: list[dict[str, Any]],
-        idempotency_key: str,
-        emit: Emit,
-    ) -> None:
+    async def blocked_turn(transcript: Transcript, emit: Emit) -> None:
         emit("thought", {"thought": "..."})
         try:
             await asyncio.Event().wait()
@@ -321,12 +457,7 @@ def test_heartbeat_frames_are_sent_while_the_turn_is_idle(
         heartbeat_built.set()
         return original_heartbeat()
 
-    async def slow_turn(
-        user_message: str,
-        history: list[dict[str, Any]],
-        idempotency_key: str,
-        emit: Emit,
-    ) -> None:
+    async def slow_turn(transcript: Transcript, emit: Emit) -> None:
         emit("status", {"phase": "mcp"})
         async with asyncio.timeout(1):
             await heartbeat_built.wait()
