@@ -215,17 +215,10 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
     if result.sources:
         ctx.emit("content", {"sources": result.sources})
 
-    # Gated on the structural `has_data` check above, not only on the
-    # model's later reading of the synthesis prose. A chart is drawn from
-    # observations, and check_data_availability already knows whether any
-    # landed, so when none did there is nothing to configure and no Gemini
-    # call worth spending. The prose check downstream stays as a second net
-    # for the case where observations exist but do not answer the question
-    # asked; it cannot be the only net, because it is a model judging a
-    # wording: asked about an answer that opened "I don't have this
-    # specific data in the current dataset" it still reported data found,
-    # and the turn rendered two chart cards whose own fetches then came
-    # back empty, under prose saying there was no data.
+    # Only generate charts when the tool results contain observations.
+    # Without observations there is nothing to plot, so skipping chart
+    # generation here avoids an unnecessary model call and prevents empty
+    # charts from being rendered.
     if result.results and data_status.get("has_data"):
         result.chart_task = asyncio.create_task(
             get_chart_config(

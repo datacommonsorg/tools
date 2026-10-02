@@ -296,7 +296,8 @@ function decodeFrame(frame: string): ChatStreamEvent | null {
   let event = "message";
   const dataLines: string[] = [];
   for (const line of frame.split("\n")) {
-    // Lines starting with ":" are comments; `id:` lines are not needed here.
+    // Only `event:` and `data:` lines are used. Other lines, such as `id:`
+    // fields and `:` comments, are ignored.
     if (line.startsWith(SSE_EVENT_NAME_PREFIX)) {
       event = line.slice(SSE_EVENT_NAME_PREFIX.length).trim();
     } else if (line.startsWith(SSE_EVENT_DATA_PREFIX)) {

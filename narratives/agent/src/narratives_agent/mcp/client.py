@@ -342,12 +342,10 @@ def _http_transport() -> httpx2.AsyncBaseTransport | None:
 def _http_client() -> httpx2.AsyncClient:
     """Returns the shared HTTP client for the running event loop.
 
-    The client is created on first use and rebuilt if it was closed or
-    belongs to a different event loop, since its pooled connections are
-    bound to the loop that opened them. In production one loop serves the
-    process, so one client lives for the life of the application. Redirect
-    handling is not configured because `streamable_http_client` ignores the
-    client's `follow_redirects` and applies its own same-origin rule.
+    This function creates the client on first use and replaces it if it has
+    been closed or if a different event loop is running, such as between
+    tests. In production, a single event loop runs for the life of the
+    server, so one client is reused across all requests.
     """
     loop = asyncio.get_running_loop()
     holder = _HTTP_CLIENT
