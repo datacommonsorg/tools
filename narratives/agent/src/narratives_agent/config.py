@@ -86,6 +86,11 @@ PROMPT_SLOTS = ("mcp", "synthesis", "follow_up")
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
+def strip_prompt_comments(text: str) -> str:
+    """Strips HTML authoring comments and surrounding whitespace."""
+    return _HTML_COMMENT_RE.sub("", text).strip()
+
+
 def _fetch_gcs_url(url: str) -> requests.Response:
     """Fetch from GCS.
 
@@ -159,7 +164,7 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
             # Strip HTML comments so the .md files can carry authoring notes —
             # provenance, "keep in sync with X" reminders — without those notes
             # being sent to Gemini as part of the system instruction.
-            body = _HTML_COMMENT_RE.sub("", r.text).strip()
+            body = strip_prompt_comments(r.text)
         except Exception as e:
             logger.warning(
                 "Prompt %r fetch failed (%s): %s", slot, prompt_url, e

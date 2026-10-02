@@ -58,13 +58,16 @@ def test_creates_env_local_from_example_when_missing(
 
 
 def test_touches_empty_env_local_when_example_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Fallback creation of an empty .env.local when .env.local.example is
     #   absent.
     # Situation: Neither .env.local nor .env.local.example exists in root dir.
-    # Expectation: An empty .env.local file is created and config staging
-    #   succeeds with the placeholder Gemini API key.
+    # Expectation: An empty .env.local file is created, a warning is logged for
+    #   the missing GEMINI_API_KEY, and config staging succeeds with the
+    #   placeholder key.
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     _write_baseline_checkout(tmp_path, {"thinking": {"mcp_level": "medium"}})
 
@@ -73,6 +76,7 @@ def test_touches_empty_env_local_when_example_missing(
     assert (tmp_path / ".env.local").read_text(encoding="utf-8") == ""
     staged = json.loads(config_path.read_text(encoding="utf-8"))
     assert staged["gemini"]["api_key"] == "REPLACE_ME_WITH_GEMINI_API_KEY"
+    assert "GEMINI_API_KEY is not set" in caplog.text
 
 
 def test_parses_env_local_quotes_exports_and_inline_comments(
@@ -107,23 +111,26 @@ def test_parses_env_local_quotes_exports_and_inline_comments(
 def test_shell_environment_overrides_env_local(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: Precedence of shell environment variables over .env.local.
-    # Situation: GEMINI_API_KEY and DATA_PLANE_URL are already set in os.environ
-    #   when .env.local defines different values for both.
-    # Expectation: Both os.environ and the staged agent/config.json retain the
-    #   shell environment values.
+    # Test: Precedence of non-empty shell environment variables over .env.local.
+    # Situation: GEMINI_API_KEY and DATA_PLANE_URL are set in os.environ, while
+    #   DC_API_KEY is set to an empty string "", and .env.local defines all 3.
+    # Expectation: Non-empty shell variables win over .env.local, while an empty
+    #   shell variable is treated as unset and populated from .env.local.
     monkeypatch.setenv("GEMINI_API_KEY", "shell-gemini-key")
     monkeypatch.setenv("DATA_PLANE_URL", "https://custom.example.org")
+    monkeypatch.setenv("DC_API_KEY", "   ")
     _write_baseline_checkout(tmp_path, {})
     (tmp_path / ".env.local").write_text(
         "GEMINI_API_KEY=dotenv-gemini-key\n"
-        "DATA_PLANE_URL=https://api.datacommons.org\n",
+        "DATA_PLANE_URL=https://api.datacommons.org\n"
+        "DC_API_KEY=dotenv-dc-key\n",
         encoding="utf-8",
     )
 
     config_path = dev.stage_local_environment(tmp_path)
 
     assert os.environ.get("DATA_PLANE_URL") == "https://custom.example.org"
+    assert os.environ.get("DC_API_KEY") == "dotenv-dc-key"
     staged = json.loads(config_path.read_text(encoding="utf-8"))
     assert staged["gemini"]["api_key"] == "shell-gemini-key"
 

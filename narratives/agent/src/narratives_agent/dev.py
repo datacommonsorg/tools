@@ -43,8 +43,8 @@ from typing import Any
 import uvicorn
 
 from narratives_agent.config import (
-    _HTML_COMMENT_RE,
     PROMPT_SLOTS,
+    strip_prompt_comments,
 )
 from narratives_agent.settings import get_settings
 
@@ -53,11 +53,6 @@ logger = logging.getLogger(__name__)
 _NARRATIVES_DIR = Path(__file__).resolve().parents[3]
 _PLACEHOLDER_API_KEY_PREFIX = "REPLACE_ME"
 _DEFAULT_PLACEHOLDER_API_KEY = "REPLACE_ME_WITH_GEMINI_API_KEY"
-
-
-def _strip_html_comments(text: str) -> str:
-    """Strips HTML authoring comments so they are not sent in prompts."""
-    return _HTML_COMMENT_RE.sub("", text).strip()
 
 
 def _parse_env_value(raw: str) -> str:
@@ -145,7 +140,7 @@ def _load_prompts(defaults_dir: Path, config_dir: Path) -> dict[str, str]:
 
     prompts: dict[str, str] = {}
     for slot, path in prompt_files.items():
-        cleaned = _strip_html_comments(path.read_text(encoding="utf-8"))
+        cleaned = strip_prompt_comments(path.read_text(encoding="utf-8"))
         if cleaned:
             prompts[slot] = cleaned
 
@@ -196,6 +191,10 @@ def stage_local_environment(narratives_dir: Path | None = None) -> Path:
 
     Returns:
         Path to the written `agent/config.json` file.
+
+    Raises:
+        SystemExit: If `defaults/agent-config.json` is missing or if either the
+            baseline or override config file is not a valid JSON object.
     """
     root_dir = narratives_dir or _NARRATIVES_DIR
     env_file = root_dir / ".env.local"
@@ -208,7 +207,7 @@ def stage_local_environment(narratives_dir: Path | None = None) -> Path:
     if not env_file.is_file():
         if example_env_file.is_file():
             shutil.copy(example_env_file, env_file)
-            logger.info(
+            logger.warning(
                 "Created .env.local from .env.local.example — please add your "
                 "GEMINI_API_KEY"
             )
@@ -217,8 +216,8 @@ def stage_local_environment(narratives_dir: Path | None = None) -> Path:
 
     env_vars = _load_env_vars(env_file)
     for key, value in env_vars.items():
-        if value:
-            os.environ.setdefault(key, value)
+        if value and not os.environ.get(key, "").strip():
+            os.environ[key] = value
     get_settings.cache_clear()
 
     config = _load_base_config(defaults_dir, config_dir)
@@ -233,9 +232,13 @@ def stage_local_environment(narratives_dir: Path | None = None) -> Path:
 
     if not isinstance(config.get("gemini"), dict):
         config["gemini"] = {}
-    config["gemini"]["api_key"] = _resolve_gemini_api_key(
-        env_vars, target_config_file
-    )
+    api_key = _resolve_gemini_api_key(env_vars, target_config_file)
+    if api_key == _DEFAULT_PLACEHOLDER_API_KEY:
+        logger.warning(
+            "GEMINI_API_KEY is not set in .env.local or the environment; "
+            "chat requests will fail until a key is configured"
+        )
+    config["gemini"]["api_key"] = api_key
 
     agent_dir.mkdir(parents=True, exist_ok=True)
     target_config_file.write_text(
@@ -250,6 +253,9 @@ def main() -> None:
 
     The port is `AGENT_PORT`, 5001 by default.
     """
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s:     %(message)s"
+    )
     stage_local_environment()
     uvicorn.run(
         "narratives_agent.server.app:app",
