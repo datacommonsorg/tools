@@ -36,7 +36,7 @@ afterAll(() => {
 });
 
 /** Renders the view with `query` and returns the search box element. */
-function renderSearchBox(query: string) {
+const renderSearchBox = (query: string) => {
   const view = render(
     <InitialView
       query={query}
@@ -46,7 +46,7 @@ function renderSearchBox(query: string) {
   );
   const searchBox = screen.getByRole("textbox").parentElement!;
   return { view, searchBox };
-}
+};
 
 describe("InitialView search box", () => {
   it("stays a pill while the text fits on one line", () => {

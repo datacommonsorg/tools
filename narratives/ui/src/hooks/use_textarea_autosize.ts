@@ -3,7 +3,7 @@
  * reports whether the text spans more than one line.
  */
 
-import { RefObject, useLayoutEffect, useState } from "react";
+import { type RefObject, useLayoutEffect, useState } from "react";
 
 /**
  * Sizes a `rows={1}` `<textarea>` to its content whenever `value` changes, and
@@ -19,10 +19,10 @@ import { RefObject, useLayoutEffect, useState } from "react";
  * @param value The textarea's current controlled value.
  * @returns Whether `value` is non-empty and spans more than one line.
  */
-export function useTextareaAutosize(
+export const useTextareaAutosize = (
   textareaRef: RefObject<HTMLTextAreaElement | null>,
   value: string,
-): boolean {
+): boolean => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   useLayoutEffect(() => {
@@ -39,4 +39,4 @@ export function useTextareaAutosize(
   }, [value, textareaRef]);
 
   return isExpanded;
-}
+};
