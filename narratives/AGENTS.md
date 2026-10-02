@@ -45,7 +45,8 @@ Contribution process and PR expectations:
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
-    `gcp_auth.py`, `server/`, `workflows/`, `mcp/`, `gemini/`).
+    `gcp_auth.py`, `telemetry.py`, `server/`, `workflows/`, `mcp/`,
+    `gemini/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
