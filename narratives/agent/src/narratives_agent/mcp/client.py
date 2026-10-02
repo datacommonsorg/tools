@@ -184,6 +184,10 @@ _session_var: ContextVar[_Session | None] = ContextVar(
 _TOOLS_LOCK = threading.Lock()
 _TOOLS_CACHE = _ToolCache()
 
+# Whether a background tool refresh is running, and the lock that guards it.
+_REFRESH_LOCK = threading.Lock()
+_refresh_in_flight = False
+
 
 def get_session_id() -> str | None:
     """Returns the MCP session ID for the current context, or `None`."""
@@ -698,10 +702,6 @@ def call_tool(
     See `async_call_tool` for details.
     """
     return _run_sync(lambda: async_call_tool(name, arguments, session_logger))
-
-
-_REFRESH_LOCK = threading.Lock()
-_refresh_in_flight = False
 
 
 def _refresh_tools_in_background() -> None:
