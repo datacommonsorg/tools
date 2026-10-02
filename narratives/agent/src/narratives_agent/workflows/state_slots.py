@@ -88,7 +88,7 @@ _OBSERVATION_TOOLS = (
     "get_child_observations",
     "get_multi_entity_observations",
 )
-_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0e-\x1f\x7f]")
 
 
 def _is_dcid(value: object) -> TypeIs[str]:
@@ -142,8 +142,7 @@ def _clean_name(value: object) -> str:
     """Strips control characters and collapses whitespace in a display name."""
     if not isinstance(value, str):
         return ""
-    without_controls = _CONTROL_CHARACTERS.sub("", " ".join(value.split()))
-    return " ".join(without_controls.split())
+    return " ".join(_CONTROL_CHARACTERS.sub("", value).split())
 
 
 def _index_payload(
@@ -249,7 +248,8 @@ def _entities(dcids: Iterable[str], names: dict[str, str]) -> dict[str, str]:
     for dcid in dcids:
         if len(entities) == MAX_ENTRIES_PER_SCOPE:
             break
-        entities.setdefault(dcid, _display_name(dcid, names))
+        if dcid not in entities:
+            entities[dcid] = _display_name(dcid, names)
     return entities
 
 
