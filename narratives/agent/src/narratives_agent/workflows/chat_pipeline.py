@@ -418,11 +418,10 @@ async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
         follow_ups = await generate_follow_up_questions(
             ctx.user_message, _chart_topics(chart_config), ctx.telemetry.tokens
         )
+        if follow_ups:
+            ctx.emit("follow_ups", {"follow_up_questions": follow_ups})
     except Exception:
         logger.exception("Follow-up generation failed")
-        return
-    if follow_ups:
-        ctx.emit("follow_ups", {"follow_up_questions": follow_ups})
 
 
 def _load_turn_config() -> dict[str, Any]:

@@ -29,7 +29,7 @@ Verifies that:
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -64,6 +64,14 @@ def _tool_turn(*names: str) -> dict[str, Any]:
             }
         ]
     }
+
+
+@pytest.fixture
+def telemetry() -> Iterator[TurnTelemetry]:
+    """Yields a `TurnTelemetry` and finishes its span after the test."""
+    turn_telemetry = TurnTelemetry()
+    yield turn_telemetry
+    turn_telemetry.finish("complete")
 
 
 @pytest.fixture
@@ -103,7 +111,9 @@ def model_answers(
 
 @pytest.mark.asyncio
 async def test_text_answer_ends_the_loop(
-    calls: list[str], model_answers: Callable[..., None]
+    calls: list[str],
+    model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: The loop terminates when the model returns text without function
     #   calls.
@@ -111,7 +121,6 @@ async def test_text_answer_ends_the_loop(
     # Expectation: The loop returns after one iteration with no tool calls
     #   and no truncation.
     model_answers(_text_turn("Done."))
-    telemetry = TurnTelemetry()
 
     result = await mcp_loop.execute_mcp_tool_loop(
         _QUESTION, {}, _TOOLS, telemetry
@@ -127,6 +136,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Tool calls from a single model turn run concurrently within the
     #   session scope.
@@ -145,7 +155,6 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
 
     monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
     model_answers(_tool_turn("first", "second"), _text_turn("Done."))
-    telemetry = TurnTelemetry()
 
     result = await mcp_loop.execute_mcp_tool_loop(
         _QUESTION, {}, _TOOLS, telemetry
@@ -186,6 +195,7 @@ async def test_unusable_model_response_fails_closed(
     error_type: str,
     calls: list[str],
     model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Fail-closed handling of an unusable model response.
     # Situation: After one successful tool turn, the model call returns an
@@ -197,9 +207,7 @@ async def test_unusable_model_response_fails_closed(
     model_answers(_tool_turn("first"), response)
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(
-            _QUESTION, {}, _TOOLS, TurnTelemetry()
-        )
+        await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
 
     assert raised.value.error_type == error_type
     assert _UPSTREAM_ERROR not in str(raised.value)
@@ -207,7 +215,9 @@ async def test_unusable_model_response_fails_closed(
 
 @pytest.mark.asyncio
 async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
-    monkeypatch: pytest.MonkeyPatch, calls: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Exceeding the loop's wall-clock timeout before any tool call has
     #   completed raises `McpLoopError`.
@@ -231,9 +241,7 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
     )
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(
-            _QUESTION, {}, _TOOLS, TurnTelemetry()
-        )
+        await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
 
     assert raised.value.error_type == "mcp_timeout"
     assert canceled.is_set()
@@ -241,7 +249,9 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
 
 @pytest.mark.asyncio
 async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
-    monkeypatch: pytest.MonkeyPatch, calls: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Exceeding the loop's wall-clock timeout after a tool call has
     #   completed returns the completed calls with `truncated` set.
@@ -261,7 +271,6 @@ async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
     monkeypatch.setattr(
         mcp_loop, "async_gemini_request_with_thought_streaming", request
     )
-    telemetry = TurnTelemetry()
 
     result = await mcp_loop.execute_mcp_tool_loop(
         _QUESTION, {}, _TOOLS, telemetry
@@ -278,6 +287,7 @@ async def test_iteration_cap_returns_partial_results_flagged_truncated(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Reaching `MAX_ITERATIONS` returns partial results with `truncated`
     #   set to `True`.
@@ -287,7 +297,6 @@ async def test_iteration_cap_returns_partial_results_flagged_truncated(
     #   rather than raising an exception.
     monkeypatch.setattr(mcp_loop, "MAX_ITERATIONS", 2)
     model_answers(_tool_turn("first"), _tool_turn("second"))
-    telemetry = TurnTelemetry()
 
     result = await mcp_loop.execute_mcp_tool_loop(
         _QUESTION, {}, _TOOLS, telemetry
@@ -306,6 +315,7 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Fail-closed handling of an MCP transport failure.
     # Situation: The model calls two tools in one turn. The first raises
@@ -331,7 +341,6 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
 
     monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
     model_answers(_tool_turn("first", "second"))
-    telemetry = TurnTelemetry()
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
         await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
@@ -347,6 +356,7 @@ async def test_tool_calls_in_flight_are_bounded(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Concurrent tool calls within a turn are bounded by
     #   `MAX_CONCURRENT_TOOL_CALLS`.
@@ -373,7 +383,7 @@ async def test_tool_calls_in_flight_are_bounded(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, TurnTelemetry()
+        _QUESTION, {}, _TOOLS, telemetry
     )
 
     assert len(result.tool_calls) == 4
@@ -382,7 +392,9 @@ async def test_tool_calls_in_flight_are_bounded(
 
 @pytest.mark.asyncio
 async def test_telemetry_records_undeclared_tool_names_as_unknown(
-    calls: list[str], model_answers: Callable[..., None]
+    calls: list[str],
+    model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
 ) -> None:
     # Test: Telemetry records undeclared tool names as "unknown".
     # Situation: The model calls one declared tool and one name that was
@@ -390,7 +402,6 @@ async def test_telemetry_records_undeclared_tool_names_as_unknown(
     # Expectation: Both calls run, and telemetry counts the declared name
     #   and records the other as "unknown".
     model_answers(_tool_turn("first", "invented_tool"), _text_turn("Done."))
-    telemetry = TurnTelemetry()
 
     await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
 
@@ -414,6 +425,7 @@ async def test_tool_status_follows_the_result_shape(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
     tool_result: dict[str, Any],
     status: str,
 ) -> None:
@@ -429,7 +441,7 @@ async def test_tool_status_follows_the_result_shape(
     model_answers(_tool_turn("first"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, TurnTelemetry()
+        _QUESTION, {}, _TOOLS, telemetry
     )
 
     (record,) = result.tool_calls

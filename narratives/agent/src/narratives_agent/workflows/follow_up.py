@@ -79,7 +79,10 @@ Generate the self-contained follow-up questions now."""
             text = response["candidates"][0]["content"]["parts"][0].get(
                 "text", "{}"
             )
-            questions = (json.loads(text) or {}).get("questions", []) or []
+            loaded = json.loads(text)
+            questions = (
+                loaded.get("questions", []) if isinstance(loaded, dict) else []
+            ) or []
     except Exception as error:
         logger.error("Follow-up generation error: %s", error)
         return []

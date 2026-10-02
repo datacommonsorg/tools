@@ -26,6 +26,8 @@ Verifies these behaviors in `telemetry`:
    current `sys.stdout`, and the handler does not raise when writing fails.
 7. `flush_telemetry` writes spans still waiting in the batch processor, and
    does nothing before `configure_telemetry` has run.
+8. `configure_telemetry` installs the provider, handler, and instrumentors
+   once and is idempotent on subsequent calls.
 """
 
 import io
@@ -42,6 +44,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from google import genai
 from google.genai import types
+from opentelemetry import trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
@@ -466,3 +470,58 @@ def test_flush_telemetry_writes_buffered_spans(
         assert len(exporter.get_finished_spans()) == 1
     finally:
         provider.shutdown()
+
+
+@pytest.mark.usefixtures("content_capture_requested")
+def test_configure_telemetry_installs_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `configure_telemetry` sets up the provider, turn handler, and
+    #   instrumentors on the first call and is a no-op on later calls.
+    # Situation: Global instrumentation hooks are stubbed to record calls
+    #   without mutating process-wide OpenTelemetry state, and
+    #   `configure_telemetry` is called twice.
+    # Expectation: GenAI content capture is disabled, one `TracerProvider`
+    #   is created and stored in `_configured`, `_StdoutLineHandler` is
+    #   attached once at `INFO`, and the `httpx` and `google-genai`
+    #   instrumentors are each called once.
+    providers: list[TracerProvider] = []
+    httpx_calls: list[None] = []
+    genai_calls: list[None] = []
+    monkeypatch.setattr(telemetry, "_configured", {})
+    monkeypatch.setattr(
+        trace,
+        "set_tracer_provider",
+        lambda provider: providers.append(provider),
+    )
+    monkeypatch.setattr(
+        HTTPXClientInstrumentor,
+        "instrument",
+        lambda self: httpx_calls.append(None),
+    )
+    monkeypatch.setattr(
+        telemetry._genai_instrumentor,
+        "instrument",
+        lambda: genai_calls.append(None),
+    )
+    handlers_before = list(telemetry._turn_logger.handlers)
+    level_before = telemetry._turn_logger.level
+    try:
+        telemetry.configure_telemetry()
+        telemetry.configure_telemetry()
+
+        assert get_content_capturing_mode() is ContentCapturingMode.NO_CONTENT
+        assert len(providers) == 1
+        assert telemetry._configured == {"provider": providers[0]}
+        assert httpx_calls == [None]
+        assert genai_calls == [None]
+        assert len(telemetry._turn_logger.handlers) == len(handlers_before) + 1
+        assert isinstance(
+            telemetry._turn_logger.handlers[-1], telemetry._StdoutLineHandler
+        )
+        assert telemetry._turn_logger.level == logging.INFO
+    finally:
+        telemetry._turn_logger.handlers[:] = handlers_before
+        telemetry._turn_logger.setLevel(level_before)
+        for provider in providers:
+            provider.shutdown()
