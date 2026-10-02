@@ -901,7 +901,7 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
 | Public access binding refused | Domain Restricted Sharing | Use IAP or the proxy |
 | `/healthz` works but the uptime check does not | Cloud Run's frontend reserves `/healthz` and answers it itself | External checks must use `/agent/health` |
-| A private backend refuses everything locally | No metadata server on a laptop | Expected — see Path B |
+| A private backend refuses everything locally | No metadata server on a laptop | Expected — use public Data Commons locally, or widen ingress temporarily |
 | Ingestion fails: missing `Source` | MCF incomplete | Define every provenance's `Source` node |
 | Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
 | `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
