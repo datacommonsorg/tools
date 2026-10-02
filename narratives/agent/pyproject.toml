@@ -24,14 +24,21 @@ description = "App-plane agent for Data Commons Narratives."
 requires-python = ">=3.14"
 license = "Apache-2.0"
 dependencies = [
+    "anyio>=4.15",
     "fastapi>=0.141",
     "google-cloud-secret-manager>=2.20",
     "google-genai>=1.0",
     "httpx>=0.28",
     "httpx2>=2.13",
     "mcp>=2.2",
+    "opentelemetry-instrumentation-fastapi>=0.66b0",
+    "opentelemetry-instrumentation-google-genai>=1.2b0",
+    "opentelemetry-instrumentation-httpx>=0.66b0",
+    "opentelemetry-sdk>=1.45",
+    "opentelemetry-util-genai>=1.2b0",
     "pydantic-settings>=2.15",
     "requests>=2.32",
+    "sse-starlette>=3.5",
     "uvicorn[standard]>=0.53",
 ]
 
