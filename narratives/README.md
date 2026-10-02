@@ -707,10 +707,11 @@ instance. Real Gemini, real MCP tools, real charts.
 pnpm install
 
 # Point at your deployed Cloud Run instance
-cat > ui/.env.local <<'EOF'
-BACKEND_URL=https://<your-instance>.run.app
-AGENT_URL=https://<your-instance>.run.app
-EOF
+cp .env.example .env.local
+$EDITOR .env.local
+# Set BACKEND_URL and AGENT_URL to your deployed instance:
+#   BACKEND_URL=https://<your-instance>.run.app
+#   AGENT_URL=https://<your-instance>.run.app
 
 pnpm dev:ui         # http://localhost:3000
 ```

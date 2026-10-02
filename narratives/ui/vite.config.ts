@@ -9,7 +9,12 @@ const DEFAULT_BACKEND_URL = 'http://localhost:8080';
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
 
 export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+  const envDir = path.resolve(__dirname, '..');
+  // Load environment variables from narratives/.env.local (single source of truth),
+  // falling back to local ui/.env.local if present.
+  const env = {
+    ...loadEnv(mode, envDir, ''),
+  };
   const backendProxy = {
     target: env.BACKEND_URL || DEFAULT_BACKEND_URL,
     changeOrigin: true,
@@ -29,6 +34,7 @@ export default defineConfig(({mode}) => {
       : {}),
   };
   return {
+    envDir,
     // Vitest: happy-dom gives useHashRoute.test.ts a window/location + hashchange.
     test: {
       environment: 'happy-dom',

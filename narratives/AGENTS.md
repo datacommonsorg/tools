@@ -134,8 +134,8 @@ not run as part of this deployment; connect either to a deployed backend, public
 Commons or a local MCP server as preferred.
 
 - **UI (`narratives/ui/`)** — run `pnpm install`, optionally configure
-  `AGENT_URL` in `ui/.env.local` to point at a deployed instance (data routes
-  default to `AGENT_URL` or public `https://datacommons.org`), and run `pnpm dev`
+  `AGENT_URL` in `.env.local` to point at a deployed instance (data routes
+  default to `AGENT_URL` or public `https://datacommons.org`), and run `pnpm dev:ui`
   (or `pnpm -C ui run dev`). In development, Vite's `server.proxy`
   (`ui/vite.config.ts`) forwards `/agent/*` and Data Commons routes to those
   URLs; in production, the Python server in `agent/` serves the compiled SPA
