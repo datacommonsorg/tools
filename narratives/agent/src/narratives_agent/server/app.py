@@ -83,7 +83,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     Telemetry is configured here rather than when the module is imported, so
     importing the application in a test or a tool installs no global tracer
-    provider.
+    provider. Spans that are still buffered are written at shutdown.
     """
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
@@ -94,6 +94,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
             yield
     finally:
         await mcp_client.aclose()
+        telemetry.flush_telemetry()
 
 
 def create_app() -> FastAPI:

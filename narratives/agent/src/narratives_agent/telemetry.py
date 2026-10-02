@@ -114,8 +114,14 @@ _turn_logger.propagate = False
 _genai_instrumentor = GoogleGenAiSdkInstrumentor()
 
 # `configure_telemetry` installs a global tracer provider and global
-# instrumentation, which must happen once per process.
-_configured: dict[str, bool] = {}
+# instrumentation, which must happen once per process. The provider is kept
+# here so that `flush_telemetry` can reach it at shutdown.
+_configured: dict[str, TracerProvider] = {}
+
+# `_FLUSH_TIMEOUT_MILLIS` limits how long shutdown waits for buffered spans to
+# be written. Cloud Run allows 10 seconds between SIGTERM and SIGKILL, and the
+# rest of shutdown also needs part of that time.
+_FLUSH_TIMEOUT_MILLIS = 5000
 
 
 def _span_attributes(span: ReadableSpan) -> dict[str, Any]:
@@ -207,9 +213,8 @@ def configure_telemetry() -> None:
 
     This function is idempotent; only the first call has an effect.
     """
-    if _configured.get("done"):
+    if "provider" in _configured:
         return
-    _configured["done"] = True
     _disable_genai_content_capture()
 
     _turn_logger.addHandler(_StdoutLineHandler())
@@ -220,11 +225,25 @@ def configure_telemetry() -> None:
     )
     provider.add_span_processor(BatchSpanProcessor(_StdoutSpanExporter()))
     trace.set_tracer_provider(provider)
+    _configured["provider"] = provider
     # The httpx instrumentation covers the google-genai SDK's transport. The
     # MCP client and the data-plane proxy use `httpx2`, which it does not
     # patch; their latency is captured by the phase spans instead.
     HTTPXClientInstrumentor().instrument()
     _genai_instrumentor.instrument()
+
+
+def flush_telemetry() -> None:
+    """Writes any spans still waiting in the batch processor.
+
+    The batch processor writes spans every few seconds, so the spans of the
+    last turn before an instance shuts down may not have been written yet.
+    The application calls this function at shutdown. It does nothing if
+    `configure_telemetry` has not run.
+    """
+    provider = _configured.get("provider")
+    if provider is not None:
+        provider.force_flush(_FLUSH_TIMEOUT_MILLIS)
 
 
 def instrument_app(

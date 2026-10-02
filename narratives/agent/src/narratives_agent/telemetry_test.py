@@ -13,7 +13,7 @@
 # limitations under the License.
 """Tests for the content-free telemetry in `narratives_agent.telemetry`.
 
-Verifies five behaviors in `telemetry`:
+Verifies these behaviors in `telemetry`:
 1. Content capture on the google-genai instrumentation is forced off, even
    when environment variables enable it.
 2. A real instrumented Gemini call records neither the prompt nor the
@@ -22,11 +22,17 @@ Verifies five behaviors in `telemetry`:
 4. A streamed request produces one request span, not one per ASGI message.
 5. `TurnTelemetry` records phases, tool names, and token counts, and its
    summary carries no conversation content.
+6. The stdout span exporter and the turn-summary log handler write to the
+   current `sys.stdout`, and the handler does not raise when writing fails.
+7. `flush_telemetry` writes spans still waiting in the batch processor, and
+   does nothing before `configure_telemetry` has run.
 """
 
+import io
 import json
 import logging
 import os
+import sys
 from collections.abc import AsyncIterator, Iterator
 
 import httpx
@@ -36,8 +42,12 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from google import genai
 from google.genai import types
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SimpleSpanProcessor,
+    SpanExportResult,
+)
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -349,3 +359,110 @@ def test_turn_span_severity_matches_the_terminal_state(
     assert json.loads(telemetry.format_span(span))["severity"] == severity
     (message,) = turn_records
     assert json.loads(message)["severity"] == severity
+
+
+def _finished_span() -> ReadableSpan:
+    """Returns one finished span with an allowlisted attribute."""
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    with provider.get_tracer(__name__).start_as_current_span("request") as s:
+        s.set_attribute("http.route", "/agent/chat/stream")
+    (span,) = exporter.get_finished_spans()
+    return span
+
+
+def test_span_exporter_writes_to_the_current_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `_StdoutSpanExporter` writes each span as one line on stdout.
+    # Situation: The exporter is created, and `sys.stdout` is then replaced,
+    #   as a test runner does after the exporter's thread has started.
+    # Expectation: The span's `format_span` line is written to the new
+    #   stream, and the export reports success.
+    span = _finished_span()
+    exporter = telemetry._StdoutSpanExporter()
+    stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    result = exporter.export([span])
+
+    assert result is SpanExportResult.SUCCESS
+    assert stdout.getvalue() == telemetry.format_span(span)
+
+
+def test_turn_summary_handler_writes_the_bare_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `_StdoutLineHandler` writes only the log message.
+    # Situation: The handler is created, `sys.stdout` is then replaced, and
+    #   a record with a formatted message is emitted.
+    # Expectation: The new stream holds the formatted message followed by a
+    #   newline, with no timestamp or level prefix.
+    handler = telemetry._StdoutLineHandler()
+    stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    handler.emit(logging.makeLogRecord({"msg": '{"turn": %d}', "args": (1,)}))
+
+    assert stdout.getvalue() == '{"turn": 1}\n'
+
+
+def test_turn_summary_handler_does_not_raise_when_writing_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: A write failure in `_StdoutLineHandler` does not reach the
+    #   caller.
+    # Situation: Writing to stdout raises, as it does when the stream has
+    #   been closed.
+    # Expectation: `emit` returns normally and passes the record to
+    #   `handleError`, as `logging.StreamHandler` does.
+    def failing_write(line: str) -> None:
+        raise ValueError("I/O operation on closed file.")
+
+    handled: list[logging.LogRecord] = []
+    handler = telemetry._StdoutLineHandler()
+    monkeypatch.setattr(telemetry, "_write_stdout_line", failing_write)
+    monkeypatch.setattr(handler, "handleError", handled.append)
+    record = logging.makeLogRecord({"msg": "summary"})
+
+    handler.emit(record)
+
+    assert handled == [record]
+
+
+def test_flush_telemetry_does_nothing_before_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `flush_telemetry` before `configure_telemetry` has run.
+    # Situation: No tracer provider has been installed.
+    # Expectation: `flush_telemetry` returns without raising.
+    monkeypatch.setattr(telemetry, "_configured", {})
+
+    telemetry.flush_telemetry()
+
+
+def test_flush_telemetry_writes_buffered_spans(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `flush_telemetry` writes the spans the batch processor is
+    #   still holding.
+    # Situation: The installed provider batches spans with a delay far
+    #   longer than the test, and one span has ended.
+    # Expectation: The span has not been exported before the flush and has
+    #   been exported after it.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(
+        BatchSpanProcessor(exporter, schedule_delay_millis=60_000)
+    )
+    monkeypatch.setattr(telemetry, "_configured", {"provider": provider})
+    try:
+        provider.get_tracer(__name__).start_span("turn").end()
+        assert not exporter.get_finished_spans()
+
+        telemetry.flush_telemetry()
+
+        assert len(exporter.get_finished_spans()) == 1
+    finally:
+        provider.shutdown()
