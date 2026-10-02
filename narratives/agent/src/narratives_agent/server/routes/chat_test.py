@@ -14,23 +14,18 @@
 """Tests for the chat streaming route in `chat`.
 
 Verifies that:
-1. `/chat/stream` sends the session event and then each phase's events, byte
+1. `/chat/stream` sends each payload the turn emits as an SSE frame, byte
    for byte, with the three streaming headers.
-2. The request's message, history, and session id reach the pipeline, and an
-   omitted history reaches it as an empty list.
-3. Invalid request bodies, including a session id that could name a file
-   outside the logs directory, are rejected with 422 before the pipeline
-   runs, while a session id `SessionLogger` issued is accepted.
-4. A client disconnect closes the pipeline generator before the response
-   ends, under ASGI spec 2.3 and 2.4, without relying on the garbage
-   collector.
+2. The request's message and history reach the turn, and an omitted history
+   reaches it as an empty list.
+3. Invalid request bodies are rejected with 422 before the turn runs.
+4. A client disconnect cancels the turn before the response ends, under ASGI
+   spec 2.3 and 2.4, without relying on the garbage collector.
 """
 
 import asyncio
 import gc
 import json
-import threading
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -40,43 +35,35 @@ from starlette.requests import ClientDisconnect
 from starlette.types import Message
 
 from narratives_agent.server.routes import chat
-from narratives_agent.session_logger import SessionLogger
+from narratives_agent.workflows.chat_pipeline import Emit
 
 _HISTORY = [{"role": "user", "content": "What is the population of France?"}]
+_PAYLOADS: list[dict[str, Any]] = [
+    {"status": "mcp_start"},
+    {"text": "About 68 million."},
+    {"done": True},
+]
 
 
-class _SessionLoggerStub:
-    """Stands in for `SessionLogger`: writes nothing and fixes new ids."""
-
-    def __init__(self, session_id: str | None = None) -> None:
-        self.session_id = session_id or "session-new"
-
-
-class _Pipeline:
-    """Stub phase generators that record the context the route passes in."""
+class _Turn:
+    """Stubs `run_turn` by recording its inputs and emitting fixed payloads."""
 
     def __init__(self) -> None:
-        self.contexts: list[dict[str, Any]] = []
+        self.calls: list[tuple[str, list[dict[str, Any]]]] = []
 
-    def mcp_phase(self, ctx: dict[str, Any]) -> Iterator[str]:
-        self.contexts.append(ctx)
-        yield 'data: {"type": "mcp_start"}\n\n'
-
-    def synthesis_phase(self, ctx: dict[str, Any]) -> Iterator[str]:
-        yield 'data: {"type": "text", "content": "About 68 million."}\n\n'
-
-    def followups(self, ctx: dict[str, Any]) -> Iterator[str]:
-        yield 'data: {"type": "done"}\n\n'
+    async def __call__(
+        self, user_message: str, history: list[dict[str, Any]], emit: Emit
+    ) -> None:
+        self.calls.append((user_message, history))
+        for payload in _PAYLOADS:
+            emit(payload)
 
 
 @pytest.fixture
-def pipeline(monkeypatch: pytest.MonkeyPatch) -> _Pipeline:
-    """Replaces the session logger and the three phases with stubs."""
-    stub = _Pipeline()
-    monkeypatch.setattr(chat, "SessionLogger", _SessionLoggerStub)
-    monkeypatch.setattr(chat, "run_mcp_phase", stub.mcp_phase)
-    monkeypatch.setattr(chat, "run_synthesis_phase", stub.synthesis_phase)
-    monkeypatch.setattr(chat, "run_followups", stub.followups)
+def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
+    """Replaces the chat pipeline with a stub."""
+    stub = _Turn()
+    monkeypatch.setattr(chat, "run_turn", stub)
     return stub
 
 
@@ -88,17 +75,16 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def test_stream_sends_session_then_phase_events_byte_for_byte(
-    pipeline: _Pipeline,
+def test_stream_sends_each_payload_as_a_frame_byte_for_byte(
+    turn: _Turn,
     client: TestClient,
 ) -> None:
     # Test: Wire format of `POST /agent/chat/stream`.
-    # Situation: Each pipeline phase is stubbed to yield one fixed event, and
-    #   a client posts a message with no session id.
-    # Expectation: The body is the new session's event followed by the three
-    #   phase events, byte for byte, sent as `text/event-stream` with
-    #   `Cache-Control: no-cache`, `X-Accel-Buffering: no`, and
-    #   `Connection: keep-alive`.
+    # Situation: The turn is stubbed to emit three fixed payloads, and a
+    #   client posts a message.
+    # Expectation: The body is one `data:` frame per payload, in order, byte
+    #   for byte, sent as `text/event-stream` with `Cache-Control: no-cache`,
+    #   `X-Accel-Buffering: no`, and `Connection: keep-alive`.
     response = client.post(
         "/agent/chat/stream",
         json={"message": "What is the population of France?"},
@@ -106,10 +92,9 @@ def test_stream_sends_session_then_phase_events_byte_for_byte(
 
     assert response.status_code == 200
     assert response.content == (
-        b'data: {"session_id": "session-new"}\n\n'
-        b'data: {"type": "mcp_start"}\n\n'
-        b'data: {"type": "text", "content": "About 68 million."}\n\n'
-        b'data: {"type": "done"}\n\n'
+        b'data: {"status": "mcp_start"}\n\n'
+        b'data: {"text": "About 68 million."}\n\n'
+        b'data: {"done": true}\n\n'
     )
     assert (
         response.headers["content-type"] == "text/event-stream; charset=utf-8"
@@ -119,46 +104,34 @@ def test_stream_sends_session_then_phase_events_byte_for_byte(
     assert response.headers["connection"] == "keep-alive"
 
 
-def test_request_fields_reach_the_pipeline(
-    pipeline: _Pipeline,
+def test_request_fields_reach_the_turn(
+    turn: _Turn,
     client: TestClient,
 ) -> None:
-    # Test: Mapping of the request body onto the pipeline context.
-    # Situation: A follow-up request carries a message, a one-turn history,
-    #   and the session id of the earlier turn.
-    # Expectation: The pipeline receives the message and history unchanged,
-    #   and the stream resumes the given session id.
+    # Test: Mapping of the request body onto the turn's inputs.
+    # Situation: A follow-up request carries a message and a one-turn
+    #   history.
+    # Expectation: The turn receives the message and history unchanged.
     response = client.post(
         "/agent/chat/stream",
-        json={
-            "message": "And Spain?",
-            "history": _HISTORY,
-            "session_id": "session-earlier",
-        },
+        json={"message": "And Spain?", "history": _HISTORY},
     )
 
     assert response.status_code == 200
-    assert response.content.startswith(
-        b'data: {"session_id": "session-earlier"}\n\n'
-    )
-    [ctx] = pipeline.contexts
-    assert ctx["user_message"] == "And Spain?"
-    assert ctx["history"] == _HISTORY
-    assert ctx["session_logger"].session_id == "session-earlier"
+    assert turn.calls == [("And Spain?", _HISTORY)]
 
 
-def test_omitted_history_reaches_the_pipeline_empty(
-    pipeline: _Pipeline,
+def test_omitted_history_reaches_the_turn_empty(
+    turn: _Turn,
     client: TestClient,
 ) -> None:
     # Test: Default for a request body without `history`.
     # Situation: A client posts only a message.
-    # Expectation: The pipeline receives an empty history.
+    # Expectation: The turn receives an empty history.
     response = client.post("/agent/chat/stream", json={"message": "Hello"})
 
     assert response.status_code == 200
-    [ctx] = pipeline.contexts
-    assert ctx["history"] == []
+    assert turn.calls == [("Hello", [])]
 
 
 @pytest.mark.parametrize(
@@ -181,92 +154,52 @@ def test_omitted_history_reaches_the_pipeline_empty(
             },
             id="non-json-body",
         ),
-        pytest.param(
-            {"json": {"message": "Hello", "session_id": "../../escaped"}},
-            id="session-id-path-traversal",
-        ),
-        pytest.param(
-            {"json": {"message": "Hello", "session_id": "logs/other"}},
-            id="session-id-separator",
-        ),
-        pytest.param(
-            {"json": {"message": "Hello", "session_id": ""}},
-            id="session-id-empty",
-        ),
-        pytest.param(
-            {"json": {"message": "Hello", "session_id": "a" * 65}},
-            id="session-id-too-long",
-        ),
     ],
 )
 def test_invalid_request_body_returns_422(
     request_kwargs: dict[str, Any],
-    pipeline: _Pipeline,
+    turn: _Turn,
     client: TestClient,
 ) -> None:
     # Test: Validation of the chat request body.
     # Situation: A client posts a body with no message, an empty message, a
-    #   null history, a history that is not a list, bytes that are not JSON,
-    #   or a session id that is empty, longer than 64 characters, or holds a
-    #   character other than a letter, digit, or hyphen, such as a path
-    #   separator that would place the session log outside `logs/`.
-    # Expectation: The route answers 422, and the pipeline never runs.
+    #   null history, a history that is not a list, or bytes that are not
+    #   JSON.
+    # Expectation: The route answers 422, and the turn never runs.
     response = client.post("/agent/chat/stream", **request_kwargs)
 
     assert response.status_code == 422
-    assert pipeline.contexts == []
-
-
-def test_a_session_id_the_server_issued_is_accepted(
-    monkeypatch: pytest.MonkeyPatch,
-    pipeline: _Pipeline,
-    client: TestClient,
-) -> None:
-    # Test: The contract between the session ids the server issues and the
-    #   ids the route accepts.
-    # Situation: A real `SessionLogger`, with file logging off, issues a new
-    #   session id, and a follow-up request sends it back, as the UI does.
-    # Expectation: The route accepts the id and resumes that session, rather
-    #   than rejecting every follow-up turn with 422.
-    monkeypatch.setenv("SESSION_LOG_TO_FILE", "false")
-    issued = SessionLogger().session_id
-
-    response = client.post(
-        "/agent/chat/stream",
-        json={"message": "And Spain?", "session_id": issued},
-    )
-
-    assert response.status_code == 200
-    [ctx] = pipeline.contexts
-    assert ctx["session_logger"].session_id == issued
+    assert turn.calls == []
 
 
 @pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
-def test_client_disconnect_closes_the_pipeline_before_the_response_ends(
+def test_client_disconnect_cancels_the_turn_before_the_response_ends(
     spec_version: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Cleanup of the pipeline when the browser disconnects mid-stream.
-    # Situation: The MCP phase yields events without end and records when
-    #   its `finally` block runs. The app is driven over ASGI. Under spec
-    #   2.3, which Uvicorn reports, `receive` answers `http.disconnect` once
-    #   the first phase event has been sent. Under spec 2.4, `send` raises
-    #   `OSError` on that event instead, as a server does once the socket is
-    #   gone. The garbage collector is disabled, so collection cannot close
-    #   the generator.
-    # Expectation: The phase's `finally` block has run by the time the
-    #   application returns.
-    closed = threading.Event()
+    # Test: Cancellation of the turn when the browser disconnects mid-stream.
+    # Situation: The turn emits one payload, then awaits an event that never
+    #   fires, and records whether it was canceled. The app is
+    #   driven over ASGI. Under spec 2.3, which Uvicorn reports, `receive`
+    #   answers `http.disconnect` once the payload has been sent. Under spec
+    #   2.4, `send` raises `OSError` on that payload instead, as a server
+    #   does once the socket is gone. The garbage collector is disabled, so
+    #   collection cannot close the generator.
+    # Expectation: The turn has been canceled by the time the application
+    #   returns.
+    canceled = asyncio.Event()
 
-    def endless_mcp_phase(ctx: dict[str, Any]) -> Iterator[str]:
+    async def blocked_turn(
+        user_message: str, history: list[dict[str, Any]], emit: Emit
+    ) -> None:
+        emit({"thought": "..."})
         try:
-            while True:
-                yield 'data: {"type": "thought"}\n\n'
-        finally:
-            closed.set()
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            canceled.set()
+            raise
 
-    monkeypatch.setattr(chat, "SessionLogger", _SessionLoggerStub)
-    monkeypatch.setattr(chat, "run_mcp_phase", endless_mcp_phase)
+    monkeypatch.setattr(chat, "run_turn", blocked_turn)
     app = FastAPI()
     app.include_router(chat.router, prefix="/agent")
     body = json.dumps({"message": "Hello"}).encode()
@@ -302,9 +235,7 @@ def test_client_disconnect_closes_the_pipeline_before_the_response_ends(
             return {"type": "http.disconnect"}
 
         async def send(message: Message) -> None:
-            # The session event comes first; waiting for a phase event
-            # guarantees the phase generator has started, so it has a
-            # `finally` block to run.
+            # Waiting for a payload guarantees the turn task has started.
             if message["type"] == "http.response.body" and (
                 b"thought" in message.get("body", b"")
             ):
@@ -318,14 +249,14 @@ def test_client_disconnect_closes_the_pipeline_before_the_response_ends(
             # Under spec 2.4 the disconnect leaves the application as this
             # error, which the server discards.
             assert spec_version == "2.4"
-        # Read before the event loop runs again, so loop shutdown cannot
-        # close the generator first.
-        closed_on_return.append(closed.is_set())
+        # Record the state before the event loop runs again, so loop
+        # shutdown cannot cancel the turn first.
+        canceled_on_return.append(canceled.is_set())
 
-    closed_on_return: list[bool] = []
+    canceled_on_return: list[bool] = []
     gc.disable()
     try:
         asyncio.run(drive())
     finally:
         gc.enable()
-    assert closed_on_return == [True]
+    assert canceled_on_return == [True]

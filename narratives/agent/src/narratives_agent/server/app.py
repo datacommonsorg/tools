@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from narratives_agent import telemetry
 from narratives_agent.config import bootstrap_config_from_url
+from narratives_agent.mcp import client as mcp_client
 from narratives_agent.server.routes import brand, chat, dcproxy, spa, system
 from narratives_agent.settings import get_settings
 
@@ -77,7 +78,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     from starting.
 
     The proxy's HTTP client is shared by every request and closed, with its
-    pooled connections, at shutdown.
+    pooled connections, at shutdown. The MCP client's pooled HTTP client is
+    opened on first use and is also closed here at shutdown.
 
     Telemetry is configured here rather than when the module is imported, so
     importing the application in a test or a tool installs no global tracer
@@ -86,9 +88,12 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
     brand.load_branding()
-    async with dcproxy.create_client() as client:
-        app.state.data_plane_client = client
-        yield
+    try:
+        async with dcproxy.create_client() as client:
+            app.state.data_plane_client = client
+            yield
+    finally:
+        await mcp_client.aclose()
 
 
 def create_app() -> FastAPI:

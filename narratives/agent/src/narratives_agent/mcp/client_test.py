@@ -19,13 +19,14 @@ through `httpx2.MockTransport`, so no network socket is opened. The tests
 cover:
 1. Session establishment, reuse, and retry-once recovery when the server
    rejects a session with a JSON-RPC error or HTTP 404.
-2. Isolation of the session across asyncio tasks and OS threads, and its
-   propagation out of the blocking entry points.
-3. Tool-list caching, forced refresh, stale fallback, and the non-blocking
+2. Sharing of one session by concurrent child tasks of a turn, and isolation
+   of sessions between turns.
+3. Reuse of the shared, pooled HTTP client and off-loop credential lookup.
+4. Tool-list caching, forced refresh, stale fallback, and the non-blocking
    `cached_tools` read.
-4. Tool calls: argument normalization, credentials, result unpacking, error
-   reporting, and session logging.
-5. Endpoint URL normalization and resolution.
+5. Tool calls: argument normalization, credentials, result unpacking, and
+   error reporting.
+6. Endpoint URL normalization and resolution.
 """
 
 import asyncio
@@ -52,7 +53,9 @@ _TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}},
     }
 ]
-_REFRESH_JOIN_TIMEOUT_SECONDS = 10
+# `_CONCURRENT_CALLS` is the number of tool calls a single model turn issues
+# concurrently in the session-sharing tests.
+_CONCURRENT_CALLS = 3
 
 
 @dataclass(frozen=True)
@@ -218,89 +221,67 @@ def _rpc_error(request_id: int, code: int, message: str) -> httpx2.Response:
     )
 
 
-@dataclass
-class _RecordingSessionLogger:
-    """Records the calls the MCP client makes on a session logger."""
-
-    calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
-    results: list[tuple[str, Any, str]] = field(default_factory=list)
-
-    def log_mcp_tool_call(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> None:
-        self.calls.append((tool_name, arguments))
-
-    def log_mcp_tool_result(
-        self, tool_name: str, result: Any, duration_ms: float, status: str
-    ) -> None:
-        self.results.append((tool_name, result, status))
-
-
 @pytest.fixture
 def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeMcpServer]:
     """Installs a `_FakeMcpServer` behind the client and resets client state.
 
-    Clears the cached URL, tool cache, and session before and after each test
-    so that state does not leak between test cases. Stubs `load_config` so the
-    handshake uses the default client name without reading from disk.
+    Clears the cached URL, tool cache, session scope, shared HTTP client, and
+    background refresh tasks before and after each test so that state does
+    not leak between test cases. Stubs `load_config` so the handshake uses the
+    default client name without reading from disk.
     """
     fake = _FakeMcpServer()
     client.reset_client()
     monkeypatch.setitem(client._URL_CACHE, "url", _URL)
     monkeypatch.setattr(client, "load_config", lambda: {})
+    monkeypatch.setattr(client, "_HTTP_CLIENT", client._HttpClientHolder())
+    monkeypatch.setattr(client, "_REFRESH_TASKS", set())
     monkeypatch.setattr(
         client,
-        "_create_http_client",
-        lambda headers: httpx2.AsyncClient(
-            headers=headers, transport=httpx2.MockTransport(fake.handle)
-        ),
+        "_http_transport",
+        lambda: httpx2.MockTransport(fake.handle),
     )
     yield fake
     client.reset_client()
 
 
-def _join_background_refresh() -> None:
-    """Waits for any background refresh thread started by `cached_tools`."""
-    for thread in threading.enumerate():
-        if thread.name == "mcp-tools-refresh":
-            thread.join(timeout=_REFRESH_JOIN_TIMEOUT_SECONDS)
-
-
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reject_ping", [False, True])
-def test_initialize_stores_the_server_issued_session(
+async def test_the_first_operation_stores_the_server_issued_session(
     server: _FakeMcpServer, reject_ping: bool
 ) -> None:
-    # Test: `initialize_mcp` completes the handshake and stores the session ID
-    #   whether or not the server supports `ping`.
-    # Situation: `initialize_mcp` runs against a server that returns
+    # Test: The first operation completes the handshake and stores the
+    #   session ID whether or not the server supports `ping`.
+    # Situation: `async_get_tools` runs against a server that returns
     #   "session-1" in the `mcp-session-id` response header and either answers
     #   or rejects the post-handshake `ping`.
-    # Expectation: It returns True, stores "session-1" in the caller's context,
-    #   and flushes `notifications/initialized` before closing the connection.
+    # Expectation: The tool list is returned, "session-1" is stored in the
+    #   caller's scope, and `notifications/initialized` is flushed before the
+    #   connection closes.
     server.reject_ping = reject_ping
 
-    assert client.initialize_mcp() is True
+    assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
     assert client.get_session_id() == "session-1"
     assert server.count("notifications/initialized") == 1
 
 
-def test_operations_reuse_the_session_without_a_new_handshake(
+@pytest.mark.asyncio
+async def test_operations_reuse_the_session_without_a_new_handshake(
     server: _FakeMcpServer, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: Subsequent MCP operations reuse the established session without
     #   repeating the handshake.
-    # Situation: Two forced `get_tools` refreshes and one `call_tool` request
-    #   run sequentially in the same context without a prior `initialize_mcp`
-    #   call.
+    # Situation: Two forced tool-list refreshes and one tool call run
+    #   sequentially in the same context.
     # Expectation: Only one `initialize` handshake is sent, the handshake start
     #   and completion are logged at INFO, every subsequent request carries the
     #   session ID and negotiated protocol version, and no HTTP DELETE request
     #   is sent when connections close.
     with caplog.at_level(logging.INFO, logger=client.logger.name):
-        client.get_tools(force_refresh=True)
-        client.get_tools(force_refresh=True)
-        client.call_tool("get_observations", {})
+        await client.async_get_tools(force_refresh=True)
+        await client.async_get_tools(force_refresh=True)
+        await client.async_call_tool("get_observations", {})
 
     assert server.count("initialize") == 1
     assert caplog.text.count("Initializing MCP session...") == 1
@@ -316,28 +297,30 @@ def test_operations_reuse_the_session_without_a_new_handshake(
     assert not [r for r in server.received if r.http_method == "DELETE"]
 
 
-def test_a_stateless_server_is_used_without_a_session_id(
+@pytest.mark.asyncio
+async def test_a_stateless_server_is_used_without_a_session_id(
     server: _FakeMcpServer,
 ) -> None:
     # Test: The client operates against a stateless MCP server that does not
     #   issue a session ID.
     # Situation: The server's `initialize` response omits the `mcp-session-id`
     #   header and accepts every request without a session ID.
-    # Expectation: A single handshake serves both `get_tools` calls, no
+    # Expectation: A single handshake serves both tool-list fetches, no
     #   request includes an `mcp-session-id` header, and `get_session_id()`
     #   returns None.
     server.stateless = True
 
-    assert client.get_tools(force_refresh=True) == _TOOLS
-    assert client.get_tools(force_refresh=True) == _TOOLS
+    assert await client.async_get_tools(force_refresh=True) == _TOOLS
+    assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
     assert server.count("initialize") == 1
     assert all(request.session_id is None for request in server.received)
     assert client.get_session_id() is None
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("rejection", ["rpc", "http"])
-def test_a_rejected_session_re_initializes_and_retries_once(
+async def test_a_rejected_session_re_initializes_and_retries_once(
     server: _FakeMcpServer, rejection: str
 ) -> None:
     # Test: The client re-initializes the session and retries once when the
@@ -345,43 +328,46 @@ def test_a_rejected_session_re_initializes_and_retries_once(
     # Situation: After a session is established, the server forgets the session
     #   and rejects the next request with either a JSON-RPC "Session not found"
     #   error or a bare HTTP 404 response.
-    # Expectation: `get_tools` performs a new handshake, retries `tools/list`
-    #   once with the new session ID, and returns the tool list.
+    # Expectation: The tool-list fetch performs a new handshake, retries
+    #   `tools/list` once with the new session ID, and returns the tool list.
     server.rejection = rejection
-    client.initialize_mcp()
+    await client.async_get_tools(force_refresh=True)
     server.forget_sessions()
 
-    assert client.get_tools(force_refresh=True) == _TOOLS
+    assert await client.async_get_tools(force_refresh=True) == _TOOLS
     assert server.count("initialize") == 2
     assert [r.session_id for r in server.received_for("tools/list")] == [
+        "session-1",
         "session-1",
         "session-2",
     ]
     assert client.get_session_id() == "session-2"
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("rejection", ["rpc", "http"])
-def test_session_recovery_retries_exactly_once(
+async def test_session_recovery_retries_exactly_once(
     server: _FakeMcpServer, rejection: str
 ) -> None:
     # Test: Session recovery retries a rejected operation at most once.
     # Situation: The server forgets every session immediately after issuing it,
     #   so both the initial request and the retry after re-initialization are
     #   rejected.
-    # Expectation: `call_tool` performs one re-initialization and one retry
+    # Expectation: The tool call performs one re-initialization and one retry
     #   (two handshakes and two `tools/call` messages in total), and then
-    #   returns an error dictionary.
+    #   raises `McpTransportError`.
     server.rejection = rejection
     server.forget_every_session = True
 
-    result = client.call_tool("get_observations", {})
+    with pytest.raises(client.McpTransportError):
+        await client.async_call_tool("get_observations", {})
 
     assert server.count("initialize") == 2
     assert server.count("tools/call") == 2
-    assert "error" in result
 
 
-def test_a_404_with_an_unrelated_rpc_error_is_not_retried(
+@pytest.mark.asyncio
+async def test_a_404_with_an_unrelated_rpc_error_is_not_retried(
     server: _FakeMcpServer,
 ) -> None:
     # Test: An HTTP 404 response with an unrelated JSON-RPC error body does not
@@ -389,164 +375,191 @@ def test_a_404_with_an_unrelated_rpc_error_is_not_retried(
     # Situation: The server responds to `tools/call` with HTTP 404 and a
     #   JSON-RPC error whose message does not indicate a lost session.
     # Expectation: The client does not re-initialize or retry the call, and
-    #   returns the error immediately after a single handshake and tool call.
+    #   raises `McpTransportError` after a single handshake and tool call.
     server.rejection = "http-json"
     server.forget_every_session = True
 
-    result = client.call_tool("get_observations", {})
+    with pytest.raises(client.McpTransportError):
+        await client.async_call_tool("get_observations", {})
 
     assert server.count("initialize") == 1
     assert server.count("tools/call") == 1
-    assert "error" in result
 
 
 @pytest.mark.asyncio
-async def test_async_tool_call_recovers_a_rejected_session(
-    server: _FakeMcpServer,
-) -> None:
-    # Test: `async_call_tool` recovers when the server rejects the current
-    #   session.
-    # Situation: `async_initialize_mcp` establishes a session, and the server
-    #   forgets that session before `async_call_tool` is awaited.
-    # Expectation: `async_call_tool` re-initializes the session once and
-    #   returns the tool result without error.
-    assert await client.async_initialize_mcp() is True
-    server.forget_sessions()
-
-    result = await client.async_call_tool("get_observations", {})
-
-    assert "error" not in result
-    assert server.count("initialize") == 2
-
-
-def test_a_failed_handshake_fails_closed(server: _FakeMcpServer) -> None:
+async def test_a_failed_handshake_fails_closed(server: _FakeMcpServer) -> None:
     # Test: Operations fail closed without sending an uninitialized request
     #   when the handshake fails.
     # Situation: The server responds to `initialize` with HTTP 500.
-    # Expectation: `initialize_mcp` returns False, `get_tools` returns `[]`,
-    #   `call_tool` returns an error dictionary, and no `tools/list` or
-    #   `tools/call` request is sent to the server.
+    # Expectation: The tool-list fetch returns `[]`, the tool call raises
+    #   `McpTransportError`, no `tools/list` or `tools/call` request is sent,
+    #   and no session is stored.
     server.fail_initialize = True
 
-    assert client.initialize_mcp() is False
-    assert client.get_tools(force_refresh=True) == []
-    assert "error" in client.call_tool("get_observations", {})
+    assert await client.async_get_tools(force_refresh=True) == []
+    with pytest.raises(client.McpTransportError):
+        await client.async_call_tool("get_observations", {})
     assert server.count("tools/list") == 0
     assert server.count("tools/call") == 0
     assert client.get_session_id() is None
 
 
-def test_a_failed_re_initialization_clears_the_previous_session(
+@pytest.mark.asyncio
+async def test_a_failed_re_initialization_clears_the_previous_session(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: A failed `initialize_mcp` call clears any previously stored session
-    #   in the current context.
-    # Situation: A session is established, and a subsequent `initialize_mcp`
-    #   call fails because the server is unreachable.
-    # Expectation: `initialize_mcp` returns False, and `get_session_id()`
-    #   returns None instead of the stale session ID.
-    client.initialize_mcp()
-    server.down = True
+    # Test: A failed re-initialization leaves the scope without the stale
+    #   session.
+    # Situation: A session is established, the server forgets it, and the
+    #   handshake that recovery attempts fails with HTTP 500.
+    # Expectation: The tool call raises `McpTransportError`, and
+    #   `get_session_id()` returns None instead of the rejected session ID.
+    await client.async_get_tools(force_refresh=True)
+    server.forget_sessions()
+    server.fail_initialize = True
 
-    assert client.initialize_mcp() is False
+    with pytest.raises(client.McpTransportError):
+        await client.async_call_tool("get_observations", {})
     assert client.get_session_id() is None
 
 
 @pytest.mark.asyncio
-async def test_concurrent_tasks_hold_distinct_sessions(
+async def test_concurrent_tool_calls_share_one_handshake(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: Concurrent asyncio tasks maintain separate MCP sessions.
-    # Situation: Two asyncio tasks run concurrently via `asyncio.gather`; each
-    #   initializes a session and fetches the tool list.
-    # Expectation: Each task receives and sends its own distinct session ID,
-    #   and neither task's session leaks into the parent context.
+    # Test: Concurrent tool calls spawned after `ensure_session_scope` share
+    #   one MCP session.
+    # Situation: The parent task opens a session scope and runs
+    #   `_CONCURRENT_CALLS` tool calls with `asyncio.gather` before any session
+    #   exists.
+    # Expectation: One `initialize` handshake serves every call, every
+    #   `tools/call` request carries "session-1", and the parent task sees the
+    #   session the children established.
+    client.ensure_session_scope()
+
+    results = await asyncio.gather(
+        *(
+            client.async_call_tool("get_observations", {})
+            for _ in range(_CONCURRENT_CALLS)
+        )
+    )
+
+    assert all("error" not in result for result in results)
+    assert server.count("initialize") == 1
+    assert {r.session_id for r in server.received_for("tools/call")} == {
+        "session-1"
+    }
+    assert client.get_session_id() == "session-1"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_tool_calls_recover_a_lost_session_once(
+    server: _FakeMcpServer,
+) -> None:
+    # Test: Concurrent tool calls that all hit a rejected session perform a
+    #   single re-initialization between them.
+    # Situation: A turn establishes a session, the server forgets it, and
+    #   `_CONCURRENT_CALLS` tool calls then run concurrently.
+    # Expectation: Exactly one recovery handshake runs (two in total), every
+    #   retry uses "session-2", and the parent task sees "session-2".
+    client.ensure_session_scope()
+    await client.async_get_tools(force_refresh=True)
+    server.forget_sessions()
+
+    results = await asyncio.gather(
+        *(
+            client.async_call_tool("get_observations", {})
+            for _ in range(_CONCURRENT_CALLS)
+        )
+    )
+
+    assert all("error" not in result for result in results)
+    assert server.count("initialize") == 2
+    retried = [
+        r.session_id
+        for r in server.received_for("tools/call")
+        if r.session_id != "session-1"
+    ]
+    assert retried == ["session-2"] * _CONCURRENT_CALLS
+    assert client.get_session_id() == "session-2"
+
+
+@pytest.mark.asyncio
+async def test_separate_turns_hold_distinct_sessions(
+    server: _FakeMcpServer,
+) -> None:
+    # Test: Separate turns keep separate MCP sessions.
+    # Situation: Two turn tasks run concurrently; each opens its own session
+    #   scope and calls a tool.
+    # Expectation: Each turn sends its own distinct session ID, and neither
+    #   turn's session leaks into the parent context.
     async def turn() -> str | None:
-        await client.async_initialize_mcp()
-        await client.async_get_tools(force_refresh=True)
+        client.ensure_session_scope()
+        await client.async_call_tool("get_observations", {})
         return client.get_session_id()
 
     first, second = await asyncio.gather(turn(), turn())
 
     assert first and second and first != second
-    sent = {r.session_id for r in server.received_for("tools/list")}
+    sent = {r.session_id for r in server.received_for("tools/call")}
     assert sent == {first, second}
     assert client.get_session_id() is None
 
 
-def test_threads_hold_distinct_sessions(server: _FakeMcpServer) -> None:
-    # Test: Concurrent OS threads maintain separate MCP sessions.
-    # Situation: Two threads concurrently call `initialize_mcp` and
-    #   `call_tool`.
-    # Expectation: Each thread receives and sends its own distinct session ID,
-    #   and the main thread's context remains without a session.
-    seen: dict[str, str | None] = {}
-
-    def worker() -> None:
-        client.initialize_mcp()
-        seen[threading.current_thread().name] = client.get_session_id()
-        client.call_tool("get_observations", {})
-
-    threads = [threading.Thread(target=worker, name=n) for n in ("A", "B")]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-
-    assert seen["A"] and seen["B"] and seen["A"] != seen["B"]
-    sent = {r.session_id for r in server.received_for("tools/call")}
-    assert sent == {seen["A"], seen["B"]}
-    assert client.get_session_id() is None
-
-
-def test_a_blocking_call_propagates_a_session_even_when_it_raises(
+@pytest.mark.asyncio
+async def test_operations_reuse_one_open_http_client(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: `_run_sync` copies the updated session back to the caller's
-    #   context even when the coroutine raises an exception.
-    # Situation: An async operation establishes a session and then raises a
-    #   `RuntimeError`.
-    # Expectation: The `RuntimeError` propagates to the caller, and the
-    #   caller's context retains the newly established session ID.
-    async def initialize_then_fail() -> None:
-        await client.async_initialize_mcp()
-        raise RuntimeError("downstream failure")
+    # Test: MCP operations share one pooled HTTP client and leave it open.
+    # Situation: A tool-list fetch and two tool calls run in sequence.
+    # Expectation: The shared client is the same instance after every call
+    #   and is still open, so its pooled connections stay available; `aclose`
+    #   then closes it.
+    await client.async_get_tools(force_refresh=True)
+    shared = client._HTTP_CLIENT.client
+    await client.async_call_tool("get_observations", {})
+    await client.async_call_tool("get_observations", {})
 
-    with pytest.raises(RuntimeError, match="downstream failure"):
-        client._run_sync(initialize_then_fail)
+    assert shared is not None
+    assert client._HTTP_CLIENT.client is shared
+    assert not shared.is_closed
 
-    assert client.get_session_id() == "session-1"
+    await client.aclose()
+
+    assert shared.is_closed
+    assert client._HTTP_CLIENT.client is None
 
 
-def test_tool_list_is_served_from_cache_within_the_ttl(
+@pytest.mark.asyncio
+async def test_tool_list_is_served_from_cache_within_the_ttl(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: `get_tools` serves the cached tool list when the cache has not
-    #   expired.
+    # Test: The tool list is served from the cache when it has not expired.
     # Situation: A forced refresh populates the tool cache, followed by two
-    #   unforced `get_tools` calls within the TTL window.
-    # Expectation: Both unforced calls return the cached tool list without
+    #   unforced fetches within the TTL window.
+    # Expectation: Both unforced fetches return the cached tool list without
     #   sending another `tools/list` request.
-    assert client.get_tools(force_refresh=True) == _TOOLS
+    assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
-    assert client.get_tools() == _TOOLS
-    assert client.get_tools() == _TOOLS
+    assert await client.async_get_tools() == _TOOLS
+    assert await client.async_get_tools() == _TOOLS
     assert server.count("tools/list") == 1
 
 
-def test_an_expired_cache_and_force_refresh_fetch_again(
+@pytest.mark.asyncio
+async def test_an_expired_cache_and_force_refresh_fetch_again(
     server: _FakeMcpServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: `get_tools` fetches a fresh tool list when `force_refresh=True` is
+    # Test: The tool list is fetched again when `force_refresh=True` is
     #   passed or when the cache TTL has expired.
     # Situation: Two forced refreshes run within the TTL, and then an unforced
-    #   `get_tools` call runs after `_TOOLS_TTL_SECONDS` is set to zero.
-    # Expectation: All three calls send a `tools/list` request to the server.
-    client.get_tools(force_refresh=True)
-    client.get_tools(force_refresh=True)
+    #   fetch runs after `_TOOLS_TTL_SECONDS` is set to zero.
+    # Expectation: All three fetches send a `tools/list` request.
+    await client.async_get_tools(force_refresh=True)
+    await client.async_get_tools(force_refresh=True)
     monkeypatch.setattr(client, "_TOOLS_TTL_SECONDS", 0)
 
-    client.get_tools()
+    await client.async_get_tools()
 
     assert server.count("tools/list") == 3
 
@@ -555,10 +568,10 @@ def test_an_expired_cache_and_force_refresh_fetch_again(
 async def test_a_failing_refresh_serves_the_stale_list(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: `async_get_tools` falls back to the stale cached list when a
+    # Test: The tool-list fetch falls back to the stale cached list when a
     #   refresh fails.
-    # Situation: `async_get_tools` populates the cache, the server becomes
-    #   unreachable, and a forced refresh is awaited.
+    # Situation: A fetch populates the cache, the server becomes unreachable,
+    #   and a forced refresh is awaited.
     # Expectation: The forced refresh returns the previously cached tool list
     #   instead of an empty list.
     await client.async_get_tools(force_refresh=True)
@@ -567,29 +580,31 @@ async def test_a_failing_refresh_serves_the_stale_list(
     assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
 
-def test_an_empty_tool_list_is_cached(server: _FakeMcpServer) -> None:
+@pytest.mark.asyncio
+async def test_an_empty_tool_list_is_cached(server: _FakeMcpServer) -> None:
     # Test: Caching of a successful `tools/list` response that lists no tools.
     # Situation: The cache holds the server's tools. The server then lists no
-    #   tools, a forced refresh runs, and `get_tools` and `cached_tools` are
-    #   called within the TTL.
+    #   tools, a forced refresh runs, and `async_get_tools` and `cached_tools`
+    #   are called within the TTL.
     # Expectation: The empty list replaces the previous list, later calls
     #   return it without another `tools/list` request, and `cached_tools`
-    #   starts no background refresh.
-    client.get_tools(force_refresh=True)
+    #   schedules no background refresh.
+    await client.async_get_tools(force_refresh=True)
     server.tools = []
 
-    assert client.get_tools(force_refresh=True) == []
-    assert client.get_tools() == []
+    assert await client.async_get_tools(force_refresh=True) == []
+    assert await client.async_get_tools() == []
     assert client.cached_tools() == []
-    _join_background_refresh()
+    assert not client._REFRESH_TASKS
     assert server.count("tools/list") == 2
 
 
-def test_tool_definitions_keep_the_wire_key_names(
+@pytest.mark.asyncio
+async def test_tool_definitions_keep_the_wire_key_names(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: `get_tools` preserves the MCP wire key names and defaults missing
-    #   descriptions to an empty string.
+    # Test: Tool definitions keep the MCP wire key names, and missing
+    #   descriptions default to an empty string.
     # Situation: The server returns one tool with a description and one tool
     #   that omits the `description` field.
     # Expectation: Each returned dictionary contains `"name"`, `"inputSchema"`,
@@ -600,7 +615,7 @@ def test_tool_definitions_keep_the_wire_key_names(
         {"name": "bare", "inputSchema": {"type": "object"}},
     ]
 
-    tools = client.get_tools(force_refresh=True)
+    tools = await client.async_get_tools(force_refresh=True)
 
     assert tools[1] == {
         "name": "bare",
@@ -609,46 +624,68 @@ def test_tool_definitions_keep_the_wire_key_names(
     }
 
 
-def test_cached_tools_on_a_cold_cache_returns_at_once_and_refreshes(
+@pytest.mark.asyncio
+async def test_cached_tools_on_a_cold_cache_returns_at_once_and_refreshes(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: `cached_tools` returns immediately on a cold cache and populates
-    #   the cache in the background.
-    # Situation: `cached_tools` is called when the tool cache is empty.
-    # Expectation: The first call immediately returns `[]` without blocking,
-    #   and once the background refresh thread completes, a subsequent
-    #   `cached_tools` call returns the server's tool list.
+    # Test: `cached_tools` returns immediately on a cold cache and schedules
+    #   exactly one background refresh on the running loop.
+    # Situation: `cached_tools` is called twice on an empty tool cache before
+    #   the scheduled refresh has run.
+    # Expectation: Both calls return `[]` without sending a request, a single
+    #   refresh task is held, and once it completes `cached_tools` returns
+    #   the server's tool list.
     assert client.cached_tools() == []
+    assert client.cached_tools() == []
+    assert server.received == []
+    assert len(client._REFRESH_TASKS) == 1
 
-    _join_background_refresh()
+    await asyncio.gather(*client._REFRESH_TASKS)
 
     assert client.cached_tools() == _TOOLS
+    assert server.count("tools/list") == 1
 
 
-def test_cached_tools_on_a_warm_cache_sends_nothing(
+def test_cached_tools_without_a_running_loop_schedules_nothing(
+    server: _FakeMcpServer,
+) -> None:
+    # Test: `cached_tools` called outside an event loop does not refresh.
+    # Situation: `cached_tools` is called from synchronous code on an empty
+    #   tool cache.
+    # Expectation: It returns `[]`, holds no refresh task, and sends nothing.
+    assert client.cached_tools() == []
+    assert not client._REFRESH_TASKS
+    assert server.received == []
+
+
+@pytest.mark.asyncio
+async def test_cached_tools_on_a_warm_cache_sends_nothing(
     server: _FakeMcpServer,
 ) -> None:
     # Test: `cached_tools` returns the cached list without network traffic
     #   when the cache is already populated.
-    # Situation: `get_tools` populates the tool cache before `cached_tools` is
-    #   called.
-    # Expectation: `cached_tools` returns the cached list and sends no
-    #   request to the server.
-    client.get_tools(force_refresh=True)
+    # Situation: A tool-list fetch populates the cache before `cached_tools`
+    #   is called.
+    # Expectation: `cached_tools` returns the cached list, schedules no
+    #   refresh, and sends no request to the server.
+    await client.async_get_tools(force_refresh=True)
     before = len(server.received)
 
     assert client.cached_tools() == _TOOLS
+    assert not client._REFRESH_TASKS
     assert len(server.received) == before
 
 
-def test_call_tool_sends_normalized_arguments(server: _FakeMcpServer) -> None:
-    # Test: `call_tool` normalizes tool arguments before sending them to the
-    #   server.
+@pytest.mark.asyncio
+async def test_call_tool_sends_normalized_arguments(
+    server: _FakeMcpServer,
+) -> None:
+    # Test: Tool arguments are normalized before they are sent.
     # Situation: The caller passes `date_range_start` without `date="range"`
     #   and includes a `None`-valued argument.
     # Expectation: The server receives `date="range"` and the `None`-valued
     #   argument is omitted.
-    client.call_tool(
+    await client.async_call_tool(
         "get_observations",
         {
             "date_range_start": "2020",
@@ -665,27 +702,31 @@ def test_call_tool_sends_normalized_arguments(server: _FakeMcpServer) -> None:
     }
 
 
-def test_call_tool_attaches_credentials_for_the_endpoint(
+@pytest.mark.asyncio
+async def test_call_tool_attaches_credentials_off_the_event_loop(
     server: _FakeMcpServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: `call_tool` attaches authentication headers for the resolved MCP
-    #   endpoint URL on every request.
-    # Situation: `attach_auth` is stubbed to add a bearer token header for the
-    #   target URL.
-    # Expectation: `attach_auth` is called with the MCP endpoint URL, and
-    #   every request received by the server includes the `Authorization`
-    #   header.
+    # Test: Authentication headers for the MCP endpoint are resolved in a
+    #   worker thread and attached to every request.
+    # Situation: `attach_auth` is stubbed to record its calling thread and add
+    #   a bearer token header for the target URL.
+    # Expectation: `attach_auth` is called with the MCP endpoint URL, never
+    #   on the event loop's thread, and every request received by the server
+    #   includes the `Authorization` header.
     targets: list[str] = []
+    threads: set[int] = set()
 
     def fake_attach_auth(headers: dict[str, str], target_url: str) -> None:
         targets.append(target_url)
+        threads.add(threading.get_ident())
         headers["Authorization"] = "Bearer test-token"
 
     monkeypatch.setattr(client, "attach_auth", fake_attach_auth)
 
-    client.call_tool("get_observations", {})
+    await client.async_call_tool("get_observations", {})
 
     assert set(targets) == {_URL}
+    assert threading.get_ident() not in threads
     assert all(
         r.headers.get("authorization") == "Bearer test-token"
         for r in server.received
@@ -710,6 +751,26 @@ async def test_call_tool_returns_the_result_in_wire_shape(
     assert result == {"content": [{"type": "text", "text": text}]}
 
 
+@pytest.mark.asyncio
+async def test_rewritten_arguments_are_logged_by_name_only(
+    server: _FakeMcpServer, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Test: The log line for rewritten tool arguments omits their values.
+    # Situation: An observation call sets `date_range_start` without
+    #   `date="range"`, so `fix_tool_arguments` rewrites `date`.
+    # Expectation: The log names the rewritten `date` argument and the tool,
+    #   and contains none of the argument values.
+    arguments = {"date": "2020", "date_range_start": "1999"}
+
+    with caplog.at_level(logging.INFO, logger=client.logger.name):
+        await client.async_call_tool("get_observations", arguments)
+
+    assert "Fixed arguments for MCP tool get_observations: date" in caplog.text
+    assert "1999" not in caplog.text
+    assert "2020" not in caplog.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool", "expected"),
     [
@@ -718,33 +779,36 @@ async def test_call_tool_returns_the_result_in_wire_shape(
     ],
     ids=["tool reports an error", "server rejects the call"],
 )
-def test_call_tool_reports_tool_and_protocol_errors(
+async def test_call_tool_reports_tool_and_protocol_errors(
     server: _FakeMcpServer, tool: str, expected: str
 ) -> None:
-    # Test: `call_tool` returns an error dictionary when a tool reports
-    #   `isError: true` or the server returns a JSON-RPC error.
-    # Situation: `call_tool` is invoked once for a tool that sets `isError` on
-    #   its result and once for a tool that fails with a JSON-RPC error.
-    # Expectation: Both calls return `{"error": <message>}` without retrying.
-    assert client.call_tool(tool, {}) == {"error": expected}
+    # Test: A tool call returns an error dictionary when the tool reports
+    #   `isError: true` or the server rejects the call as `INVALID_PARAMS`.
+    # Situation: The call targets a tool that sets `isError` on its result, or
+    #   a tool name the server rejects with JSON-RPC error -32602.
+    # Expectation: The call returns `{"error": <message>}` without retrying.
+    assert await client.async_call_tool(tool, {}) == {"error": expected}
     assert server.count("tools/call") == 1
 
 
-def test_call_tool_reports_an_unreachable_server(
+@pytest.mark.asyncio
+async def test_call_tool_raises_a_redacted_error_for_an_unreachable_server(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: `call_tool` returns a connection error message when the MCP server
-    #   is unreachable.
+    # Test: A tool call fails closed, without exposing the endpoint, when the
+    #   MCP server is unreachable.
     # Situation: Every connection attempt to the MCP server fails with
     #   `httpx2.ConnectError`.
-    # Expectation: `call_tool` returns `{"error": "Cannot connect to MCP
-    #   server at <url>. Make sure it's running!"}`.
+    # Expectation: The call raises `McpTransportError`, whose message does
+    #   not contain the MCP server URL, and whose cause is the transport
+    #   failure.
     server.down = True
 
-    assert client.call_tool("get_observations", {}) == {
-        "error": f"Cannot connect to MCP server at {_URL}. Make sure it's "
-        "running!"
-    }
+    with pytest.raises(client.McpTransportError) as raised:
+        await client.async_call_tool("get_observations", {})
+
+    assert _URL not in str(raised.value)
+    assert raised.value.__cause__ is not None
 
 
 @pytest.mark.parametrize(
@@ -780,32 +844,6 @@ def test_describe_error_prefers_the_underlying_failure_over_connection_closed(
     group = ExceptionGroup("unhandled errors", [connection_closed, underlying])
 
     assert client._describe_error(group) == expected
-
-
-def test_call_tool_records_calls_and_results_in_the_session_logger(
-    server: _FakeMcpServer,
-) -> None:
-    # Test: `call_tool` logs tool invocations and their outcomes to the
-    #   provided `session_logger`.
-    # Situation: One succeeding tool call and one failing tool call are made
-    #   with a `session_logger` instance.
-    # Expectation: The session logger records the normalized arguments for
-    #   each call and records `"success"` and `"error"` statuses for the
-    #   respective results.
-    session_logger = _RecordingSessionLogger()
-
-    client.call_tool("get_observations", {}, session_logger)
-    client.call_tool("failing_tool", {}, session_logger)
-
-    assert session_logger.calls == [
-        ("get_observations", {"date": "latest"}),
-        ("failing_tool", {}),
-    ]
-    assert [status for _, _, status in session_logger.results] == [
-        "success",
-        "error",
-    ]
-    assert session_logger.results[1][1] == {"error": "No such place."}
 
 
 @pytest.mark.parametrize(
@@ -870,15 +908,3 @@ def test_mcp_url_resolution_order(
     assert client.mcp_url() == expected
     monkeypatch.setattr(client, "load_config", lambda: {})
     assert client.mcp_url() == expected
-
-
-@pytest.mark.asyncio
-async def test_sync_wrapper_raises_when_called_inside_running_loop() -> None:
-    # Test: Calling a synchronous MCP wrapper from a thread with a running
-    #   event loop raises `RuntimeError`.
-    # Situation: `client.get_tools()` is called directly inside an `async def`
-    #   function where an event loop is already running on the current thread.
-    # Expectation: `get_tools()` raises `RuntimeError` without leaving an
-    #   unawaited coroutine warning.
-    with pytest.raises(RuntimeError):
-        client.get_tools()

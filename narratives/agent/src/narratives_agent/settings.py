@@ -31,9 +31,9 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Boolean environment variables (`GOOGLE_GENAI_USE_VERTEXAI` and
-# `SESSION_LOG_TO_FILE`) turn on with one of these values, compared after
-# stripping and lowercasing, and off with any other value.
+# Boolean environment variables (such as `GOOGLE_GENAI_USE_VERTEXAI`) turn on
+# with one of these values, compared after stripping and lowercasing, and off
+# with any other value.
 _TRUTHY_ENV_VALUES = ("1", "true", "yes")
 
 
@@ -72,11 +72,6 @@ def _resolve_data_plane_web_url(value: str, info: ValidationInfo) -> str:
     """
     data_plane_url: str = info.data.get("data_plane_url", "")
     return value.rstrip("/") or data_plane_url
-
-
-def _should_log_session_to_file_by_default(data: dict[str, Any]) -> bool:
-    """Returns True off Cloud Run, where `k_service` is empty."""
-    return not data["k_service"]
 
 
 # Trailing slashes are stripped from these strings, so a base URL or path
@@ -206,22 +201,6 @@ class Settings(BaseSettings):
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`
     # in config.json applies.
     gemini_api_key_secret: str = ""
-
-    # When true, session logs also go to files, in `logs` under `agent_root`.
-    #
-    # Every Cloud Run instance has its own ephemeral disk, so a session log
-    # written to a file dies with the instance and cannot be read across the
-    # fleet -- exactly when scaling out makes it most needed. Emitting one JSON
-    # object per line on stdout gets the same information into Cloud Logging
-    # as structured entries, queryable by session_id and event_type, with no
-    # dependency and no credentials.
-    #
-    # Files are still written off Cloud Run, because tailing one is the fastest
-    # way to debug locally. SESSION_LOG_TO_FILE forces either behavior
-    # explicitly.
-    session_log_to_file: _EnvBool = Field(
-        default_factory=_should_log_session_to_file_by_default
-    )
 
     @model_validator(mode="before")
     @classmethod

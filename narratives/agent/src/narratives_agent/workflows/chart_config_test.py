@@ -40,32 +40,37 @@ def _candidates(text: str) -> dict[str, Any]:
 def gemini_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Callable[[dict[str, Any]], None]:
-    """Stub `chart_config.gemini_request` to return a fixed response dict."""
+    """Stub `chart_config.async_gemini_request` to return a fixed response."""
     monkeypatch.setattr(chart_config, "load_config", lambda: {})
 
     def install(response: dict[str, Any]) -> None:
-        def request(**kwargs: Any) -> dict[str, Any]:
+        async def request(**kwargs: Any) -> dict[str, Any]:
             return response
 
-        monkeypatch.setattr(chart_config, "gemini_request", request)
+        monkeypatch.setattr(chart_config, "async_gemini_request", request)
 
     return install
 
 
-def test_an_api_error_hides_the_charts(
+@pytest.mark.asyncio
+async def test_an_api_error_hides_the_charts(
     gemini_answers: Callable[[dict[str, Any]], None],
 ) -> None:
     # Test: Chart suppression when the Gemini validation call returns an error.
-    # Situation: gemini_request returns an error dict without a "candidates"
-    #   key.
+    # Situation: async_gemini_request returns an error dict without a
+    #   "candidates" key.
     # Expectation: validate_data_response returns False so charts are hidden
     #   when validation fails.
     gemini_answers({"error": "HTTP 404: model not found"})
 
-    assert chart_config.validate_data_response(_SYNTHESIS, _QUESTION) is False
+    assert (
+        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        is False
+    )
 
 
-def test_a_response_that_is_not_json_hides_the_charts(
+@pytest.mark.asyncio
+async def test_a_response_that_is_not_json_hides_the_charts(
     gemini_answers: Callable[[dict[str, Any]], None],
 ) -> None:
     # Test: Chart suppression when the validation response text is not valid
@@ -76,10 +81,14 @@ def test_a_response_that_is_not_json_hides_the_charts(
     #   False.
     gemini_answers(_candidates("I think so, yes."))
 
-    assert chart_config.validate_data_response(_SYNTHESIS, _QUESTION) is False
+    assert (
+        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        is False
+    )
 
 
-def test_a_verdict_missing_the_field_hides_the_charts(
+@pytest.mark.asyncio
+async def test_a_verdict_missing_the_field_hides_the_charts(
     gemini_answers: Callable[[dict[str, Any]], None],
 ) -> None:
     # Test: Chart suppression when the parsed JSON omits `data_found`.
@@ -89,11 +98,15 @@ def test_a_verdict_missing_the_field_hides_the_charts(
     #   a missing field to True.
     gemini_answers(_candidates(json.dumps({"reason": "unsure"})))
 
-    assert chart_config.validate_data_response(_SYNTHESIS, _QUESTION) is False
+    assert (
+        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        is False
+    )
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("payload", ["null", "[]", "false", "123"])
-def test_a_non_object_json_payload_hides_the_charts(
+async def test_a_non_object_json_payload_hides_the_charts(
     gemini_answers: Callable[[dict[str, Any]], None], payload: str
 ) -> None:
     # Test: Chart suppression when the validation response is valid non-object
@@ -104,11 +117,15 @@ def test_a_non_object_json_payload_hides_the_charts(
     #   AttributeError.
     gemini_answers(_candidates(payload))
 
-    assert chart_config.validate_data_response(_SYNTHESIS, _QUESTION) is False
+    assert (
+        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        is False
+    )
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("data_found", [True, False])
-def test_a_clear_verdict_is_passed_through(
+async def test_a_clear_verdict_is_passed_through(
     gemini_answers: Callable[[dict[str, Any]], None], data_found: bool
 ) -> None:
     # Test: Pass-through of a valid boolean `data_found` verdict.
@@ -119,5 +136,6 @@ def test_a_clear_verdict_is_passed_through(
     gemini_answers(_candidates(json.dumps({"data_found": data_found})))
 
     assert (
-        chart_config.validate_data_response(_SYNTHESIS, _QUESTION) is data_found
+        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        is data_found
     )

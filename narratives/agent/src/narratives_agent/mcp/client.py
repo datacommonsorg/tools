@@ -14,48 +14,56 @@
 """MCP client built on the official `mcp` Python SDK.
 
 The client communicates with the MCP server over the Streamable HTTP transport
-using `mcp.ClientSession` and `streamable_http_client` backed by
-`httpx2.AsyncClient`.
+using `mcp.ClientSession` and `streamable_http_client`. The public entry points
+are the asynchronous `async_get_tools` and `async_call_tool`, plus
+`cached_tools` for latency-sensitive callers that must not wait on the
+network.
 
-Each MCP operation is available in both asynchronous and synchronous forms:
+Every operation opens its own MCP connection on one shared, connection-pooled
+`httpx2.AsyncClient`, so the 5 to 15 tool calls of a chat turn reuse
+keep-alive connections instead of each paying a TCP and TLS handshake. The
+shared client carries no per-operation state: the headers an operation needs
+(authentication and `Mcp-Session-Id`) and the observer that reads its
+responses travel in a `ContextVar` that the client's request and response
+event hooks read. Concurrent operations therefore never see one another's
+credentials or session IDs.
 
-- `async_initialize_mcp`, `async_get_tools`, and `async_call_tool` are
-  asynchronous functions for callers running on an event loop.
-- `initialize_mcp`, `get_tools`, and `call_tool` are synchronous wrappers for
-  the existing blocking callers in `workflows/`. They will be removed in the
-  next migration stage when `workflows/` is converted to asynchronous code.
+The MCP session persists across operations within the same turn. The
+handshake stores the server-issued session ID and the negotiated
+`InitializeResult`. Subsequent operations send that session ID in the
+`Mcp-Session-Id` header and restore the negotiated protocol state with
+`ClientSession.adopt`, avoiding repeated handshakes while preserving the
+negotiated protocol version header. Connections are opened with
+`terminate_on_close=False` so that closing an individual connection does not
+send an `HTTP DELETE` request that would terminate the session on the server.
 
-Each operation opens its own HTTP connection, while the MCP session persists
-across operations within the same turn. The handshake stores the server-issued
-session ID and the negotiated `InitializeResult`. Subsequent operations send
-that session ID in the `Mcp-Session-Id` header and restore the negotiated
-protocol state with `ClientSession.adopt`, avoiding repeated handshakes while
-preserving the negotiated protocol version header. Connections are opened with
-`terminate_on_close=False` so that closing an individual HTTP connection does
-not send an `HTTP DELETE` request that would terminate the session on the
-server.
-
-Session state is stored in a `contextvars.ContextVar` so that concurrent
-asyncio tasks and threads maintain separate MCP sessions without overwriting
-one another's session IDs.
+A turn's session lives in a mutable `_SessionScope` held in a
+`contextvars.ContextVar`. `ensure_session_scope` creates the scope in the
+parent task, and child tasks spawned afterwards (for example, concurrent tool
+calls run in an `asyncio.TaskGroup`) copy a reference to the same scope, so they
+share one handshake and see one another's re-initialization. Separate turns
+run in separate request contexts and keep separate sessions.
 
 Functions return plain dictionaries matching the MCP wire format expected by
-`workflows/` and `mcp/data_utils.py`: `get_tools` returns tool definitions
-with `"name"`, `"description"`, and `"inputSchema"`, and `call_tool` returns
-the tool result dictionary (`"content"` and optional `"structuredContent"`) or
-`{"error": <message>}` when a call fails.
+`workflows/` and `mcp/data_utils.py`: `async_get_tools` returns tool
+definitions with `"name"`, `"description"`, and `"inputSchema"`, and
+`async_call_tool` returns the tool result dictionary (`"content"` and optional
+`"structuredContent"`) or `{"error": <message>}` when the tool itself reports
+an error. A transport or protocol failure is not a tool result: it raises
+`McpTransportError`, whose message carries no endpoint or upstream detail, so
+that callers abort the turn instead of passing a transport failure to the
+model as a tool result.
 """
 
 import asyncio
-import contextvars
 import logging
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
-from typing import Any, Protocol
+from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx2
@@ -72,6 +80,14 @@ logger = logging.getLogger(__name__)
 # Each HTTP exchange with the MCP server, including streamed tool results,
 # times out after 300 seconds.
 _REQUEST_TIMEOUT_SECONDS = 300.0
+# Establishing a TCP and TLS connection gets a much shorter budget than the
+# exchange itself: an unreachable server should fail the turn in seconds
+# rather than hold it until the request timeout.
+_CONNECT_TIMEOUT_SECONDS = 10.0
+# `_MAX_IDLE_CONNECTIONS` caps how many idle connections to the MCP server
+# are kept open for reuse. Concurrent connections are not capped, matching
+# the data-plane proxy client.
+_MAX_IDLE_CONNECTIONS = 64
 
 _SESSION_ID_HEADER = "Mcp-Session-Id"
 _HTTP_NOT_FOUND = 404
@@ -98,26 +114,10 @@ _SESSION_LOST_MARKERS = (
 )
 
 # The list of available tools is a property of the MCP server rather than an
-# individual session, so it is cached across threads and tasks. Expiring the
-# cache after a fixed TTL allows the agent to pick up tool changes on the data
-# plane without restarting.
+# individual session, so it is cached across turns. Expiring the cache after a
+# fixed TTL allows the agent to pick up tool changes on the data plane without
+# restarting.
 _TOOLS_TTL_SECONDS = 600
-
-
-class SessionLoggerLike(Protocol):
-    """Defines the `SessionLogger` methods used by the MCP client.
-
-    `SessionLogger` is not yet type-annotated, so the client depends on this
-    protocol instead of importing the untyped class directly.
-    """
-
-    def log_mcp_tool_call(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> None: ...
-
-    def log_mcp_tool_result(
-        self, tool_name: str, result: Any, duration_ms: float, status: str
-    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -133,6 +133,21 @@ class _Session:
 
 
 @dataclass
+class _SessionScope:
+    """Holds the MCP session shared by every operation of one turn.
+
+    The scope object is shared by reference between a parent task and the
+    child tasks it spawns, so assigning `session` here is visible to all of
+    them. `lock` serializes handshakes so that concurrent operations that
+    find no session, or the same rejected session, perform one handshake
+    between them.
+    """
+
+    session: _Session | None = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+@dataclass
 class _ToolCache:
     """Holds the most recently fetched tool list and when it was fetched."""
 
@@ -144,21 +159,35 @@ class _SessionLostError(Exception):
     """Raised when the MCP server no longer recognizes the current session."""
 
 
+class McpTransportError(Exception):
+    """Raised when an MCP request fails below the tool layer.
+
+    This exception covers connection, HTTP, and protocol failures, including
+    a failed handshake. The message is fixed and safe to surface; the
+    underlying detail, which names the endpoint, is logged and kept as
+    `__cause__`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("The MCP server request failed.")
+
+
 @dataclass
 class _ResponseObserver:
     """Captures HTTP response details that `streamable_http_client` hides.
 
     `streamable_http_client` keeps the `Mcp-Session-Id` response header private
     to its internal transport and converts a bare HTTP 404 response into a
-    generic `MCPError`. Attaching this observer as an `httpx2` response event
-    hook on each connection lets the client read the server-issued session ID
-    and detect bare HTTP 404 responses directly.
+    generic `MCPError`. The shared client's response event hook forwards each
+    response of an operation to that operation's observer, which lets the
+    client read the server-issued session ID and detect bare HTTP 404
+    responses directly.
     """
 
     session_id: str | None = None
     saw_not_found: bool = False
 
-    async def __call__(self, response: httpx2.Response) -> None:
+    def observe(self, response: httpx2.Response) -> None:
         """Records `Mcp-Session-Id` and whether a bare HTTP 404 occurred.
 
         An HTTP 404 response with a JSON body is ignored here because the SDK
@@ -175,33 +204,75 @@ class _ResponseObserver:
             self.saw_not_found = True
 
 
-# The MCP session of the current thread or asyncio task.
-_session_var: ContextVar[_Session | None] = ContextVar(
-    "mcp_session", default=None
+@dataclass(frozen=True)
+class _Operation:
+    """Holds per-operation state read by the shared client's event hooks."""
+
+    headers: dict[str, str]
+    observer: _ResponseObserver
+
+
+@dataclass
+class _HttpClientHolder:
+    """Holds the shared HTTP client and the event loop it belongs to."""
+
+    client: httpx2.AsyncClient | None = None
+    loop: asyncio.AbstractEventLoop | None = None
+
+
+_session_scope_var: ContextVar[_SessionScope | None] = ContextVar(
+    "mcp_session_scope", default=None
+)
+# `streamable_http_client` sends requests from tasks it starts in an AnyIO
+# task group, and AnyIO starts each task in a copy of the context that
+# entered the transport. Setting this variable before entering the transport
+# therefore scopes it to exactly one operation's requests.
+_operation_var: ContextVar[_Operation | None] = ContextVar(
+    "mcp_operation", default=None
 )
 
-# The tool list shared by all threads and tasks, and the lock that guards it.
+_HTTP_CLIENT = _HttpClientHolder()
+
 _TOOLS_LOCK = threading.Lock()
 _TOOLS_CACHE = _ToolCache()
 
-# Whether a background tool refresh is running, and the lock that guards it.
-_REFRESH_LOCK = threading.Lock()
-_refresh_in_flight = False
+# `_REFRESH_TASKS` holds strong references to in-flight background tool
+# refreshes. The event loop holds only weak references to tasks, so an
+# unreferenced task can be garbage-collected before it finishes.
+_REFRESH_TASKS: set[asyncio.Task[list[dict[str, Any]]]] = set()
 
 
 def get_session_id() -> str | None:
     """Returns the MCP session ID for the current context, or `None`."""
-    session = _session_var.get()
-    return session.session_id if session else None
+    scope = _session_scope_var.get()
+    if scope is None or scope.session is None:
+        return None
+    return scope.session.session_id
+
+
+def ensure_session_scope() -> None:
+    """Opens an MCP session scope in the current context if none is open.
+
+    Call this in the parent task of a turn before spawning concurrent MCP
+    operations. Child tasks inherit the scope, so they share one handshake
+    and one session; a scope created inside a child task would be invisible
+    to its siblings and its parent. Each request runs in its own context, so
+    separate turns never share a scope.
+    """
+    _current_scope()
 
 
 def reset_client() -> None:
-    """Clears the cached URL, the tool cache, and the current session."""
+    """Clears the cached URL, the tool cache, and the current session scope.
+
+    The shared HTTP client is not closed here, because closing requires the
+    event loop that owns it; call `aclose` from that loop.
+    """
     _URL_CACHE.clear()
     with _TOOLS_LOCK:
         _TOOLS_CACHE.tools = None
         _TOOLS_CACHE.fetched_at = 0.0
-    _session_var.set(None)
+    _session_scope_var.set(None)
 
 
 def _normalize_url(url: str) -> str:
@@ -244,18 +315,72 @@ def mcp_url() -> str:
     return resolved
 
 
-def _create_http_client(headers: dict[str, str]) -> httpx2.AsyncClient:
-    """Returns an `httpx2.AsyncClient` configured for a single MCP operation.
+async def _apply_operation_headers(request: httpx2.Request) -> None:
+    """Adds the current operation's headers to an outgoing request."""
+    operation = _operation_var.get()
+    if operation is not None:
+        request.headers.update(operation.headers)
 
-    Each operation opens its own client, so each of the 5 to 15 tool calls in a
-    chat turn opens its own connection and, when the MCP server runs outside
-    this container, performs its own TLS handshake. A shared keep-alive pool
-    will be introduced once the synchronous wrappers (which create a fresh
-    event loop per call) are removed.
+
+async def _observe_operation_response(response: httpx2.Response) -> None:
+    """Forwards a response to the current operation's observer."""
+    operation = _operation_var.get()
+    if operation is not None:
+        operation.observer.observe(response)
+
+
+def _http_transport() -> httpx2.AsyncBaseTransport | None:
+    """Returns the transport for the shared client.
+
+    `None` selects the default network transport. Tests replace this function
+    to route the client to an in-process server.
     """
-    return httpx2.AsyncClient(
-        headers=headers, timeout=httpx2.Timeout(_REQUEST_TIMEOUT_SECONDS)
-    )
+    return None
+
+
+def _http_client() -> httpx2.AsyncClient:
+    """Returns the shared HTTP client for the running event loop.
+
+    The client is created on first use and rebuilt if it was closed or
+    belongs to a different event loop, since its pooled connections are
+    bound to the loop that opened them. In production one loop serves the
+    process, so one client lives for the life of the application. Redirect
+    handling is not configured because `streamable_http_client` ignores the
+    client's `follow_redirects` and applies its own same-origin rule.
+    """
+    loop = asyncio.get_running_loop()
+    holder = _HTTP_CLIENT
+    if (
+        holder.client is None
+        or holder.client.is_closed
+        or holder.loop is not loop
+    ):
+        holder.client = httpx2.AsyncClient(
+            transport=_http_transport(),
+            timeout=httpx2.Timeout(
+                _REQUEST_TIMEOUT_SECONDS, connect=_CONNECT_TIMEOUT_SECONDS
+            ),
+            limits=httpx2.Limits(
+                max_connections=None,
+                max_keepalive_connections=_MAX_IDLE_CONNECTIONS,
+            ),
+            event_hooks={
+                "request": [_apply_operation_headers],
+                "response": [_observe_operation_response],
+            },
+        )
+        holder.loop = loop
+    return holder.client
+
+
+async def aclose() -> None:
+    """Closes the shared HTTP client, if one is open on the running loop."""
+    holder = _HTTP_CLIENT
+    client, loop = holder.client, holder.loop
+    holder.client = None
+    holder.loop = None
+    if client is not None and loop is asyncio.get_running_loop():
+        await client.aclose()
 
 
 def _client_info() -> types.Implementation:
@@ -273,20 +398,20 @@ async def _connect(
 ) -> AsyncIterator[ClientSession]:
     """Opens a Streamable HTTP connection and yields a `ClientSession`.
 
-    When resuming an existing `session`, the session ID is sent via the
-    `AsyncClient` default headers rather than `streamable_http_client`'s
-    `session_id` parameter, and no `notifications/initialized` message is sent.
-    Because the transport's internal `session_id` remains `None`, the SDK never
-    opens its background `GET` SSE stream on a resumed connection. This makes
-    it safe for `_is_session_lost` to treat any non-JSON HTTP 404 recorded by
-    `observer` on the connection as a rejected session ID on the `POST`
-    request.
+    When resuming an existing `session`, the session ID is added to each
+    request by the shared client's request hook rather than passed through
+    `streamable_http_client`'s transport, and no `notifications/initialized`
+    message is sent. Because the transport's internal `session_id` remains
+    `None`, the SDK never opens its background `GET` SSE stream on a resumed
+    connection. This makes it safe for `_is_session_lost` to treat any
+    non-JSON HTTP 404 recorded by `observer` on the connection as a rejected
+    session ID on the `POST` request.
 
     Args:
         session: Existing session to resume on the new connection, or `None`
             when opening a connection for the initial handshake.
-        observer: Response event hook that records the session ID header and
-            any bare HTTP 404 responses on the connection.
+        observer: Records the session ID header and any bare HTTP 404
+            responses on the connection.
     """
     url = mcp_url()
     headers: dict[str, str] = {}
@@ -295,24 +420,27 @@ async def _connect(
     # We attach authentication headers on every operation because credentials
     # depend on the target host and Google Cloud ID tokens expire over time.
     # For a localhost sidecar this is a no-op, whereas for a remote IAM-gated
-    # MCP service it attaches a fresh bearer token or API key.
-    attach_auth(headers, url)
-    http_client = _create_http_client(headers)
-    http_client.event_hooks["response"].append(observer)
-    async with (
-        http_client,
-        streamable_http_client(
-            url, http_client=http_client, terminate_on_close=False
-        ) as (read_stream, write_stream),
-        ClientSession(
-            read_stream,
-            write_stream,
-            client_info=_client_info() if session is None else None,
-        ) as client_session,
-    ):
-        if session is not None:
-            client_session.adopt(session.initialize_result)
-        yield client_session
+    # MCP service it attaches a fresh bearer token or API key. A cold token
+    # cache makes a blocking metadata-server request, so it runs in a worker
+    # thread rather than on the event loop.
+    await asyncio.to_thread(attach_auth, headers, url)
+    token = _operation_var.set(_Operation(headers=headers, observer=observer))
+    try:
+        async with (
+            streamable_http_client(
+                url, http_client=_http_client(), terminate_on_close=False
+            ) as (read_stream, write_stream),
+            ClientSession(
+                read_stream,
+                write_stream,
+                client_info=_client_info() if session is None else None,
+            ) as client_session,
+        ):
+            if session is not None:
+                client_session.adopt(session.initialize_result)
+            yield client_session
+    finally:
+        _operation_var.reset(token)
 
 
 def _leaf_errors(error: BaseException) -> list[BaseException]:
@@ -373,14 +501,12 @@ def _is_session_lost(
 
 
 async def _initialize() -> _Session:
-    """Performs the MCP handshake and stores the new session in the context.
+    """Performs the MCP handshake and returns the new session.
 
     Raises:
-        Exception: Any transport or protocol error from the handshake. When an
-            error occurs, the current context is left without a session.
+        Exception: Any transport or protocol error from the handshake.
     """
     logger.info("Initializing MCP session...")
-    _session_var.set(None)
     observer = _ResponseObserver()
     async with _connect(None, observer) as client_session:
         result = await client_session.initialize()
@@ -396,12 +522,41 @@ async def _initialize() -> _Session:
         except MCPError as error:
             logger.debug("MCP ping after the handshake failed: %s", error)
     session = _Session(session_id=observer.session_id, initialize_result=result)
-    _session_var.set(session)
     logger.info(
         "MCP session initialized (server-issued session ID: %s).",
         "yes" if session.session_id else "no",
     )
     return session
+
+
+def _current_scope() -> _SessionScope:
+    """Returns the current session scope, creating one if none is open."""
+    scope = _session_scope_var.get()
+    if scope is None:
+        scope = _SessionScope()
+        _session_scope_var.set(scope)
+    return scope
+
+
+async def _ensure_session(
+    scope: _SessionScope, stale: _Session | None
+) -> _Session:
+    """Returns a usable session for `scope`, performing a handshake if needed.
+
+    A handshake runs only if the scope still holds `stale` (no session, or
+    the session the server just rejected). An operation that waited on the
+    lock while another performed the handshake reuses its result.
+
+    Raises:
+        Exception: Any transport or protocol error from the handshake. The
+            scope is then left without a session.
+    """
+    async with scope.lock:
+        if scope.session is not None and scope.session is not stale:
+            return scope.session
+        scope.session = None
+        scope.session = await _initialize()
+        return scope.session
 
 
 async def _run_once[T](
@@ -432,7 +587,7 @@ async def _run_with_session[T](
 ) -> T:
     """Runs `operation`, initializing or recovering the MCP session if needed.
 
-    If the current context has no session, this function performs the handshake
+    If the current scope has no session, this function performs the handshake
     first; if the handshake fails, the error is raised without sending
     `operation`. If the server rejects an existing session as unknown, this
     function initializes a fresh session and retries `operation` once. Retrying
@@ -448,9 +603,8 @@ async def _run_with_session[T](
         Exception: Any transport or protocol error, including a second session
             rejection after retrying.
     """
-    session = _session_var.get()
-    if session is None:
-        session = await _initialize()
+    scope = _current_scope()
+    session = scope.session or await _ensure_session(scope, None)
     try:
         return await _run_once(session, operation)
     except _SessionLostError:
@@ -459,7 +613,7 @@ async def _run_with_session[T](
             "instance); re-initializing and retrying %s once.",
             description,
         )
-    session = await _initialize()
+    session = await _ensure_session(scope, session)
     return await _run_once(session, operation)
 
 
@@ -502,30 +656,6 @@ def _tool_error_message(result: types.CallToolResult) -> str:
     return "\n".join(texts) or "Tool call failed"
 
 
-def _elapsed_ms(start: float) -> float:
-    """Returns the time elapsed since `start` in milliseconds."""
-    return (time.monotonic() - start) * 1000
-
-
-async def async_initialize_mcp() -> bool:
-    """Performs the MCP initialization handshake for the current context.
-
-    Calling this function when a session already exists replaces it with a new
-    session.
-
-    Returns:
-        `True` if the handshake succeeded, or `False` if it failed. On failure,
-        the error is logged and the current context is left without a session.
-    """
-    try:
-        await _initialize()
-    except Exception as error:
-        logger.error("Failed to initialize MCP: %s", _describe_error(error))
-        _session_var.set(None)
-        return False
-    return True
-
-
 async def async_get_tools(
     force_refresh: bool = False,
 ) -> list[dict[str, Any]]:
@@ -566,26 +696,15 @@ async def async_get_tools(
 
 
 def _tool_failure(
-    name: str,
-    message: str,
-    start: float,
-    session_logger: SessionLoggerLike | None,
-    level: int = logging.ERROR,
+    name: str, message: str, level: int = logging.ERROR
 ) -> dict[str, Any]:
     """Logs a failed tool call and returns its error result dictionary."""
     logger.log(level, "MCP tool %s failed: %s", name, message)
-    error_result = {"error": message}
-    if session_logger:
-        session_logger.log_mcp_tool_result(
-            name, error_result, _elapsed_ms(start), "error"
-        )
-    return error_result
+    return {"error": message}
 
 
 async def async_call_tool(
-    name: str,
-    arguments: dict[str, Any],
-    session_logger: SessionLoggerLike | None = None,
+    name: str, arguments: dict[str, Any]
 ) -> dict[str, Any]:
     """Calls a tool on the MCP server.
 
@@ -593,22 +712,31 @@ async def async_call_tool(
         name: Name of the MCP tool to invoke.
         arguments: Tool arguments produced by the model. These are normalized
             with `fix_tool_arguments` before the request is sent.
-        session_logger: Optional logger that records the tool call and its
-            result.
 
     Returns:
         The tool result dictionary in its MCP wire format (`"content"` and
         optional `"structuredContent"`), or `{"error": <message>}` if the
-        request failed or the tool returned `isError: true`.
+        tool returned `isError: true` or the server rejected the call's
+        arguments (`INVALID_PARAMS`, which also covers an unknown tool name).
+        Those are failures the model can correct on its next iteration.
+
+    Raises:
+        McpTransportError: If the request failed for any other reason:
+            connection, HTTP, or protocol errors, or a failed handshake.
     """
     fixed_args = fix_tool_arguments(name, arguments)
     if fixed_args != arguments:
-        logger.info("Fixed arguments: %s -> %s", arguments, fixed_args)
+        # Argument values can contain text from the user's query, so only the
+        # names of the rewritten arguments are logged.
+        changed = sorted(
+            key
+            for key in arguments.keys() | fixed_args.keys()
+            if arguments.get(key) != fixed_args.get(key)
+        )
+        logger.info(
+            "Fixed arguments for MCP tool %s: %s", name, ", ".join(changed)
+        )
 
-    if session_logger:
-        session_logger.log_mcp_tool_call(name, fixed_args)
-
-    start = time.monotonic()
     try:
         result = await _run_with_session(
             f"tools/call {name}",
@@ -617,129 +745,71 @@ async def async_call_tool(
             ),
         )
     except Exception as error:
-        return _tool_failure(
-            name, _describe_error(error), start, session_logger
-        )
+        if any(
+            isinstance(leaf, MCPError)
+            and leaf.error.code == types.INVALID_PARAMS
+            for leaf in _leaf_errors(error)
+        ):
+            return _tool_failure(
+                name, _describe_error(error), level=logging.WARNING
+            )
+        logger.error("MCP tool %s failed: %s", name, _describe_error(error))
+        raise McpTransportError() from error
 
     if result.is_error:
         # When `is_error` is True, the MCP request succeeded at the transport
         # layer, but the tool itself reported an execution error that the model
         # can react to.
         return _tool_failure(
-            name,
-            _tool_error_message(result),
-            start,
-            session_logger,
-            level=logging.WARNING,
+            name, _tool_error_message(result), level=logging.WARNING
         )
 
     # Pass `exclude_unset=True` and `exclude_none=True` so that Pydantic
     # serializes only the fields returned by the server without injecting
     # default values for omitted fields.
-    payload = result.model_dump(
+    return result.model_dump(
         mode="json", by_alias=True, exclude_unset=True, exclude_none=True
     )
-    if session_logger:
-        session_logger.log_mcp_tool_result(
-            name, payload, _elapsed_ms(start), "success"
-        )
-    return payload
-
-
-def _run_sync[T](operation: Callable[[], Coroutine[Any, Any, T]]) -> T:
-    """Runs an async MCP operation to completion from synchronous code.
-
-    `asyncio.Runner.run` executes the coroutine inside a task using the
-    provided `context`. Copying the context before running and restoring
-    `_session_var` in the `finally` block ensures that any session created or
-    cleared inside the coroutine is preserved in the calling thread's context,
-    both when the coroutine returns normally and when it raises an exception.
-
-    Raises:
-        RuntimeError: If called from a thread that already has a running event
-            loop.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise RuntimeError(
-            "Synchronous MCP functions cannot be called from a running event "
-            "loop; await the async_* function instead."
-        )
-    context = contextvars.copy_context()
-    try:
-        with asyncio.Runner() as runner:
-            return runner.run(operation(), context=context)
-    finally:
-        _session_var.set(context.get(_session_var))
-
-
-def initialize_mcp() -> bool:
-    """Synchronously performs the MCP handshake for the calling thread.
-
-    See `async_initialize_mcp` for details.
-    """
-    return _run_sync(async_initialize_mcp)
-
-
-def get_tools(force_refresh: bool = False) -> list[dict[str, Any]]:
-    """Synchronously returns the MCP server's tool definitions.
-
-    See `async_get_tools` for details.
-    """
-    return _run_sync(lambda: async_get_tools(force_refresh))
-
-
-def call_tool(
-    name: str,
-    arguments: dict[str, Any],
-    session_logger: SessionLoggerLike | None = None,
-) -> dict[str, Any]:
-    """Synchronously calls a tool on the MCP server.
-
-    See `async_call_tool` for details.
-    """
-    return _run_sync(lambda: async_call_tool(name, arguments, session_logger))
 
 
 def _refresh_tools_in_background() -> None:
-    """Starts a background thread to refresh the tool cache if needed."""
-    global _refresh_in_flight
-    with _REFRESH_LOCK:
-        if _refresh_in_flight:
-            return
-        _refresh_in_flight = True
+    """Schedules a tool-cache refresh on the running event loop.
 
-    def run() -> None:
-        global _refresh_in_flight
-        try:
-            get_tools(force_refresh=True)
-        except Exception:
-            logger.warning("Background tool refresh failed.", exc_info=True)
-        finally:
-            with _REFRESH_LOCK:
-                _refresh_in_flight = False
-
-    threading.Thread(target=run, name="mcp-tools-refresh", daemon=True).start()
+    At most one refresh is in flight at a time. If no event loop is running
+    (for example, when called from synchronous code outside the server), no
+    task is scheduled and the next asynchronous caller refreshes the cache
+    instead.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.debug("No running event loop; skipping tool refresh.")
+        return
+    if any(not task.done() for task in _REFRESH_TASKS):
+        return
+    _REFRESH_TASKS.clear()
+    task = loop.create_task(
+        async_get_tools(force_refresh=True), name="mcp-tools-refresh"
+    )
+    _REFRESH_TASKS.add(task)
+    task.add_done_callback(_REFRESH_TASKS.discard)
 
 
 def cached_tools() -> list[dict[str, Any]]:
     """Returns the currently cached tool list without blocking on the network.
 
     This function is used by latency-sensitive endpoints such as `/agent/health`
-    that are polled by Cloud Run uptime checks. Fetching tools synchronously on
-    a cold cache would block the health check on an MCP network round trip with
-    a 300-second timeout, causing an unreachable data plane to make the agent
+    that are polled by Cloud Run uptime checks. Fetching tools on a cold cache
+    would block the health check on an MCP network round trip with a
+    300-second timeout, causing an unreachable data plane to make the agent
     appear hung rather than unhealthy.
 
-    When no tool list has been fetched yet, this function starts a background
-    refresh and immediately returns `[]`. Without the background refresh, a
-    failed startup probe would leave `/agent/health` reporting zero tools
-    indefinitely if no chat traffic arrived. This commonly occurs on a fresh
-    Custom Data Commons deployment when the app container starts before its
-    `roles/run.invoker` IAM binding on the private data plane has finished
+    When no tool list has been fetched yet, this function schedules a
+    background refresh and immediately returns `[]`. Without the background
+    refresh, a failed startup probe would leave `/agent/health` reporting zero
+    tools indefinitely if no chat traffic arrived. This commonly occurs on a
+    fresh Custom Data Commons deployment when the app container starts before
+    its `roles/run.invoker` IAM binding on the private data plane has finished
     propagating.
     """
     with _TOOLS_LOCK:

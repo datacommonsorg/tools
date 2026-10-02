@@ -104,11 +104,9 @@ frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
   manually.
 - **Enforcement (Agent)** — formatted and linted with `ruff` at 80 columns and
   type-checked with `mypy --strict`, both configured in `agent/pyproject.toml`.
-- **Python typing** — all new and rewritten modules must pass `mypy --strict`
-  and must never be added to `[[tool.mypy.overrides]]`. Legacy modules slated
-  for deletion or rewrite in upcoming migration PRs are temporarily exempted
-  with `ignore_errors = true` in `agent/pyproject.toml`; remove each exemption
-  entry when the module is deleted or rewritten.
+- **Python typing** — every module, tests included, passes `mypy --strict`.
+  Never add a `[[tool.mypy.overrides]]` block that ignores errors in
+  `agent/pyproject.toml`.
 - **File naming** — `snake_case` for all source files (`card_response.tsx`,
   `use_branding.ts`, `chat_pipeline.py`) and category-first naming
   (`card_response.tsx`, not `response_card.tsx`).

@@ -95,11 +95,8 @@ known-first-party = ["narratives_agent"]
 docstring-code-format = true
 
 # ── Type checking ────────────────────────────────────────────────────────────
-# Strict mode is enabled globally so that all new and rewritten modules are
-# fully type-checked. Legacy modules scheduled for deletion or rewrite in
-# subsequent migration stages are temporarily exempted below under
-# [[tool.mypy.overrides]]. Do not add new modules to these override blocks;
-# remove each entry as the corresponding module is deleted or rewritten.
+# Strict mode applies to every module, tests included, with no exemptions.
+# Do not add `[[tool.mypy.overrides]]` blocks that ignore errors.
 
 [tool.mypy]
 python_version = "3.14"
@@ -107,17 +104,6 @@ strict = true
 files = ["src"]
 mypy_path = "src"
 explicit_package_bases = true
-
-[[tool.mypy.overrides]]
-# Branch 5 rewrites the pipeline and replaces SessionLogger with telemetry.
-module = [
-    "narratives_agent.session_logger",
-    "narratives_agent.workflows.chart_config",
-    "narratives_agent.workflows.chat_pipeline",
-    "narratives_agent.workflows.follow_up",
-    "narratives_agent.workflows.mcp_loop",
-]
-ignore_errors = true
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 

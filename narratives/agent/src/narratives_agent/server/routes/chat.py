@@ -14,9 +14,10 @@
 # limitations under the License.
 """Streams a chat turn to the browser as Server-Sent Events."""
 
+import asyncio
+import contextlib
 import json
-import time
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import APIRouter
@@ -24,12 +25,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from narratives_agent.server.responses import ClosingStreamingResponse
-from narratives_agent.session_logger import SESSION_ID_PATTERN, SessionLogger
-from narratives_agent.workflows.chat_pipeline import (
-    run_followups,
-    run_mcp_phase,
-    run_synthesis_phase,
-)
+from narratives_agent.workflows.chat_pipeline import run_turn
 
 router = APIRouter()
 
@@ -39,13 +35,42 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1)
     history: list[dict[str, Any]] = Field(default_factory=list)
-    # SessionLogger names the session's log file after the id; the pattern
-    # it owns accepts only characters that cannot leave the logs directory.
-    session_id: str | None = Field(default=None, pattern=SESSION_ID_PATTERN)
+
+
+async def _turn_events(
+    user_message: str, history: list[dict[str, Any]]
+) -> AsyncGenerator[str]:
+    """Runs the turn in a task and yields its payloads as SSE frames.
+
+    The turn runs in its own task because the MCP phase reports model
+    thoughts through a callback while it awaits the model, so its payloads
+    cannot be yielded from the awaiting code itself. They pass through an
+    `asyncio.Queue` that this generator drains as they arrive. When the
+    generator stops early because the client disconnected or the response
+    was closed, the turn task is canceled and awaited, which cancels its
+    in-flight model and tool calls and records the turn as canceled.
+    """
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    async def produce() -> None:
+        try:
+            await run_turn(user_message, history, queue.put_nowait)
+        finally:
+            queue.put_nowait(None)
+
+    task = asyncio.create_task(produce(), name="chat-turn")
+    try:
+        while (payload := await queue.get()) is not None:
+            yield f"data: {json.dumps(payload)}\n\n"
+    finally:
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 @router.post("/chat/stream")
-def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
+async def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
     """Streams the full chat workflow as Server-Sent Events.
 
     Phases:
@@ -55,67 +80,19 @@ def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
     Request body:
     {
         "message": "user query",
-        "history": [...optional conversation history...],
-        "session_id": "optional session ID for follow-up messages"
+        "history": [...optional conversation history...]
     }
 
     Response: Server-Sent Events stream
-
-    FastAPI advances the synchronous generator below one `next()` call at a
-    time on its worker thread pool, running each step in a fresh copy of the
-    request's context. Because the MCP session is stored in a `ContextVar`
-    (`mcp/client.py`), a session opened in one generator step does not carry
-    over to the next step or to later HTTP requests. The MCP tool loop runs on
-    a single dedicated thread for the whole turn, so all tool calls in a turn
-    share one MCP session.
     """
-    user_message = body.message
-    history = body.history
-    existing_session_id = body.session_id  # From follow-up messages
+    events = _turn_events(body.message, body.history)
 
-    # Create or resume session logger
-    session_logger = SessionLogger(session_id=existing_session_id)
+    async def close_events() -> None:
+        # `events.aclose` itself cannot be the task: it is a builtin method,
+        # not a coroutine function, so `BackgroundTask` would call it in a
+        # worker thread and drop the coroutine it returns unawaited.
+        await events.aclose()
 
-    def generate() -> Generator[str]:
-        nonlocal session_logger
-        request_start_time = time.time()
-        full_text = ""
-
-        # Chart config runs in parallel with synthesis
-        chart_result_holder = {"config": {"should_render": False}}
-        chart_thread = [None]  # Use list to avoid nonlocal issues
-
-        # Shared mutable context threaded through the phase generators so the
-        # threading/queue behavior and cross-phase state match the original
-        # inline generator exactly.
-        ctx: dict[str, Any] = {
-            "user_message": user_message,
-            "history": history,
-            "session_logger": session_logger,
-            "request_start_time": request_start_time,
-            "full_text": full_text,
-            "chart_result_holder": chart_result_holder,
-            "chart_thread": chart_thread,
-            "mcp_results": "",
-            "tool_calls_list": [],
-            "thought_queue": None,
-            "thought_callback": None,
-            "chart_config": None,
-            "aborted": False,
-        }
-
-        # Send session ID first so frontend can display it
-        yield (
-            f"data: {json.dumps({'session_id': session_logger.session_id})}\n\n"
-        )
-
-        # The phase generators are unannotated until Branch 5 rewrites the
-        # pipeline.
-        yield from run_mcp_phase(ctx)  # type: ignore[no-untyped-call]
-        yield from run_synthesis_phase(ctx)  # type: ignore[no-untyped-call]
-        yield from run_followups(ctx)  # type: ignore[no-untyped-call]
-
-    events = generate()
     return ClosingStreamingResponse(
         events,
         media_type="text/event-stream",
@@ -127,9 +104,8 @@ def chat_stream(body: ChatRequest) -> ClosingStreamingResponse:
         # When the client disconnects -- the UI aborts the request on Stop and
         # when a new turn is sent mid-stream -- the stream stops and this task
         # still runs, whatever ASGI spec version the server reports (see
-        # ClosingStreamingResponse). Closing the generator runs the pipeline's
-        # cleanup, which closes the Gemini stream, at once rather than
-        # whenever the garbage collector reaches it. close() does nothing on a
-        # generator that already finished.
-        background=BackgroundTask(events.close),
+        # ClosingStreamingResponse). Closing the generator cancels the turn
+        # task at once rather than whenever the garbage collector reaches
+        # it. aclose() does nothing on a generator that already finished.
+        background=BackgroundTask(close_events),
     )
