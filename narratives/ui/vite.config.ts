@@ -4,16 +4,18 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
-// Dev-proxy defaults for a full local stack (Path B in the README).
-const DEFAULT_BACKEND_URL = 'http://localhost:8080';
+// Dev-proxy default for a local agent (Path B in the README).
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
 
 export default defineConfig(({mode}) => {
   const envDir = path.resolve(__dirname, '..');
   // Load environment variables from narratives/.env.local
   const env = loadEnv(mode, envDir, '');
+  const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
+  // Data routes default to AGENT_URL (handled by dcproxy.py on the local or
+  // deployed agent) unless BACKEND_URL is explicitly set to a separate host.
   const backendProxy = {
-    target: env.BACKEND_URL || DEFAULT_BACKEND_URL,
+    target: env.BACKEND_URL || agentTarget,
     changeOrigin: true,
   };
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
@@ -24,7 +26,7 @@ export default defineConfig(({mode}) => {
   // API at the root (AGENT_API_PREFIX=/). An empty AGENT_API_PREFIX counts as
   // unset and selects /agent.
   const agentProxy = {
-    target: env.AGENT_URL || DEFAULT_AGENT_URL,
+    target: agentTarget,
     changeOrigin: true,
     ...(env.AGENT_STRIP_PREFIX === 'true'
       ? {rewrite: (urlPath: string) => urlPath.replace(/^\/agent/, '')}
@@ -52,8 +54,8 @@ export default defineConfig(({mode}) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify - file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Path A (UI + remote backend): set BACKEND_URL and AGENT_URL in .env.local.
-      // Path B (full local stack):    leave them unset; defaults target localhost.
+      // Path A (UI + remote agent): set AGENT_URL in .env.local.
+      // Path B (full local stack):  defaults target localhost:5001.
       // server.proxy is dev-only - `vite build` ignores it, so production is unaffected.
       proxy: {
         '/api':     backendProxy,

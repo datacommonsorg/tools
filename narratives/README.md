@@ -709,17 +709,16 @@ pnpm install
 # Point at your deployed Cloud Run instance
 cp .env.local.example .env.local
 $EDITOR .env.local
-# Set BACKEND_URL and AGENT_URL to your deployed instance:
-#   BACKEND_URL=https://<your-instance>.run.app
+# Set AGENT_URL to your deployed instance:
 #   AGENT_URL=https://<your-instance>.run.app
 
 pnpm dev:ui         # http://localhost:3000
 ```
 
-Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
-(in `vite.config.ts`) forwards `/agent/*` and the data routes; it is **dev-only**,
-so `vite build` ignores it. Defaults are `localhost:5001` and `localhost:8080` if
-unset. Vite picks up `.env.local` changes on **restart**, not live.
+Vite's `server.proxy` (in `vite.config.ts`) forwards `/agent/*` and the data
+routes to `AGENT_URL` (unless `BACKEND_URL` is set separately); it is
+**dev-only**, so `vite build` ignores it. Default is `localhost:5001` if unset.
+Vite picks up `.env.local` changes on **restart**, not live.
 
 You need Node 24 and nothing else — no Docker, no Python, no gcloud.
 
@@ -750,12 +749,12 @@ The template is pre-configured with public Data Commons endpoints:
 MCP_SERVER_URL="https://api.datacommons.org/mcp"
 DATA_PLANE_URL="https://api.datacommons.org"
 DATA_PLANE_WEB_URL="https://datacommons.org"
-BACKEND_URL="https://datacommons.org"
 AGENT_URL="http://localhost:5001"
 ```
 
 *(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL`
-and `DATA_PLANE_URL` to your Cloud Run service URL.)*
+and `DATA_PLANE_URL` to your Cloud Run service URL, and remove
+`DATA_PLANE_WEB_URL` so it falls back to `DATA_PLANE_URL`.)*
 
 **2. Start local development:**
 
