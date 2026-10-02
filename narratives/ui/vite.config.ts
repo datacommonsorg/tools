@@ -10,8 +10,7 @@ const DEFAULT_AGENT_URL = 'http://localhost:5001';
 
 export default defineConfig(({mode}) => {
   const envDir = path.resolve(__dirname, '..');
-  // Load environment variables from narratives/.env.local (single source of truth),
-  // falling back to local ui/.env.local if present.
+  // Load environment variables from narratives/.env.local
   const env = {
     ...loadEnv(mode, envDir, ''),
   };
