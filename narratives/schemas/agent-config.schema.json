@@ -24,7 +24,7 @@
         "mcp_model": {
           "description": "Model used for the MCP tool-loop / planner.",
           "type": "string",
-          "default": "gemini-3-flash-preview"
+          "default": "gemini-3.8-flash"
         }
       }
     },

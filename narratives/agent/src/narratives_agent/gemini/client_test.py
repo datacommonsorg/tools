@@ -42,7 +42,7 @@ from narratives_agent.gemini.schemas import (
 )
 from narratives_agent.telemetry import TokenUsage
 
-_MODEL = "gemini-3-flash-preview"
+_MODEL = "gemini-3.8-flash"
 _MESSAGES = [{"role": "user", "parts": [{"text": "What is the population?"}]}]
 
 _FAKE_KEY = "test-gemini-credential-for-redaction-0000"

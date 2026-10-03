@@ -594,7 +594,7 @@ async def async_gemini_request(
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
         system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
+        model: Model name, such as "gemini-3.8-flash".
         tools: Optional function declarations, each a dict with "name",
             "description", and "parameters".
         temperature: Sampling temperature.
@@ -650,7 +650,7 @@ async def async_gemini_stream(
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
         system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
+        model: Model name, such as "gemini-3.8-flash".
         tools: Optional function declarations.
         temperature: Sampling temperature.
         thinking_level: Optional thinking level.
@@ -720,7 +720,7 @@ async def async_gemini_request_with_thought_streaming(
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
         system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
+        model: Model name, such as "gemini-3.8-flash".
         tools: Optional function declarations.
         temperature: Sampling temperature.
         thinking_level: Optional thinking level.
