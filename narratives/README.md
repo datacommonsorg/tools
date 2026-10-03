@@ -793,6 +793,21 @@ logs an error instructing you to re-run `./deploy.sh --bootstrap-secrets`.
 Do not commit a real key in `agent-config.json`; the checked-in files define
 the schema shape only.
 
+**Transcript signing key** (optional locally):
+
+```sh
+export TRANSCRIPT_HMAC_SECRET="$(openssl rand -hex 32)"
+```
+
+The browser holds the conversation and sends it with every request; the agent
+signs each completed turn with this key and rejects a transcript whose
+signatures do not verify. When the variable is unset, the agent signs with a
+random key generated at startup, which is enough for one local process: a
+restart invalidates the transcripts the browser holds, and the UI then clears
+the earlier context and asks the user to repeat the question. On Cloud Run,
+where requests reach several instances, every instance must share one secret;
+the agent logs a warning when `K_SERVICE` is set and the secret is not.
+
 **Serve the SPA from the agent**, so routing matches production:
 
 ```sh
@@ -816,7 +831,7 @@ It listens on `127.0.0.1` and restarts when a source file changes. Set
 curl -s localhost:5001/agent/health | jq    # mcp_url is the resolved MCP endpoint
 curl -sN -X POST localhost:5001/agent/chat/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"What is the population of France?","history":[]}'
+  -d '{"message":"What is the population of France?","turns":[]}'
 ```
 
 The server does not contact MCP at startup, and `/agent/health` never does:
@@ -833,7 +848,7 @@ carries a JSON `data:` payload, and every frame except `heartbeat` carries an
 | `status` | `{phase, message}` (`mcp`, `synthesis`, or `chart_config`) |
 | `thought` | `{thought, phase}` (a reasoning summary from `mcp` or `synthesis`) |
 | `content` | one of `{text}`, `{tool_call}`, `{sources}`, `{data_status}`, `{chart_config}` |
-| `terminal` | `{state, error?, reason?, idempotency_key, hmac, state_slots, compacted_summary}` |
+| `terminal` | `{state, idempotency_key, error?, reason?}`, plus `{turn_index, hmac, state_slots, compacted_summary, window}` on a signed `complete` |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when any are generated |
 | `heartbeat` | `{}`, sent every 15 seconds so proxies keep the connection open |
 
@@ -844,12 +859,56 @@ ends without a `terminal` frame was cut off, and the UI displays the turn as
 interrupted. MCP is a hard dependency: when no tools can be listed or a tool
 call fails at the transport layer, the turn ends in `error` rather than
 answering without data. A disconnected client receives no terminal frame; the
-turn is canceled and recorded as `canceled`. `hmac`, `state_slots`, and
-`compacted_summary` are empty placeholders until transcripts are signed. The
-request may carry an `idempotency_key`, which the UI generates per submission
-and the terminal frame echoes. A healthy local turn emits `content` frames
-carrying `tool_call`, then the answer `text`, and then a `complete` terminal
-frame.
+turn is canceled and recorded as `canceled`. The request may carry an
+`idempotency_key`, which the UI generates per submission and the terminal
+frame echoes. A healthy local turn emits `content` frames carrying
+`tool_call`, then the answer `text`, and then a `complete` terminal frame.
+
+**Multi-turn context**: A follow-up request carries the signed window from the
+previous `complete` frame:
+
+```json
+{
+  "message": "And for Germany?",
+  "idempotency_key": "b7e0...",
+  "turns": [
+    {
+      "turn_index": 0,
+      "idempotency_key": "3f1c...",
+      "user_query": "What is the population of France?",
+      "model_response": "<the streamed answer text, exactly>",
+      "state_slots": {"scopes": [...]},
+      "hmac": "<64 hex characters>"
+    }
+  ],
+  "compacted_summary": null
+}
+```
+
+Each turn's `hmac` chains it to the previous turn. Before the stream opens,
+the agent rejects:
+
+| Status | When |
+|---|---|
+| 413 (`request_too_large`) | the body exceeds 4 MiB |
+| 400 (`transcript_invalid`) | the window was altered, reordered, or spliced, or is outside its schema or caps: more than 6 turns, a 32,000-character answer, or an 8,000-character summary |
+| 422 | the body is not JSON, or `message` (at most 4,000 characters) or `idempotency_key` is invalid |
+
+The UI recovers from a 400 by clearing the signatures it holds, so the next
+question starts without earlier context. The window holds at most 6 turns:
+when a seventh completes, the oldest is folded into `compacted_summary` by a
+model call (falling back to a structured summary after 5 seconds) and the
+whole window is re-signed, so the `complete` frame of such a turn can arrive
+up to 5 seconds after the answer finishes streaming. The client replaces the
+signatures it holds with those listed in the frame's `window` and drops any
+turn that `window` does not list. `state_slots` records the places,
+variables, and dates each turn retrieved, which later turns use to resolve
+references such as "them" or "that period". A `complete` frame without
+`hmac` marks a turn that was not signed, because its answer exceeded the cap
+or signing failed; the client leaves it out of later requests. Signing and
+compaction are timed as the `finalize` phase in telemetry. The summary and
+scopes reach the model inside a delimited background block; they are not yet
+screened by Model Armor.
 
 Production runs `uvicorn narratives_agent.server.app:app`; `dev.py` is the
 development path.

@@ -24,6 +24,8 @@ Verifies that `Settings`:
 6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
 7. Rejects a port that is not a number.
+8. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
+   rejects a value shorter than `MIN_SECRET_BYTES`.
 """
 
 from pathlib import Path
@@ -264,3 +266,35 @@ def test_non_numeric_port_is_rejected(
     monkeypatch.setenv(name, "abc")
     with pytest.raises(ValidationError, match=name.lower()):
         Settings()
+
+
+def test_transcript_hmac_secret_is_read_and_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `TRANSCRIPT_HMAC_SECRET` is read from the environment and masked in
+    #   string and `repr()` output.
+    # Situation: The variable is first unset and then exported with a valid
+    #   secret value.
+    # Expectation: When unset, the secret is empty; when set, the secret holds
+    #   the value, and neither the field's string form nor `repr(settings)`
+    #   reveals it.
+    assert Settings().transcript_hmac_secret.get_secret_value() == ""
+
+    settings = _read_settings(
+        monkeypatch, {"TRANSCRIPT_HMAC_SECRET": _KEY_SHAPED}
+    )
+
+    assert settings.transcript_hmac_secret.get_secret_value() == _KEY_SHAPED
+    assert _KEY_SHAPED not in str(settings.transcript_hmac_secret)
+    assert _KEY_SHAPED not in repr(settings)
+
+
+def test_a_short_transcript_hmac_secret_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `TRANSCRIPT_HMAC_SECRET` values shorter than 32 bytes are rejected.
+    # Situation: The variable is exported with 31 bytes.
+    # Expectation: Reading the settings raises `ValidationError` naming the
+    #   variable.
+    with pytest.raises(ValidationError, match="TRANSCRIPT_HMAC_SECRET"):
+        _read_settings(monkeypatch, {"TRANSCRIPT_HMAC_SECRET": "s" * 31})

@@ -43,6 +43,34 @@ describe("cleanTurns", () => {
     },
   );
 
+  it("keeps the signed transcript fields across a save and reload", () => {
+    // Test: Signed transcript fields persist across a save and reload.
+    // Situation: A signed turn is saved to storage as JSON and restored.
+    // Expectation: Its key, index, signature, state slots, and summary are
+    //   restored unchanged, so the next request can send it as context.
+    const signed = turn({
+      text: "About 68 million.",
+      idempotencyKey: "key-0",
+      turnIndex: 0,
+      hmac: "a".repeat(64),
+      stateSlots: {
+        scopes: [
+          {
+            places: { "country/FRA": "France" },
+            parent_place: null,
+            child_place_type: null,
+            variables: { Count_Person: "Total Population" },
+            date_range: ["2023", "2023"],
+          },
+        ],
+      },
+      compactedSummary: null,
+    });
+    const saved = JSON.parse(JSON.stringify([signed])) as ChatTurn[];
+
+    expect(cleanTurns(saved)).toEqual([signed]);
+  });
+
   it("drops entries that are not turns and tolerates a non-array", () => {
     // Test: Corrupted storage.
     // Situation: The saved turns hold null and a string beside a real turn,
