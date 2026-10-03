@@ -393,6 +393,7 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
         ...turn,
         hmac: undefined,
         turnIndex: undefined,
+        stateSlots: undefined,
         compactedSummary: undefined,
       };
 }

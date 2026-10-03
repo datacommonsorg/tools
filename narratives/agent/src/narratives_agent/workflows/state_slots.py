@@ -225,6 +225,8 @@ def _date_range(
     end = arguments.get("date_range_end")
     start = start if _is_date(start) else None
     end = end if _is_date(end) else None
+    if start and end and start > end:
+        return None
     if start or end:
         return (start or end or "", end or start or "")
     date = arguments.get("date")

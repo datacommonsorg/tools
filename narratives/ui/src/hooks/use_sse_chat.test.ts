@@ -195,6 +195,7 @@ describe("applySignedWindow", () => {
 
     expect(next[0].hmac).toBeUndefined();
     expect(next[0].turnIndex).toBeUndefined();
+    expect(next[0].stateSlots).toBeUndefined();
     expect(next[1].hmac).toBe(sig("b"));
     expect(next[1].compactedSummary).toBeUndefined();
     expect(next[2]).toMatchObject({

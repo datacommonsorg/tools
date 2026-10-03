@@ -204,6 +204,10 @@ def test_a_multi_entity_observation_flattens_its_entities() -> None:
             {"date_range_start": "2010", "date_range_end": "2015"},
             ("2010", "2015"),
         ),
+        (
+            {"date_range_start": "2015", "date_range_end": "2010"},
+            None,
+        ),
         ({"date_range_start": "2010"}, ("2010", "2010")),
         ({"date": "2018-03"}, ("2018-03", "2018-03")),
         ({"date": "latest"}, None),
