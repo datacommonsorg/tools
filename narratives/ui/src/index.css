@@ -90,6 +90,13 @@
   /* Scrim — click-outside backdrop */
   --color-scrim: #000000;
 
+  /* Elevation — M3 level 1, the resting shadow of raised surfaces such as the
+     prompt box. Consumed as `shadow-elevated`. */
+  --color-shadow: #000000;
+  --shadow-elevated:
+    0 1px 3px 1px color-mix(in srgb, var(--color-shadow) 15%, transparent),
+    0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);
+
   /* Inverse surface — the M3 role for UI that sits *over* the page rather
      than in it (m3.material.io/components/tooltips). */
   --color-inverse-surface: #313033;
@@ -176,6 +183,47 @@ summary,
 label[for],
 select:not(:disabled) {
   cursor: pointer;
+}
+
+/*
+ * Rotating gradient ring traced just inside a rounded box — the prompt box's
+ * focus glow. A conic gradient fills the element and the mask punches out the
+ * content box, so only the 1.5px padding shows. The angle is a typed @property
+ * so the gradient interpolates as it turns. The rotation starts paused; the
+ * caller resumes it (`[animation-play-state:running]`) only while visible.
+ */
+@property --glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes glow-rotate {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+@utility glow-ring {
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--glow-angle),
+    var(--color-brand-primary),
+    var(--color-brand-accent),
+    var(--color-brand-primary),
+    var(--color-brand-accent),
+    var(--color-brand-primary)
+  );
+  mask:
+    linear-gradient(black 0 0) content-box,
+    linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: glow-rotate 6s linear infinite paused;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
