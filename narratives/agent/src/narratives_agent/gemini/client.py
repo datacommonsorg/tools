@@ -82,12 +82,15 @@ _NO_PROJECT_ERROR = (
 )
 
 _THINKING_LEVELS = {
-    "minimal": types.ThinkingLevel.MINIMAL,
     "low": types.ThinkingLevel.LOW,
     "medium": types.ThinkingLevel.MEDIUM,
     "high": types.ThinkingLevel.HIGH,
 }
 _DEFAULT_THINKING_LEVEL = "low"
+
+# Thinking level for the small structured calls that run after the answer:
+# chart configuration, chart validation, and follow-up questions.
+LIGHTWEIGHT_THINKING_LEVEL = "low"
 
 # Upper bound on a single Gemini call, including a full streamed response.
 # `HttpOptions.timeout` is in milliseconds.
@@ -266,8 +269,8 @@ def build_thinking_config(
     """Builds the thinking configuration for Gemini 3 models.
 
     Args:
-        thinking_value: Thinking level: "minimal", "low", "medium", or
-            "high", in any case. Any other value selects "low".
+        thinking_value: Thinking level: "low", "medium", or "high", in any
+            case. Any other value selects "low".
         include_thoughts: Whether the response includes thought summaries.
 
     Returns:
