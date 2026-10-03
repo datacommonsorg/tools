@@ -44,7 +44,7 @@ const renderSearchBox = (query: string) => {
       onSend={() => {}}
     />,
   );
-  const searchBox = screen.getByRole("textbox").parentElement!;
+  const searchBox = screen.getByRole("textbox").closest("form")!;
   return { view, searchBox };
 };
 

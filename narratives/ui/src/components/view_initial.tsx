@@ -2,13 +2,10 @@
  * @fileoverview Renders the empty-state landing view: heading, prompt box, and suggestion chips.
  */
 
-import { ChangeEvent, useRef } from "react";
 import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
-import { SendIcon } from "./icons";
 import { SuggestionChip } from "./chip_suggestion";
-import { Tooltip } from "./tooltip";
+import { PromptInput } from "./input_prompt";
 import { useBrand } from "../hooks/branding_context";
-import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
 import { EASE_OUT } from "../config/motion";
 
 // Intro cascade: each child fades up in turn; the chip row cascades its own
@@ -37,8 +34,6 @@ interface InitialViewProps {
 
 /** Empty-state landing view: hero heading, prompt input, and suggestion chips. */
 export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isExpanded = useTextareaAutosize(textareaRef, query);
   const brand = useBrand();
   const suggestions = brand.suggestions ?? [];
   const reduceMotion = useReducedMotion();
@@ -58,39 +53,13 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
           {brand.tagline}
         </m.p>
 
-        {/* GM3 Search Box */}
-        <m.div
-          variants={fadeUp}
-          className={`w-full max-w-[720px] bg-surface border border-outline shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] motion-safe:transition-[border-radius,box-shadow] duration-200 ease-out flex flex-row items-start min-h-14 px-4 py-[7px] ${
-            // The 56px pill is 7px padding + 40px button + 7px padding + 2px
-            // border; py-2 would overshoot to 58px. The button sits at the top
-            // so it stays on the first row as the box grows.
-            // Pill radius is exactly half the 56px min-height, not rounded-full:
-            // a 9999px radius stays visually round for the whole transition
-            // and snaps to rounded-input at the end.
-            isExpanded ? "rounded-input" : "rounded-[28px]"
-          }`}
-        >
-          <textarea
-            ref={textareaRef}
+        <m.div variants={fadeUp} className="w-full">
+          <PromptInput
             value={query}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQuery(e.target.value)}
             placeholder="Ask a question to explore relevant statistical data"
-            className="bg-transparent w-full outline-none text-body-large text-on-surface placeholder:text-placeholder resize-none overflow-hidden leading-6 pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
-            rows={1}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), onSend())}
+            onValueChange={setQuery}
+            onSubmit={() => onSend()}
           />
-          {/* Action Button */}
-          <Tooltip label="Submit">
-            <button
-              type="button"
-              onClick={() => onSend()}
-              aria-label="Submit"
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-blue hover:bg-button-hover transition-colors shrink-0 group ml-2"
-            >
-              <SendIcon size="xs" />
-            </button>
-          </Tooltip>
         </m.div>
 
         {/* Prompt Chips (from branding.json suggestions, fallback DEFAULT_BRAND).
