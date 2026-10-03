@@ -199,7 +199,7 @@ async def test_compaction_extends_the_previous_summary(
     # Situation: The eighth turn evicts turn 1 from a window whose summary
     #   already covers turn 0.
     # Expectation: The request quotes the earlier summary and the evicted
-    #   turn, runs at minimal thinking and low temperature, and charges the
+    #   turn, runs at low thinking and low temperature, and charges the
     #   turn's token totals.
     window = await _converse(MAX_VERBATIM_TURNS + 1)
     tokens = TokenUsage()
@@ -216,7 +216,7 @@ async def test_compaction_extends_the_previous_summary(
     assert "Assistant: Answer 1" in prompt
     assert "Question 2" not in prompt
     assert "Total Population (Count_Person)" in prompt
-    assert call["thinking_level"] == "minimal"
+    assert call["thinking_level"] == "low"
     assert call["temperature"] <= 0.2
     assert call["token_usage"] is tokens
 

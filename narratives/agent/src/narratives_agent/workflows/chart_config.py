@@ -20,7 +20,10 @@ import logging
 from typing import Any
 
 from narratives_agent.config import get_gemini_model, load_config
-from narratives_agent.gemini.client import async_gemini_request
+from narratives_agent.gemini.client import (
+    LIGHTWEIGHT_THINKING_LEVEL,
+    async_gemini_request,
+)
 from narratives_agent.gemini.schemas import (
     CHART_CONFIG_SCHEMA,
     DATA_VALIDATION_SCHEMA,
@@ -93,7 +96,7 @@ Set should_render to false if no meaningful data for visualization."""
         ),
         model=mcp_model,
         temperature=0.2,
-        thinking_level="minimal",  # Fastest for simple extraction
+        thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
         response_schema=CHART_CONFIG_SCHEMA,
         token_usage=token_usage,
     )
@@ -154,8 +157,7 @@ Return false if the response says data is "not available", "not found", \
         system_instruction="You validate if a response contains actual data.",
         model=model,
         temperature=0,
-        # "minimal" is the lowest thinking level accepted by the Gemini 3 API.
-        thinking_level="minimal",
+        thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
         response_schema=DATA_VALIDATION_SCHEMA,
         token_usage=token_usage,
     )

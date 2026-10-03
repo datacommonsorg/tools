@@ -17,11 +17,12 @@ Verifies that `validate_data_response` fails closed (returns `False`) when the
 Gemini validation call returns an error dict, invalid JSON, or a JSON object
 without a boolean `data_found` field, and returns the model's boolean verdict
 when `data_found` is present. Verifies that `get_chart_config` returns a dict
-whatever JSON value the model produces.
+whatever JSON value the model produces, and that both calls request a thinking
+level that `gemini-3.8-flash` accepts.
 """
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import pytest
@@ -171,3 +172,35 @@ async def test_an_object_chart_config_is_passed_through(
     gemini_answers(_candidates(json.dumps(config)))
 
     assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == config
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: chart_config.get_chart_config(_RESULTS, _QUESTION),
+        lambda: chart_config.validate_data_response(_SYNTHESIS, _QUESTION),
+    ],
+    ids=["get_chart_config", "validate_data_response"],
+)
+async def test_chart_calls_request_the_low_thinking_level(
+    monkeypatch: pytest.MonkeyPatch,
+    call: Callable[[], Coroutine[Any, Any, object]],
+) -> None:
+    # Test: The thinking level that the chart calls send to Gemini.
+    # Situation: The chart configuration and chart validation calls run.
+    # Expectation: Each requests "low". `gemini-3.8-flash` rejects "minimal"
+    #   with a 400 error. These calls catch that error and return no charts,
+    #   so the failure would be silent.
+    monkeypatch.setattr(chart_config, "load_config", lambda: {})
+    levels: list[str | None] = []
+
+    async def request(**kwargs: Any) -> dict[str, Any]:
+        levels.append(kwargs.get("thinking_level"))
+        return {"error": "stubbed"}
+
+    monkeypatch.setattr(chart_config, "async_gemini_request", request)
+
+    await call()
+
+    assert levels == ["low"]

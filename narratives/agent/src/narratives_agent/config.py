@@ -34,15 +34,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Model used whenever agent-config.json names none. Read through
-# get_gemini_model() rather than repeated inline, because the deployed config
-# sets no model at all -- every caller runs on this default, so a caller that
-# spells its own default differently silently calls a different model than the
-# rest of the pipeline. That is not hypothetical: the chart-suppression check
-# defaulted to "gemini-2.0-flash", which the project's API key cannot address
-# at all. Every call 404'd, the 404 body carried no `candidates`, the check
-# read that as "data found" and charts were never suppressed.
-DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+# Model used whenever agent-config.json names none. The shipped defaults name
+# no model, so this is the model a deployment runs unless it overrides it.
+# Every caller reads the model through get_gemini_model() rather than spelling
+# its own default, so that every call in a turn uses the same model.
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 
 def get_gemini_model(config: dict[str, Any]) -> str:

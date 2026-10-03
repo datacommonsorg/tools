@@ -42,7 +42,7 @@ from narratives_agent.gemini.schemas import (
 )
 from narratives_agent.telemetry import TokenUsage
 
-_MODEL = "gemini-3-flash-preview"
+_MODEL = "gemini-3.8-flash"
 _MESSAGES = [{"role": "user", "parts": [{"text": "What is the population?"}]}]
 
 _FAKE_KEY = "test-gemini-credential-for-redaction-0000"
@@ -405,7 +405,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
 ) -> None:
     # Test: Request configuration for a structured-output call.
     # Situation: A caller passes ChartConfigResponse as response_schema with a
-    #   system instruction, temperature 0.2, and "minimal" thinking.
+    #   system instruction, temperature 0.2, and "low" thinking.
     # Expectation: The request sets responseMimeType to "application/json"
     #   with the converted responseSchema, includes the rendered system
     #   instruction and generation settings, and returns the response in the
@@ -419,7 +419,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
         "async_request",
         system_instruction="Extract charts.",
         temperature=0.2,
-        thinking_level="minimal",
+        thinking_level="low",
         response_schema=ChartConfigResponse,
     )
 
@@ -429,7 +429,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
     assert config["temperature"] == 0.2
     # The SDK serializes ThinkingConfig fields in snake_case, which the
     # Gemini API's protobuf JSON parser accepts alongside camelCase.
-    assert config["thinkingConfig"] == {"thinking_level": "MINIMAL"}
+    assert config["thinkingConfig"] == {"thinking_level": "LOW"}
     assert gemini.body()["systemInstruction"]["parts"] == [
         {"text": "rendered:Extract charts."}
     ]
@@ -901,7 +901,7 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
         (
             "Minimal",
             False,
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
+            types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
         ),
         (
             "extreme",
@@ -921,11 +921,12 @@ def test_build_thinking_config_normalizes_the_level(
     value: str, include_thoughts: bool, expected: types.ThinkingConfig
 ) -> None:
     # Test: Thinking level normalization.
-    # Situation: build_thinking_config is called with uppercase, mixed-case,
-    #   lowercase, and unrecognized level strings, both with and without
-    #   include_thoughts.
+    # Situation: build_thinking_config is called with uppercase, lowercase,
+    #   and unrecognized level strings, including "Minimal", both with and
+    #   without include_thoughts.
     # Expectation: Known levels match case-insensitively, unrecognized values
     #   default to "low", and include_thoughts is set only when True.
+    #   "minimal" maps to "low" because `gemini-3.8-flash` rejects it.
     assert client.build_thinking_config(value, include_thoughts) == expected
 
 

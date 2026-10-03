@@ -21,7 +21,10 @@ import re
 from typing import Any
 
 from narratives_agent.config import get_gemini_model, load_config
-from narratives_agent.gemini.client import async_gemini_request
+from narratives_agent.gemini.client import (
+    LIGHTWEIGHT_THINKING_LEVEL,
+    async_gemini_request,
+)
 from narratives_agent.gemini.schemas import (
     DEFAULT_FOLLOW_UP_PROMPT,
     FOLLOW_UP_SCHEMA,
@@ -70,7 +73,7 @@ Generate the self-contained follow-up questions now."""
             system_instruction=system_prompt,
             model=model,
             temperature=0.8,  # higher for varied phrasing
-            thinking_level="minimal",
+            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
             response_schema=FOLLOW_UP_SCHEMA,
             token_usage=token_usage,
         )
