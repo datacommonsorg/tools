@@ -69,7 +69,10 @@ from pydantic import (
 )
 
 from narratives_agent.config import get_gemini_model
-from narratives_agent.gemini.client import async_gemini_request
+from narratives_agent.gemini.client import (
+    LIGHTWEIGHT_THINKING_LEVEL,
+    async_gemini_request,
+)
 from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import TokenUsage
 
@@ -743,7 +746,7 @@ async def _compact(
                 system_instruction=_COMPACTION_INSTRUCTION,
                 model=get_gemini_model(config),
                 temperature=_COMPACTION_TEMPERATURE,
-                thinking_level="minimal",
+                thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
                 token_usage=token_usage,
             )
     except TimeoutError:
