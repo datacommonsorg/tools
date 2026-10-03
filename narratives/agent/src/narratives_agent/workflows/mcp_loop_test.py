@@ -26,6 +26,8 @@ Verifies that:
 5. Tool calls in flight are bounded by `MAX_CONCURRENT_TOOL_CALLS`, and
    telemetry records only declared tool names.
 6. A tool call's status is derived from the shape of its result.
+7. The first request carries the verified window as alternating messages,
+   with earlier answers shortened, then the scopes and the current query.
 """
 
 import asyncio
@@ -37,8 +39,19 @@ import pytest
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import mcp_loop
+from narratives_agent.workflows.transcript import (
+    ConversationStateSlots,
+    QueryScope,
+    Transcript,
+    Turn,
+)
 
-_QUESTION = "What is the population of France?"
+_TRANSCRIPT = Transcript(
+    turns=[],
+    compacted_summary=None,
+    current_query="What is the population of France?",
+    current_idempotency_key="key-1",
+)
 _TOOLS = [
     {"name": name, "description": "A tool."} for name in ("first", "second")
 ]
@@ -123,7 +136,7 @@ async def test_text_answer_ends_the_loop(
     model_answers(_text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, telemetry
+        _TRANSCRIPT, {}, _TOOLS, telemetry
     )
 
     assert result == mcp_loop.McpLoopResult()
@@ -157,7 +170,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     model_answers(_tool_turn("first", "second"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, telemetry
+        _TRANSCRIPT, {}, _TOOLS, telemetry
     )
 
     assert calls == ["scope", "tool:first", "tool:second"]
@@ -207,7 +220,7 @@ async def test_unusable_model_response_fails_closed(
     model_answers(_tool_turn("first"), response)
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
 
     assert raised.value.error_type == error_type
     assert _UPSTREAM_ERROR not in str(raised.value)
@@ -241,7 +254,7 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
     )
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
 
     assert raised.value.error_type == "mcp_timeout"
     assert canceled.is_set()
@@ -273,7 +286,7 @@ async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, telemetry
+        _TRANSCRIPT, {}, _TOOLS, telemetry
     )
 
     assert result.truncated
@@ -299,7 +312,7 @@ async def test_iteration_cap_returns_partial_results_flagged_truncated(
     model_answers(_tool_turn("first"), _tool_turn("second"))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, telemetry
+        _TRANSCRIPT, {}, _TOOLS, telemetry
     )
 
     assert result.truncated
@@ -343,7 +356,7 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     model_answers(_tool_turn("first", "second"))
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
 
     assert raised.value.error_type == "mcp_transport_error"
     assert _UPSTREAM_ERROR not in str(raised.value)
@@ -383,7 +396,7 @@ async def test_tool_calls_in_flight_are_bounded(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, telemetry
+        _TRANSCRIPT, {}, _TOOLS, telemetry
     )
 
     assert len(result.tool_calls) == 4
@@ -403,7 +416,7 @@ async def test_telemetry_records_undeclared_tool_names_as_unknown(
     #   and records the other as "unknown".
     model_answers(_tool_turn("first", "invented_tool"), _text_turn("Done."))
 
-    await mcp_loop.execute_mcp_tool_loop(_QUESTION, {}, _TOOLS, telemetry)
+    await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
 
     assert calls == ["scope", "tool:first", "tool:invented_tool"]
     assert telemetry.tool_calls == {"first": 1, "unknown": 1}
@@ -441,8 +454,69 @@ async def test_tool_status_follows_the_result_shape(
     model_answers(_tool_turn("first"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _QUESTION, {}, _TOOLS, telemetry
+        _TRANSCRIPT, {}, _TOOLS, telemetry
     )
 
     (record,) = result.tool_calls
     assert record["status"] == status
+
+
+@pytest.mark.asyncio
+async def test_the_first_request_carries_the_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Multi-turn context reaches the tool loop.
+    # Situation: A window has one earlier turn with a long answer and one
+    #   data scope, followed by a query that refers back to it.
+    # Expectation: The first request alternates user and model messages,
+    #   quotes at most MCP_HISTORY_RESPONSE_CHARS of the earlier answer, and
+    #   ends with a user message holding the scope and the current query.
+    sent: list[list[dict[str, Any]]] = []
+
+    async def request(**kwargs: Any) -> dict[str, Any]:
+        sent.append(list(kwargs["messages"]))
+        return _text_turn("Done.")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+    earlier = Turn(
+        turn_index=0,
+        idempotency_key="key-0",
+        user_query="Population of France?",
+        model_response="x" * (mcp_loop.MCP_HISTORY_RESPONSE_CHARS + 500),
+        state_slots=ConversationStateSlots(
+            scopes=[
+                QueryScope(
+                    places={"country/FRA": "France"},
+                    variables={"Count_Person": "Total Population"},
+                )
+            ]
+        ),
+        hmac="0" * 64,
+    )
+    transcript = Transcript(
+        turns=[earlier],
+        compacted_summary=None,
+        current_query="And for Germany?",
+        current_idempotency_key="key-1",
+    )
+
+    await mcp_loop.execute_mcp_tool_loop(transcript, {}, _TOOLS, telemetry)
+
+    (contents,) = sent
+    assert [message["role"] for message in contents] == [
+        "user",
+        "model",
+        "user",
+    ]
+    assert contents[0]["parts"] == [{"text": "Population of France?"}]
+    answer = contents[1]["parts"][0]["text"]
+    assert len(answer) <= mcp_loop.MCP_HISTORY_RESPONSE_CHARS + 3
+    final = contents[2]["parts"][0]["text"]
+    assert "Turn 1: places: France (country/FRA)" in final
+    assert final.endswith(
+        "<current_request>\nAnd for Germany?\n</current_request>"
+    )

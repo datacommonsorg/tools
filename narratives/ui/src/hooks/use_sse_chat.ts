@@ -182,6 +182,37 @@ export type TurnStatus =
 export const INTERRUPTED_TURN_ERROR =
   "The connection was interrupted before the response finished.";
 
+/**
+ * Defines the error message shown when the agent rejects the signed
+ * conversation history, for example after its signing key changed. Every
+ * signature is cleared, so the next question starts without earlier context.
+ */
+export const TRANSCRIPT_REJECTED_ERROR =
+  "The conversation history could not be verified, so earlier context was cleared. Please ask again.";
+
+/** Identifies the HTTP 400 body the agent returns for an unverifiable transcript. */
+const TRANSCRIPT_INVALID_REASON = "transcript_invalid";
+
+/**
+ * Records the places, variables, and date range of one data query or chart, in
+ * the agent's snake_case wire format. The `places`, `parent_place`, and
+ * `variables` dicts map each DCID to its display name. It is kept in wire
+ * format, rather than mapped to camelCase, because it is covered by the turn's
+ * signature and is sent back to the agent unchanged.
+ */
+export interface QueryScope {
+  places: Record<string, string>;
+  parent_place: Record<string, string> | null;
+  child_place_type: string | null;
+  variables: Record<string, string>;
+  date_range: [string, string] | null;
+}
+
+/** Holds the query scopes (places, variables, and date ranges) from a turn, in wire format. */
+export interface ConversationStateSlots {
+  scopes: QueryScope[];
+}
+
 /** Accumulated UI state for one user message and its streamed response. */
 export interface ChatTurn {
   userMessage: string;
@@ -206,6 +237,22 @@ export interface ChatTurn {
    * needs saying out loud.
    */
   truncated?: boolean;
+  /** Holds the key sent with the turn's request, which the agent signs into the turn. */
+  idempotencyKey?: string;
+  /**
+   * Counts the conversation's signed turns from 0. Set, with `hmac`, from the
+   * terminal event, and cleared when the turn leaves the signed window.
+   */
+  turnIndex?: number;
+  /** Holds the agent's signature over the turn; only signed turns are sent as context. */
+  hmac?: string;
+  /** Holds the scopes the agent extracted from the turn's tool calls. */
+  stateSlots?: ConversationStateSlots;
+  /**
+   * Holds the agent's summary of the turns compacted out of the window. Only
+   * the latest signed turn keeps it, since it covers the whole window.
+   */
+  compactedSummary?: string | null;
 }
 
 /** Identifies the terminal state of a turn as reported by its `terminal` event. */
@@ -227,20 +274,41 @@ interface ContentPayload {
   chart_config?: RawChartConfig;
 }
 
+/** Identifies one turn of the signed window listed in a `terminal` event. */
+interface SignedWindowEntry {
+  turn_index: number;
+  idempotency_key: string;
+  hmac: string;
+}
+
 /**
  * Represents the payload of a `terminal` event. An `error` event carries a
  * user-safe `error` message and a machine-readable `reason` (for example,
- * `mcp_timeout`). `hmac`, `state_slots`, and `compacted_summary` are
- * placeholders until the agent signs transcripts.
+ * `mcp_timeout`). A `complete` event for a signed turn also carries the
+ * turn's `turn_index`, `hmac`, and `state_slots`, the window's
+ * `compacted_summary`, and `window`, which lists every turn the next request
+ * must send with its current signature.
  */
 interface TerminalPayload {
   state: TerminalState;
   error?: string;
   reason?: string;
   idempotency_key: string;
+  turn_index?: number;
+  hmac?: string;
+  state_slots?: ConversationStateSlots;
+  compacted_summary?: string | null;
+  window?: SignedWindowEntry[];
+}
+
+/** Represents the wire format of one signed turn sent back to the agent as context. */
+export interface WireTurn {
+  turn_index: number;
+  idempotency_key: string;
+  user_query: string;
+  model_response: string;
+  state_slots: ConversationStateSlots;
   hmac: string;
-  state_slots: { scopes: unknown[] };
-  compacted_summary: string | null;
 }
 
 /** Represents one decoded event from `/agent/chat/stream`, discriminated by its `event:` name. */
@@ -264,14 +332,136 @@ const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set<ChatStreamEvent["event"]
   "heartbeat",
 ]);
 
-const newTurn = (userMessage: string): ChatTurn => ({
+const newTurn = (userMessage: string, idempotencyKey: string): ChatTurn => ({
   userMessage,
   status: "idle",
   toolCalls: [],
   thoughts: [],
   text: "",
   provenance: [],
+  idempotencyKey,
 });
+
+/** Represents a turn that carries everything needed to send it back as signed context. */
+type SignedTurn = ChatTurn & {
+  idempotencyKey: string;
+  turnIndex: number;
+  hmac: string;
+  stateSlots: ConversationStateSlots;
+};
+
+/** Reports whether a turn is a completed turn the agent signed. */
+function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
+  return (
+    turn.status === "done" &&
+    !turn.stopped &&
+    Boolean(turn.hmac) &&
+    turn.idempotencyKey !== undefined &&
+    turn.turnIndex !== undefined &&
+    turn.stateSlots !== undefined
+  );
+}
+
+/**
+ * Builds the transcript fields of a request from the signed turns. The query
+ * and answer are sent exactly as stored, because the agent verifies them
+ * against the turn's signature.
+ */
+export function transcriptRequestFields(turns: ChatTurn[]): {
+  turns: WireTurn[];
+  compacted_summary: string | null;
+} {
+  const signed = turns.filter(isSignedTurn);
+  return {
+    turns: signed.map((turn) => ({
+      turn_index: turn.turnIndex,
+      idempotency_key: turn.idempotencyKey,
+      user_query: turn.userMessage,
+      model_response: turn.text,
+      state_slots: turn.stateSlots,
+      hmac: turn.hmac,
+    })),
+    compacted_summary: signed.at(-1)?.compactedSummary ?? null,
+  };
+}
+
+/** Returns the turn without its signature, so it is no longer sent as context. */
+function withoutSignature(turn: ChatTurn): ChatTurn {
+  return turn.hmac === undefined
+    ? turn
+    : {
+        ...turn,
+        hmac: undefined,
+        turnIndex: undefined,
+        stateSlots: undefined,
+        compactedSummary: undefined,
+      };
+}
+
+/**
+ * Applies the signed window of a `complete` terminal event to every turn.
+ *
+ * The turn at `position` receives its signature, state slots, and the
+ * window's summary, which every other turn drops so that it is stored once.
+ * Compaction re-signs the whole window, so each other signed turn takes the
+ * signature the window lists for its idempotency key, and a turn the window
+ * no longer lists, because it was compacted into the summary, loses its
+ * signature.
+ */
+export function applySignedWindow(
+  turns: ChatTurn[],
+  position: number,
+  terminal: TerminalPayload,
+): ChatTurn[] {
+  const { window, hmac, turn_index, state_slots } = terminal;
+  if (!window || !hmac || turn_index === undefined || !state_slots) {
+    return turns;
+  }
+  const signatures = new Map(
+    window.map((entry) => [entry.idempotency_key, entry]),
+  );
+  return turns.map((turn, index) => {
+    if (index === position) {
+      return {
+        ...turn,
+        turnIndex: turn_index,
+        hmac,
+        stateSlots: state_slots,
+        compactedSummary: terminal.compacted_summary ?? null,
+      };
+    }
+    if (turn.hmac === undefined) return turn;
+    const entry =
+      turn.idempotencyKey === undefined
+        ? undefined
+        : signatures.get(turn.idempotencyKey);
+    return entry
+      ? {
+          ...turn,
+          hmac: entry.hmac,
+          turnIndex: entry.turn_index,
+          compactedSummary: undefined,
+        }
+      : withoutSignature(turn);
+  });
+}
+
+/** Reports whether an error response is the agent rejecting the transcript. */
+async function isTranscriptRejection(resp: Response): Promise<boolean> {
+  if (resp.status !== 400) return false;
+  try {
+    const body: unknown = await resp.json();
+    if (typeof body !== "object" || body === null) return false;
+    const detail: unknown = (body as { detail?: unknown }).detail;
+    return (
+      typeof detail === "object" &&
+      detail !== null &&
+      (detail as { reason?: unknown }).reason === TRANSCRIPT_INVALID_REASON
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** Returns a fresh idempotency key for one submission. */
 function newIdempotencyKey(): string {
@@ -422,34 +612,29 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // the prompt component (see data_agent.tsx handleSend), so we don't
       // re-validate the message text here.
       if (isStreaming) return;
-      const baseTurn = newTurn(message);
-      let turnIndex = -1;
+      const idempotencyKey = newIdempotencyKey();
+      const baseTurn = newTurn(message, idempotencyKey);
+      // Holds the in-flight turn's position in the turns array, which differs
+      // from its signed `turnIndex` once any earlier turn went unsigned.
+      let position = -1;
       setTurns((prev) => {
-        turnIndex = prev.length;
+        position = prev.length;
         return [...prev, baseTurn];
       });
       setIsStreaming(true);
       setError(null);
 
-      // History sent to the agent excludes the current turn. The proxy
-      // expects a Gemini-format list of strictly alternating user/model roles.
-      // Only completed turns that produced model text are included: a stopped
-      // or errored turn (especially one aborted before any text arrived) would
-      // otherwise emit a lone `user` entry, producing consecutive `user`
-      // messages that Gemini rejects with a 400.
-      const history = turns
-        .filter((turn) => !turn.stopped && turn.status === "done" && turn.text)
-        .flatMap((turn) => [
-          { role: "user", parts: [{ text: turn.userMessage }] },
-          { role: "model", parts: [{ text: turn.text }] },
-        ]);
+      // Context sent to the agent excludes the current turn and is limited to
+      // the turns the agent signed: a stopped, errored, or unsigned turn is
+      // left out, and the agent rejects any change to a signed one.
+      const transcript = transcriptRequestFields(turns);
 
       // Applies a mutation to the in-flight turn, leaving other turns intact.
       const patch = (mutate: (turn: ChatTurn) => ChatTurn) =>
         setTurns((prev) => {
-          if (turnIndex < 0 || turnIndex >= prev.length) return prev;
+          if (position < 0 || position >= prev.length) return prev;
           const next = prev.slice();
-          next[turnIndex] = mutate(next[turnIndex]);
+          next[position] = mutate(next[position]);
           return next;
         });
 
@@ -468,11 +653,25 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message,
-            history,
-            idempotency_key: newIdempotencyKey(),
+            ...transcript,
+            idempotency_key: idempotencyKey,
           }),
           signal: controller.signal,
         });
+        if (await isTranscriptRejection(resp)) {
+          // The signatures no longer verify, as after a key rotation or an
+          // agent restart without a shared key. Clearing them lets the user
+          // continue without earlier context instead of failing every turn.
+          setTurns((prev) =>
+            prev.map((turn, index) =>
+              index === position
+                ? { ...turn, status: "error", error: TRANSCRIPT_REJECTED_ERROR }
+                : withoutSignature(turn),
+            ),
+          );
+          setError(TRANSCRIPT_REJECTED_ERROR);
+          return;
+        }
         if (!resp.ok || !resp.body) {
           const errText = `HTTP ${resp.status} ${resp.statusText}`;
           patch((turn) => ({ ...turn, status: "error", error: errText }));
@@ -488,9 +687,12 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           if (evt.event === "heartbeat") continue;
           patch((turn) => applyEvent(turn, evt));
           if (evt.event === "terminal") {
-            terminal = evt.data;
-            if (evt.data.state !== "complete") {
-              setError(terminalError(evt.data));
+            const payload = evt.data;
+            terminal = payload;
+            if (payload.state === "complete") {
+              setTurns((prev) => applySignedWindow(prev, position, payload));
+            } else {
+              setError(terminalError(payload));
             }
           }
         }
