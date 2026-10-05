@@ -185,15 +185,6 @@
     {
       "includes": ["ui/src/types/*.d.ts"],
       "linter": { "rules": { "style": { "noNamespace": "off" } } }
-    },
-    {
-      "includes": ["ui/src/index.css"],
-      "linter": {
-        "rules": {
-          "complexity": { "noImportantStyles": "off" },
-          "style": { "noDescendingSpecificity": "off" }
-        }
-      }
     }
   ]
 }
