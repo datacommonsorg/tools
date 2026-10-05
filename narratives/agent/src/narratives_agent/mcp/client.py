@@ -433,12 +433,9 @@ async def _connect(
     if session is not None and session.session_id:
         headers[_SESSION_ID_HEADER] = session.session_id
     # We attach authentication headers on every operation because credentials
-    # depend on the target host and Google Cloud ID tokens expire over time.
-    # For a localhost sidecar this is a no-op, whereas for a remote IAM-gated
-    # MCP service it attaches a fresh bearer token or API key. A cold token
-    # cache makes a blocking metadata-server request, so it runs in a worker
-    # thread rather than on the event loop.
-    await asyncio.to_thread(attach_auth, headers, url)
+    # depend on the target host. For a localhost sidecar this is a no-op,
+    # whereas for public Data Commons it attaches the API key.
+    attach_auth(headers, url)
     token = _operation_var.set(_Operation(headers=headers, observer=observer))
     try:
         async with (
@@ -822,10 +819,7 @@ def cached_tools() -> list[dict[str, Any]]:
     When no tool list has been fetched yet, this function schedules a
     background refresh and immediately returns `[]`. Without the background
     refresh, a failed startup probe would leave `/agent/health` reporting zero
-    tools indefinitely if no chat traffic arrived. This commonly occurs on a
-    fresh Custom Data Commons deployment when the app container starts before
-    its `roles/run.invoker` IAM binding on the private data plane has finished
-    propagating.
+    tools indefinitely if no chat traffic arrived.
     """
     with _TOOLS_LOCK:
         tools = _TOOLS_CACHE.tools

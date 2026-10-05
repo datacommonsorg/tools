@@ -7,17 +7,12 @@
 # Set BEARER_TOKEN for an IAM/IAP-gated stack:
 #   BEARER_TOKEN=$(gcloud auth print-identity-token) bash docs/smoke.sh "$URL"
 #
-# Every check here holds on BOTH backends -- dcp and none. That is the
-# point: the app plane is supposed to be identical whichever data plane
-# serves it, so a check that only passes on one of them is testing the backend
-# rather than the architecture.
-#
 # An older version of this script was written for the single-container stamp
 # and asserted two things that are wrong here:
 #
-#   * /api/observations/series -- a *website* Flask route. The DCP plane serves
-#     REST V2 and api.datacommons.org serves /v1 and /v2; neither has it. It
-#     404s on both backends while the data path is perfectly healthy.
+#   * /api/observations/series -- a *website* Flask route. api.datacommons.org
+#     serves /v1 and /v2 and does not have it. It 404s while the data path is
+#     perfectly healthy.
 #   * .brand_config_url from /agent/brand -- deliberately removed, so the
 #     browser never learns the config bucket's URL. Asserting it means asserting
 #     an information leak.
@@ -109,11 +104,10 @@ check 2 c2
 #    probe in the background. So the FIRST call after a deploy legitimately
 #    reports zero tools and a later one is correct.
 #
-#    The budget is a deadline rather than a fixed retry count because backends
-#    warm at very different speeds. `none` points at api.datacommons.org, which
-#    is always hot, so the first read is already correct. A data plane that has
-#    to cold-start its own Mixer container can take ~60s -- comfortably past the
-#    old 3-reads-and-5-seconds ceiling, so a healthy stack reported FAIL on
+#    The budget is a deadline rather than a fixed retry count.
+#    api.datacommons.org is always hot, so the first read is usually correct,
+#    but a data plane that has to cold-start can take ~60s -- comfortably past
+#    the old 3-reads-and-5-seconds ceiling, so a healthy stack reported FAIL on
 #    checks 3, 4, 5 and 7 and passed on a manual re-run minutes later. A smoke
 #    test that cries wolf on every first deploy trains you to ignore it, which
 #    is worse than not having it.
@@ -174,10 +168,10 @@ check 4 c4
 #
 #    get_observations is used, with variable_dcid + place_dcid, because that is
 #    the one call whose name AND required arguments are identical across both
-#    generations. Verified against a live 1.2.x DCP server (2 tools) and a live
+#    generations. Verified against a live 1.2.x server (2 tools) and a live
 #    1.3.x server (6 tools): 1.3.x splits the fat tools apart but keeps this
 #    signature. The 1.3.x-only names -- entity_dcids, get_multi_entity_
-#    observations -- would 400 against DCP.
+#    observations -- would 400 against a 1.2.x server.
 #
 #    The session id is treated as OPTIONAL. Streamable HTTP allows a stateless
 #    server, and the Data Commons MCP servers are stateless: they return no

@@ -2,9 +2,9 @@
 
 <!--
 TEMPLATE PROMPT. Backend-neutral: nothing here names a country, a dataset or a
-data plane, so it is correct as shipped on dcp and none. Copy this
-directory to add an instance, then add instance-specific guidance rather than
-editing the generic rules out.
+data plane, so it is correct as shipped. Copy this directory to add an
+instance, then add instance-specific guidance rather than editing the generic
+rules out.
 
 The predecessor was an India export-business prompt. It defaulted every
 unqualified question to country/IND, advertised custom datasets that exist on
