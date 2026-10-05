@@ -63,13 +63,26 @@ Contribution process and PR expectations:
 Run from the root of the `/narratives` directory:
 
 - `nvm use` (or `nvm install`) — switch to the Node version pinned in `.nvmrc`.
-- `corepack enable && pnpm i` — install workspace dependencies (the pnpm version is
-  pinned via `packageManager`).
-- `pnpm build` — compile the React UI and stage static assets into `agent/static/`.
+- `corepack enable && pnpm i` — install workspace dependencies (the pnpm version
+  is pinned via `packageManager`).
+- `pnpm build` — compile the React UI and stage static assets into
+  `agent/static/`.
 - `pnpm build:ui` — compile the React UI bundle into `ui/dist/` without staging.
-- `pnpm test` — run unit tests across the whole application (Vitest for UI + Pytest for agent).
+- `pnpm test` — run unit tests and lint checks across the whole application
+  (`pnpm test:ui`, `pnpm test:agent`, and `pnpm lint`).
 - `pnpm test:ui` — run the UI unit test suite (`vitest run`).
 - `pnpm test:agent` — run the Python agent unit test suite (`uv run pytest`).
+- `pnpm lint` — run all lint, formatting, and type checks across UI, agent, and
+  deployment (`lint:ui`, `lint:agent`, `lint:deploy`).
+- `pnpm lint:ui` — run TypeScript type-checking (`tsc --noEmit`) and Biome
+  lint/format checks (`biome check`).
+- `pnpm lint:agent` — run Ruff format/lint checks (`agent/` and `deploy/*.py`)
+  and `mypy` strict type-checking.
+- `pnpm lint:deploy` — run Terraform (`fmt -check` and `validate`), ShellCheck,
+  and Hadolint checks.
+- `pnpm fix` — auto-fix formatting and lint issues across UI (`biome check
+  --write`), Python (`ruff check --fix` + `ruff format`), and Terraform
+  (`terraform fmt`).
 
 Run `pnpm test` (and `pnpm build` for UI changes) before considering work done.
 
@@ -79,7 +92,10 @@ UI, from `narratives/ui/` (or via `pnpm -C ui <command>`):
 
 - `pnpm run dev` — start the Vite dev server on port 3000.
 - `pnpm run build` — build production assets into `ui/dist/`.
-- `pnpm run lint` — type-check (`tsc --noEmit`).
+- `pnpm run lint` — type-check (`tsc --noEmit`) and run Biome
+  (`biome check`).
+- `pnpm run fix` — format and auto-fix lint issues
+  (`biome check --write`).
 - `pnpm run test` — run unit tests once (`vitest run`).
 
 Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
@@ -87,8 +103,8 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 - `uv sync` — create `.venv` and install dependencies from `uv.lock`.
 - `uv run narratives-agent-dev` — start the development server on port 5001.
 - `uv run pytest` — run the Python unit test suite.
-- `uv run ruff format .` — format Python files.
-- `uv run ruff check .` — lint Python files.
+- `uv run ruff format . ../deploy` — format Python files.
+- `uv run ruff check . ../deploy` — lint Python files.
 - `uv run mypy` — run strict static type-checking.
 - `uv lock` — regenerate `uv.lock` after editing `pyproject.toml` (never edit
   `uv.lock` by hand).
@@ -98,12 +114,20 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 Repo-wide rules live in [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md);
 frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
 
-- **Enforcement (UI)** — `pnpm -C ui run lint` currently runs only the TypeScript
-  compiler (`tsc --noEmit`). ESLint, Biome, and Stylelint are not yet configured
-  (linting is to follow), so style rules outside type-checking must be verified
-  manually.
+- **Enforcement (UI)** — formatted and linted with **Biome** (`biome.json`) and
+  type-checked with the TypeScript compiler (`tsc --noEmit`) via `pnpm lint:ui`
+  (auto-fixable with `pnpm fix:ui`). Existing files pending cleanup are listed
+  as `!<path>` exclusions under `files.includes` in `biome.json`; remove a
+  file's exclusion entry when refactoring it.
 - **Enforcement (Agent)** — formatted and linted with `ruff` at 80 columns and
-  type-checked with `mypy --strict`, both configured in `agent/pyproject.toml`.
+  type-checked with `mypy --strict`, both configured in `agent/pyproject.toml`
+  and run via `pnpm lint:agent` (auto-fixable with `pnpm fix:agent`). Existing
+  `deploy/*.py` scripts pending cleanup are listed in `extend-exclude` in
+  `agent/pyproject.toml`.
+- **Enforcement (Deployment)** — Terraform modules are checked with `terraform
+  fmt -check` and `terraform validate`, shell scripts with `shellcheck`, and
+  Dockerfiles with `hadolint` via `pnpm lint:deploy`. Existing shell scripts and
+  Dockerfiles pending cleanup are listed in `.lintignore`.
 - **Python typing** — every module, tests included, passes `mypy --strict`.
   Never add a `[[tool.mypy.overrides]]` block that ignores errors in
   `agent/pyproject.toml`.
@@ -126,16 +150,16 @@ frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
 
 ## Local development
 
-Choose the workflow below based on which component you are changing. The MCP server is 
-not run as part of this deployment; connect either to a deployed backend, public Data
-Commons or a local MCP server as preferred.
+Choose the workflow below based on which component you are changing. The MCP
+server is not run as part of this deployment; connect either to a deployed
+backend, public Data Commons or a local MCP server as preferred.
 
 - **UI (`narratives/ui/`)** — run `pnpm install`, configure `BACKEND_URL` and
-  `AGENT_URL` in `ui/.env.local`, and run `pnpm -C ui run dev`. In development, Vite's
-  `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*` and Data Commons
-  routes to those URLs; in production, the Python server in `agent/` serves the
-  compiled SPA (`server/routes/spa.py`) and proxies Data Commons routes
-  (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
+  `AGENT_URL` in `ui/.env.local`, and run `pnpm -C ui run dev`. In development,
+  Vite's `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*` and Data
+  Commons routes to those URLs; in production, the Python server in `agent/`
+  serves the compiled SPA (`server/routes/spa.py`) and proxies Data Commons
+  routes (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, export `MCP_SERVER_URL`,
   `DATA_PLANE_URL`, and `DC_API_KEY`, and run `uv run narratives-agent-dev`.
   When pointing at public Data Commons, set both
@@ -149,17 +173,20 @@ Commons or a local MCP server as preferred.
 
 `pnpm test` for every change; `pnpm build` and a manual check for UI changes.
 
-To run individual layer checks locally (mirrors [`cloudbuild/pr-validate.yaml`](cloudbuild/pr-validate.yaml)):
+To run individual layer checks locally (mirrors
+[`cloudbuild/pr-validate.yaml`](cloudbuild/pr-validate.yaml)):
 
-1. **Test suites**: `pnpm test` (or `pnpm test:ui` and `pnpm test:agent`).
-2. **Build**: `pnpm build` (compiles React UI and stages static assets into `agent/static/`).
-3. **Agent style** (from `narratives/agent/`):
-   `uv sync --frozen`, `uv run ruff format --check .`, `uv run ruff check .`,
-   and `uv run mypy`.
-4. **Terraform** (if `deploy/` changed):
-   `terraform fmt -check -recursive deploy/terraform-custom-datacommons/` and
-   `terraform validate` in `deploy/terraform-custom-datacommons/modules`.
-5. **Schemas** (if `schemas/` or `defaults/` changed):
+1. **Test and lint suites**: `pnpm test` (runs `pnpm test:ui`,
+   `pnpm test:agent`, and `pnpm lint`). Run `pnpm fix` to auto-fix formatting
+   and lint issues.
+2. **Build**: `pnpm build` (compiles React UI and stages static assets into
+   `agent/static/`).
+3. **UI style and types**: `pnpm lint:ui` (`tsc --noEmit` and `biome check`).
+4. **Agent style and types**: `pnpm lint:agent` (`ruff format --check`,
+   `ruff check`, and `mypy`).
+5. **Deployment checks**: `pnpm lint:deploy` (`terraform fmt -check`,
+   `terraform validate`, `shellcheck`, and `hadolint`).
+6. **Schemas** (if `schemas/` or `defaults/` changed):
    validate each example and default config against its JSON Schema in
    `schemas/` with `ajv-cli`.
 

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "package.json",
+      "ui/**",
+      "scripts/**",
+      "!ui/src/api/dc_observations.test.ts",
+      "!ui/src/api/dc_observations.ts",
+      "!ui/src/app.tsx",
+      "!ui/src/components/block_reasoning.tsx",
+      "!ui/src/components/button_export_pdf.tsx",
+      "!ui/src/components/card_response.tsx",
+      "!ui/src/components/card_skeleton.tsx",
+      "!ui/src/components/chip_citation.test.ts",
+      "!ui/src/components/chip_citation.tsx",
+      "!ui/src/components/chip_suggestion.tsx",
+      "!ui/src/components/data_agent.tsx",
+      "!ui/src/components/data_download_tool.tsx",
+      "!ui/src/components/drawer_session.tsx",
+      "!ui/src/components/header.tsx",
+      "!ui/src/components/icons.tsx",
+      "!ui/src/components/iframe_upstream_tool.tsx",
+      "!ui/src/components/list_sources.tsx",
+      "!ui/src/components/metrics_page.tsx",
+      "!ui/src/components/note_disclaimer.test.tsx",
+      "!ui/src/components/note_disclaimer.tsx",
+      "!ui/src/components/panel_answer.tsx",
+      "!ui/src/components/panel_debug_provenance.tsx",
+      "!ui/src/components/questions_follow_up.tsx",
+      "!ui/src/components/sidebar.tsx",
+      "!ui/src/components/stat_var_explorer.tsx",
+      "!ui/src/components/tile_chart.tsx",
+      "!ui/src/components/toast.tsx",
+      "!ui/src/components/tooltip.test.ts",
+      "!ui/src/components/tooltip.tsx",
+      "!ui/src/components/view_initial.test.tsx",
+      "!ui/src/components/view_initial.tsx",
+      "!ui/src/config/nav_config.test.ts",
+      "!ui/src/config/nav_config.ts",
+      "!ui/src/hooks/branding_context.tsx",
+      "!ui/src/hooks/chat_session_context.test.ts",
+      "!ui/src/hooks/chat_session_context.tsx",
+      "!ui/src/hooks/use_branding.test.ts",
+      "!ui/src/hooks/use_branding.ts",
+      "!ui/src/hooks/use_hash_route.test.ts",
+      "!ui/src/hooks/use_hash_route.ts",
+      "!ui/src/hooks/use_sse_chat.test.ts",
+      "!ui/src/hooks/use_sse_chat.ts",
+      "!ui/src/hooks/use_textarea_autosize.test.ts",
+      "!ui/src/hooks/use_textarea_autosize.ts",
+      "!ui/src/index.css",
+      "!ui/src/main.tsx",
+      "!ui/src/types/data-commons-elements.d.ts",
+      "!ui/src/types/metrics.ts",
+      "!ui/src/utils/datacommons_component.test.ts",
+      "!ui/src/utils/datacommons_component.tsx",
+      "!ui/src/utils/download_pdf.test.ts",
+      "!ui/src/utils/download_pdf.ts",
+      "!ui/src/utils/inspect_turn.test.ts",
+      "!ui/src/utils/inspect_turn.ts",
+      "!ui/tsconfig.json",
+      "!ui/vite.config.ts"
+    ]
+  },
+
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noConfusingVoidType": "off",
+        "noConstEnum": "error",
+        "noDebugger": "error",
+        "noDoubleEquals": "error",
+        "noEmptyBlockStatements": "error",
+        "noExplicitAny": "error",
+        "noFallthroughSwitchClause": "error",
+        "noUnusedExpressions": "error",
+        "noVar": "error",
+        "noWith": "error",
+        "useGuardForIn": "error",
+        "noConsole": {
+          "level": "error",
+          "options": { "allow": ["warn", "error", "info"] }
+        }
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "error",
+        "noUnusedImports": "error",
+        "useExhaustiveDependencies": "error"
+      },
+      "complexity": {
+        "useArrowFunction": "error",
+        "useOptionalChain": "off"
+      },
+      "style": {
+        "noCommonJs": "error",
+        "noDefaultExport": "error",
+        "noNamespace": "error",
+        "noNonNullAssertion": "error",
+        "useArrayLiterals": "error",
+        "useConst": "error",
+        "useExportType": "error",
+        "useForOf": "error",
+        "useImportType": "error",
+        "useSingleVarDeclarator": "error",
+        "useTemplate": "error",
+        "useThrowNewError": "error",
+        "useThrowOnlyError": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "useConsistentTypeDefinitions": {
+          "level": "error",
+          "options": { "style": "interface" }
+        },
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": ["../**"],
+                "message": "Relative imports are not allowed."
+              }
+            ]
+          }
+        }
+      },
+      "a11y": {
+        "noStaticElementInteractions": "off"
+      }
+    }
+  },
+
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    },
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+
+  "overrides": [
+    {
+      "includes": ["**/*.config.*"],
+      "linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+    },
+    {
+      "includes": ["scripts/**"],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    },
+    {
+      "includes": ["ui/src/types/*.d.ts"],
+      "linter": { "rules": { "style": { "noNamespace": "off" } } }
+    }
+  ]
+}

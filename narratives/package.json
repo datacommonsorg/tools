@@ -7,9 +7,25 @@
   "scripts": {
     "build": "pnpm run build:ui && node scripts/stage_static.mjs",
     "build:ui": "pnpm -C ui build",
-    "test": "pnpm run test:ui && pnpm run test:agent",
+    "test": "pnpm run test:ui && pnpm run test:agent && pnpm run lint",
     "test:ui": "pnpm -C ui test",
-    "test:agent": "cd agent && uv run pytest"
+    "test:agent": "cd agent && uv run pytest",
+    "lint": "pnpm run lint:all || { printf '\\n✗ Lint errors detected. Run \"pnpm fix\" to automatically fix formatting and auto-fixable lint issues.\\n' >&2; exit 1; }",
+    "lint:all": "pnpm run lint:ui && pnpm run lint:agent && pnpm run lint:deploy",
+    "lint:ui": "pnpm -C ui run lint:type-check && pnpm run lint:biome",
+    "lint:biome": "biome check",
+    "lint:agent": "cd agent && uv run ruff format --check . ../deploy && uv run ruff check . ../deploy && uv run mypy",
+    "lint:deploy": "pnpm run lint:terraform && pnpm run lint:shell && pnpm run lint:docker",
+    "lint:terraform": "terraform fmt -check -recursive deploy/terraform-custom-datacommons/ && (cd deploy/terraform-custom-datacommons/modules && terraform init -backend=false -input=false >/dev/null && terraform validate)",
+    "lint:shell": "files=$(find . -name '*.sh' -not -path '*/node_modules/*' -not -path '*/.venv/*' | sed 's|^\\./||' | grep -vxFf .lintignore || true); [ -z \"$files\" ] || printf '%s\\n' \"$files\" | xargs uv run --project agent shellcheck",
+    "lint:docker": "files=$(find . -name '*Dockerfile*' -not -path '*/node_modules/*' -not -path '*/.venv/*' | sed 's|^\\./||' | grep -vxFf .lintignore || true); [ -z \"$files\" ] || printf '%s\\n' \"$files\" | xargs uv run --project agent hadolint",
+    "fix": "pnpm run fix:ui && pnpm run fix:agent && pnpm run fix:terraform",
+    "fix:ui": "biome check --write",
+    "fix:agent": "cd agent && uv run ruff check --fix . ../deploy && uv run ruff format . ../deploy",
+    "fix:terraform": "terraform fmt -recursive deploy/terraform-custom-datacommons/"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {

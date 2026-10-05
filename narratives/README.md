@@ -678,12 +678,15 @@ pnpm i
 | --- | --- |
 | `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
 | `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
-| `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
+| `pnpm test` | Run unit tests and lint checks across packages (Vitest + Pytest + `pnpm lint`) |
 | `pnpm test:ui` | Run the frontend Vitest suite |
 | `pnpm test:agent` | Run the backend Pytest suite |
+| `pnpm lint` | Run all lint, formatting, and type checks (UI, agent, and deployment) |
+| `pnpm fix` | Auto-fix formatting and lint issues (Biome, Ruff, and Terraform) |
 
 > [!TIP]
-> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or updating a PR.
+> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or
+> updating a PR. If lint checks fail, run `pnpm fix` to format and auto-fix.
 
 ---
 
@@ -920,25 +923,27 @@ development path.
 Nothing is mocked that matters.
 
 ```sh
-# Run all tests across UI and agent:
+# Run all unit tests and lint checks across UI, agent, and deployment:
 pnpm test
 
 # Or run by component:
 pnpm test:ui                               # Vitest UI suite
 pnpm test:agent                            # Pytest agent suite
+pnpm lint                                  # All lint, format, and type checks
+pnpm fix                                   # Auto-fix formatting and lint issues
 ```
 
 Agent tests are pytest modules named `*_test.py`, colocated beside the module
 under test inside `src/narratives_agent/`. `uv run` executes them in the locked
 environment, so there is nothing to activate and nothing to install by hand.
 
-Style and types are separate checks, and CI fails on any of them:
+Linting, formatting, and static type-checking can also be run by layer (`pnpm
+lint:ui`, `pnpm lint:agent`, `pnpm lint:deploy`), and CI fails on any of them:
 
 ```sh
-cd agent
-uv run ruff format --check .               # formatting
-uv run ruff check .                        # lint
-uv run mypy                                # types, strict
+pnpm lint:ui                               # tsc --noEmit + Biome
+pnpm lint:agent                            # Ruff format/lint + mypy --strict
+pnpm lint:deploy                           # Terraform fmt/validate + ShellCheck + Hadolint
 ```
 
 > The agent type-checks under `mypy --strict`, tests included, with no
