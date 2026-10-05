@@ -81,7 +81,7 @@ Run from the root of the `/narratives` directory:
 - `pnpm lint:deploy` — run Terraform (`fmt -check` and `validate`), ShellCheck,
   and Hadolint checks.
 - `pnpm fix` — auto-fix formatting and lint issues across UI (`biome check
-  --write`), Python (`ruff format` + `ruff check --fix`), and Terraform
+  --write`), Python (`ruff check --fix` + `ruff format`), and Terraform
   (`terraform fmt`).
 
 Run `pnpm test` (and `pnpm build` for UI changes) before considering work done.
