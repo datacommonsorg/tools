@@ -136,9 +136,7 @@ class Settings(BaseSettings):
 
     # Where the BROWSER's data routes go, which is not always where MCP goes.
     #
-    # On cdc and dcp one container serves both, so these are the same host and
-    # this variable is unset. On the "none" backend they are genuinely two
-    # hosts:
+    # On public Data Commons they are genuinely two hosts:
     #
     #   api.datacommons.org  the versioned REST API and /mcp -- what the
     #                        agent uses
@@ -152,7 +150,7 @@ class Settings(BaseSettings):
     # auth are both working at that point -- the routes simply do not exist on
     # that host, so nothing renders and nothing looks broken server-side.
     #
-    # Falls back to `data_plane_url` so cdc and dcp need no configuration.
+    # Falls back to `data_plane_url` when one host serves both.
     data_plane_web_url: Annotated[
         str, AfterValidator(_resolve_data_plane_web_url)
     ] = ""
