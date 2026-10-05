@@ -12,11 +12,13 @@ import {
   TRANSCRIPT_REJECTED_ERROR,
   applyEvent,
   applySignedWindow,
+  assignCitationNumbers,
   parseSseStream,
   transcriptRequestFields,
   useSseChat,
   type ChatStreamEvent,
   type ChatTurn,
+  type ProvenanceItem,
   type ConversationStateSlots,
   type WireTurn,
 } from "./use_sse_chat";
@@ -652,5 +654,112 @@ describe("useSseChat", () => {
     expect(turn.stopped).toBeUndefined();
     expect(turn.error).toBeUndefined();
     expect(result.current.chat.error).toBeNull();
+  });
+});
+
+
+const WDI: ProvenanceItem = {
+  name: "World Development Indicators",
+  url: "https://worldbank.org/wdi",
+};
+const GHO: ProvenanceItem = { name: "GHO", url: "https://who.int/gho" };
+const OECD: ProvenanceItem = { name: "OECD", url: "https://oecd.org/health" };
+
+function citedTurn(
+  provenance: ProvenanceItem[],
+  extra: Partial<ChatTurn> = {},
+): ChatTurn {
+  return {
+    userMessage: "q",
+    status: "done",
+    toolCalls: [],
+    thoughts: [],
+    text: "a",
+    provenance,
+    ...extra,
+  };
+}
+
+describe("assignCitationNumbers", () => {
+  it("numbers the first answer from one", () => {
+    // Test: The base case.
+    // Situation: A single answer citing two sources.
+    // Expectation: [1] and [2].
+    expect(assignCitationNumbers([citedTurn([WDI, GHO])])).toEqual([[1, 2]]);
+  });
+
+  it("keeps counting into the next answer", () => {
+    // Test: The reported bug.
+    // Situation: A second answer citing a source the first did not.
+    // Expectation: The next free number, not a restart at [1], which gave one
+    //   numeral to several unrelated sources across a thread.
+    expect(
+      assignCitationNumbers([citedTurn([WDI, GHO]), citedTurn([OECD])]),
+    ).toEqual([[1, 2], [3]]);
+  });
+
+  it("gives a source cited twice the number it already had", () => {
+    // Test: A repeat citation.
+    // Situation: The second answer cites a source the first already did.
+    // Expectation: The original number, so following [1] twice lands on the
+    //   same dataset.
+    expect(
+      assignCitationNumbers([citedTurn([WDI]), citedTurn([WDI, OECD])]),
+    ).toEqual([[1], [1, 2]]);
+  });
+
+  it("matches on the url, not the display name", () => {
+    // Test: Identity of a source across answers.
+    // Situation: Two facets of one dataset carry different names.
+    // Expectation: One number -- the URL says they are the same source.
+    const renamed = { name: "WDI (2024 revision)", url: WDI.url };
+    expect(
+      assignCitationNumbers([citedTurn([WDI]), citedTurn([renamed])]),
+    ).toEqual([[1], [1]]);
+  });
+
+  it("gives no numbers to a turn the reader never sees", () => {
+    // Test: A turn stopped during synthesis, or errored before any text.
+    // Situation: Provenance arrives before synthesis, so a stopped turn holds
+    //   sources while TurnView renders no AnswerPanel for it.
+    // Expectation: It takes no numbers, so the next answer still opens at [1]
+    //   rather than at [3] with [1] and [2] nowhere on the page.
+    const stopped = citedTurn([WDI, GHO], { stopped: true });
+    const errored = citedTurn([OECD], { status: "error", text: "" });
+    expect(assignCitationNumbers([stopped, citedTurn([OECD])])).toEqual([
+      [],
+      [1],
+    ]);
+    expect(assignCitationNumbers([errored, citedTurn([WDI])])).toEqual([
+      [],
+      [1],
+    ]);
+  });
+
+  it("survives a turn rehydrated without provenance", () => {
+    // Test: A turn restored from storage by an older build.
+    // Situation: chat_session_context parses persisted turns and filters them
+    //   by status alone, so one can arrive without the array its type
+    //   promises.
+    // Expectation: An empty row, not a TypeError that blanks the chat.
+    const legacy = {
+      ...citedTurn([]),
+      provenance: undefined,
+    } as unknown as ChatTurn;
+    expect(assignCitationNumbers([legacy, citedTurn([WDI])])).toEqual([
+      [],
+      [1],
+    ]);
+  });
+
+  it("copes with an answer that cited nothing", () => {
+    // Test: Empty inputs.
+    // Situation: An answer with no provenance, and an empty thread.
+    // Expectation: An empty row, and no numbers consumed by it.
+    expect(assignCitationNumbers([citedTurn([]), citedTurn([WDI])])).toEqual([
+      [],
+      [1],
+    ]);
+    expect(assignCitationNumbers([])).toEqual([]);
   });
 });

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isCitable, sourceLabel } from "./chip_citation";
+import {
+  citationAnchorId,
+  displayCitationNumber,
+  isCitable,
+  sourceLabel,
+} from "./chip_citation";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 const SOURCES: ProvenanceItem[] = [
@@ -61,5 +66,40 @@ describe("isCitable", () => {
   it("rejects everything when there is no provenance at all", () => {
     expect(isCitable(1, [])).toBe(false);
     expect(isCitable(1, undefined)).toBe(false);
+  });
+});
+
+describe("displayCitationNumber", () => {
+  it("relabels a position with the number the thread gave it", () => {
+    // Test: The mapping from the agent's numbering to the reader's.
+    // Situation: This answer's two sources were labelled [3] and [4].
+    // Expectation: Position 1 shows as 3 and position 2 as 4.
+    expect(displayCitationNumber(1, [3, 4])).toBe(3);
+    expect(displayCitationNumber(2, [3, 4])).toBe(4);
+  });
+
+  it("is the position itself when nothing relabelled it", () => {
+    // Test: The fallback.
+    // Situation: No mapping was supplied.
+    // Expectation: The position, so a panel on its own still numbers itself.
+    expect(displayCitationNumber(2)).toBe(2);
+    expect(displayCitationNumber(2, [])).toBe(2);
+  });
+});
+
+describe("citationAnchorId", () => {
+  it("scopes the anchor to its turn", () => {
+    // Test: Anchor uniqueness.
+    // Situation: Two answers cite one source, so they share its label.
+    // Expectation: Different ids -- sharing one is how a chip in the third
+    //   answer used to scroll to a row under the first.
+    expect(citationAnchorId(0, 1)).not.toBe(citationAnchorId(2, 1));
+  });
+
+  it("is stable for one turn and number", () => {
+    // Test: Determinism.
+    // Situation: The same turn and label, asked twice.
+    // Expectation: The same id, so the chip and the row agree.
+    expect(citationAnchorId(2, 4)).toBe(citationAnchorId(2, 4));
   });
 });
