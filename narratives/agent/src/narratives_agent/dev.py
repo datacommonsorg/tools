@@ -36,12 +36,12 @@ import contextlib
 import json
 import logging
 import os
-import shlex
 import shutil
 from pathlib import Path
 from typing import Any
 
 import uvicorn
+from dotenv import dotenv_values
 
 from narratives_agent.config import (
     PROMPT_SLOTS,
@@ -56,32 +56,15 @@ _PLACEHOLDER_API_KEY_PREFIX = "REPLACE_ME"
 _DEFAULT_PLACEHOLDER_API_KEY = "REPLACE_ME_WITH_GEMINI_API_KEY"
 
 
-def _parse_env_value(raw: str) -> str:
-    """Extracts a dotenv value, stripping quotes and inline comments."""
-    value = raw.strip()
-    if value.startswith(("'", '"')):
-        with contextlib.suppress(ValueError):
-            tokens = shlex.split(value, comments=True)
-            return tokens[0] if tokens else ""
-    return value.split(" #", 1)[0].split("\t#", 1)[0].strip()
-
-
 def _load_env_vars(env_file: Path) -> dict[str, str]:
     """Reads `.env.local` and parses key-value pairs."""
     if not env_file.is_file():
         return {}
-
-    content = env_file.read_text(encoding="utf-8")
-    vars_dict: dict[str, str] = {}
-    for line in content.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        raw_key, raw_value = stripped.split("=", 1)
-        key = raw_key.strip()
-        if key:
-            vars_dict[key] = _parse_env_value(raw_value)
-    return vars_dict
+    return {
+        key: value
+        for key, value in dotenv_values(env_file).items()
+        if value is not None
+    }
 
 
 def _ensure_env_file(root_dir: Path) -> Path:

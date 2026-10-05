@@ -758,6 +758,7 @@ dependencies = [
     { name = "httpx" },
     { name = "httpx2" },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
     { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -779,6 +780,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "httpx2", specifier = ">=2.13" },
     { name = "pydantic-settings", specifier = ">=2.15" },
+    { name = "python-dotenv", specifier = ">=1.2" },
     { name = "requests", specifier = ">=2.32" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.53" },
 ]
