@@ -203,6 +203,68 @@ def _get_first_present_value(mapping: dict[str, Any], *keys: str) -> str:
     return ""
 
 
+def _looks_like_a_name(value: str) -> bool:
+    """True when a property value is something to print rather than an id.
+
+    `source` holds "World Bank" on one import and "dc/base/..." or a bare URL
+    on the next. A citation that prints the handle is worse than one that
+    leaves the publisher out, so locators are rejected and the caller omits
+    the field.
+
+    Args:
+        value: The property value to judge.
+
+    Returns:
+        bool: True when the value reads as a publisher's name.
+    """
+    if not value:
+        return False
+    if "://" in value or value.startswith("dc/"):
+        return False
+    # A dotted single token is `domain` wearing another hat; a name either has
+    # a space in it or has no dot.
+    return " " in value or "." not in value
+
+
+def _get_year_of(date: str) -> str:
+    """Returns the four-digit year at the head of a date, or "".
+
+    Args:
+        date: An ISO-ish date, e.g. "1960" or "2023-12".
+
+    Returns:
+        str: The leading four digits, or "" when they are not digits.
+    """
+    # Length as well as digits: a short date would yield a short "year".
+    head = date[:4]
+    return head if len(head) == 4 and head.isdigit() else ""
+
+
+def _get_date_range(facet: dict[str, Any]) -> str:
+    """Renders a facet's coverage as "1960 - 2023", one year, or nothing.
+
+    Reads the facet's own `dateRange`, the shape MCP 1.3.0 returns. Inferring
+    from the rows that happened to be fetched would describe this query rather
+    than the dataset.
+
+    Args:
+        facet: One facet description from a get_variable_metadata result.
+
+    Returns:
+        str: The rendered range, or "" when the server reported no dates.
+    """
+    date_range = facet.get("dateRange")
+    if not isinstance(date_range, dict):
+        return ""
+    start = _get_year_of(_get_first_present_value(date_range, "start"))
+    end = _get_year_of(_get_first_present_value(date_range, "end"))
+    if start and end:
+        if start == end:
+            return start
+        return f"{start} \u2013 {end}"
+    return start or end
+
+
 def _get_facet_index_from_variable_metadata(
     result_data: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
@@ -222,11 +284,16 @@ def _get_facet_index_from_variable_metadata(
     actually came from ("World Development Indicators"). The dataset is the
     provenance a reader needs.
 
+    `provider`, `dataset` and `dateRange` ride alongside `name` because a
+    citation names them separately and a display name cannot be split back
+    into its parts. Each is omitted when the server did not report it.
+
     Args:
         result_data: The parsed tool result.
 
     Returns:
-        dict: {facet_id: {"name": ..., "url": ..., "license": ...}}
+        dict: {facet_id: {"name", "url", and any of "license", "provider",
+        "dataset", "dateRange" that were reported}}
     """
     provenances = result_data.get("provenances")
     variables = result_data.get("variables")
@@ -264,16 +331,25 @@ def _get_facet_index_from_variable_metadata(
             if not url:
                 continue
 
+            dataset = _get_first_present_value(properties, "isPartOf")
+            provider = _get_first_present_value(properties, "source")
             entry = {
-                "name": _get_first_present_value(
-                    properties, "isPartOf", "source", "domain"
-                )
+                "name": dataset
+                or provider
+                or _get_first_present_value(properties, "domain")
                 or url,
                 "url": url,
             }
             license_type = _get_first_present_value(properties, "licenseType")
             if license_type:
                 entry["license"] = license_type
+            if dataset:
+                entry["dataset"] = dataset
+            if _looks_like_a_name(provider):
+                entry["provider"] = provider
+            date_range = _get_date_range(facet)
+            if date_range:
+                entry["dateRange"] = date_range
             index[facet_id] = entry
 
     return index
