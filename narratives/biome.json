@@ -10,6 +10,7 @@
   "files": {
     "ignoreUnknown": true,
     "includes": [
+      "package.json",
       "ui/**",
       "scripts/**",
       "!ui/src/api/dc_observations.test.ts",

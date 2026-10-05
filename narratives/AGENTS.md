@@ -75,7 +75,7 @@ Run from the root of the `/narratives` directory:
 - `pnpm lint` — run all lint, formatting, and type checks across UI, agent, and
   deployment (`lint:ui`, `lint:agent`, `lint:deploy`).
 - `pnpm lint:ui` — run TypeScript type-checking (`tsc --noEmit`) and Biome
-  lint/format checks (`biome check ui scripts`).
+  lint/format checks (`biome check`).
 - `pnpm lint:agent` — run Ruff format/lint checks (`agent/` and `deploy/*.py`)
   and `mypy` strict type-checking.
 - `pnpm lint:deploy` — run Terraform (`fmt -check` and `validate`), ShellCheck,
@@ -93,9 +93,9 @@ UI, from `narratives/ui/` (or via `pnpm -C ui <command>`):
 - `pnpm run dev` — start the Vite dev server on port 3000.
 - `pnpm run build` — build production assets into `ui/dist/`.
 - `pnpm run lint` — type-check (`tsc --noEmit`) and run Biome
-  (`biome check ui scripts`).
+  (`biome check`).
 - `pnpm run fix` — format and auto-fix lint issues
-  (`biome check --write ui scripts`).
+  (`biome check --write`).
 - `pnpm run test` — run unit tests once (`vitest run`).
 
 Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
