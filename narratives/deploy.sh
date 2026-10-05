@@ -143,6 +143,16 @@ set -a
 . "./$ENV_FILE"
 set +a
 
+# An instance.env from before the backends were removed may still choose one.
+# Deploying it from here would quietly repoint that instance at public data.
+if [ -n "${DATA_BACKEND:-}" ] && [ "${DATA_BACKEND}" != "none" ] \
+    || [ -n "${DCP_SERVICE_URL:-}" ]; then
+    log_error "${ENV_FILE} selects a private data plane (DATA_BACKEND=${DATA_BACKEND:-unset})."
+    echo "  Only public Data Commons is supported. Remove DATA_BACKEND and DCP_SERVICE_*," >&2
+    echo "  or manage this instance with the last revision that had its backend." >&2
+    exit 1
+fi
+
 # Secrets are deliberately NOT required here -- they live in Secret Manager,
 # put there once by --bootstrap-secrets. This is what lets an instance.env be
 # committed (to a private repo) and this repo be public.
@@ -153,7 +163,7 @@ set +a
 #
 # Reported all at once rather than one per run: a client filling this in for the
 # first time should get the whole list, not six consecutive failures.
-REQUIRED_VARS=(PROJECT_ID REGION INSTANCE DATA_BACKEND ACCESS_MODE)
+REQUIRED_VARS=(PROJECT_ID REGION INSTANCE ACCESS_MODE)
 MISSING=()
 for var in "${REQUIRED_VARS[@]}"; do
     value="${!var:-}"
@@ -163,14 +173,6 @@ for var in "${REQUIRED_VARS[@]}"; do
 done
 
 # Conditionally required, by the choices already made above.
-if [ "${DATA_BACKEND:-}" = "dcp" ]; then
-    [ -n "${DCP_SERVICE_URL:-}" ]  || MISSING+=("DCP_SERVICE_URL (required when DATA_BACKEND=dcp)")
-    [ -n "${DCP_SERVICE_NAME:-}" ] || MISSING+=("DCP_SERVICE_NAME (required when DATA_BACKEND=dcp)")
-fi
-if [ "${DATA_BACKEND:-}" = "none" ]; then
-    [ -n "${PUBLIC_DC_URL:-}" ]     || MISSING+=("PUBLIC_DC_URL (required when DATA_BACKEND=none — try https://api.datacommons.org)")
-    [ -n "${PUBLIC_DC_WEB_URL:-}" ] || MISSING+=("PUBLIC_DC_WEB_URL (required when DATA_BACKEND=none — try https://datacommons.org)")
-fi
 if [ "${ACCESS_MODE:-}" = "iap" ] || [ "${ACCESS_MODE:-}" = "private" ]; then
     [ -n "${AUTHORIZED_MEMBERS:-}" ] || MISSING+=("AUTHORIZED_MEMBERS (required when ACCESS_MODE=${ACCESS_MODE})")
 fi
@@ -254,27 +256,6 @@ if ! python3 deploy/validate-branding.py "${CONFIG_SRC}/branding.json"; then
     exit 1
 fi
 log_success "branding.json validates against its schema."
-DCP_SERVICE_URL="${DCP_SERVICE_URL:-}"
-DCP_SERVICE_NAME="${DCP_SERVICE_NAME:-}"
-
-case "$DATA_BACKEND" in
-    dcp|none) ;;
-    cdc) log_error "DATA_BACKEND=cdc was removed. Use dcp or none."
-         echo "  Destroy an instance still on cdc with the last revision that had it." >&2
-         exit 1 ;;
-    *) log_error "DATA_BACKEND must be one of: dcp, none (got '${DATA_BACKEND}')"; exit 1 ;;
-esac
-
-# Fail here rather than after a 15-minute apply: an app plane pointed at an
-# empty URL answers "no data" to every question with nothing to indicate why.
-if [ "$DATA_BACKEND" = "dcp" ] && { [ -z "$DCP_SERVICE_URL" ] || [ -z "$DCP_SERVICE_NAME" ]; }; then
-    log_error "DATA_BACKEND=dcp needs DCP_SERVICE_URL and DCP_SERVICE_NAME in ${ENV_FILE}."
-    echo "  Get them from the datacommons-cli scaffold:" >&2
-    echo "    terraform output datacommons_service_url" >&2
-    echo "    terraform output datacommons_service_name" >&2
-    exit 1
-fi
-log_info "Data backend: ${DATA_BACKEND}"
 
 # Must match locals.app_service_name in main.tf. Defined after instance.env is
 # loaded -- INSTANCE does not exist before that, and under `set -u` referencing
@@ -299,7 +280,7 @@ run_preflight() {
     export CLOUDSDK_CORE_DISABLE_PROMPTS=1
     STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
     CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
-    echo -e "\n=== Preflight: ${INSTANCE} (${DATA_BACKEND} backend, ${ACCESS_MODE} access) ===\n"
+    echo -e "\n=== Preflight: ${INSTANCE} (${ACCESS_MODE} access) ===\n"
 
     _ok()   { echo -e "  ${GREEN}ok${NC}    $1"; }
     _bad()  { echo -e "  ${RED}FAIL${NC}  $1"; fail=1; }
@@ -506,7 +487,6 @@ if [ "$CODE_ONLY" = false ]; then
         cloudbuild.googleapis.com
         artifactregistry.googleapis.com
         storage.googleapis.com
-        compute.googleapis.com
         apikeys.googleapis.com
         generativelanguage.googleapis.com
     )
@@ -771,11 +751,8 @@ V_AR_REPO="$AR_REPO" \
 V_IMAGE_TAG="$IMAGE_TAG" \
 V_AUTHORIZED_MEMBERS="${AUTHORIZED_MEMBERS:-}" \
 V_CONFIG_BUCKET="$CONFIG_BUCKET" \
-V_DATA_BACKEND="$DATA_BACKEND" \
 V_PUBLIC_DC_URL="${PUBLIC_DC_URL:-https://api.datacommons.org}" \
 V_PUBLIC_DC_WEB_URL="${PUBLIC_DC_WEB_URL:-https://datacommons.org}" \
-V_DCP_SERVICE_URL="$DCP_SERVICE_URL" \
-V_DCP_SERVICE_NAME="$DCP_SERVICE_NAME" \
 V_ACCESS_MODE="$ACCESS_MODE" \
 python3 - <<'PY'
 import os, re, sys
@@ -797,11 +774,8 @@ replacements = {
         if m.strip()
     ),
     "REPLACE_CONFIG_BUCKET":  os.environ["V_CONFIG_BUCKET"],
-    "REPLACE_DATA_BACKEND":   os.environ["V_DATA_BACKEND"],
     "REPLACE_PUBLIC_DC_URL":     os.environ["V_PUBLIC_DC_URL"],
     "REPLACE_PUBLIC_DC_WEB_URL": os.environ["V_PUBLIC_DC_WEB_URL"],
-    "REPLACE_DCP_SERVICE_URL":  os.environ["V_DCP_SERVICE_URL"],
-    "REPLACE_DCP_SERVICE_NAME": os.environ["V_DCP_SERVICE_NAME"],
     "REPLACE_ACCESS_MODE":     os.environ["V_ACCESS_MODE"],
 }
 for k, v in replacements.items():

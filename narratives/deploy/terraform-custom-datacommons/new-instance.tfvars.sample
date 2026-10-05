@@ -8,16 +8,6 @@ project_id = "REPLACE_PROJECT_ID"
 region     = "REPLACE_REGION"
 instance   = "REPLACE_INSTANCE"
 
-# Which data plane serves this instance: "dcp" (default) or "none".
-# The app plane is identical either way -- it receives a URL and an auth mode.
-data_backend = "REPLACE_DATA_BACKEND"
-
-# Required when data_backend = "dcp". Both come from `terraform output` in the
-# scaffold datacommons-cli generates; the name is what the app plane's service
-# account is granted run.invoker on, and without it every MCP call is refused.
-dcp_service_url  = "REPLACE_DCP_SERVICE_URL"
-dcp_service_name = "REPLACE_DCP_SERVICE_NAME"
-
 dc_agent_image = "REPLACE_AGENT_IMAGE"
 
 # Per-instance config bucket (one bucket per instance — created in Phase 4).
@@ -55,10 +45,9 @@ alert_notification_channels = []
 # public -> nothing, allUsers already covers everyone.
 authorized_members = [REPLACE_AUTHORIZED_MEMBERS]
 
-# Where the "none" backend points. Two hosts, and only this backend needs both:
-# public_dc_url serves the versioned REST API and /mcp (what the agent calls),
-# while public_dc_web_url serves the website routes the chart components call
-# from the browser. Ignored on dcp.
+# Public Data Commons, on two hosts: public_dc_url serves the versioned REST
+# API and /mcp (what the agent calls), while public_dc_web_url serves the
+# website routes the chart components call from the browser.
 public_dc_url     = "REPLACE_PUBLIC_DC_URL"
 public_dc_web_url = "REPLACE_PUBLIC_DC_WEB_URL"
 

@@ -1,10 +1,9 @@
 # Custom Data Commons
 
 A branded, conversational Data Commons instance: a React UI and a Gemini agent in
-one container, running against **any** Data Commons backend — Google's Data
-Commons Platform (Spanner) or public `datacommons.org`.
+one container, running against public `datacommons.org`.
 
-**The backend is a configuration value, not a branch. So is the branding.**
+**The branding is a configuration value, not a branch.**
 
 **One clone of this repository is one deployment.** Clone it, fill in
 `config/instance.env`, change what you want to look different, and deploy. For a
@@ -21,14 +20,11 @@ you do there requires TypeScript or Python.
 - [How it fits together](#how-it-fits-together)
 - [Quickstart](#quickstart) — a working deployment in ~10 minutes, nothing to provision
 - [Prerequisites](#prerequisites)
-- [Choosing a data plane](#choosing-a-data-plane)
 - [Setting up your deployment](#setting-up-your-deployment)
 - [Customizing it](#customizing-it) — branding, prompts, agent config
 - [Secrets](#secrets)
 - [Deploying](#deploying)
 - [Access modes](#access-modes)
-- [Attaching to a Data Commons instance that already exists](#attaching-to-a-data-commons-instance-that-already-exists)
-- [Provisioning a new DCP data plane](#provisioning-a-new-dcp-data-plane)
 - [Developer guide](#developer-guide)
 - [Local development](#local-development)
 - [Testing](#testing)
@@ -43,7 +39,7 @@ you do there requires TypeScript or Python.
 
 ```
                      ┌──────────────────────────────────────┐
-   browser ─────────►│  APP PLANE — identical, any backend  │
+   browser ─────────►│  APP PLANE                           │
                      │  one container: agent API + SPA      │
                      │                                      │
                      │   MCP client ─ capability probe      │
@@ -52,35 +48,30 @@ you do there requires TypeScript or Python.
                      │                host                  │
                      └──────────────┬───────────────────────┘
                                     │  DATA_PLANE_URL
-                 ┌──────────────────┴──────────────────┐
-                 ▼                                     ▼
-           DCP / Spanner                     public datacommons.org
-           Google's terraform                nothing to run
-              DEFAULT
+                                    ▼
+                          public datacommons.org
+                          nothing to run
 ```
 
-The app plane never knows which backend it is talking to. It has a URL, an auth
-mode, and a tool surface it **discovers** at startup by probing `tools/list` —
-`/agent/health` reports what it found. That is the whole abstraction; there is no
-backend flag threaded through the code.
+The app plane has a URL, an API key, and a tool surface it **discovers** at
+startup by probing `tools/list` — `/agent/health` reports what it found.
 
-**This module exposes only the app plane.** The data plane's ingress is set by
-whatever deploys it: on `none` it is the public Data Commons API, and on `dcp`
-it is whatever `datacommons-cli` configured.
+**This module exposes only the app plane.** The data plane is the public Data
+Commons API.
 
 ---
 
 ## Quickstart
 
-The fastest path to something working is `DATA_BACKEND=none`, which runs against
-public `datacommons.org`. No database, no ingestion, no bill — and it exercises
-the whole application: chat, charts, branding, citations.
+The deployment runs against public `datacommons.org`. No database, no
+ingestion, no bill — and it exercises the whole application: chat, charts,
+branding, citations.
 
 ```sh
 # 1. Clone. This clone IS the deployment.
 git clone <repo-url> acme-dc && cd acme-dc
 
-# 2. Fill in the five required values. Nothing has a default.
+# 2. Fill in the four required values. None has a default.
 $EDITOR config/instance.env
 
 # 3. Check everything before creating anything.
@@ -102,9 +93,6 @@ gcloud run services proxy acme-app --region=<your-region> --port=8080
 # public or iap — the deploy prints the URL
 ```
 
-Move to `dcp` once that works. Changing backend is editing one line in
-`config/instance.env` and redeploying.
-
 **`--preflight` is the step worth not skipping.** It checks the things that
 otherwise fail late or silently: credentials, billing, whether your organization
 even permits public access, and whether IAP has a consent screen to sign people
@@ -121,7 +109,7 @@ in with. It creates nothing.
 | `terraform`, `pnpm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
 | A **Data Commons API key** | https://apikeys.datacommons.org |
 | A **Gemini API key** | https://aistudio.google.com |
-| [`uv`](https://docs.astral.sh/uv/) | The agent's dependencies; also `uv tool install datacommons-cli`, to provision a *new* DCP plane |
+| [`uv`](https://docs.astral.sh/uv/) | The agent's dependencies |
 
 **Python 3.14.** The agent declares its direct dependencies in
 `agent/pyproject.toml` and resolves the whole graph into `agent/uv.lock`.
@@ -131,31 +119,8 @@ change, and never hand-edit it. The container pins `python:3.14-slim`.
 
 **Node 24** for the UI.
 
-**IAM roles:** Owner, or the combination from the DCP documentation — Service
-Usage Admin, Service Account Admin, Project IAM Admin, Storage Admin, Run Admin,
-Secret Manager Admin.
-
----
-
-## Choosing a data plane
-
-One variable decides what gets created. The app plane is identical in both
-cases — it receives a URL and an auth mode, and has no notion of what is behind
-them.
-
-| `DATA_BACKEND` | What serves the data | Created by | Use when |
-| :--- | :--- | :--- | :--- |
-| **`dcp`** *(default)* | Google's Data Commons Platform — Spanner, managed ingestion, no NL server | `datacommons-cli`, **separately** — or already running, see [attaching](#attaching-to-a-data-commons-instance-that-already-exists) | You need your own data and want Google to run the plumbing |
-| `none` | Public `datacommons.org` | Nothing | Demos, pilots, review stacks |
-
-Switching backends is editing `DATA_BACKEND` in `instance.env` and redeploying.
-No code changes, no branch.
-
-### Why DCP is the default
-
-DCP is the backend that serves your own data. Spanner uses session pools and has
-no fixed connection ceiling, there is no NL server to run, ingestion is managed,
-and the Mixer defaults to stale reads so ingestion causes no downtime.
+**IAM roles:** Owner, or Service Usage Admin, Service Account Admin, Project IAM
+Admin, Storage Admin, Run Admin and Secret Manager Admin.
 
 ---
 
@@ -165,7 +130,7 @@ Everything this deployment owns lives in `config/`:
 
 ```
 config/
-  instance.env       where it runs, which backend, who can reach it — NO secrets
+  instance.env       where it runs, who can reach it — NO secrets
   branding.json      OPTIONAL — only the keys you want to change
   agent-config.json  OPTIONAL — only the keys you want to change
   prompts/           OPTIONAL — only the prompts you want to change
@@ -176,8 +141,8 @@ Only `instance.env` is required. Everything else is an **override**: at deploy
 time `defaults/` is laid down first and `config/` is copied over the top, so you
 carry only your differences and inherit every upstream improvement when you pull.
 
-`config/instance.env` has ten variables and **none of them has a default**. That
-is deliberate — each one decides where your data lives, what it costs, or who can
+The required values in `config/instance.env` have **no default**. That is
+deliberate — each one decides where your data lives, what it costs, or who can
 reach it, and a default is a decision made on your behalf that you would not see
 until the bill or the latency showed up. `REGION` in particular.
 
@@ -188,7 +153,6 @@ Required always:
 | `PROJECT_ID` | Your GCP project. Billing must be enabled. |
 | `REGION` | Where everything runs. Check your data-residency obligations first — moving later means recreating everything. |
 | `INSTANCE` | Lowercase, DNS-safe. Names every resource and the Terraform state prefix. |
-| `DATA_BACKEND` | `none` or `dcp` |
 | `ACCESS_MODE` | `public`, `iap` or `private` |
 
 Required depending on those choices, and `--preflight` tells you which:
@@ -196,13 +160,14 @@ Required depending on those choices, and `--preflight` tells you which:
 | | |
 | :--- | :--- |
 | `AUTHORIZED_MEMBERS` | for `iap` and `private` |
-| `PUBLIC_DC_URL`, `PUBLIC_DC_WEB_URL` | for `none` — **two different hosts**, see below |
-| `DCP_SERVICE_URL`, `DCP_SERVICE_NAME` | for `dcp` |
 
-### The `none` backend needs two URLs, not one
+Optional: `PUBLIC_DC_URL` and `PUBLIC_DC_WEB_URL` — **two different hosts**, see
+below.
 
-This is the only backend where the agent and the browser talk to **different
-hosts**, and it is worth understanding before you fill it in:
+### Public Data Commons needs two URLs, not one
+
+The agent and the browser talk to **different hosts**, and it is worth
+understanding before you change them:
 
 | | Value | Used by |
 | :--- | :--- | :--- |
@@ -214,11 +179,10 @@ The agent's MCP endpoint is `PUBLIC_DC_URL` with `/mcp` appended.
 Point both at the API host and you get a deployment that looks like it works:
 chat answers correctly, every number is right, and **no chart ever renders**. The
 browser's requests reach a host that does not serve those routes and come back as
-Cloud Endpoints 404s, which nothing surfaces server-side. They were Terraform
-defaults until now, which meant the split was invisible from the configuration.
+Cloud Endpoints 404s, which nothing surfaces server-side.
 
-Use the standard values unless you are pointing at a different public Data
-Commons deployment.
+Left empty, both take the standard values above. Change them only if you are
+pointing at a different public Data Commons deployment.
 
 ### A second deployment
 
@@ -235,8 +199,7 @@ rename its resources, and Terraform renames by destroying and recreating.
 
 `config/` is committed — that is what makes this clone *your* deployment rather
 than a copy you have to re-derive. So `config/instance.env` is in your git
-history, and it names your project, your region, your data-plane URL (which
-embeds the project number) and everyone allowed in.
+history, and it names your project, your region and everyone allowed in.
 
 That is disclosure. **A deployment repository should be private.**
 
@@ -474,6 +437,10 @@ show `<instance>-runtime` and its five IAM bindings as `will be destroyed`. That
 service account belonged to the old data service; nothing uses it now, so those
 destroys are expected.
 
+Do not redeploy a stack that used the removed `dcp` backend from this revision.
+It would switch the stack to public Data Commons and destroy the `run.invoker`
+grant on its data plane, and any network and subnet it created for VPC egress.
+
 ### Everyday commands
 
 | | |
@@ -511,8 +478,7 @@ resources belonging to another deployment.
 
 ## Access modes
 
-How the app is exposed, set by `ACCESS_MODE`. Independent of which backend you
-chose.
+How the app is exposed, set by `ACCESS_MODE`.
 
 ### `public`
 
@@ -551,9 +517,8 @@ with and the service stays unreachable.
 
 `/dcproxy` strips the IAP identity headers before forwarding. With IAP in front,
 Cloud Run hands the container IAP's own `Authorization` token, whose audience is
-*this* service; forwarded alongside the service-account token it gives the data
-plane a mixed identity and it refuses — a 401 on every chart, after a successful
-sign-in. Handled in code; if you add another proxy hop, it must do the same.
+*this* service; forwarding it would hand the user's sign-in to Data Commons.
+Handled in code; if you add another proxy hop, it must do the same.
 
 ### `private`
 
@@ -566,90 +531,6 @@ gcloud run services proxy <instance>-app --region=<region> --port=8080
 
 Right for a pilot you drive yourself, and the safe choice when you are not yet
 sure which of the other two you need.
-
----
-
-## Attaching to a Data Commons instance that already exists
-
-The common enterprise case: a Data Commons / Spanner instance is already running
-and loaded, and you want to put this UI and agent in front of it **without
-touching the data layer at all**.
-
-Nothing needs to be provisioned. Point an instance at it:
-
-```sh
-# config/instance.env
-DATA_BACKEND="dcp"
-DCP_SERVICE_URL="https://<existing-service>-uc.a.run.app"
-DCP_SERVICE_NAME="<existing-service>"
-```
-
-**What this deploy does to the existing data plane: one additive IAM binding, and
-nothing else.**
-
-The app plane needs `run.invoker` on the existing service so it may call MCP.
-That is expressed as `google_cloud_run_v2_service_iam_member` — an *additive
-member* resource, not `..._iam_policy`. It adds one member and leaves every other
-binding untouched. The service, its revisions, its Spanner data, its ingestion and
-its own callers are never in scope.
-
-Confirm that before applying, rather than trusting it:
-
-```sh
-./deploy.sh --plan
-```
-
-Every line must read **`will be created`**, and the summary must read
-**`0 to change, 0 to destroy`**.
-
-Two things to expect:
-
-- **The tool surface is whatever that server serves, and it is probably not what
-  you assume.** A live DCP instance measured during this work served **two** MCP
-  tools (1.2.x), not the six of 1.3.0. `/agent/health` reports what it found.
-  `supports_source_attribution: false` follows from the absence of
-  `get_variable_metadata`, and means answers carry a bare domain rather than a
-  named source and license. That is correct behavior, not a failure.
-
-**The name matters as much as the URL** — `DCP_SERVICE_NAME` is what the app
-plane's service account is granted `run.invoker` on. Without that grant a private
-DCP backend refuses every MCP call, and it presents as "no data" rather than as an
-error. `deploy.sh` refuses to start without both.
-
----
-
-## Provisioning a new DCP data plane
-
-DCP's data plane is **not** created by this repo, and cannot be: the Spanner
-instance, the BigQuery reservation, the Workflows orchestrator and the Dataflow
-flex template are Google's artifacts. `datacommons-cli` is irreducible for
-`admin init-db` (Spanner DDL) and `admin ingest start` (a Workflows execution,
-not a resource).
-
-```sh
-uvx datacommons-cli admin init --project-id "$PROJECT_ID" \
-    --instance-name "<namespace>" --dc-api-key "$DC_API_KEY"
-cd <namespace> && terraform init && terraform apply
-uvx datacommons-cli admin init-db          # creates the Spanner schema
-```
-
-Then take the two values into `instance.env`:
-
-```sh
-terraform output datacommons_service_url    # -> DCP_SERVICE_URL
-terraform output datacommons_service_name   # -> DCP_SERVICE_NAME
-```
-
-To load data: upload to the artifacts bucket and
-`uvx datacommons-cli admin ingest start --imports <dir>`. Three things from the
-DCP docs worth repeating:
-
-- **Re-ingesting an import wipes and rebuilds all of it.** No incremental imports
-  — always upload the complete file set.
-- **Every provenance's `Source` must be defined in your MCF.** It is not resolved
-  from base Data Commons.
-- **The BigQuery reservation is one per project per region**, shared by every
-  deployment. A second one breaks ingestion for all of them.
 
 ---
 
@@ -683,11 +564,6 @@ pnpm i
 ## Local development
 
 Two paths. Pick by what you are changing.
-
-There is deliberately **no "run the whole data plane locally" path**. Spanner,
-Workflows and Dataflow are not reproducible on a laptop, and the DCP ingestion
-pipeline cannot be run locally at all. Point at a deployed backend
-instead — or at public Data Commons, which needs nothing provisioned.
 
 ### Path A — UI only (the fast loop)
 
@@ -726,9 +602,8 @@ variables you export reach the server.
 There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
 uses it.
 
-Choose what it talks to — the same backends, selected the same way, by URL.
-
-**Public Data Commons.** Nothing to provision, but note it takes **two** hosts:
+Point it at public Data Commons. Nothing to provision, but note it takes
+**two** hosts:
 
 ```sh
 export MCP_SERVER_URL="https://api.datacommons.org/mcp"
@@ -747,21 +622,8 @@ every chart silently 404s, because the failure is entirely browser-side:
 {"message":"The current request is not defined by this API.","code":404}
 ```
 
-`DATA_PLANE_WEB_URL` defaults to `DATA_PLANE_URL`, so a deployed plane needs only
-the one URL — one container serves both MCP and the website.
-
-**A deployed data plane:**
-
-```sh
-export MCP_SERVER_URL="https://<data-plane>-uc.a.run.app/mcp"
-export DATA_PLANE_URL="https://<data-plane>-uc.a.run.app"
-```
-
-> A private data plane expects a Google-signed ID token, which the agent mints
-> from the **metadata server** — unavailable off GCP, so `attach_auth` is a no-op
-> on a laptop and the call is refused. Either widen that service's ingress
-> temporarily, or run against public Data Commons. Local development against a
-> private backend is not a supported path.
+`DATA_PLANE_WEB_URL` defaults to `DATA_PLANE_URL`, which suits only a single
+host that serves both, such as a local server.
 
 **Config and keys:**
 
@@ -946,9 +808,9 @@ The agent suites cover six behaviors whose failure is **silent**:
   that used to report `has_data=true` for no data. A 1.3.x server signals "no
   data" as `{"data": {}}`, which the old substring check did not match, so the
   agent narrated numbers it never received.
-- **Auth chosen by target host** — API key for public hosts, minted ID token for
-  private ones. Widening the host list to make a backend work is a security
-  regression, not a fix.
+- **Auth chosen by target host** — API key for public Data Commons hosts,
+  nothing for any other. Widening the host list to make another host work is a
+  security regression, not a fix.
 - **Prompt placeholder substitution** — an unsubstituted `{{instance.*}}` reaches
   the user inside an answer.
 - **Gemini non-200 reporting and credential redaction** — a rejected request or
@@ -971,11 +833,6 @@ curl -s "$URL/agent/health" | jq
 the agent actually found. If `supports_source_attribution` is false, answers carry
 weaker provenance — no named source, no license.
 
-> The smoke suite's data check queries `Count_Person` / `country/IND`, which is
-> **base** Data Commons data served through the passthrough. It passes on any
-> backend and therefore proves nothing about *your* ingested data. For `dcp`,
-> confirm that in Spanner: `SELECT COUNT(*) FROM Observation`.
-
 Branding:
 
 ```sh
@@ -997,10 +854,8 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | IAP mode, nobody can sign in | No OAuth consent screen in the project | Create it once in the console; `--preflight` prints the link |
 | IAP mode, 403 on every request *after* sign-in | IAP service agent lacks `run.invoker` | Should not happen — Terraform grants it. Check `iap_agent_invoker` in the plan |
 | `These secrets have no value in Secret Manager` | Bootstrap not run | [Secrets](#secrets) |
-| `data_backend = "dcp" requires dcp_service_url` | Missing DCP outputs | [Provisioning](#provisioning-a-new-dcp-data-plane) |
-| Chat answers "no data" for everything | App SA lacks `run.invoker` on the data plane, or `DCP_SERVICE_NAME` is wrong | Check `app_invokes_dcp` in the plan; look for `dcproxy: … -> HTTP 403` in agent logs |
-| Charts blank, chat fine | `/dcproxy` failing | Agent logs — `401/403` is IAM or ingress, `404` is a path the data plane does not serve |
-| Charts blank on `none`, `{"code":404,"message":"The current request is not defined by this API"}` | Chart routes are on a **different host** to MCP | Terraform sets `DATA_PLANE_WEB_URL` for this. Chat keeps working either way, so only the browser sees the fault |
+| Charts blank, chat fine | `/dcproxy` failing | Agent logs — `401/403` is the API key, `404` is a path the data plane does not serve |
+| Charts blank, `{"code":404,"message":"The current request is not defined by this API"}` | Chart routes are on a **different host** to MCP | Terraform sets `DATA_PLANE_WEB_URL` for this. Chat keeps working either way, so only the browser sees the fault |
 | Config or branding change does nothing | Read once at startup | `--config-only --restart` |
 | Theme flashes on load | `brand.js` not running | Check it is in `<head>` and `/agent/brand.js` returns 200 |
 | Every tab vanished | `navigation: []` in branding.json | Remove the key to restore the shipped tabs |
@@ -1012,10 +867,6 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
 | Public access binding refused | Domain Restricted Sharing | Use IAP or the proxy |
 | `/healthz` works but the uptime check does not | Cloud Run's frontend reserves `/healthz` and answers it itself | External checks must use `/agent/health` |
-| A private backend refuses everything locally | No metadata server on a laptop | Expected — see Path B |
-| Ingestion fails: missing `Source` | MCF incomplete | Define every provenance's `Source` node |
-| Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
-| `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
 
 For anything else, start with the app plane's Cloud Run logs. Each chat turn
 writes one structured `chat_turn` record (terminal state, error type, phase
@@ -1031,7 +882,7 @@ README.md                  this file — the only prose doc in the repo
 deploy.sh                  the one deploy entry point; no --instance flag
 
 config/                    YOURS — this deployment's settings and overrides
-  instance.env             required: project, region, backend, access
+  instance.env             required: project, region, access
   branding.json            optional override
   agent-config.json        optional override
   prompts/  assets/        optional overrides
@@ -1055,7 +906,7 @@ ui/                        React source; built and baked into the agent image
   src/hooks/               branding, chat session, SSE, hash routing
   src/utils/               PDF export, turn inspection, DC web components
 
-deploy/terraform-…/        one module tree; `data_backend` selects the plane
+deploy/terraform-…/        one module tree
 deploy/*.py                deploy-time guards: state ownership, branding schema
 cloudbuild/                PR validation, deploy stamps
 docs/smoke.sh              post-deploy checks
@@ -1079,7 +930,7 @@ re-derived. Which is exactly why the clone must be private.
 official `mcp` SDK to send `initialize`, `notifications/initialized`, `ping`,
 `tools/list`, and `tools/call` requests over Streamable HTTP. The session ID is
 sent in the `Mcp-Session-Id` header, and the protocol version is chosen during
-`initialize`. This works unchanged across every backend.
+`initialize`. This works unchanged across both server generations.
 
 **Browser → backend, over HTTP: not stable, proxy it, do not translate it.** The
 two REST generations return different shapes (`data[var][entity].series` +
@@ -1087,17 +938,6 @@ two REST generations return different shapes (`data[var][entity].series` +
 their own data from the page origin. So: **one origin, one reverse proxy, no
 shape translation.** The browser always talks to the app plane; the app plane
 replays to whichever data plane is configured.
-
-### Why the app plane is a separate container
-
-Google's `stack` module hard-wires the services container's environment — there
-is no env pass-through. Baking the agent into that image and injecting env
-afterwards with `gcloud run services update` **gets silently wiped**, because the
-module sets `FORCE_RESTART = timestamp()`, guaranteeing a diff on every apply,
-which reconciles the container spec and drops the injected vars. The symptom
-(`"Backend config not loaded"`) arrives later, on an unrelated apply.
-
-A decoupled app plane never asks Google's service to carry our configuration.
 
 ### Capability discovery, not declaration
 

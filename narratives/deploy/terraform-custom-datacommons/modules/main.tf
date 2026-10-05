@@ -3,8 +3,7 @@
 # across instances.
 #
 #   - One Cloud Run v2 service: the public app plane (agent + SPA). The data
-#     plane is a DCP service provisioned elsewhere, or public Data Commons
-#   - An optional VPC subnet so the app plane can reach a private data plane
+#     plane is public Data Commons
 #   - Per-instance Secret Manager entries (DC_API_KEY, GEMINI_API_KEY)
 #   - Uptime checks + alert policies
 #
@@ -14,41 +13,18 @@
 # bucket name, and the brand_config_url only.
 
 locals {
-  # A single place that decides what exists. Every count below reads these
-  # rather than re-testing var.data_backend, so adding a backend later means
-  # adding one local, not auditing every resource.
-  is_dcp = var.data_backend == "dcp"
-
-  # The one value the app plane actually needs. Everything about "which
-  # backend" collapses to this URL plus the auth attached to it at runtime.
-  data_plane_url = local.is_dcp ? var.dcp_service_url : var.public_dc_url
+  data_plane_url = var.public_dc_url
   mcp_url        = "${local.data_plane_url}/mcp"
 
-  # Where the BROWSER's data routes go. On dcp one container serves both MCP and
-  # the website, so this is the same URL. On "none" they are two hosts:
-  # api.datacommons.org serves the versioned REST API and /mcp, while the routes
-  # the chart web components call -- /api/observations/series, /api/place/name,
+  # Where the BROWSER's data routes go. These are two hosts: api.datacommons.org
+  # serves the versioned REST API and /mcp, while the routes the chart web
+  # components call -- /api/observations/series, /api/place/name,
   # /core/api/... -- exist only on datacommons.org.
   #
-  # Collapsing both onto data_plane_url meant every chart request on the "none"
-  # backend got a Cloud Endpoints 404 ("The current request is not defined by
-  # this API"). The agent answered correctly and no chart ever rendered.
-  data_plane_web_url = (
-    local.is_dcp ? local.data_plane_url : var.public_dc_web_url
-  )
-
-  # Direct VPC egress exists for exactly one reason: to reach a data plane whose
-  # ingress is internal. It is NOT free to switch on -- Cloud Run requires
-  # egress=ALL_TRAFFIC to reach a *.run.app host through a VPC, which routes
-  # EVERY outbound call through that subnet. Private Google Access covers
-  # *.googleapis.com, so Gemini and GCS still work, but a genuinely public host
-  # such as api.datacommons.org becomes unreachable without Cloud NAT.
-  #
-  # So only turn it on when the data plane is actually private. On "none" the
-  # backend IS api.datacommons.org, and enabling this would black-hole it.
-  # This module cannot see the ingress of a data plane it does not build, so
-  # it defaults off.
-  needs_vpc_egress = coalesce(var.enable_vpc_egress, false)
+  # Collapsing both onto data_plane_url meant every chart request got a Cloud
+  # Endpoints 404 ("The current request is not defined by this API"). The agent
+  # answered correctly and no chart ever rendered.
+  data_plane_web_url = var.public_dc_web_url
 
   app_service_name = "${var.instance}-app"
 }
@@ -76,39 +52,6 @@ data "google_secret_manager_secret" "dc_api_key" {
 # diff every time a key is rotated.
 data "google_secret_manager_secret" "gemini_api_key" {
   secret_id = var.gemini_api_key_secret_id
-}
-
-# ---------------------------------------------------------------------------
-# Private network for app-plane egress.
-#
-# Reaching an ingress=internal service means the caller's traffic has to
-# originate inside a VPC in this project. Direct VPC egress does that without
-# the old Serverless VPC Access connector (a managed instance group — extra
-# hop, extra cost).
-#
-# egress must be ALL_TRAFFIC, not PRIVATE_RANGES_ONLY: *.run.app resolves to a
-# public IP, so private-ranges-only would send the call down the default path
-# and the internal-ingress service would refuse it with a 403 that looks like
-# an IAM problem and is not. Private Google Access on the subnet covers the
-# app plane's other outbound (Gemini, GCS, Secret Manager) without Cloud NAT.
-# ---------------------------------------------------------------------------
-resource "google_compute_network" "app" {
-  count = local.needs_vpc_egress ? 1 : 0
-
-  project                 = var.project_id
-  name                    = "${var.instance}-app-net"
-  auto_create_subnetworks = false
-}
-
-resource "google_compute_subnetwork" "app" {
-  count = local.needs_vpc_egress ? 1 : 0
-
-  project                  = var.project_id
-  name                     = "${var.instance}-app-subnet"
-  region                   = var.region
-  network                  = google_compute_network.app[0].id
-  ip_cidr_range            = var.app_subnet_cidr
-  private_ip_google_access = true
 }
 
 # ---------------------------------------------------------------------------
@@ -147,17 +90,6 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
     # of seconds, so 80 concurrent requests means 80 parked threads on one
     # vCPU. Scale out with instances rather than in with threads.
     max_instance_request_concurrency = var.app_concurrency
-
-    dynamic "vpc_access" {
-      for_each = local.needs_vpc_egress ? [1] : []
-      content {
-        network_interfaces {
-          network    = google_compute_network.app[0].id
-          subnetwork = google_compute_subnetwork.app[0].id
-        }
-        egress = "ALL_TRAFFIC"
-      }
-    }
 
     containers {
       name  = "app"
@@ -225,9 +157,8 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
         name  = "GEMINI_API_KEY_SECRET"
         value = data.google_secret_manager_secret.gemini_api_key.secret_id
       }
-      # Needed only when data_backend = "none": public Data Commons
-      # authenticates with an API key, not with our service account. Harmless
-      # on the other backends -- gcp_auth only sends it to *.datacommons.org.
+      # Public Data Commons authenticates with an API key. gcp_auth only sends
+      # it to *.datacommons.org.
       env {
         name = "DC_API_KEY"
         value_source {
@@ -268,46 +199,10 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
 # Access
 # ---------------------------------------------------------------------------
 
-# THE grant that makes a private data plane work: the app plane's service
-# account may invoke it. Without this every MCP call and every /dcproxy request
-# is refused, which surfaces as "no data" and blank charts rather than as an
-# obvious permissions error.
-#
-# Scoped to a single service, so unlike the project-level IAP bindings it is
-# safe to hold in two Terraform states at once.
-resource "google_cloud_run_v2_service_iam_member" "app_invokes_dcp" {
-  # The DCP services instance is created outside this module by
-  # datacommons-cli, so it is referenced by name rather than by resource.
-  count = local.is_dcp && var.dcp_service_name != "" ? 1 : 0
-
-  project  = var.project_id
-  location = var.region
-  name     = var.dcp_service_name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.app.email}"
-}
-
-# Fail at plan time on a half-configured backend rather than at runtime with an
-# app plane pointed at an empty string -- which presents as every chat turn
-# answering "no data", with nothing to indicate the cause.
-resource "terraform_data" "backend_preconditions" {
-  lifecycle {
-    precondition {
-      condition     = !local.is_dcp || var.dcp_service_url != ""
-      error_message = "data_backend = \"dcp\" requires dcp_service_url (from `terraform output datacommons_service_url` in the datacommons-cli scaffold)."
-    }
-    precondition {
-      condition     = !local.is_dcp || var.dcp_service_name != ""
-      error_message = "data_backend = \"dcp\" requires dcp_service_name, so the app plane's service account can be granted run.invoker on the DCP backend. Without it every MCP call is refused."
-    }
-  }
-}
-
 # Humans reach the app plane, not the data plane. Replaces a hardcoded
 # individual account, which meant a rebuild from state alone produced a service
 # only one person could open.
-# Public exposure, opt-in. Scoped to the app plane only, so this cannot expose
-# a private data plane however it is set.
+# Public exposure, opt-in.
 resource "google_cloud_run_v2_service_iam_member" "app_public" {
   count = var.access_mode == "public" ? 1 : 0
 
@@ -459,7 +354,7 @@ output "data_plane_url" {
 }
 
 output "app_service_account" {
-  description = "App-plane runtime service account. This is the identity that must hold run.invoker on the data plane."
+  description = "App-plane runtime service account."
   value       = google_service_account.app.email
 }
 

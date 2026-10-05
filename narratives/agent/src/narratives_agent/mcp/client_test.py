@@ -738,33 +738,28 @@ async def test_call_tool_sends_normalized_arguments(
 
 
 @pytest.mark.asyncio
-async def test_call_tool_attaches_credentials_off_the_event_loop(
+async def test_call_tool_attaches_credentials(
     server: _FakeMcpServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Test: Authentication headers for the MCP endpoint are resolved in a
-    #   worker thread and attached to every request.
-    # Situation: `attach_auth` is stubbed to record its calling thread and add
-    #   a bearer token header for the target URL.
-    # Expectation: `attach_auth` is called with the MCP endpoint URL, never
-    #   on the event loop's thread, and every request received by the server
-    #   includes the `Authorization` header.
+    # Test: Authentication headers for the MCP endpoint are attached to every
+    #   request.
+    # Situation: `attach_auth` is stubbed to record its target URL and add an
+    #   API key header.
+    # Expectation: `attach_auth` is called with the MCP endpoint URL, and
+    #   every request received by the server includes the `X-API-Key` header.
     targets: list[str] = []
-    threads: set[int] = set()
 
     def fake_attach_auth(headers: dict[str, str], target_url: str) -> None:
         targets.append(target_url)
-        threads.add(threading.get_ident())
-        headers["Authorization"] = "Bearer test-token"
+        headers["X-API-Key"] = "test-key"
 
     monkeypatch.setattr(client, "attach_auth", fake_attach_auth)
 
     await client.async_call_tool("get_observations", {})
 
     assert set(targets) == {_URL}
-    assert threading.get_ident() not in threads
     assert all(
-        r.headers.get("authorization") == "Bearer test-token"
-        for r in server.received
+        r.headers.get("x-api-key") == "test-key" for r in server.received
     )
 
 

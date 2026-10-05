@@ -12,140 +12,38 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Google-signed ID tokens for calling an IAM-gated Cloud Run service.
+"""Credentials for calls to the Data Commons data plane.
 
-Once the data plane moved out of this container, every call to it became a
-cross-service request. If that service is IAM-gated (rather than only
-network-restricted by ingress=internal) the caller must present an ID token
-minted for the target's audience.
-
-Attaching a token the backend does not require is harmless -- it is simply
-valid-but-unneeded -- so this is applied whenever the target is a remote HTTPS
-URL, and is a no-op for localhost and when running off GCP. That keeps one code
-path for both the ingress=internal and the IAM-gated deployments.
+`attach_auth` picks the credential by target host: the `DC_API_KEY` API key
+for public Data Commons hosts, and nothing for any other host.
 """
 
 import logging
-import threading
-import time
-from typing import TypedDict
 from urllib.parse import urlparse
-
-import requests
 
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-_METADATA_TOKEN_URL = (
-    "http://metadata.google.internal/computeMetadata/v1/instance/"
-    "service-accounts/default/identity"
-)
-
-
-class _CachedToken(TypedDict):
-    """An ID token and the time after which it is minted again."""
-
-    token: str
-    exp: float
-
-
-# audience -> {"token": str, "exp": float}. Tokens are valid for an hour; we
-# refresh at 50 minutes so a request never carries one that expires mid-flight.
-_TOKEN_CACHE: dict[str, _CachedToken] = {}
-_TOKEN_TTL_SECONDS = 50 * 60
-
-# `attach_auth` runs on worker threads (`asyncio.to_thread`,
-# `run_in_threadpool`), so several requests can miss the cache at once. The
-# lock makes them share one metadata-server request instead of each minting
-# a token.
-_TOKEN_LOCK = threading.Lock()
-
-
-def _audience_for(url: str) -> str:
-    """Cloud Run expects the audience to be the service's origin, not the
-    path.
-    """
-    parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}"
-
-
-def get_id_token(audience: str) -> str:
-    """Fetch a cached ID token for `audience` from the metadata server.
-
-    Returns "" when the metadata server is unreachable, which is the normal
-    case for local development. Callers treat that as "send no Authorization
-    header" rather than as an error, so a developer running against a public
-    backend is unaffected.
-    """
-    cached = _TOKEN_CACHE.get(audience)
-    if cached and cached["exp"] > time.time():
-        return cached["token"]
-    with _TOKEN_LOCK:
-        # Another thread may have minted the token while this one waited.
-        cached = _TOKEN_CACHE.get(audience)
-        if cached and cached["exp"] > time.time():
-            return cached["token"]
-        return _mint_id_token(audience)
-
-
-def _mint_id_token(audience: str) -> str:
-    """Requests an ID token for `audience` and caches a non-empty one."""
-    try:
-        response = requests.get(
-            _METADATA_TOKEN_URL,
-            params={"audience": audience, "format": "full"},
-            headers={"Metadata-Flavor": "Google"},
-            timeout=5,
-        )
-        response.raise_for_status()
-        token = response.text.strip()
-    except Exception as e:  # pylint: disable=broad-except
-        logger.debug(
-            "ID token fetch failed for %s (normal if local): %s", audience, e
-        )
-        return ""
-
-    # Do not cache an empty response body from the metadata server, as caching
-    # an empty string would suppress token refreshes and leave requests to the
-    # data plane unauthenticated until the cache entry expires.
-    if not token:
-        logger.warning(
-            "Metadata server returned an empty ID token for %s; not caching",
-            audience,
-        )
-        return ""
-
-    _TOKEN_CACHE[audience] = {
-        "token": token,
-        "exp": time.time() + _TOKEN_TTL_SECONDS,
-    }
-    logger.info("Minted ID token for audience %s", audience)
-    return token
-
 
 # Hosts DC_API_KEY may be sent to.
 #
-# Public Data Commons authenticates with an API key rather than a Google ID
-# token. The endpoint is configuration-driven and that configuration is fetched
-# from a GCS bucket, so without this allowlist an edit to branding/agent config
-# could point the agent at an arbitrary host and hand it our key. Restricting
-# the header to known Data Commons hosts keeps a config change from becoming a
-# credential leak.
+# Public Data Commons authenticates with an API key. The endpoint is
+# configuration-driven and that configuration is fetched from a GCS bucket, so
+# without this allowlist an edit to branding/agent config could point the agent
+# at an arbitrary host and hand it our key. Restricting the header to known
+# Data Commons hosts keeps a config change from becoming a credential leak.
 _API_KEY_HOSTS = frozenset({"api.datacommons.org", "datacommons.org"})
 
 
 def attach_auth(headers: dict[str, str], target_url: str) -> None:
     """Attach whatever credential `target_url` expects.
 
-    Two backends, two mechanisms, chosen by host rather than by a backend flag:
-
-      * public Data Commons -> X-API-Key from DC_API_KEY
-      * a private Cloud Run data plane (DCP) -> a Google-signed ID token
+    Public Data Commons hosts get X-API-Key from DC_API_KEY; any other host
+    gets nothing.
 
     Mutates `headers` in place. No-ops for http:// and for localhost, so a
-    co-located sidecar deployment is unaffected, and no-ops off GCP where the
-    metadata server is unreachable.
+    co-located sidecar deployment is unaffected.
     """
     settings = get_settings()
     if settings.data_plane_auth.lower() == "off":
@@ -157,8 +55,6 @@ def attach_auth(headers: dict[str, str], target_url: str) -> None:
     if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
         return
 
-    # Public Data Commons: API key, never an ID token -- our service account
-    # means nothing to it.
     if parsed.hostname in _API_KEY_HOSTS:
         key = settings.dc_api_key
         if key:
@@ -169,8 +65,3 @@ def attach_auth(headers: dict[str, str], target_url: str) -> None:
                 "be rejected.",
                 parsed.hostname,
             )
-        return
-
-    token = get_id_token(_audience_for(target_url))
-    if token:
-        headers["Authorization"] = f"Bearer {token}"

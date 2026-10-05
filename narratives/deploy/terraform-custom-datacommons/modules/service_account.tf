@@ -2,8 +2,7 @@
 # App-plane runtime identity
 #
 # The only service account this module creates. The app plane needs Gemini
-# keys, the config bucket and (granted in main.tf) invoker on a private data
-# plane.
+# keys and the config bucket.
 # ---------------------------------------------------------------------------
 resource "google_service_account" "app" {
   project      = var.project_id

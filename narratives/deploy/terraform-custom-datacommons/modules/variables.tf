@@ -113,12 +113,6 @@ variable "authorized_members" {
 # App-plane / data-plane split
 # ---------------------------------------------------------------------------
 
-variable "app_subnet_cidr" {
-  description = "CIDR for the app plane's Direct VPC egress subnet. Must not overlap anything else in the project."
-  type        = string
-  default     = "10.90.0.0/24"
-}
-
 variable "app_min_instances" {
   description = "Minimum app-plane instances. 0 lets it scale to zero; 1 removes cold starts from the chat path."
   type        = number
@@ -146,66 +140,16 @@ variable "app_concurrency" {
 # Which data plane this instance runs against
 # ---------------------------------------------------------------------------
 
-variable "data_backend" {
-  description = <<-EOT
-    Which Data Commons data plane serves this instance.
-
-      "dcp"  (default) Google's Data Commons Platform -- Spanner, managed
-             ingestion, no NL server. Provisioned OUTSIDE this module by
-             datacommons-cli (see dcp_service_url); nothing here creates it,
-             because the Spanner instance, the BigQuery reservation, the
-             Workflows orchestrator and the Dataflow flex template are Google's
-             artifacts and cannot be reproduced.
-
-      "none" No data plane. The app plane talks to public datacommons.org.
-             Cheapest; cannot serve your own datasets.
-
-    The app plane is identical in both cases. It receives a URL and an auth
-    mode; it has no notion of which backend is behind them.
-  EOT
-  type        = string
-  default     = "dcp"
-
-  validation {
-    condition     = contains(["dcp", "none"], var.data_backend)
-    error_message = "data_backend must be one of: dcp, none. The cdc backend was removed."
-  }
-}
-
-variable "dcp_service_url" {
-  description = <<-EOT
-    Base URL of the DCP services instance, when data_backend = "dcp".
-
-    Comes from `terraform output datacommons_service_url` in the scaffold that
-    datacommons-cli generates. Required for "dcp"; ignored otherwise.
-  EOT
-  type        = string
-  default     = ""
-}
-
 variable "public_dc_url" {
-  description = "Public Data Commons origin, used when data_backend = \"none\"."
+  description = "Public Data Commons origin."
   type        = string
   default     = "https://api.datacommons.org"
 }
 
 variable "public_dc_web_url" {
-  description = "Public Data Commons WEB origin for browser data routes when data_backend = \"none\". Distinct from public_dc_url: api.datacommons.org serves the versioned REST API and /mcp, while the website routes the chart components call (/api/observations/series, /api/place/name, /core/api/...) are only served by datacommons.org."
+  description = "Public Data Commons WEB origin for browser data routes. Distinct from public_dc_url: api.datacommons.org serves the versioned REST API and /mcp, while the website routes the chart components call (/api/observations/series, /api/place/name, /core/api/...) are only served by datacommons.org."
   type        = string
   default     = "https://datacommons.org"
-}
-
-variable "dcp_service_name" {
-  description = <<-EOT
-    Cloud Run service name of the DCP backend, when data_backend = "dcp".
-
-    From `terraform output datacommons_service_name` in the datacommons-cli
-    scaffold (conventionally "<namespace>-dc-datacommons-service"). Needed so
-    the app plane's service account can be granted run.invoker on it -- that
-    single binding is what makes a private DCP backend reachable.
-  EOT
-  type        = string
-  default     = ""
 }
 
 variable "access_mode" {
@@ -234,22 +178,4 @@ variable "access_mode" {
     condition     = contains(["public", "iap", "private"], var.access_mode)
     error_message = "access_mode must be one of: public, iap, private."
   }
-}
-
-variable "enable_vpc_egress" {
-  description = <<-EOT
-    Turn Direct VPC egress on or off for the app plane. Null means off.
-
-    Turn it on only when the data plane is a private Cloud Run service -- that
-    is the sole reason it exists. It is not a free switch: reaching a
-    *.run.app host through a VPC requires egress=ALL_TRAFFIC, which routes every
-    outbound call through the subnet. Private Google Access covers
-    *.googleapis.com (Gemini, GCS, Secret Manager), but a genuinely public host
-    like api.datacommons.org becomes unreachable without Cloud NAT.
-
-    Set true when data_backend="dcp" and the DCP service is private -- then add
-    Cloud NAT if the agent must also reach non-Google hosts.
-  EOT
-  type        = bool
-  default     = null
 }
