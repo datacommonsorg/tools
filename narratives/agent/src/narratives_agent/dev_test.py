@@ -15,12 +15,34 @@
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from narratives_agent import dev
+
+
+@pytest.fixture(autouse=True)
+def _isolate_environ() -> Iterator[None]:
+    """Isolates os.environ before and after each test."""
+    saved = os.environ.copy()
+    for key in (
+        "GEMINI_API_KEY",
+        "DATA_PLANE_URL",
+        "DATA_PLANE_WEB_URL",
+        "MCP_SERVER_URL",
+        "DC_API_KEY",
+        "AGENT_URL",
+        "CUSTOM_QUOTED",
+    ):
+        os.environ.pop(key, None)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
 
 
 def _write_baseline_checkout(root: Path, base_config: dict[str, Any]) -> None:
@@ -32,16 +54,12 @@ def _write_baseline_checkout(root: Path, base_config: dict[str, Any]) -> None:
     )
 
 
-def test_creates_env_local_from_example_when_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_creates_env_local_from_example_when_missing(tmp_path: Path) -> None:
     # Test: Automatic creation of .env.local from .env.local.example.
     # Situation: .env.local does not exist, .env.local.example exists with
     #   DATA_PLANE_URL and GEMINI_API_KEY, and stage_local_environment runs.
     # Expectation: .env.local is copied from .env.local.example, its variables
     #   are loaded into os.environ, and agent/config.json gets GEMINI_API_KEY.
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("DATA_PLANE_URL", raising=False)
     _write_baseline_checkout(tmp_path, {"thinking": {"mcp_level": "medium"}})
     (tmp_path / ".env.local.example").write_text(
         "DATA_PLANE_URL=https://api.datacommons.org\n"
@@ -59,7 +77,6 @@ def test_creates_env_local_from_example_when_missing(
 
 def test_touches_empty_env_local_when_example_missing(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Fallback creation of an empty .env.local when .env.local.example is
@@ -68,7 +85,6 @@ def test_touches_empty_env_local_when_example_missing(
     # Expectation: An empty .env.local file is created, a warning is logged for
     #   the missing GEMINI_API_KEY, and config staging succeeds with the
     #   placeholder key.
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     _write_baseline_checkout(tmp_path, {"thinking": {"mcp_level": "medium"}})
 
     config_path = dev.stage_local_environment(tmp_path)
@@ -79,9 +95,7 @@ def test_touches_empty_env_local_when_example_missing(
     assert "GEMINI_API_KEY is not set" in caplog.text
 
 
-def test_parses_env_local_quotes_and_inline_comments(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_parses_env_local_quotes_and_inline_comments(tmp_path: Path) -> None:
     # Test: Parsing of .env.local with quotes, escaped quotes, and inline
     #   comments.
     # Situation: .env.local contains double-quoted values with escaped quotes
@@ -89,10 +103,6 @@ def test_parses_env_local_quotes_and_inline_comments(
     #   with inline comments.
     # Expectation: Keys and values are cleanly extracted with escaped quotes
     #   unescaped and without leaking surrounding quotes or inline comments.
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("MCP_SERVER_URL", raising=False)
-    monkeypatch.delenv("DC_API_KEY", raising=False)
-    monkeypatch.delenv("CUSTOM_QUOTED", raising=False)
     _write_baseline_checkout(tmp_path, {})
     (tmp_path / ".env.local").write_text(
         "# Comment line\n"
@@ -188,7 +198,7 @@ def test_merges_nested_config_overrides_without_losing_sibling_defaults(
 
 
 def test_inlines_prompt_slots_and_preserves_inline_overrides(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     # Test: Prompt markdown inlining, HTML comment stripping, and precedence.
     # Situation: defaults/prompts/ provides mcp.md (with HTML comments),
@@ -199,7 +209,6 @@ def test_inlines_prompt_slots_and_preserves_inline_overrides(
     #   comment-only files are omitted, config/prompts/ overrides
     #   defaults/prompts/, and inline `prompts` in agent-config.json win over
     #   markdown files.
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     _write_baseline_checkout(tmp_path, {})
     defaults_prompts = tmp_path / "defaults" / "prompts"
     defaults_prompts.mkdir()
@@ -237,13 +246,12 @@ def test_inlines_prompt_slots_and_preserves_inline_overrides(
 
 
 def test_preserves_existing_config_api_key_when_env_unset(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     # Test: Fallback to existing Gemini API key in agent/config.json.
     # Situation: Neither os.environ nor .env.local provides GEMINI_API_KEY, but
     #   agent/config.json already contains a valid non-placeholder key.
     # Expectation: The existing key in agent/config.json is preserved.
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     _write_baseline_checkout(tmp_path, {})
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
