@@ -55,8 +55,8 @@ Contribution process and PR expectations:
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
-- `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh`, and Cloud Build
-  pipelines.
+- `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh` and its modes
+  (`deploy/modes/`), and Cloud Build pipelines.
 
 ## Commands
 

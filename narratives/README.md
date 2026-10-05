@@ -908,6 +908,7 @@ ui/                        React source; built and baked into the agent image
 
 deploy/terraform-…/        one module tree
 deploy/*.py                deploy-time guards: state ownership, branding schema
+deploy/modes/              deploy.sh modes: preflight, destroy, config, secrets
 cloudbuild/                PR validation, deploy stamps
 docs/smoke.sh              post-deploy checks
 docs/architecture.drawio   editable source for the architecture diagram
@@ -961,7 +962,7 @@ cd agent && uv sync --frozen \
   && uv run ruff format --check . && uv run ruff check . \
   && uv run mypy
 
-cd .. && bash -n deploy.sh
+cd .. && bash -n deploy.sh deploy/modes/*.sh
 cd deploy/terraform-custom-datacommons/modules \
   && terraform fmt -check -recursive . && terraform init -backend=false && terraform validate
 ```
