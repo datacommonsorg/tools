@@ -146,12 +146,12 @@ Commons or a local MCP server as preferred.
   (`server/routes/spa.py`) and proxies Data Commons routes
   (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, configure `.env.local` (from
-  `.env.local.example`) with `GEMINI_API_KEY` and optional `DC_API_KEY`,
-  `MCP_SERVER_URL`, and `DATA_PLANE_URL`, and run `pnpm dev:agent` (or
-  `uv run narratives-agent-dev`). When pointing at public Data Commons, set both
-  `DATA_PLANE_URL=https://api.datacommons.org` (for MCP and versioned REST) and
-  `DATA_PLANE_WEB_URL=https://datacommons.org` (for website routes used by the
-  chart web components).
+  `.env.local.example`) with `GEMINI_API_KEY`, `DC_API_KEY` (which is optional
+  for some MCP servers), and optional `MCP_SERVER_URL` and `DATA_PLANE_URL`, and
+  run `pnpm dev:agent` (or `uv run narratives-agent-dev`). When pointing at
+  public Data Commons, set both `DATA_PLANE_URL=https://api.datacommons.org`
+  (for MCP and versioned REST) and `DATA_PLANE_WEB_URL=https://datacommons.org`
+  (for website routes used by the chart web components).
 - **Secrets** — never place API keys or secrets in the client bundle. All
   model and data-plane credentials stay server-side in `agent/`.
 
