@@ -19,10 +19,6 @@ ui/.env.*.local
 ui/coverage
 ui/.vite
 
-# ── Built artifacts from image/build.sh ──
-# dist/ is staged in image/ at build time from ui/dist/. Don't commit either.
-image/dist
-
 # ── Terraform state + downloaded providers ──
 deploy/**/.terraform/
 # Per-instance Terraform data dirs (TF_DATA_DIR=.terraform-<instance>),
