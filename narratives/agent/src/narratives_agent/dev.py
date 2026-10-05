@@ -250,9 +250,6 @@ def main() -> None:
 
     The port is `AGENT_PORT`, 5001 by default.
     """
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s:     %(message)s"
-    )
     stage_local_environment()
     uvicorn.run(
         "narratives_agent.server.app:app",
