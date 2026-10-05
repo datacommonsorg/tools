@@ -47,7 +47,7 @@ narratives-agent-dev = "narratives_agent.dev:main"
 
 [dependency-groups]
 dev = [
-    "hadolint-py==2.14.0.1",
+    "hadolint-py>=2.14",
     "mypy>=2.3",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
