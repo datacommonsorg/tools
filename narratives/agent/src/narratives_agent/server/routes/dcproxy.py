@@ -25,11 +25,8 @@ and CORS is already permissive on /core/api/ -- but it is ruled out twice over:
 IAP would mean a second sign-in session for the second origin, and the iframe
 tools would break outright.
 
-So those routes land here and are replayed against DATA_PLANE_URL. When the
-data plane is IAM-gated the agent's service-account ID token is attached; when
-it is only network-restricted (ingress=internal) the token is harmless surplus.
-Either way the browser never needs a Google credential, which it could not
-obtain anyway.
+So those routes land here and are replayed against DATA_PLANE_URL, with the
+agent's own API key attached, so the browser never holds a credential.
 """
 
 import logging
@@ -38,7 +35,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx2
 from fastapi import APIRouter, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from starlette.background import BackgroundTask
 from starlette.requests import ClientDisconnect
@@ -69,7 +65,7 @@ _MCP_HOST_PREFIXES = frozenset({"mcp"})
 
 
 def _upstream_for(prefix: str) -> str:
-    """Which host serves this prefix. Identical on cdc and dcp."""
+    """Which host serves this prefix."""
     settings = get_settings()
     return (
         settings.data_plane_url
@@ -142,10 +138,8 @@ DATA_PLANE_PREFIXES = (
 #
 # The IAP entries are the important ones. With IAP in front, Cloud Run hands
 # this container IAP's own Authorization token, whose audience is THIS service.
-# Forwarding it alongside our service-account token gives the data plane a
-# mixed-identity context and it refuses the request -- which surfaces as a 401
-# on every chart *after* the user has already signed in successfully, and reads
-# like an authorization bug rather than a header-hygiene one.
+# Forwarding it, or the user's identity and cookies, would hand them to Data
+# Commons, which has no use for them.
 _HOP_HEADERS = frozenset(
     {
         "host",
@@ -223,14 +217,9 @@ async def _forward(request: Request, subpath: str, prefix: str) -> Response:
             headers["content-length"] = request.headers["content-length"]
 
     # Auth is chosen by the host actually being called, not by a single
-    # global -- the two hosts differ on the "none" backend, and attaching a
-    # credential scoped to the wrong host is how the API key would leak
-    # somewhere it does not belong.
-    #
-    # attach_auth runs in a worker thread: on a token-cache miss it blocks on
-    # the metadata server for up to 5 seconds, which would stall every
-    # request on the event loop.
-    await run_in_threadpool(attach_auth, headers, upstream_url)
+    # global -- the two hosts differ, and attaching a credential scoped to the
+    # wrong host is how the API key would leak somewhere it does not belong.
+    attach_auth(headers, upstream_url)
     # Sent as bytes, which httpx2 does not re-encode. The server decoded each
     # header as Latin-1, so encoding it back yields the bytes the caller sent;
     # httpx2 would encode a str as ASCII and raise on any byte above 0x7F.
@@ -315,7 +304,7 @@ async def _relay(
     """Returns the response that streams `upstream` back to the browser."""
     status = upstream.status_code
     # Surface upstream failures in the log -- this is the first place to look
-    # when charts or tools do not render. 401/403 = IAM or ingress, 404 = the
+    # when charts or tools do not render. 401/403 = the API key, 404 = the
     # path is not served by the data plane, 5xx = the backend itself.
     if status >= 400:
         logger.warning(
