@@ -60,8 +60,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - `scripts/` — build-time staging of `ui/dist/` into `agent/static/` and
   `defaults/` into `agent/defaults/` (`stage_static.mjs`).
 - `.env.local.example` — template for local `.env.local` development settings.
-- `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh`, `deploy/smoke.sh`,
-  and Cloud Build pipelines.
+- `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh` and its modes
+  (`deploy/modes/`), `deploy/smoke.sh`, and Cloud Build pipelines.
 
 ## Commands
 
