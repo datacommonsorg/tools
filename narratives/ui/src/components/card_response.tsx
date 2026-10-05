@@ -15,7 +15,11 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CitationChip, renderWithCitations } from "./chip_citation";
+import {
+  CitationChip,
+  HideCitationsProvider,
+  renderWithCitations,
+} from "./chip_citation";
 import {
   analyzeMarkdownTable,
   citationsIn,
@@ -209,7 +213,7 @@ const TableAnalysisContext = createContext<TableAnalysis>(EMPTY_ANALYSIS);
 /** Props a markdown cell or row gets, plus what this file threads through. */
 interface MarkdownCellProps {
   children?: ReactNode;
-  /** The hast node react-markdown built this element from. */
+  /** The HTML AST node react-markdown built this element from. */
   node?: unknown;
   /** Position in the row, injected by {@link MarkdownRow}. */
   colIndex?: number;
@@ -264,8 +268,9 @@ function cellAlignment(
 }
 
 /**
- * A header cell, carrying the citation for its column when every row agreed.
- * Appended only when the header does not already state it.
+ * A header cell, carrying its column's citation when every body cell in the
+ * column cited the same source. Appended only when the header does not
+ * already state it.
  */
 function HeaderCell({
   children,
@@ -310,7 +315,9 @@ function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
       }`}
       style={{ ...style, textAlign: cellAlignment(style, numeric, undefined) }}
     >
-      {renderWithCitations(children, sources, { hideCitations: hoisted })}
+      <HideCitationsProvider value={hoisted}>
+        {renderWithCitations(children, sources)}
+      </HideCitationsProvider>
     </td>
   );
 }

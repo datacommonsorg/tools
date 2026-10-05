@@ -475,9 +475,7 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
   // the provenance icon, the follow-up questions.
   clone.querySelectorAll('[data-non-print="true"]').forEach((el) => el.remove());
 
-  // A shortened number wears a dotted underline and a help cursor on screen,
-  // because there is something behind it to hover for. On paper there is not,
-  // so the underline is just a mark the reader cannot act on.
+  // Remove hover styling for print layout.
   clone.querySelectorAll<HTMLElement>(".dc-numeric").forEach((n) => {
     n.style.textDecoration = "none";
     n.style.cursor = "auto";

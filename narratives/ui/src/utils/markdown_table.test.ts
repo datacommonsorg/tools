@@ -151,6 +151,21 @@ describe("analyzeMarkdownTable", () => {
     expect(hoistedCitations.get(1)).toEqual([1]);
   });
 
+  it("hoists past a placeholder row", () => {
+    // Test: A gap in a single-source series.
+    // Situation: One year reports "N/A" and so carries no marker.
+    // Expectation: The column still hoists -- a placeholder says nothing
+    //   about which source the series came from.
+    const { hoistedCitations } = analyzeMarkdownTable(
+      seriesTable([
+        ["2023", "84.04 [1]"],
+        ["2022", "N/A"],
+        ["2021", "84.45 [1]"],
+      ]),
+    );
+    expect(hoistedCitations.get(1)).toEqual([1]);
+  });
+
   it("keeps per-row markers when the rows cite different sources", () => {
     // Test: A column with mixed provenance.
     // Situation: Two of three rows cite [1] and one cites [2].
@@ -205,7 +220,7 @@ describe("analyzeMarkdownTable", () => {
 
   it("says nothing when there is no table at all", () => {
     // Test: A missing node.
-    // Situation: react-markdown did not supply the hast node.
+    // Situation: react-markdown did not supply the node.
     // Expectation: An empty analysis rather than a crash.
     const empty = analyzeMarkdownTable(undefined);
     expect(empty.numericColumns.size).toBe(0);

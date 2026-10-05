@@ -2,6 +2,7 @@
  * @fileoverview Renders an inline numbered citation chip.
  */
 
+import { createContext, useContext } from "react";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 import { renderNumbers } from "./value_numeric";
 import { Tooltip } from "./tooltip";
@@ -92,17 +93,14 @@ export function CitationChip({
   );
 }
 
-/** How a subtree should treat the `[n]` markers it finds. */
-export interface CitationRenderOptions {
-  /**
-   * Drop the markers instead of rendering them.
-   *
-   * Set on the body cells of a column whose citation was lifted onto its
-   * header: the reference still applies, it is just stated once for the series
-   * rather than repeated on every row.
-   */
-  hideCitations?: boolean;
-}
+const HideCitationsContext = createContext(false);
+
+/**
+ * Drops the `[n]` markers rendered anywhere beneath it. Wrapped around the
+ * body cells of a column whose citation was lifted onto its header, including
+ * the markers nested inside `strong` or `em`.
+ */
+export const HideCitationsProvider = HideCitationsContext.Provider;
 
 /**
  * Walk a children array and replace `[N]` patterns inside strings with
@@ -114,37 +112,31 @@ export interface CitationRenderOptions {
 export function renderWithCitations(
   children: React.ReactNode,
   sources?: ProvenanceItem[],
-  options?: CitationRenderOptions,
 ): React.ReactNode {
   if (children == null) return children;
   if (Array.isArray(children)) {
     return children.map((c, i) => (
-      <ChildWithCitations key={i} sources={sources} options={options}>
+      <ChildWithCitations key={i} sources={sources}>
         {c}
       </ChildWithCitations>
     ));
   }
-  return (
-    <ChildWithCitations sources={sources} options={options}>
-      {children}
-    </ChildWithCitations>
-  );
+  return <ChildWithCitations sources={sources}>{children}</ChildWithCitations>;
 }
 
 /** Splits child text on [n] markers and renders each as a CitationChip. */
 function ChildWithCitations({
   children,
   sources,
-  options,
 }: {
   children: React.ReactNode;
   sources?: ProvenanceItem[];
-  options?: CitationRenderOptions;
 }) {
+  const hidden = useContext(HideCitationsContext);
   if (typeof children !== "string") {
     return <>{children}</>;
   }
-  return <>{splitWithCitations(children, sources, options)}</>;
+  return <>{splitWithCitations(children, sources, hidden)}</>;
 }
 
 /**
@@ -155,7 +147,7 @@ function ChildWithCitations({
 function splitWithCitations(
   s: string,
   sources?: ProvenanceItem[],
-  options?: CitationRenderOptions,
+  hideCitations = false,
 ): React.ReactNode[] {
   const pattern = /\[(\d{1,2})\]/g;
   const out: React.ReactNode[] = [];
@@ -166,7 +158,7 @@ function splitWithCitations(
     if (match.index > last) {
       out.push(...renderNumbers(s.slice(last, match.index), `n${last}`));
     }
-    if (!options?.hideCitations) {
+    if (!hideCitations) {
       out.push(
         <CitationChip key={`c-${i++}`} n={Number(match[1])} sources={sources} />,
       );
@@ -177,5 +169,5 @@ function splitWithCitations(
   // Nothing came out because there was nothing in: either an empty string, or
   // -- when the markers are being hidden -- a cell that held only a marker.
   if (out.length > 0) return out;
-  return options?.hideCitations ? [] : [s];
+  return hideCitations ? [] : [s];
 }

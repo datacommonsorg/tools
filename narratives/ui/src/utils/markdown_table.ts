@@ -22,8 +22,9 @@
 import { isNeutralText, isNumericText, isYearText } from "./format_number";
 
 /**
- * The part of a hast node this module reads. Declared locally rather than
- * imported from `hast`, so the analysis is testable from an object literal.
+ * The part of an HTML AST node this module reads. Declared locally rather
+ * than imported from the `hast` types, so the analysis is testable from an
+ * object literal.
  */
 export interface MarkdownNode {
   type?: string;
@@ -115,15 +116,21 @@ export function analyzeMarkdownTable(
 
     // Citations first: the markers have to come off before the rest of the
     // cell can be judged a number.
-    const citations = cells.map(citationsIn);
-    const key = citations[0].join(",");
-    if (key !== "" && citations.every((list) => list.join(",") === key)) {
-      hoistedCitations.set(column, citations[0]);
-    }
-
     const values = cells.map((text) =>
       text.replace(CITATION_MARKER, "").trim(),
     );
+    const citations = cells
+      .filter((_, i) => !isNeutralText(values[i]))
+      .map(citationsIn);
+    const key = citations[0]?.join(",") ?? "";
+    if (
+      citations.length > 0 &&
+      key !== "" &&
+      citations.every((list) => list.join(",") === key)
+    ) {
+      hoistedCitations.set(column, citations[0]);
+    }
+
     const numeric = values.filter((text) => isNumericText(text));
     const undecided = values.filter((text) => isNeutralText(text));
     const measurements = numeric.filter((text) => !isYearText(text));

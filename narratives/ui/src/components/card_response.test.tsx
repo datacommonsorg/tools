@@ -88,6 +88,24 @@ describe("ResponseCard tables", () => {
     }
   });
 
+  it("strips a hoisted marker that sits inside bold", () => {
+    // Test: The marker nested in markup rather than a direct text child.
+    // Situation: Each cell is written as `**84.04 [1]**`.
+    // Expectation: The header carries [1] and no body cell repeats it.
+    const { container } = renderMarkdown(`
+| Year | Life Expectancy |
+| --- | --- |
+| 2023 | **84.0412195122 [1]** |
+| 2022 | **83.9963414634 [1]** |
+`);
+    expect(container.querySelectorAll("thead th")[1].textContent).toContain(
+      "[1]",
+    );
+    for (const cell of Array.from(container.querySelectorAll("tbody td"))) {
+      expect(cell.textContent).not.toContain("[1]");
+    }
+  });
+
   it("leaves per-row markers alone when rows cite different sources", () => {
     // Test: A column with mixed provenance.
     // Situation: One row cites [1] and the next cites [2].
