@@ -4,15 +4,15 @@
 
 /** Chart flavors the metrics dashboard can render, one per <datacommons-*> web component. */
 export type MetricsTileType =
-  | "line"
-  | "bar"
-  | "map"
-  | "ranking"
-  | "highlight"
-  | "scatter"
-  | "pie"
-  | "gauge"
-  | "slider";
+  | 'line'
+  | 'bar'
+  | 'map'
+  | 'ranking'
+  | 'highlight'
+  | 'scatter'
+  | 'pie'
+  | 'gauge'
+  | 'slider';
 
 /**
  * One dashboard tile, mapping 1:1 onto a <datacommons-${type}> web component.
@@ -40,10 +40,10 @@ export interface MetricsTile {
   showLowest?: boolean;
   showPlaceLabels?: boolean;
   sort?:
-    | "ascending"
-    | "descending"
-    | "ascendingPopulation"
-    | "descendingPopulation";
+    | 'ascending'
+    | 'descending'
+    | 'ascendingPopulation'
+    | 'descendingPopulation';
   colors?: string;
   unit?: string;
   min?: number;

@@ -2,8 +2,8 @@
  * @fileoverview Provides a React context exposing per-instance branding to the component tree.
  */
 
-import { createContext, useContext, type ReactNode } from "react";
-import { useBranding, DEFAULT_BRAND, type Branding } from "./use_branding";
+import { createContext, type ReactNode, useContext } from 'react';
+import { type Branding, DEFAULT_BRAND, useBranding } from './use_branding';
 
 const BrandingContext = createContext<Branding>(DEFAULT_BRAND);
 

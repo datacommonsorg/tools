@@ -81,7 +81,6 @@ line-length = 80
 target-version = "py314"
 # Existing deploy scripts pending lint cleanup; remove entries as refactored.
 extend-exclude = [
-    "../deploy/check-state-owner.py",
     "../deploy/validate-branding.py",
 ]
 

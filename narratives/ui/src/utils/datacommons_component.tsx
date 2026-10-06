@@ -2,7 +2,7 @@
  * @fileoverview Imperatively mounts Data Commons web components to bypass React 19 custom-element property-setter issues.
  */
 
-import { useEffect, useRef, type RefObject } from "react";
+import { type RefObject, useEffect, useRef } from 'react';
 
 /**
  * <DataCommonsComponent> — render a Data Commons web component (`<datacommons-*>`).
@@ -42,15 +42,15 @@ import { useEffect, useRef, type RefObject } from "react";
 
 /** The Data Commons web-component tag names the UI can render. */
 export type DataCommonsComponentTagName =
-  | "datacommons-line"
-  | "datacommons-bar"
-  | "datacommons-map"
-  | "datacommons-pie"
-  | "datacommons-gauge"
-  | "datacommons-highlight"
-  | "datacommons-ranking"
-  | "datacommons-scatter"
-  | "datacommons-slider";
+  | 'datacommons-line'
+  | 'datacommons-bar'
+  | 'datacommons-map'
+  | 'datacommons-pie'
+  | 'datacommons-gauge'
+  | 'datacommons-highlight'
+  | 'datacommons-ranking'
+  | 'datacommons-scatter'
+  | 'datacommons-slider';
 
 /** Attribute bag for one <datacommons-*> element; values are stringified into HTML attributes. */
 export type DataCommonsComponentAttributes = Record<
@@ -63,7 +63,7 @@ export type DataCommonsComponentAttributes = Record<
  * these endpoints with an open CORS policy and needs no API key from the
  * browser. See the fileoverview for why this is not the page origin.
  */
-export const API_ROOT = "https://datacommons.org";
+export const API_ROOT = 'https://datacommons.org';
 
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({
@@ -87,7 +87,7 @@ export function DataCommonsComponent({
       const el = document.createElement(tag);
       for (const [k, v] of Object.entries(attrs)) {
         if (v === undefined || v === null || v === false) continue;
-        if (v === true) el.setAttribute(k, "");
+        if (v === true) el.setAttribute(k, '');
         else el.setAttribute(k, String(v));
       }
       host.appendChild(el);
@@ -107,7 +107,7 @@ export function DataCommonsComponent({
       if (a === undefined || a === null || a === false) {
         el.removeAttribute(k);
       } else if (a === true) {
-        el.setAttribute(k, "");
+        el.setAttribute(k, '');
       } else {
         el.setAttribute(k, String(a));
       }
@@ -130,10 +130,10 @@ export function DataCommonsComponent({
  * the ranking and highlight tiles. Matched without the trailing period so a
  * punctuation change upstream doesn't silently stop the check working.
  */
-const NO_DATA_MESSAGE = "No data available";
+const NO_DATA_MESSAGE = 'No data available';
 
 /** How far the render of a mounted DC component has got. */
-export type DcChartRenderState = "pending" | "empty" | "drawn";
+export type DcChartRenderState = 'pending' | 'empty' | 'drawn';
 
 /**
  * How long to keep watching a component before giving up on it settling.
@@ -160,22 +160,24 @@ const SETTLE_POLL_MS = 300;
  * `pending`, so a change to the upstream bundle can only leave a card on
  * screen — never hide one that has data.
  */
-export function dcChartRenderState(element: Element | null): DcChartRenderState {
+export function dcChartRenderState(
+  element: Element | null,
+): DcChartRenderState {
   const root = (element as HTMLElement | null)?.shadowRoot;
-  if (!root) return "pending"; // custom element has not upgraded yet
-  const containers = root.querySelectorAll(".chart-container, .ranking-list");
-  if (containers.length === 0) return "pending";
+  if (!root) return 'pending'; // custom element has not upgraded yet
+  const containers = root.querySelectorAll('.chart-container, .ranking-list');
+  if (containers.length === 0) return 'pending';
   for (const container of containers) {
     // Still fetching: the error node is not rendered yet, so its absence
     // says nothing.
-    if (container.classList.contains("loading")) return "pending";
-    if ((container.textContent ?? "").includes(NO_DATA_MESSAGE)) return "empty";
+    if (container.classList.contains('loading')) return 'pending';
+    if ((container.textContent ?? '').includes(NO_DATA_MESSAGE)) return 'empty';
   }
   // A component that drew has marks: an <svg> for the plotted types, a table
   // for ranking, a formatted number for highlight. Until one of those exists
   // the component is still working, not empty.
-  const drawn = root.querySelector("svg, .ranking-list table, .stat .number");
-  return drawn ? "drawn" : "pending";
+  const drawn = root.querySelector('svg, .ranking-list table, .stat .number');
+  return drawn ? 'drawn' : 'pending';
 }
 
 /**
@@ -204,9 +206,9 @@ export function useDcChartEmptyNotice(
       const state = dcChartRenderState(
         hostRef.current?.querySelector(tag) ?? null,
       );
-      if (state === "pending" && Date.now() < deadline) return;
+      if (state === 'pending' && Date.now() < deadline) return;
       window.clearInterval(timer);
-      if (state === "empty") onEmptyRef.current();
+      if (state === 'empty') onEmptyRef.current();
     }, SETTLE_POLL_MS);
     return () => window.clearInterval(timer);
   }, [hostRef, tag]);

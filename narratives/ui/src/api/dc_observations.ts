@@ -7,7 +7,10 @@
  */
 
 /** One dated observation, matching an /api/observations/series entry. */
-export interface SeriesPoint { date: string; value: number }
+export interface SeriesPoint {
+  date: string;
+  value: number;
+}
 
 /**
  * Response shape of /api/observations/series: values keyed by variable DCID,
@@ -46,20 +49,19 @@ export type ChartRow = Record<string, string | number | undefined> & {
  * (the instance proxies /api itself), empty during server-side rendering
  * (SSR) or testing.
  */
-const ORIGIN =
-  typeof window !== "undefined" ? window.location.origin : "";
+const ORIGIN = typeof window !== 'undefined' ? window.location.origin : '';
 
 /** Builds the /api/observations/series URL for the given variables and entities. */
 function buildSeriesUrl(
   variableDcids: string[],
   entityDcids: string[],
 ): string {
-  const url = new URL("/api/observations/series", ORIGIN);
+  const url = new URL('/api/observations/series', ORIGIN);
   for (const variableDcid of variableDcids) {
-    url.searchParams.append("variables", variableDcid);
+    url.searchParams.append('variables', variableDcid);
   }
   for (const entityDcid of entityDcids) {
-    url.searchParams.append("entities", entityDcid);
+    url.searchParams.append('entities', entityDcid);
   }
   return url.toString();
 }
@@ -70,14 +72,14 @@ function buildPointUrl(
   entityDcids: string[],
   date: string,
 ): string {
-  const url = new URL("/api/observations/point", ORIGIN);
+  const url = new URL('/api/observations/point', ORIGIN);
   for (const variableDcid of variableDcids) {
-    url.searchParams.append("variables", variableDcid);
+    url.searchParams.append('variables', variableDcid);
   }
   for (const entityDcid of entityDcids) {
-    url.searchParams.append("entities", entityDcid);
+    url.searchParams.append('entities', entityDcid);
   }
-  if (date) url.searchParams.set("date", date);
+  if (date) url.searchParams.set('date', date);
   return url.toString();
 }
 
@@ -147,7 +149,7 @@ export function pivotPointToRowsByPlace(
   const out: Array<{ place: string; value: number }> = [];
   const placesMap = response?.data?.[variable] ?? {};
   for (const [place, point] of Object.entries(placesMap)) {
-    if (point && typeof point.value === "number") {
+    if (point && typeof point.value === 'number') {
       out.push({ place, value: point.value });
     }
   }
@@ -181,7 +183,7 @@ export function pickSourceFromFacets(
  * label. Falls back to the full DCID if no prefix.
  */
 export function getPrettyPlaceName(dcid: string): string {
-  const slashIndex = dcid.indexOf("/");
+  const slashIndex = dcid.indexOf('/');
   return slashIndex >= 0 ? dcid.slice(slashIndex + 1) : dcid;
 }
 
@@ -191,9 +193,9 @@ export function getPrettyPlaceName(dcid: string): string {
  * forward slashes, then title-cases the first segment.
  */
 export function getPrettyVariableName(dcid: string): string {
-  if (!dcid) return "";
+  if (!dcid) return '';
   // dc/abc123 → "dc abc123" → tidied
-  const cleaned = dcid.replace(/[_/]/g, " ").trim();
+  const cleaned = dcid.replace(/[_/]/g, ' ').trim();
   if (!cleaned) return dcid;
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }

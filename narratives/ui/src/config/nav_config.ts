@@ -19,10 +19,10 @@ export interface NavItem {
  * Tool → Statistical Variable Explorer.
  */
 export const NAV_CONFIG: NavItem[] = [
-  { id: "agent", label: "Data Agent", href: "#/agent" },
-  { id: "metrics", label: "Key Metrics Dashboard", href: "#/metrics" },
-  { id: "download", label: "Data Download Tool", href: "#/download" },
-  { id: "statvar", label: "Statistical Variable Explorer", href: "#/statvar" },
+  { id: 'agent', label: 'Data Agent', href: '#/agent' },
+  { id: 'metrics', label: 'Key Metrics Dashboard', href: '#/metrics' },
+  { id: 'download', label: 'Data Download Tool', href: '#/download' },
+  { id: 'statvar', label: 'Statistical Variable Explorer', href: '#/statvar' },
 ];
 
 /**
@@ -31,9 +31,9 @@ export const NAV_CONFIG: NavItem[] = [
  * branding.json carries only `label` and `href`.
  */
 function deriveNavId(href: string): string {
-  const hashIndex = href.indexOf("#");
+  const hashIndex = href.indexOf('#');
   const path = hashIndex >= 0 ? href.slice(hashIndex + 1) : href;
-  return path.replace(/^\/+/, "").split("/")[0] ?? "";
+  return path.replace(/^\/+/, '').split('/')[0] ?? '';
 }
 
 /**

@@ -2,29 +2,29 @@
  * @fileoverview Root application component: wires providers, the sidebar/header/main layout, and hash-routed views.
  */
 
-import { useEffect, useRef } from "react";
-import { Sidebar } from "./components/sidebar";
-import { Header } from "./components/header";
-import { DataAgent } from "./components/data_agent";
-import { MetricsPage } from "./components/metrics_page";
-import { DataDownloadTool } from "./components/data_download_tool";
-import { StatVarExplorer } from "./components/stat_var_explorer";
-import { SessionDrawer } from "./components/drawer_session";
-import { BrandingProvider } from "./hooks/branding_context";
+import { useEffect, useRef } from 'react';
+import { DataAgent } from './components/data_agent';
+import { DataDownloadTool } from './components/data_download_tool';
+import { SessionDrawer } from './components/drawer_session';
+import { Header } from './components/header';
+import { MetricsPage } from './components/metrics_page';
+import { Sidebar } from './components/sidebar';
+import { StatVarExplorer } from './components/stat_var_explorer';
+import { BrandingProvider } from './hooks/branding_context';
 import {
   ChatSessionProvider,
   useChatSession,
-} from "./hooks/chat_session_context";
-import { useHashRoute } from "./hooks/use_hash_route";
+} from './hooks/chat_session_context';
+import { useHashRoute } from './hooks/use_hash_route';
 
 /** Picks the main view for the current hash route; unknown routes fall back to the Data Agent. */
 function renderContent(route: string) {
   switch (route) {
-    case "metrics":
+    case 'metrics':
       return <MetricsPage />;
-    case "download":
+    case 'download':
       return <DataDownloadTool />;
-    case "statvar":
+    case 'statvar':
       return <StatVarExplorer />;
     default:
       return <DataAgent />;
@@ -71,4 +71,3 @@ function ChatResetOnTabChange({ route }: { route: string }) {
   }, [route, turns.length, isStreaming, newSession]);
   return null;
 }
-
