@@ -21,7 +21,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
         with:
-          version: 10.20.0
+          package_json_file: 'narratives/package.json'
           run_install: false
 
       - name: Setup Node.js
@@ -34,6 +34,7 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
+          working-directory: 'narratives/agent'
           enable-cache: true
           cache-dependency-glob: 'narratives/agent/uv.lock'
 
