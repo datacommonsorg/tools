@@ -13,7 +13,7 @@ import { Tooltip } from "./tooltip";
  *
  * The number is never rewritten. `[n]` is position n of the provenance list,
  * which is the same numbered list the synthesis prompt was given, and the same
- * order SourcesList renders. One numbering, three places, nothing to keep in
+ * order CitationsList renders. One numbering, three places, nothing to keep in
  * sync -- so a marker this file never sees (inside an element with no override
  * of its own, or in exported or copied text) is still correct, just not a link.
  *
@@ -28,7 +28,7 @@ const COLOR = "var(--color-brand-primary)";
 /**
  * Name of the source a `[n]` chip points at.
  *
- * SourcesList numbers its entries from 1, so chip `n` is `sources[n - 1]`.
+ * CitationsList numbers its entries from 1, so chip `n` is `sources[n - 1]`.
  * Falls back to the bare URL when the source has no name, and to the plain
  * "Source n" when the answer cites an index the provenance list doesn't cover.
  */

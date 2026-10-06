@@ -248,6 +248,8 @@ def test_observation_call_enriches_provenance_from_metadata_index() -> None:
             "name": "American Community Survey",
             "url": "https://www.census.gov/",
             "license": "CC-BY-4.0",
+            "dataset": "American Community Survey",
+            "provider": "Census Bureau",
         }
     ]
 
@@ -359,3 +361,121 @@ def test_sources_preserve_first_seen_observation_order() -> None:
         "https://www.bls.gov/",
         "https://www.census.gov/",
     ]
+
+
+# ---- citation fields ------------------------------------------------------
+
+_WDI_URL = "https://datatopics.worldbank.org/world-development-indicators"
+
+
+def _metadata(properties: dict[str, str], **facet: Any) -> dict[str, Any]:
+    """Build a metadata payload for one facet with the given properties."""
+    return {
+        "variables": {
+            "Count_Person": {
+                "facets": [{"id": "facet1", "provenanceId": "prov1", **facet}]
+            }
+        },
+        "provenances": {"prov1": {"properties": properties}},
+    }
+
+
+def test_facet_reports_publisher_dataset_and_year_range() -> None:
+    # Test: The fields a citation line is built from.
+    # Situation: `get_variable_metadata` describes a facet carrying `source`,
+    #   `isPartOf`, and the `dateRange` MCP 1.3.0 returns.
+    # Expectation: The index entry carries `provider`, `dataset`, and a
+    #   `dateRange` reduced to years, so the UI can render "World Bank, World
+    #   Development Indicators (1960 - 2023)".
+    index = data_utils._get_facet_index_from_variable_metadata(
+        _metadata(
+            {
+                "url": _WDI_URL,
+                "isPartOf": "World Development Indicators",
+                "source": "World Bank",
+            },
+            dateRange={"start": "1960", "end": "2023-12"},
+        )
+    )
+    assert index["facet1"]["provider"] == "World Bank"
+    assert index["facet1"]["dataset"] == "World Development Indicators"
+    assert index["facet1"]["dateRange"] == "1960 \u2013 2023"
+
+
+def test_single_year_of_coverage_is_not_rendered_as_a_range() -> None:
+    # Test: Coverage of exactly one year.
+    # Situation: The facet's dateRange start and end are the same year.
+    # Expectation: One year, not "2023 - 2023".
+    index = data_utils._get_facet_index_from_variable_metadata(
+        _metadata(
+            {"url": _WDI_URL, "isPartOf": "WDI"},
+            dateRange={"start": "2023", "end": "2023"},
+        )
+    )
+    assert index["facet1"]["dateRange"] == "2023"
+
+
+def test_unreported_citation_fields_are_absent_not_blank() -> None:
+    # Test: A sparsely described facet.
+    # Situation: The provenance reports a URL and `isPartOf` and nothing else.
+    # Expectation: No `provider` or `dateRange` keys at all, so the UI renders
+    #   the citation without them rather than with empty parentheses.
+    index = data_utils._get_facet_index_from_variable_metadata(
+        _metadata({"url": _WDI_URL, "isPartOf": "WDI"})
+    )
+    assert "provider" not in index["facet1"]
+    assert "dateRange" not in index["facet1"]
+    assert index["facet1"]["dataset"] == "WDI"
+
+
+def test_a_date_too_short_to_hold_a_year_reports_none() -> None:
+    # Test: A malformed date in the facet metadata.
+    # Situation: The facet's dateRange holds short, malformed values.
+    # Expectation: No range at all, rather than a two-character "year".
+    index = data_utils._get_facet_index_from_variable_metadata(
+        _metadata(
+            {"url": _WDI_URL, "isPartOf": "WDI"},
+            dateRange={"start": "90", "end": "202"},
+        )
+    )
+    assert "dateRange" not in index["facet1"]
+
+
+@pytest.mark.parametrize(
+    "handle",
+    ["dc/base/WorldBank", "https://worldbank.org", "worldbank.org"],
+)
+def test_machine_handle_in_source_is_not_used_as_publisher(
+    handle: str,
+) -> None:
+    # Test: Rejection of identifiers in the `source` property.
+    # Situation: `source` holds a DCID, a URL, or a bare domain rather than a
+    #   publisher's name.
+    # Expectation: No `provider` key -- printing the handle is worse than
+    #   leaving the publisher out, because a reader cannot tell it is a bug.
+    index = data_utils._get_facet_index_from_variable_metadata(
+        _metadata({"url": _WDI_URL, "isPartOf": "WDI", "source": handle})
+    )
+    assert "provider" not in index["facet1"]
+
+
+def test_observation_without_metadata_invents_no_citation_fields() -> None:
+    # Test: The fallback path, where no metadata call described the facet.
+    # Situation: Only `get_observations` ran, reporting `provenanceUrl` and
+    #   `importName`.
+    # Expectation: A usable source entry, and none of the citation fields
+    #   fabricated from what the observation happened to carry.
+    calls = [
+        tool_call(
+            "get_observations",
+            _observation(
+                "unmatched",
+                provenanceUrl=_WDI_URL,
+                importName="WorldDevelopmentIndicators",
+            ),
+        )
+    ]
+    sources = data_utils.extract_provenance_from_mcp_results(calls)
+    assert len(sources) == 1
+    assert sources[0]["url"] == _WDI_URL
+    assert not {"provider", "dataset", "dateRange"} & set(sources[0])
