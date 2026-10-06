@@ -676,6 +676,8 @@ pnpm i
 
 | Command | What it does |
 | --- | --- |
+| `pnpm dev:ui` | Start the frontend Vite development server on port 3000 (`ui/`) |
+| `pnpm dev:agent` | Stage config and start the Python agent development server on port 5001 (`agent/`) |
 | `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
 | `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
 | `pnpm test` | Run unit tests and lint checks across packages (Vitest + Pytest + `pnpm lint`) |
@@ -707,27 +709,27 @@ instance. Real Gemini, real MCP tools, real charts.
 ```sh
 pnpm install
 
-cat > ui/.env.local <<'EOF'
-BACKEND_URL=https://<your-instance>.run.app
-AGENT_URL=https://<your-instance>.run.app
-EOF
+# Point at your deployed Cloud Run instance
+cp .env.local.example .env.local
+$EDITOR .env.local
+# Set AGENT_URL to your deployed instance:
+#   AGENT_URL=https://<your-instance>.run.app
 
-pnpm -C ui dev      # http://localhost:3000
+pnpm dev:ui         # http://localhost:3000
 ```
 
-Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
-(in `vite.config.ts`) forwards `/agent/*` and the data routes; it is **dev-only**,
-so `vite build` ignores it. Defaults are `localhost:5001` and `localhost:8080` if
-unset. Vite picks up `.env.local` changes on **restart**, not live.
+Vite's `server.proxy` (in `vite.config.ts`) forwards `/agent/*` and the data
+routes to `AGENT_URL` (unless `BACKEND_URL` is set separately); it is
+**dev-only**, so `vite build` ignores it. Default is `localhost:5001` if unset.
+Vite picks up `.env.local` changes on **restart**, not live.
 
 You need Node 24 and nothing else — no Docker, no Python, no gcloud.
 
 ### Path B — the agent locally
 
-Run every command in this section from `narratives/`, in one shell, so the
-variables you export reach the server.
+Run commands in this section from `narratives/`.
 
-**Install:**
+**Install dependencies:**
 
 ```sh
 (cd agent && uv sync)   # creates agent/.venv and installs from uv.lock
@@ -736,42 +738,43 @@ variables you export reach the server.
 There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
 uses it.
 
-Choose what it talks to — the same three backends, selected the same way, by URL.
+**1. Configure local environment:**
 
-**Public Data Commons.** Nothing to provision, but note it takes **two** hosts:
-
-```sh
-export MCP_SERVER_URL="https://api.datacommons.org/mcp"
-export DC_API_KEY="..."
-export DATA_PLANE_URL="https://api.datacommons.org"      # MCP + versioned REST
-export DATA_PLANE_WEB_URL="https://datacommons.org"      # website routes the charts call
-```
-
-`api.datacommons.org` serves `/v1`, `/v2` and `/mcp`. It does **not** serve the
-website routes the chart web components fetch — `/api/observations/series`,
-`/api/place/name`, `/core/api/...` — which live on `datacommons.org` only. Set
-only `DATA_PLANE_URL` and the agent answers correctly with real numbers while
-every chart silently 404s, because the failure is entirely browser-side:
-
-```json
-{"message":"The current request is not defined by this API.","code":404}
-```
-
-`DATA_PLANE_WEB_URL` defaults to `DATA_PLANE_URL`, so a deployed plane needs only
-the one URL — one container serves both MCP and the website.
-
-**A deployed data plane:**
+Copy `.env.local.example` to `.env.local` and add your Gemini API key:
 
 ```sh
-export MCP_SERVER_URL="https://<data-plane>-uc.a.run.app/mcp"
-export DATA_PLANE_URL="https://<data-plane>-uc.a.run.app"
+cp .env.local.example .env.local
+$EDITOR .env.local      # Add your GEMINI_API_KEY="..."
 ```
 
-> A private data plane expects a Google-signed ID token, which the agent mints
-> from the **metadata server** — unavailable off GCP, so `attach_auth` is a no-op
-> on a laptop and the call is refused. Either widen that service's ingress
-> temporarily, or run against public Data Commons. Local development against a
-> private backend is not a supported path.
+The template is pre-configured with public Data Commons endpoints:
+```sh
+MCP_SERVER_URL="https://api.datacommons.org/mcp"
+DATA_PLANE_URL="https://api.datacommons.org"
+DATA_PLANE_WEB_URL="https://datacommons.org"
+AGENT_URL="http://localhost:5001"
+```
+
+*(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL`
+and `DATA_PLANE_URL` to your Cloud Run service URL, and remove
+`DATA_PLANE_WEB_URL` so it falls back to `DATA_PLANE_URL`.)*
+
+**2. Start local development:**
+
+Run the agent and UI in two separate terminals:
+
+```sh
+# Terminal 1: backend agent (port 5001)
+pnpm dev:agent
+
+# Terminal 2: frontend Vite dev server (port 3000)
+pnpm dev:ui
+```
+
+`pnpm dev:agent` (or `uv run narratives-agent-dev`) loads `.env.local` and
+stages `agent/config.json` from `defaults/` + `config/` + `prompts/`
+(incorporating your `GEMINI_API_KEY`) before starting the Uvicorn server with
+auto-reload.
 
 **Config and keys:**
 
@@ -1025,7 +1028,7 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
 | Public access binding refused | Domain Restricted Sharing | Use IAP or the proxy |
 | `/healthz` works but the uptime check does not | Cloud Run's frontend reserves `/healthz` and answers it itself | External checks must use `/agent/health` |
-| A private backend refuses everything locally | No metadata server on a laptop | Expected — see Path B |
+| A private backend refuses everything locally | No metadata server on a laptop | Expected — use public Data Commons locally, or widen ingress temporarily |
 | Ingestion fails: missing `Source` | MCF incomplete | Define every provenance's `Source` node |
 | Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
 | `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
@@ -1042,6 +1045,7 @@ server-minted `turn_id` that also tags the turn's trace spans.
 ```
 README.md                  this file — the only prose doc in the repo
 deploy.sh                  the one deploy entry point; no --instance flag
+.env.local.example         template for local .env.local development settings
 
 config/                    YOURS — this deployment's settings and overrides
   instance.env             required: project, region, backend, access
@@ -1050,6 +1054,7 @@ config/                    YOURS — this deployment's settings and overrides
   prompts/  assets/        optional overrides
 defaults/                  upstream baseline; config/ is laid over this
 schemas/                   JSON Schemas + example branding — code, not config
+scripts/                   build-time static asset staging (stage_static.mjs)
 
 agent/                     app plane — API + SPA, one uvicorn process
   pyproject.toml           direct dependencies; ruff, mypy and pytest config
