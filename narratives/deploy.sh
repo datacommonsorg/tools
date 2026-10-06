@@ -651,9 +651,10 @@ if [ "$CODE_ONLY" = false ]; then
 
             # Validate before storing. Getting this wrong is expensive to find:
             # the deploy succeeds, the service starts, and the only symptom is
-            # chat answering "MCP server not connected" while /agent/health
-            # reports zero tools -- which looks like a broken deployment rather
-            # than a mistyped key, and sends you into the logs for an hour.
+            # every chat turn failing with "The data service is unavailable"
+            # while /agent/health reports zero tools, which looks like a
+            # broken deployment rather than a mistyped key, and sends you into
+            # the logs for an hour.
             if [ "$value_var" = "DC_API_KEY" ]; then
                 dc_probe="${PUBLIC_DC_URL:-https://api.datacommons.org}"
                 log_info "Checking DC_API_KEY against ${dc_probe} ..."

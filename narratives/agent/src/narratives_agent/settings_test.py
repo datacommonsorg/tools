@@ -21,11 +21,11 @@ Verifies that `Settings`:
 4. Falls back to `data_plane_url` for `data_plane_web_url`.
 5. Derives the default `static_root` from `agent_root`, and rejects a
    `static_root` that equals or contains `agent_root`.
-6. Defaults `session_log_to_file` by `K_SERVICE`, and parses an explicit value
-   after stripping and lowercasing it.
-7. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
+6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
-8. Rejects a port that is not a number.
+7. Rejects a port that is not a number.
+8. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
+   rejects a value shorter than `MIN_SECRET_BYTES`.
 """
 
 from pathlib import Path
@@ -39,7 +39,6 @@ from narratives_agent.settings import Settings
 # test/dummy/example/fake tokens to avoid secret-scanner false alarms.
 _KEY_SHAPED = "AIza_test_dummy_example_fake_key_0000"
 
-_CLOUD_RUN_SERVICE = "narratives-agent"
 _DATA_PLANE = "https://data-plane-uc.a.run.app"
 
 
@@ -231,50 +230,6 @@ def test_static_root_must_not_contain_agent_root(
 
 
 @pytest.mark.parametrize(
-    ("k_service", "expected"),
-    [
-        pytest.param("", True, id="off-cloud-run"),
-        pytest.param(_CLOUD_RUN_SERVICE, False, id="on-cloud-run"),
-    ],
-)
-def test_session_log_to_file_default_depends_on_k_service(
-    monkeypatch: pytest.MonkeyPatch, k_service: str, expected: bool
-) -> None:
-    # Test: Default of `session_log_to_file`.
-    # Situation: `SESSION_LOG_TO_FILE` is unset, and `K_SERVICE` is empty, as
-    #   off Cloud Run, or names a service, as on Cloud Run.
-    # Expectation: Session logs go to files off Cloud Run only.
-    settings = _read_settings(monkeypatch, {"K_SERVICE": k_service})
-    assert settings.session_log_to_file is expected
-
-
-@pytest.mark.parametrize(
-    ("k_service", "raw", "expected"),
-    [
-        pytest.param(_CLOUD_RUN_SERVICE, " TRUE ", True, id="padded-true"),
-        pytest.param(_CLOUD_RUN_SERVICE, "yes", True, id="yes"),
-        pytest.param(_CLOUD_RUN_SERVICE, "1", True, id="one"),
-        pytest.param("", " 0 ", False, id="padded-zero"),
-        pytest.param("", "false", False, id="false"),
-        pytest.param("", "on", False, id="unrecognized"),
-    ],
-)
-def test_session_log_to_file_explicit_value_overrides_default(
-    monkeypatch: pytest.MonkeyPatch, k_service: str, raw: str, expected: bool
-) -> None:
-    # Test: Parsing of an explicit `SESSION_LOG_TO_FILE`.
-    # Situation: `SESSION_LOG_TO_FILE` is set, padded or not, where the default
-    #   is the opposite value: on Cloud Run for values that turn file logging
-    #   on, and off Cloud Run for the rest.
-    # Expectation: "1", "true", and "yes", in any case, turn file logging on;
-    #   any other value turns it off.
-    settings = _read_settings(
-        monkeypatch, {"K_SERVICE": k_service, "SESSION_LOG_TO_FILE": raw}
-    )
-    assert settings.session_log_to_file is expected
-
-
-@pytest.mark.parametrize(
     ("raw", "expected"),
     [
         pytest.param(None, False, id="unset"),
@@ -311,3 +266,35 @@ def test_non_numeric_port_is_rejected(
     monkeypatch.setenv(name, "abc")
     with pytest.raises(ValidationError, match=name.lower()):
         Settings()
+
+
+def test_transcript_hmac_secret_is_read_and_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `TRANSCRIPT_HMAC_SECRET` is read from the environment and masked in
+    #   string and `repr()` output.
+    # Situation: The variable is first unset and then exported with a valid
+    #   secret value.
+    # Expectation: When unset, the secret is empty; when set, the secret holds
+    #   the value, and neither the field's string form nor `repr(settings)`
+    #   reveals it.
+    assert Settings().transcript_hmac_secret.get_secret_value() == ""
+
+    settings = _read_settings(
+        monkeypatch, {"TRANSCRIPT_HMAC_SECRET": _KEY_SHAPED}
+    )
+
+    assert settings.transcript_hmac_secret.get_secret_value() == _KEY_SHAPED
+    assert _KEY_SHAPED not in str(settings.transcript_hmac_secret)
+    assert _KEY_SHAPED not in repr(settings)
+
+
+def test_a_short_transcript_hmac_secret_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `TRANSCRIPT_HMAC_SECRET` values shorter than 32 bytes are rejected.
+    # Situation: The variable is exported with 31 bytes.
+    # Expectation: Reading the settings raises `ValidationError` naming the
+    #   variable.
+    with pytest.raises(ValidationError, match="TRANSCRIPT_HMAC_SECRET"):
+        _read_settings(monkeypatch, {"TRANSCRIPT_HMAC_SECRET": "s" * 31})

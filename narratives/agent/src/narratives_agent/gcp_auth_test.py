@@ -23,8 +23,11 @@ Verifies two behaviors in `gcp_auth`:
      host.
    - Setting `DATA_PLANE_AUTH=off` disables credential attachment entirely.
 2. `get_id_token` caches minted ID tokens across requests while refusing to
-   cache empty responses or failed metadata server requests.
+   cache empty responses or failed metadata server requests, and a thread
+   that waited for another thread to mint a token reuses that token.
 """
+
+import threading
 
 import pytest
 import requests
@@ -201,3 +204,48 @@ def test_failed_id_token_fetch_is_not_cached(
 
     assert gcp_auth.get_id_token(_AUDIENCE) == ""
     assert gcp_auth._TOKEN_CACHE == {}
+
+
+class _SignalingTokenCache(dict[str, gcp_auth._CachedToken]):
+    """Token cache that sets an event when a lookup returns no entry."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.missed = threading.Event()
+
+    def get(  # type: ignore[override]
+        self, key: str, default: gcp_auth._CachedToken | None = None
+    ) -> gcp_auth._CachedToken | None:
+        value = super().get(key, default)
+        if value is None:
+            self.missed.set()
+        return value
+
+
+def test_a_waiting_thread_reuses_the_token_minted_while_it_waited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Concurrent cache misses share one metadata-server request.
+    # Situation: The test holds `_TOKEN_LOCK` as if another thread were
+    #   minting a token. A worker thread misses the empty cache and waits on
+    #   the lock; the test then stores a token, as the minting thread would,
+    #   and releases the lock.
+    # Expectation: The worker returns the stored token without requesting a
+    #   token from the metadata server itself.
+    server = _CountingMetadataServer("second-token")
+    monkeypatch.setattr(requests, "get", server)
+    cache = _SignalingTokenCache()
+    monkeypatch.setattr(gcp_auth, "_TOKEN_CACHE", cache)
+    result: list[str] = []
+
+    with gcp_auth._TOKEN_LOCK:
+        worker = threading.Thread(
+            target=lambda: result.append(gcp_auth.get_id_token(_AUDIENCE))
+        )
+        worker.start()
+        assert cache.missed.wait(timeout=5)
+        cache[_AUDIENCE] = {"token": "first-token", "exp": float("inf")}
+    worker.join(timeout=5)
+
+    assert result == ["first-token"]
+    assert server.calls == 0

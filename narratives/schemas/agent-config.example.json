@@ -5,7 +5,7 @@
   "gemini": {
     "api_key": "REPLACE_ME_OR_USE_SECRET_MANAGER",
     "api_base": "https://generativelanguage.googleapis.com/v1beta/models",
-    "mcp_model": "gemini-3-flash-preview"
+    "mcp_model": "gemini-3.8-flash"
   },
 
   "mcp": {

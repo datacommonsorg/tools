@@ -26,15 +26,21 @@ from pydantic import (
     AfterValidator,
     BeforeValidator,
     Field,
+    SecretStr,
     ValidationInfo,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Boolean environment variables (`GOOGLE_GENAI_USE_VERTEXAI` and
-# `SESSION_LOG_TO_FILE`) turn on with one of these values, compared after
-# stripping and lowercasing, and off with any other value.
+# Boolean environment variables (such as `GOOGLE_GENAI_USE_VERTEXAI`) turn on
+# with one of these values, compared after stripping and lowercasing, and off
+# with any other value.
 _TRUTHY_ENV_VALUES = ("1", "true", "yes")
+
+# `MIN_SECRET_BYTES` is the shortest `TRANSCRIPT_HMAC_SECRET` accepted: the
+# 256 bits of an HMAC-SHA256 key.
+MIN_SECRET_BYTES = 32
 
 
 def _strip_trailing_slashes(value: str) -> str:
@@ -72,11 +78,6 @@ def _resolve_data_plane_web_url(value: str, info: ValidationInfo) -> str:
     """
     data_plane_url: str = info.data.get("data_plane_url", "")
     return value.rstrip("/") or data_plane_url
-
-
-def _should_log_session_to_file_by_default(data: dict[str, Any]) -> bool:
-    """Returns True off Cloud Run, where `k_service` is empty."""
-    return not data["k_service"]
 
 
 # Trailing slashes are stripped from these strings, so a base URL or path
@@ -207,21 +208,12 @@ class Settings(BaseSettings):
     # in config.json applies.
     gemini_api_key_secret: str = ""
 
-    # When true, session logs also go to files, in `logs` under `agent_root`.
-    #
-    # Every Cloud Run instance has its own ephemeral disk, so a session log
-    # written to a file dies with the instance and cannot be read across the
-    # fleet -- exactly when scaling out makes it most needed. Emitting one JSON
-    # object per line on stdout gets the same information into Cloud Logging
-    # as structured entries, queryable by session_id and event_type, with no
-    # dependency and no credentials.
-    #
-    # Files are still written off Cloud Run, because tailing one is the fastest
-    # way to debug locally. SESSION_LOG_TO_FILE forces either behavior
-    # explicitly.
-    session_log_to_file: _EnvBool = Field(
-        default_factory=_should_log_session_to_file_by_default
-    )
+    # Transcript turns are signed with HMAC-SHA256 under this secret, so a
+    # turn signed by one instance verifies on any other. When it is unset,
+    # each process signs with a random key of its own, and a transcript then
+    # verifies only on the process that signed it. `SecretStr` keeps the value
+    # out of `repr()` output and logs.
+    transcript_hmac_secret: SecretStr = SecretStr("")
 
     @model_validator(mode="before")
     @classmethod
@@ -237,6 +229,26 @@ class Settings(BaseSettings):
             for name, value in data.items()
             if not (isinstance(value, str) and not value.strip())
         }
+
+    @field_validator("transcript_hmac_secret")
+    @classmethod
+    def _require_a_strong_secret(cls, value: SecretStr) -> SecretStr:
+        """Rejects a transcript secret shorter than `MIN_SECRET_BYTES`.
+
+        A short secret can be guessed offline from any signed turn, which
+        would let a client forge its own transcript. Unset is allowed, in
+        which case each process generates its own key.
+
+        Raises:
+            ValueError: The secret is set and shorter than the minimum.
+        """
+        secret = value.get_secret_value()
+        if secret and len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
+            raise ValueError(
+                f"TRANSCRIPT_HMAC_SECRET must be at least {MIN_SECRET_BYTES} "
+                "bytes; generate one with `openssl rand -hex 32`."
+            )
+        return value
 
     @model_validator(mode="after")
     def _keep_agent_root_out_of_static_root(self) -> Settings:

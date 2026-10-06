@@ -11,8 +11,7 @@ import { InspectIcon } from "./icons";
 /**
  * Reports whether the provenance inspector is enabled — i.e. the page was
  * opened with `?debug=provenance`. Evaluated per render (not at module load) so
- * it reacts to client-side navigation and stays safe under SSR/tests. Mirrors
- * the `?debug=tokens` switch in header.tsx.
+ * it reacts to client-side navigation and stays safe under SSR/tests.
  */
 export const isProvenanceDebugEnabled = () =>
   typeof window !== "undefined" &&

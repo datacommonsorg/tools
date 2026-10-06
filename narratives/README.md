@@ -680,12 +680,15 @@ pnpm i
 | `pnpm dev:agent` | Stage config and start the Python agent development server on port 5001 (`agent/`) |
 | `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
 | `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
-| `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
+| `pnpm test` | Run unit tests and lint checks across packages (Vitest + Pytest + `pnpm lint`) |
 | `pnpm test:ui` | Run the frontend Vitest suite |
 | `pnpm test:agent` | Run the backend Pytest suite |
+| `pnpm lint` | Run all lint, formatting, and type checks (UI, agent, and deployment) |
+| `pnpm fix` | Auto-fix formatting and lint issues (Biome, Ruff, and Terraform) |
 
 > [!TIP]
-> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or updating a PR.
+> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or
+> updating a PR. If lint checks fail, run `pnpm fix` to format and auto-fix.
 
 ---
 
@@ -773,20 +776,145 @@ stages `agent/config.json` from `defaults/` + `config/` + `prompts/`
 (incorporating your `GEMINI_API_KEY`) before starting the Uvicorn server with
 auto-reload.
 
-**Check it**, from a terminal:
+**Config and keys:**
+
+```sh
+export CONFIG_URL="https://storage.googleapis.com/<bucket>/agent-config.json"
+export BRAND_CONFIG_URL="https://storage.googleapis.com/<bucket>"
+```
+
+The Gemini key is **not** an environment variable. `get_gemini_api_key()` resolves
+`GEMINI_API_KEY_SECRET` through Secret Manager and falls back to
+`gemini.api_key` in the config document — which is the local path, since Secret
+Manager needs credentials the laptop may not have:
+
+```json
+{ "gemini": { "api_key": "your-key" } }
+```
+
+The secret payload stores the bare API key string rather than JSON. If Secret
+Manager still holds a legacy `["<key>"]` JSON array, the loader rejects it and
+logs an error instructing you to re-run `./deploy.sh --bootstrap-secrets`.
+
+Do not commit a real key in `agent-config.json`; the checked-in files define
+the schema shape only.
+
+**Transcript signing key** (optional locally):
+
+```sh
+export TRANSCRIPT_HMAC_SECRET="$(openssl rand -hex 32)"
+```
+
+The browser holds the conversation and sends it with every request; the agent
+signs each completed turn with this key and rejects a transcript whose
+signatures do not verify. When the variable is unset, the agent signs with a
+random key generated at startup, which is enough for one local process: a
+restart invalidates the transcripts the browser holds, and the UI then clears
+the earlier context and asks the user to repeat the question. On Cloud Run,
+where requests reach several instances, every instance must share one secret;
+the agent logs a warning when `K_SERVICE` is set and the secret is not.
+
+**Serve the SPA from the agent**, so routing matches production:
+
+```sh
+pnpm build
+```
+
+Skip it if you only care about the API — `/` will 404 and `/agent/*` still works.
+
+**Start the server:**
+
+```sh
+(cd agent && uv run narratives-agent-dev)   # http://localhost:5001
+```
+
+It listens on `127.0.0.1` and restarts when a source file changes. Set
+`AGENT_PORT` to use another port. Stop it with Ctrl+C.
+
+**Check it**, from a second terminal:
 
 ```sh
 curl -s localhost:5001/agent/health | jq    # mcp_url is the resolved MCP endpoint
 curl -sN -X POST localhost:5001/agent/chat/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"What is the population of France?","history":[]}'
+  -d '{"message":"What is the population of France?","turns":[]}'
 ```
 
 The server does not contact MCP at startup, and `/agent/health` never does:
 it reports the resolved `mcp_url` and the cached tool surface, which is empty
 until a chat turn has listed the tools. The chat request is therefore the first
-call to reach MCP. Its stream should carry `session_id`, `mcp_start`, tool
-events, text, and `done`.
+call to reach MCP.
+
+The stream uses typed Server-Sent Events. Every frame names its `event:` and
+carries a JSON `data:` payload, and every frame except `heartbeat` carries an
+`id:` counting up from 1:
+
+| Event | Payload |
+|---|---|
+| `status` | `{phase, message}` (`mcp`, `synthesis`, or `chart_config`) |
+| `thought` | `{thought, phase}` (a reasoning summary from `mcp` or `synthesis`) |
+| `content` | one of `{text}`, `{tool_call}`, `{sources}`, `{data_status}`, `{chart_config}` |
+| `terminal` | `{state, idempotency_key, error?, reason?}`, plus `{turn_index, hmac, state_slots, compacted_summary, window}` on a signed `complete` |
+| `follow_ups` | `{follow_up_questions}`, sent after `terminal` when any are generated |
+| `heartbeat` | `{}`, sent every 15 seconds so proxies keep the connection open |
+
+A turn is finished only by its single `terminal` frame, whose `state` is
+`complete` or `error` (with a user-safe `error` and a machine-readable `reason`
+such as `mcp_unavailable`, `mcp_timeout`, or `synthesis_empty`). A stream that
+ends without a `terminal` frame was cut off, and the UI displays the turn as
+interrupted. MCP is a hard dependency: when no tools can be listed or a tool
+call fails at the transport layer, the turn ends in `error` rather than
+answering without data. A disconnected client receives no terminal frame; the
+turn is canceled and recorded as `canceled`. The request may carry an
+`idempotency_key`, which the UI generates per submission and the terminal
+frame echoes. A healthy local turn emits `content` frames carrying
+`tool_call`, then the answer `text`, and then a `complete` terminal frame.
+
+**Multi-turn context**: A follow-up request carries the signed window from the
+previous `complete` frame:
+
+```json
+{
+  "message": "And for Germany?",
+  "idempotency_key": "b7e0...",
+  "turns": [
+    {
+      "turn_index": 0,
+      "idempotency_key": "3f1c...",
+      "user_query": "What is the population of France?",
+      "model_response": "<the streamed answer text, exactly>",
+      "state_slots": {"scopes": [...]},
+      "hmac": "<64 hex characters>"
+    }
+  ],
+  "compacted_summary": null
+}
+```
+
+Each turn's `hmac` chains it to the previous turn. Before the stream opens,
+the agent rejects:
+
+| Status | When |
+|---|---|
+| 413 (`request_too_large`) | the body exceeds 4 MiB |
+| 400 (`transcript_invalid`) | the window was altered, reordered, or spliced, or is outside its schema or caps: more than 6 turns, a 32,000-character answer, or an 8,000-character summary |
+| 422 | the body is not JSON, or `message` (at most 4,000 characters) or `idempotency_key` is invalid |
+
+The UI recovers from a 400 by clearing the signatures it holds, so the next
+question starts without earlier context. The window holds at most 6 turns:
+when a seventh completes, the oldest is folded into `compacted_summary` by a
+model call (falling back to a structured summary after 5 seconds) and the
+whole window is re-signed, so the `complete` frame of such a turn can arrive
+up to 5 seconds after the answer finishes streaming. The client replaces the
+signatures it holds with those listed in the frame's `window` and drops any
+turn that `window` does not list. `state_slots` records the places,
+variables, and dates each turn retrieved, which later turns use to resolve
+references such as "them" or "that period". A `complete` frame without
+`hmac` marks a turn that was not signed, because its answer exceeded the cap
+or signing failed; the client leaves it out of later requests. Signing and
+compaction are timed as the `finalize` phase in telemetry. The summary and
+scopes reach the model inside a delimited background block; they are not yet
+screened by Model Armor.
 
 Production runs `uvicorn narratives_agent.server.app:app`; `dev.py` is the
 development path.
@@ -798,32 +926,31 @@ development path.
 Nothing is mocked that matters.
 
 ```sh
-# Run all tests across UI and agent:
+# Run all unit tests and lint checks across UI, agent, and deployment:
 pnpm test
 
 # Or run by component:
-pnpm test:ui                               # Vitest UI suite (9 files, 108 tests)
+pnpm test:ui                               # Vitest UI suite
 pnpm test:agent                            # Pytest agent suite
+pnpm lint                                  # All lint, format, and type checks
+pnpm fix                                   # Auto-fix formatting and lint issues
 ```
 
 Agent tests are pytest modules named `*_test.py`, colocated beside the module
 under test inside `src/narratives_agent/`. `uv run` executes them in the locked
 environment, so there is nothing to activate and nothing to install by hand.
 
-Style and types are separate checks, and CI fails on any of them:
+Linting, formatting, and static type-checking can also be run by layer (`pnpm
+lint:ui`, `pnpm lint:agent`, `pnpm lint:deploy`), and CI fails on any of them:
 
 ```sh
-cd agent
-uv run ruff format --check .               # formatting
-uv run ruff check .                        # lint
-uv run mypy                                # types, strict
+pnpm lint:ui                               # tsc --noEmit + Biome
+pnpm lint:agent                            # Ruff format/lint + mypy --strict
+pnpm lint:deploy                           # Terraform fmt/validate + ShellCheck + Hadolint
 ```
 
-> The agent type-checks under `mypy --strict`. Modules written before that
-> standard are exempted one at a time in `agent/pyproject.toml`, and each
-> exemption names the branch that rewrites or deletes the module it covers. An
-> exemption is retired by deleting that module, never by annotating code that is
-> about to be replaced — the list only shrinks.
+> The agent type-checks under `mypy --strict`, tests included, with no
+> per-module exemptions.
 
 The agent suites cover six behaviors whose failure is **silent**:
 
@@ -906,8 +1033,10 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
 | `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
 
-For anything else, start with the app plane's Cloud Run logs — session events are
-structured JSON queryable by `session_id` and `event_type`.
+For anything else, start with the app plane's Cloud Run logs. Each chat turn
+writes one structured `chat_turn` record (terminal state, error type, phase
+durations, tool names, and token counts, never user content) keyed by a
+server-minted `turn_id` that also tags the turn's trace spans.
 
 ---
 
@@ -966,10 +1095,11 @@ re-derived. Which is exactly why the clone must be private.
 
 ### Two seams, and only one is stable
 
-**Agent → backend, over MCP: stable, abstract here.** Four JSON-RPC methods —
-`initialize`, `notifications/initialized`, `tools/list`, `tools/call` — over
-Streamable-HTTP, session in the `Mcp-Session-Id` header, protocol version
-config-driven. This genuinely works unchanged across every backend.
+**Agent → backend, over MCP: stable, abstract here.** The agent uses the
+official `mcp` SDK to send `initialize`, `notifications/initialized`, `ping`,
+`tools/list`, and `tools/call` requests over Streamable HTTP. The session ID is
+sent in the `Mcp-Session-Id` header, and the protocol version is chosen during
+`initialize`. This works unchanged across every backend.
 
 **Browser → backend, over HTTP: not stable, proxy it, do not translate it.** The
 two REST generations return different shapes (`data[var][entity].series` +

@@ -13,16 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Generates follow-up questions suggested after a completed answer."""
+
 import json
 import logging
 import re
+from typing import Any
 
 from narratives_agent.config import get_gemini_model, load_config
-from narratives_agent.gemini.client import gemini_request
+from narratives_agent.gemini.client import (
+    LIGHTWEIGHT_THINKING_LEVEL,
+    async_gemini_request,
+)
 from narratives_agent.gemini.schemas import (
     DEFAULT_FOLLOW_UP_PROMPT,
     FOLLOW_UP_SCHEMA,
 )
+from narratives_agent.telemetry import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +37,11 @@ logger = logging.getLogger(__name__)
 MAX_FOLLOW_UP_QUESTIONS = 3
 
 
-def generate_follow_up_questions(user_message: str, topics: list) -> list:
+async def generate_follow_up_questions(
+    user_message: str,
+    topics: list[str],
+    token_usage: TokenUsage | None = None,
+) -> list[str]:
     """Generate self-contained follow-up questions grounded in the resolved
     topics.
 
@@ -57,28 +68,32 @@ RELATED TOPICS START: {"; ".join(topics)}. RELATED TOPICS END.
 Generate the self-contained follow-up questions now."""
 
     try:
-        response = gemini_request(
+        response = await async_gemini_request(
             messages=[{"role": "user", "parts": [{"text": prompt}]}],
             system_instruction=system_prompt,
             model=model,
             temperature=0.8,  # higher for varied phrasing
-            thinking_level="minimal",
+            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
             response_schema=FOLLOW_UP_SCHEMA,
-            stream=False,
+            token_usage=token_usage,
         )
-        questions = []
+        questions: list[Any] = []
         if "candidates" in response:
             text = response["candidates"][0]["content"]["parts"][0].get(
                 "text", "{}"
             )
-            questions = (json.loads(text) or {}).get("questions", []) or []
-    except Exception as e:
-        logger.error(f"Follow-up generation error: {e}")
+            loaded = json.loads(text)
+            questions = (
+                loaded.get("questions", []) if isinstance(loaded, dict) else []
+            ) or []
+    except Exception as error:
+        logger.error("Follow-up generation error: %s", error)
         return []
 
     # Safety net: drop empties, context-dependent pronouns, and duplicates;
     # cap 3.
-    cleaned, seen = [], set()
+    cleaned: list[str] = []
+    seen: set[str] = set()
     for q in questions:
         if not isinstance(q, str):
             continue

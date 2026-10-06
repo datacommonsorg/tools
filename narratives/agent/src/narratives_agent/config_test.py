@@ -21,13 +21,16 @@ Covers five configuration behaviors in `config`:
    bucket directory prefixes while stripping query parameters, and stripping
    HTML authoring comments from loaded prompt files.
 3. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
-   preferring Secret Manager over `config.json` and rejecting placeholder,
-   empty, or JSON-wrapped secret payloads.
+   preferring Secret Manager over `config.json`, rejecting placeholder,
+   empty, or JSON-wrapped secret payloads, and reusing a key another thread
+   loaded while the caller waited.
 4. Resolution of `get_gemini_model` across configured, empty, and null `gemini`
    configuration sections.
 5. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
    resolved.
 """
+
+import threading
 
 import pytest
 
@@ -334,7 +337,10 @@ def test_fetch_key_from_secret_manager_validates_secret_payload(
     # Situation: Secret Manager returns a bare key, a legacy JSON array, a
     #   JSON-quoted string, or whitespace.
     # Expectation: Only the bare key is returned and cached; JSON-encoded and
-    #   empty payloads are rejected with "".
+    #   empty payloads are rejected with "". The read is bounded by
+    #   `_SECRET_MANAGER_TIMEOUT_SECONDS`.
+    timeouts: list[float] = []
+
     class _StubPayload:
         data = raw_payload
 
@@ -343,8 +349,9 @@ def test_fetch_key_from_secret_manager_validates_secret_payload(
 
     class _StubSecretClient:
         def access_secret_version(
-            self, request: dict[str, str]
+            self, request: dict[str, str], timeout: float
         ) -> _StubVersionResponse:
+            timeouts.append(timeout)
             return _StubVersionResponse()
 
     class _StubSecretModule:
@@ -358,6 +365,7 @@ def test_fetch_key_from_secret_manager_validates_secret_payload(
 
     secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
     assert config._fetch_key_from_secret_manager(secret_path) == expected
+    assert timeouts == [config._SECRET_MANAGER_TIMEOUT_SECONDS]
     if expected:
         assert config._secret_manager_cache[secret_path][1] == expected
     else:
@@ -465,3 +473,61 @@ def test_unresolvable_timezone_falls_back_to_utc(
         result = config.get_current_datetime()
     assert result.endswith("UTC")
     assert "Mars/Olympus_Mons" in caplog.text
+
+
+class _SignalingSecretCache(dict[str, tuple[float, str]]):
+    """Secret cache that sets an event when a lookup returns no entry."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.missed = threading.Event()
+
+    def get(  # type: ignore[override]
+        self, key: str, default: tuple[float, str] | None = None
+    ) -> tuple[float, str] | None:
+        value = super().get(key, default)
+        if value is None:
+            self.missed.set()
+        return value
+
+
+def test_a_waiting_thread_reuses_the_key_loaded_while_it_waited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Concurrent cache misses share one Secret Manager request.
+    # Situation: The test holds `_secret_manager_lock` as if another thread
+    #   were loading the key. A worker thread misses the empty cache and waits
+    #   on the lock; the test then stores a key, as the loading thread would,
+    #   and releases the lock.
+    # Expectation: The worker returns the stored key without creating a
+    #   Secret Manager client itself.
+    clients: list[object] = []
+
+    class _StubSecretModule:
+        @staticmethod
+        def SecretManagerServiceClient() -> object:  # noqa: N802
+            clients.append(object())
+            raise AssertionError("Secret Manager must not be called")
+
+    secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
+    cache = _SignalingSecretCache()
+    monkeypatch.setattr(config, "_SECRET_MANAGER_AVAILABLE", True)
+    monkeypatch.setattr(
+        config, "secretmanager", _StubSecretModule, raising=False
+    )
+    monkeypatch.setattr(config, "_secret_manager_cache", cache)
+    result: list[str] = []
+
+    with config._secret_manager_lock:
+        worker = threading.Thread(
+            target=lambda: result.append(
+                config._fetch_key_from_secret_manager(secret_path)
+            )
+        )
+        worker.start()
+        assert cache.missed.wait(timeout=5)
+        cache[secret_path] = (float("inf"), "loaded-key")
+    worker.join(timeout=5)
+
+    assert result == ["loaded-key"]
+    assert clients == []

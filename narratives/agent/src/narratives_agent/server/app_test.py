@@ -23,6 +23,7 @@ Verifies that:
    than a redirect.
 5. Startup writes config.json before it loads branding, and the lifespan opens
    the proxy's HTTP client and closes it at shutdown.
+6. The lifespan writes buffered telemetry at shutdown.
 """
 
 from pathlib import Path
@@ -32,6 +33,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from narratives_agent import telemetry
 from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server import app as server_app
 from narratives_agent.server.app import create_app
@@ -295,3 +297,25 @@ def test_lifespan_opens_the_data_plane_client_and_closes_it_at_shutdown(
         assert not data_plane_client.is_closed
 
     assert data_plane_client.is_closed
+
+
+def test_lifespan_flushes_telemetry_at_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Buffered telemetry is written when the application stops.
+    # Situation: The config bootstrap and the branding load are stubbed,
+    #   `flush_telemetry` is stubbed to record its calls, and the
+    #   application starts and then shuts down.
+    # Expectation: `flush_telemetry` is not called while the application
+    #   runs and is called once at shutdown.
+    flushes: list[None] = []
+    monkeypatch.setattr(server_app, "bootstrap_config_from_url", lambda: None)
+    monkeypatch.setattr(brand, "load_branding", lambda: None)
+    monkeypatch.setattr(
+        telemetry, "flush_telemetry", lambda: flushes.append(None)
+    )
+
+    with TestClient(create_app()):
+        assert flushes == []
+
+    assert flushes == [None]

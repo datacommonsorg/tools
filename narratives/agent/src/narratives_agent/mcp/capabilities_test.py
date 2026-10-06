@@ -21,11 +21,12 @@ names from the tool definitions returned by either MCP server generation:
   `get_multi_entity_observations`
 """
 
+import logging
 from typing import Any
 
 import pytest
 
-from narratives_agent.mcp import capabilities
+from narratives_agent.mcp import capabilities, client
 
 TOOLS_121 = [{"name": "search_indicators"}, {"name": "get_observations"}]
 TOOLS_130 = [
@@ -156,3 +157,23 @@ def test_describe_reports_discovered_tool_surface(
     #   alphabetically sorted tool names, and `supports_source_attribution` flag
     #   for each surface.
     assert capabilities.from_tools(tools).describe() == expected
+
+
+def test_current_cached_reads_cached_tools_without_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: `current_cached` builds capabilities from `client.cached_tools`
+    #   without logging gap warnings.
+    # Situation: `client.cached_tools` returns an MCP 1.2.x tool list.
+    # Expectation: `current_cached` returns the corresponding `Capabilities`
+    #   snapshot and logs no warning.
+    monkeypatch.setattr(client, "cached_tools", lambda: TOOLS_121)
+
+    with caplog.at_level(logging.WARNING, logger=capabilities.logger.name):
+        caps = capabilities.current_cached()
+
+    assert caps.tool_names == frozenset(
+        {"search_indicators", "get_observations"}
+    )
+    assert caplog.text == ""
