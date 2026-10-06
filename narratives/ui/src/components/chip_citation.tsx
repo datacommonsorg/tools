@@ -2,7 +2,9 @@
  * @fileoverview Renders an inline numbered citation chip.
  */
 
+import { createContext, useContext } from "react";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import { renderNumbers } from "./value_numeric";
 import { Tooltip } from "./tooltip";
 
 /**
@@ -91,12 +93,21 @@ export function CitationChip({
   );
 }
 
+const HideCitationsContext = createContext(false);
+
+/**
+ * Drops the `[n]` markers rendered anywhere beneath it. Wrapped around the
+ * body cells of a column whose citation was lifted onto its header, including
+ * the markers nested inside `strong` or `em`.
+ */
+export const HideCitationsProvider = HideCitationsContext.Provider;
+
 /**
  * Walk a children array and replace `[N]` patterns inside strings with
- * <CitationChip /> elements. Returns a new children array suitable for
- * React rendering. Pass any react-markdown component's `children` through
- * this helper to apply citation styling consistently inside p, li, td,
- * strong, headings, em, etc.
+ * <CitationChip /> elements, shortening any long numbers alongside them.
+ * Returns a new children array suitable for React rendering. Pass any
+ * react-markdown component's `children` through this helper to apply citation
+ * styling consistently inside p, li, td, strong, headings, em, etc.
  */
 export function renderWithCitations(
   children: React.ReactNode,
@@ -121,20 +132,22 @@ function ChildWithCitations({
   children: React.ReactNode;
   sources?: ProvenanceItem[];
 }) {
+  const hidden = useContext(HideCitationsContext);
   if (typeof children !== "string") {
     return <>{children}</>;
   }
-  return <>{splitWithCitations(children, sources)}</>;
+  return <>{splitWithCitations(children, sources, hidden)}</>;
 }
 
 /**
- * Split a string into a mixed array of text fragments and CitationChip
- * elements, matching `[N]` where N is 1-99. Handles multiple adjacent
- * citations like `[1] [2]` or `[1][2]`.
+ * Split a string into a mixed array of text fragments, shortened numbers and
+ * CitationChip elements, matching `[N]` where N is 1-99. Handles multiple
+ * adjacent citations like `[1] [2]` or `[1][2]`.
  */
 function splitWithCitations(
   s: string,
   sources?: ProvenanceItem[],
+  hideCitations = false,
 ): React.ReactNode[] {
   const pattern = /\[(\d{1,2})\]/g;
   const out: React.ReactNode[] = [];
@@ -143,13 +156,18 @@ function splitWithCitations(
   let i = 0;
   while ((match = pattern.exec(s)) !== null) {
     if (match.index > last) {
-      out.push(s.slice(last, match.index));
+      out.push(...renderNumbers(s.slice(last, match.index), `n${last}`));
     }
-    out.push(
-      <CitationChip key={`c-${i++}`} n={Number(match[1])} sources={sources} />,
-    );
+    if (!hideCitations) {
+      out.push(
+        <CitationChip key={`c-${i++}`} n={Number(match[1])} sources={sources} />,
+      );
+    }
     last = match.index + match[0].length;
   }
-  if (last < s.length) out.push(s.slice(last));
-  return out.length === 0 ? [s] : out;
+  if (last < s.length) out.push(...renderNumbers(s.slice(last), `n${last}`));
+  // Nothing came out because there was nothing in: either an empty string, or
+  // -- when the markers are being hidden -- a cell that held only a marker.
+  if (out.length > 0) return out;
+  return hideCitations ? [] : [s];
 }

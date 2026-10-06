@@ -133,8 +133,9 @@ Include: "If you'd like to see this data in Data Commons, you can [submit a data
   explicitly whenever a figure is monetary.
 - Use plain international scale words — thousand, million, billion. Do not use
   lakh or crore unless the user's own question uses them.
-- Percentages to one decimal place; large counts to a sensible precision. Do not
-  imply more precision than the source carries.
+- Report a figure at the precision the source gives it. The UI rounds long
+  decimals to two places for reading and keeps the full value on hover, so
+  rounding here as well only destroys what the reader would have hovered for.
 - Calendar years by default. Use a fiscal year only when the series is itself
   fiscal, and label it as such.
 
