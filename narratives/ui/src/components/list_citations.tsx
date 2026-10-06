@@ -19,12 +19,14 @@
  */
 
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import { citationAnchorId, displayCitationNumber } from "./chip_citation";
 
 /**
  * Figma node 3427-16738 (section heading) + 3427-16739 ("Body" with the
  * numbered list).
  *
- * Each row receives id="source-N" so inline CitationChips can anchor.
+ * Each row receives the id the inline CitationChips anchor to, scoped per turn
+ * so two answers citing one source do not both claim the same anchor.
  */
 
 const COLOR_TITLE = "var(--color-on-surface)";
@@ -41,6 +43,10 @@ const CITATIONS_HEADING = "Citations";
 
 interface CitationsListProps {
   sources: ProvenanceItem[];
+  /** Display label for each position; defaults to the position itself. */
+  numbers?: number[];
+  /** Which turn these sources belong to, so the anchors stay unique. */
+  turnIndex?: number;
 }
 
 /** Strips the scheme and any trailing slash, so the link reads as a reference. */
@@ -66,7 +72,11 @@ export function citationLead(source: ProvenanceItem): string {
 }
 
 /** Numbered list of citations matching the [n] chips in the answer. */
-export function CitationsList({ sources }: CitationsListProps) {
+export function CitationsList({
+  sources,
+  numbers,
+  turnIndex,
+}: CitationsListProps) {
   if (!sources || sources.length === 0) return null;
 
   // No top margin: the answer card's flex gap and the heading's padding
@@ -99,15 +109,15 @@ export function CitationsList({ sources }: CitationsListProps) {
         }}
       >
         {sources.map((source, index) => {
-          const position = index + 1;
+          const shown = displayCitationNumber(index + 1, numbers);
           const lead = citationLead(source);
           return (
             <li
               key={`${source.url}-${index}`}
-              id={`source-${position}`}
+              id={citationAnchorId(turnIndex, shown)}
               className="flex items-baseline gap-1.5"
             >
-              <span aria-hidden="true">[{position}]</span>
+              <span aria-hidden="true">[{shown}]</span>
               {/* Long dataset names and URLs often have no spaces; allow them
                   to break mid-string. `minWidth: 0` lets this flex child
                   shrink below its content width instead of overflowing. */}
