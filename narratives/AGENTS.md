@@ -55,6 +55,8 @@ Contribution process and PR expectations:
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
+- `scripts/` — build-time static asset staging (`stage_static.mjs`).
+- `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh`, and Cloud Build
   pipelines.
 
@@ -63,10 +65,13 @@ Contribution process and PR expectations:
 Run from the root of the `/narratives` directory:
 
 - `nvm use` (or `nvm install`) — switch to the Node version pinned in `.nvmrc`.
-- `corepack enable && pnpm i` — install workspace dependencies (the pnpm version
-  is pinned via `packageManager`).
-- `pnpm build` — compile the React UI and stage static assets into
-  `agent/static/`.
+- `corepack enable && pnpm i` — install workspace dependencies (the pnpm version is
+  pinned via `packageManager`).
+- `pnpm dev:ui` — start the frontend Vite development server on port 3000
+  (`pnpm -C ui dev`).
+- `pnpm dev:agent` — stage config and start the Python agent development server
+  on port 5001 (`uv run narratives-agent-dev`).
+- `pnpm build` — compile the React UI and stage static assets into `agent/static/`.
 - `pnpm build:ui` — compile the React UI bundle into `ui/dist/` without staging.
 - `pnpm test` — run unit tests and lint checks across the whole application
   (`pnpm test:ui`, `pnpm test:agent`, and `pnpm lint`).
@@ -154,18 +159,21 @@ Choose the workflow below based on which component you are changing. The MCP
 server is not run as part of this deployment; connect either to a deployed
 backend, public Data Commons or a local MCP server as preferred.
 
-- **UI (`narratives/ui/`)** — run `pnpm install`, configure `BACKEND_URL` and
-  `AGENT_URL` in `ui/.env.local`, and run `pnpm -C ui run dev`. In development,
-  Vite's `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*` and Data
-  Commons routes to those URLs; in production, the Python server in `agent/`
-  serves the compiled SPA (`server/routes/spa.py`) and proxies Data Commons
-  routes (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
-- **Agent (`narratives/agent/`)** — run `uv sync`, export `MCP_SERVER_URL`,
-  `DATA_PLANE_URL`, and `DC_API_KEY`, and run `uv run narratives-agent-dev`.
-  When pointing at public Data Commons, set both
-  `DATA_PLANE_URL=https://api.datacommons.org` (for MCP and versioned REST) and
-  `DATA_PLANE_WEB_URL=https://datacommons.org` (for website routes used by the
-  chart web components).
+- **UI (`narratives/ui/`)** — run `pnpm install`, optionally configure
+  `AGENT_URL` in `.env.local` (from `.env.local.example`) to point at a
+  deployed instance, and run `pnpm dev:ui` (or `pnpm -C ui run dev`). In
+  development, Vite's `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*`
+  and Data Commons routes to `AGENT_URL` (or `BACKEND_URL` if set separately);
+  in production, the Python server in `agent/` serves the compiled SPA
+  (`server/routes/spa.py`) and proxies Data Commons routes
+  (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
+- **Agent (`narratives/agent/`)** — run `uv sync`, configure `.env.local` (from
+  `.env.local.example`) with `GEMINI_API_KEY`, `DC_API_KEY` (which is optional
+  for some MCP servers), and optional `MCP_SERVER_URL` and `DATA_PLANE_URL`, and
+  run `pnpm dev:agent` (or `uv run narratives-agent-dev`). When pointing at
+  public Data Commons, set both `DATA_PLANE_URL=https://api.datacommons.org`
+  (for MCP and versioned REST) and `DATA_PLANE_WEB_URL=https://datacommons.org`
+  (for website routes used by the chart web components).
 - **Secrets** — never place API keys or secrets in the client bundle. All
   model and data-plane credentials stay server-side in `agent/`.
 

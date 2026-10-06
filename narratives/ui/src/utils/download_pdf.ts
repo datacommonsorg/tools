@@ -475,6 +475,12 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
   // the provenance icon, the follow-up questions.
   clone.querySelectorAll('[data-non-print="true"]').forEach((el) => el.remove());
 
+  // Remove hover styling for print layout.
+  clone.querySelectorAll<HTMLElement>(".dc-numeric").forEach((n) => {
+    n.style.textDecoration = "none";
+    n.style.cursor = "auto";
+  });
+
   // The question is the document's heading.
   //
   // index.css restyles it for print, but that rule lives in @media print and

@@ -165,6 +165,16 @@ export interface ProvenanceItem {
    * get_variable_metadata reports this; observation calls yield a bare URL.
    */
   license?: string;
+  /**
+   * The organization that published the data, e.g. "World Bank". Separate
+   * from `name`: a citation names the publisher and the dataset apart.
+   * Absent when the data plane reported only a machine identifier.
+   */
+  provider?: string;
+  /** The dataset the numbers came from, e.g. "World Development Indicators". */
+  dataset?: string;
+  /** The years the source covers, e.g. "1960 – 2023" or a single "2023". */
+  dateRange?: string;
 }
 
 /** Represents the lifecycle of one chat turn, driven by `status` and `terminal` events. */
@@ -367,6 +377,37 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
  * and answer are sent exactly as stored, because the agent verifies them
  * against the turn's signature.
  */
+/**
+ * Labels every answer's citations so one number means one source thread-wide.
+ *
+ * A source keeps the number it was first given; anything new takes the next
+ * free one. Returns one array per turn, parallel to that turn's `provenance`.
+ *
+ * A turn that renders no answer -- stopped, or errored before any text --
+ * takes no numbers, matching the condition `TurnView` renders `AnswerPanel`
+ * on. Numbering one would retire `[1]` and `[2]` to a turn with no Citations
+ * list, and the next answer would open at `[3]`.
+ *
+ * `provenance` is typed as required and still read defensively: turns are
+ * rehydrated from localStorage, which `chat_session_context` parses and
+ * filters by `status` alone, so one persisted by an older build arrives
+ * without the array the type promises.
+ */
+export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
+  const assigned = new Map<string, number>();
+  let next = 1;
+  return turns.map((turn) => {
+    if (!turn.text || turn.stopped) return [];
+    return (turn.provenance ?? []).map((source) => {
+      const key = source.url || source.name;
+      const existing = assigned.get(key);
+      if (existing !== undefined) return existing;
+      assigned.set(key, next);
+      return next++;
+    });
+  });
+}
+
 export function transcriptRequestFields(turns: ChatTurn[]): {
   turns: WireTurn[];
   compacted_summary: string | null;

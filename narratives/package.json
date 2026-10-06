@@ -5,6 +5,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "dev:ui": "pnpm -C ui dev",
+    "dev:agent": "cd agent && uv run narratives-agent-dev",
     "build": "pnpm run build:ui && node scripts/stage_static.mjs",
     "build:ui": "pnpm -C ui build",
     "test": "pnpm run test:ui && pnpm run test:agent && pnpm run lint",

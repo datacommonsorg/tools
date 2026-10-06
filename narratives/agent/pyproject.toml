@@ -37,6 +37,7 @@ dependencies = [
     "opentelemetry-sdk>=1.45",
     "opentelemetry-util-genai>=1.2b0",
     "pydantic-settings>=2.15",
+    "python-dotenv>=1.2",
     "requests>=2.32",
     "sse-starlette>=3.5",
     "uvicorn[standard]>=0.53",
