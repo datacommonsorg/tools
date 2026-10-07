@@ -14,7 +14,6 @@ export function SkeletonCard({ query }: SkeletonCardProps) {
         {query}
       </div>
       <div className="px-4 sm:px-[56px] py-6 flex flex-col gap-4">
-
         {/* Paragraph 1 */}
         <div className="flex flex-row gap-4 items-start">
           <div className="w-px h-[72px] bg-line"></div>

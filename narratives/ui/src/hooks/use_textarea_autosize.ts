@@ -3,7 +3,7 @@
  * reports whether the text spans more than one line.
  */
 
-import { type RefObject, useLayoutEffect, useState } from "react";
+import { type RefObject, useLayoutEffect, useState } from 'react';
 
 /**
  * Sizes a `rows={1}` `<textarea>` to its content whenever `value` changes, and
@@ -29,7 +29,7 @@ export const useTextareaAutosize = (
     const el = textareaRef.current;
     if (!el) return;
     const prev = el.style.height;
-    el.style.height = "auto";
+    el.style.height = 'auto';
     const hasContent = value.length > 0;
     setIsExpanded(hasContent && el.scrollHeight > el.clientHeight);
     const next = `${hasContent ? el.scrollHeight : el.clientHeight}px`;

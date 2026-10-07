@@ -5,7 +5,7 @@
  * rewrites and survives reloads, while the nginx SPA fallback handles deep paths.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 
 /**
  * Reads the current route token from the location hash.
@@ -18,8 +18,8 @@ import { useEffect, useState } from "react";
  * @returns The route token, e.g. `""` | `"metrics"` | `"download"` | `"statvar"`.
  */
 function readRoute(): string {
-  if (typeof window === "undefined") return "";
-  return window.location.hash.replace(/^#\/?/, "").split("?")[0];
+  if (typeof window === 'undefined') return '';
+  return window.location.hash.replace(/^#\/?/, '').split('?')[0];
 }
 
 /**
@@ -32,8 +32,8 @@ export function useHashRoute(): [string] {
 
   useEffect(() => {
     const onChange = () => setRoute(readRoute());
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
   }, []);
 
   return [route];

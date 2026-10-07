@@ -2,7 +2,7 @@
  * @fileoverview Hosts the upstream Statistical Variable Explorer via a same-origin iframe.
  */
 
-import { UpstreamToolIframe } from "./iframe_upstream_tool";
+import { UpstreamToolIframe } from './iframe_upstream_tool';
 
 /**
  * Embeds upstream Custom DC's Statistical Variable Explorer (Flask

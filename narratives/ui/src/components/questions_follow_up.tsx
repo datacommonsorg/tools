@@ -9,8 +9,8 @@
  * re-submits the question via the supplied onAsk callback.
  */
 
-const COLOR_HEADING = "var(--color-on-surface)";
-const COLOR_LINK = "var(--color-brand-primary)";
+const COLOR_HEADING = 'var(--color-on-surface)';
+const COLOR_LINK = 'var(--color-brand-primary)';
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
@@ -34,7 +34,7 @@ export function FollowUpQuestions({
         style={{
           fontFamily: '"Google Sans", "Google Sans Text", sans-serif',
           fontSize: 22,
-          lineHeight: "28px",
+          lineHeight: '28px',
           color: COLOR_HEADING,
           fontWeight: 500,
           margin: 0,
@@ -48,7 +48,7 @@ export function FollowUpQuestions({
         style={{
           fontFamily: FONT_STACK,
           fontSize: 16,
-          lineHeight: "24px",
+          lineHeight: '24px',
           fontWeight: 500,
         }}
       >
@@ -58,7 +58,7 @@ export function FollowUpQuestions({
               type="button"
               onClick={() => onAsk?.(q)}
               className="bg-transparent border-0 p-0 text-left cursor-pointer hover:underline"
-              style={{ color: COLOR_LINK, font: "inherit" }}
+              style={{ color: COLOR_LINK, font: 'inherit' }}
             >
               {q}
             </button>

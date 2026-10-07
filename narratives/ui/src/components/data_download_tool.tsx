@@ -2,7 +2,7 @@
  * @fileoverview Hosts the upstream Data Commons Download tool via a same-origin iframe.
  */
 
-import { UpstreamToolIframe } from "./iframe_upstream_tool";
+import { UpstreamToolIframe } from './iframe_upstream_tool';
 
 /**
  * Embeds upstream Custom DC's Data Download Tool (Flask /tools/download).

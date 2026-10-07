@@ -2,7 +2,7 @@
  * @fileoverview Provides a same-origin iframe wrapper that embeds upstream Custom DC Flask tool pages.
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef } from 'react';
 
 /**
  * Generic same-origin iframe wrapper for embedding upstream Custom DC
@@ -51,7 +51,7 @@ const CHROME_HIDER_CSS = `
   html, body, .main-content, #main-pane { min-height: 0 !important; }
 `;
 
-const INJECTED_STYLE_ID = "cdc-iframe-chrome-hider";
+const INJECTED_STYLE_ID = 'cdc-iframe-chrome-hider';
 
 /** Embeds an upstream Flask-rendered tool page in an iframe, hiding its own chrome. */
 export function UpstreamToolIframe({
@@ -69,9 +69,9 @@ export function UpstreamToolIframe({
     const doc = iframeRef.current?.contentDocument;
     if (!doc) return;
     if (doc.getElementById(INJECTED_STYLE_ID)) return;
-    const style = doc.createElement("style");
+    const style = doc.createElement('style');
     style.id = INJECTED_STYLE_ID;
-    style.textContent = CHROME_HIDER_CSS + (extraCss ?? "");
+    style.textContent = CHROME_HIDER_CSS + (extraCss ?? '');
     doc.head.appendChild(style);
   }, [extraCss]);
 
@@ -81,7 +81,7 @@ export function UpstreamToolIframe({
       src={src}
       title={title}
       className="flex-1 w-full"
-      style={{ border: "none", minHeight: 0 }}
+      style={{ border: 'none', minHeight: 0 }}
       onLoad={injectStyles}
     />
   );
