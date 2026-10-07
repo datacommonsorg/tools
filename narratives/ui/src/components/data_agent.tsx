@@ -244,11 +244,13 @@ export function DataAgent() {
       </div>
 
       {/* Follow-up input — flush against the fade (no top margin) so the
-          gradient reads as a continuous merge rather than a separator. */}
-      <div className="w-full flex flex-col items-center gap-3 bg-surface pb-4 sm:pb-6">
+          gradient reads as a continuous merge rather than a separator.
+          Positioned so it paints over the fade, which would otherwise clip
+          the top of the prompt's shadow. */}
+      <div className="relative w-full flex flex-col items-center gap-3 bg-surface pb-4 sm:pb-6">
         <PromptInput
           value={query}
-          placeholder={isStreaming ? "Streaming…" : "Ask a follow-up question"}
+          placeholder="Ask a follow-up question"
           onValueChange={setQuery}
           onSubmit={() => handleSend()}
           isStreaming={isStreaming}

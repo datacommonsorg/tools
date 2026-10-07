@@ -62,11 +62,23 @@ describe("PromptInput", () => {
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
+  it("does not submit on Enter when there is no text", () => {
+    // Test: Keyboard submit with no text.
+    // Situation: The box holds only whitespace and the user presses Enter.
+    // Expectation: Nothing is submitted.
+    const onSubmit = vi.fn();
+    render(
+      <PromptInput value="   " placeholder="Ask" onValueChange={() => {}} onSubmit={onSubmit} />,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("turns the button into a stop control while streaming", () => {
     // Test: Streaming state.
     // Situation: A response is streaming and the user presses the button.
-    // Expectation: The textarea locks, the button is named Stop and stops
-    // rather than submits.
+    // Expectation: The textarea locks and shows "Streaming…" but keeps its
+    // name; the button is named Stop and stops rather than submits.
     const onSubmit = vi.fn();
     const onStop = vi.fn();
     render(
@@ -79,7 +91,9 @@ describe("PromptInput", () => {
         onStop={onStop}
       />,
     );
-    expect(screen.getByRole("textbox")).toHaveProperty("disabled", true);
+    const textbox = screen.getByRole("textbox", { name: "Ask" });
+    expect(textbox).toHaveProperty("disabled", true);
+    expect(textbox).toHaveProperty("placeholder", "Streaming…");
     fireEvent.click(screen.getByRole("button", { name: "Stop Response" }));
     expect(onStop).toHaveBeenCalledOnce();
     expect(onSubmit).not.toHaveBeenCalled();

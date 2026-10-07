@@ -28,6 +28,7 @@ import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
 
 interface PromptInputProps {
   value: string;
+  /** Also the textarea's accessible name; replaced on screen while streaming. */
   placeholder: string;
   onValueChange: (value: string) => void;
   onSubmit: () => void;
@@ -52,12 +53,17 @@ export function PromptInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isExpanded = useTextareaAutosize(textareaRef, value);
   const actionLabel = isStreaming ? "Stop Response" : "Submit";
+  // The one gate for every submit path: the button, the form and Enter.
+  const canSubmit = !isStreaming && value.trim().length > 0;
+  const submit = () => {
+    if (canSubmit) onSubmit();
+  };
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit();
+        submit();
       }}
       // Pill radius is exactly half the 56px min-height, not rounded-full: a
       // 9999px radius stays visually round for the whole transition and snaps
@@ -78,18 +84,21 @@ export function PromptInput({
           ref={textareaRef}
           value={value}
           onChange={(e) => onValueChange(e.target.value)}
-          placeholder={placeholder}
+          // The accessible name stays the prompt's own placeholder while the
+          // visible one reports the stream.
+          placeholder={isStreaming ? "Streaming…" : placeholder}
           aria-label={placeholder}
           disabled={isStreaming}
           rows={1}
-          // Caps at four lines (max-h-24), then scrolls.
-          className="flex-1 bg-transparent outline-none resize-none max-h-24 overflow-y-auto text-body-large leading-6 text-on-surface caret-brand-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
+          // Caps at four lines (max-h-24); the autosize hook turns scrolling
+          // on only past that cap.
+          className="flex-1 bg-transparent outline-none resize-none max-h-24 overflow-y-hidden text-body-large leading-6 text-on-surface caret-brand-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
           onKeyDown={(e) => {
             // Shift+Enter inserts a newline; Enter mid-IME-composition commits
             // the composition rather than submitting.
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              onSubmit();
+              submit();
             }
           }}
         />
@@ -98,12 +107,13 @@ export function PromptInput({
           <button
             type={isStreaming ? "button" : "submit"}
             onClick={isStreaming ? onStop : undefined}
-            disabled={!isStreaming && !value.trim()}
+            disabled={!isStreaming && !canSubmit}
             aria-label={actionLabel}
             // Expanded: nudge the button in from the corner so it clears the
-            // larger card radius.
-            className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-surface-blue hover:bg-button-hover transition-colors motion-safe:transition-[margin,background-color] duration-200 ease-out disabled:opacity-50 ${
-              isExpanded ? "mt-1.25 mr-1.25" : ""
+            // larger card radius. Translated, not margined, so the textarea
+            // beside it does not reflow during the transition.
+            className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-surface-blue enabled:hover:bg-button-hover transition-colors motion-safe:transition-[translate,background-color] duration-200 ease-out disabled:opacity-50 ${
+              isExpanded ? "-translate-x-1.25 translate-y-1.25" : ""
             }`}
           >
             {isStreaming ? (
