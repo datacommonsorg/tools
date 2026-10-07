@@ -21,10 +21,10 @@
  * ring while it holds focus.
  */
 
-import { useRef } from "react";
-import { SendIcon } from "./icons";
-import { Tooltip } from "./tooltip";
-import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
+import { useRef } from 'react';
+import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
+import { SendIcon } from './icons';
+import { Tooltip } from './tooltip';
 
 interface PromptInputProps {
   value: string;
@@ -52,7 +52,7 @@ export function PromptInput({
 }: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isExpanded = useTextareaAutosize(textareaRef, value);
-  const actionLabel = isStreaming ? "Stop Response" : "Submit";
+  const actionLabel = isStreaming ? 'Stop Response' : 'Submit';
   // The one gate for every submit path: the button, the form and Enter.
   const canSubmit = !isStreaming && value.trim().length > 0;
   const submit = () => {
@@ -69,7 +69,7 @@ export function PromptInput({
       // 9999px radius stays visually round for the whole transition and snaps
       // to rounded-input at the end.
       className={`group grid w-full max-w-[720px] mx-auto bg-surface shadow-elevated motion-safe:transition-[border-radius] duration-200 ease-out ${
-        isExpanded ? "rounded-input" : "rounded-[28px]"
+        isExpanded ? 'rounded-input' : 'rounded-[28px]'
       }`}
     >
       <span
@@ -86,7 +86,7 @@ export function PromptInput({
           onChange={(e) => onValueChange(e.target.value)}
           // The accessible name stays the prompt's own placeholder while the
           // visible one reports the stream.
-          placeholder={isStreaming ? "Streaming…" : placeholder}
+          placeholder={isStreaming ? 'Streaming…' : placeholder}
           aria-label={placeholder}
           disabled={isStreaming}
           rows={1}
@@ -96,7 +96,11 @@ export function PromptInput({
           onKeyDown={(e) => {
             // Shift+Enter inserts a newline; Enter mid-IME-composition commits
             // the composition rather than submitting.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (
+              e.key === 'Enter' &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
               e.preventDefault();
               submit();
             }
@@ -105,7 +109,7 @@ export function PromptInput({
         {/* One button, two jobs — so its name changes with its job. */}
         <Tooltip label={actionLabel}>
           <button
-            type={isStreaming ? "button" : "submit"}
+            type={isStreaming ? 'button' : 'submit'}
             onClick={isStreaming ? onStop : undefined}
             disabled={!isStreaming && !canSubmit}
             aria-label={actionLabel}
@@ -113,7 +117,7 @@ export function PromptInput({
             // larger card radius. Translated, not margined, so the textarea
             // beside it does not reflow during the transition.
             className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-surface-blue enabled:hover:bg-button-hover transition-colors motion-safe:transition-[translate,background-color] duration-200 ease-out disabled:opacity-50 ${
-              isExpanded ? "-translate-x-1.25 translate-y-1.25" : ""
+              isExpanded ? '-translate-x-1.25 translate-y-1.25' : ''
             }`}
           >
             {isStreaming ? (
