@@ -13,15 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Generates chart configurations and validates whether to display charts."""
+
 import json
 import logging
+from typing import Any
 
 from narratives_agent.config import get_gemini_model, load_config
-from narratives_agent.gemini.client import gemini_request
+from narratives_agent.gemini.client import (
+    LIGHTWEIGHT_THINKING_LEVEL,
+    async_gemini_request,
+)
 from narratives_agent.gemini.schemas import (
     CHART_CONFIG_SCHEMA,
     DATA_VALIDATION_SCHEMA,
 )
+from narratives_agent.telemetry import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +39,18 @@ SYNTHESIS_PREVIEW_LENGTH = 2000
 _LOG_EXCERPT_LENGTH = 300
 
 
-def get_chart_config(mcp_results: str, user_message: str) -> dict:
+async def get_chart_config(
+    mcp_results: str,
+    user_message: str,
+    token_usage: TokenUsage | None = None,
+) -> dict[str, Any]:
     """Get chart configuration using structured output.
 
     Supports multiple charts for variables with different units/scales.
+
+    Returns:
+        The parsed chart configuration, or `{"should_render": False}` if the
+        request fails or its response cannot be parsed.
     """
     config = load_config()
     mcp_model = get_gemini_model(config)
@@ -72,7 +87,7 @@ NOT include year/date in the title.
 
 Set should_render to false if no meaningful data for visualization."""
 
-    response = gemini_request(
+    response = await async_gemini_request(
         messages=[{"role": "user", "parts": [{"text": prompt}]}],
         system_instruction=(
             "You are a data visualization expert. Extract chart "
@@ -81,9 +96,9 @@ Set should_render to false if no meaningful data for visualization."""
         ),
         model=mcp_model,
         temperature=0.2,
-        thinking_level="minimal",  # Fastest for simple extraction
+        thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
         response_schema=CHART_CONFIG_SCHEMA,
-        stream=False,
+        token_usage=token_usage,
     )
 
     try:
@@ -92,17 +107,32 @@ Set should_render to false if no meaningful data for visualization."""
                 "text", "{}"
             )
             chart_config = json.loads(text)
-            logger.info(
-                f"📊 Chart config result: {json.dumps(chart_config, indent=2)}"
+            # The model can return valid JSON that is not an object, such as
+            # `null` or `[]`. The caller expects a dict, so anything else is
+            # treated as "no charts".
+            if not isinstance(chart_config, dict):
+                logger.error(
+                    "Chart config returned %s instead of an object",
+                    type(chart_config).__name__,
+                )
+                return {"should_render": False}
+            # The configuration is derived from the user's query, so it is
+            # logged only at DEBUG, below the agent's INFO log level.
+            logger.debug(
+                "Chart config result: %s", json.dumps(chart_config, indent=2)
             )
             return chart_config
-    except Exception as e:
-        logger.error(f"Chart config parse error: {e}")
+    except Exception as error:
+        logger.error("Chart config parse error: %s", error)
 
     return {"should_render": False}
 
 
-def validate_data_response(synthesis_text: str, user_message: str) -> bool:
+async def validate_data_response(
+    synthesis_text: str,
+    user_message: str,
+    token_usage: TokenUsage | None = None,
+) -> bool:
     """Validate via Gemini whether the synthesis text contains chartable data.
 
     Returns False and logs an error if the validation request fails, returns
@@ -122,15 +152,14 @@ question?
 Return false if the response says data is "not available", "not found", \
 "doesn't exist", or similar."""
 
-    response = gemini_request(
+    response = await async_gemini_request(
         messages=[{"role": "user", "parts": [{"text": prompt}]}],
         system_instruction="You validate if a response contains actual data.",
         model=model,
         temperature=0,
-        # "minimal" is the lowest thinking level accepted by the Gemini 3 API.
-        thinking_level="minimal",
+        thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
         response_schema=DATA_VALIDATION_SCHEMA,
-        stream=False,
+        token_usage=token_usage,
     )
 
     if "candidates" not in response:
@@ -147,8 +176,8 @@ Return false if the response says data is "not available", "not found", \
             "text", "{}"
         )
         result = json.loads(text)
-    except Exception as e:
-        logger.error("Data validation parse error, hiding charts: %s", e)
+    except Exception as error:
+        logger.error("Data validation parse error, hiding charts: %s", error)
         return False
 
     verdict = result.get("data_found") if isinstance(result, dict) else None

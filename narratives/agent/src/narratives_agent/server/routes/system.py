@@ -24,8 +24,13 @@ router = APIRouter()
 
 
 @router.api_route("/health", methods=["GET", "HEAD"])
-def health() -> JSONResponse:
+async def health() -> JSONResponse:
     """Returns service health status, resolved MCP endpoint, and tool surface.
+
+    This handler runs on the event loop rather than in the worker threadpool so
+    that a cold tool cache can schedule a background refresh task on the
+    running loop. The handler reads the tool surface from the in-memory cache
+    without waiting for network I/O.
 
     Returns:
         A JSON response with the keys `status`, `mcp_url`, and `mcp`.

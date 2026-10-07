@@ -19,6 +19,8 @@ tool loop retrieved any statistical observations, and
 `extract_provenance_from_mcp_results` builds the ordered list of data sources
 referenced by citation numbers in the synthesized answer. Both functions
 support the response formats of MCP server 1.2.1 and 1.3.0.
+`parse_tool_result` and `has_observation_rows` are public because
+conversation state-slot extraction reads the same payloads.
 """
 
 import json
@@ -37,7 +39,7 @@ _OBSERVATION_TOOLS = (
 )
 
 
-def _parse_tool_result(result: Any) -> dict[str, Any] | None:
+def parse_tool_result(result: Any) -> dict[str, Any] | None:
     """Unwraps an MCP tool result into the payload the server actually returned.
 
     Results arrive as the JSON-encoded MCP envelope whose `content[0].text` is
@@ -68,7 +70,7 @@ def _parse_tool_result(result: Any) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _has_observation_rows(payload: dict[str, Any] | None) -> bool:
+def has_observation_rows(payload: dict[str, Any] | None) -> bool:
     """True when an observations payload carries at least one dated value.
 
     Checked structurally rather than by searching the text, because the two
@@ -126,7 +128,7 @@ def check_data_availability(
 
     for tc in tool_calls_list:
         tool_name = tc.get("name", "")
-        payload = _parse_tool_result(tc.get("result", ""))
+        payload = parse_tool_result(tc.get("result", ""))
 
         if tool_name in _SEARCH_TOOLS:
             search_called = True
@@ -134,7 +136,7 @@ def check_data_availability(
                 no_variables = True
         elif tool_name in _OBSERVATION_TOOLS:
             observations_called = True
-            if _has_observation_rows(payload):
+            if has_observation_rows(payload):
                 has_any_observations = True
 
     # Numbers are the only thing that counts as data: a search that found
@@ -169,13 +171,14 @@ def check_data_availability(
 def annotate_truncation(
     status: dict[str, Any], truncated: bool
 ) -> dict[str, Any]:
-    """Records on `status` that the tool loop stopped before it was finished.
+    """Updates `status` when the tool loop stops before finishing its search.
 
-    Mutates and returns `status`. check_data_availability only sees the tool
-    calls that happened, so when none of them fetched observations it concludes
-    the data does not exist. If the loop ran out of iterations that is the wrong
-    story -- we stopped looking -- and telling a user the data is missing when
-    it may not be is worse than saying nothing.
+    `check_data_availability` only sees the tool calls that completed, and
+    when none of them fetched observations it concludes that the data does
+    not exist. If the loop stops at its iteration or time limit, that
+    conclusion may be wrong because the loop ended before it could finish
+    searching. In that case, this function replaces `status["message"]` so
+    the user is not told that the data is missing.
     """
     status["truncated"] = truncated
     if truncated and not status.get("has_data"):
@@ -200,6 +203,68 @@ def _get_first_present_value(mapping: dict[str, Any], *keys: str) -> str:
     return ""
 
 
+def _looks_like_a_name(value: str) -> bool:
+    """True when a property value is something to print rather than an id.
+
+    `source` holds "World Bank" on one import and "dc/base/..." or a bare URL
+    on the next. A citation that prints the handle is worse than one that
+    leaves the publisher out, so locators are rejected and the caller omits
+    the field.
+
+    Args:
+        value: The property value to judge.
+
+    Returns:
+        bool: True when the value reads as a publisher's name.
+    """
+    if not value:
+        return False
+    if "://" in value or value.startswith("dc/"):
+        return False
+    # A dotted single token is `domain` wearing another hat; a name either has
+    # a space in it or has no dot.
+    return " " in value or "." not in value
+
+
+def _get_year_of(date: str) -> str:
+    """Returns the four-digit year at the head of a date, or "".
+
+    Args:
+        date: An ISO-ish date, e.g. "1960" or "2023-12".
+
+    Returns:
+        str: The leading four digits, or "" when they are not digits.
+    """
+    # Length as well as digits: a short date would yield a short "year".
+    head = date[:4]
+    return head if len(head) == 4 and head.isdigit() else ""
+
+
+def _get_date_range(facet: dict[str, Any]) -> str:
+    """Renders a facet's coverage as "1960 - 2023", one year, or nothing.
+
+    Reads the facet's own `dateRange`, the shape MCP 1.3.0 returns. Inferring
+    from the rows that happened to be fetched would describe this query rather
+    than the dataset.
+
+    Args:
+        facet: One facet description from a get_variable_metadata result.
+
+    Returns:
+        str: The rendered range, or "" when the server reported no dates.
+    """
+    date_range = facet.get("dateRange")
+    if not isinstance(date_range, dict):
+        return ""
+    start = _get_year_of(_get_first_present_value(date_range, "start"))
+    end = _get_year_of(_get_first_present_value(date_range, "end"))
+    if start and end:
+        if start == end:
+            return start
+        return f"{start} \u2013 {end}"
+    return start or end
+
+
 def _get_facet_index_from_variable_metadata(
     result_data: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
@@ -219,11 +284,16 @@ def _get_facet_index_from_variable_metadata(
     actually came from ("World Development Indicators"). The dataset is the
     provenance a reader needs.
 
+    `provider`, `dataset` and `dateRange` ride alongside `name` because a
+    citation names them separately and a display name cannot be split back
+    into its parts. Each is omitted when the server did not report it.
+
     Args:
         result_data: The parsed tool result.
 
     Returns:
-        dict: {facet_id: {"name": ..., "url": ..., "license": ...}}
+        dict: {facet_id: {"name", "url", and any of "license", "provider",
+        "dataset", "dateRange" that were reported}}
     """
     provenances = result_data.get("provenances")
     variables = result_data.get("variables")
@@ -261,16 +331,25 @@ def _get_facet_index_from_variable_metadata(
             if not url:
                 continue
 
+            dataset = _get_first_present_value(properties, "isPartOf")
+            provider = _get_first_present_value(properties, "source")
             entry = {
-                "name": _get_first_present_value(
-                    properties, "isPartOf", "source", "domain"
-                )
+                "name": dataset
+                or provider
+                or _get_first_present_value(properties, "domain")
                 or url,
                 "url": url,
             }
             license_type = _get_first_present_value(properties, "licenseType")
             if license_type:
                 entry["license"] = license_type
+            if dataset:
+                entry["dataset"] = dataset
+            if _looks_like_a_name(provider):
+                entry["provider"] = provider
+            date_range = _get_date_range(facet)
+            if date_range:
+                entry["dateRange"] = date_range
             index[facet_id] = entry
 
     return index
@@ -320,7 +399,7 @@ def extract_provenance_from_mcp_results(
         if tc.get("name") != "get_variable_metadata":
             continue
         try:
-            result_data = _parse_tool_result(tc.get("result", ""))
+            result_data = parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
             for facet_id, entry in _get_facet_index_from_variable_metadata(
@@ -338,7 +417,7 @@ def extract_provenance_from_mcp_results(
             continue
 
         try:
-            result_data = _parse_tool_result(tc.get("result", ""))
+            result_data = parse_tool_result(tc.get("result", ""))
             if not result_data:
                 continue
 

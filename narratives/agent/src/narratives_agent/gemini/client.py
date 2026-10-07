@@ -19,15 +19,12 @@ Default Credentials against `GOOGLE_CLOUD_PROJECT` and
 `GOOGLE_CLOUD_LOCATION`; otherwise it calls the Gemini Developer API with the
 key that `get_gemini_api_key()` resolves.
 
-Each Gemini operation is available in two forms that build requests, parse
-responses, count tokens, and report errors with the same code:
-
-- `async_gemini_request`, `async_gemini_stream`, and
-  `async_gemini_request_with_thought_streaming` are for async code
-  (`await`). Nothing calls them yet.
-- `gemini_request` and `gemini_request_with_thought_streaming` block until
-  Gemini responds. The current `workflows/` code uses them. These will be
-  removed in an upcoming PR, when `workflows/` is rewritten as async code.
+Every Gemini operation is asynchronous and shares the code that builds
+requests, parses responses, counts tokens, and reports errors:
+`async_gemini_request`, `async_gemini_stream`, and
+`async_gemini_request_with_thought_streaming`. Each accepts an optional
+`TokenUsage` to which the call's token counts are added, for the turn's
+telemetry record.
 
 The SDK returns response objects, but the code in `workflows/` (the model loop)
 reads responses as plain dictionaries, for example
@@ -47,21 +44,19 @@ Errors are reported in one of two ways:
 In both cases, the API key is removed from the error message.
 """
 
+import asyncio
 import copy
 import logging
 import re
 import threading
-import time
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
     Callable,
-    Generator,
-    Iterator,
     Sequence,
 )
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, Protocol
+from typing import Any, NamedTuple
 
 import httpx
 from google import genai
@@ -70,6 +65,7 @@ from pydantic import BaseModel, ValidationError
 
 from narratives_agent.config import get_gemini_api_key, render_prompt
 from narratives_agent.settings import get_settings
+from narratives_agent.telemetry import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +82,15 @@ _NO_PROJECT_ERROR = (
 )
 
 _THINKING_LEVELS = {
-    "minimal": types.ThinkingLevel.MINIMAL,
     "low": types.ThinkingLevel.LOW,
     "medium": types.ThinkingLevel.MEDIUM,
     "high": types.ThinkingLevel.HIGH,
 }
 _DEFAULT_THINKING_LEVEL = "low"
+
+# Thinking level for the small structured calls that run after the answer:
+# chart configuration, chart validation, and follow-up questions.
+LIGHTWEIGHT_THINKING_LEVEL = "low"
 
 # Upper bound on a single Gemini call, including a full streamed response.
 # `HttpOptions.timeout` is in milliseconds.
@@ -139,33 +138,6 @@ _client_lock = threading.Lock()
 _cached_client: tuple[_ClientKey, genai.Client] | None = None
 
 
-class SessionLoggerLike(Protocol):
-    """The subset of `SessionLogger` the client calls.
-
-    `SessionLogger` predates the strict typing standard, so the client types
-    the methods it uses here rather than importing the untyped class.
-    """
-
-    def log(self, event_type: str, data: dict[str, Any]) -> None: ...
-
-    def log_gemini_request(
-        self, model: str, endpoint: str, payload_info: dict[str, Any]
-    ) -> None: ...
-
-    def log_gemini_response(
-        self, model: str, response: dict[str, Any], duration_ms: float
-    ) -> None: ...
-
-    def log_error(
-        self,
-        error_type: str,
-        error_message: str,
-        context: dict[str, Any] | None = None,
-    ) -> None: ...
-
-    def add_usage(self, usage_metadata: dict[str, Any] | None) -> None: ...
-
-
 class GeminiStreamError(RuntimeError):
     """Raised when a stream fails after its first chunk was delivered.
 
@@ -200,11 +172,13 @@ def _build_client(key: _ClientKey) -> genai.Client:
     )
 
 
-def _get_client() -> genai.Client | str:
+async def _get_client() -> genai.Client | str:
     """Returns the shared SDK client, or an error when credentials are absent.
 
     The client is rebuilt only when the credential selection changes, so its
-    connection pools survive across calls.
+    connection pools survive across calls. In API-key mode the key is
+    resolved in a worker thread, because a cold cache makes a blocking
+    Secret Manager request that would otherwise stall the event loop.
     """
     global _cached_client
     settings = get_settings()
@@ -217,7 +191,7 @@ def _get_client() -> genai.Client | str:
             location=settings.google_cloud_location,
         )
     else:
-        api_key = get_gemini_api_key()
+        api_key = await asyncio.to_thread(get_gemini_api_key)
         if not api_key:
             return _NO_KEY_ERROR
         key = _ClientKey(use_vertexai=False, api_key=api_key)
@@ -278,20 +252,14 @@ def _describe_error(error: Exception) -> str:
     return str(error)
 
 
-def _report_failure(
-    error: str, model: str, session_logger: SessionLoggerLike | None
-) -> dict[str, Any]:
+def _report_failure(error: str, model: str) -> dict[str, Any]:
     """Logs a failed Gemini call with credentials redacted.
 
     Returns:
         A dict whose only key, "error", holds the redacted message.
     """
     redacted = _redact(error)
-    logger.error("Gemini request failed: %s", redacted)
-    if session_logger:
-        session_logger.log_error(
-            "GEMINI_REQUEST_FAILED", redacted, {"model": model}
-        )
+    logger.error("Gemini request to %s failed: %s", model, redacted)
     return {"error": redacted}
 
 
@@ -301,8 +269,8 @@ def build_thinking_config(
     """Builds the thinking configuration for Gemini 3 models.
 
     Args:
-        thinking_value: Thinking level: "minimal", "low", "medium", or
-            "high", in any case. Any other value selects "low".
+        thinking_value: Thinking level: "low", "medium", or "high", in any
+            case. Any other value selects "low".
         include_thoughts: Whether the response includes thought summaries.
 
     Returns:
@@ -397,7 +365,7 @@ class _GeminiCall:
     config: types.GenerateContentConfig
 
 
-def _prepare_call(
+async def _prepare_call(
     messages: Sequence[Message],
     system_instruction: str,
     model: str,
@@ -405,8 +373,6 @@ def _prepare_call(
     temperature: float,
     thinking_level: str | None,
     response_schema: ResponseSchema | None,
-    session_logger: SessionLoggerLike | None,
-    stream: bool,
     include_thoughts: bool,
 ) -> _GeminiCall | dict[str, Any]:
     """Resolves the client and builds the request, or reports why it cannot.
@@ -415,9 +381,9 @@ def _prepare_call(
         The prepared call, or an error dict when credentials are missing or
         the messages, tools, or schema do not validate.
     """
-    client = _get_client()
+    client = await _get_client()
     if isinstance(client, str):
-        return _report_failure(client, model, session_logger)
+        return _report_failure(client, model)
     try:
         contents = _normalize_messages(messages)
         config = _build_config(
@@ -429,23 +395,7 @@ def _prepare_call(
             include_thoughts,
         )
     except Exception as error:
-        return _report_failure(_describe_error(error), model, session_logger)
-
-    if session_logger:
-        session_logger.log_gemini_request(
-            model,
-            "streamGenerateContent" if stream else "generateContent",
-            {
-                "messages_count": len(messages),
-                "has_tools": bool(tools),
-                "tool_count": len(tools) if tools else 0,
-                "temperature": temperature,
-                "thinking_level": thinking_level,
-                "has_response_schema": response_schema is not None,
-                "stream": stream,
-                "include_thoughts": include_thoughts,
-            },
-        )
+        return _report_failure(_describe_error(error), model)
     return _GeminiCall(client, model, contents, config)
 
 
@@ -478,11 +428,6 @@ def _usage_dict(
     }
 
 
-def _elapsed_ms(start: float) -> float:
-    """Returns milliseconds elapsed since `start` (a `time.monotonic()`)."""
-    return (time.monotonic() - start) * 1000
-
-
 def _normalize_response(
     response: types.GenerateContentResponse,
 ) -> dict[str, Any]:
@@ -507,23 +452,17 @@ def _normalize_response(
     return result
 
 
-def _finish_response(
-    response: types.GenerateContentResponse,
-    model: str,
-    start: float,
-    session_logger: SessionLoggerLike | None,
-) -> dict[str, Any]:
-    """Normalizes a complete response and records its usage."""
-    result = _normalize_response(response)
-    if session_logger:
-        session_logger.log_gemini_response(model, result, _elapsed_ms(start))
-        session_logger.add_usage(result.get("usageMetadata"))
-    return result
+def _record_usage(
+    token_usage: TokenUsage | None, usage: dict[str, int] | None
+) -> None:
+    """Adds one call's token counts to the turn's totals, if tracked."""
+    if token_usage is not None:
+        token_usage.add(usage)
 
 
 @dataclass
 class _TextStream:
-    """Turns streamed chunks into text items and tracks what was streamed.
+    """Turns streamed chunks into text items.
 
     With `return_dicts`, both thoughts and text are emitted as
     `{"type": "thought" | "text", "content": str}`; without it, only text is
@@ -531,8 +470,6 @@ class _TextStream:
     """
 
     return_dicts: bool
-    text_length: int = 0
-    thoughts_length: int = 0
     usage: dict[str, int] | None = None
 
     def items(self, chunk: types.GenerateContentResponse) -> list[StreamItem]:
@@ -545,32 +482,15 @@ class _TextStream:
             if not part.text:
                 continue
             if part.thought:
-                self.thoughts_length += len(part.text)
                 if self.return_dicts:
                     items.append({"type": "thought", "content": part.text})
             else:
-                self.text_length += len(part.text)
                 items.append(
                     {"type": "text", "content": part.text}
                     if self.return_dicts
                     else part.text
                 )
         return items
-
-    def finish(
-        self, start: float, session_logger: SessionLoggerLike | None
-    ) -> None:
-        """Records this call's usage and logs the stream's completion."""
-        if session_logger:
-            session_logger.add_usage(self.usage)
-            session_logger.log(
-                "GEMINI_STREAM_COMPLETE",
-                {
-                    "duration_ms": round(_elapsed_ms(start), 2),
-                    "total_text_length": self.text_length,
-                    "total_thoughts_length": self.thoughts_length,
-                },
-            )
 
 
 @dataclass
@@ -579,7 +499,6 @@ class _ThoughtStreamCollector:
 
     thought_callback: Callable[[str], None] | None
     text: str = ""
-    thoughts: str = ""
     function_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: dict[str, int] | None = None
 
@@ -591,65 +510,44 @@ class _ThoughtStreamCollector:
                 self.function_calls.append(_dump_part(part))
             elif part.text:
                 if part.thought:
-                    self.thoughts += part.text
                     if self.thought_callback:
                         self.thought_callback(part.text)
                 else:
                     self.text += part.text
 
-    def finish(
-        self,
-        model: str,
-        start: float,
-        session_logger: SessionLoggerLike | None,
-    ) -> dict[str, Any]:
-        """Returns the assembled response and records its usage."""
+    def finish(self) -> dict[str, Any]:
+        """Returns the assembled response.
+
+        A stream that produced neither a function call nor answer text (such
+        as an empty or safety-blocked reply) is returned without `candidates`,
+        matching the non-streamed response shape so callers can distinguish it
+        from a normal final reply.
+        """
         parts = list(self.function_calls)
         if self.text:
             parts.append({"text": self.text})
-        result: dict[str, Any] = {
-            "candidates": [{"content": {"parts": parts, "role": "model"}}]
-        }
+        result: dict[str, Any] = {}
+        if parts:
+            result["candidates"] = [
+                {"content": {"parts": parts, "role": "model"}}
+            ]
         if self.usage:
             result["usageMetadata"] = self.usage
-        if session_logger:
-            session_logger.add_usage(self.usage)
-            session_logger.log_gemini_response(
-                model, result, _elapsed_ms(start)
-            )
-            if self.thoughts:
-                session_logger.log(
-                    "THOUGHTS_STREAMED",
-                    {"thoughts_length": len(self.thoughts)},
-                )
         return result
 
 
-def _stream_failure(
-    error: Exception, model: str, session_logger: SessionLoggerLike | None
-) -> GeminiStreamError:
-    """Reports a mid-stream failure and returns the exception to raise."""
-    report = _report_failure(_describe_error(error), model, session_logger)
-    return GeminiStreamError(report["error"])
+async def _close_chunks(
+    chunks: AsyncIterator[types.GenerateContentResponse] | None,
+) -> None:
+    """Closes the SDK's chunk iterator once the caller stops reading it.
 
-
-def _iterate_stream(
-    first: types.GenerateContentResponse | None,
-    chunks: Iterator[types.GenerateContentResponse],
-    stream: _TextStream,
-    model: str,
-    start: float,
-    session_logger: SessionLoggerLike | None,
-) -> Generator[StreamItem]:
-    """Yields items from a stream whose first chunk was already fetched."""
-    try:
-        if first is not None:
-            yield from stream.items(first)
-        for chunk in chunks:
-            yield from stream.items(chunk)
-    except Exception as error:
-        raise _stream_failure(error, model, session_logger) from error
-    stream.finish(start, session_logger)
+    Closing the iterator explicitly releases its HTTP response as soon as
+    reading stops, for example when the caller raises between chunks, rather
+    than when the garbage collector finalizes the iterator.
+    """
+    close = getattr(chunks, "aclose", None)
+    if close is not None:
+        await close()
 
 
 async def _async_iterate_stream(
@@ -657,10 +555,15 @@ async def _async_iterate_stream(
     chunks: AsyncIterator[types.GenerateContentResponse],
     stream: _TextStream,
     model: str,
-    start: float,
-    session_logger: SessionLoggerLike | None,
+    token_usage: TokenUsage | None,
 ) -> AsyncGenerator[StreamItem]:
-    """Yields items from a stream whose first chunk was already fetched."""
+    """Yields items from a stream whose first chunk was already fetched.
+
+    Token usage is recorded when the stream ends, whether it completes,
+    fails, or is closed early by the consumer, so a canceled turn still
+    accounts for the tokens it spent. The SDK's chunk iterator is closed at
+    the same point.
+    """
     try:
         if first is not None:
             for item in stream.items(first):
@@ -669,142 +572,11 @@ async def _async_iterate_stream(
             for item in stream.items(chunk):
                 yield item
     except Exception as error:
-        raise _stream_failure(error, model, session_logger) from error
-    stream.finish(start, session_logger)
-
-
-def gemini_request(
-    messages: Sequence[Message],
-    system_instruction: str,
-    model: str,
-    tools: Sequence[dict[str, Any]] | None = None,
-    temperature: float = 0.3,
-    thinking_level: str | None = None,
-    response_schema: ResponseSchema | None = None,
-    stream: bool = False,
-    session_logger: SessionLoggerLike | None = None,
-    include_thoughts: bool = False,
-) -> Generator[StreamItem] | dict[str, Any]:
-    """Sends a blocking request to Gemini.
-
-    Args:
-        messages: Conversation history as REST-shaped dicts or `Content`.
-        system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
-        tools: Optional function declarations, each a dict with "name",
-            "description", and "parameters".
-        temperature: Sampling temperature.
-        thinking_level: Optional thinking level.
-        response_schema: Optional Pydantic model or JSON schema for
-            structured output.
-        stream: Whether to stream the response.
-        session_logger: Optional logger for the request, response, and usage.
-        include_thoughts: With `stream`, whether to yield thought summaries
-            as well as text.
-
-    Returns:
-        Without `stream`, the response dict. With `stream`, a generator
-        yielding text strings, or `{"type": "thought" | "text", "content":
-        str}` dicts with `include_thoughts`; the generator raises
-        `GeminiStreamError` if the stream fails after its first chunk. On any
-        earlier failure, in either mode, a dict with an "error" key.
-    """
-    call = _prepare_call(
-        messages,
-        system_instruction,
-        model,
-        tools,
-        temperature,
-        thinking_level,
-        response_schema,
-        session_logger,
-        stream=stream,
-        include_thoughts=stream and include_thoughts,
-    )
-    if isinstance(call, dict):
-        return call
-    start = time.monotonic()
-    try:
-        if stream:
-            chunks = call.client.models.generate_content_stream(
-                model=model, contents=call.contents, config=call.config
-            )
-            # The SDK sends the request when the first chunk is requested, so
-            # fetch it here to report a failed request as an error dict.
-            first = next(chunks, None)
-            return _iterate_stream(
-                first,
-                chunks,
-                _TextStream(return_dicts=include_thoughts),
-                model,
-                start,
-                session_logger,
-            )
-        response = call.client.models.generate_content(
-            model=model, contents=call.contents, config=call.config
-        )
-    except Exception as error:
-        return _report_failure(_describe_error(error), model, session_logger)
-    return _finish_response(response, model, start, session_logger)
-
-
-def gemini_request_with_thought_streaming(
-    messages: Sequence[Message],
-    system_instruction: str,
-    model: str,
-    tools: Sequence[dict[str, Any]] | None = None,
-    temperature: float = 0.3,
-    thinking_level: str | None = None,
-    response_schema: ResponseSchema | None = None,
-    session_logger: SessionLoggerLike | None = None,
-    thought_callback: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
-    """Streams a blocking request, forwarding thoughts as they arrive.
-
-    Thought summaries reach `thought_callback` while the response streams,
-    which shortens time to first output, and the complete response is still
-    returned for tool-call processing.
-
-    Args:
-        messages: Conversation history as REST-shaped dicts or `Content`.
-        system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
-        tools: Optional function declarations.
-        temperature: Sampling temperature.
-        thinking_level: Optional thinking level.
-        response_schema: Optional Pydantic model or JSON schema for
-            structured output.
-        session_logger: Optional logger for the request, response, and usage.
-        thought_callback: Optional callable invoked with each thought chunk.
-
-    Returns:
-        The complete response dict, in the same shape as `gemini_request`,
-        or a dict with an "error" key if the call failed.
-    """
-    call = _prepare_call(
-        messages,
-        system_instruction,
-        model,
-        tools,
-        temperature,
-        thinking_level,
-        response_schema,
-        session_logger,
-        stream=True,
-        include_thoughts=True,
-    )
-    if isinstance(call, dict):
-        return call
-    start = time.monotonic()
-    collector = _ThoughtStreamCollector(thought_callback)
-    try:
-        for chunk in call.client.models.generate_content_stream(
-            model=model, contents=call.contents, config=call.config
-        ):
-            collector.add(chunk)
-    except Exception as error:
-        return _report_failure(_describe_error(error), model, session_logger)
-    return collector.finish(model, start, session_logger)
+        report = _report_failure(_describe_error(error), model)
+        raise GeminiStreamError(report["error"]) from error
+    finally:
+        _record_usage(token_usage, stream.usage)
+        await _close_chunks(chunks)
 
 
 async def async_gemini_request(
@@ -815,25 +587,27 @@ async def async_gemini_request(
     temperature: float = 0.3,
     thinking_level: str | None = None,
     response_schema: ResponseSchema | None = None,
-    session_logger: SessionLoggerLike | None = None,
+    token_usage: TokenUsage | None = None,
 ) -> dict[str, Any]:
     """Sends a request to Gemini without blocking the event loop.
 
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
         system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
-        tools: Optional function declarations.
+        model: Model name, such as "gemini-3.8-flash".
+        tools: Optional function declarations, each a dict with "name",
+            "description", and "parameters".
         temperature: Sampling temperature.
         thinking_level: Optional thinking level.
         response_schema: Optional Pydantic model or JSON schema for
             structured output.
-        session_logger: Optional logger for the request, response, and usage.
+        token_usage: Optional turn totals to which this call's token counts
+            are added.
 
     Returns:
         The response dict, or a dict with an "error" key if the call failed.
     """
-    call = _prepare_call(
+    call = await _prepare_call(
         messages,
         system_instruction,
         model,
@@ -841,20 +615,19 @@ async def async_gemini_request(
         temperature,
         thinking_level,
         response_schema,
-        session_logger,
-        stream=False,
         include_thoughts=False,
     )
     if isinstance(call, dict):
         return call
-    start = time.monotonic()
     try:
         response = await call.client.aio.models.generate_content(
             model=model, contents=call.contents, config=call.config
         )
     except Exception as error:
-        return _report_failure(_describe_error(error), model, session_logger)
-    return _finish_response(response, model, start, session_logger)
+        return _report_failure(_describe_error(error), model)
+    result = _normalize_response(response)
+    _record_usage(token_usage, result.get("usageMetadata"))
+    return result
 
 
 async def async_gemini_stream(
@@ -865,7 +638,7 @@ async def async_gemini_stream(
     temperature: float = 0.3,
     thinking_level: str | None = None,
     response_schema: ResponseSchema | None = None,
-    session_logger: SessionLoggerLike | None = None,
+    token_usage: TokenUsage | None = None,
     include_thoughts: bool = False,
 ) -> AsyncGenerator[StreamItem] | dict[str, Any]:
     """Starts a streamed request to Gemini without blocking the event loop.
@@ -877,13 +650,14 @@ async def async_gemini_stream(
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
         system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
+        model: Model name, such as "gemini-3.8-flash".
         tools: Optional function declarations.
         temperature: Sampling temperature.
         thinking_level: Optional thinking level.
         response_schema: Optional Pydantic model or JSON schema for
             structured output.
-        session_logger: Optional logger for the request, response, and usage.
+        token_usage: Optional turn totals to which this call's token counts
+            are added when the stream ends.
         include_thoughts: Whether to yield thought summaries as well as text.
 
     Returns:
@@ -892,7 +666,7 @@ async def async_gemini_stream(
         `GeminiStreamError` if the stream fails after its first chunk. If
         the request fails before then, a dict with an "error" key.
     """
-    call = _prepare_call(
+    call = await _prepare_call(
         messages,
         system_instruction,
         model,
@@ -900,13 +674,11 @@ async def async_gemini_stream(
         temperature,
         thinking_level,
         response_schema,
-        session_logger,
-        stream=True,
         include_thoughts=include_thoughts,
     )
     if isinstance(call, dict):
         return call
-    start = time.monotonic()
+    chunks: AsyncIterator[types.GenerateContentResponse] | None = None
     try:
         chunks = await call.client.aio.models.generate_content_stream(
             model=model, contents=call.contents, config=call.config
@@ -914,15 +686,17 @@ async def async_gemini_stream(
         # The SDK sends the request when the first chunk is requested, so
         # fetch it here to report a failed request as an error dict.
         first = await anext(chunks, None)
-    except Exception as error:
-        return _report_failure(_describe_error(error), model, session_logger)
+    except BaseException as error:
+        await _close_chunks(chunks)
+        if isinstance(error, Exception):
+            return _report_failure(_describe_error(error), model)
+        raise
     return _async_iterate_stream(
         first,
         chunks,
         _TextStream(return_dicts=include_thoughts),
         model,
-        start,
-        session_logger,
+        token_usage,
     )
 
 
@@ -934,28 +708,33 @@ async def async_gemini_request_with_thought_streaming(
     temperature: float = 0.3,
     thinking_level: str | None = None,
     response_schema: ResponseSchema | None = None,
-    session_logger: SessionLoggerLike | None = None,
+    token_usage: TokenUsage | None = None,
     thought_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Streams a request without blocking, forwarding thoughts as they arrive.
 
+    Thought summaries reach `thought_callback` while the response streams,
+    which shortens time to first output, and the complete response is still
+    returned for tool-call processing.
+
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
         system_instruction: System prompt, rendered with `render_prompt`.
-        model: Model name, such as "gemini-3-flash-preview".
+        model: Model name, such as "gemini-3.8-flash".
         tools: Optional function declarations.
         temperature: Sampling temperature.
         thinking_level: Optional thinking level.
         response_schema: Optional Pydantic model or JSON schema for
             structured output.
-        session_logger: Optional logger for the request, response, and usage.
+        token_usage: Optional turn totals to which this call's token counts
+            are added.
         thought_callback: Optional callable invoked with each thought chunk.
 
     Returns:
         The complete response dict, or a dict with an "error" key if the
         call failed.
     """
-    call = _prepare_call(
+    call = await _prepare_call(
         messages,
         system_instruction,
         model,
@@ -963,14 +742,12 @@ async def async_gemini_request_with_thought_streaming(
         temperature,
         thinking_level,
         response_schema,
-        session_logger,
-        stream=True,
         include_thoughts=True,
     )
     if isinstance(call, dict):
         return call
-    start = time.monotonic()
     collector = _ThoughtStreamCollector(thought_callback)
+    chunks: AsyncIterator[types.GenerateContentResponse] | None = None
     try:
         chunks = await call.client.aio.models.generate_content_stream(
             model=model, contents=call.contents, config=call.config
@@ -978,5 +755,8 @@ async def async_gemini_request_with_thought_streaming(
         async for chunk in chunks:
             collector.add(chunk)
     except Exception as error:
-        return _report_failure(_describe_error(error), model, session_logger)
-    return collector.finish(model, start, session_logger)
+        return _report_failure(_describe_error(error), model)
+    finally:
+        _record_usage(token_usage, collector.usage)
+        await _close_chunks(chunks)
+    return collector.finish()

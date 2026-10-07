@@ -30,9 +30,7 @@ require and what this repository no longer has.
 """
 
 import json
-import re
 import sys
-
 
 # Resources whose name is always "<instance>-<suffix>". These are what the
 # deployment name is recovered from.
@@ -85,7 +83,9 @@ def main(argv) -> int:
     except ValueError:
         # `terraform show -json` produced nothing usable. Do not block a deploy
         # on the guard's own failure to parse.
-        print("  (state not parseable; ownership check skipped)", file=sys.stderr)
+        print(
+            "  (state not parseable; ownership check skipped)", file=sys.stderr
+        )
         return 0
 
     problems = offending(state, instance)

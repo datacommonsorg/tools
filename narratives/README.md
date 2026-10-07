@@ -676,14 +676,19 @@ pnpm i
 
 | Command | What it does |
 | --- | --- |
+| `pnpm dev:ui` | Start the frontend Vite development server on port 3000 (`ui/`) |
+| `pnpm dev:agent` | Stage config and start the Python agent development server on port 5001 (`agent/`) |
 | `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` |
 | `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
-| `pnpm test` | Run unit tests across packages (Vitest + Pytest) |
+| `pnpm test` | Run unit tests and lint checks across packages (Vitest + Pytest + `pnpm lint`) |
 | `pnpm test:ui` | Run the frontend Vitest suite |
 | `pnpm test:agent` | Run the backend Pytest suite |
+| `pnpm lint` | Run all lint, formatting, and type checks (UI, agent, and deployment) |
+| `pnpm fix` | Auto-fix formatting and lint issues (Biome, Ruff, and Terraform) |
 
 > [!TIP]
-> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or updating a PR.
+> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or
+> updating a PR. If lint checks fail, run `pnpm fix` to format and auto-fix.
 
 ---
 
@@ -704,27 +709,27 @@ instance. Real Gemini, real MCP tools, real charts.
 ```sh
 pnpm install
 
-cat > ui/.env.local <<'EOF'
-BACKEND_URL=https://<your-instance>.run.app
-AGENT_URL=https://<your-instance>.run.app
-EOF
+# Point at your deployed Cloud Run instance
+cp .env.local.example .env.local
+$EDITOR .env.local
+# Set AGENT_URL to your deployed instance:
+#   AGENT_URL=https://<your-instance>.run.app
 
-pnpm -C ui dev      # http://localhost:3000
+pnpm dev:ui         # http://localhost:3000
 ```
 
-Both URLs normally point at the same Cloud Run service. Vite's `server.proxy`
-(in `vite.config.ts`) forwards `/agent/*` and the data routes; it is **dev-only**,
-so `vite build` ignores it. Defaults are `localhost:5001` and `localhost:8080` if
-unset. Vite picks up `.env.local` changes on **restart**, not live.
+Vite's `server.proxy` (in `vite.config.ts`) forwards `/agent/*` and the data
+routes to `AGENT_URL` (unless `BACKEND_URL` is set separately); it is
+**dev-only**, so `vite build` ignores it. Default is `localhost:5001` if unset.
+Vite picks up `.env.local` changes on **restart**, not live.
 
 You need Node 24 and nothing else — no Docker, no Python, no gcloud.
 
 ### Path B — the agent locally
 
-Run every command in this section from `narratives/`, in one shell, so the
-variables you export reach the server.
+Run commands in this section from `narratives/`.
 
-**Install:**
+**Install dependencies:**
 
 ```sh
 (cd agent && uv sync)   # creates agent/.venv and installs from uv.lock
@@ -733,42 +738,43 @@ variables you export reach the server.
 There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
 uses it.
 
-Choose what it talks to — the same three backends, selected the same way, by URL.
+**1. Configure local environment:**
 
-**Public Data Commons.** Nothing to provision, but note it takes **two** hosts:
-
-```sh
-export MCP_SERVER_URL="https://api.datacommons.org/mcp"
-export DC_API_KEY="..."
-export DATA_PLANE_URL="https://api.datacommons.org"      # MCP + versioned REST
-export DATA_PLANE_WEB_URL="https://datacommons.org"      # website routes the charts call
-```
-
-`api.datacommons.org` serves `/v1`, `/v2` and `/mcp`. It does **not** serve the
-website routes the chart web components fetch — `/api/observations/series`,
-`/api/place/name`, `/core/api/...` — which live on `datacommons.org` only. Set
-only `DATA_PLANE_URL` and the agent answers correctly with real numbers while
-every chart silently 404s, because the failure is entirely browser-side:
-
-```json
-{"message":"The current request is not defined by this API.","code":404}
-```
-
-`DATA_PLANE_WEB_URL` defaults to `DATA_PLANE_URL`, so a deployed plane needs only
-the one URL — one container serves both MCP and the website.
-
-**A deployed data plane:**
+Copy `.env.local.example` to `.env.local` and add your Gemini API key:
 
 ```sh
-export MCP_SERVER_URL="https://<data-plane>-uc.a.run.app/mcp"
-export DATA_PLANE_URL="https://<data-plane>-uc.a.run.app"
+cp .env.local.example .env.local
+$EDITOR .env.local      # Add your GEMINI_API_KEY="..."
 ```
 
-> A private data plane expects a Google-signed ID token, which the agent mints
-> from the **metadata server** — unavailable off GCP, so `attach_auth` is a no-op
-> on a laptop and the call is refused. Either widen that service's ingress
-> temporarily, or run against public Data Commons. Local development against a
-> private backend is not a supported path.
+The template is pre-configured with public Data Commons endpoints:
+```sh
+MCP_SERVER_URL="https://api.datacommons.org/mcp"
+DATA_PLANE_URL="https://api.datacommons.org"
+DATA_PLANE_WEB_URL="https://datacommons.org"
+AGENT_URL="http://localhost:5001"
+```
+
+*(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL`
+and `DATA_PLANE_URL` to your Cloud Run service URL, and remove
+`DATA_PLANE_WEB_URL` so it falls back to `DATA_PLANE_URL`.)*
+
+**2. Start local development:**
+
+Run the agent and UI in two separate terminals:
+
+```sh
+# Terminal 1: backend agent (port 5001)
+pnpm dev:agent
+
+# Terminal 2: frontend Vite dev server (port 3000)
+pnpm dev:ui
+```
+
+`pnpm dev:agent` (or `uv run narratives-agent-dev`) loads `.env.local` and
+stages `agent/config.json` from `defaults/` + `config/` + `prompts/`
+(incorporating your `GEMINI_API_KEY`) before starting the Uvicorn server with
+auto-reload.
 
 **Config and keys:**
 
@@ -793,6 +799,21 @@ logs an error instructing you to re-run `./deploy.sh --bootstrap-secrets`.
 Do not commit a real key in `agent-config.json`; the checked-in files define
 the schema shape only.
 
+**Transcript signing key** (optional locally):
+
+```sh
+export TRANSCRIPT_HMAC_SECRET="$(openssl rand -hex 32)"
+```
+
+The browser holds the conversation and sends it with every request; the agent
+signs each completed turn with this key and rejects a transcript whose
+signatures do not verify. When the variable is unset, the agent signs with a
+random key generated at startup, which is enough for one local process: a
+restart invalidates the transcripts the browser holds, and the UI then clears
+the earlier context and asks the user to repeat the question. On Cloud Run,
+where requests reach several instances, every instance must share one secret;
+the agent logs a warning when `K_SERVICE` is set and the secret is not.
+
 **Serve the SPA from the agent**, so routing matches production:
 
 ```sh
@@ -816,14 +837,84 @@ It listens on `127.0.0.1` and restarts when a source file changes. Set
 curl -s localhost:5001/agent/health | jq    # mcp_url is the resolved MCP endpoint
 curl -sN -X POST localhost:5001/agent/chat/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"What is the population of France?","history":[]}'
+  -d '{"message":"What is the population of France?","turns":[]}'
 ```
 
 The server does not contact MCP at startup, and `/agent/health` never does:
 it reports the resolved `mcp_url` and the cached tool surface, which is empty
 until a chat turn has listed the tools. The chat request is therefore the first
-call to reach MCP. Its stream should carry `session_id`, `mcp_start`, tool
-events, text, and `done`.
+call to reach MCP.
+
+The stream uses typed Server-Sent Events. Every frame names its `event:` and
+carries a JSON `data:` payload, and every frame except `heartbeat` carries an
+`id:` counting up from 1:
+
+| Event | Payload |
+|---|---|
+| `status` | `{phase, message}` (`mcp`, `synthesis`, or `chart_config`) |
+| `thought` | `{thought, phase}` (a reasoning summary from `mcp` or `synthesis`) |
+| `content` | one of `{text}`, `{tool_call}`, `{sources}`, `{data_status}`, `{chart_config}` |
+| `terminal` | `{state, idempotency_key, error?, reason?}`, plus `{turn_index, hmac, state_slots, compacted_summary, window}` on a signed `complete` |
+| `follow_ups` | `{follow_up_questions}`, sent after `terminal` when any are generated |
+| `heartbeat` | `{}`, sent every 15 seconds so proxies keep the connection open |
+
+A turn is finished only by its single `terminal` frame, whose `state` is
+`complete` or `error` (with a user-safe `error` and a machine-readable `reason`
+such as `mcp_unavailable`, `mcp_timeout`, or `synthesis_empty`). A stream that
+ends without a `terminal` frame was cut off, and the UI displays the turn as
+interrupted. MCP is a hard dependency: when no tools can be listed or a tool
+call fails at the transport layer, the turn ends in `error` rather than
+answering without data. A disconnected client receives no terminal frame; the
+turn is canceled and recorded as `canceled`. The request may carry an
+`idempotency_key`, which the UI generates per submission and the terminal
+frame echoes. A healthy local turn emits `content` frames carrying
+`tool_call`, then the answer `text`, and then a `complete` terminal frame.
+
+**Multi-turn context**: A follow-up request carries the signed window from the
+previous `complete` frame:
+
+```json
+{
+  "message": "And for Germany?",
+  "idempotency_key": "b7e0...",
+  "turns": [
+    {
+      "turn_index": 0,
+      "idempotency_key": "3f1c...",
+      "user_query": "What is the population of France?",
+      "model_response": "<the streamed answer text, exactly>",
+      "state_slots": {"scopes": [...]},
+      "hmac": "<64 hex characters>"
+    }
+  ],
+  "compacted_summary": null
+}
+```
+
+Each turn's `hmac` chains it to the previous turn. Before the stream opens,
+the agent rejects:
+
+| Status | When |
+|---|---|
+| 413 (`request_too_large`) | the body exceeds 4 MiB |
+| 400 (`transcript_invalid`) | the window was altered, reordered, or spliced, or is outside its schema or caps: more than 6 turns, a 32,000-character answer, or an 8,000-character summary |
+| 422 | the body is not JSON, or `message` (at most 4,000 characters) or `idempotency_key` is invalid |
+
+The UI recovers from a 400 by clearing the signatures it holds, so the next
+question starts without earlier context. The window holds at most 6 turns:
+when a seventh completes, the oldest is folded into `compacted_summary` by a
+model call (falling back to a structured summary after 5 seconds) and the
+whole window is re-signed, so the `complete` frame of such a turn can arrive
+up to 5 seconds after the answer finishes streaming. The client replaces the
+signatures it holds with those listed in the frame's `window` and drops any
+turn that `window` does not list. `state_slots` records the places,
+variables, and dates each turn retrieved, which later turns use to resolve
+references such as "them" or "that period". A `complete` frame without
+`hmac` marks a turn that was not signed, because its answer exceeded the cap
+or signing failed; the client leaves it out of later requests. Signing and
+compaction are timed as the `finalize` phase in telemetry. The summary and
+scopes reach the model inside a delimited background block; they are not yet
+screened by Model Armor.
 
 Production runs `uvicorn narratives_agent.server.app:app`; `dev.py` is the
 development path.
@@ -835,32 +926,31 @@ development path.
 Nothing is mocked that matters.
 
 ```sh
-# Run all tests across UI and agent:
+# Run all unit tests and lint checks across UI, agent, and deployment:
 pnpm test
 
 # Or run by component:
-pnpm test:ui                               # Vitest UI suite (9 files, 108 tests)
+pnpm test:ui                               # Vitest UI suite
 pnpm test:agent                            # Pytest agent suite
+pnpm lint                                  # All lint, format, and type checks
+pnpm fix                                   # Auto-fix formatting and lint issues
 ```
 
 Agent tests are pytest modules named `*_test.py`, colocated beside the module
 under test inside `src/narratives_agent/`. `uv run` executes them in the locked
 environment, so there is nothing to activate and nothing to install by hand.
 
-Style and types are separate checks, and CI fails on any of them:
+Linting, formatting, and static type-checking can also be run by layer (`pnpm
+lint:ui`, `pnpm lint:agent`, `pnpm lint:deploy`), and CI fails on any of them:
 
 ```sh
-cd agent
-uv run ruff format --check .               # formatting
-uv run ruff check .                        # lint
-uv run mypy                                # types, strict
+pnpm lint:ui                               # tsc --noEmit + Biome
+pnpm lint:agent                            # Ruff format/lint + mypy --strict
+pnpm lint:deploy                           # Terraform fmt/validate + ShellCheck + Hadolint
 ```
 
-> The agent type-checks under `mypy --strict`. Modules written before that
-> standard are exempted one at a time in `agent/pyproject.toml`, and each
-> exemption names the branch that rewrites or deletes the module it covers. An
-> exemption is retired by deleting that module, never by annotating code that is
-> about to be replaced — the list only shrinks.
+> The agent type-checks under `mypy --strict`, tests included, with no
+> per-module exemptions.
 
 The agent suites cover six behaviors whose failure is **silent**:
 
@@ -938,13 +1028,15 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
 | Public access binding refused | Domain Restricted Sharing | Use IAP or the proxy |
 | `/healthz` works but the uptime check does not | Cloud Run's frontend reserves `/healthz` and answers it itself | External checks must use `/agent/health` |
-| A private backend refuses everything locally | No metadata server on a laptop | Expected — see Path B |
+| A private backend refuses everything locally | No metadata server on a laptop | Expected — use public Data Commons locally, or widen ingress temporarily |
 | Ingestion fails: missing `Source` | MCF incomplete | Define every provenance's `Source` node |
 | Ingestion fails: BigQuery reservation | A second one in the project+region | Reuse the existing reservation |
 | `403 iam.serviceAccounts.getOpenIdToken` on `init-db` | IAM propagation | Wait a minute, retry |
 
-For anything else, start with the app plane's Cloud Run logs — session events are
-structured JSON queryable by `session_id` and `event_type`.
+For anything else, start with the app plane's Cloud Run logs. Each chat turn
+writes one structured `chat_turn` record (terminal state, error type, phase
+durations, tool names, and token counts, never user content) keyed by a
+server-minted `turn_id` that also tags the turn's trace spans.
 
 ---
 
@@ -953,6 +1045,7 @@ structured JSON queryable by `session_id` and `event_type`.
 ```
 README.md                  this file — the only prose doc in the repo
 deploy.sh                  the one deploy entry point; no --instance flag
+.env.local.example         template for local .env.local development settings
 
 config/                    YOURS — this deployment's settings and overrides
   instance.env             required: project, region, backend, access
@@ -961,6 +1054,7 @@ config/                    YOURS — this deployment's settings and overrides
   prompts/  assets/        optional overrides
 defaults/                  upstream baseline; config/ is laid over this
 schemas/                   JSON Schemas + example branding — code, not config
+scripts/                   build-time static asset staging (stage_static.mjs)
 
 agent/                     app plane — API + SPA, one uvicorn process
   pyproject.toml           direct dependencies; ruff, mypy and pytest config

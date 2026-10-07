@@ -406,6 +406,11 @@ select:not(:disabled) {
  * absolute/flex containers around it during the print render pass.
  * ──────────────────────────────────────────────────────────────────── */
 @media print {
+  /* Nothing to hover on paper — see the same rule applied to the PDF clone in
+     utils/download_pdf.ts. */
+  .dc-numeric {
+    text-decoration: none !important;
+  }
   body[data-print-target] {
     background: #ffffff !important;
   }

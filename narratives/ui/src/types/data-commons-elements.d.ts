@@ -13,7 +13,7 @@
  * passes to each element.
  */
 
-import type { DetailedHTMLProps, HTMLAttributes } from "react";
+import type { DetailedHTMLProps, HTMLAttributes } from 'react';
 
 /** Attributes accepted by every datacommons-* element, named after React's HTMLAttributes convention. */
 interface DataCommonsAttributes
@@ -37,40 +37,38 @@ interface DataCommonsAttributes
   childPlaceType?: string;
 
   // Bar
-  sort?: "ascending" | "descending";
+  sort?: 'ascending' | 'descending';
 
   // Map / slider
-  allowZoom?: boolean | "" | "true" | "false";
+  allowZoom?: boolean | '' | 'true' | 'false';
 
   // Pie
-  donut?: boolean | "" | "true" | "false";
+  donut?: boolean | '' | 'true' | 'false';
 
   // Ranking
   rankingCount?: string | number;
-  showHighestLowest?: boolean | "" | "true" | "false";
+  showHighestLowest?: boolean | '' | 'true' | 'false';
 
   // Gauge
   min?: string | number;
   max?: string | number;
 
   // Scatter
-  showPlaceLabels?: boolean | "" | "true" | "false";
+  showPlaceLabels?: boolean | '' | 'true' | 'false';
 }
 
-declare module "react" {
+declare module 'react' {
   namespace JSX {
     interface IntrinsicElements {
-      "datacommons-line":      DataCommonsAttributes;
-      "datacommons-bar":       DataCommonsAttributes;
-      "datacommons-pie":       DataCommonsAttributes;
-      "datacommons-map":       DataCommonsAttributes;
-      "datacommons-highlight": DataCommonsAttributes;
-      "datacommons-ranking":   DataCommonsAttributes;
-      "datacommons-gauge":     DataCommonsAttributes;
-      "datacommons-scatter":   DataCommonsAttributes;
-      "datacommons-slider":    DataCommonsAttributes;
+      'datacommons-line': DataCommonsAttributes;
+      'datacommons-bar': DataCommonsAttributes;
+      'datacommons-pie': DataCommonsAttributes;
+      'datacommons-map': DataCommonsAttributes;
+      'datacommons-highlight': DataCommonsAttributes;
+      'datacommons-ranking': DataCommonsAttributes;
+      'datacommons-gauge': DataCommonsAttributes;
+      'datacommons-scatter': DataCommonsAttributes;
+      'datacommons-slider': DataCommonsAttributes;
     }
   }
 }
-
-export {};

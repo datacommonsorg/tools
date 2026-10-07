@@ -125,9 +125,9 @@ const PLACEHOLDER_DONE =
   "Analyzed the query and retrieved relevant data from Data Commons.";
 
 /**
- * Header label is derived from the turn status. Server emits status
- * transitions (`mcp_start` → `mcp_complete` → `synthesis_start` → `done`);
- * these strings are the UI-side copy for each phase.
+ * Header label is derived from the turn status. The server's `status` events
+ * move the turn through the `mcp` and `synthesis` phases, and its `terminal`
+ * event ends it; these strings are the UI-side copy for each phase.
  */
 function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   if (!streaming) return "Reasoning details";

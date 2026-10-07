@@ -14,9 +14,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, master]
+    branches: [main, master, narratives-dev]
   push:
-    branches: [main, master]
+    branches: [main, master, narratives-dev]
 
 permissions:
   contents: read
@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       dataweaver: ${{ steps.filter.outputs.dataweaver }}
+      narratives: ${{ steps.filter.outputs.narratives }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -46,6 +47,10 @@ jobs:
               - 'dataweaver/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/dataweaver_ci.yml'
+            narratives:
+              - 'narratives/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/narratives_ci.yml'
 
   dataweaver:
     name: Data Weaver
@@ -53,11 +58,18 @@ jobs:
     if: needs.detect-changes.outputs.dataweaver == 'true'
     uses: ./.github/workflows/dataweaver_ci.yml
 
+  narratives:
+    name: Narratives
+    needs: detect-changes
+    if: needs.detect-changes.outputs.narratives == 'true'
+    uses: ./.github/workflows/narratives_ci.yml
+
   ci-final-status:
     name: CI Final Status
     needs:
       - detect-changes
       - dataweaver
+      - narratives
     if: always()
     runs-on: ubuntu-latest
     steps:

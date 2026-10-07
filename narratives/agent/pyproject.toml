@@ -24,14 +24,22 @@ description = "App-plane agent for Data Commons Narratives."
 requires-python = ">=3.14"
 license = "Apache-2.0"
 dependencies = [
+    "anyio>=4.15",
     "fastapi>=0.141",
     "google-cloud-secret-manager>=2.20",
     "google-genai>=1.0",
     "httpx>=0.28",
     "httpx2>=2.13",
     "mcp>=2.2",
+    "opentelemetry-instrumentation-fastapi>=0.66b0",
+    "opentelemetry-instrumentation-google-genai>=1.2b0",
+    "opentelemetry-instrumentation-httpx>=0.66b0",
+    "opentelemetry-sdk>=1.45",
+    "opentelemetry-util-genai>=1.2b0",
     "pydantic-settings>=2.15",
+    "python-dotenv>=1.2",
     "requests>=2.32",
+    "sse-starlette>=3.5",
     "uvicorn[standard]>=0.53",
 ]
 
@@ -40,10 +48,12 @@ narratives-agent-dev = "narratives_agent.dev:main"
 
 [dependency-groups]
 dev = [
+    "hadolint-py>=2.14",
     "mypy>=2.3",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
     "ruff>=0.14",
+    "shellcheck-py>=0.11",
     "types-requests>=2.32",
 ]
 
@@ -53,6 +63,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/narratives_agent"]
+
+[tool.uv]
+required-version = ">=0.10.2"
 
 # Override any system-wide corporate mirror (e.g. /etc/uv/uv.toml) so that
 # `uv lock` always records public PyPI URLs in uv.lock.
@@ -66,6 +79,10 @@ default = true
 [tool.ruff]
 line-length = 80
 target-version = "py314"
+# Existing deploy scripts pending lint cleanup; remove entries as refactored.
+extend-exclude = [
+    "../deploy/validate-branding.py",
+]
 
 [tool.ruff.lint]
 select = [
@@ -88,11 +105,8 @@ known-first-party = ["narratives_agent"]
 docstring-code-format = true
 
 # ── Type checking ────────────────────────────────────────────────────────────
-# Strict mode is enabled globally so that all new and rewritten modules are
-# fully type-checked. Legacy modules scheduled for deletion or rewrite in
-# subsequent migration stages are temporarily exempted below under
-# [[tool.mypy.overrides]]. Do not add new modules to these override blocks;
-# remove each entry as the corresponding module is deleted or rewritten.
+# Strict mode applies to every module, tests included, with no exemptions.
+# Do not add `[[tool.mypy.overrides]]` blocks that ignore errors.
 
 [tool.mypy]
 python_version = "3.14"
@@ -100,17 +114,6 @@ strict = true
 files = ["src"]
 mypy_path = "src"
 explicit_package_bases = true
-
-[[tool.mypy.overrides]]
-# Branch 5 rewrites the pipeline and replaces SessionLogger with telemetry.
-module = [
-    "narratives_agent.session_logger",
-    "narratives_agent.workflows.chart_config",
-    "narratives_agent.workflows.chat_pipeline",
-    "narratives_agent.workflows.follow_up",
-    "narratives_agent.workflows.mcp_loop",
-]
-ignore_errors = true
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 

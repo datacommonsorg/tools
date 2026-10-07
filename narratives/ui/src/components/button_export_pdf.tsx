@@ -2,9 +2,9 @@
  * @fileoverview Renders a button that exports the answer panel to PDF via the browser print flow.
  */
 
-import { useRef } from "react";
-import { ExportIcon } from "./icons";
-import { Tooltip } from "./tooltip";
+import { useRef } from 'react';
+import { ExportIcon } from './icons';
+import { Tooltip } from './tooltip';
 
 /**
  * Material 3 "filled tonal" pill, standardized across the Data Commons apps:
@@ -31,8 +31,8 @@ interface ExportPdfButtonProps {
   label?: string;
 }
 
-const COLOR_FILL = "var(--color-brand-container)";
-const COLOR_TEXT = "var(--color-on-brand-container)";
+const COLOR_FILL = 'var(--color-brand-container)';
+const COLOR_TEXT = 'var(--color-on-brand-container)';
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
@@ -40,35 +40,39 @@ const FONT_STACK =
 export function ExportPdfButton({
   onExport,
   busy = false,
-  label = "Export PDF",
+  label = 'Export PDF',
 }: ExportPdfButtonProps) {
   const internalRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="flex items-center" style={{ height: 48 }} data-non-print="true">
+    <div
+      className="flex items-center"
+      style={{ height: 48 }}
+      data-non-print="true"
+    >
       <Tooltip label="Download this answer as a PDF">
-      <button
-        ref={internalRef}
-        type="button"
-        onClick={onExport}
-        disabled={busy}
-        className="inline-flex items-center justify-center cursor-pointer transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
-        style={{
-          backgroundColor: COLOR_FILL,
-          color: COLOR_TEXT,
-          border: 0,
-          borderRadius: 100,
-          padding: "10px 16px",
-          gap: 8,
-          fontFamily: FONT_STACK,
-          fontSize: 14,
-          lineHeight: "20px",
-          fontWeight: 500,
-        }}
-      >
-        <ExportIcon />
-        <span>{busy ? "Preparing…" : label}</span>
-      </button>
+        <button
+          ref={internalRef}
+          type="button"
+          onClick={onExport}
+          disabled={busy}
+          className="inline-flex items-center justify-center cursor-pointer transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
+          style={{
+            backgroundColor: COLOR_FILL,
+            color: COLOR_TEXT,
+            border: 0,
+            borderRadius: 100,
+            padding: '10px 16px',
+            gap: 8,
+            fontFamily: FONT_STACK,
+            fontSize: 14,
+            lineHeight: '20px',
+            fontWeight: 500,
+          }}
+        >
+          <ExportIcon />
+          <span>{busy ? 'Preparing…' : label}</span>
+        </button>
       </Tooltip>
     </div>
   );

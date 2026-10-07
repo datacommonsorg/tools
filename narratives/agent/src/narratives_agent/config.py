@@ -17,6 +17,7 @@ import json
 import logging
 import posixpath
 import re
+import threading
 import time
 from datetime import datetime
 from typing import Any
@@ -33,15 +34,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Model used whenever agent-config.json names none. Read through
-# get_gemini_model() rather than repeated inline, because the deployed config
-# sets no model at all -- every caller runs on this default, so a caller that
-# spells its own default differently silently calls a different model than the
-# rest of the pipeline. That is not hypothetical: the chart-suppression check
-# defaulted to "gemini-2.0-flash", which the project's API key cannot address
-# at all. Every call 404'd, the 404 body carried no `candidates`, the check
-# read that as "data found" and charts were never suppressed.
-DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+# Model used whenever agent-config.json names none. The shipped defaults name
+# no model, so this is the model a deployment runs unless it overrides it.
+# Every caller reads the model through get_gemini_model() rather than spelling
+# its own default, so that every call in a turn uses the same model.
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 
 def get_gemini_model(config: dict[str, Any]) -> str:
@@ -74,7 +71,15 @@ _config_mtime = 0.0
 
 # Secret Manager lookup cache and TTL (seconds)
 _SECRET_MANAGER_TTL_SECONDS = 300
+# `_SECRET_MANAGER_TIMEOUT_SECONDS` bounds a single Secret Manager read.
+# Concurrent cache misses wait on the thread performing the read, so an
+# unbounded read would stall all of them.
+_SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
 _secret_manager_cache: dict[str, tuple[float, str]] = {}
+# The Gemini client resolves the key on a worker thread
+# (`asyncio.to_thread`), so concurrent turns can miss the cache together. The
+# lock makes them share one Secret Manager request.
+_secret_manager_lock = threading.Lock()
 
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
 # as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
@@ -84,6 +89,11 @@ _secret_manager_cache: dict[str, tuple[float, str]] = {}
 PROMPT_SLOTS = ("mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def strip_prompt_comments(text: str) -> str:
+    """Strips HTML authoring comments and surrounding whitespace."""
+    return _HTML_COMMENT_RE.sub("", text).strip()
 
 
 def _fetch_gcs_url(url: str) -> requests.Response:
@@ -159,7 +169,7 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
             # Strip HTML comments so the .md files can carry authoring notes —
             # provenance, "keep in sync with X" reminders — without those notes
             # being sent to Gemini as part of the system instruction.
-            body = _HTML_COMMENT_RE.sub("", r.text).strip()
+            body = strip_prompt_comments(r.text)
         except Exception as e:
             logger.warning(
                 "Prompt %r fetch failed (%s): %s", slot, prompt_url, e
@@ -329,9 +339,19 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
     if not _SECRET_MANAGER_AVAILABLE:
         return ""
     cached = _secret_manager_cache.get(secret_name)
-    now = time.time()
-    if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
+    if cached and time.time() - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
         return cached[1]
+    with _secret_manager_lock:
+        # Another thread may have loaded the key while this one waited.
+        cached = _secret_manager_cache.get(secret_name)
+        now = time.time()
+        if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
+            return cached[1]
+        return _load_secret(secret_name, now)
+
+
+def _load_secret(secret_name: str, now: float) -> str:
+    """Reads `secret_name` from Secret Manager and caches a usable key."""
     project = get_settings().google_cloud_project
     if not secret_name.startswith("projects/"):
         if not project:
@@ -346,7 +366,10 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
         full_name = secret_name
     try:
         client = secretmanager.SecretManagerServiceClient()
-        response = client.access_secret_version(request={"name": full_name})
+        response = client.access_secret_version(
+            request={"name": full_name},
+            timeout=_SECRET_MANAGER_TIMEOUT_SECONDS,
+        )
         key = response.payload.data.decode("utf-8").strip()
         if not key:
             return ""

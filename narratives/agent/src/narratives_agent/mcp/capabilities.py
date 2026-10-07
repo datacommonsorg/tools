@@ -132,20 +132,3 @@ def current_cached() -> Capabilities:
     Use where blocking is unacceptable, e.g. a health endpoint.
     """
     return from_tools(client.cached_tools())
-
-
-def current() -> Capabilities:
-    """Returns the capabilities of the configured MCP server."""
-    caps = from_tools(client.get_tools())
-    if not caps.tool_names:
-        logger.warning(
-            "MCP exposed no tools; running with no data-fetching capability."
-        )
-    elif not caps.supports_source_attribution:
-        logger.warning(
-            "MCP server has no %s: answers will carry weaker provenance "
-            "(no named source, no license). Tools present: %s",
-            _METADATA_TOOL,
-            sorted(caps.tool_names),
-        )
-    return caps
