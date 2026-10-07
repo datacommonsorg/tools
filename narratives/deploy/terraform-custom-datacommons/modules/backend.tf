@@ -1,7 +1,8 @@
 # Terraform state backend.
-# State for each instance lives at gs://<project_id>-tfstate/cdc/<instance>/.
-# Bucket and versioning are created out-of-band (see docs/deployment.md Stage 1)
-# so this backend can be initialized on first apply.
+# State for each instance lives at
+# gs://<project_id>-tfstate/custom-datacommons/<instance>/.
+# deploy.sh creates the bucket and turns on versioning before the first apply,
+# so this backend can be initialized.
 
 terraform {
   required_version = ">= 1.5.0"
@@ -19,8 +20,8 @@ terraform {
 
   backend "gcs" {
     # Set via -backend-config on terraform init, e.g.
-    #   terraform init -backend-config="bucket=cdc-platform-stg-tfstate" \
-    #                  -backend-config="prefix=cdc/india"
+    #   terraform init -backend-config="bucket=<project_id>-tfstate" \
+    #                  -backend-config="prefix=custom-datacommons/<instance>"
   }
 }
 

@@ -11,7 +11,7 @@ import { useCallback, useRef } from 'react';
  *
  * How it works:
  *   • iframe src is a relative path — same-origin in dev (Vite proxy →
- *     BACKEND_URL) and in prod (services-container nginx → Flask).
+ *     BACKEND_URL) and in prod (the agent's /dcproxy → Flask).
  *   • On the iframe's load event we inject a <style> into its contentDocument
  *     that hides upstream's nav/header/footer chrome, so the user sees ONE
  *     app bar (ours) and the bare tool body. Mirrors the IITM custom-dc-setup

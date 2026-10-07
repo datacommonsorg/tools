@@ -2,7 +2,7 @@
 
 <!--
 TEMPLATE PROMPT. Backend-neutral: nothing here names a country, a dataset or a
-data plane, so it is correct as shipped on dcp, cdc and none. Copy this
+data plane, so it is correct as shipped on dcp and none. Copy this
 directory to add an instance, then add instance-specific guidance rather than
 editing the generic rules out.
 
