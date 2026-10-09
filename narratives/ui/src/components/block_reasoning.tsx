@@ -22,6 +22,7 @@ import { useState, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDownIcon } from "./icons";
+import { getInstanceConfig } from "@/src/config/instance_config";
 import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
 
 /**
@@ -281,7 +282,7 @@ export function ReasoningBlock({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:underline"
-                  style={{ color: "var(--color-brand-primary)" }}
+                  style={{ color: "var(--color-theme-primary)" }}
                 >
                   {children}
                 </a>
@@ -296,18 +297,12 @@ export function ReasoningBlock({
   );
 }
 
-/**
- * Rotating agent mark shown while the turn is still streaming.
- *
- * The asset carries its own conic-gradient arc, so only the rotation is added
- * here. It is referenced rather than inlined because the gradient is a Figma
- * angular export (a `foreignObject` holding a CSS conic-gradient) and inlining
- * that much markup buys nothing.
- */
+/** Rotating indicator shown while the turn is streaming. */
 function LoaderSpinner() {
+  const { thinkingIndicatorUrl } = getInstanceConfig();
   return (
     <img
-      src="/agent-thinking.svg"
+      src={thinkingIndicatorUrl}
       alt=""
       aria-hidden="true"
       width={20}
@@ -320,14 +315,12 @@ function LoaderSpinner() {
   );
 }
 
-/**
- * Settled agent mark shown once the turn has finished streaming — the same
- * four-point star as {@link LoaderSpinner} without the surrounding arc.
- */
+/** Static indicator shown after the turn finishes streaming. */
 function SparkleIcon() {
+  const { doneIndicatorUrl } = getInstanceConfig();
   return (
     <img
-      src="/agent-done-thinking.svg"
+      src={doneIndicatorUrl}
       alt=""
       aria-hidden="true"
       width={20}

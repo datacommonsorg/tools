@@ -18,15 +18,8 @@
  * @fileoverview Renders clickable follow-up questions that resubmit the query via the onAsk callback.
  */
 
-/**
- * Figma node 3427-16785 (heading "Follow up questions") + 3427-16786
- * (text block listing three suggestions, each in #175C75, body-large-
- * emphasized 16/24). Each suggestion is clickable — selecting it
- * re-submits the question via the supplied onAsk callback.
- */
-
 const COLOR_HEADING = 'var(--color-on-surface)';
-const COLOR_LINK = 'var(--color-brand-primary)';
+const COLOR_LINK = 'var(--color-theme-primary)';
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 

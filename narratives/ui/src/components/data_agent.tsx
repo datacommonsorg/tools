@@ -277,9 +277,6 @@ export function DataAgent() {
           onStop={stop}
         />
         <div className="text-center text-caption text-muted max-w-xl">
-          {/* The approved AI-content wording is the whole footer. It carries
-              its own attribution, so branding.json's footer.text is deliberately
-              not rendered here — printing both read as a doubled attribution. */}
           {DISCLAIMER_TEXT}
         </div>
       </div>

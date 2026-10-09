@@ -73,10 +73,8 @@ const COLOR_BORDER = "var(--color-border)";
  */
 const COLOR_TOOLBAR_BG = "#FFFFFF";
 const COLOR_BODY_BG = "var(--color-surface-narrative)";
-// Material 3 "filled tonal" pair, shared with <ExportPdfButton />. Both are
-// theme tokens so an instance restyles the button from branding.json.
-const COLOR_TONAL_CONTAINER = "var(--color-brand-container)";
-const COLOR_TONAL_CONTENT = "var(--color-on-brand-container)";
+const COLOR_TONAL_CONTAINER = "var(--color-theme-container)";
+const COLOR_TONAL_CONTENT = "var(--color-on-theme-container)";
 const COLOR_TITLE = "var(--color-on-surface)";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';

@@ -32,14 +32,9 @@ import { Tooltip } from "./tooltip";
  * label that position wears changes, from the {@link CitationNumbering} an
  * answer panel provides, so the chip, its anchor and its row cannot
  * disagree.
- *
- * Visual spec (Figma node 3427-16728, token "ts1"):
- *   color: #175C75 (AI Dark Blue)
- *   weight: 500 (Medium)
- *   font: Google Sans Text Medium 16/24 (inherits from surrounding body)
  */
 
-const COLOR = "var(--color-brand-primary)";
+const COLOR = "var(--color-theme-primary)";
 
 /** How one answer's citations are labelled and anchored on the page. */
 export interface CitationNumbering {
