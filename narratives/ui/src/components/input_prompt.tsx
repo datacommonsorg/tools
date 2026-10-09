@@ -68,8 +68,8 @@ export function PromptInput({
       // Pill radius is exactly half the 56px min-height, not rounded-full: a
       // 9999px radius stays visually round for the whole transition and snaps
       // to rounded-input at the end.
-      className={`group grid w-full max-w-[720px] mx-auto bg-surface shadow-elevated motion-safe:transition-[border-radius] duration-200 ease-out ${
-        isExpanded ? 'rounded-input' : 'rounded-[28px]'
+      className={`group grid w-full max-w-prompt mx-auto bg-surface shadow-elevated motion-safe:transition-[border-radius] duration-200 ease-out ${
+        isExpanded ? 'rounded-input' : 'rounded-pill'
       }`}
     >
       <span
@@ -77,9 +77,9 @@ export function PromptInput({
         className="glow-ring col-start-1 row-start-1 pointer-events-none opacity-0 group-focus-within:opacity-100 group-focus-within:[animation-play-state:running] motion-safe:transition-opacity duration-200 ease-linear"
       />
 
-      {/* 8px + 40px button + 8px = the 56px pill. The button sits at the top
-          so it stays on the first row as the box grows. */}
-      <div className="col-start-1 row-start-1 flex items-start gap-3 p-2">
+      {/* 8px + 40px button + 8px = the 56px pill. The button sits at the
+          bottom so it stays on the last row as the box grows. */}
+      <div className="col-start-1 row-start-1 flex items-end gap-3 p-2">
         <textarea
           ref={textareaRef}
           value={value}
@@ -115,9 +115,11 @@ export function PromptInput({
             aria-label={actionLabel}
             // Expanded: nudge the button in from the corner so it clears the
             // larger card radius. Translated, not margined, so the textarea
-            // beside it does not reflow during the transition.
-            className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-surface-blue enabled:hover:bg-button-hover transition-colors motion-safe:transition-[translate,background-color] duration-200 ease-out disabled:opacity-50 ${
-              isExpanded ? '-translate-x-1.25 translate-y-1.25' : ''
+            // beside it does not reflow during the transition. The ::before
+            // widens the 40px circle to a 44px touch target without changing
+            // the 56px pill.
+            className={`relative before:absolute before:-inset-0.5 w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-surface-blue enabled:hover:bg-button-hover transition-colors motion-safe:transition-[translate,background-color] duration-200 ease-out disabled:opacity-50 ${
+              isExpanded ? '-translate-x-1.25 -translate-y-1.25' : ''
             }`}
           >
             {isStreaming ? (
