@@ -274,6 +274,7 @@ describe('sanitizeUrl', () => {
     'https:foo/bar.svg',
     '//evil.example/x.svg',
     '/\\evil.example/x.svg',
+    '/assets\\logo.svg',
     'assets/logo.png',
   ])('returns the fallback for %j', (value) => {
     // Test: Disallowed URL formats.

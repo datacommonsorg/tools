@@ -86,6 +86,9 @@ const isStringArray = (value: unknown): value is string[] =>
  * current origin.
  */
 const isSafeUrl = (value: string): boolean => {
+  if (value.includes('\\')) {
+    return false;
+  }
   let parsed: URL;
   try {
     parsed = new URL(value, window.location.origin);
