@@ -318,7 +318,7 @@ def _load_config_file(config_path: Path) -> dict[str, Any]:
         _config_path = config_path
         logger.info("Config loaded/reloaded from config.json")
         return document
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error("Failed to load config from %s: %s", config_path, e)
         _config_cache = None
         _config_mtime = 0.0
