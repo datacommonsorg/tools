@@ -30,7 +30,7 @@ import { useChatSession } from "../hooks/chat_session_context";
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
- * prompt input with send/stop controls, and auto-scrolls new turns into view.
+ * prompt input with send/stop controls, and pins each new question to the top.
  */
 export function DataAgent() {
   const [query, setQuery] = useState("");
@@ -46,16 +46,9 @@ export function DataAgent() {
   // turn is added (e.g. follow-up question click) — not on every re-render
   // caused by streaming text chunks arriving.
   const prevTurnsLength = useRef(turns.length);
-  // Whether the view should follow content as it streams in. True until the
-  // user scrolls away from the bottom, true again when they come back — so
-  // reading back through an answer is never yanked forward, and returning to
-  // the bottom resumes following without needing a button.
-  const followRef = useRef(true);
-  // While a new turn is being pinned to the top, that pin owns the scroll
-  // position; the follow logic stands down until this timestamp passes.
-  const pinUntilRef = useRef(0);
-  // Edge-detects the end of a stream so the settle pass runs once per turn.
-  const wasStreamingRef = useRef(isStreaming);
+  // Turns already here when the surface mounts (a restored session, or coming
+  // back from another tab) are not news, so they do not animate in.
+  const restoredTurns = useRef(turns.length);
 
   // `override` lets a caller (e.g. a suggestion chip in InitialView) submit
   // a message directly without first round-tripping through the `query`
@@ -73,11 +66,18 @@ export function DataAgent() {
   // immediately see the message and the reasoning that streams below it.
   // Otherwise the new content gets appended out of view and the user only
   // sees stale answer chrome from the previous turn until they scroll.
+  //
+  // That is the only scroll the surface makes. The answer then streams in
+  // below the question, top to bottom, and the viewport stays where it is;
+  // the last turn's min-height (see TurnView) reserves the room for it.
   useEffect(() => {
     if (turns.length > prevTurnsLength.current) {
       const container = scrollRef.current;
       const targetIndex = turns.length - 1;
-      const scrollToLatest = () => {
+      // Glides rather than jumps, unless the reader asked for reduced motion.
+      const from = container?.scrollTop ?? 0;
+      const glideMs = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400;
+      const scrollToLatest = (elapsed: number) => {
         if (!container) return;
         const target = container.querySelector<HTMLElement>(
           `[data-turn-index="${targetIndex}"]`,
@@ -89,18 +89,16 @@ export function DataAgent() {
           top += node.offsetTop;
           node = node.offsetParent as HTMLElement | null;
         }
-        container.scrollTop = Math.max(0, top - 8);
+        // Ease-out cubic. The target is re-read every frame, so the glide
+        // lands on the bubble even if the layout above it is still settling.
+        const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
+        container.scrollTop = from + (Math.max(0, top - 8) - from) * progress;
       };
-      // Pin once now, then again on every animation frame for ~600ms so late
+      // Glide there, then hold on every animation frame up to ~600ms so late
       // layout shifts from the previous turn's AnswerPanel (e.g. Data Commons
       // chart hydration, FollowUpQuestions unmounting) don't leave the new
       // bubble stranded mid-scroller. Canceled when the user scrolls away.
       const start = performance.now();
-      // A new turn always resumes following: the user just asked something, so
-      // they want to watch the answer arrive even if they had scrolled away
-      // while reading the previous one.
-      followRef.current = true;
-      pinUntilRef.current = start + 600;
       let canceled = false;
       const onUserScroll = () => {
         canceled = true;
@@ -109,8 +107,9 @@ export function DataAgent() {
       container?.addEventListener("touchmove", onUserScroll, { passive: true });
       const tick = () => {
         if (canceled) return;
-        scrollToLatest();
-        if (performance.now() - start < 600) requestAnimationFrame(tick);
+        const elapsed = performance.now() - start;
+        scrollToLatest(elapsed);
+        if (elapsed < 600) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
       // Tidy listeners after the pin window closes.
@@ -121,97 +120,6 @@ export function DataAgent() {
     }
     prevTurnsLength.current = turns.length;
   }, [turns.length]);
-
-  // Follow the answer as it streams.
-  //
-  // The effect above fires only when a turn is APPENDED, so it does nothing
-  // while reasoning and prose stream into the turn that already exists -- which
-  // is why the view stopped tracking the agent partway through and the newest
-  // output ended up below the fold.
-  //
-  // Two observers, because one is not enough. A MutationObserver catches text
-  // chunks and chips arriving, but the Data Commons charts render into a shadow
-  // root and mutations there do not cross the boundary; a chart hydrating was
-  // adding hundreds of pixels invisibly and stranding the view short of the
-  // answer's end. A ResizeObserver on the turn wrappers does see it, because a
-  // chart growing grows the element containing it. Both are event-driven, so an
-  // idle page costs nothing.
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-
-    // Treat "close enough to the bottom" as being at the bottom: sub-pixel
-    // rounding and in-flight layout mean an exact comparison flickers.
-    const NEAR_BOTTOM_PX = 80;
-    const atBottom = () =>
-      container.scrollHeight - container.scrollTop - container.clientHeight <= NEAR_BOTTOM_PX;
-
-    const stickToBottom = () => {
-      if (!followRef.current || performance.now() < pinUntilRef.current) return;
-      container.scrollTop = container.scrollHeight;
-    };
-
-    const onScroll = () => {
-      // The pin owns the scroll position during its window; it deliberately
-      // parks the view at the top, which would otherwise read as "the user
-      // scrolled away" and switch following off for the rest of the turn.
-      if (performance.now() < pinUntilRef.current) return;
-      followRef.current = atBottom();
-    };
-    container.addEventListener("scroll", onScroll, { passive: true });
-
-    const resizeObserver = new ResizeObserver(stickToBottom);
-    const watchChildren = () => {
-      resizeObserver.disconnect();
-      for (const child of Array.from(container.children)) resizeObserver.observe(child);
-    };
-    watchChildren();
-
-    const mutationObserver = new MutationObserver(() => {
-      watchChildren();
-      stickToBottom();
-    });
-    mutationObserver.observe(container, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    return () => {
-      mutationObserver.disconnect();
-      resizeObserver.disconnect();
-      container.removeEventListener("scroll", onScroll);
-    };
-    // Re-attach when the scroll container appears: it does not exist while the
-    // empty-state InitialView is showing.
-  }, [turns.length]);
-
-  // Settle once the stream closes.
-  //
-  // The observer above catches everything it can see, but the Data Commons
-  // chart components render into a shadow root, and a MutationObserver does
-  // not cross that boundary. Their hydration is the last thing to change the
-  // page height, so it lands after the final callback and left the view a few
-  // hundred pixels short of the answer's end. Pinning across a short settle
-  // window covers it without polling for the whole turn.
-  useEffect(() => {
-    const container = scrollRef.current;
-    const justFinished = wasStreamingRef.current && !isStreaming;
-    wasStreamingRef.current = isStreaming;
-    if (!container || !justFinished) return;
-
-    const start = performance.now();
-    let raf = 0;
-    const tick = () => {
-      // Still the reader's call: if they scrolled up to re-read the answer as
-      // it finished, leave them where they are.
-      if (!followRef.current) return;
-      container.scrollTop = container.scrollHeight;
-      if (performance.now() - start < 1500) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [isStreaming]);
 
   if (turns.length === 0 && !isStreaming) {
     return (
@@ -237,6 +145,7 @@ export function DataAgent() {
               index={i}
               citationNumbers={citationNumbers[i]}
               isLast={i === turns.length - 1}
+              animate={i >= restoredTurns.current}
               isStreaming={isStreaming && i === turns.length - 1}
               onAsk={(question) => send(question)}
             />
@@ -292,6 +201,8 @@ interface TurnViewProps {
   /** Thread-wide label for each of this turn's provenance rows. */
   citationNumbers?: number[];
   isLast: boolean;
+  /** Whether the pieces of the turn fade up into place as they arrive. */
+  animate: boolean;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
 }
@@ -301,11 +212,26 @@ function TurnView({
   turn,
   index,
   citationNumbers,
+  isLast,
+  animate,
   isStreaming,
   onAsk,
 }: TurnViewProps) {
+  const showAnswer = Boolean(turn.text) && !turn.stopped;
+  const showSkeleton = !turn.text && turn.status === "synthesis";
+  const className = [
+    "shrink-0 flex flex-col gap-6",
+    animate && "motion-safe:*:animate-enter",
+    isLast && "min-h-full",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <>
+    // The last turn is at least as tall as the scroll area, so its question
+    // can be pinned to the top before any of the answer exists and the answer
+    // can fill in beneath it without the view moving.
+    <div className={className}>
       {/* User bubble — Figma uses Type scale Body L (16/28/400). The
           .text-body-large utility gives the right family + size + weight,
           but its line-height is 24px (GM3 body/large); override inline
@@ -313,7 +239,7 @@ function TurnView({
           and out-classes the Tailwind `leading-*` helper in source order. */}
       <div
         data-turn-index={index}
-        className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-6 py-3 sm:py-4 rounded-card text-body-large shadow-sm bg-user-msg text-on-surface break-words scroll-mt-4${
+        className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-6 py-3 sm:py-4 rounded-card text-body-large shadow-sm bg-user-msg text-on-surface break-words${
           index > 0 ? " mt-3" : ""
         }`}
         style={{ lineHeight: "28px" }}
@@ -339,27 +265,31 @@ function TurnView({
         />
       )}
 
-      {/* Narrative loading box — only once the agent starts constructing the
-          narrative (the `synthesis` phase), not during mcp (tools running).
-          Through that earlier phase the user sees just the reasoning; the
-          narrative box appears with its loading state when synthesis begins,
-          then fills in as text streams. */}
-      {!turn.text && turn.status === "synthesis" && (
-        <div className="self-start w-full max-w-4xl">
-          <SkeletonCard query={turn.userMessage} />
-        </div>
-      )}
+      {/* Narrative card — one wrapper for both of its states, so it enters
+          once and the skeleton hands over to the answer in place rather than
+          the card leaving and coming back.
 
-      {/* Streaming + final answer — full Figma AnswerPanel. Hidden when the
-          turn was stopped so we don't show a truncated partial answer. */}
-      {turn.text && !turn.stopped && (
-        <AnswerPanel
-          turn={turn}
-          isStreaming={isStreaming}
-          onAsk={onAsk}
-          citationNumbers={citationNumbers}
-          turnIndex={index}
-        />
+          Loading: only once the agent starts constructing the narrative (the
+          `synthesis` phase), not during mcp (tools running). Through that
+          earlier phase the user sees just the reasoning.
+
+          Answer: the full Figma AnswerPanel, streaming then final. Hidden
+          when the turn was stopped so we don't show a truncated partial
+          answer. */}
+      {(showSkeleton || showAnswer) && (
+        <div className="self-start shrink-0 w-full max-w-4xl">
+          {showAnswer ? (
+            <AnswerPanel
+              turn={turn}
+              isStreaming={isStreaming}
+              onAsk={onAsk}
+              citationNumbers={citationNumbers}
+              turnIndex={index}
+            />
+          ) : (
+            <SkeletonCard query={turn.userMessage} />
+          )}
+        </div>
       )}
 
       {/* Stopped note — shown in place of the reasoning/answer when the user
@@ -376,6 +306,6 @@ function TurnView({
           {turn.error}
         </div>
       )}
-    </>
+    </div>
   );
 }

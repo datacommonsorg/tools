@@ -110,6 +110,9 @@ function ReactMarkdownInner({
 }) {
   return (
     <>
+      {/* While streaming, each block fades up as it starts. The wrapper keeps
+          the cursor below out of that rule, which would replace its pulse. */}
+      <div className={streaming ? "motion-safe:*:animate-enter" : undefined}>
       <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -204,6 +207,7 @@ function ReactMarkdownInner({
         >
           {body}
         </ReactMarkdown>
+      </div>
         {streaming && (
           <span className="inline-block animate-pulse">▍</span>
         )}
