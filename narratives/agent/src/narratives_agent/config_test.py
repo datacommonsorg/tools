@@ -11,30 +11,50 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for prompt rendering, prompt fetching, model selection, and keys.
+"""Tests for config loading, prompt rendering, model selection, and keys.
 
-Covers five configuration behaviors in `config`:
+Covers seven configuration behaviors in `config`:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts.
 2. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
    bucket directory prefixes while stripping query parameters, and stripping
    HTML authoring comments from loaded prompt files.
-3. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
+3. `bootstrap_config_from_url` holding the fetched configuration in memory,
+   where `load_config` reads it ahead of any file, and holding an empty
+   configuration when the fetch fails or the response is not a JSON object.
+4. `load_config` falling back to `config.json` under `agent_root`, re-read when
+   it changes, and then to `agent-config.json` and `prompts/` under
+   `defaults_dir`, returning a copy in each case.
+5. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
    preferring Secret Manager over `config.json`, rejecting placeholder,
    empty, or JSON-wrapped secret payloads, and reusing a key another thread
    loaded while the caller waited.
-4. Resolution of `get_gemini_model` across configured, empty, and null `gemini`
+6. Resolution of `get_gemini_model` across configured, empty, and null `gemini`
    configuration sections.
-5. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
+7. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
    resolved.
 """
 
+import json
+import os
 import threading
+from pathlib import Path
 
 import pytest
 
 from narratives_agent import config
+
+
+@pytest.fixture(autouse=True)
+def reset_config_caches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resets in-memory config caches before each test."""
+    monkeypatch.setattr(config, "_bootstrapped_config", None)
+    monkeypatch.setattr(config, "_config_cache", None)
+    monkeypatch.setattr(config, "_config_mtime", 0.0)
+    monkeypatch.setattr(config, "_config_path", None)
+    monkeypatch.setattr(config, "_defaults_config", None)
+    monkeypatch.setattr(config, "_defaults_dir", None)
 
 
 def _with_config(
@@ -416,6 +436,319 @@ def test_prompt_containing_only_html_comment_leaves_slot_unset(
         config, "_fetch_gcs_url", _BodyFetch("<!-- not written yet -->")
     )
     assert config._fetch_prompt_bodies("https://example.com/c.json") == {}
+
+
+# --- config loading ---------------------------------------------------------
+
+_CONFIG_URL = "https://storage.googleapis.com/bucket/dir/agent-config.json"
+_PROMPTS_URL = "https://storage.googleapis.com/bucket/dir/prompts"
+
+
+class _UrlFetch:
+    """Answers each configured URL and raises `ConnectionError` otherwise."""
+
+    def __init__(self, bodies: dict[str, str]) -> None:
+        self.bodies = bodies
+
+    def __call__(self, url: str) -> _StubResponse:
+        if url not in self.bodies:
+            raise ConnectionError(url)
+        response = _StubResponse()
+        response.text = self.bodies[url]
+        return response
+
+
+@pytest.fixture
+def agent_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Configures empty `AGENT_ROOT` and `DEFAULTS_DIR` with no `CONFIG_URL`."""
+    root = tmp_path / "agent"
+    root.mkdir()
+    defaults = tmp_path / "defaults"
+    defaults.mkdir()
+    monkeypatch.setenv("AGENT_ROOT", str(root))
+    monkeypatch.setenv("DEFAULTS_DIR", str(defaults))
+    monkeypatch.delenv("CONFIG_URL", raising=False)
+    return root
+
+
+@pytest.fixture
+def defaults_dir(agent_root: Path) -> Path:
+    return agent_root.parent / "defaults"
+
+
+def _write_defaults(
+    defaults_dir: Path, document: dict[str, object], prompts: dict[str, str]
+) -> None:
+    (defaults_dir / "agent-config.json").write_text(
+        json.dumps(document), encoding="utf-8"
+    )
+    prompts_dir = defaults_dir / "prompts"
+    prompts_dir.mkdir()
+    for slot, body in prompts.items():
+        (prompts_dir / f"{slot}.md").write_text(body, encoding="utf-8")
+
+
+def test_bootstrap_holds_the_fetched_config_in_memory(
+    monkeypatch: pytest.MonkeyPatch, agent_root: Path
+) -> None:
+    # Test: In-memory caching of `CONFIG_URL` in `bootstrap_config_from_url`.
+    # Situation: `CONFIG_URL` serves a document with an inline `synthesis`
+    #   prompt, `prompts/mcp.md` and `prompts/synthesis.md` are served in the
+    #   same directory, `prompts/follow_up.md` is absent, and `agent_root`
+    #   contains a local `config.json`.
+    # Expectation: `load_config` returns the fetched configuration with the file
+    #   prompt in `mcp`, the inline prompt in `synthesis`, and no `follow_up`.
+    #   Each call returns a deep copy, and `agent_root/config.json` is not
+    #   modified.
+    monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
+    monkeypatch.setattr(
+        config,
+        "_fetch_gcs_url",
+        _UrlFetch(
+            {
+                _CONFIG_URL: json.dumps(
+                    {
+                        "template_vars": {"name": "Fetched"},
+                        "prompts": {"synthesis": "Inline synthesis."},
+                    }
+                ),
+                f"{_PROMPTS_URL}/mcp.md": "Fetched mcp.\n<!-- note -->",
+                f"{_PROMPTS_URL}/synthesis.md": "File synthesis.",
+            }
+        ),
+    )
+    disk_config = '{"template_vars": {"name": "Disk"}}'
+    (agent_root / "config.json").write_text(disk_config, encoding="utf-8")
+
+    config.bootstrap_config_from_url()
+    loaded = config.load_config()
+
+    assert loaded == {
+        "template_vars": {"name": "Fetched"},
+        "prompts": {"mcp": "Fetched mcp.", "synthesis": "Inline synthesis."},
+    }
+    loaded["template_vars"]["name"] = "Mutated"
+    loaded["prompts"]["mcp"] = "Mutated"
+    loaded["template_vars"] = {}
+    assert config.load_config() == {
+        "template_vars": {"name": "Fetched"},
+        "prompts": {"mcp": "Fetched mcp.", "synthesis": "Inline synthesis."},
+    }
+    assert (agent_root / "config.json").read_text("utf-8") == disk_config
+
+
+@pytest.mark.parametrize(
+    "bodies",
+    [{}, {_CONFIG_URL: "{not json"}, {_CONFIG_URL: "[1, 2]"}],
+    ids=["unreachable", "malformed", "not an object"],
+)
+def test_bootstrap_holds_an_empty_config_for_an_unusable_response(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_root: Path,
+    defaults_dir: Path,
+    bodies: dict[str, str],
+) -> None:
+    # Test: `bootstrap_config_from_url` when `CONFIG_URL` does not return a JSON
+    #   object.
+    # Situation: Fetching `CONFIG_URL` raises an error, returns invalid JSON, or
+    #   returns a JSON array, while valid configurations exist in `agent_root`
+    #   and `defaults_dir`.
+    # Expectation: `load_config` returns an empty dictionary rather than falling
+    #   back to local files, and `agent_root/config.json` is not modified.
+    monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
+    monkeypatch.setattr(config, "_fetch_gcs_url", _UrlFetch(bodies))
+    disk_config = '{"template_vars": {"name": "Disk"}}'
+    (agent_root / "config.json").write_text(disk_config, encoding="utf-8")
+    _write_defaults(defaults_dir, {"template_vars": {"name": "Shipped"}}, {})
+
+    config.bootstrap_config_from_url()
+
+    assert config.load_config() == {}
+    assert (agent_root / "config.json").read_text("utf-8") == disk_config
+
+
+def test_load_config_reads_config_json_before_the_defaults(
+    agent_root: Path, defaults_dir: Path
+) -> None:
+    # Test: Precedence of `agent_root/config.json` over `defaults_dir`.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` exists, and
+    #   `defaults_dir` contains a different configuration.
+    # Expectation: `load_config` returns a deep copy of
+    #   `agent_root/config.json`.
+    config_path = agent_root / "config.json"
+    config_path.write_text('{"template_vars": {"name": "Disk"}}', "utf-8")
+    _write_defaults(defaults_dir, {"template_vars": {"name": "Shipped"}}, {})
+
+    loaded = config.load_config()
+
+    assert loaded == {"template_vars": {"name": "Disk"}}
+    loaded["template_vars"]["name"] = "Mutated"
+    loaded["template_vars"] = {}
+    assert config.load_config() == {"template_vars": {"name": "Disk"}}
+
+
+def test_load_config_rereads_config_json_when_it_changes(
+    agent_root: Path,
+) -> None:
+    # Test: Reloading `agent_root/config.json` when its modification time
+    #   changes.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` is loaded once,
+    #   and the file is then updated with a newer modification time.
+    # Expectation: `load_config` returns the updated configuration.
+    config_path = agent_root / "config.json"
+    config_path.write_text('{"template_vars": {"name": "First"}}', "utf-8")
+    assert config.load_config() == {"template_vars": {"name": "First"}}
+
+    config_path.write_text('{"template_vars": {"name": "Second"}}', "utf-8")
+    later = config_path.stat().st_mtime + 10
+    os.utime(config_path, (later, later))
+
+    assert config.load_config() == {"template_vars": {"name": "Second"}}
+
+
+@pytest.mark.parametrize(
+    "raw_bytes",
+    [b"{not json", b"[1, 2]", b"\xff"],
+    ids=["malformed", "not an object", "not UTF-8"],
+)
+def test_load_config_is_empty_when_config_json_is_unreadable(
+    agent_root: Path,
+    defaults_dir: Path,
+    raw_bytes: bytes,
+) -> None:
+    # Test: `load_config` when `agent_root/config.json` becomes invalid or is
+    #   not a JSON object.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` is first loaded
+    #   with a valid configuration and then overwritten with malformed JSON, a
+    #   JSON array, or invalid UTF-8 bytes, while `defaults_dir` holds a valid
+    #   configuration.
+    # Expectation: `load_config` clears `_config_cache` and returns an empty
+    #   dictionary rather than raising an exception or falling back to
+    #   `defaults_dir`.
+    config_path = agent_root / "config.json"
+    config_path.write_text('{"template_vars": {"name": "Initial"}}', "utf-8")
+    assert config.load_config() == {"template_vars": {"name": "Initial"}}
+
+    config_path.write_bytes(raw_bytes)
+    later = config_path.stat().st_mtime + 10
+    os.utime(config_path, (later, later))
+    _write_defaults(defaults_dir, {"template_vars": {"name": "Shipped"}}, {})
+
+    assert config.load_config() == {}
+    assert config._config_cache is None
+
+
+def test_load_config_falls_back_to_the_defaults_dir(
+    agent_root: Path, defaults_dir: Path
+) -> None:
+    # Test: Fallback to `defaults_dir` when `CONFIG_URL` and `config.json` are
+    #   absent.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` does not exist,
+    #   and `defaults_dir` contains `agent-config.json` and `prompts/*.md`.
+    # Expectation: `load_config` returns a deep copy of the merged configuration
+    #   from `defaults_dir`, stripping HTML comments from prompt files and
+    #   keeping inline prompt overrides.
+    _write_defaults(
+        defaults_dir,
+        {
+            "template_vars": {"name": "Shipped"},
+            "prompts": {"synthesis": "Inline synthesis."},
+        },
+        {
+            "mcp": "Shipped mcp.\n<!-- keep in sync -->\nCite.",
+            "synthesis": "File synthesis.",
+            "follow_up": "<!-- not written yet -->",
+        },
+    )
+
+    loaded = config.load_config()
+    assert loaded == {
+        "template_vars": {"name": "Shipped"},
+        "prompts": {
+            "mcp": "Shipped mcp.\n\nCite.",
+            "synthesis": "Inline synthesis.",
+        },
+    }
+    loaded["template_vars"]["name"] = "Mutated"
+    loaded["prompts"]["mcp"] = "Mutated"
+    assert config.load_config() == {
+        "template_vars": {"name": "Shipped"},
+        "prompts": {
+            "mcp": "Shipped mcp.\n\nCite.",
+            "synthesis": "Inline synthesis.",
+        },
+    }
+
+
+def test_load_config_skips_unreadable_default_prompt_slot(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: `_read_prompt_files` skips an unreadable prompt file while keeping
+    #   `agent-config.json` and the remaining prompt slots.
+    # Situation: `defaults_dir/agent-config.json` and `prompts/synthesis.md` are
+    #   valid, while `prompts/mcp.md` contains invalid UTF-8 bytes.
+    # Expectation: `load_config` logs a warning for `mcp.md` and returns the
+    #   parsed `agent-config.json` merged with `synthesis.md`.
+    _write_defaults(
+        defaults_dir,
+        {"template_vars": {"name": "Shipped"}},
+        {"synthesis": "Shipped synthesis."},
+    )
+    (defaults_dir / "prompts" / "mcp.md").write_bytes(b"\xff")
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == {
+        "template_vars": {"name": "Shipped"},
+        "prompts": {"synthesis": "Shipped synthesis."},
+    }
+    assert "mcp.md" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("config_bytes", "prompt_bytes"),
+    [
+        (None, b"Shipped mcp."),
+        (b"{not json", b"Shipped mcp."),
+        (b"[1, 2]", b"Shipped mcp."),
+        (b"\xff", b"Shipped mcp."),
+        (b"{}", b"\xff"),
+    ],
+    ids=[
+        "missing",
+        "malformed",
+        "not an object",
+        "not UTF-8",
+        "prompt not UTF-8",
+    ],
+)
+def test_load_config_is_empty_when_the_defaults_are_unreadable(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+    config_bytes: bytes | None,
+    prompt_bytes: bytes,
+) -> None:
+    # Test: `load_config` when `defaults_dir` does not contain a readable
+    #   configuration.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` is absent, and
+    #   `defaults_dir/agent-config.json` or `defaults_dir/prompts/mcp.md` is
+    #   missing, invalid JSON, not a JSON object, or not valid UTF-8.
+    # Expectation: `load_config` returns an empty dictionary and logs a warning
+    #   or error referencing `defaults_dir`.
+    if config_bytes is not None:
+        (defaults_dir / "agent-config.json").write_bytes(config_bytes)
+    (defaults_dir / "prompts").mkdir()
+    (defaults_dir / "prompts" / "mcp.md").write_bytes(prompt_bytes)
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == {}
+    assert str(defaults_dir) in caplog.text
 
 
 # --- model selection --------------------------------------------------------

@@ -13,6 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Loads the agent configuration and renders prompts from it.
+
+The configuration is held in process memory. It is loaded from `CONFIG_URL` once
+at startup, from `agent_root/config.json` in local development (reloaded when
+the file's modification time changes), or from the `defaults/` directory shipped
+with the image.
+"""
+
+import copy
 import json
 import logging
 import posixpath
@@ -20,6 +29,7 @@ import re
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
@@ -65,9 +75,12 @@ except ImportError:
     )
 
 
-# Backend config cache
+_bootstrapped_config: dict[str, Any] | None = None
 _config_cache: dict[str, Any] | None = None
 _config_mtime = 0.0
+_config_path: Path | None = None
+_defaults_config: dict[str, Any] | None = None
+_defaults_dir: Path | None = None
 
 # Secret Manager lookup cache and TTL (seconds)
 _SECRET_MANAGER_TTL_SECONDS = 300
@@ -134,18 +147,14 @@ def _fetch_gcs_url(url: str) -> requests.Response:
 
 
 def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
-    """Fetch `prompts/<slot>.md` from the config bucket, beside
-    agent-config.json.
+    """Fetches `prompts/<slot>.md` from beside `config_url`.
 
-    The base is derived from CONFIG_URL rather than read from BRAND_CONFIG_URL
-    so the prompts always come from the same bucket as the config they belong
-    to, even if the two env vars ever disagree.
+    The prompt URLs are derived from `config_url`, so the prompts always come
+    from the same bucket as the configuration they belong to.
 
-    A slot that 404s or errors is skipped with a warning instead of failing
-    startup: an absent prompt leaves that phase with no system instruction,
-    which is exactly how the agent behaved before the files were wired up, so a
-    partial fetch degrades to the old behavior rather than taking the agent
-    down.
+    A slot that fails to fetch is skipped with a warning instead of failing
+    startup: an absent prompt leaves that phase with no system instruction, so
+    a partial fetch degrades the agent rather than taking it down.
     """
     # Prompt bodies live in a `prompts/` directory beside the config object, so
     # the URL is the config's own with its last path segment swapped out. Query
@@ -187,47 +196,29 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     return prompts
 
 
-def bootstrap_config_from_url() -> None:
-    """Fetch CONFIG_URL at startup and write the merged config to config.json.
+def _read_prompt_files(prompts_dir: Path) -> dict[str, str]:
+    """Reads `<slot>.md` files from `prompts_dir` and strips HTML comments."""
+    prompts: dict[str, str] = {}
+    for slot in PROMPT_SLOTS:
+        prompt_path = prompts_dir / f"{slot}.md"
+        if not prompt_path.is_file():
+            continue
+        try:
+            body = strip_prompt_comments(
+                prompt_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError) as e:
+            logger.warning(
+                "Prompt %r read failed (%s): %s", slot, prompt_path, e
+            )
+            continue
+        if body:
+            prompts[slot] = body
+    return prompts
 
-    Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
-    `config["prompts"]` before writing the file, while allowing non-empty inline
-    `prompts` entries in `agent-config.json` to take precedence.
-    """
-    settings = get_settings()
-    url = settings.config_url
-    if not url:
-        return
-    config_path = settings.agent_root / "config.json"
-    try:
-        r = _fetch_gcs_url(url)
-        r.raise_for_status()
-        raw = r.text
-        logger.info("CONFIG_URL fetched %d bytes from %s", len(raw), url)
-    except Exception as e:
-        logger.error("CONFIG_URL fetch failed (%s): %s", url, e)
-        return
 
-    try:
-        config = json.loads(raw)
-    except json.JSONDecodeError as e:
-        # Write it through unmodified so the failure surfaces at load_config()
-        # exactly as it did before, rather than turning into a silent no-config.
-        logger.error(
-            "CONFIG_URL is not valid JSON (%s); writing through unmodified", e
-        )
-        config_path.write_text(raw, encoding="utf-8")
-        return
-
-    if not isinstance(config, dict):
-        logger.error(
-            "CONFIG_URL did not contain a JSON object; writing through "
-            "unmodified"
-        )
-        config_path.write_text(raw, encoding="utf-8")
-        return
-
-    prompts = _fetch_prompt_bodies(url)
+def _apply_prompts(config: dict[str, Any], prompts: dict[str, str]) -> None:
+    """Merges `prompts` into `config["prompts"]`, keeping inline overrides."""
     inline = config.get("prompts")
     if isinstance(inline, dict):
         for slot, body in inline.items():
@@ -238,6 +229,8 @@ def bootstrap_config_from_url() -> None:
                 prompts[slot] = body
     if prompts:
         config["prompts"] = prompts
+    else:
+        config.pop("prompts", None)
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
         logger.warning(
@@ -246,38 +239,138 @@ def bootstrap_config_from_url() -> None:
             missing,
         )
 
-    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+def bootstrap_config_from_url() -> None:
+    """Fetches `CONFIG_URL` at startup and caches the merged configuration.
+
+    Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
+    `config["prompts"]`, while allowing non-empty inline `prompts` entries in
+    `agent-config.json` to take precedence.
+
+    If the fetch fails or the response is not a JSON object, an empty
+    configuration is cached so that `load_config()` does not fall back to the
+    shipped defaults when `CONFIG_URL` is explicitly configured.
+    """
+    global _bootstrapped_config
+
+    url = get_settings().config_url
+    if not url:
+        _bootstrapped_config = None
+        return
+    try:
+        r = _fetch_gcs_url(url)
+        r.raise_for_status()
+        raw = r.text
+        logger.info("CONFIG_URL fetched %d bytes from %s", len(raw), url)
+    except Exception as e:
+        logger.error(
+            "CONFIG_URL fetch failed (%s): %s; running without configuration",
+            url,
+            e,
+        )
+        _bootstrapped_config = {}
+        return
+
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error(
+            "CONFIG_URL is not valid JSON (%s); running without configuration",
+            e,
+        )
+        _bootstrapped_config = {}
+        return
+
+    if not isinstance(config, dict):
+        logger.error(
+            "CONFIG_URL did not contain a JSON object; running without "
+            "configuration"
+        )
+        _bootstrapped_config = {}
+        return
+
+    _apply_prompts(config, _fetch_prompt_bodies(url))
+    _bootstrapped_config = config
+
+
+def _load_config_file(config_path: Path) -> dict[str, Any]:
+    """Loads `config_path` and caches it by path and modification time."""
+    global _config_cache, _config_mtime, _config_path
+
+    try:
+        current_mtime = config_path.stat().st_mtime
+        if (
+            _config_cache is not None
+            and _config_path == config_path
+            and current_mtime == _config_mtime
+        ):
+            return _config_cache
+        with open(config_path, encoding="utf-8") as f:
+            document = json.load(f)
+        if not isinstance(document, dict):
+            logger.error("%s does not contain a JSON object", config_path)
+            _config_cache = None
+            _config_mtime = 0.0
+            _config_path = None
+            return {}
+        _config_cache = document
+        _config_mtime = current_mtime
+        _config_path = config_path
+        logger.info("Config loaded/reloaded from config.json")
+        return document
+    except Exception as e:
+        logger.error("Failed to load config from %s: %s", config_path, e)
+        _config_cache = None
+        _config_mtime = 0.0
+        _config_path = None
+        return {}
+
+
+def _load_defaults_config(defaults_dir: Path) -> dict[str, Any]:
+    """Loads `agent-config.json` and `prompts/` from `defaults_dir` once."""
+    global _defaults_config, _defaults_dir
+
+    if _defaults_config is not None and _defaults_dir == defaults_dir:
+        return _defaults_config
+
+    config_path = defaults_dir / "agent-config.json"
+    config: dict[str, Any] = {}
+    try:
+        document = json.loads(config_path.read_text(encoding="utf-8"))
+        if isinstance(document, dict):
+            prompts = _read_prompt_files(defaults_dir / "prompts")
+            _apply_prompts(document, prompts)
+            config = document
+            logger.info("Config loaded from %s", defaults_dir)
+        else:
+            logger.error("%s does not contain a JSON object", config_path)
+    except FileNotFoundError:
+        logger.warning("No agent configuration found at %s", config_path)
+    except (OSError, ValueError) as e:
+        logger.error(
+            "Failed to load the configuration under %s: %s", defaults_dir, e
+        )
+
+    _defaults_config = config
+    _defaults_dir = defaults_dir
+    return config
 
 
 def load_config() -> dict[str, Any]:
-    """Load configuration from config.json file."""
-    global _config_cache, _config_mtime
+    """Returns a deep copy of the active agent configuration.
 
-    config_path = get_settings().agent_root / "config.json"
+    Reads from `CONFIG_URL` (startup bootstrap), `agent_root/config.json`
+    (local development), or `defaults_dir` (`agent-config.json` and
+    `prompts/`), in that order.
+    """
+    if _bootstrapped_config is not None:
+        return copy.deepcopy(_bootstrapped_config)
 
-    if not config_path.exists():
-        logger.warning(f"Config file not found at {config_path}")
-        return {}
-
-    # Check if file was modified
-    current_mtime = config_path.stat().st_mtime
-    if _config_cache is not None and current_mtime == _config_mtime:
-        return _config_cache
-
-    try:
-        # config.json is UTF-8 on both sides: bootstrap_config_from_url pins
-        # the same encoding when it writes. A config carrying non-ASCII --
-        # prompt text with ₹ or an em-dash, an instance name -- would otherwise
-        # decode by the platform locale and come back corrupted.
-        with open(config_path, encoding="utf-8") as f:
-            config: dict[str, Any] = json.load(f)
-            _config_cache = config
-            _config_mtime = current_mtime
-            logger.info("Config loaded/reloaded from config.json")
-            return config
-    except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        return {}
+    settings = get_settings()
+    config_path = settings.agent_root / "config.json"
+    if config_path.exists():
+        return copy.deepcopy(_load_config_file(config_path))
+    return copy.deepcopy(_load_defaults_config(settings.defaults_dir))
 
 
 def get_current_datetime() -> str:

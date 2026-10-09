@@ -13,15 +13,15 @@
 # limitations under the License.
 """Runs the agent for local development as `uv run narratives-agent-dev`.
 
-Local development only — not used in production or deployments.
+This module is used only for local development, not in production deployments.
 
-In production on Cloud Run, the container image carries no configuration;
-instead, `bootstrap_config_from_url()` downloads `agent-config.json` and inlines
-`prompts/*.md` from a GCS bucket at boot, while Secret Manager provides API
-credentials.
+In production on Cloud Run, the container image ships with `defaults/`, and
+when `CONFIG_URL` is set, `bootstrap_config_from_url()` fetches
+`agent-config.json` and `prompts/*.md` from a GCS bucket at startup and holds
+the merged result in memory, while Secret Manager provides API credentials.
 
-On a developer machine without GCP infrastructure, this module emulates that
-cloud bootloader locally before starting Uvicorn:
+On a developer machine without GCP infrastructure, this module stages that
+configuration locally before starting Uvicorn:
 1. Ensures `.env.local` exists (copying `.env.local.example` if needed) and
    loads its variables into `os.environ`.
 2. Layers `defaults/agent-config.json` with optional `config/agent-config.json`

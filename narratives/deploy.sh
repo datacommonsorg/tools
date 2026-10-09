@@ -783,6 +783,8 @@ elif [ "$FRONTEND_ONLY" = true ] || [ "$AGENT_ONLY" = true ]; then
     # agent change rebuild the same thing. --frontend-only is kept as an alias
     # rather than removed, so existing runbooks and muscle memory keep working.
     log_info "[Surgical-Build] App-plane only. Building the agent + UI image..."
+    # `--agent-only` skips `pnpm build`, so stage `defaults/` into the `agent/` build context.
+    rm -rf agent/defaults && cp -R defaults agent/defaults
     AGENT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/agent:${IMAGE_TAG}"
     gcloud builds submit --tag="$AGENT_IMAGE" --project="$PROJECT_ID" agent || { log_error "App-plane container build failed!"; exit 1; }
 

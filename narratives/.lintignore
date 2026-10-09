@@ -16,5 +16,4 @@
 # Remove entries as files are refactored so ShellCheck and Hadolint enforce them.
 deploy.sh
 docs/smoke.sh
-agent/Dockerfile
 image/Dockerfile

@@ -55,7 +55,8 @@ Contribution process and PR expectations:
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
-- `scripts/` — build-time static asset staging (`stage_static.mjs`).
+- `scripts/` — build-time staging of `ui/dist/` into `agent/static/` and
+  `defaults/` into `agent/defaults/` (`stage_static.mjs`).
 - `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh`, and Cloud Build
   pipelines.
@@ -71,7 +72,8 @@ Run from the root of the `/narratives` directory:
   (`pnpm -C ui dev`).
 - `pnpm dev:agent` — stage config and start the Python agent development server
   on port 5001 (`uv run narratives-agent-dev`).
-- `pnpm build` — compile the React UI and stage static assets into `agent/static/`.
+- `pnpm build` — compile the React UI and stage `ui/dist/` into `agent/static/`
+  and `defaults/` into `agent/defaults/`.
 - `pnpm build:ui` — compile the React UI bundle into `ui/dist/` without staging.
 - `pnpm test` — run unit tests and lint checks across the whole application
   (`pnpm test:ui`, `pnpm test:agent`, and `pnpm lint`).
@@ -187,8 +189,8 @@ To run individual layer checks locally (mirrors
 1. **Test and lint suites**: `pnpm test` (runs `pnpm test:ui`,
    `pnpm test:agent`, and `pnpm lint`). Run `pnpm fix` to auto-fix formatting
    and lint issues.
-2. **Build**: `pnpm build` (compiles React UI and stages static assets into
-   `agent/static/`).
+2. **Build**: `pnpm build` (compiles React UI and stages `ui/dist/` into
+   `agent/static/` and `defaults/` into `agent/defaults/`).
 3. **UI style and types**: `pnpm lint:ui` (`tsc --noEmit` and `biome check`).
 4. **Agent style and types**: `pnpm lint:agent` (`ruff format --check`,
    `ruff check`, and `mypy`).

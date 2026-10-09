@@ -70,6 +70,15 @@ def _default_static_root(data: dict[str, Any]) -> Path:
     return agent_root / "static"
 
 
+def _default_defaults_dir(data: dict[str, Any]) -> Path:
+    """Returns `agent_root / "defaults"` if it exists, or `../defaults`."""
+    agent_root: Path = data["agent_root"]
+    staged = agent_root / "defaults"
+    if staged.is_dir():
+        return staged
+    return agent_root.parent / "defaults"
+
+
 def _resolve_data_plane_web_url(value: str, info: ValidationInfo) -> str:
     """Returns `value` without trailing slashes, or else `data_plane_url`.
 
@@ -109,16 +118,16 @@ class Settings(BaseSettings):
     # container build.
     static_root: Path = Field(default_factory=_default_static_root)
 
+    # When `config_url` is unset and `agent_root/config.json` is absent, the
+    # agent loads `agent-config.json` and `prompts/` from this directory.
+    defaults_dir: Path = Field(default_factory=_default_defaults_dir)
+
     # The local development server (`uv run narratives-agent-dev`) listens on
     # this port.
     agent_port: int = 5001
 
-    # The agent API is served under this path prefix. The API routers declare
-    # their routes at the root (/brand, /chat/stream, /health) and are included
-    # under this prefix, since nothing in front of the app plane strips one;
-    # that leaves the root free for the SPA. "/" selects the root itself,
-    # because an empty variable counts as unset. Brand asset URLs in the
-    # branding document are built from the same value.
+    # The agent API routers are mounted under this URL path prefix; "/" mounts
+    # them at the root because trailing slashes are stripped.
     agent_api_prefix: _NoTrailingSlashStr = "/agent"
 
     # CORS allows the comma-separated origins listed here. Left unset, it
@@ -174,18 +183,9 @@ class Settings(BaseSettings):
     # when no MCP endpoint is configured.
     mcp_port: int = 3000
 
-    # Startup fetches agent-config.json from this URL and writes it to
-    # config.json under `agent_root`, together with the prompt bodies in
-    # `prompts/` beside it. An empty value leaves config.json as it is.
+    # Startup fetches `agent-config.json` and its sibling `prompts/` from this
+    # GCS URL and caches the merged configuration in memory.
     config_url: str = ""
-
-    # Startup reads branding.json and its images from the config bucket at
-    # this base URL. When it is empty, the UI keeps its default branding.
-    brand_config_url: _NoTrailingSlashStr = ""
-
-    # The branding endpoints publish this deployment identifier alongside the
-    # branding.
-    instance_id: str = ""
 
     # Prompts render the current date and time in this IANA zone. An unknown
     # zone falls back to UTC.

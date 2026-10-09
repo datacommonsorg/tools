@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from narratives_agent import telemetry
 from narratives_agent.config import bootstrap_config_from_url
 from narratives_agent.mcp import client as mcp_client
-from narratives_agent.server.routes import brand, chat, dcproxy, spa, system
+from narratives_agent.server.routes import chat, dcproxy, spa, system
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -68,14 +68,14 @@ def _allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Writes config.json, loads branding, and opens the data-plane client.
+    """Bootstraps the agent config and opens the data-plane client.
 
-    The config bootstrap writes config.json, which every later load_config()
-    reads. Branding is then read from GCS once, so every later request is
-    served from process memory rather than from the bucket. load_branding()
-    swallows its own failures: a missing, unreachable or malformed config
-    leaves the UI on its shipped design tokens rather than stopping the server
-    from starting.
+    The config bootstrap runs before the first request, so every later
+    load_config() call is served from process memory. It swallows its own
+    failures rather than stopping the server from starting: an unreachable or
+    malformed CONFIG_URL leaves the agent with no configuration, so the broken
+    bucket surfaces as a `config_missing` error on every turn instead of being
+    masked by the configuration shipped with the image.
 
     The proxy's HTTP client is shared by every request and closed, with its
     pooled connections, at shutdown. The MCP client's pooled HTTP client is
@@ -87,7 +87,6 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
-    brand.load_branding()
     try:
         async with dcproxy.create_client() as client:
             app.state.data_plane_client = client
@@ -102,12 +101,11 @@ def create_app() -> FastAPI:
 
     Each part of the URL space has one owner:
 
-      /agent/*                  the agent's own API, including branding
+      /agent/*                  the agent's own API
       /core, /api, /tools, ...  the data plane, reverse-proxied by dcproxy
       everything else           the SPA
 
-    The API routers are included under `agent_api_prefix`, and brand.py builds
-    its asset URLs from the same setting.
+    The API routers are included under `agent_api_prefix`.
 
     Returns:
         The application, without API documentation routes.
@@ -135,7 +133,7 @@ def create_app() -> FastAPI:
     # mount therefore comes last, so the proxy routes win over a static file of
     # the same name and every path the routers do not claim falls through to
     # the SPA.
-    for api_router in (brand.router, system.router, chat.router):
+    for api_router in (system.router, chat.router):
         app.include_router(api_router, prefix=settings.agent_api_prefix)
     app.include_router(dcproxy.router)
     app.include_router(spa.router)
