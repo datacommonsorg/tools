@@ -72,6 +72,14 @@
   --radius-card: var(--brand-radius-card, 16px);
   --radius-input: var(--brand-radius-input, 36px);
   --radius-chip: var(--brand-radius-chip, 20px);
+  /* Collapsed prompt box: half its 56px height, so it reads as a pill. Fixed,
+     not brand-driven, because it follows from that height. Consumed as
+     `rounded-pill`. */
+  --radius-pill: 28px;
+
+  /* Widths. Tailwind v4 turns the --container-* namespace into `max-w-*`
+     utilities, so this is consumed as `max-w-prompt`. */
+  --container-prompt: 720px;
 
   /* Lines / borders */
   --color-line: #C4C7C5;
@@ -89,6 +97,13 @@
 
   /* Scrim — click-outside backdrop */
   --color-scrim: #000000;
+
+  /* Elevation — M3 level 1, the resting shadow of raised surfaces such as the
+     prompt box. Consumed as `shadow-elevated`. */
+  --color-shadow: #000000;
+  --shadow-elevated:
+    0 1px 3px 1px color-mix(in srgb, var(--color-shadow) 15%, transparent),
+    0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);
 
   /* Inverse surface — the M3 role for UI that sits *over* the page rather
      than in it (m3.material.io/components/tooltips). */
@@ -176,6 +191,60 @@ summary,
 label[for],
 select:not(:disabled) {
   cursor: pointer;
+}
+
+/*
+ * Rotating gradient ring traced just inside a rounded box — the prompt box's
+ * focus glow. The mask punches out the content box, so only the 1.5px padding
+ * shows. The conic gradient is a separate layer behind that mask, turned with
+ * `rotate` so the animation stays on the compositor instead of repainting the
+ * gradient every frame. The rotation starts paused; the caller resumes it
+ * (`[animation-play-state:running]`) only while visible, and the layer inherits
+ * that state.
+ */
+@keyframes glow-rotate {
+  to {
+    rotate: 1turn;
+  }
+}
+
+@utility glow-ring {
+  position: relative;
+  overflow: clip;
+  padding: 1.5px;
+  border-radius: inherit;
+  mask:
+    linear-gradient(black 0 0) content-box,
+    linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation-play-state: paused;
+
+  /* A centered square whose side is the box's width times √2: at least the
+     diagonal of any box wider than it is tall, so it covers the ring at every
+     angle. Absolutely positioned because a square that size in flow would
+     stretch the box. */
+  &::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 142%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    background: conic-gradient(
+      var(--color-brand-primary),
+      var(--color-brand-accent),
+      var(--color-brand-primary),
+      var(--color-brand-accent),
+      var(--color-brand-primary)
+    );
+    animation: glow-rotate 6s linear infinite;
+    animation-play-state: inherit;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {

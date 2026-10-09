@@ -19,16 +19,14 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SendIcon } from "./icons";
 import { InitialView } from "./view_initial";
 import { SkeletonCard } from "./card_skeleton";
 import { ReasoningBlock } from "./block_reasoning";
 import { AnswerPanel } from "./panel_answer";
 import { DISCLAIMER_TEXT } from "./note_disclaimer";
-import { Tooltip } from "./tooltip";
+import { PromptInput } from "./input_prompt";
 import { assignCitationNumbers, type ChatTurn } from "../hooks/use_sse_chat";
 import { useChatSession } from "../hooks/chat_session_context";
-import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -43,7 +41,6 @@ export function DataAgent() {
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Track the turn count we last reacted to so we only scroll when a NEW
   // turn is added (e.g. follow-up question click) — not on every re-render
@@ -70,8 +67,6 @@ export function DataAgent() {
     setQuery("");
     await send(message);
   };
-
-  useTextareaAutosize(textareaRef, query);
 
   // When a new turn is appended (typed prompt OR follow-up question click),
   // pin the user's new question to the top of the chat surface so they can
@@ -269,44 +264,18 @@ export function DataAgent() {
       </div>
 
       {/* Follow-up input — flush against the fade (no top margin) so the
-          gradient reads as a continuous merge rather than a separator. */}
-      <div className="w-full flex flex-col items-center gap-3 bg-surface pb-4 sm:pb-6">
-        <div className="w-full max-w-[720px] min-h-[64px] bg-surface border border-outline rounded-input p-4 flex flex-col justify-between shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] transition-all duration-300">
-          <textarea
-            ref={textareaRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={isStreaming ? "Streaming…" : "Ask a follow-up question"}
-            disabled={isStreaming}
-            className="bg-transparent w-full outline-none text-body-large text-on-surface placeholder:text-placeholder resize-none flex-1 pl-2 pt-1"
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-          {/* One button, two jobs — so its name has to change with its job.
-              While streaming it renders a bare square with no text; without an
-              explicit label the stop control reached assistive tech, and the
-              tooltip, as an unnamed button. */}
-          <Tooltip label={isStreaming ? "Stop Response" : "Submit"}>
-          <button
-            type="button"
-            onClick={isStreaming ? stop : () => handleSend()}
-            disabled={!isStreaming && !query.trim()}
-            aria-label={isStreaming ? "Stop Response" : "Submit"}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-blue hover:bg-button-hover transition-colors self-end shrink-0 disabled:opacity-50"
-          >
-            {isStreaming ? (
-              <div className="w-3 h-3 rounded-sm bg-brand-primary" />
-            ) : (
-              <SendIcon size="xs" />
-            )}
-          </button>
-          </Tooltip>
-        </div>
+          gradient reads as a continuous merge rather than a separator.
+          Positioned so it paints over the fade, which would otherwise clip
+          the top of the prompt's shadow. */}
+      <div className="relative w-full flex flex-col items-center gap-3 bg-surface pb-4 sm:pb-6">
+        <PromptInput
+          value={query}
+          placeholder="Ask a follow-up question"
+          onValueChange={setQuery}
+          onSubmit={() => handleSend()}
+          isStreaming={isStreaming}
+          onStop={stop}
+        />
         <div className="text-center text-caption text-muted max-w-xl">
           {/* The approved AI-content wording is the whole footer. It carries
               its own attribution, so branding.json's footer.text is deliberately

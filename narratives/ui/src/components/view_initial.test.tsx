@@ -60,7 +60,7 @@ const renderSearchBox = (query: string) => {
       onSend={() => {}}
     />,
   );
-  const searchBox = screen.getByRole("textbox").parentElement!;
+  const searchBox = screen.getByRole("textbox").closest("form")!;
   return { view, searchBox };
 };
 
@@ -70,7 +70,7 @@ describe("InitialView search box", () => {
     // Situation: The text does not wrap inside the pill.
     // Expectation: The box keeps its fully rounded pill shape.
     const { searchBox } = renderSearchBox("population of France");
-    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).toContain("rounded-pill");
     expect(searchBox.className).not.toContain("rounded-input");
   });
 
@@ -89,7 +89,7 @@ describe("InitialView search box", () => {
     // Expectation: The box keeps its pill shape; only typed text expands it.
     lines = 2;
     const { searchBox } = renderSearchBox("");
-    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).toContain("rounded-pill");
     expect(searchBox.className).not.toContain("rounded-input");
   });
 
@@ -107,7 +107,7 @@ describe("InitialView search box", () => {
         onSend={() => {}}
         />,
     );
-    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).toContain("rounded-pill");
   });
 });
 
