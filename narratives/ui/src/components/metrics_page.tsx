@@ -15,163 +15,27 @@
  */
 
 /**
- * @fileoverview Renders the config-driven Key Metrics dashboard: tabs and tiles from branding.metrics.
+ * @fileoverview Renders the Key Metrics dashboard from the instance's
+ * `metrics.tabs` configuration.
  */
 
-import { useState } from "react";
-import { useBrand } from "../hooks/branding_context";
-import type { MetricsTab, MetricsTile } from "../types/metrics";
+import { type ReactNode, useState } from 'react';
+import { getInstanceConfig } from '@/src/config/instance_config';
+import type { MetricsTab, MetricsTile } from '@/src/types/metrics';
 import {
   API_ROOT,
   DataCommonsComponent,
   type DataCommonsComponentAttributes,
   type DataCommonsComponentTagName,
-} from "../utils/datacommons_component";
+} from '@/src/utils/datacommons_component';
 
-/**
- * Key Metrics Dashboard.
- *
- * CONFIG-DRIVEN COMPOSITION: the tab+tile layout comes from
- * `branding.metrics.tabs` fetched at mount. When absent, DEFAULT_METRICS_TABS
- * below is used. This preserves the "configuration over images" property — a
- * new state instance changes its dashboards by editing branding.json in its
- * config bucket, no image rebuild needed.
- *
- * DC components are rendered via the shared <DataCommonsComponent> wrapper
- * (see utils/datacommons_component.tsx), which imperatively mounts each
- * <datacommons-*> element and sets attributes rather than JS properties —
- * working around React 19's custom-element property-setter behavior. `apiroot`
- * is the page origin, per upstream homepage.html.
- */
-const FONT_DISPLAY = "var(--font-display)";
-
-/**
- * Fallback dashboard composition when branding.metrics is absent.
- *
- * Lifted from custom-dc-setup's static/custom_dc/custom/standard_insights.html
- * (the IITM India POC dashboard) — generic global-comparison widgets that
- * resolve against any Custom DC backend's base graph without instance-specific
- * data imports. Per-instance branding.json overrides this whole structure.
- */
-const DEFAULT_METRICS_TABS: MetricsTab[] = [
-  {
-    id: "population",
-    label: "Population",
-    tiles: [
-      {
-        type: "highlight",
-        title: "World population",
-        header: "World population",
-        variable: "Count_Person",
-        place: "Earth",
-      },
-      {
-        type: "highlight",
-        title: "USA population",
-        header: "USA population",
-        variable: "Count_Person",
-        place: "country/USA",
-      },
-      {
-        type: "highlight",
-        title: "India population",
-        header: "India population",
-        variable: "Count_Person",
-        place: "country/IND",
-      },
-      {
-        type: "highlight",
-        title: "China population",
-        header: "China population",
-        variable: "Count_Person",
-        place: "country/CHN",
-      },
-      {
-        type: "line",
-        title: "Population — major economies",
-        header: "Population over time",
-        variables: "Count_Person",
-        places: "country/USA country/IND country/CHN country/DEU country/JPN",
-      },
-      {
-        type: "map",
-        title: "US population by state",
-        header: "Population distribution",
-        variable: "Count_Person",
-        parentPlace: "country/USA",
-        childPlaceType: "State",
-      },
-      {
-        type: "ranking",
-        title: "Top countries by population",
-        header: "Most populous countries",
-        variable: "Count_Person",
-        parentPlace: "Earth",
-        childPlaceType: "Country",
-        rankingCount: 10,
-      },
-    ],
-  },
-  {
-    id: "economy",
-    label: "Economy",
-    tiles: [
-      {
-        type: "bar",
-        title: "GDP comparison",
-        header: "GDP by country (current US$)",
-        variables:
-          "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
-        places:
-          "country/USA country/CHN country/JPN country/DEU country/IND country/GBR country/FRA",
-        sort: "descending",
-      },
-      {
-        type: "scatter",
-        title: "GDP vs Life Expectancy",
-        header: "Economic development vs health",
-        variables:
-          "Amount_EconomicActivity_GrossDomesticProduction_Nominal LifeExpectancy_Person",
-        parentPlace: "Earth",
-        childPlaceType: "Country",
-      },
-    ],
-  },
-  {
-    id: "health",
-    label: "Health",
-    tiles: [
-      {
-        type: "line",
-        title: "Life expectancy trends",
-        header: "Life expectancy at birth",
-        variables: "LifeExpectancy_Person",
-        places:
-          "country/USA country/JPN country/DEU country/IND country/BRA",
-      },
-    ],
-  },
-  {
-    id: "environment",
-    label: "Environment",
-    tiles: [
-      {
-        type: "line",
-        title: "CO2 emissions",
-        header: "Annual CO2 emissions",
-        variables: "Annual_Emissions_GreenhouseGas_CO2",
-        places:
-          "country/USA country/CHN country/IND country/RUS country/DEU",
-      },
-    ],
-  },
-];
+const FONT_DISPLAY = 'var(--font-display)';
 
 /** Renders the Key Metrics dashboard page: heading, category tabs, and tile grid. */
 export function MetricsPage() {
-  const brand = useBrand();
-  const tabs = brand.metrics?.tabs ?? DEFAULT_METRICS_TABS;
-  const [activeId, setActiveId] = useState<string>(tabs[0]?.id ?? "");
+  const config = getInstanceConfig();
+  const tabs = config.metrics.tabs;
+  const [activeId, setActiveId] = useState<string>(tabs[0]?.id ?? '');
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
 
   return (
@@ -182,33 +46,29 @@ export function MetricsPage() {
             style={{
               fontFamily: FONT_DISPLAY,
               fontSize: 32,
-              lineHeight: "36px",
+              lineHeight: '36px',
               fontWeight: 500,
-              color: "var(--color-on-surface)",
+              color: 'var(--color-on-surface)',
               margin: 0,
             }}
           >
             Key Metrics
           </h1>
-          <p className="text-body-large text-subtle mt-2">
-            {brand.metrics
-              ? `${brand.instanceName ?? "Per-instance"} dashboards — `
-              : "Default starter palette — "}
-            powered by Data Commons web components.
-          </p>
+          {tabs.length > 0 && (
+            <p className="text-body-large text-subtle mt-2">
+              {config.instanceName} dashboards — powered by Data Commons web
+              components.
+            </p>
+          )}
         </header>
 
         {!active ? (
           <EmptyState />
         ) : (
           <>
-            <SubTabs
-              tabs={tabs}
-              activeId={active.id}
-              onChange={setActiveId}
-            />
+            <SubTabs tabs={tabs} activeId={active.id} onChange={setActiveId} />
 
-            <TilesGrid tiles={active.tiles} />
+            <TilesGrid key={active.id} tiles={active.tiles} />
           </>
         )}
       </div>
@@ -243,8 +103,8 @@ function SubTabs({
             onClick={() => onChange(tab.id)}
             className={`px-4 py-2 text-label-large border-b-2 -mb-px transition-colors cursor-pointer ${
               active
-                ? "border-brand-primary text-brand-primary"
-                : "border-transparent text-on-surface-variant hover:text-on-surface"
+                ? 'border-theme-primary text-theme-primary'
+                : 'border-transparent text-on-surface-variant hover:text-on-surface'
             }`}
           >
             {tab.label}
@@ -257,7 +117,9 @@ function SubTabs({
 
 /** Renders the active tab's tiles in a responsive two-column grid. */
 function TilesGrid({ tiles }: { tiles: MetricsTile[] }) {
-  if (tiles.length === 0) return null;
+  if (tiles.length === 0) {
+    return null;
+  }
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {tiles.map((tile, index) => {
@@ -276,14 +138,8 @@ function TilesGrid({ tiles }: { tiles: MetricsTile[] }) {
   );
 }
 
-/** Card chrome around one dashboard tile: titled header + padded body. */
-function Tile({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+/** Card container around a single dashboard tile. */
+function Tile({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="bg-surface rounded-card border border-outline overflow-hidden shadow-sm">
       <header className="px-5 py-3 border-b border-outline-variant">
@@ -291,9 +147,9 @@ function Tile({
           style={{
             fontFamily: FONT_DISPLAY,
             fontSize: 16,
-            lineHeight: "24px",
+            lineHeight: '24px',
             fontWeight: 500,
-            color: "var(--color-on-surface)",
+            color: 'var(--color-on-surface)',
             margin: 0,
           }}
         >
@@ -305,18 +161,18 @@ function Tile({
   );
 }
 
-/** Shown when the branding config declares a metrics block with no tabs. */
+/** Shown when the instance configuration declares no metrics tabs. */
 function EmptyState() {
   return (
     <div className="py-16 text-center">
       <h2
         className="text-display-small mb-2"
-        style={{ color: "var(--color-on-surface)" }}
+        style={{ color: 'var(--color-on-surface)' }}
       >
         No metrics configured
       </h2>
       <p className="text-body-large text-subtle">
-        This instance's branding.json has no metrics.tabs entries.
+        No dashboards are configured for this instance.
       </p>
     </div>
   );

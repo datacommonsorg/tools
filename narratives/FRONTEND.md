@@ -19,10 +19,17 @@ styles.
   (`h-[3px]`) unless the dimension is genuinely non-standard.
 - **No inline hex.** Reusable colors, fonts, and assets belong in the Tailwind
   theme in `src/index.css`.
-- **Brand values come from runtime CSS variables** —
-  `var(--brand-*, <fallback>)` — injected from the instance's `branding.json`.
-  The fallback after the comma is the shipped design default. Never hardcode a
-  brand color.
+- **Theme values come from CSS custom properties** written as
+  `var(--theme-*, <fallback>)`. The fallback after the comma is the Base Data
+  Commons default, overridden when `--theme-*` properties are defined in
+  `<style id="theme-tokens">` in `index.html`. Never hardcode a theme color.
+- **Instance configuration comes from `#instance-config`** in `index.html`.
+  Components read `instanceName`, `logoUrl`, `logoText`, `logoAlt`, `headline`,
+  `tagline`, `suggestions`, `navigation`, `metrics`, `thinkingIndicatorUrl`, and
+  `doneIndicatorUrl` synchronously via `getInstanceConfig()` in
+  `src/config/instance_config.ts`, which parses
+  `<script id="instance-config" type="application/json">` and falls back to the
+  Base Data Commons defaults when the tag is empty.
 - **Variants and state are expressed as conditional utility classes**, the
   Tailwind idiom — not `data-*` attributes, which belong to a stylesheet-driven
   stack. Lift any condition more complex than a single ternary out of the JSX

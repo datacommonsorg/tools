@@ -2,79 +2,50 @@
 @import "tailwindcss";
 
 /*
- * Single source of truth for the design system.
+ * Design tokens for the application.
  *
- * Colors registered here as `--color-*` automatically generate Tailwind v4
- * utility classes (e.g. `--color-brand-primary` → `bg-brand-primary`,
- * `text-brand-primary`, `border-brand-primary`, `hover:bg-brand-primary`,
- * etc.) AND are available as CSS custom properties for use inside `var()`.
- * Edit a value here and every consumer updates.
- *
- * Names mirror the Figma GM3 token vocabulary where possible.
- *
- * BRAND-DRIVEN TOKENS: tokens below written as `var(--brand-*, <fallback>)` are
- * recolored at runtime from the instance's branding.json. hooks/use_branding.ts
- * fetches the config bucket and sets `--brand-primary`, `--brand-accent`,
- * `--brand-text`, `--brand-text-muted`, `--brand-surface`, `--brand-background`,
- * `--brand-font`, `--brand-font-body` on :root. The `<fallback>` after the comma
- * is the shipped design value used when no branding.json is present — keep it in
- * sync with DEFAULT_BRAND in use_branding.ts. The hero-gradient stops are
- * brand-driven too (--brand-gradient-start / --brand-gradient-end), as are the
- * narrative tile (--brand-surface-narrative), the skeleton bars
- * (--brand-skeleton-bar), the user-message bubble (--brand-user-msg) and the
- * three radii (--brand-radius-card / -input / -chip).
+ * Tokens written as `var(--theme-*, <fallback>)` use the Base Data Commons
+ * fallback unless `--theme-*` overrides are defined in `<style id="theme-tokens">`
+ * in index.html.
  */
 @theme {
-  --font-sans: var(--brand-font-body, "Google Sans Text", "Inter", system-ui, sans-serif);
-  --font-display: var(--brand-font, "Google Sans", "Roboto", system-ui, sans-serif);
+  --font-sans: var(--theme-font-body, "Google Sans Text", "Inter", system-ui, sans-serif);
+  --font-display: var(--theme-font, "Google Sans", "Roboto", system-ui, sans-serif);
 
-  /* Brand */
-  --color-brand-primary: var(--brand-primary, #175C75);
-  --color-brand-accent: var(--brand-accent, #65A782);
-  /* Material 3 "filled tonal" container and its content color, used by the
-     Export button. The container defaults to a tint mixed from the primary so
-     any brand gets a coherent tonal pair without configuring one; set
-     colors.container / colors.on_container in branding.json to override. */
-  --color-brand-container: var(
-    --brand-container,
-    color-mix(in srgb, var(--color-brand-primary) 18%, #ffffff)
+  --color-theme-primary: var(--theme-primary, #0B57D0);
+  --color-theme-accent: var(--theme-accent, #0B57D0);
+  /* Selected-item pills and active tabs tint the theme primary at 14% opacity
+     when no explicit container color is set. */
+  --color-theme-container: var(
+    --theme-container,
+    color-mix(in srgb, var(--color-theme-primary) 14%, white)
   );
-  --color-on-brand-container: var(--brand-on-container, var(--color-brand-primary));
-  /* Hero-gradient stops (the "Data Agent" heading). Brand-driven via
-     branding.json's colors.gradient_start / colors.gradient_end; the literals
-     after the comma are the shipped design fallback (green → teal). */
-  --color-brand-gradient-start: var(--brand-gradient-start, #65A782);
-  --color-brand-gradient-end: var(--brand-gradient-end, #6FAEC0);
+  --color-on-theme-container: var(--theme-on-container, var(--color-theme-primary));
+  --color-theme-gradient-start: var(--theme-gradient-start, #0B57D0);
+  --color-theme-gradient-end: var(--theme-gradient-end, #0B57D0);
 
   /* Surfaces */
   --color-surface: #ffffff;
-  --color-surface-soft: var(--brand-surface, #F9F9F9);
+  --color-surface-soft: var(--theme-surface, #F9F9F9);
   --color-surface-muted: #f3f4f6;
   --color-surface-blue: #f0f4f9;
-  /* Tile behind a rendered narrative (response card / skeleton). Separate from
-     --color-surface-soft so an instance can tint the narrative without moving
-     every other soft surface. */
-  --color-surface-narrative: var(--brand-surface-narrative, #F9F9F9);
-  /* Skeleton ("ghost loader") bars shown while a narrative streams in. */
-  --color-skeleton-bar: var(--brand-skeleton-bar, #E3E3E3);
-  /* User-message bubble. */
-  --color-user-msg: var(--brand-user-msg, #E8F2F4);
-  /* Active header tab: label and underline. Defaults to the body text color —
-     the neutral theme marks the active tab in ink rather than brand color —
-     and is overridable for instances that want a branded tab. */
-  --color-nav-active: var(--brand-nav-active, var(--color-on-surface));
+  /* Subtle tint behind the reasoning card so it reads as distinct from the
+     main answer body. */
+  --color-surface-narrative: var(--theme-surface-narrative, #F5FAFF);
+  --color-skeleton-bar: var(--theme-skeleton-bar, #EFEDED);
+  --color-user-msg: var(--theme-user-msg, #EAEEF5);
+  /* Active navigation indicator and label color, defaulting to the primary
+     text color when unconfigured. */
+  --color-nav-active: var(--theme-nav-active, var(--color-on-surface));
   --color-button-hover: #e1e5eb;
 
-  /* Radii — brand-driven so an instance can move between rounded and square
-     without touching component code. Tailwind v4 turns the --radius-* namespace
-     into utilities, so these are consumed as `rounded-card`, `rounded-input`
-     and `rounded-chip`. */
-  --radius-card: var(--brand-radius-card, 16px);
-  --radius-input: var(--brand-radius-input, 36px);
-  --radius-chip: var(--brand-radius-chip, 20px);
-  /* Collapsed prompt box: half its 56px height, so it reads as a pill. Fixed,
-     not brand-driven, because it follows from that height. Consumed as
-     `rounded-pill`. */
+  /* Corner radii for cards, the prompt bar, and suggestion chips. */
+  --radius-card: var(--theme-radius-card, 16px);
+  --radius-input: var(--theme-radius-input, 36px);
+  --radius-chip: var(--theme-radius-chip, 20px);
+  /* Collapsed prompt box radius is half its 56px height so it reads as a pill.
+     Fixed rather than theme-driven because it follows from that height, and
+     consumed as `rounded-pill`. */
   --radius-pill: 28px;
 
   /* Widths. Tailwind v4 turns the --container-* namespace into `max-w-*`
@@ -85,7 +56,7 @@
   --color-line: #C4C7C5;
   /* Card borders and divider rules; themeable so an instance can move them
      with its palette instead of leaving a gray rule on a tinted surface. */
-  --color-border: var(--brand-border, #E3E3E3);
+  --color-border: var(--theme-border, #E3E3E3);
   --color-outline: #e5e7eb;
   --color-outline-variant: #f3f4f6;
   --color-divider: #d1d5db;
@@ -111,8 +82,8 @@
   --color-on-inverse-surface: #F4EFF4;
 
   /* Text — primary */
-  --color-on-surface: var(--brand-text, #1B1C1D);
-  --color-on-surface-variant: var(--brand-text-muted, #444746);
+  --color-on-surface: var(--theme-text, #1B1C1D);
+  --color-on-surface-variant: var(--theme-text-muted, #444746);
   --color-muted: #575B5F;
   --color-subtle: #747775;
   --color-placeholder: #8E918F;
@@ -124,14 +95,8 @@
 }
 
 :root {
-  /* Header logo height. Brand-driven so an instance can size its own mark; the
-     28px default is the natural size of the bundled Data Commons logo. */
-  --logo-height: var(--brand-logo-height, 28px);
+  --logo-height: var(--theme-logo-height, 28px);
 
-  /* Typography tokens — sourced from Figma GM3/Static + Type scale globals.
-     Consumed by the .text-* utility classes below. Font families reference
-     the brand-driven theme fonts (--font-display / --font-sans) so a
-     branding.json font override propagates to every type style. */
   --static-display-small-font: var(--font-display, "Google Sans");
   --static-display-small-size: 32px;
   --static-display-small-line-height: 36px;
@@ -163,7 +128,7 @@
 
 html, body {
   font-family: var(--font-sans);
-  background-color: var(--brand-background, #ffffff);
+  background-color: var(--theme-background, #ffffff);
   color: var(--color-on-surface);
   margin: 0;
   padding: 0;
@@ -232,11 +197,11 @@ select:not(:disabled) {
     aspect-ratio: 1;
     translate: -50% -50%;
     background: conic-gradient(
-      var(--color-brand-primary),
-      var(--color-brand-accent),
-      var(--color-brand-primary),
-      var(--color-brand-accent),
-      var(--color-brand-primary)
+      var(--color-theme-primary),
+      var(--color-theme-accent),
+      var(--color-theme-primary),
+      var(--color-theme-accent),
+      var(--color-theme-primary)
     );
     animation: glow-rotate 6s linear infinite;
     animation-play-state: inherit;
@@ -343,7 +308,7 @@ select:not(:disabled) {
   font-weight: 500;
   line-height: var(--static-display-small-line-height, 36px);
   letter-spacing: 0;
-  background: linear-gradient(4deg, var(--color-brand-gradient-start) 0%, var(--color-brand-gradient-end) 100%);
+  background: linear-gradient(4deg, var(--color-theme-gradient-start) 0%, var(--color-theme-gradient-end) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -679,7 +644,7 @@ body[data-print-preflight] .dc-chart-card datacommons-scatter {
        12dp top / 16dp horizontal / 8dp bottom padding, elevation level 2.
      - Subhead: title-small (14sp, 500 weight, #1D1B20).
      - Supporting text: body-small/medium (12sp/14sp, 400 weight, #49454F).
-     - Actions: label-large buttons (14sp, 500 weight, brand primary).
+     - Actions: label-large buttons (14sp, 500 weight, theme primary).
 */
 .dc-tooltip-rich {
   z-index: 60;
@@ -735,7 +700,7 @@ body[data-print-preflight] .dc-chart-card datacommons-scatter {
   line-height: 16px;
   font-weight: 500;
   letter-spacing: 0.1px;
-  color: var(--color-brand-primary, #175C75);
+  color: var(--color-theme-primary, #0B57D0);
   cursor: pointer;
   transition: background-color 150ms;
 }

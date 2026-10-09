@@ -25,7 +25,7 @@ import type { SVGProps } from "react";
  * is consistent and adjustable in one place, rather than hard-coded as magic
  * numbers at each call site.
  *
- * TODO(theme): ideally these come from the branding/theme layer so a downstream
+ * TODO(theme): Ideally these come from the theme layer so a downstream
  * instance can rescale icons; kept local until the theme exposes a size scale.
  */
 const ICON_SIZES = {

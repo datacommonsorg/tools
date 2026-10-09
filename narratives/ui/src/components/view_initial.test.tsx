@@ -16,6 +16,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { resetInstanceConfigForTests } from "@/src/config/instance_config";
 import { InitialView } from "./view_initial";
 
 const LINE_HEIGHT = 24;
@@ -43,6 +44,8 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  resetInstanceConfigForTests();
+  document.getElementById("instance-config")?.remove();
   lines = 1;
 });
 
@@ -120,5 +123,29 @@ describe("InitialView intro", () => {
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.style.opacity).not.toBe("0");
     expect(heading.style.transform).toBe("");
+  });
+});
+
+describe("InitialView instance configuration", () => {
+  it("renders headline, tagline, and suggestions from #instance-config", () => {
+    // Test: Custom instance configuration in index.html.
+    // Situation: #instance-config defines a custom headline, tagline, and suggestions.
+    // Expectation: The hero heading, subtitle, and suggestion chips reflect the config.
+    const script = document.createElement("script");
+    script.id = "instance-config";
+    script.type = "application/json";
+    script.textContent = JSON.stringify({
+      headline: "Custom Headline",
+      tagline: "Custom Tagline",
+      suggestions: ["First suggestion", "Second suggestion"],
+    });
+    document.head.appendChild(script);
+
+    renderSearchBox("");
+
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Custom Headline");
+    expect(screen.getByText("Custom Tagline")).toBeTruthy();
+    expect(screen.getByText("First suggestion")).toBeTruthy();
+    expect(screen.getByText("Second suggestion")).toBeTruthy();
   });
 });

@@ -21,7 +21,7 @@
 import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
 import { SuggestionChip } from "./chip_suggestion";
 import { PromptInput } from "./input_prompt";
-import { useBrand } from "../hooks/branding_context";
+import { getInstanceConfig } from "@/src/config/instance_config";
 import { EASE_OUT } from "../config/motion";
 
 // Intro cascade: each child fades up in turn; the chip row cascades its own
@@ -50,8 +50,7 @@ interface InitialViewProps {
 
 /** Empty-state landing view: hero heading, prompt input, and suggestion chips. */
 export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
-  const brand = useBrand();
-  const suggestions = brand.suggestions ?? [];
+  const { headline, tagline, suggestions } = getInstanceConfig();
   const reduceMotion = useReducedMotion();
 
   return (
@@ -63,10 +62,10 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative overflow-y-auto">
 
         <m.h1 variants={fadeUp} className="text-display-small-gradient mb-1 tracking-tight text-center">
-          {brand.headline}
+          {headline}
         </m.h1>
         <m.p variants={fadeUp} className="text-label-large text-subtle mb-8 text-center">
-          {brand.tagline}
+          {tagline}
         </m.p>
 
         <m.div variants={fadeUp} className="w-full">
@@ -78,10 +77,9 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
           />
         </m.div>
 
-        {/* Prompt Chips (from branding.json suggestions, fallback DEFAULT_BRAND).
-            On mobile (< sm) we sit inline so the chips don't get clipped under the
-            virtual keyboard / browser chrome; from sm: up they dock to the bottom
-            of the hero per the Figma spec. */}
+        {/* Place suggestion chips inline on narrow screens so they are not
+            clipped by the virtual keyboard, and dock them to the bottom of the
+            hero container on wider screens. */}
         <m.div variants={cascade} className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6">
           {suggestions.map((text, index) => (
             <m.div key={index} variants={fadeUp}>

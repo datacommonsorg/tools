@@ -92,7 +92,7 @@ export function PromptInput({
           rows={1}
           // Caps at four lines (max-h-24); the autosize hook turns scrolling
           // on only past that cap.
-          className="flex-1 bg-transparent outline-none resize-none max-h-24 overflow-y-hidden text-body-large leading-6 text-on-surface caret-brand-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
+          className="flex-1 bg-transparent outline-none resize-none max-h-24 overflow-y-hidden text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
           onKeyDown={(e) => {
             // Shift+Enter inserts a newline; Enter mid-IME-composition commits
             // the composition rather than submitting.
@@ -123,7 +123,7 @@ export function PromptInput({
             }`}
           >
             {isStreaming ? (
-              <div className="w-3 h-3 rounded-sm bg-brand-primary" />
+              <div className="w-3 h-3 rounded-sm bg-theme-primary" />
             ) : (
               <SendIcon size="xs" />
             )}

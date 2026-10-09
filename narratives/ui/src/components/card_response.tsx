@@ -59,14 +59,7 @@ interface ResponseCardProps {
   bare?: boolean;
 }
 
-/**
- * Renders the agent's streamed synthesis as actual markdown. Bold,
- * italics, lists, links, tables, code spans, and backslash-escaped
- * underscores (e.g. `average\_annual\_wage`) all parse correctly.
- * GFM enables tables + autolinks + strikethrough.
- */
-
-const LINK_COLOR = "var(--color-brand-primary)"; // Figma "AI Dark Blue" (brand primary)
+const LINK_COLOR = "var(--color-theme-primary)";
 
 /** Renders the agent's answer text as markdown, with citation chips and streaming cursor. */
 export function ResponseCard({
@@ -92,7 +85,7 @@ export function ResponseCard({
         <h3 className="text-label-large text-on-surface">{title}</h3>
         {streaming && (
           <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-theme-primary animate-pulse" />
             streaming
           </span>
         )}

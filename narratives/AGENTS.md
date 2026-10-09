@@ -38,8 +38,8 @@ Contribution process and PR expectations:
     components (does not use the layered `primitives / elements / scopes /
     foundations` structure from `dataweaver/`).
   - `src/hooks/` — hooks and React context providers.
-  - `src/config/`, `src/types/`, `src/utils/` — navigation config, shared
-    types, and helpers.
+  - `src/config/`, `src/types/`, `src/utils/` — instance and navigation config,
+    shared types, and helpers.
   - `src/index.css` — Tailwind v4 theme and `--color-*` design tokens.
 - `agent/` — Python 3.14 server managed with [uv](https://docs.astral.sh/uv/):
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
@@ -137,7 +137,7 @@ frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
   Never add a `[[tool.mypy.overrides]]` block that ignores errors in
   `agent/pyproject.toml`.
 - **File naming** — `snake_case` for all source files (`card_response.tsx`,
-  `use_branding.ts`, `chat_pipeline.py`) and category-first naming
+  `instance_config.ts`, `chat_pipeline.py`) and category-first naming
   (`card_response.tsx`, not `response_card.tsx`).
 
 ## Tests

@@ -131,7 +131,7 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
 ### 3.1 File naming
 
 * `snake_case` for source files by default (`chat_pipeline.py`,
-  `use_branding.ts`, `card_chart.tsx`).
+  `instance_config.ts`, `card_chart.tsx`).
 * `dash-case` only where a framework requires it — e.g. Next.js App Router
   segments under `apps/web/src/app`.
 * `PascalCase` for component/class identifiers (`CardChart`), regardless of the
@@ -161,7 +161,7 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   call-site.** An icon that draws a pencil is `icon_pencil`, not `icon_export` —
   so it still reads correctly at the next call-site.
 * **Follow the ecosystem's casing.** `camelCase` properties in TypeScript
-  (`brandConfigUrl`, not `brand_config_url`); `snake_case` in Python.
+  (`thinkingIndicatorUrl`, not `thinking_indicator_url`); `snake_case` in Python.
 
 ---
 
