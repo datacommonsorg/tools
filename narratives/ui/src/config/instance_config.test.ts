@@ -119,21 +119,37 @@ describe('getInstanceConfig', () => {
   });
 
   it.each([
-    ['omits logo_text and logo_alt', {}],
+    [
+      'omits logo_text and logo_alt on a custom instance',
+      { instance_name: 'Acme', logo: '/theme/acme.svg' },
+    ],
     [
       'sets logo_text and logo_alt to empty strings',
       { logo_text: '', logo_alt: '' },
     ],
   ])('leaves logoText and logoAlt empty when the document %s', (_, themeDocument) => {
     // Test: Wordmark and logo alt text when `logo_text` and `logo_alt` are omitted
-    //       or empty in a theme document.
-    // Situation: The element contains a theme document that either omits `logo_text`
-    //            and `logo_alt` or sets them to empty strings.
+    //       on a custom instance or explicitly set to empty strings.
+    // Situation: The element contains a theme document with a custom identity that
+    //            omits `logo_text` and `logo_alt`, or a document that sets them to
+    //            empty strings.
     // Expectation: `logoText` and `logoAlt` resolve to empty strings so a custom
     //              instance does not inherit the "Data Commons" wordmark or alt text.
     writeSlot(JSON.stringify(themeDocument));
     expect(getInstanceConfig().logoText).toBe('');
     expect(getInstanceConfig().logoAlt).toBe('');
+  });
+
+  it('preserves the default logoText and logoAlt when neither logo nor instance_name is overridden', () => {
+    // Test: Partial override without custom identity fields.
+    // Situation: The theme document overrides `headline` without setting `logo`,
+    //            `instance_name`, `logo_text`, or `logo_alt`.
+    // Expectation: `logoText` and `logoAlt` retain the Base Data Commons defaults.
+    writeSlot(JSON.stringify({ headline: 'Custom headline' }));
+    const config = getInstanceConfig();
+    expect(config.headline).toBe('Custom headline');
+    expect(config.logoText).toBe(DEFAULT_INSTANCE_CONFIG.logoText);
+    expect(config.logoAlt).toBe(DEFAULT_INSTANCE_CONFIG.logoAlt);
   });
 
   it('keeps the default for a field of the wrong shape and reports it', () => {

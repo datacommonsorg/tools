@@ -76,16 +76,14 @@ export function MetricsPage() {
   );
 }
 
-/** Renders the category tab strip below the page heading. */
-function SubTabs({
-  tabs,
-  activeId,
-  onChange,
-}: {
+interface SubTabsProps {
   tabs: MetricsTab[];
   activeId: string;
   onChange: (id: string) => void;
-}) {
+}
+
+/** Renders the category tab strip below the page heading. */
+function SubTabs({ tabs, activeId, onChange }: SubTabsProps) {
   return (
     <div
       role="tablist"
@@ -115,8 +113,12 @@ function SubTabs({
   );
 }
 
+interface TilesGridProps {
+  tiles: MetricsTile[];
+}
+
 /** Renders the active tab's tiles in a responsive two-column grid. */
-function TilesGrid({ tiles }: { tiles: MetricsTile[] }) {
+function TilesGrid({ tiles }: TilesGridProps) {
   if (tiles.length === 0) {
     return null;
   }
@@ -138,8 +140,13 @@ function TilesGrid({ tiles }: { tiles: MetricsTile[] }) {
   );
 }
 
+interface TileProps {
+  title: string;
+  children: ReactNode;
+}
+
 /** Card container around a single dashboard tile. */
-function Tile({ title, children }: { title: string; children: ReactNode }) {
+function Tile({ title, children }: TileProps) {
   return (
     <section className="bg-surface rounded-card border border-outline overflow-hidden shadow-sm">
       <header className="px-5 py-3 border-b border-outline-variant">

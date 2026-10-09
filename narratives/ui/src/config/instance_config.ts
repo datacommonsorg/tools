@@ -167,6 +167,8 @@ const pick = <T>(
 const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
   const defaults = DEFAULT_INSTANCE_CONFIG;
   const splashAssets = pick('splash_assets', raw.splash_assets, isRecord, {});
+  const hasCustomIdentity =
+    raw.logo !== undefined || raw.instance_name !== undefined;
   return {
     instanceName: pick(
       'instance_name',
@@ -178,11 +180,21 @@ const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
       pick('logo', raw.logo, isString, defaults.logoUrl),
       defaults.logoUrl,
     ),
-    // When a custom theme document omits `logo_text` or `logo_alt`, default to
-    // an empty string so the custom logo does not inherit the "Data Commons"
-    // wordmark or alternative text.
-    logoText: pick('logo_text', raw.logo_text, isString, ''),
-    logoAlt: pick('logo_alt', raw.logo_alt, isString, ''),
+    // When a custom theme document overrides `logo` or `instance_name` and omits
+    // `logo_text` or `logo_alt`, default to an empty string so the custom logo
+    // does not inherit the "Data Commons" wordmark or alternative text.
+    logoText: pick(
+      'logo_text',
+      raw.logo_text,
+      isString,
+      hasCustomIdentity ? '' : defaults.logoText,
+    ),
+    logoAlt: pick(
+      'logo_alt',
+      raw.logo_alt,
+      isString,
+      hasCustomIdentity ? '' : defaults.logoAlt,
+    ),
     thinkingIndicatorUrl: sanitizeUrl(
       pick(
         'splash_assets.thinking_indicator',
