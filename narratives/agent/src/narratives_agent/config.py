@@ -234,8 +234,9 @@ def _apply_prompts(config: dict[str, Any], prompts: dict[str, str]) -> None:
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
         logger.warning(
-            "No prompt body for %s; only follow_up has an in-code default, "
-            "so the rest of those phases run with no system instruction",
+            "Missing prompt bodies for %s. 'follow_up' falls back to its "
+            "in-code default; any other missing slot runs without a system "
+            "instruction.",
             missing,
         )
 

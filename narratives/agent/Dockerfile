@@ -5,7 +5,7 @@
 # into `./defaults` using `pnpm build` (which runs `scripts/stage_static.mjs`)
 # or `./build.sh`.
 #
-# Built linux/amd64 only — Cloud Run rejects arm64 silently with a
+# Force linux/amd64 architecture — Cloud Run rejects arm64 silently with a
 # "failed to find supported architecture" startup error.
 # hadolint ignore=DL3029
 FROM --platform=linux/amd64 python:3.14-slim
@@ -28,7 +28,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps: tzdata is needed for ZoneInfo on slim images.
+# System deps: tzdata is needed for ZoneInfo on slim images, and
+# ca-certificates for HTTPS. Package versions are left unpinned because Debian
+# slim repositories drop superseded versions across point releases.
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata ca-certificates \
@@ -64,9 +66,11 @@ EXPOSE 8080
 # stream, to finish before it closes them. On Cloud Run the drain is bounded
 # at about 10 s instead, because Cloud Run sends SIGKILL 10 s after SIGTERM.
 #
-# Shell form (not exec form) so ${PORT} expands: Cloud Run injects PORT when the
-# container is the ingress, and falls back to AGENT_PORT when it runs as a
-# sidecar behind nginx. `exec` keeps Uvicorn as PID 1 so it receives SIGTERM.
+# Shell form is required here (rather than the JSON array exec form enforced by
+# hadolint DL3025) so ${PORT} and ${AGENT_PORT} expand at startup: Cloud Run
+# injects PORT when the container is the ingress, and falls back to AGENT_PORT
+# when it runs as a sidecar behind nginx. `exec` keeps Uvicorn as PID 1 so it
+# receives SIGTERM.
 # hadolint ignore=DL3025
 CMD exec uvicorn narratives_agent.server.app:app \
       --host 0.0.0.0 \

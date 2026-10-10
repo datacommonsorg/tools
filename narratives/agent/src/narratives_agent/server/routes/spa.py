@@ -68,6 +68,7 @@ class SpaStaticFiles(StaticFiles):
         )
         parts = PurePath(self.get_path(scope)).parts
         if parts and parts[0] in _IMMUTABLE_DIRECTORIES:
+            # One year (the standard HTTP max-age for indefinite caching).
             cache_control = "public, max-age=31536000, immutable"
         else:
             cache_control = "no-cache"
