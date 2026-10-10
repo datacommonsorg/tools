@@ -11,9 +11,9 @@
 #   - Uptime checks + alert policies
 #
 # The per-instance config bucket (gs://<project>-config/) and the Artifact
-# Registry repo are created out-of-band by deploy.sh
-# before terraform apply. The tfvars provide the image paths, the config
-# bucket name, and the brand_config_url only.
+# Registry repo are created out-of-band by deploy.sh before terraform apply.
+# The tfvars provide the image paths, the config bucket name, and the
+# config_base_url only.
 
 locals {
   # A single place that decides what exists. Every count below reads these
@@ -310,10 +310,6 @@ resource "google_cloud_run_v2_service" "dc_data_service" {
         value = var.region
       }
       env {
-        name  = "BRAND_CONFIG_URL"
-        value = var.brand_config_url
-      }
-      env {
         name  = "INPUT_DIR"
         value = local.input_dir
       }
@@ -512,12 +508,8 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
         value = var.agent_config_mode
       }
       env {
-        name  = "BRAND_CONFIG_URL"
-        value = var.brand_config_url
-      }
-      env {
         name  = "CONFIG_URL"
-        value = "${var.brand_config_url}/agent-config.json"
+        value = "${var.config_base_url}/agent-config.json"
       }
       env {
         name  = "GOOGLE_CLOUD_PROJECT"
@@ -788,7 +780,7 @@ output "cloudsql_connection_name" {
 }
 
 output "config_bucket" {
-  description = "Per-instance GCS config bucket (object-versioned, public read for branding.json access)."
+  description = "Per-instance GCS config bucket (object-versioned; holds theme.json, agent-config.json, prompts/, and assets/)."
   value       = data.google_storage_bucket.config.name
 }
 

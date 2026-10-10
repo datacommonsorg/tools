@@ -13,16 +13,12 @@
 # rather than the architecture.
 #
 # The previous version of this script was written for the single-container CDC
-# stamp and asserted two things that are wrong here:
+# stamp and asserted /api/observations/series -- a *website* Flask route. The
+# DCP plane serves REST V2 and api.datacommons.org serves /v1 and /v2; neither
+# has it. It 404s on two of three backends while the data path is perfectly
+# healthy.
 #
-#   * /api/observations/series -- a *website* Flask route. The DCP plane serves
-#     REST V2 and api.datacommons.org serves /v1 and /v2; neither has it. It
-#     404s on two of three backends while the data path is perfectly healthy.
-#   * .brand_config_url from /agent/brand -- deliberately removed, so the
-#     browser never learns the config bucket's URL. Asserting it means asserting
-#     an information leak.
-#
-# Both are replaced by checks against the path the agent actually uses: an MCP
+# That check is replaced by one against the path the agent actually uses: an MCP
 # session through /dcproxy, ending in a real tools/call that returns numbers.
 #
 # Final line is "SMOKE: PASS" or "SMOKE: FAIL".
@@ -219,17 +215,15 @@ c5() {
 }
 check 5 c5
 
-# 6. Branding is served from the agent's memory, and the config bucket's URL is
-#    NOT disclosed to the browser.
+# 6. Verify that the HTML shell includes the #theme-tokens and #instance-config
+#    elements.
 c6() {
-    local brand name
-    brand=$(curl_cmd -sS --max-time 30 "$URL/agent/brand")
-    name=$(echo "$brand" | jq -r '.branding.instance_name // empty')
-    [ -n "$name" ] || { echo "no branding.instance_name: $(echo "$brand" | head -c 200)"; return 1; }
-    if echo "$brand" | jq -e 'to_entries | any(.value | tostring | test("storage.googleapis.com|gs://"))' >/dev/null 2>&1; then
-        echo "brand payload discloses the config bucket"; return 1
-    fi
-    echo "branding \"$name\", bucket not disclosed"
+    local slot
+    for slot in theme-tokens instance-config; do
+        grep -q "id=\"$slot\"" "$TMP/home.html" \
+            || { echo "no id=\"$slot\" in the page"; return 1; }
+    done
+    echo "theme-tokens and instance-config slots present"
 }
 check 6 c6
 

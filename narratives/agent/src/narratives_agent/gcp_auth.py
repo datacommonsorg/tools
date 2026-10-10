@@ -128,7 +128,7 @@ def _mint_id_token(audience: str) -> str:
 #
 # Public Data Commons authenticates with an API key rather than a Google ID
 # token. The endpoint is configuration-driven and that configuration is fetched
-# from a GCS bucket, so without this allowlist an edit to branding/agent config
+# from a GCS bucket, so without this allowlist an edit to the agent config
 # could point the agent at an arbitrary host and hand it our key. Restricting
 # the header to known Data Commons hosts keeps a config change from becoming a
 # credential leak.

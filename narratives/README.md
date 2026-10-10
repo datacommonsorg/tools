@@ -1,11 +1,11 @@
 # Custom Data Commons
 
-A branded, conversational Data Commons instance: a React UI and a Gemini agent in
+A themed, conversational Data Commons instance: a React UI and a Gemini agent in
 one container, running against **any** Data Commons backend — Google's Data
 Commons Platform (Spanner), the legacy Custom DC plane (Cloud SQL), or public
 `datacommons.org`.
 
-**The backend is a configuration value, not a branch. So is the branding.**
+**The backend is a configuration value, not a branch. So is the theme.**
 
 **One clone of this repository is one deployment.** Clone it, fill in
 `config/instance.env`, change what you want to look different, and deploy. For a
@@ -24,7 +24,7 @@ you do there requires TypeScript or Python.
 - [Prerequisites](#prerequisites)
 - [Choosing a data plane](#choosing-a-data-plane)
 - [Setting up your deployment](#setting-up-your-deployment)
-- [Customizing it](#customizing-it) — branding, prompts, agent config
+- [Customizing it](#customizing-it) — theme, prompts, agent config
 - [Secrets](#secrets)
 - [Deploying](#deploying)
 - [Access modes](#access-modes)
@@ -74,7 +74,7 @@ Flask pages are never reachable from the internet. Only the app plane is.
 
 The fastest path to something working is `DATA_BACKEND=none`, which runs against
 public `datacommons.org`. No database, no ingestion, no bill — and it exercises
-the whole application: chat, charts, branding, citations.
+the whole application: chat, charts, theming, citations.
 
 ```sh
 # 1. Clone. This clone IS the deployment.
@@ -173,10 +173,10 @@ Everything this deployment owns lives in `config/`:
 ```
 config/
   instance.env       where it runs, which backend, who can reach it — NO secrets
-  branding.json      OPTIONAL — only the keys you want to change
+  theme.json         OPTIONAL — only the keys you want to change
   agent-config.json  OPTIONAL — only the keys you want to change
   prompts/           OPTIONAL — only the prompts you want to change
-  assets/            OPTIONAL — your logo, favicon, CSS
+  assets/            OPTIONAL — your logo and favicon
 ```
 
 Only `instance.env` is required. Everything else is an **override**: at deploy
@@ -261,7 +261,7 @@ git pull upstream main
 ```
 
 Upstream never touches `config/`, so this does not conflict. Code fixes, prompt
-fixes and branding defaults all arrive; your overrides stay yours.
+fixes, and theme defaults all arrive; your overrides stay yours.
 
 **Change only `config/`.** The moment a deployment edits code, every later pull
 conflicts and it stops being updatable. If you need a code change, make it
@@ -281,35 +281,54 @@ clearly different jobs:
 | `config/` | **you** | Yes — only the keys you want to differ |
 
 At deploy time `defaults/` is laid down and `config/` is copied over the top. So
-you write only your differences, and an upstream prompt or branding fix reaches
+you write only your differences, and an upstream prompt or theme fix reaches
 you on the next `git pull` instead of sitting unnoticed in a file you copied
 once and forgot.
 
 | What you can override | Validated by | Controls |
 | :--- | :--- | :--- |
-| `config/branding.json` | `schemas/branding.schema.json` | identity, theme, content, structure |
+| `config/theme.json` | `schemas/theme.schema.json` | identity, appearance, content, structure |
 | `config/agent-config.json` | `schemas/agent-config.schema.json` | models, thinking levels, template vars |
 | `config/prompts/*.md` | — | `mcp`, `synthesis`, `follow_up` |
-| `config/assets/` | — | logo, favicon, CSS overrides |
+| `config/assets/` | — | logo, favicon |
 
 Both schemas set `additionalProperties: false`, so an unrecognized key is an
 error rather than a silently ignored one — a typo'd color name fails loudly.
 
-### Branding
+### Theme
+
+**How the theme is applied.** The default (Base Data Commons) theme is built
+directly into the UI: colors, fonts, and corner radii are found in
+`ui/src/index.css` as the fallback values of `--theme-*` CSS variables, and the
+default logo, headline, navigation, and starter suggestions are in
+`ui/src/config/instance_config.ts`. `ui/index.html` includes two empty
+placeholder elements (`<style id="theme-tokens">` and
+`<script id="instance-config">`) as the seam for per-instance theming. When
+populated, they override those defaults at page load without any runtime
+network requests.
+
+> **Status:** The deploy step that populates `<style id="theme-tokens">` and
+> `<script id="instance-config">` from `theme.json` has not been wired up yet.
+> `deploy.sh` validates `theme.json` against `schemas/theme.schema.json` and
+> uploads it to the config bucket (including during
+> `./deploy.sh --config-only`), but nothing writes it into `index.html`, and
+> `--restart` only reloads `agent-config.json` and `prompts/`. Until that step
+> lands, every deployment renders the built-in Base Data Commons theme.
+
+Start from a complete example:
 
 ```sh
-cp schemas/branding.neutral.example.json config/branding.json
-$EDITOR config/branding.json
-./deploy.sh --config-only --restart
+cp schemas/theme.neutral.example.json config/theme.json
+$EDITOR config/theme.json
 ```
 
-You do not have to start from a full file. `config/branding.json` can contain
-only the keys you want to change — everything else comes from `defaults/`:
+Or specify only the keys you want to change; everything else comes from
+`defaults/theme.json`:
 
 ```json
 {
   "instance_name": "Acme Data Commons",
-  "logo": "assets/acme.svg",
+  "logo": "/dc-logo.svg",
   "colors": { "primary": "#0B6E8F" }
 }
 ```
@@ -317,32 +336,31 @@ only the keys you want to change — everything else comes from `defaults/`:
 | Group | Keys |
 | :--- | :--- |
 | Identity | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
-| Theme | `colors` (primary, accent, text, surfaces, borders, containers…), `radius` (card / input / chip), `fonts` |
-| Content | `suggestions` — the starter chips; `footer` text and links |
-| Structure | `navigation` — header tabs; `metrics.tabs`; `analytics.ga_tag_id` |
+| Appearance | `colors` (primary, accent, text, surfaces, borders, containers…), `radius` (card / input / chip), `fonts` |
+| Content | `suggestions` (starter chips); `splash_assets` (thinking and done indicators); `footer` text and links *(reserved; not read by the UI)* |
+| Structure | `navigation` (header tabs); `metrics.tabs`; `analytics.ga_tag_id` *(reserved; not read by the UI)* |
 
-Two complete examples ship as starting points: `schemas/branding.neutral.example.json`
-(neutral theme) and `schemas/branding.base-dc.example.json` (Google blue, no header
-menu). `schemas/branding.example.json` lists every field with placeholder values.
+Two complete examples ship as starting points:
+`schemas/theme.neutral.example.json` (neutral theme) and
+`schemas/theme.base-dc.example.json` (Google blue, no header menu).
+`schemas/theme.example.json` lists every field with placeholder values.
 
-**`navigation` has three meanings**, and the distinction is load-bearing:
+**`navigation` controls the header tabs:**
 
 | Value | Result |
 | :--- | :--- |
-| key absent | keep the tabs this deployment ships (`NAV_CONFIG`) |
-| `[]` | **no header menu at all** |
+| key absent or `[]` | **no header menu** (the Base Data Commons default) |
 | `[{label, href}, …]` | exactly these tabs |
 
-Pinned by `ui/src/config/nav_config.test.ts`, because a default that carried a
-navigation value once collapsed the first case into the second and silently
-removed every tab on any instance without a `branding.json`.
+The UI unit tests pin this mapping.
 
-**Assets.** Put images in `config/assets/` and reference them
-relatively — `{ "logo": "assets/logo.png" }`. The agent pulls them into memory at
-startup and serves them from `/agent/brand/assets/<name>`, rewriting the paths
-before the document leaves the process. **The browser never reads the config
-bucket**, so the bucket stays private. Absolute and `data:` URIs pass through
-untouched.
+**Assets.** Image fields (`logo` and `splash_assets`) in `#instance-config`
+accept a same-origin path starting with `/` (such as the bundled
+`/dc-logo.svg`) or an `http(s)` URL. Any other value, including `data:` URIs,
+is rejected with a console warning and falls back to the built-in asset.
+`deploy.sh` also uploads `config/assets/` to the config bucket and the schema
+allows config-bucket-relative paths like `assets/acme.svg`, for use once the
+deploy-time injection step rewrites them.
 
 ### Prompts
 
@@ -390,42 +408,10 @@ never substituted, so the `_comment` convention is safe.
 ./deploy.sh --config-only --restart
 ```
 
-`--restart` is **not optional**. Config and branding are read **once at agent
-startup** and served from process memory thereafter. There is no TTL and no
-runtime refetch, so a bucket sync alone changes nothing until a new revision
-starts serving.
-
-### How branding reaches the browser
-
-Four routes, all served out of the same startup-loaded memory:
-
-| Route | What | Cache |
-| :--- | :--- | :--- |
-| `/agent/brand.css` | CSS custom properties for the colors | `no-store` |
-| `/agent/brand.js` | the whole document as `window.__BRAND__` | `no-store` |
-| `/agent/brand` | the same document as JSON, for the runtime fetch | `no-store` |
-| `/agent/brand/assets/<n>` | mirrored images | immutable |
-
-`brand.css` and `brand.js` are **blocking tags in `<head>`**, so branding is
-correct on the *first* frame. `brand.js` is deliberately a **classic** script,
-not a module — Vite warns about this on every build, and the warning is correct
-but the behavior is intentional: a module would be deferred, which defeats the
-point. Without it only the colors pre-paint, and the shipped headline, wordmark,
-logo, tabs and chips render first and visibly flip once `/agent/brand` resolves.
-
-Four safety properties worth knowing before you put a client's config in a
-bucket:
-
-- **Credential scrubbing.** The loaded document is scanned for credential-shaped
-  values, by key name (`api_key`, `secret`, `token`, `password`, …) and by value
-  format. Matches are dropped and logged at error level, so a key pasted into
-  `branding.json` degrades the theme instead of reaching every visitor.
-- **The bucket URL is not disclosed.** `/agent/brand` deliberately omits it.
-- **CORS fails closed.** In a deployed environment with no origin configured the
-  allow-list is empty and the condition is logged, rather than defaulting to `*`.
-- **Failures are non-fatal.** An unset, unreachable, non-JSON or non-object
-  config leaves the UI on its shipped design tokens rather than stopping the
-  server from starting.
+`--restart` is **not optional**. `agent-config.json` and the prompts are read
+**once at agent startup** and held in process memory thereafter. There is no
+TTL and no runtime refetch, so a bucket sync alone changes nothing until a new
+revision starts serving.
 
 ---
 
@@ -485,7 +471,7 @@ resources.
 | | |
 | :--- | :--- |
 | Check before deploying | `./deploy.sh --preflight` |
-| Branding, prompts, agent-config | `./deploy.sh --config-only --restart` |
+| Prompts, agent-config | `./deploy.sh --config-only --restart` |
 | Agent or UI code | `./deploy.sh --agent-only` |
 | Terraform only | `./deploy.sh --infra-only` |
 | Preview the plan | `./deploy.sh --plan` |
@@ -780,7 +766,6 @@ auto-reload.
 
 ```sh
 export CONFIG_URL="https://storage.googleapis.com/<bucket>/agent-config.json"
-export BRAND_CONFIG_URL="https://storage.googleapis.com/<bucket>"
 ```
 
 The Gemini key is **not** an environment variable. `get_gemini_api_key()` resolves
@@ -991,12 +976,12 @@ weaker provenance — no named source, no license.
 > backend and therefore proves nothing about *your* ingested data. For `dcp`,
 > confirm that in Spanner: `SELECT COUNT(*) FROM Observation`.
 
-Branding:
+To confirm that the served HTML shell includes the `<style id="theme-tokens">`
+and `<script id="instance-config">` placeholder elements (which `docs/smoke.sh`
+also verifies):
 
 ```sh
-curl -s "$URL/agent/brand" | jq '.branding.instance_name, .branding.navigation'
-curl -sI "$URL/agent/brand.css" | grep -i cache    # expect no-store
-curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclosed
+curl -s "$URL/" | grep -E 'id="(theme-tokens|instance-config)"'
 ```
 
 ---
@@ -1017,12 +1002,8 @@ curl -s "$URL/agent/brand" | grep -ci bucket       # expect 0 — URL not disclo
 | Charts blank, chat fine | `/dcproxy` failing | Agent logs — `401/403` is IAM or ingress, `404` is a path the data plane does not serve |
 | Charts blank on `none`, `{"code":404,"message":"The current request is not defined by this API"}` | Chart routes are on a **different host** to MCP | Terraform sets `DATA_PLANE_WEB_URL` for this. Chat keeps working either way, so only the browser sees the fault |
 | Charts blank on `cdc` after idle, first load only | Data plane scaled to zero; a cold container takes ~6s | Set `min_instances = 1`, or accept the first-request penalty |
-| Config or branding change does nothing | Read once at startup | `--config-only --restart` |
-| Theme flashes on load | `brand.js` not running | Check it is in `<head>` and `/agent/brand.js` returns 200 |
-| Every tab vanished | `navigation: []` in branding.json | Remove the key to restore the shipped tabs |
-| Locally the theme is the default | No reachable `BRAND_CONFIG_URL` | Correct behavior, not a bug |
-| A color is ignored | Not in the schema, or fails the safe-value pattern | Check the agent log for a rejection |
-| Logo is a broken image | Path not under `config/assets/`, or `AGENT_API_PREFIX` disagrees with what `brand.py` rewrites | |
+| `agent-config.json` or `prompts/` change has no effect | Agent loads config once at startup | `./deploy.sh --config-only --restart` |
+| `config/theme.json` is ignored | Deploy-time theme injection is not wired up yet | Not yet supported; see [Theme](#theme) |
 | `Refusing to apply: the state loaded for 'x' describes another instance` | `deploy.sh` caught a wrong state prefix | Do **not** override. Re-`init` with the right prefix |
 | A deploy reports success but the change is not live | Uncommitted work rebuilds to the same `IMAGE_TAG` | Commit, then redeploy |
 | Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
@@ -1049,11 +1030,11 @@ deploy.sh                  the one deploy entry point; no --instance flag
 
 config/                    YOURS — this deployment's settings and overrides
   instance.env             required: project, region, backend, access
-  branding.json            optional override
+  theme.json               optional override
   agent-config.json        optional override
   prompts/  assets/        optional overrides
 defaults/                  upstream baseline; config/ is laid over this
-schemas/                   JSON Schemas + example branding — code, not config
+schemas/                   JSON Schemas + example themes — code, not config
 scripts/                   build-time static asset staging (stage_static.mjs)
 
 agent/                     app plane — API + SPA, one uvicorn process
@@ -1062,7 +1043,7 @@ agent/                     app plane — API + SPA, one uvicorn process
   src/narratives_agent/    the Python package; imports are narratives_agent.*
     dev.py                 dev entry point: uv run narratives-agent-dev
     server/app.py          the app; production serves it with uvicorn
-    server/routes/         spa · brand · chat · system · dcproxy
+    server/routes/         spa · chat · system · dcproxy
     mcp/                   client · capabilities · schema · data_utils
     workflows/             chat_pipeline · mcp_loop · chart_config · follow_up
     gemini/                client · schemas
@@ -1070,12 +1051,13 @@ agent/                     app plane — API + SPA, one uvicorn process
 
 ui/                        React source; built and baked into the agent image
   src/components/          presentational units
-  src/hooks/               branding, chat session, SSE, hash routing
+  src/config/              instance config and navigation routing
+  src/hooks/               chat session, SSE, hash routing
   src/utils/               PDF export, turn inspection, DC web components
 
 image/                     CDC data-plane overlay (nginx routing only; cdc backend)
 deploy/terraform-…/        one module tree; `data_backend` selects the plane
-deploy/*.py                deploy-time guards: state ownership, branding schema
+deploy/*.py                deploy-time guards: state ownership, theme schema
 cloudbuild/                PR validation, image promotion, deploy stamps
 docs/smoke.sh              post-deploy checks
 docs/architecture.drawio   editable source for the architecture diagram
