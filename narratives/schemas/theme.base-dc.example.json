@@ -1,12 +1,12 @@
 {
-  "$schema": "./branding.schema.json",
-  "$comment": "Base Data Commons theme — the blue one Google plans to launch first. Every value here is a theme token; no base-DC branch exists in component code. Colors are from the 'UI elements branded elements - Data Commons' spec slide, which names #0B57D0 (Google product blue) as primary, #EFEDED for skeleton bars and #F5FAFF for the skeleton surface; the rest were sampled from the accompanying mockups. The empty `navigation` array is deliberate — the spec calls for removing the base-DC header menu from the Narratives App altogether, not restyling it.",
+  "$schema": "./theme.schema.json",
+  "$comment": "Base Data Commons theme example, matching defaults/theme.json. The empty navigation array hides the header navigation bar.",
   "schema_version": "1",
   "instance_id": "base-dc",
   "instance_name": "Data Commons",
   "domain_hint": "datacommons.org",
-  "logo": "assets/dc-logo.svg",
-  "favicon": "assets/dc-logo.svg",
+  "logo": "/dc-logo.svg",
+  "favicon": "/dc-logo.svg",
   "logo_alt": "Data Commons",
   "logo_text": "Data Commons",
   "logo_height": "28px",
@@ -63,7 +63,7 @@
   "analytics": {
     "ga_tag_id": ""
   },
-  "splash_assets": [],
+  "splash_assets": {},
   "metrics": {
     "$comment": "Disabled by default for public-only instance. Populate with public DCIDs or leave tabs empty.",
     "tabs": []

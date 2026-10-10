@@ -31,8 +31,8 @@ variable "dc_agent_image" {
   type        = string
 }
 
-variable "brand_config_url" {
-  description = "HTTPS URL (no trailing slash) where this instance's config bucket contents are served, e.g. https://storage.googleapis.com/<project>-config. The React UI fetches branding.json from this base; the agent fetches agent-config.json. Points at the bucket ROOT — no <instance>/v1/ subpath."
+variable "config_base_url" {
+  description = "HTTPS URL (no trailing slash) where this instance's config bucket contents are served, e.g. https://storage.googleapis.com/<project>-config. The agent fetches agent-config.json and prompts/ from this base. Points at the bucket ROOT — no <instance>/v1/ subpath."
   type        = string
 }
 
@@ -117,7 +117,7 @@ variable "alert_notification_channels" {
 }
 
 variable "config_bucket" {
-  description = "Name (not URL) of the per-instance config bucket. Holds branding.json, agent-config.json, prompts/ and assets/ at the bucket root. One bucket per instance — not shared across states. Created out-of-band by deploy.sh before terraform apply."
+  description = "Name (not URL) of the per-instance config bucket. Holds theme.json, agent-config.json, prompts/ and assets/ at the bucket root. One bucket per instance — not shared across states. Created out-of-band by deploy.sh before terraform apply."
   type        = string
 }
 

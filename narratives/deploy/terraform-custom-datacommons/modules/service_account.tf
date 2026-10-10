@@ -6,7 +6,7 @@
 resource "google_service_account" "datacommons" {
   account_id   = "${var.instance}-runtime"
   display_name = "Data Commons runtime SA (${var.instance})"
-  description  = "Workload Identity SA for the Cloud Run multi-container service; reads Secret Manager, branding bucket, data bucket, NL model bucket."
+  description  = "Workload Identity SA for the Cloud Run multi-container service; reads Secret Manager, config bucket, data bucket, NL model bucket."
 }
 
 # 1. Secret Manager read — Gemini keys, DB password, DC + Maps API keys.
@@ -27,8 +27,8 @@ resource "google_project_iam_member" "cloudsql_client" {
   member  = "serviceAccount:${google_service_account.datacommons.email}"
 }
 
-# 3. Cloud Storage object viewer — branding bucket + the public NL models bucket.
-#    Scoped to the branding bucket below; the public bucket reads work via
+# 3. Cloud Storage object viewer — config bucket + the public NL models bucket.
+#    Scoped to the config bucket below; the public bucket reads work via
 #    allUsers but we list this role explicitly so VPC-SC rollouts don't break us.
 resource "google_storage_bucket_iam_member" "config_reader" {
   bucket = data.google_storage_bucket.config.name

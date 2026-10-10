@@ -33,9 +33,9 @@ steps:
     entrypoint: tfsec
     args: ['--soft-fail', 'deploy/terraform-custom-datacommons/']
 
-  # 3. JSON Schema validation. schemas/ holds schemas and examples; a
-  #    deployment's own overrides live in config/ and are validated at
-  #    deploy time by deploy/validate-branding.py.
+  # 3. Validate JSON Schemas. The schemas/ directory holds schemas and examples;
+  #    a deployment's own overrides are found in config/ and are validated at
+  #    deploy time by deploy/validate_theme.py.
   - id: schema-validate
     name: node:24
     entrypoint: bash
@@ -49,12 +49,11 @@ steps:
         pnpm add -g ajv-cli@5 ajv-formats@3
         ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/agent-config.schema.json -d schemas/agent-config.example.json
         ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/agent-config.schema.json -d defaults/agent-config.json
-        for b in schemas/branding.example.json \
-                 schemas/branding.neutral.example.json \
-                 schemas/branding.base-dc.example.json \
-                 config/branding.json \
-                 defaults/branding.json; do
-          ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/branding.schema.json -d "$$b"
+        for t in schemas/theme.example.json \
+                 schemas/theme.neutral.example.json \
+                 schemas/theme.base-dc.example.json \
+                 defaults/theme.json; do
+          ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/theme.schema.json -d "$$t"
         done
 
   # 4. Build the images (no push). Confirms Dockerfile + linux/amd64 still work.

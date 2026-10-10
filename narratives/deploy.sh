@@ -71,18 +71,15 @@ for i in "${!args[@]}"; do
             CODE_ONLY=true
             ;;
         --config-only)
-            # Fast path: push config/ (branding.json, agent-config.json,
-            # prompts/, assets/) to the existing config bucket and
-            # refresh the running service's branding cache. No image builds,
-            # no terraform, no data ingestion.
+            # Push config/ (theme.json, agent-config.json, prompts/, assets/)
+            # to the existing config bucket without building images, running
+            # Terraform, or ingesting data.
             CONFIG_ONLY=true
             ;;
         --restart)
-            # Used with --config-only: force a new Cloud Run revision so the
-            # agent reloads agent-config.json and prompts (read only at
-            # startup) -- including branding.json, which is NOT fetched live
-            # despite what this comment used to say. Without --restart,
-            # --config-only only updates the bucket.
+            # Force a new Cloud Run revision when used with --config-only so
+            # the agent reloads agent-config.json and prompts at startup.
+            # Without --restart, --config-only only updates the bucket.
             RESTART=true
             ;;
     esac
@@ -239,6 +236,11 @@ CLOUDSQL_AVAILABILITY_TYPE="${CLOUDSQL_AVAILABILITY_TYPE:-REGIONAL}"
 #
 # instance.env is excluded: it names the project and the people who can reach
 # it, and must not land in a bucket that may be read more widely.
+if [ -f config/branding.json ]; then
+    log_error "config/branding.json was renamed to config/theme.json; see README.md#theme."
+    exit 1
+fi
+
 CONFIG_SRC=".build/config"
 rm -rf "$CONFIG_SRC"
 mkdir -p "$(dirname "$CONFIG_SRC")"
@@ -257,35 +259,20 @@ else
     log_info "No overrides in config/; using defaults/ as shipped."
 fi
 
-if [ ! -f "${CONFIG_SRC}/branding.json" ]; then
-    log_error "No branding.json in defaults/ or config/."
+if [ ! -f "${CONFIG_SRC}/theme.json" ]; then
+    log_error "No theme.json in defaults/ or config/."
     exit 1
 fi
 
-# Validate branding.json against its schema BEFORE it is synced to the config
-# bucket. Presence was checked; shape was not, and the schema sets
-# additionalProperties:false precisely so a typo'd key is an error rather than
-# a silently ignored one -- a guarantee nothing was enforcing at deploy time.
-#
-# The failure this prevents is quiet. A file with `primary_color` instead of
-# `colors.primary` deploys clean, the agent serves it, /agent/brand echoes the
-# instance name so branding looks applied, and only the color is missing --
-# from a key that was never read. CI validates agent-config.json with ajv;
-# branding had no equivalent anywhere.
-#
-# The validator uses jsonschema when it is installed and falls back to a
-# stdlib walk of the unknown-key and required-key rules when it is not, so this
-# always runs. An earlier version skipped with a warning when jsonschema was
-# missing -- which is the case for the system python3 here, so it warned and
-# uploaded the broken file anyway. A check that quietly does nothing on the
-# machine you are standing at is worse than none; it reads like coverage.
-if ! python3 deploy/validate-branding.py "${CONFIG_SRC}/branding.json"; then
-    log_error "branding.json does not match schemas/branding.schema.json (see above)."
-    echo "  Color keys live under \"colors\": {\"primary\": \"#RRGGBB\", \"accent\": ...}." >&2
-    echo "  Compare against schemas/branding.neutral.example.json." >&2
+# Validate the composed theme.json against its schema before running any GCP
+# operations.
+if ! python3 deploy/validate_theme.py "${CONFIG_SRC}/theme.json"; then
+    log_error "theme.json does not match schemas/theme.schema.json (see above)."
+    echo "  Color keys are under \"colors\": {\"primary\": \"#RRGGBB\", \"accent\": ...}." >&2
+    echo "  Compare against schemas/theme.neutral.example.json." >&2
     exit 1
 fi
-log_success "branding.json validates against its schema."
+log_success "theme.json validates against its schema."
 DCP_SERVICE_URL="${DCP_SERVICE_URL:-}"
 DCP_SERVICE_NAME="${DCP_SERVICE_NAME:-}"
 
@@ -477,9 +464,8 @@ fi
 log_info "Configuring active gcloud project to '$PROJECT_ID'..."
 gcloud config set project "$PROJECT_ID" --quiet
 
-# --config-only: fast, deploy-free config/branding update against an existing
-# instance. Syncs config/ to the bucket and nudges the agent to drop its
-# branding cache, then exits — no images, terraform, secrets, or data.
+# Sync config/ to the bucket without building images, running Terraform,
+# updating secrets, or ingesting data.
 if [ "$CONFIG_ONLY" = true ]; then
     CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
     if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
@@ -491,21 +477,8 @@ if [ "$CONFIG_ONLY" = true ]; then
     gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env"
     log_success "Configuration assets synced."
 
-    # --restart forces a new revision, which is the ONLY way a config change
-    # reaches the running service.
-    #
-    # This block used to claim otherwise. It said branding.json "is fetched live
-    # and does not require this", then GET /agent/brand?refresh=1 and reported
-    # "Config changes are live (or will be within the cache TTL)". None of that
-    # was true: brand.py has no `refresh` parameter and no TTL -- branding,
-    # agent-config and prompts are all read once at startup and served
-    # from process memory, exactly as the README documents. The request
-    # returned 200 because it is an ordinary GET, and 200 was read as proof.
-    #
-    # So `--config-only` without `--restart` uploaded to the bucket and changed
-    # nothing about the running service, while printing three lines saying it
-    # had worked. It cost a real debugging detour: a corrected branding.json
-    # sat in the bucket while the service kept serving the old color.
+    # The agent reads its configuration once at startup, so a new revision is
+    # required for uploaded config changes to take effect.
     if [ "$RESTART" = true ]; then
         log_info "[Config-Only] Forcing a new revision so the agent reloads config..."
         if gcloud run services update "${APP_SERVICE}" \

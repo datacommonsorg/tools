@@ -1,14 +1,14 @@
 {
-  "$schema": "./branding.schema.json",
-  "$comment": "Canonical branding.json reference. Copy to branding.json, edit for your instance, and upload to the config bucket root. The React UI fetches this at page load and applies colors/fonts as --brand-* CSS variables (ui/src/hooks/use_branding.ts). Omitted keys fall back to the shipped design tokens in ui/src/index.css. One instance, one file.",
+  "$schema": "./theme.schema.json",
+  "$comment": "Canonical theme.json reference. Copy to config/theme.json, edit for your instance, and upload to the config bucket root. Colors, radii, and fonts map to --theme-* CSS variables in ui/src/index.css; content and asset fields map to InstanceConfig in ui/src/config/instance_config.ts. Omitted keys fall back to the shipped design tokens in ui/src/index.css. One instance, one file.",
 
   "instance_id": "example",
   "instance_name": "Example Data Commons",
   "domain_hint": "example.data-commons.org",
 
-  "logo": "assets/logo.png",
+  "logo": "/dc-logo.svg",
   "logo_alt": "Example Data Commons",
-  "favicon": "assets/logo.png",
+  "favicon": "/dc-logo.svg",
 
   "colors": {
     "primary": "#175C75",
@@ -25,8 +25,6 @@
     "primary": "Google Sans, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
     "body": "Google Sans Text, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
   },
-
-  "extra_css": "assets/overrides.css",
 
   "navigation": [
     { "label": "Home", "href": "/" },
@@ -52,10 +50,10 @@
     "ga_tag_id": ""
   },
 
-  "splash_assets": [],
+  "splash_assets": {},
 
   "metrics": {
-    "$comment": "Optional Key Metrics dashboard composition. When omitted entirely, the UI uses its built-in DEFAULT_METRICS_TABS. Each tile maps 1:1 to a <datacommons-${type}> web component.",
+    "$comment": "Optional Key Metrics dashboard composition. When omitted, or when tabs is empty, the Key Metrics page renders its empty state. Each tile maps 1:1 to a <datacommons-${type}> web component.",
     "tabs": [
       {
         "id": "population",

@@ -24,8 +24,8 @@ dc_agent_image       = "REPLACE_AGENT_IMAGE"
 # Per-instance config bucket (one bucket per instance — created in Phase 4).
 # The bucket contents are the handover repo's config/ directory uploaded at
 # the bucket root — no <instance>/v1/ subpath.
-config_bucket    = "REPLACE_CONFIG_BUCKET"
-brand_config_url = "https://storage.googleapis.com/REPLACE_CONFIG_BUCKET"
+config_bucket   = "REPLACE_CONFIG_BUCKET"
+config_base_url = "https://storage.googleapis.com/REPLACE_CONFIG_BUCKET"
 
 # Start in dev mode for the first deploy so tuning is possible via the UI.
 # Flip to "prod" before sharing the URL with end users.
