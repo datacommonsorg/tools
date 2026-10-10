@@ -141,7 +141,7 @@ def attach_auth(headers: dict[str, str], target_url: str) -> None:
     Two backends, two mechanisms, chosen by host rather than by a backend flag:
 
       * public Data Commons -> X-API-Key from DC_API_KEY
-      * a private Cloud Run data plane (CDC or DCP) -> a Google-signed ID token
+      * a private Cloud Run data plane (DCP) -> a Google-signed ID token
 
     Mutates `headers` in place. No-ops for http:// and for localhost, so a
     co-located sidecar deployment is unaffected, and no-ops off GCP where the

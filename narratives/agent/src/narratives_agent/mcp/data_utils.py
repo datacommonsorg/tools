@@ -29,8 +29,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 # Server 1.3.0 split the two fat tools into six. Both generations are recognized
-# here so this keeps working against an in-container 1.2.1 endpoint and the
-# public 1.3.0 one alike.
+# here so this keeps working against a 1.2.1 endpoint and the public 1.3.0 one
+# alike.
 _SEARCH_TOOLS = ("search_indicators", "search_child_indicators")
 _OBSERVATION_TOOLS = (
     "get_observations",
