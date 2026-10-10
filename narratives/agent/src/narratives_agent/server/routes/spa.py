@@ -15,10 +15,10 @@
 """Serves the compiled React UI and the path Cloud Run probes for liveness.
 
 `SpaStaticFiles` serves any file under the static root, which holds only the
-UI build: `index.html`, the content-hashed bundle under `assets/`, and the
-bare files the UI loads from the root, such as `logo.png`. `config.json` and
-`logs/` live under `agent_root`, outside the static root, so no file needs to
-be filtered by name or suffix.
+UI build: `index.html`, the content-hashed files under `assets/` and
+`theme/`, and the bare files the UI loads from the root, such as
+`dc-logo.svg`. `config.json` lives under `agent_root`, outside the static
+root, so no file needs to be filtered by name or suffix.
 """
 
 import os
@@ -31,6 +31,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
 router = APIRouter()
+
+# Files under these directories carry content hashes in their filenames and
+# can be cached indefinitely.
+_IMMUTABLE_DIRECTORIES = frozenset({"assets", "theme"})
 
 
 @router.api_route("/healthz", methods=["GET", "HEAD"])
@@ -49,13 +53,7 @@ async def healthz() -> PlainTextResponse:
 
 
 class SpaStaticFiles(StaticFiles):
-    """Serves the UI build with a cache policy for each kind of file.
-
-    The shell is never cached -- a stale index.html can reference a superseded
-    bundle -- while the content-hashed assets it points at are immutable. Every
-    other file is cached for an hour: its name carries no content hash, so a
-    replaced file has to be able to take effect.
-    """
+    """Serves the UI build with cache-control and security headers."""
 
     def file_response(
         self,
@@ -64,23 +62,22 @@ class SpaStaticFiles(StaticFiles):
         scope: Scope,
         status_code: int = 200,
     ) -> Response:
-        """Returns the file's response with the Cache-Control for its kind.
-
-        The header is set after the base class chooses between the file and a
-        304, so a 304 carries the same policy as the file it stands for.
-        """
+        """Returns a file or 304 response with cache and security headers."""
         response = super().file_response(
             full_path, stat_result, scope, status_code
         )
-        if PurePath(full_path).name == "index.html":
-            cache_control = "no-store"
-        elif PurePath(self.get_path(scope)).parts[:1] == ("assets",):
-            # One year.
+        parts = PurePath(self.get_path(scope)).parts
+        if parts and parts[0] in _IMMUTABLE_DIRECTORIES:
+            # One year (the standard HTTP max-age for indefinite caching).
             cache_control = "public, max-age=31536000, immutable"
         else:
-            # One hour.
-            cache_control = "public, max-age=3600"
+            cache_control = "no-cache"
         response.headers["Cache-Control"] = cache_control
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        if PurePath(full_path).suffix.lower() == ".svg":
+            # Sandbox SVG responses so embedded scripts cannot execute in the
+            # application's origin.
+            response.headers["Content-Security-Policy"] = "sandbox"
         return response
 
     async def check_config(self) -> None:

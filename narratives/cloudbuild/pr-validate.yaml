@@ -79,6 +79,9 @@ steps:
       - '-c'
       - |
         cd agent
+        # Stage a stub static/ and ../defaults so the Dockerfile COPY steps succeed.
+        mkdir -p ./static
+        rm -rf ./defaults && cp -R ../defaults ./defaults
         docker buildx build --platform linux/amd64 -t agent-pr:$SHORT_SHA .
         ARCH=$$(docker inspect --format '{{.Architecture}}' agent-pr:$SHORT_SHA)
         if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi

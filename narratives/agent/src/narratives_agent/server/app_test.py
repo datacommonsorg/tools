@@ -21,8 +21,8 @@ Verifies that:
    same name, at `/<prefix>` and below it.
 4. Every GET route also answers HEAD, and a trailing slash returns 404 rather
    than a redirect.
-5. Startup writes config.json before it loads branding, and the lifespan opens
-   the proxy's HTTP client and closes it at shutdown.
+5. Startup bootstraps the config before the first request, and the lifespan
+   opens the proxy's HTTP client and closes it at shutdown.
 6. The lifespan writes buffered telemetry at shutdown.
 """
 
@@ -37,7 +37,7 @@ from narratives_agent import telemetry
 from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server import app as server_app
 from narratives_agent.server.app import create_app
-from narratives_agent.server.routes import brand, dcproxy, system
+from narratives_agent.server.routes import dcproxy, system
 
 _ORIGIN = "https://narratives.example.com"
 _DATA_PLANE = "http://data-plane.test"
@@ -210,10 +210,6 @@ def test_data_plane_subpath_reaches_the_proxy_before_a_static_file(
     [
         "/healthz",
         "/agent/health",
-        "/agent/brand",
-        "/agent/brand.css",
-        "/agent/brand.js",
-        "/agent/brand/assets/logo-a1b2c3d4.svg",
         "/api",
         "/api/observations",
     ],
@@ -225,16 +221,12 @@ def test_every_get_route_also_answers_head(
 ) -> None:
     # Test: HEAD support on each GET route of the application.
     # Situation: A client sends HEAD to one path per GET handler: the liveness
-    #   route, the health report, the four branding routes, and a proxy prefix
-    #   with and without a subpath. The MCP lookups, a mirrored logo, and the
-    #   upstream are stubbed.
+    #   route, the health report, and a proxy prefix with and without a
+    #   subpath. The MCP lookups and the upstream are stubbed.
     # Expectation: Each answers 200 with an empty body. A route without HEAD
     #   would fall through to the static mount and answer 404 instead.
     monkeypatch.setattr(system, "mcp_url", lambda: "http://mcp.test/mcp")
     monkeypatch.setattr(system, "mcp_capabilities", lambda: Capabilities())
-    monkeypatch.setitem(
-        brand._BRAND_STATE, "assets", {"logo-a1b2c3d4.svg": b"<svg/>"}
-    )
     client = TestClient(_app_with(recorder))
 
     response = client.head(path)
@@ -243,9 +235,7 @@ def test_every_get_route_also_answers_head(
     assert response.content == b""
 
 
-@pytest.mark.parametrize(
-    "path", ["/healthz/", "/agent/health/", "/agent/brand/"]
-)
+@pytest.mark.parametrize("path", ["/healthz/", "/agent/health/"])
 def test_a_trailing_slash_returns_404(path: str) -> None:
     # Test: Handling of a trailing slash on a route declared without one.
     # Situation: A client requests a route's path with a trailing slash.
@@ -258,37 +248,34 @@ def test_a_trailing_slash_returns_404(path: str) -> None:
     assert response.status_code == 404
 
 
-def test_startup_writes_config_before_loading_branding(
+def test_startup_bootstraps_the_config_before_serving_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: The startup work the lifespan runs, and its order.
-    # Situation: The config bootstrap and the branding load are stubbed to
-    #   record their calls, and the application starts.
-    # Expectation: Both run before the first request, the config bootstrap
-    #   first, because it writes the config.json that later reads depend on.
-    calls: list[str] = []
+    # Test: Startup config bootstrap in the application lifespan.
+    # Situation: `bootstrap_config_from_url` is stubbed to record calls, and
+    #   the application starts and serves a request.
+    # Expectation: `bootstrap_config_from_url` runs once at startup and is not
+    #   called again on subsequent requests.
+    calls: list[None] = []
     monkeypatch.setattr(
-        server_app, "bootstrap_config_from_url", lambda: calls.append("config")
-    )
-    monkeypatch.setattr(
-        brand, "load_branding", lambda: calls.append("branding")
+        server_app, "bootstrap_config_from_url", lambda: calls.append(None)
     )
 
     with TestClient(create_app()) as client:
-        assert calls == ["config", "branding"]
+        assert calls == [None]
         assert client.get("/healthz").status_code == 200
+        assert calls == [None]
 
 
 def test_lifespan_opens_the_data_plane_client_and_closes_it_at_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: Ownership of the proxy's HTTP client by the lifespan.
-    # Situation: The config bootstrap and the branding load are stubbed, and
-    #   the application starts and then shuts down.
+    # Situation: The config bootstrap is stubbed, and the application starts
+    #   and then shuts down.
     # Expectation: While the application runs, `app.state` holds an open
     #   `httpx2.AsyncClient`; after shutdown that client is closed.
     monkeypatch.setattr(server_app, "bootstrap_config_from_url", lambda: None)
-    monkeypatch.setattr(brand, "load_branding", lambda: None)
     app = create_app()
 
     with TestClient(app):
@@ -303,14 +290,12 @@ def test_lifespan_flushes_telemetry_at_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: Buffered telemetry is written when the application stops.
-    # Situation: The config bootstrap and the branding load are stubbed,
-    #   `flush_telemetry` is stubbed to record its calls, and the
-    #   application starts and then shuts down.
+    # Situation: The config bootstrap is stubbed, `flush_telemetry` is stubbed
+    #   to record its calls, and the application starts and then shuts down.
     # Expectation: `flush_telemetry` is not called while the application
     #   runs and is called once at shutdown.
     flushes: list[None] = []
     monkeypatch.setattr(server_app, "bootstrap_config_from_url", lambda: None)
-    monkeypatch.setattr(brand, "load_branding", lambda: None)
     monkeypatch.setattr(
         telemetry, "flush_telemetry", lambda: flushes.append(None)
     )
