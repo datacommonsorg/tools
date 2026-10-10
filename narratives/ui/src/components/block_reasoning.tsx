@@ -213,9 +213,21 @@ export function ReasoningBlock({
           />
         </span>
       </button>
-      {open && (
+      {/* The body stays mounted and its grid row runs 0fr <-> 1fr, which lets
+          the height animate to and from `auto`. `inert` keeps the collapsed
+          text away from the keyboard and screen readers. */}
+      <div
+        inert={!open}
+        className={`grid motion-safe:transition-[grid-template-rows,opacity] duration-200 ease-out ${
+          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="overflow-hidden min-h-0">
         <div
-          className="mt-2 reasoning-markdown"
+          className={`mt-2 reasoning-markdown ${
+            // Each thought fades up as it streams in.
+            streaming ? "motion-safe:*:animate-enter" : ""
+          }`}
           style={{
             marginLeft: BAR_CENTER_LEFT,
             fontFamily: FONT_LABEL,
@@ -292,7 +304,8 @@ export function ReasoningBlock({
             {joined}
           </ReactMarkdown>
         </div>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
