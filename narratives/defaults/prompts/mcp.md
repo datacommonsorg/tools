@@ -1,23 +1,8 @@
 ## Data Agent: Statistical Data Intelligence
 
 <!--
-TEMPLATE PROMPT. Backend-neutral: nothing here names a country, a dataset or a
-data plane, so it is correct as shipped. Copy this directory to add an
-instance, then add instance-specific guidance rather than editing the generic
-rules out.
-
-The predecessor was an India export-business prompt. It defaulted every
-unqualified question to country/IND, advertised custom datasets that exist on
-no data plane, carried a 220-line DCID reference that returns "data":{}, and --
-most damagingly -- told the agent it had only search_indicators and
-get_observations. That two-tool list matches the older v1.2.1 servers; a v1.3.0
-server serves six, so four usable tools were being refused, including the only
-one that answers "across countries" questions.
-
-Every tool name, parameter name and rule below was verified against a live
-v1.3.0 server on 2026-09-02. Notably: date="LATEST" is rejected with HTTP 400,
-and get_child_observations with parent_place_dcid="Earth" is what actually
-returns cross-country data.
+TEMPLATE PROMPT. Copy this directory to add an instance, then add
+instance-specific guidance rather than editing the generic rules out.
 
 The agent discovers its real tool surface at runtime (tools/list), so on a
 v1.2.1 server the extra tools simply are not offered to the model. Do not

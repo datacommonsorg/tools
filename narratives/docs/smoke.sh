@@ -7,19 +7,6 @@
 # Set BEARER_TOKEN for an IAM/IAP-gated stack:
 #   BEARER_TOKEN=$(gcloud auth print-identity-token) bash docs/smoke.sh "$URL"
 #
-# An older version of this script was written for the single-container stamp
-# and asserted two things that are wrong here:
-#
-#   * /api/observations/series -- a *website* Flask route. api.datacommons.org
-#     serves /v1 and /v2 and does not have it. It 404s while the data path is
-#     perfectly healthy.
-#   * .brand_config_url from /agent/brand -- deliberately removed, so the
-#     browser never learns the config bucket's URL. Asserting it means asserting
-#     an information leak.
-#
-# Both are replaced by checks against the path the agent actually uses: an MCP
-# session through /dcproxy, ending in a real tools/call that returns numbers.
-#
 # Final line is "SMOKE: PASS" or "SMOKE: FAIL".
 
 set -uo pipefail
@@ -104,13 +91,8 @@ check 2 c2
 #    probe in the background. So the FIRST call after a deploy legitimately
 #    reports zero tools and a later one is correct.
 #
-#    The budget is a deadline rather than a fixed retry count.
-#    api.datacommons.org is always hot, so the first read is usually correct,
-#    but a data plane that has to cold-start can take ~60s -- comfortably past
-#    the old 3-reads-and-5-seconds ceiling, so a healthy stack reported FAIL on
-#    checks 3, 4, 5 and 7 and passed on a manual re-run minutes later. A smoke
-#    test that cries wolf on every first deploy trains you to ignore it, which
-#    is worse than not having it.
+#    The budget is a deadline rather than a fixed retry count, because a data
+#    plane that has to cold-start can take ~60s to answer.
 #
 #    This check also gates the ones after it: 4, 5 and 7 all need the same data
 #    plane, so letting 3 block until it answers keeps them from failing for a

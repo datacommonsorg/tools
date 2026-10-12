@@ -18,17 +18,7 @@ MCP server generations need not serve the same tool surface. Server 1.2.1
 exposes two fat tools; 1.3.0 splits them into six and adds
 get_variable_metadata.
 
-Nothing in this repo verifies which generation the server serves, and we
-cannot pin it: the server is Google's and moves independently of us. So the
-tool surface is treated as a property to be *discovered*, not declared.
-
-Hardcoding a union of both generations -- the previous approach -- fails in a
-particularly unhelpful way. The model is offered a tool the server does not
-have, calls it, gets "Unknown tool", and burns an iteration of a capped loop.
-The user sees a slower, worse answer and nothing anywhere says why.
-
-This module answers the only questions the rest of the code actually asks:
-which tools exist, and does source attribution work here.
+This module answers which MCP tools exist and whether source attribution works.
 """
 
 import logging

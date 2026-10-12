@@ -12,21 +12,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Same-origin reverse proxy from the app plane to the data plane.
+"""Same-origin reverse proxy for Data Commons browser requests.
 
-The Data Commons web components fetch their own data from
-`window.location.origin` -- that is upstream's design, not ours -- and the two
-iframe tools read `contentDocument` to inject CSS, which browsers only permit
-same-origin. So the browser's data routes have to appear on the app plane's
-origin even though the data plane is a separate service.
+The frontend cannot call the Data Commons servers directly from the browser for
+three reasons:
 
-Pointing the components at the data plane's own URL instead would be simpler,
-and CORS is already permissive on /core/api/ -- but it is ruled out twice over:
-IAP would mean a second sign-in session for the second origin, and the iframe
-tools would break outright.
+1. The Data Commons chart web components fetch data relative to
+   `window.location.origin`.
+2. The embedded tool iframes (Statistical Variable Explorer and Data Download
+   Tool) access `iframe.contentDocument` to inject custom styles, which
+   browsers only allow for same-origin frames.
+3. The Data Commons API key (`DC_API_KEY`) must stay on the server rather than
+   being exposed to the browser.
 
-So those routes land here and are replayed against DATA_PLANE_URL, with the
-agent's own API key attached, so the browser never holds a credential.
+This router exposes those Data Commons paths on the app server's origin and
+forwards them upstream (`DATA_PLANE_URL` for `/mcp` and `DATA_PLANE_WEB_URL`
+for website and chart routes), stripping caller identity headers and attaching
+the server's `DC_API_KEY`.
 """
 
 import logging
@@ -135,11 +137,6 @@ DATA_PLANE_PREFIXES = (
 )
 
 # Headers that must not be forwarded upstream.
-#
-# The IAP entries are the important ones. With IAP in front, Cloud Run hands
-# this container IAP's own Authorization token, whose audience is THIS service.
-# Forwarding it, or the user's identity and cookies, would hand them to Data
-# Commons, which has no use for them.
 _HOP_HEADERS = frozenset(
     {
         "host",

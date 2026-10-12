@@ -145,8 +145,8 @@ set +a
 
 # An instance.env from before the backends were removed may still choose one.
 # Deploying it from here would quietly repoint that instance at public data.
-if [ -n "${DATA_BACKEND:-}" ] && [ "${DATA_BACKEND}" != "none" ] \
-    || [ -n "${DCP_SERVICE_URL:-}" ]; then
+if [[ -n "${DATA_BACKEND:-}" && "${DATA_BACKEND}" != "none" ]] \
+    || [[ -n "${DCP_SERVICE_URL:-}" || -n "${DCP_SERVICE_NAME:-}" ]]; then
     log_error "${ENV_FILE} selects a private data plane (DATA_BACKEND=${DATA_BACKEND:-unset})."
     echo "  Only public Data Commons is supported. Remove DATA_BACKEND and DCP_SERVICE_*," >&2
     echo "  or manage this instance with the last revision that had its backend." >&2
