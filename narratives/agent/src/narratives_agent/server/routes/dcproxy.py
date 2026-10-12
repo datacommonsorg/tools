@@ -248,7 +248,7 @@ async def _forward(request: Request, subpath: str, prefix: str) -> Response:
             "dcproxy: %s %s failed: %s", request.method, upstream_request.url, e
         )
         return JSONResponse(
-            {"error": f"Data plane unreachable: {e}"}, status_code=502
+            {"error": "Data plane unreachable"}, status_code=502
         )
     except ClientDisconnect:
         # The browser went away while its body was being relayed. Nothing
