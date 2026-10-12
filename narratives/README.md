@@ -1,113 +1,134 @@
-# Narratives — Conversational Data Commons
+# Narratives
 
-A branded, conversational Data Commons explorer that packages a React 19
-single-page application (`ui/`) and a Python 3.14 FastAPI + Gemini agent
-(`agent/`) into a single container running against public `datacommons.org`.
+Narratives is a customizable, conversational web application for exploring
+[Data Commons](https://datacommons.org/) datasets. It packages a React 19
+single-page application (`ui/`) and a Python 3.14 FastAPI + Gemini backend
+(`agent/`) into a single container that queries Data Commons over the Model
+Context Protocol (MCP).
 
-Narratives answers natural-language statistical questions using Data Commons MCP
-tools, renders interactive Data Commons charts, attaches inline source
-citations, suggests follow-up questions, exports reports to PDF, and hosts a
-configurable Key Metrics dashboard.
+## Key features
 
----
-
-## How it fits together
-
-```
-                     ┌──────────────────────────────────────┐
-   browser ─────────►│  APP PLANE                           │
-                     │  one container: agent API + SPA      │
-                     │                                      │
-                     │   MCP client ─ capability probe      │
-                     │   /dcproxy   ─ → DATA_PLANE_URL      │
-                     │   auth       ─ strategy chosen by    │
-                     │                host                  │
-                     └──────────────┬───────────────────────┘
-                                    │  DATA_PLANE_URL
-                                    ▼
-                          public datacommons.org
-                          nothing to run
-```
-
-The app plane serves the compiled React UI, runs the `/agent/*` chat pipeline,
-discovers the upstream MCP tool surface at runtime, and reverse-proxies chart
-data requests through `/dcproxy`. For deep-dive details on the streaming
-protocol, multi-turn HMAC transcripts, and proxy design, see
-[`docs/architecture.md`](docs/architecture.md).
-
----
-
-## Quickstart: Run locally (2 minutes)
-
-Run commands from the `narratives/` directory. You need **Node 24**, **pnpm**,
-**Python 3.14**, **[`uv`](https://docs.astral.sh/uv/)**, and a
-**[Gemini API key](https://aistudio.google.com)**.
-
-```sh
-# 1. Install UI and agent dependencies.
-nvm use
-corepack enable && pnpm i
-(cd agent && uv sync)
-
-# 2. Configure your local environment and add GEMINI_API_KEY.
-cp .env.local.example .env.local
-$EDITOR .env.local
-
-# 3. Start the agent (port 5001) and Vite UI (port 3000) in two terminals.
-pnpm dev:agent
-pnpm dev:ui
-```
-
-Open `http://localhost:3000` in your browser. If you only want to work on the UI
-against an already-deployed Cloud Run instance, set `AGENT_URL` in `.env.local`
-and run `pnpm dev:ui` alone. See [`docs/development.md`](docs/development.md)
-for full local workflows and testing commands.
-
----
-
-## Quickstart: Deploy to Google Cloud (~10 minutes)
-
-**One clone of this repository is one deployment.** Everything specific to your
-instance lives in `config/` and is layered over `defaults/` at deploy time —
-branding and prompts are configuration values, not code branches.
-
-```sh
-# 1. Clone. This clone IS the deployment.
-git clone <repo-url> acme-dc && cd acme-dc/narratives
-
-# 2. Fill in the four required values in config/instance.env.
-$EDITOR config/instance.env
-
-# 3. Check credentials, billing, and org policies before creating anything.
-./deploy.sh --preflight
-
-# 4. Store API keys in Secret Manager — once, ever.
-DC_API_KEY=... GEMINI_API_KEY=... ./deploy.sh --bootstrap-secrets
-
-# 5. Deploy.
-./deploy.sh
-```
-
-Then open your deployment according to the `ACCESS_MODE` you chose:
-
-```sh
-# private
-gcloud run services proxy <instance>-app --region=<your-region> --port=8080
-
-# public or iap — deploy.sh prints the service URL
-```
-
-See [`docs/deployment.md`](docs/deployment.md) for prerequisites, customization
-(`branding.json`, `agent-config.json`, `prompts/`), access modes, verification,
-and troubleshooting.
-
----
+- **Grounded statistical Q&A:** Answers natural-language questions using Data
+  Commons MCP tools.
+- **Interactive visualizations:** Renders Data Commons charts alongside
+  generated responses.
+- **Source attribution:** Attaches inline citations and dataset provenance to
+  statistical claims.
+- **Multi-turn conversations:** Supports follow-up questions and contextual
+  suggestions across turns.
+- **Key Metrics dashboard:** Displays a configurable dashboard of curated charts
+  and indicators.
+- **PDF export:** Exports answers and charts as formatted PDF reports.
+- **Config-driven customization:** Customizes branding, themes, navigation, and
+  system prompts through JSON and Markdown files in `config/` without modifying
+  source code.
 
 ## Documentation
 
-| Audience | Document | Covers |
-| :--- | :--- | :--- |
-| **Operators & Deployers** | [`docs/deployment.md`](docs/deployment.md) | GCP setup, `config/instance.env`, secrets, branding, prompts, `deploy.sh`, access modes, and troubleshooting |
-| **Developers & Maintainers** | [`docs/development.md`](docs/development.md) | Local dev (UI-only and full-stack), workspace scripts, testing, linting, repository layout, and PR checklist |
-| **Architects & Engineers** | [`docs/architecture.md`](docs/architecture.md) | MCP vs. `/dcproxy` seams, capability discovery, typed SSE protocol, HMAC-signed transcripts, and theme loading |
-| **Coding Agents & Contributors** | [`AGENTS.md`](AGENTS.md) · [`FRONTEND.md`](FRONTEND.md) | App-specific engineering conventions, Tailwind v4 styling rules, and verification commands |
+- **Run, test, or develop locally:** See the
+  [Local Development Guide](docs/development.md).
+- **Deploy to Google Cloud Run:** See the
+  [Deployment & Customization Guide](docs/deployment.md).
+- **Customize branding, themes, or prompts:** See
+  [Customizing Your Instance](docs/deployment.md#customizing-your-instance).
+- **Understand the architecture and protocols:** See the
+  [Architecture Reference](docs/architecture.md).
+- **Contribute code or configure AI coding agents:** See
+  [`AGENTS.md`](AGENTS.md) and [`FRONTEND.md`](FRONTEND.md).
+
+## Quickstart: Run locally
+
+Run all commands from the `narratives/` directory.
+
+### Prerequisites
+
+- **Node.js 24** (via [`nvm`](https://github.com/nvm-sh/nvm)) and **pnpm**
+- **Python 3.14** and **[`uv`](https://docs.astral.sh/uv/)**
+- A **[Gemini API key](https://aistudio.google.com)**
+
+### Steps
+
+1. Install frontend and backend dependencies:
+
+   ```sh
+   nvm use
+   corepack enable && pnpm i
+   (cd agent && uv sync)
+   ```
+
+2. Create `.env.local` from the template and set `GEMINI_API_KEY`:
+
+   ```sh
+   cp .env.local.example .env.local
+   $EDITOR .env.local
+   ```
+
+3. Start the backend server (port 5001) and frontend dev server (port 3000) in
+   separate terminals:
+
+   ```sh
+   # Terminal 1: Start the Python agent server
+   pnpm dev:agent
+
+   # Terminal 2: Start the Vite UI server
+   pnpm dev:ui
+   ```
+
+4. Open `http://localhost:3000` in your browser.
+
+## Quickstart: Deploy to Google Cloud
+
+Each deployment is configured in `config/` and deployed to Google Cloud Run
+using Terraform and Cloud Build via `./deploy.sh`.
+
+### Prerequisites
+
+- A Google Cloud project with billing enabled
+- `gcloud` CLI authenticated (`gcloud auth login` and
+  `gcloud auth application-default login`)
+- `terraform`, `pnpm`, `python3`, and `uv` installed
+- A [Data Commons API key](https://apikeys.datacommons.org) and a
+  [Gemini API key](https://aistudio.google.com)
+
+### Steps
+
+1. Edit `config/instance.env` and set the required variables (`PROJECT_ID`,
+   `REGION`, `INSTANCE`, and `ACCESS_MODE`):
+
+   ```sh
+   $EDITOR config/instance.env
+   ```
+
+2. Run preflight checks to verify credentials, billing, organization policies,
+   and IAM permissions before provisioning resources:
+
+   ```sh
+   ./deploy.sh --preflight
+   ```
+
+3. Store your API keys in Google Cloud Secret Manager (required once per
+   deployment):
+
+   ```sh
+   DC_API_KEY="<your-dc-key>" GEMINI_API_KEY="<your-gemini-key>" \
+     ./deploy.sh --bootstrap-secrets
+   ```
+
+4. Build and deploy the service:
+
+   ```sh
+   ./deploy.sh
+   ```
+
+5. Access your deployed instance based on the `ACCESS_MODE` configured in
+   `config/instance.env`:
+   - **`public` or `iap`:** Open the Cloud Run service URL printed at the end of
+     `./deploy.sh`.
+   - **`private`:** Proxy the service locally with `gcloud`:
+
+     ```sh
+     gcloud run services proxy <instance>-app --region=<region> --port=8080
+     ```
+
+See the [Deployment & Customization Guide](docs/deployment.md) for custom
+branding, prompt configuration, access modes, and troubleshooting.
