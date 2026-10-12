@@ -109,6 +109,16 @@ def strip_prompt_comments(text: str) -> str:
     return _HTML_COMMENT_RE.sub("", text).strip()
 
 
+def _is_gcs_url(url: str) -> bool:
+    """Returns whether `url` is an HTTPS URL on `storage.googleapis.com`."""
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and (
+        hostname == "storage.googleapis.com"
+        or hostname.endswith(".storage.googleapis.com")
+    )
+
+
 def _fetch_gcs_url(url: str) -> requests.Response:
     """Fetch from GCS.
 
@@ -117,7 +127,7 @@ def _fetch_gcs_url(url: str) -> requests.Response:
     buckets / local dev) if the metadata server is unavailable.
     """
     headers = {}
-    if "storage.googleapis.com" in url:
+    if _is_gcs_url(url):
         try:
             token_url = (
                 "http://metadata.google.internal/computeMetadata/v1/"
@@ -451,8 +461,7 @@ def _load_secret(secret_name: str, now: float) -> str:
         if not project:
             logger.error(
                 "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
-                "name %r",
-                secret_name,
+                "name in GEMINI_API_KEY_SECRET"
             )
             return ""
         full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
@@ -469,16 +478,18 @@ def _load_secret(secret_name: str, now: float) -> str:
             return ""
         if key.startswith(("[", '"')):
             logger.error(
-                "Secret %s holds a legacy JSON array of keys; re-run "
-                "./deploy.sh --bootstrap-secrets to store the bare key",
-                full_name,
+                "GEMINI_API_KEY_SECRET holds a legacy JSON array of keys; "
+                "re-run ./deploy.sh --bootstrap-secrets to store the bare key"
             )
             return ""
         _secret_manager_cache[secret_name] = (now, key)
-        logger.info("Loaded the Gemini API key from %s", full_name)
+        logger.info("Loaded the Gemini API key from Secret Manager")
         return key
     except Exception as e:
-        logger.error("Failed to load secret %s: %s", full_name, e)
+        logger.error(
+            "Failed to load GEMINI_API_KEY_SECRET from Secret Manager (%s)",
+            type(e).__name__,
+        )
         return ""
 
 

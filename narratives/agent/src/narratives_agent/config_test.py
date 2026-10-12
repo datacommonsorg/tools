@@ -269,6 +269,68 @@ def test_prompt_urls_are_derived_from_the_config_url(
     assert len(fetch.urls) == len(config.PROMPT_SLOTS)
 
 
+@pytest.mark.parametrize(
+    ("url", "expects_auth"),
+    [
+        ("https://storage.googleapis.com/bucket/agent-config.json", True),
+        ("https://bucket.storage.googleapis.com/agent-config.json", True),
+        ("http://storage.googleapis.com/bucket/agent-config.json", False),
+        (
+            "https://example.com/config.json?redirect=storage.googleapis.com",
+            False,
+        ),
+        (
+            "https://storage.googleapis.com.example.com/agent-config.json",
+            False,
+        ),
+    ],
+    ids=[
+        "https gcs root host",
+        "https gcs subdomain",
+        "http gcs rejected",
+        "gcs in query string rejected",
+        "spoofed suffix host rejected",
+    ],
+)
+def test_fetch_gcs_url_attaches_metadata_token_only_for_https_gcs_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+    expects_auth: bool,
+) -> None:
+    # Test: Hostname and scheme validation in `_fetch_gcs_url`.
+    # Situation: `_fetch_gcs_url` is called with HTTPS GCS URLs, an HTTP GCS
+    #   URL, a non-GCS URL containing `storage.googleapis.com` in its query
+    #   string, and a spoofed hostname ending in `.example.com`.
+    # Expectation: The metadata server is queried and `Authorization: Bearer` is
+    #   attached only for HTTPS URLs whose hostname is `storage.googleapis.com`
+    #   or a `.storage.googleapis.com` subdomain.
+    calls: list[tuple[str, dict[str, str]]] = []
+
+    class _FakeHttpResponse:
+        status_code = 200
+        encoding = "utf-8"
+
+        def json(self) -> dict[str, str]:
+            return {"access_token": "metadata-token"}
+
+    def _fake_get(
+        request_url: str,
+        headers: dict[str, str] | None = None,
+        timeout: float = 0,
+    ) -> _FakeHttpResponse:
+        calls.append((request_url, dict(headers or {})))
+        return _FakeHttpResponse()
+
+    monkeypatch.setattr("narratives_agent.config.requests.get", _fake_get)
+    config._fetch_gcs_url(url)
+
+    if expects_auth:
+        assert len(calls) == 2
+        assert calls[1] == (url, {"Authorization": "Bearer metadata-token"})
+    else:
+        assert calls == [(url, {})]
+
+
 # --- Gemini API key resolution ----------------------------------------------
 
 
