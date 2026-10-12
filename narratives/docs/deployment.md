@@ -224,7 +224,7 @@ You only need to include the keys you want to override in
 ```json
 {
   "instance_name": "Acme Data Commons",
-  "logo": "/assets/acme.svg",
+  "logo": "assets/acme.svg",
   "colors": { "primary": "#0B6E8F" }
 }
 ```
@@ -248,7 +248,7 @@ The `navigation` key supports three distinct states:
 
 | Value in `config/branding.json` | Behavior |
 | :--- | :--- |
-| Key omitted | Uses the default navigation links (`NAV_CONFIG`) |
+| Key omitted | Inherits the default navigation links from `defaults/branding.json` |
 | `[]` (empty array) | Hides the header navigation menu completely |
 | `[{"label": "...", "href": "..."}, ...]` | Renders the specified navigation links |
 
