@@ -1,195 +1,225 @@
 # Deployment & Customization Guide
 
-This guide covers configuring, customizing, deploying, verifying, and
+This guide covers configuring, deploying, customizing, verifying, and
 troubleshooting a Narratives instance on Google Cloud Run.
 
 For a high-level overview of the application, see
 [`../README.md`](../README.md). For local development and testing, see
-[`development.md`](development.md). For system internals, see
+[`development.md`](development.md). For system architecture and protocols, see
 [`architecture.md`](architecture.md).
-
----
 
 ## Contents
 
-- [Core deployment model](#core-deployment-model)
+- [Deployment model](#deployment-model)
 - [Prerequisites](#prerequisites)
-- [Setting up your deployment](#setting-up-your-deployment)
+- [Step 1: Configure `config/instance.env`](#step-1-configure-configinstanceenv)
+- [Step 2: Bootstrap secrets](#step-2-bootstrap-secrets)
+- [Step 3: Deploy to Cloud Run](#step-3-deploy-to-cloud-run)
+- [Step 4: Verify the deployment](#step-4-verify-the-deployment)
 - [Customizing your instance](#customizing-your-instance)
-- [Secrets](#secrets)
-- [Deploying](#deploying)
-- [Access modes](#access-modes)
-- [Verifying a deployment](#verifying-a-deployment)
+- [Managing deployments & updates](#managing-deployments--updates)
 - [Troubleshooting](#troubleshooting)
 
----
+## Deployment model
 
-## Core deployment model
+Narratives separates upstream application code from per-instance deployment
+configuration using three directories:
 
-- **The branding is a configuration value, not a branch.** Everything you edit
-  for a deployment lives in `config/`. Nothing else needs touching, and nothing
-  you do there requires TypeScript or Python.
-- **One clone of this repository is one deployment.** Clone it, fill in
-  `config/instance.env`, change what you want to look different, and deploy. For
-  a second deployment, clone it again — there is no `--instance` flag and no way
-  to run two from one checkout.
+| Directory | Purpose | Edit for deployment? |
+| :--- | :--- | :--- |
+| `defaults/` | Upstream baseline branding, agent config, and system prompts | No |
+| `schemas/` | JSON Schemas and example files used to validate configuration | No |
+| `config/` | Instance-specific settings and overrides for your deployment | **Yes** |
 
----
+- **Customizing settings:** Edit files in `config/` to customize your instance.
+  Any setting you omit in `config/` falls back to the baseline value in
+  `defaults/`.
+- **Managing multiple environments:** `config/instance.env` targets one
+  deployed instance at a time. Use separate Git branches or clones for staging
+  and production environments.
 
 ## Prerequisites
 
-| Need | Notes |
+Run all deployment commands from the `narratives/` directory.
+
+### Tools and credentials
+
+| Requirement | Notes |
 | :--- | :--- |
-| A GCP project with **billing enabled** | |
-| `gcloud`, authenticated | `gcloud auth login` **and** `gcloud auth application-default login` — separate; Terraform uses ADC |
-| `terraform`, `pnpm`, `python3` on PATH | Images build in **Cloud Build**, so no local Docker is needed |
-| A **Data Commons API key** | https://apikeys.datacommons.org |
-| A **Gemini API key** | https://aistudio.google.com |
-| [`uv`](https://docs.astral.sh/uv/) | Manages Python 3.14 dependencies (`agent/pyproject.toml` and `agent/uv.lock`) |
-| **Node 24** | Compiles the React UI (`ui/`) |
+| Google Cloud project | Billing must be enabled |
+| `gcloud` CLI | Authenticate both user credentials (`gcloud auth login`) and Application Default Credentials (`gcloud auth application-default login`) for Terraform |
+| `terraform`, `pnpm`, `python3`, `uv` | Required on `PATH` (container images build remotely in Cloud Build; local Docker is not required) |
+| Node.js 24 | Compiles the React UI (`nvm use`) |
+| [Data Commons API key](https://apikeys.datacommons.org) | Stored in Secret Manager during bootstrap |
+| [Gemini API key](https://aistudio.google.com) | Stored in Secret Manager during bootstrap |
 
-**IAM roles:** Owner, or Service Usage Admin, Service Account Admin, Project IAM
-Admin, Storage Admin, Run Admin, and Secret Manager Admin.
+### Required IAM roles
 
----
+The deploying principal needs **Owner**, or the following granular roles on the
+target Google Cloud project:
 
-## Setting up your deployment
+- Service Usage Admin (`roles/serviceusage.serviceUsageAdmin`)
+- Service Account Admin (`roles/iam.serviceAccountAdmin`)
+- Project IAM Admin (`roles/resourcemanager.projectIamAdmin`)
+- Storage Admin (`roles/storage.admin`)
+- Cloud Run Admin (`roles/run.admin`)
+- Secret Manager Admin (`roles/secretmanager.admin`)
 
-Everything this deployment owns lives in `config/`:
+## Step 1: Configure `config/instance.env`
 
-```
-config/
-  instance.env       where it runs, who can reach it — NO secrets
-  branding.json      OPTIONAL — only the keys you want to change
-  agent-config.json  OPTIONAL — only the keys you want to change
-  prompts/           OPTIONAL — only the prompts you want to change
-  assets/            OPTIONAL — your logo, favicon, CSS
-```
+Edit `config/instance.env` to define where the service runs and who can access
+it. Do not place API keys or secrets in this file.
 
-Only `instance.env` is required. Everything else is an **override**: at deploy
-time `defaults/` is laid down first and `config/` is copied over the top, so you
-carry only your differences and inherit every upstream improvement when you
-pull.
-
-The required values in `config/instance.env` have **no default**. That is
-deliberate — each one decides where your data lives, what it costs, or who can
-reach it, and a default is a decision made on your behalf that you would not see
-until the bill or the latency showed up. `REGION` in particular.
-
-Required always:
-
-| Variable | Description |
-| :--- | :--- |
-| `PROJECT_ID` | Your GCP project. Billing must be enabled. |
-| `REGION` | Where everything runs. Check your data-residency obligations first — moving later means recreating everything. |
-| `INSTANCE` | Lowercase, DNS-safe. Names every resource and the Terraform state prefix. |
-| `ACCESS_MODE` | `public`, `iap`, or `private`. |
-
-Required depending on those choices, and `--preflight` tells you which:
-
-| Variable | Description |
-| :--- | :--- |
-| `AUTHORIZED_MEMBERS` | Required for `iap` and `private`. |
-
-Optional: `PUBLIC_DC_URL` and `PUBLIC_DC_WEB_URL` — **two different hosts**, see
-below.
-
-### Public Data Commons needs two URLs, not one
-
-The agent and the browser talk to **different hosts**, and it is worth
-understanding before you change them:
-
-| Variable | Default value | Used by |
+| Variable | Required | Description |
 | :--- | :--- | :--- |
-| `PUBLIC_DC_URL` | `https://api.datacommons.org` | the **agent** — the versioned REST API, and `/mcp` |
-| `PUBLIC_DC_WEB_URL` | `https://datacommons.org` | the **browser** — `/api/observations/series`, `/api/place/name`, `/core/api/...` |
+| `PROJECT_ID` | Yes | Target Google Cloud project ID |
+| `REGION` | Yes | Google Cloud region for Cloud Run and storage resources (for example, `us-central1`) |
+| `INSTANCE` | Yes | Lowercase, DNS-safe identifier used to prefix all cloud resources and the Terraform state path |
+| `ACCESS_MODE` | Yes | Access control mode: `public`, `iap`, or `private` (see [Access modes](#access-modes)) |
+| `AUTHORIZED_MEMBERS` | For `iap` & `private` | Comma-separated IAM principals granted access (for example, `user:alice@example.com,group:team@example.com`) |
+| `PUBLIC_DC_URL` | No | Data Commons API and MCP host used by the backend agent (defaults to `https://api.datacommons.org`) |
+| `PUBLIC_DC_WEB_URL` | No | Data Commons web host used by browser chart components (defaults to `https://datacommons.org`) |
 
-The agent's MCP endpoint is `PUBLIC_DC_URL` with `/mcp` appended.
+### Access modes
 
-Point both at the API host and you get a deployment that looks like it works:
-chat answers correctly, every number is right, and **no chart ever renders**.
-The browser's requests reach a host that does not serve those routes and come
-back as Cloud Endpoints 404s, which nothing surfaces server-side.
+`ACCESS_MODE` controls how the Cloud Run service is exposed:
 
-Left empty, both take the standard values above. Change them only if you are
-pointing at a different Data Commons deployment.
+#### `public`
 
-### A second deployment
+Grants `roles/run.invoker` to `allUsers` so anyone with the URL can access the
+application without signing in.
 
-Clone the repository again. `INSTANCE` namespaces every resource and the
-Terraform state prefix, so `acme-prod` and `acme-staging` can share one GCP
-project without touching each other.
+> [!WARNING]
+> Before choosing `public`:
+> - **Set Gemini API spend limits:** Unauthenticated visitors can submit chat
+>   queries that consume your Gemini quota.
+> - **Verify org policy support:** Run `./deploy.sh --preflight` to confirm your
+>   GCP organization permits `allUsers`. If blocked by **Domain Restricted
+>   Sharing**, switch `ACCESS_MODE` to `iap` or `private`.
 
-Two clones pointed at the same project are safe: before applying, the deploy
-reads the deployment name back out of the loaded Terraform state and refuses if
-it belongs to something else. Applying over another deployment's state would
-rename its resources, and Terraform renames by destroying and recreating.
+#### `iap`
 
-### Keep your clone private
+Places Google Identity-Aware Proxy (IAP) sign-in in front of the Cloud Run
+service:
 
-`config/` is committed — that is what makes this clone *your* deployment rather
-than a copy you have to re-derive. So `config/instance.env` is in your git
-history, and it names your project, your region, and everyone allowed in.
+- Principals in `AUTHORIZED_MEMBERS` receive `roles/iap.httpsResourceAccessor`
+  scoped to this specific Cloud Run service.
+- The IAP service agent receives `roles/run.invoker` so it can forward
+  authenticated requests to the container.
+- **One-time project prerequisite:** IAP requires an OAuth consent screen in the
+  Google Cloud console, which Terraform cannot create automatically.
+  `./deploy.sh --preflight` checks for the consent screen and prints the console
+  setup URL if it is missing.
 
-That is disclosure. **A deployment repository should be private.**
+#### `private`
 
-API keys are the exception that never applies: they are not in any file. They go
-to Secret Manager once, via `--bootstrap-secrets`, which reads them from your
-shell and writes nothing to disk.
-
-### Staying up to date
+Requires IAM authentication with no public access and no browser sign-in flow.
+Principals in `AUTHORIZED_MEMBERS` receive `roles/run.invoker` directly and can
+access the service through the local `gcloud` proxy:
 
 ```sh
-git remote add upstream <upstream-url>   # once
-git pull upstream main
-./deploy.sh
+gcloud run services proxy <instance>-app --region=<region> --port=8080
 ```
 
-Upstream never touches `config/`, so this does not conflict. Code fixes, prompt
-fixes, and branding defaults all arrive; your overrides stay yours.
+## Step 2: Bootstrap secrets
 
-**Change only `config/`.** The moment a deployment edits code, every later pull
-conflicts and it stops being updatable. If you need a code change, make it
-upstream.
+Store your Data Commons and Gemini API keys in Google Cloud Secret Manager once
+per deployment:
 
----
+```sh
+DC_API_KEY="<your-dc-key>" GEMINI_API_KEY="<your-gemini-key>" \
+  ./deploy.sh --bootstrap-secrets
+```
+
+`--bootstrap-secrets` reads the keys from the command environment, writes them
+to Secret Manager, and never persists them to disk. Subsequent deployments
+automatically reference the existing secrets.
+
+## Step 3: Deploy to Cloud Run
+
+1. Run preflight checks to validate credentials, billing, organization policies,
+   and IAP prerequisites without creating any resources:
+
+   ```sh
+   ./deploy.sh --preflight
+   ```
+
+2. (Optional) Preview the Terraform execution plan:
+
+   ```sh
+   ./deploy.sh --plan
+   ```
+
+   > [!WARNING]
+   > For a new deployment, the plan summary should report `0 to change, 0 to
+   > destroy`. If Terraform proposes destroying existing resources, stop and
+   > verify that `INSTANCE` in `config/instance.env` does not collide with
+   > another deployment's state.
+
+3. Run the full deployment:
+
+   ```sh
+   ./deploy.sh
+   ```
+
+   `./deploy.sh` enables required Google Cloud APIs, provisions the Terraform
+   state bucket and Artifact Registry, verifies secrets, builds the UI and
+   container image in Cloud Build, syncs the merged `defaults/` + `config/`
+   directory to the private config bucket, runs `terraform apply`, and executes
+   post-deploy smoke tests. The initial deployment takes approximately 10
+   minutes.
+
+### `deploy.sh` command reference
+
+| Task | Command |
+| :--- | :--- |
+| Run preflight validation checks | `./deploy.sh --preflight` |
+| Preview the Terraform plan | `./deploy.sh --plan` |
+| Full build and deployment | `./deploy.sh` |
+| Update configuration only (`branding.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
+| Rebuild and deploy committed code changes (`agent/` and `ui/`) | `./deploy.sh --agent-only` |
+| Apply Terraform infrastructure changes only | `./deploy.sh --infra-only` |
+| Tear down all Terraform-managed resources | `./deploy.sh --destroy` |
+
+## Step 4: Verify the deployment
+
+Run the post-deploy smoke test suite and inspect `/agent/health`:
+
+```sh
+# Public deployment
+bash docs/smoke.sh "$URL"
+curl -s "$URL/agent/health" | jq
+
+# Private or IAM-gated deployment
+BEARER_TOKEN="$(gcloud auth print-identity-token)" bash docs/smoke.sh "$URL"
+```
+
+In the `/agent/health` response, `mcp.generation` and
+`mcp.supports_source_attribution` report the discovered upstream MCP tool
+surface.
 
 ## Customizing your instance
 
-Everything visual and behavioral is configuration. Three directories, with
-clearly different jobs:
+All visual and behavioral customization lives in `config/`:
 
-| Directory | Owned by | Edit it? |
-| :--- | :--- | :--- |
-| `schemas/` | upstream | No — the JSON Schemas that validate the other two |
-| `defaults/` | upstream | No — the baseline every deployment inherits |
-| `config/` | **you** | Yes — only the keys you want to differ |
-
-At deploy time `defaults/` is laid down and `config/` is copied over the top. So
-you write only your differences, and an upstream prompt or branding fix reaches
-you on the next `git pull` instead of sitting unnoticed in a file you copied
-once and forgot.
-
-| What you can override | Validated by | Controls |
-| :--- | :--- | :--- |
-| `config/branding.json` | `schemas/branding.schema.json` | identity, theme, content, structure |
-| `config/agent-config.json` | `schemas/agent-config.schema.json` | models, thinking levels, template vars |
-| `config/prompts/*.md` | — | `mcp`, `synthesis`, `follow_up` |
-| `config/assets/` | — | logo, favicon, CSS overrides |
-
-Both schemas set `additionalProperties: false`, so an unrecognized key is an
-error rather than a silently ignored one — a typo'd color name fails loudly.
-
-### Branding and UI configuration
-
-```sh
-cp schemas/branding.neutral.example.json config/branding.json
-$EDITOR config/branding.json
-./deploy.sh --config-only --restart
+```
+config/
+├── instance.env        Required: GCP project, region, instance, access mode
+├── branding.json       Optional: UI identity, theme colors, nav, metrics
+├── agent-config.json   Optional: Gemini model, thinking levels, template vars
+├── prompts/            Optional: Prompt overrides (mcp, synthesis, follow_up)
+└── assets/             Optional: Custom logos, favicons, and static assets
 ```
 
-You do not have to start from a full file. `config/branding.json` can contain
-only the keys you want to change — everything else comes from `defaults/`:
+Both `branding.json` and `agent-config.json` are validated against
+`schemas/branding.schema.json` and `schemas/agent-config.schema.json` with
+`additionalProperties: false`, so unrecognized or misspelled keys fail
+validation immediately during `./deploy.sh`.
+
+### Branding and UI configuration (`config/branding.json`)
+
+You only need to include the keys you want to override in
+`config/branding.json`; omitted keys inherit from `defaults/branding.json`:
 
 ```json
 {
@@ -199,269 +229,198 @@ only the keys you want to change — everything else comes from `defaults/`:
 }
 ```
 
-| Group | Keys |
+| Category | Configurable keys |
 | :--- | :--- |
-| Identity | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
-| Theme | `colors` (primary, accent, text, surfaces, borders, containers…), `radius` (card / input / chip), `fonts` |
-| Content | `suggestions` — the starter chips; `footer` text and links |
-| Structure | `navigation` — header tabs; `metrics.tabs`; `analytics.ga_tag_id` |
+| **Identity** | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
+| **Theme** | `colors` (`primary`, `accent`, text, surfaces, borders), `radius` (`card`, `input`, `chip`), `fonts` |
+| **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
+| **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
 
-Two complete examples ship as starting points:
-`schemas/branding.neutral.example.json` (neutral theme) and
-`schemas/branding.base-dc.example.json` (Google blue, no header menu).
-`schemas/branding.example.json` lists every field with placeholder values.
+Starter templates are available in `schemas/`:
 
-**`navigation` has three meanings**, and the distinction is load-bearing:
+- `schemas/branding.neutral.example.json` — Neutral color palette
+- `schemas/branding.base-dc.example.json` — Base Data Commons theme
+- `schemas/branding.example.json` — Reference listing all supported fields
 
-| Value | Result |
+#### Header navigation (`navigation`)
+
+The `navigation` key supports three distinct states:
+
+| Value in `config/branding.json` | Behavior |
 | :--- | :--- |
-| key absent | keep the default navigation configuration (`NAV_CONFIG`) |
-| `[]` | **no header menu at all** |
-| `[{label, href}, …]` | render these tabs |
+| Key omitted | Uses the default navigation links (`NAV_CONFIG`) |
+| `[]` (empty array) | Hides the header navigation menu completely |
+| `[{"label": "...", "href": "..."}, ...]` | Renders the specified navigation links |
 
-Pinned by `ui/src/config/nav_config.test.ts`, because a default that carried a
-navigation value once collapsed the first case into the second and silently
-removed every tab on any instance without a `branding.json`.
+### System prompts (`config/prompts/*.md`) and template variables
 
-### Prompts
+System prompts for the MCP tool loop (`mcp.md`), answer synthesis
+(`synthesis.md`), and follow-up generation (`follow_up.md`) can be overridden in
+`config/prompts/`. When customizing prompts, start from the baseline files in
+`defaults/prompts/` and add your domain or regional guidance.
 
-`prompts/mcp.md` and `prompts/synthesis.md` are where instance-specific
-knowledge lives — which DCIDs exist, what the place hierarchy looks like, what
-vocabulary to use.
+Prompts support runtime template placeholders:
 
-**Start from the neutral prompts and add your knowledge; do not start from
-another client's and try to remove theirs.** A region-scoped synthesis prompt
-run against a different dataset once produced *"I don't have this specific
-data"* for data the tool had already returned in full: a rule of the form
-`if alternative_sources:[] treat as UNAVAILABLE` misfires, because custom data
-has a valid `source_id` and no alternatives.
-
-**Placeholders.** Prompts are rendered before they reach Gemini:
-
-| Placeholder | Substituted with |
+| Placeholder | Substitution |
 | :--- | :--- |
-| `{{CURRENT_DATETIME}}` | now, in the `TIMEZONE` env var's zone |
-| `{{instance.<key>}}` | the matching key from `agent-config.json`'s `template_vars` |
+| `{{CURRENT_DATETIME}}` | Current date and time in the `TIMEZONE` environment variable's zone |
+| `{{instance.<key>}}` | Matching key from `template_vars` in `agent-config.json` (keys starting with `_` are ignored) |
 
-So one prompt serves every deployment:
+For example, given `config/agent-config.json`:
 
 ```json
-"template_vars": {
-  "name": "Example Data Commons",
-  "region": "the world",
-  "states_term": "regions",
-  "fiscal_year_start": "01-01"
+{
+  "template_vars": {
+    "name": "Example Data Commons",
+    "region": "the world",
+    "states_term": "regions",
+    "fiscal_year_start": "01-01"
+  }
 }
 ```
 
-```
-**Deployment**: {{instance.name}}, covering {{instance.region}}.
-```
+A prompt containing `**Deployment**: {{instance.name}}, covering
+{{instance.region}}.` renders with those values before being sent to Gemini. Any
+placeholder without a matching key in `template_vars` is left unchanged so
+missing variables are immediately visible during testing.
 
-A placeholder with no matching key is left in the prompt **verbatim** rather
-than blanked — a visible `{{instance.region}}` in an answer is a far louder
-failure than a sentence that has silently lost its subject. Keys beginning with
-`_` are never substituted, so the `_comment` convention is safe.
+### Applying configuration changes
 
-### Applying a config change
+To push changes in `config/` without rebuilding the container image or running
+Terraform:
 
 ```sh
 ./deploy.sh --config-only --restart
 ```
 
-`--restart` is **not optional**. Configuration is read **once at agent startup**
-and served from process memory thereafter. There is no TTL and no runtime
-refetch, so a bucket sync alone changes nothing until a new revision starts
-serving.
+Always include `--restart`. The agent loads configuration into memory once at
+startup, so syncing the GCS config bucket takes effect only when a new Cloud Run
+revision starts.
 
----
+## Managing deployments & updates
 
-## Secrets
+### Running multiple deployments in one project
 
-```sh
-DC_API_KEY=... GEMINI_API_KEY=... \
-  ./deploy.sh --bootstrap-secrets
-```
+Each deployment uses `INSTANCE` in `config/instance.env` to namespace its Cloud
+Run service, service accounts, buckets, and Terraform state prefix. Multiple
+clones (such as `acme-staging` and `acme-prod`) can safely share a single Google
+Cloud project. Before applying or destroying resources, `./deploy.sh` verifies
+that the remote Terraform state belongs to the configured `INSTANCE`.
 
-Values are read from **this process's environment**, written to Secret Manager,
-and never persisted to disk. Every later deploy needs no keys at all. If you
-skip this, the deploy stops and tells you which secrets are missing.
+### Keeping a deployment repository private
 
-**Why there is no gitignored `secret.env`.** The keys already live in Secret
-Manager after the first deploy, so a local plaintext copy is redundant — and on
-a public repo a redundant secret file is a liability: one `git add -f`, one
-edited `.gitignore`, and a scraper has it. A new operator needs GCP access, not
-a file someone has to send them.
+If you commit `config/instance.env` to a repository to track your deployment
+settings, keep that repository **private** — `config/instance.env` records your
+Google Cloud project ID, region, and `AUTHORIZED_MEMBERS` emails.
 
-`instance.env` is excluded from the config-bucket sync, so instance metadata
-cannot reach a bucket that may be readable more widely than intended.
+### Pulling upstream updates
 
----
-
-## Deploying
+If you have modified only files under `config/`, you can pull upstream code and
+default updates without merge conflicts:
 
 ```sh
-./deploy.sh --preflight     # check everything, create nothing
-./deploy.sh                 # deploy
+git remote add upstream https://github.com/datacommonsorg/tools.git   # once
+git pull upstream main
+./deploy.sh
 ```
 
-**`--preflight` is the step worth not skipping.** It checks the things that
-otherwise fail late or silently: credentials, billing, whether your organization
-permits public access, and whether IAP has a consent screen to sign people in
-with. It creates nothing.
+### Tearing down a deployment
 
-Roughly, in order, `./deploy.sh` runs: enable APIs → create the state bucket and
-Artifact Registry → verify secrets → build the UI and bake it into the app image
-→ compose the config bucket from `defaults/` + `config/` and sync it →
-`terraform apply` → smoke tests.
-
-First run is ~10 minutes.
-
-**Preview the plan before an apply into a project that already has resources:**
-
-```sh
-./deploy.sh --plan
-```
-
-Every line should read `will be created`, and the summary should read
-**`0 to change, 0 to destroy`**. **If anything says `will be destroyed`, stop**
-— the state prefix or `INSTANCE` did not take, and you are pointed at another
-deployment's state. Applying would rename (destroy and recreate) its resources.
-
-One exception: a stack first deployed before the `cdc` backend was removed will
-show `<instance>-runtime` and its five IAM bindings as `will be destroyed`. That
-service account belonged to the old data service; nothing uses it now, so those
-destroys are expected.
-
-### Everyday commands
-
-| Task | Command |
-| :--- | :--- |
-| Check before deploying | `./deploy.sh --preflight` |
-| Branding, prompts, agent-config | `./deploy.sh --config-only --restart` |
-| Agent or UI code | `./deploy.sh --agent-only` |
-| Terraform only | `./deploy.sh --infra-only` |
-| Preview the plan | `./deploy.sh --plan` |
-| Everything | `./deploy.sh` |
-| Tear it all down | `./deploy.sh --destroy` |
-
-`--frontend-only` is an alias for `--agent-only`, since the UI is baked into the
-app image.
-
-> [!IMPORTANT]
-> `IMAGE_TAG` is `git rev-parse --short HEAD`, so **uncommitted work rebuilds to
-> the same tag** and Cloud Run keeps the cached image. Commit before
-> `--agent-only`, or the deploy reports success and the change is not live.
-
-### Starting over
+To destroy all Terraform-managed resources for the instance:
 
 ```sh
 ./deploy.sh --destroy
 ```
 
-Asks you to type the deployment name, then destroys everything Terraform
-created. The config bucket and the Secret Manager entries are left alone, so a
-later redeploy does not need the keys again; delete them separately if you want
-them gone.
-
-It runs the same state-ownership guard as the apply path, so it cannot destroy
-resources belonging to another deployment.
-
----
-
-## Access modes
-
-How the app is exposed, set by `ACCESS_MODE` in `config/instance.env`.
-
-### `public`
-
-`allUsers` gets `run.invoker`. Anyone with the URL can use it — **including the
-chat endpoint, so anyone with the URL spends your Gemini quota.**
-
-Many organizations forbid this outright through Domain Restricted Sharing. When
-they do, the deploy still succeeds and the binding is simply refused, leaving a
-URL that returns 403 to everyone. `--preflight` checks the org policy and tells
-you to use `iap` instead, before you deploy rather than after.
-
-### `iap`
-
-Google sign-in in front of the app. `AUTHORIZED_MEMBERS` get
-`roles/iap.httpsResourceAccessor` **scoped to this service**, and IAP's own
-service agent gets `run.invoker` so it can forward requests.
-
-Three things this gets right, each learned the hard way:
-
-1. **The IAP service agent needs `run.invoker`.** Without it every request is
-   refused with a 403 *after* the user has signed in successfully — which reads
-   as a bug in the application rather than a missing IAM binding.
-2. **Members are not given `run.invoker`.** That is deliberate: a member holding
-   it could call the Cloud Run URL directly with an identity token and never see
-   the sign-in, defeating the mode entirely.
-3. **The grant is scoped to this service**, not project-wide. An earlier version
-   used a project-level binding, which granted access to every IAP-fronted app
-   in the project and meant two deployments fought over it — destroying one
-   revoked the other's access. That is also why there is no longer a
-   `MANAGE_IAP_BINDINGS` setting to get wrong.
-
-**One manual step, once per project.** IAP needs an OAuth consent screen, and
-creating one is a console action Terraform cannot perform. `--preflight` checks
-for it and prints the link. Until it exists, IAP has nothing to sign people in
-with and the service stays unreachable.
-
-`/dcproxy` strips the IAP identity headers before forwarding. With IAP in front,
-Cloud Run hands the container IAP's own `Authorization` token, whose audience is
-*this* service; forwarding it would hand the user's sign-in to Data Commons.
-Handled in code; if you add another proxy hop, it must do the same.
-
-### `private`
-
-No public binding and no sign-in. `AUTHORIZED_MEMBERS` get `run.invoker`
-directly, so they can reach it with an identity token or through the proxy:
-
-```sh
-gcloud run services proxy <instance>-app --region=<region> --port=8080
-```
-
-Right for a pilot you drive yourself, and the safe choice when you are not yet
-sure which of the other two you need.
-
----
-
-## Verifying a deployment
-
-```sh
-bash docs/smoke.sh "$URL"
-curl -s "$URL/agent/health" | jq
-```
-
-`mcp.generation` and `mcp.supports_source_attribution` tell you which MCP
-surface the agent actually found. If `supports_source_attribution` is false,
-answers carry weaker provenance — no named source, no license.
-
----
+For safety, `--destroy` prompts you to confirm the instance name and leaves the
+GCS config bucket and Secret Manager entries intact so you can redeploy later
+without re-entering API keys. Delete the bucket and secrets manually in Google
+Cloud if you want to remove them permanently.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-| :--- | :--- | :--- |
-| `No configuration at 'config/instance.env'` | File missing or moved | `git checkout config/instance.env` |
-| `config/instance.env is incomplete` | Required values unset | Fill in what it lists, then `./deploy.sh --preflight` |
-| `--instance is gone` | Old command form | One clone is one deployment; settings are in `config/instance.env` |
-| Deploy succeeds, everyone gets 403 | `ACCESS_MODE=public` refused by Domain Restricted Sharing | `./deploy.sh --preflight` detects this; use `ACCESS_MODE=iap` |
-| IAP mode, nobody can sign in | No OAuth consent screen in the project | Create it once in the console; `--preflight` prints the link |
-| IAP mode, 403 on every request *after* sign-in | IAP service agent lacks `run.invoker` | Should not happen — Terraform grants it. Check `iap_agent_invoker` in the plan |
-| `These secrets have no value in Secret Manager` | Bootstrap not run | See [Secrets](#secrets) |
-| Charts blank, chat fine | `/dcproxy` failing | Agent logs — `401/403` is the API key, `404` is a path the data plane does not serve |
-| Charts blank, `{"code":404,"message":"The current request is not defined by this API"}` | Chart routes are on a **different host** to MCP | Terraform sets `DATA_PLANE_WEB_URL` for this. Chat keeps working either way, so only the browser sees the fault |
-| Config change does nothing | Read once at startup | `./deploy.sh --config-only --restart` |
-| Every tab vanished | `navigation: []` in branding/instance config | Remove the key or provide `[{label, href}, …]` |
-| `Refusing to apply: the state loaded for 'x' describes another instance` | `deploy.sh` caught a wrong state prefix | Do **not** override. Re-`init` with the right prefix |
-| A deploy reports success but the change is not live | Uncommitted work rebuilds to the same `IMAGE_TAG` | Commit, then redeploy |
-| Every chart 401s *after* a successful IAP sign-in | IAP identity headers reaching the backend | Should not happen — `/dcproxy` strips them. Suspect an added proxy hop |
-| Public access binding refused | Domain Restricted Sharing | Use IAP or the proxy |
-| `/healthz` works but the uptime check does not | Cloud Run's frontend reserves `/healthz` and answers it itself | External checks must use `/agent/health` |
+### Deployment & configuration
 
-For anything else, start with the app plane's Cloud Run logs. Each chat turn
-writes one structured `chat_turn` record (terminal state, error type, phase
-durations, tool names, and token counts, never user content) keyed by a
-server-minted `turn_id` that also tags the turn's trace spans.
+**`No configuration at 'config/instance.env'` or
+`config/instance.env is incomplete`**
+
+Restore the file if missing (`git checkout config/instance.env`), fill in all
+required variables (`PROJECT_ID`, `REGION`, `INSTANCE`, and `ACCESS_MODE`), and
+run `./deploy.sh --preflight`.
+
+**`These secrets have no value in Secret Manager`**
+
+API keys have not been initialized for this instance yet. Run
+`DC_API_KEY="..." GEMINI_API_KEY="..." ./deploy.sh --bootstrap-secrets` (see
+[Step 2: Bootstrap secrets](#step-2-bootstrap-secrets)).
+
+**`Refusing to apply: the state loaded for 'x' describes another instance`**
+
+The remote Terraform state prefix belongs to a different deployment. Verify that
+`INSTANCE` in `config/instance.env` matches the intended environment before
+re-running `./deploy.sh`.
+
+**Changes to `branding.json`, `agent-config.json`, or `prompts/` do not appear**
+
+The agent reads configuration only once at container startup. Run
+`./deploy.sh --config-only --restart` so Cloud Run starts a new revision with
+the updated configuration.
+
+**Code changes deployed with `--agent-only` do not take effect**
+
+Container images are tagged with `git rev-parse --short HEAD`, so uncommitted
+changes reuse the existing image tag. Commit your changes first, then re-run
+`./deploy.sh --agent-only`.
+
+**Header navigation tabs are missing**
+
+`navigation` is set to `[]` in `config/branding.json`, which hides the header
+menu. Remove the `navigation` key to restore the default links, or provide an
+array of `{"label": "...", "href": "..."}` objects.
+
+### Authentication & access
+
+**Deployment succeeds in `public` mode, but all requests return `403`**
+
+Your Google Cloud organization enforces **Domain Restricted Sharing**, which
+blocks the `allUsers` IAM binding. Set `ACCESS_MODE=iap` or
+`ACCESS_MODE=private` in `config/instance.env` and redeploy.
+
+**Users cannot sign in when `ACCESS_MODE=iap`**
+
+The Google Cloud project does not have an OAuth consent screen configured yet.
+Run `./deploy.sh --preflight` and open the printed Google Cloud console link to
+configure the consent screen once for the project.
+
+**Requests return `403` *after* signing in with IAP**
+
+The IAP service agent is missing `roles/run.invoker` on the Cloud Run service.
+Re-run `./deploy.sh --infra-only` and verify that the `iap_agent_invoker`
+binding is present in the Terraform plan.
+
+### Charts, APIs & monitoring
+
+**Chat responses work, but charts do not render (`404` in the browser console)**
+
+Browser chart web components are querying the Data Commons API host instead of
+the web host. Leave `PUBLIC_DC_WEB_URL` empty in `config/instance.env` (so it
+defaults to `https://datacommons.org`) or point it to your Data Commons web
+host.
+
+**Chat responses work, but `/dcproxy` returns `401` or `403`**
+
+The Data Commons API key in Secret Manager is missing or invalid. Re-run
+`./deploy.sh --bootstrap-secrets` with a valid `DC_API_KEY`.
+
+**External uptime checks against `/healthz` fail**
+
+Cloud Run intercepts `/healthz` at the frontend layer and does not forward it to
+the container. Configure external uptime checks to query `/agent/health`
+instead.
+
+### Inspecting Cloud Run logs
+
+For further diagnostics, inspect the Cloud Run service logs. Each completed chat
+turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
+containing the terminal state, error reason (if any), phase latencies, MCP tool
+names, and token usage (user query text is never logged).
