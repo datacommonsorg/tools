@@ -17,14 +17,15 @@ The tests serve the app that `create_app` builds, since that is where the
 static mount's options are set.
 
 Verifies that:
-1. `SpaStaticFiles` sets `Cache-Control` by kind of file: `no-store` for
-   `index.html`, immutable for files under `assets/`, and one hour for every
-   other file.
-2. A revalidation that returns 304 carries the same `Cache-Control`.
-3. HEAD returns the headers and an empty body.
-4. Percent-encoded `..` segments cannot reach files outside the static root,
+1. `SpaStaticFiles` sets `Cache-Control` by kind of file: immutable for files
+   under `assets/` and `theme/`, and `no-cache` for every other file.
+2. Every static response carries `X-Content-Type-Options: nosniff`, and every
+   SVG, and only an SVG, carries `Content-Security-Policy: sandbox`.
+3. A revalidation that returns 304 carries the same cache and security headers.
+4. HEAD returns the headers and an empty body.
+5. Percent-encoded `..` segments cannot reach files outside the static root,
    and an unknown file or a missing static root returns 404.
-5. `/healthz` answers `ok`.
+6. `/healthz` answers `ok`.
 """
 
 from pathlib import Path
@@ -37,7 +38,10 @@ from narratives_agent.server.app import create_app
 _INDEX = b"<!doctype html><title>Narratives</title>"
 _BUNDLE = b"console.log('narratives');"
 _LOGO = b"\x89PNG\r\n\x1a\n"
+_SVG = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
 _CONFIG = b'{"mcp": {"server_url": "http://mcp.test/mcp"}}'
+
+_IMMUTABLE = "public, max-age=31536000, immutable"
 
 
 @pytest.fixture
@@ -50,9 +54,12 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     agent_root = tmp_path / "agent"
     static_root = agent_root / "static"
     (static_root / "assets").mkdir(parents=True)
+    (static_root / "theme").mkdir()
     (static_root / "index.html").write_bytes(_INDEX)
     (static_root / "assets" / "index-a1b2c3d4.js").write_bytes(_BUNDLE)
+    (static_root / "theme" / "logo-e5f6a7b8.svg").write_bytes(_SVG)
     (static_root / "logo.png").write_bytes(_LOGO)
+    (static_root / "dc-logo.svg").write_bytes(_SVG)
     (agent_root / "config.json").write_bytes(_CONFIG)
     monkeypatch.setenv("AGENT_ROOT", str(agent_root))
     monkeypatch.setenv("STATIC_ROOT", str(static_root))
@@ -62,14 +69,12 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 @pytest.mark.parametrize(
     ("path", "body", "cache_control"),
     [
-        ("/", _INDEX, "no-store"),
-        ("/index.html", _INDEX, "no-store"),
-        (
-            "/assets/index-a1b2c3d4.js",
-            _BUNDLE,
-            "public, max-age=31536000, immutable",
-        ),
-        ("/logo.png", _LOGO, "public, max-age=3600"),
+        ("/", _INDEX, "no-cache"),
+        ("/index.html", _INDEX, "no-cache"),
+        ("/assets/index-a1b2c3d4.js", _BUNDLE, _IMMUTABLE),
+        ("/theme/logo-e5f6a7b8.svg", _SVG, _IMMUTABLE),
+        ("/logo.png", _LOGO, "no-cache"),
+        ("/dc-logo.svg", _SVG, "no-cache"),
     ],
 )
 def test_cache_control_follows_the_kind_of_file(
@@ -78,11 +83,11 @@ def test_cache_control_follows_the_kind_of_file(
     cache_control: str,
     client: TestClient,
 ) -> None:
-    # Test: `Cache-Control` for each kind of file in the UI build.
-    # Situation: A client requests the shell, at `/` or by name, the
-    #   content-hashed bundle under `assets/`, or a bare file at the root.
-    # Expectation: The shell is `no-store`, the bundle is immutable for a
-    #   year, and the bare file is cacheable for an hour.
+    # Test: `Cache-Control` header values across static file paths.
+    # Situation: A client requests `/`, `/index.html`, content-hashed files
+    #   under `assets/` and `theme/`, and unhashed files at the root.
+    # Expectation: Files under `assets/` and `theme/` receive an immutable
+    #   one-year cache header, and all other files receive `no-cache`.
     response = client.get(path)
 
     assert response.status_code == 200
@@ -91,41 +96,94 @@ def test_cache_control_follows_the_kind_of_file(
 
 
 @pytest.mark.parametrize(
-    ("path", "cache_control"),
+    "path",
     [
-        ("/", "no-store"),
-        ("/assets/index-a1b2c3d4.js", "public, max-age=31536000, immutable"),
-        ("/logo.png", "public, max-age=3600"),
+        "/",
+        "/assets/index-a1b2c3d4.js",
+        "/theme/logo-e5f6a7b8.svg",
+        "/logo.png",
+        "/dc-logo.svg",
     ],
 )
-def test_revalidation_returns_304_with_the_same_cache_control(
+def test_every_static_response_forbids_content_sniffing(
+    path: str, client: TestClient
+) -> None:
+    # Test: `X-Content-Type-Options` header on static responses.
+    # Situation: A client requests HTML, JavaScript, PNG, and SVG files.
+    # Expectation: Every response includes `X-Content-Type-Options: nosniff`.
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize(
+    ("path", "is_sandboxed"),
+    [
+        ("/dc-logo.svg", True),
+        ("/theme/logo-e5f6a7b8.svg", True),
+        ("/", False),
+        ("/index.html", False),
+        ("/assets/index-a1b2c3d4.js", False),
+        ("/logo.png", False),
+    ],
+)
+def test_only_svg_files_are_sandboxed(
+    path: str, is_sandboxed: bool, client: TestClient
+) -> None:
+    # Test: `Content-Security-Policy` header on SVG and non-SVG static files.
+    # Situation: A client requests SVG files and non-SVG files.
+    # Expectation: SVG responses include `Content-Security-Policy: sandbox`,
+    #   and non-SVG responses omit the header.
+    response = client.get(path)
+
+    assert response.status_code == 200
+    if is_sandboxed:
+        assert response.headers["content-security-policy"] == "sandbox"
+    else:
+        assert "content-security-policy" not in response.headers
+
+
+@pytest.mark.parametrize(
+    ("path", "cache_control", "csp"),
+    [
+        ("/", "no-cache", None),
+        ("/assets/index-a1b2c3d4.js", _IMMUTABLE, None),
+        ("/theme/logo-e5f6a7b8.svg", _IMMUTABLE, "sandbox"),
+        ("/logo.png", "no-cache", None),
+    ],
+)
+def test_revalidation_returns_304_with_the_same_headers(
     path: str,
     cache_control: str,
+    csp: str | None,
     client: TestClient,
 ) -> None:
-    # Test: Conditional requests against the static mount.
-    # Situation: A client repeats a request, sending the `ETag` it received
-    #   in `If-None-Match`.
-    # Expectation: The response is 304 and carries the same `Cache-Control`
-    #   as the full response.
+    # Test: Conditional `If-None-Match` requests against static files.
+    # Situation: A client repeats a GET request with the `ETag` from the first
+    #   response.
+    # Expectation: The server returns 304 with the same cache and security
+    #   headers as the 200 response.
     etag = client.get(path).headers["etag"]
 
     response = client.get(path, headers={"If-None-Match": etag})
 
     assert response.status_code == 304
     assert response.headers["cache-control"] == cache_control
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers.get("content-security-policy") == csp
 
 
 def test_head_returns_headers_and_an_empty_body(client: TestClient) -> None:
-    # Test: HEAD requests against the static mount.
+    # Test: HEAD request against a static file.
     # Situation: A client sends `HEAD /logo.png`.
-    # Expectation: The response is 200 with the file's `Content-Length` and
-    #   `Cache-Control`, and its body is empty.
+    # Expectation: The server returns 200 with headers and an empty body.
     response = client.head("/logo.png")
 
     assert response.status_code == 200
     assert response.headers["content-length"] == str(len(_LOGO))
-    assert response.headers["cache-control"] == "public, max-age=3600"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
     assert response.content == b""
 
 

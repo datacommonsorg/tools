@@ -31,7 +31,7 @@ import { citationAnchorId, displayCitationNumber } from "./chip_citation";
 
 const COLOR_TITLE = "var(--color-on-surface)";
 const COLOR_BODY = "var(--color-on-surface)";
-const COLOR_LINK = "var(--color-brand-primary)";
+const COLOR_LINK = "var(--color-theme-primary)";
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 

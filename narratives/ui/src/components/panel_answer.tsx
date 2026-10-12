@@ -1,4 +1,20 @@
 /**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+/**
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
@@ -57,10 +73,8 @@ const COLOR_BORDER = "var(--color-border)";
  */
 const COLOR_TOOLBAR_BG = "#FFFFFF";
 const COLOR_BODY_BG = "var(--color-surface-narrative)";
-// Material 3 "filled tonal" pair, shared with <ExportPdfButton />. Both are
-// theme tokens so an instance restyles the button from branding.json.
-const COLOR_TONAL_CONTAINER = "var(--color-brand-container)";
-const COLOR_TONAL_CONTENT = "var(--color-on-brand-container)";
+const COLOR_TONAL_CONTAINER = "var(--color-theme-container)";
+const COLOR_TONAL_CONTENT = "var(--color-on-theme-container)";
 const COLOR_TITLE = "var(--color-on-surface)";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';

@@ -15,6 +15,11 @@ import { type RefObject, useLayoutEffect, useState } from 'react';
  * height is restored and flushed before the new one is set, so a CSS `height`
  * transition on the element animates between them.
  *
+ * The height stops at the element's CSS `max-height`, so the transition runs
+ * between heights the box actually shows, and `overflow-y` is set inline:
+ * hidden while the text fits (no scrollbar flashing as a line is added), auto
+ * once it passes the cap.
+ *
  * @param textareaRef The textarea to size.
  * @param value The textarea's current controlled value.
  * @returns Whether `value` is non-empty and spans more than one line.
@@ -30,12 +35,16 @@ export const useTextareaAutosize = (
     if (!el) return;
     const prev = el.style.height;
     el.style.height = 'auto';
+    el.style.overflowY = 'hidden';
     const hasContent = value.length > 0;
     setIsExpanded(hasContent && el.scrollHeight > el.clientHeight);
-    const next = `${hasContent ? el.scrollHeight : el.clientHeight}px`;
+    const maxHeight = Number.parseFloat(getComputedStyle(el).maxHeight);
+    const contentHeight = hasContent ? el.scrollHeight : el.clientHeight;
+    const isOverLimit = Number.isFinite(maxHeight) && contentHeight > maxHeight;
     el.style.height = prev;
     void el.offsetHeight;
-    el.style.height = next;
+    el.style.height = `${isOverLimit ? maxHeight : contentHeight}px`;
+    el.style.overflowY = isOverLimit ? 'auto' : 'hidden';
   }, [value, textareaRef]);
 
   return isExpanded;

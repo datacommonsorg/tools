@@ -68,6 +68,16 @@ rm -rf "${DIR}/static"
 cp -R "${UI_DIST}" "${DIR}/static"
 echo "  staged UI build: $(find "${DIR}/static" -type f | wc -l | tr -d ' ') files"
 
+# Stage the fallback defaults/ directory into the Docker build context.
+DEFAULTS_SRC="${DIR}/../defaults"
+if [[ ! -f "${DEFAULTS_SRC}/agent-config.json" ]]; then
+    echo "FATAL: ${DEFAULTS_SRC}/agent-config.json not found" >&2
+    exit 1
+fi
+rm -rf "${DIR}/defaults"
+cp -R "${DEFAULTS_SRC}" "${DIR}/defaults"
+echo "  staged defaults: $(find "${DIR}/defaults" -type f | wc -l | tr -d ' ') files"
+
 echo "Building ${FULL_IMAGE}"
 echo "  PROJECT=${PROJECT} AR_REGION=${AR_REGION} AR_REPO=${AR_REPO}"
 

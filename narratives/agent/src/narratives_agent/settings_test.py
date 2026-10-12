@@ -21,10 +21,12 @@ Verifies that `Settings`:
 4. Falls back to `data_plane_url` for `data_plane_web_url`.
 5. Derives the default `static_root` from `agent_root`, and rejects a
    `static_root` that equals or contains `agent_root`.
-6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
+6. Reads `defaults_dir` from the environment, and otherwise resolves it to
+   the copy staged under `agent_root` or to the repository copy beside it.
+7. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
-7. Rejects a port that is not a number.
-8. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
+8. Rejects a port that is not a number.
+9. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
    rejects a value shorter than `MIN_SECRET_BYTES`.
 """
 
@@ -121,12 +123,6 @@ def test_blank_variable_counts_as_unset(
             "https://datacommons.org//",
             "https://datacommons.org",
             id="repeated-slashes",
-        ),
-        pytest.param(
-            "BRAND_CONFIG_URL",
-            " https://storage.googleapis.com/test-brand-bucket/ ",
-            "https://storage.googleapis.com/test-brand-bucket",
-            id="padded",
         ),
     ],
 )
@@ -227,6 +223,48 @@ def test_static_root_must_not_contain_agent_root(
     else:
         settings = _read_settings(monkeypatch, env)
         assert settings.static_root == agent_root / "static"
+
+
+def test_defaults_dir_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Test: Explicit `DEFAULTS_DIR` environment variable override.
+    # Situation: `DEFAULTS_DIR` is set to an explicit path while `agent_root`
+    #   also contains a `defaults/` subdirectory.
+    # Expectation: `defaults_dir` resolves to the explicit `DEFAULTS_DIR` path.
+    agent_root = tmp_path / "agent"
+    (agent_root / "defaults").mkdir(parents=True)
+    explicit = tmp_path / "elsewhere"
+    settings = _read_settings(
+        monkeypatch,
+        {"AGENT_ROOT": str(agent_root), "DEFAULTS_DIR": str(explicit)},
+    )
+    assert settings.defaults_dir == explicit
+
+
+def test_defaults_dir_prefers_the_copy_staged_under_agent_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Test: Default `defaults_dir` when `agent_root/defaults` exists.
+    # Situation: `DEFAULTS_DIR` is unset and `agent_root/defaults` exists.
+    # Expectation: `defaults_dir` resolves to `agent_root/defaults`.
+    agent_root = tmp_path / "agent"
+    (agent_root / "defaults").mkdir(parents=True)
+    settings = _read_settings(monkeypatch, {"AGENT_ROOT": str(agent_root)})
+    assert settings.defaults_dir == agent_root / "defaults"
+
+
+def test_defaults_dir_falls_back_to_the_repository_copy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Test: Default `defaults_dir` when `agent_root/defaults` does not exist.
+    # Situation: `DEFAULTS_DIR` is unset and `agent_root/defaults` is absent.
+    # Expectation: `defaults_dir` resolves to `../defaults` relative to
+    #   `agent_root`.
+    agent_root = tmp_path / "agent"
+    agent_root.mkdir()
+    settings = _read_settings(monkeypatch, {"AGENT_ROOT": str(agent_root)})
+    assert settings.defaults_dir == tmp_path / "defaults"
 
 
 @pytest.mark.parametrize(

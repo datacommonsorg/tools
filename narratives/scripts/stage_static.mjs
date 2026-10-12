@@ -13,11 +13,13 @@
 // limitations under the License.
 
 /**
- * Stages the compiled React SPA from ui/dist into the agent/static directory.
+ * Stages the agent's build context: the compiled React SPA from ui/dist into
+ * agent/static, and the shipped configuration from defaults/ into
+ * agent/defaults.
  *
- * This mirrors the asset staging performed by narratives/agent/build.sh and
- * narratives/deploy.sh, ensuring that the local Python server and container builds
- * have access to fresh frontend assets.
+ * Both directories live outside agent/, so the Dockerfile cannot COPY them
+ * directly. This mirrors the staging in narratives/agent/build.sh, so the
+ * local Python server and container builds see the same files.
  */
 
 import fs from 'node:fs';
@@ -27,6 +29,8 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const sourceUiDistDir = path.resolve(scriptsDir, '../ui/dist');
 const targetAgentStaticDir = path.resolve(scriptsDir, '../agent/static');
+const sourceDefaultsDir = path.resolve(scriptsDir, '../defaults');
+const targetAgentDefaultsDir = path.resolve(scriptsDir, '../agent/defaults');
 
 const indexHtml = path.join(sourceUiDistDir, 'index.html');
 if (!fs.existsSync(indexHtml)) {
@@ -38,5 +42,14 @@ if (!fs.existsSync(indexHtml)) {
 
 fs.rmSync(targetAgentStaticDir, { recursive: true, force: true });
 fs.cpSync(sourceUiDistDir, targetAgentStaticDir, { recursive: true });
-
 console.log('✓ Staged UI build into agent/static');
+
+const defaultAgentConfig = path.join(sourceDefaultsDir, 'agent-config.json');
+if (!fs.existsSync(defaultAgentConfig)) {
+  console.error(`FATAL: ${defaultAgentConfig} not found`);
+  process.exit(1);
+}
+
+fs.rmSync(targetAgentDefaultsDir, { recursive: true, force: true });
+fs.cpSync(sourceDefaultsDir, targetAgentDefaultsDir, { recursive: true });
+console.log('✓ Staged defaults into agent/defaults');

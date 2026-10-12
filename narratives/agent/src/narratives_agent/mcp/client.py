@@ -96,8 +96,8 @@ _DEFAULT_CLIENT_NAME = "dc-mcp-proxy"
 _DEFAULT_CLIENT_VERSION = "1.0.0"
 
 # The endpoint URL is resolved on first use rather than at import time because
-# `load_config()` reads `config.json`, which `bootstrap_config_from_url()`
-# writes during application startup. Storing the cached URL in a dictionary
+# `load_config()` returns the configuration that `bootstrap_config_from_url()`
+# loads during application startup. Storing the cached URL in a dictionary
 # avoids rebinding a module-level variable with `global`.
 _URL_CACHE: dict[str, str] = {}
 

@@ -1,4 +1,20 @@
 /**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+/**
  * @fileoverview Provenance inspector: a slide-over showing which variables and
  * data sources an answer used.
  */
@@ -61,7 +77,7 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
               <li
                 key={facet.facetId}
                 className="flex flex-col gap-0.5 pl-3"
-                style={{ borderLeft: "3px solid var(--color-brand-primary)" }}
+                style={{ borderLeft: "3px solid var(--color-theme-primary)" }}
               >
                 <span className="text-body-medium">
                   <strong>{facet.provenance ?? "(unnamed source)"}</strong>
@@ -85,7 +101,7 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                     title={facet.url}
                     className="text-body-medium block"
                     style={{
-                      color: "var(--color-brand-primary)",
+                      color: "var(--color-theme-primary)",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
@@ -181,7 +197,7 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                       type="button"
                       onClick={() => setOpenResult(openResult === index ? null : index)}
                       className="self-start text-label-large cursor-pointer bg-transparent p-0"
-                      style={{ color: "var(--color-brand-primary)", border: 0 }}
+                      style={{ color: "var(--color-theme-primary)", border: 0 }}
                     >
                       {openResult === index ? "Hide" : "Show"} raw response (
                       {call.result.length.toLocaleString()} chars)

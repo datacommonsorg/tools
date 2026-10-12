@@ -1,14 +1,27 @@
 /**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+/**
  * @fileoverview Renders the empty-state landing view: heading, prompt box, and suggestion chips.
  */
 
-import { ChangeEvent, useRef } from "react";
 import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
-import { SendIcon } from "./icons";
 import { SuggestionChip } from "./chip_suggestion";
-import { Tooltip } from "./tooltip";
-import { useBrand } from "../hooks/branding_context";
-import { useTextareaAutosize } from "../hooks/use_textarea_autosize";
+import { PromptInput } from "./input_prompt";
+import { getInstanceConfig } from "@/src/config/instance_config";
 import { EASE_OUT } from "../config/motion";
 
 // Intro cascade: each child fades up in turn; the chip row cascades its own
@@ -37,10 +50,7 @@ interface InitialViewProps {
 
 /** Empty-state landing view: hero heading, prompt input, and suggestion chips. */
 export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isExpanded = useTextareaAutosize(textareaRef, query);
-  const brand = useBrand();
-  const suggestions = brand.suggestions ?? [];
+  const { headline, tagline, suggestions } = getInstanceConfig();
   const reduceMotion = useReducedMotion();
 
   return (
@@ -52,51 +62,24 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative overflow-y-auto">
 
         <m.h1 variants={fadeUp} className="text-display-small-gradient mb-1 tracking-tight text-center">
-          {brand.headline}
+          {headline}
         </m.h1>
         <m.p variants={fadeUp} className="text-label-large text-subtle mb-8 text-center">
-          {brand.tagline}
+          {tagline}
         </m.p>
 
-        {/* GM3 Search Box */}
-        <m.div
-          variants={fadeUp}
-          className={`w-full max-w-[720px] bg-surface border border-outline shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.1)] motion-safe:transition-[border-radius,box-shadow] duration-200 ease-out flex flex-row items-start min-h-14 px-4 py-[7px] ${
-            // The 56px pill is 7px padding + 40px button + 7px padding + 2px
-            // border; py-2 would overshoot to 58px. The button sits at the top
-            // so it stays on the first row as the box grows.
-            // Pill radius is exactly half the 56px min-height, not rounded-full:
-            // a 9999px radius stays visually round for the whole transition
-            // and snaps to rounded-input at the end.
-            isExpanded ? "rounded-input" : "rounded-[28px]"
-          }`}
-        >
-          <textarea
-            ref={textareaRef}
+        <m.div variants={fadeUp} className="w-full">
+          <PromptInput
             value={query}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQuery(e.target.value)}
             placeholder="Ask a question to explore relevant statistical data"
-            className="bg-transparent w-full outline-none text-body-large text-on-surface placeholder:text-placeholder resize-none overflow-hidden leading-6 pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
-            rows={1}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), onSend())}
+            onValueChange={setQuery}
+            onSubmit={() => onSend()}
           />
-          {/* Action Button */}
-          <Tooltip label="Submit">
-            <button
-              type="button"
-              onClick={() => onSend()}
-              aria-label="Submit"
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-blue hover:bg-button-hover transition-colors shrink-0 group ml-2"
-            >
-              <SendIcon size="xs" />
-            </button>
-          </Tooltip>
         </m.div>
 
-        {/* Prompt Chips (from branding.json suggestions, fallback DEFAULT_BRAND).
-            On mobile (< sm) we sit inline so the chips don't get clipped under the
-            virtual keyboard / browser chrome; from sm: up they dock to the bottom
-            of the hero per the Figma spec. */}
+        {/* Place suggestion chips inline on narrow screens so they are not
+            clipped by the virtual keyboard, and dock them to the bottom of the
+            hero container on wider screens. */}
         <m.div variants={cascade} className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6">
           {suggestions.map((text, index) => (
             <m.div key={index} variants={fadeUp}>

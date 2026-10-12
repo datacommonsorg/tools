@@ -98,6 +98,27 @@ describe('useTextareaAutosize', () => {
     expect(textarea.style.height).toBe(`${LINE_HEIGHT}px`);
   });
 
+  it('stops at the max height and only scrolls past it', () => {
+    // Test: Text taller than the max height.
+    // Situation: The textarea is capped at four lines and the text wraps to six.
+    // Expectation: The height stops at four lines and scrolling turns on.
+    const textarea = document.createElement('textarea');
+    textarea.style.maxHeight = `${4 * LINE_HEIGHT}px`;
+    document.body.append(textarea);
+    const ref = { current: textarea };
+    lines = 3;
+    const hook = renderHook(({ value }) => useTextareaAutosize(ref, value), {
+      initialProps: { value: 'three lines' },
+    });
+    expect(textarea.style.height).toBe(`${3 * LINE_HEIGHT}px`);
+    expect(textarea.style.overflowY).toBe('hidden');
+    lines = 6;
+    hook.rerender({ value: 'six lines' });
+    expect(textarea.style.height).toBe(`${4 * LINE_HEIGHT}px`);
+    expect(textarea.style.overflowY).toBe('auto');
+    textarea.remove();
+  });
+
   it('does nothing when the ref is not attached', () => {
     // Test: Unattached ref.
     // Situation: The textarea has not mounted, so the ref is null.

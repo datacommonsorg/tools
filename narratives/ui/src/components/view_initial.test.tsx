@@ -1,5 +1,22 @@
+/**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { resetInstanceConfigForTests } from "@/src/config/instance_config";
 import { InitialView } from "./view_initial";
 
 const LINE_HEIGHT = 24;
@@ -27,6 +44,8 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  resetInstanceConfigForTests();
+  document.getElementById("instance-config")?.remove();
   lines = 1;
 });
 
@@ -44,7 +63,7 @@ const renderSearchBox = (query: string) => {
       onSend={() => {}}
     />,
   );
-  const searchBox = screen.getByRole("textbox").parentElement!;
+  const searchBox = screen.getByRole("textbox").closest("form")!;
   return { view, searchBox };
 };
 
@@ -54,7 +73,7 @@ describe("InitialView search box", () => {
     // Situation: The text does not wrap inside the pill.
     // Expectation: The box keeps its fully rounded pill shape.
     const { searchBox } = renderSearchBox("population of France");
-    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).toContain("rounded-pill");
     expect(searchBox.className).not.toContain("rounded-input");
   });
 
@@ -73,7 +92,7 @@ describe("InitialView search box", () => {
     // Expectation: The box keeps its pill shape; only typed text expands it.
     lines = 2;
     const { searchBox } = renderSearchBox("");
-    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).toContain("rounded-pill");
     expect(searchBox.className).not.toContain("rounded-input");
   });
 
@@ -91,7 +110,7 @@ describe("InitialView search box", () => {
         onSend={() => {}}
         />,
     );
-    expect(searchBox.className).toContain("rounded-[28px]");
+    expect(searchBox.className).toContain("rounded-pill");
   });
 });
 
@@ -104,5 +123,29 @@ describe("InitialView intro", () => {
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.style.opacity).not.toBe("0");
     expect(heading.style.transform).toBe("");
+  });
+});
+
+describe("InitialView instance configuration", () => {
+  it("renders headline, tagline, and suggestions from #instance-config", () => {
+    // Test: Custom instance configuration in index.html.
+    // Situation: #instance-config defines a custom headline, tagline, and suggestions.
+    // Expectation: The hero heading, subtitle, and suggestion chips reflect the config.
+    const script = document.createElement("script");
+    script.id = "instance-config";
+    script.type = "application/json";
+    script.textContent = JSON.stringify({
+      headline: "Custom Headline",
+      tagline: "Custom Tagline",
+      suggestions: ["First suggestion", "Second suggestion"],
+    });
+    document.head.appendChild(script);
+
+    renderSearchBox("");
+
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Custom Headline");
+    expect(screen.getByText("Custom Tagline")).toBeTruthy();
+    expect(screen.getByText("First suggestion")).toBeTruthy();
+    expect(screen.getByText("Second suggestion")).toBeTruthy();
   });
 });

@@ -38,8 +38,8 @@ Contribution process and PR expectations:
     components (does not use the layered `primitives / elements / scopes /
     foundations` structure from `dataweaver/`).
   - `src/hooks/` — hooks and React context providers.
-  - `src/config/`, `src/types/`, `src/utils/` — navigation config, shared
-    types, and helpers.
+  - `src/config/`, `src/types/`, `src/utils/` — instance and navigation config,
+    shared types, and helpers.
   - `src/index.css` — Tailwind v4 theme and `--color-*` design tokens.
 - `agent/` — Python 3.14 server managed with [uv](https://docs.astral.sh/uv/):
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
@@ -55,7 +55,8 @@ Contribution process and PR expectations:
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
-- `scripts/` — build-time static asset staging (`stage_static.mjs`).
+- `scripts/` — build-time staging of `ui/dist/` into `agent/static/` and
+  `defaults/` into `agent/defaults/` (`stage_static.mjs`).
 - `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh`, and Cloud Build
   pipelines.
@@ -71,7 +72,8 @@ Run from the root of the `/narratives` directory:
   (`pnpm -C ui dev`).
 - `pnpm dev:agent` — stage config and start the Python agent development server
   on port 5001 (`uv run narratives-agent-dev`).
-- `pnpm build` — compile the React UI and stage static assets into `agent/static/`.
+- `pnpm build` — compile the React UI and stage `ui/dist/` into `agent/static/`
+  and `defaults/` into `agent/defaults/`.
 - `pnpm build:ui` — compile the React UI bundle into `ui/dist/` without staging.
 - `pnpm test` — run unit tests and lint checks across the whole application
   (`pnpm test:ui`, `pnpm test:agent`, and `pnpm lint`).
@@ -137,7 +139,7 @@ frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
   Never add a `[[tool.mypy.overrides]]` block that ignores errors in
   `agent/pyproject.toml`.
 - **File naming** — `snake_case` for all source files (`card_response.tsx`,
-  `use_branding.ts`, `chat_pipeline.py`) and category-first naming
+  `instance_config.ts`, `chat_pipeline.py`) and category-first naming
   (`card_response.tsx`, not `response_card.tsx`).
 
 ## Tests
@@ -187,8 +189,8 @@ To run individual layer checks locally (mirrors
 1. **Test and lint suites**: `pnpm test` (runs `pnpm test:ui`,
    `pnpm test:agent`, and `pnpm lint`). Run `pnpm fix` to auto-fix formatting
    and lint issues.
-2. **Build**: `pnpm build` (compiles React UI and stages static assets into
-   `agent/static/`).
+2. **Build**: `pnpm build` (compiles React UI and stages `ui/dist/` into
+   `agent/static/` and `defaults/` into `agent/defaults/`).
 3. **UI style and types**: `pnpm lint:ui` (`tsc --noEmit` and `biome check`).
 4. **Agent style and types**: `pnpm lint:agent` (`ruff format --check`,
    `ruff check`, and `mypy`).

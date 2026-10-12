@@ -10,8 +10,9 @@
 ui/node_modules
 ui/dist
 
-# Compiled SPA staged into the agent build context by build.sh / deploy.sh.
+# Ignore the compiled SPA and defaults/ staged into the agent build context.
 agent/static/
+agent/defaults/
 ui/*.tsbuildinfo
 ui/.env
 ui/.env.local

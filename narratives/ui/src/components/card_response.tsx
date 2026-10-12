@@ -1,4 +1,20 @@
 /**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+/**
  * @fileoverview Renders streamed agent markdown with inline citations.
  */
 
@@ -43,14 +59,7 @@ interface ResponseCardProps {
   bare?: boolean;
 }
 
-/**
- * Renders the agent's streamed synthesis as actual markdown. Bold,
- * italics, lists, links, tables, code spans, and backslash-escaped
- * underscores (e.g. `average\_annual\_wage`) all parse correctly.
- * GFM enables tables + autolinks + strikethrough.
- */
-
-const LINK_COLOR = "var(--color-brand-primary)"; // Figma "AI Dark Blue" (brand primary)
+const LINK_COLOR = "var(--color-theme-primary)";
 
 /** Renders the agent's answer text as markdown, with citation chips and streaming cursor. */
 export function ResponseCard({
@@ -76,7 +85,7 @@ export function ResponseCard({
         <h3 className="text-label-large text-on-surface">{title}</h3>
         {streaming && (
           <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-theme-primary animate-pulse" />
             streaming
           </span>
         )}
