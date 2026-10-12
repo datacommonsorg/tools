@@ -437,10 +437,6 @@ show `<instance>-runtime` and its five IAM bindings as `will be destroyed`. That
 service account belonged to the old data service; nothing uses it now, so those
 destroys are expected.
 
-Do not redeploy a stack that used the removed `dcp` backend from this revision.
-It would switch the stack to public Data Commons and destroy the `run.invoker`
-grant on its data plane, and any network and subnet it created for VPC egress.
-
 ### Everyday commands
 
 | | |
