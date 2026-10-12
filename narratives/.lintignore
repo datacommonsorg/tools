@@ -17,4 +17,3 @@
 deploy.sh
 docs/smoke.sh
 agent/Dockerfile
-image/Dockerfile
