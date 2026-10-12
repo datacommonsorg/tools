@@ -79,10 +79,6 @@ default = true
 [tool.ruff]
 line-length = 80
 target-version = "py314"
-# Existing deploy scripts pending lint cleanup; remove entries as refactored.
-extend-exclude = [
-    "../deploy/validate-branding.py",
-]
 
 [tool.ruff.lint]
 select = [
@@ -99,7 +95,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["narratives_agent"]
+known-first-party = ["narratives_agent", "validate_theme"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -111,14 +107,14 @@ docstring-code-format = true
 [tool.mypy]
 python_version = "3.14"
 strict = true
-files = ["src"]
-mypy_path = "src"
+files = ["src", "../deploy/validate_theme.py", "../deploy/validate_theme_test.py"]
+mypy_path = "src:../deploy"
 explicit_package_bases = true
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
 [tool.pytest.ini_options]
-testpaths = ["src"]
+testpaths = ["src", "../deploy"]
 python_files = ["*_test.py"]
 filterwarnings = [
     # google-genai 2.25.0 references typing._UnionGenericAlias, deprecated

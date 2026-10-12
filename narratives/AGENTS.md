@@ -51,7 +51,7 @@ Contribution process and PR expectations:
       (`uvicorn narratives_agent.server.app:app` in production).
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `settings.py` — every environment variable the agent reads (`Settings`).
-- `defaults/` — baseline `branding.json`, `agent-config.json`, and `prompts/`.
+- `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
@@ -128,9 +128,7 @@ frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
   file's exclusion entry when refactoring it.
 - **Enforcement (Agent)** — formatted and linted with `ruff` at 80 columns and
   type-checked with `mypy --strict`, both configured in `agent/pyproject.toml`
-  and run via `pnpm lint:agent` (auto-fixable with `pnpm fix:agent`). Existing
-  `deploy/*.py` scripts pending cleanup are listed in `extend-exclude` in
-  `agent/pyproject.toml`.
+  and run via `pnpm lint:agent` (auto-fixable with `pnpm fix:agent`).
 - **Enforcement (Deployment)** — Terraform modules are checked with `terraform
   fmt -check` and `terraform validate`, shell scripts with `shellcheck`, and
   Dockerfiles with `hadolint` via `pnpm lint:deploy`. Existing shell scripts and
