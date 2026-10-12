@@ -26,9 +26,11 @@ Read these before writing code, in this order:
    differ, the copy in this directory takes precedence.
 3. This file — layout, commands, code style, testing, and local development.
 
-Deployment, configuration, and secrets reference: [`README.md`](README.md).
-Contribution process and PR expectations:
-[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+Overview and quickstarts: [`README.md`](README.md). Deployment, configuration,
+and secrets reference: [`docs/deployment.md`](docs/deployment.md). Developer
+workflows: [`docs/development.md`](docs/development.md). System architecture
+and protocols: [`docs/architecture.md`](docs/architecture.md). Contribution
+process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ## Layout
 
@@ -201,8 +203,9 @@ To run individual layer checks locally (mirrors
 ## Self-maintenance
 
 When a change affects project structure, dependencies, commands, or
-architecture, update this file, [`FRONTEND.md`](FRONTEND.md), and
-[`README.md`](README.md) to match. Put each rule in one place: general rules in
+architecture, update this file, [`FRONTEND.md`](FRONTEND.md),
+[`README.md`](README.md), and the guides in [`docs/`](docs/) to match. Put each
+rule in one place: general rules in
 [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md), shared frontend rules in
 [`../FRONTEND.md`](../FRONTEND.md), and Narratives-specific conventions here or
 in the local [`FRONTEND.md`](FRONTEND.md).

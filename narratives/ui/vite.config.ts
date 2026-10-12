@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
-// Dev-proxy default for a local agent (Path B in the README).
+// Dev-proxy default for a local agent.
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
 
 export default defineConfig(({mode}) => {
@@ -19,8 +19,8 @@ export default defineConfig(({mode}) => {
     changeOrigin: true,
   };
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
-  // /agent/* requests are forwarded verbatim to AGENT_URL, whether a deployed
-  // instance (Path A) or a local agent (Path B).
+  // /agent/* requests are forwarded verbatim to AGENT_URL, whether a local
+  // agent or a deployed instance.
   //
   // Set AGENT_STRIP_PREFIX=true in .env.local only when the agent serves its
   // API at the root (AGENT_API_PREFIX=/). An empty AGENT_API_PREFIX counts as
