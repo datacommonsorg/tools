@@ -217,8 +217,11 @@ function TurnView({
   isStreaming,
   onAsk,
 }: TurnViewProps) {
-  const showAnswer = Boolean(turn.text) && !turn.stopped;
-  const showSkeleton = !turn.text && turn.status === "synthesis";
+  // The answer stays behind the skeleton until its text has arrived in full.
+  const textReady =
+    turn.textComplete || turn.status === "done" || turn.status === "error";
+  const showAnswer = Boolean(turn.text) && !turn.stopped && textReady;
+  const showSkeleton = !showAnswer && turn.status === "synthesis";
   const className = [
     "shrink-0 flex flex-col gap-6",
     animate && "motion-safe:*:animate-enter",
@@ -273,7 +276,8 @@ function TurnView({
           `synthesis` phase), not during mcp (tools running). Through that
           earlier phase the user sees just the reasoning.
 
-          Answer: the full Figma AnswerPanel, streaming then final. Hidden
+          Answer: the full Figma AnswerPanel, shown once the text is whole
+          and fading in over the skeleton. Hidden
           when the turn was stopped so we don't show a truncated partial
           answer. */}
       {(showSkeleton || showAnswer) && (

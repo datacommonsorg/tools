@@ -178,3 +178,23 @@ describe("ResponseCard prose", () => {
     warn.mockRestore();
   });
 });
+
+describe("ResponseCard streaming", () => {
+  it("keeps its words in place when the card renders again", () => {
+    // Test: The reveal plays once.
+    // Situation: A streaming answer is rendered, then rendered again with
+    //   nothing changed, as happens whenever the turn around it updates.
+    // Expectation: The same DOM nodes are still there. A replaced node would
+    //   start its entry animation over.
+    // A fresh element each time: React skips a render handed the same one.
+    const card = () => (
+      <ResponseCard title="q" body="One two three." sources={SOURCES} bare streamMs={300} />
+    );
+    const { container, rerender } = render(card());
+    const before = container.querySelector(".stream-word");
+    rerender(card());
+
+    expect(before).not.toBeNull();
+    expect(container.querySelector(".stream-word")).toBe(before);
+  });
+});

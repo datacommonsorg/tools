@@ -29,7 +29,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   CitationChip,
@@ -43,6 +43,7 @@ import {
   type MarkdownNode,
   type TableAnalysis,
 } from "../utils/markdown_table";
+import { rehypeStreamWords } from "../utils/rehype_stream_words";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 interface ResponseCardProps {
@@ -57,21 +58,29 @@ interface ResponseCardProps {
   // bar. Used inside AnswerPanel's "Side panel" card where the user's
   // question is already shown in the toolbar.
   bare?: boolean;
+  // When set, the body reveals word by word in reading order over this many
+  // milliseconds. Left unset the body is simply there.
+  streamMs?: number;
 }
 
 const LINK_COLOR = "var(--color-theme-primary)";
 
-/** Renders the agent's answer text as markdown, with citation chips and streaming cursor. */
+/** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
   title,
   body,
   streaming,
   sources,
   bare = false,
+  streamMs,
 }: ResponseCardProps) {
   const markdown = (
-    <div className={bare ? "markdown-body" : "px-[56px] py-6 text-on-surface markdown-body"}>
-      <ReactMarkdownInner body={body} streaming={streaming} sources={sources} />
+    <div
+      className={`${bare ? "" : "px-[56px] py-6 text-on-surface "}markdown-body${
+        streamMs === undefined ? "" : " markdown-stream"
+      }`}
+    >
+      <ReactMarkdownInner body={body} sources={sources} streamMs={streamMs} />
     </div>
   );
 
@@ -101,21 +110,27 @@ export function ResponseCard({
  */
 function ReactMarkdownInner({
   body,
-  streaming,
   sources,
+  streamMs,
 }: {
   body: string;
-  streaming?: boolean;
   sources?: ProvenanceItem[];
+  streamMs?: number;
 }) {
-  return (
-    <>
-      {/* While streaming, each block fades up as it starts. The wrapper keeps
-          the cursor below out of that rule, which would replace its pulse. */}
-      <div className={streaming ? "motion-safe:*:animate-enter" : undefined}>
-      <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
+  // Memoized because react-markdown uses each of these functions as a
+  // component type. Built inline they are new functions on every render, so
+  // React takes every element for a different component and replaces the whole
+  // rendered answer -- which restarts the reveal each time the turn updates.
+  const components = useMemo(
+    (): Components => ({
+            // The word wrappers rehypeStreamWords adds. Citation markers and
+            // long numbers sit inside them, so they get the same treatment
+            // as any other run of text.
+            span: ({ children, className, style }) => (
+              <span className={className} style={style}>
+                {renderWithCitations(children, sources)}
+              </span>
+            ),
             p: ({ children }) => (
               <p className="text-body-large mb-3 last:mb-0">
                 {renderWithCitations(children, sources)}
@@ -150,8 +165,12 @@ function ReactMarkdownInner({
             ol: ({ children }) => (
               <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
             ),
-            li: ({ children }) => (
-              <li className="leading-relaxed">{renderWithCitations(children, sources)}</li>
+            // `style` on li, blockquote, table and hr carries their stream
+            // delay, so a bullet or a rule waits for the text it belongs to.
+            li: ({ children, style }) => (
+              <li className="leading-relaxed" style={style}>
+                {renderWithCitations(children, sources)}
+              </li>
             ),
             a: ({ children, href }) => (
               <a
@@ -185,8 +204,11 @@ function ReactMarkdownInner({
                 {children}
               </pre>
             ),
-            blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3">
+            blockquote: ({ children, style }) => (
+              <blockquote
+                className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3"
+                style={style}
+              >
                 {renderWithCitations(children, sources)}
               </blockquote>
             ),
@@ -202,15 +224,24 @@ function ReactMarkdownInner({
                 {renderWithCitations(children, sources)}
               </strong>
             ),
-            hr: () => <hr className="my-4 border-outline" />,
-          }}
+            hr: ({ style }) => (
+              <hr className="my-4 border-outline" style={style} />
+            ),
+    }),
+    [sources],
+  );
+
+  return (
+    <>
+      <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={
+            streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
+          }
+          components={components}
         >
           {body}
         </ReactMarkdown>
-      </div>
-        {streaming && (
-          <span className="inline-block animate-pulse">▍</span>
-        )}
     </>
   );
 }
@@ -236,7 +267,7 @@ interface MarkdownCellProps {
 }
 
 /** A markdown table, with the whole-column facts read off the AST once. */
-function MarkdownTable({ children, node }: MarkdownCellProps) {
+function MarkdownTable({ children, node, style }: MarkdownCellProps) {
   const analysis = useMemo(
     () => analyzeMarkdownTable(node as MarkdownNode | undefined),
     [node],
@@ -244,7 +275,9 @@ function MarkdownTable({ children, node }: MarkdownCellProps) {
   return (
     <TableAnalysisContext.Provider value={analysis}>
       <div className="overflow-x-auto mb-3">
-        <table className="min-w-full text-sm border-collapse">{children}</table>
+        <table className="min-w-full text-sm border-collapse" style={style}>
+          {children}
+        </table>
       </div>
     </TableAnalysisContext.Provider>
   );

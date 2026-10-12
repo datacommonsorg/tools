@@ -601,6 +601,31 @@ body[data-print-preflight] .dc-chart-card datacommons-scatter {
   box-sizing: border-box !important;
 }
 
+/* Answer reveal — the text arrives word by word in reading order, each word
+   fading in on its own delay (set inline by rehypeStreamWords), so the eye is
+   led left to right, line by line. Whatever follows the text in the card
+   holds back until the last word is in. Under reduced motion none of this
+   applies and the answer is simply there. */
+@keyframes stream-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .markdown-stream :is(.stream-word, li, table, hr, blockquote) {
+    animation: stream-in 400ms cubic-bezier(0, 0, 0, 1) both;
+  }
+
+  .stream-rest > :not(.markdown-body) {
+    transition: opacity 300ms cubic-bezier(0, 0, 0, 1);
+  }
+
+  .stream-rest[data-revealing="true"] > :not(.markdown-body) {
+    opacity: 0;
+  }
+}
+
 @keyframes reasoning-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
