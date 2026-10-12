@@ -7,17 +7,17 @@
 # Set BEARER_TOKEN for an IAM/IAP-gated stack:
 #   BEARER_TOKEN=$(gcloud auth print-identity-token) bash docs/smoke.sh "$URL"
 #
-# Every check here holds on ALL THREE backends -- dcp, cdc and none. That is
-# the point: the app plane is supposed to be identical whichever data plane
+# Every check here holds on BOTH backends -- dcp and none. That is the
+# point: the app plane is supposed to be identical whichever data plane
 # serves it, so a check that only passes on one of them is testing the backend
 # rather than the architecture.
 #
-# The previous version of this script was written for the single-container CDC
-# stamp and asserted two things that are wrong here:
+# An older version of this script was written for the single-container stamp
+# and asserted two things that are wrong here:
 #
 #   * /api/observations/series -- a *website* Flask route. The DCP plane serves
 #     REST V2 and api.datacommons.org serves /v1 and /v2; neither has it. It
-#     404s on two of three backends while the data path is perfectly healthy.
+#     404s on both backends while the data path is perfectly healthy.
 #   * .brand_config_url from /agent/brand -- deliberately removed, so the
 #     browser never learns the config bucket's URL. Asserting it means asserting
 #     an information leak.
@@ -109,14 +109,14 @@ check 2 c2
 #    probe in the background. So the FIRST call after a deploy legitimately
 #    reports zero tools and a later one is correct.
 #
-#    The budget is a deadline rather than a fixed retry count because the three
-#    backends warm at very different speeds. `none` points at api.datacommons.org,
-#    which is always hot, so the first read is already correct. A fresh CDC deploy
-#    has to cold-start its own Mixer container, and that took ~60s on the first
-#    one -- comfortably past the old 3-reads-and-5-seconds ceiling, so a healthy
-#    stack reported FAIL on checks 3, 4, 5 and 7 and passed on a manual re-run
-#    minutes later. A smoke test that cries wolf on every first CDC deploy trains
-#    you to ignore it, which is worse than not having it.
+#    The budget is a deadline rather than a fixed retry count because backends
+#    warm at very different speeds. `none` points at api.datacommons.org, which
+#    is always hot, so the first read is already correct. A data plane that has
+#    to cold-start its own Mixer container can take ~60s -- comfortably past the
+#    old 3-reads-and-5-seconds ceiling, so a healthy stack reported FAIL on
+#    checks 3, 4, 5 and 7 and passed on a manual re-run minutes later. A smoke
+#    test that cries wolf on every first deploy trains you to ignore it, which
+#    is worse than not having it.
 #
 #    This check also gates the ones after it: 4, 5 and 7 all need the same data
 #    plane, so letting 3 block until it answers keeps them from failing for a

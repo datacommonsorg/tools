@@ -69,7 +69,7 @@ _MCP_HOST_PREFIXES = frozenset({"mcp"})
 
 
 def _upstream_for(prefix: str) -> str:
-    """Which host serves this prefix. Identical on cdc and dcp."""
+    """Which host serves this prefix. On dcp both are the same host."""
     settings = get_settings()
     return (
         settings.data_plane_url

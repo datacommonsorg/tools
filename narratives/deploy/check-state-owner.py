@@ -22,11 +22,12 @@ happen. This is the second line: even if some future path loads the wrong state
 anyway, the deploy stops before the destroy instead of after it.
 
 The check is deliberately conservative. It reads the deployment name back out
-of the resources the module always creates -- the two Cloud Run services, named
-"<instance>-app" and "<instance>-datacommons" -- and flags only a name that is
-not ours. An empty state (a first deploy) and a correct state both pass, and it
-needs no list of other deployments to compare against, which is what it used to
-require and what this repository no longer has.
+of the resource the module always creates -- the Cloud Run service named
+"<instance>-app" -- plus the "-datacommons" and "-data-ingest" names that a
+state written before the cdc backend was removed can still hold, and flags only
+a name that is not ours. An empty state (a first deploy) and a correct state
+both pass, and it needs no list of other deployments to compare against, which
+is what it used to require and what this repository no longer has.
 """
 
 import json
