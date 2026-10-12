@@ -45,18 +45,24 @@ def _suggest(key: str, properties: dict[str, Any]) -> str:
     ]
     if not near:
         return ""
-    return f" (did you mean {' or '.join(sorted(near)[:2])}?)"
+    return f" (did you mean {' or '.join(sorted(near))}?)"
 
 
 def _resolve(spec: Any, root: dict[str, Any]) -> Any:
-    """Resolves a local `#/...` `$ref` chain against `root`."""
+    """Follows local JSON Pointer `$ref` references against `root`.
+
+    JSON Schema sub-schemas can reference shared definitions inside the same
+    document via `"$ref": "#/$defs/<name>"`. This function follows up to
+    `MAX_REF_DEPTH` internal `#/...` hops and returns the target sub-schema
+    dict (or `spec` unchanged if it is not a resolvable local reference).
+    """
     seen = 0
     while isinstance(spec, dict) and "$ref" in spec and seen < MAX_REF_DEPTH:
         ref = spec["$ref"]
-        if not ref.startswith("#/"):
+        if not isinstance(ref, str) or not ref.startswith("#/"):
             return spec
         target: Any = root
-        for part in ref[2:].split("/"):
+        for part in ref.removeprefix("#/").split("/"):
             if not isinstance(target, dict) or part not in target:
                 return spec
             target = target[part]
@@ -81,18 +87,30 @@ def _matches_type(node: Any, expected: str) -> bool:
         return isinstance(node, (int, float)) and not isinstance(node, bool)
     if expected == "boolean":
         return isinstance(node, bool)
-    return True
+    return False
 
 
-def _walk(
+def _collect_problems(
     node: Any,
     spec: Any,
     where: str,
     problems: list[str],
     root: dict[str, Any],
 ) -> None:
-    """Enforces `type`, `pattern`, `enum`, `additionalProperties`, and
-    `required`.
+    """Recursively validates `node` against `spec` and appends violations.
+
+    Checks the JSON Schema keywords used by `theme.schema.json` (`type`,
+    `pattern`, `enum`, `additionalProperties`, and `required`), resolving any
+    local `$ref` targets against `root`. Human-readable error messages
+    prefixed with the dotted/indexed path `where` are appended to `problems`
+    in place.
+
+    Args:
+        node: The current parsed JSON value being validated.
+        spec: The JSON Schema fragment governing `node`.
+        where: Dotted/indexed path prefix leading to `node` (empty at root).
+        problems: Mutable list collecting human-readable violation strings.
+        root: The full root JSON Schema document for resolving `$ref` pointers.
     """
     spec = _resolve(spec, root)
     if not isinstance(spec, dict):
@@ -122,7 +140,9 @@ def _walk(
         items = spec.get("items")
         if items:
             for index, element in enumerate(node):
-                _walk(element, items, f"{where}[{index}].", problems, root)
+                _collect_problems(
+                    element, items, f"{where}[{index}].", problems, root
+                )
         return
 
     if not isinstance(node, dict):
@@ -141,7 +161,9 @@ def _walk(
             problems.append(f"{where}{key}: required, but missing")
     for key, child in properties.items():
         if key in node:
-            _walk(node[key], child, f"{where}{key}.", problems, root)
+            _collect_problems(
+                node[key], child, f"{where}{key}.", problems, root
+            )
 
 
 def validate(document: Any, schema: dict[str, Any]) -> list[str]:
@@ -158,7 +180,7 @@ def validate(document: Any, schema: dict[str, Any]) -> list[str]:
         import jsonschema  # type: ignore[import-untyped]
     except ImportError:
         problems: list[str] = []
-        _walk(document, schema, "", problems, schema)
+        _collect_problems(document, schema, "", problems, schema)
         return problems
 
     return [

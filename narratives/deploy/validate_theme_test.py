@@ -133,7 +133,7 @@ def test_matches_type_covers_all_json_schema_primitives() -> None:
     #   are checked against object, array, string, integer, number, and boolean.
     # Expectation: Booleans are rejected for integer/number, integer-valued
     #   floats (10.0) are accepted for integer, and unknown type names return
-    #   True.
+    #   False.
     assert validate_theme._matches_type({}, "object") is True
     assert validate_theme._matches_type([], "object") is False
     assert validate_theme._matches_type([], "array") is True
@@ -148,7 +148,7 @@ def test_matches_type_covers_all_json_schema_primitives() -> None:
     assert validate_theme._matches_type(False, "number") is False
     assert validate_theme._matches_type(True, "boolean") is True
     assert validate_theme._matches_type(1, "boolean") is False
-    assert validate_theme._matches_type("anything", "custom") is True
+    assert validate_theme._matches_type("anything", "custom") is False
 
 
 def test_main_exit_codes(tmp_path: Path) -> None:
