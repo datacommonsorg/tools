@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 #
 # Public Data Commons authenticates with an API key. The endpoint is
 # configuration-driven and that configuration is fetched from a GCS bucket, so
-# without this allowlist an edit to branding/agent config could point the agent
-# at an arbitrary host and hand it our key. Restricting the header to known
-# Data Commons hosts keeps a config change from becoming a credential leak.
+# without this allowlist an edit to the agent config could point the agent at
+# an arbitrary host and hand it our key. Restricting the header to known Data
+# Commons hosts keeps a config change from becoming a credential leak.
 _API_KEY_HOSTS = frozenset({"api.datacommons.org", "datacommons.org"})
 
 

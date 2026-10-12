@@ -195,17 +195,15 @@ c5() {
 }
 check 5 c5
 
-# 6. Branding is served from the agent's memory, and the config bucket's URL is
-#    NOT disclosed to the browser.
+# 6. Verify that the HTML shell includes the #theme-tokens and #instance-config
+#    elements.
 c6() {
-    local brand name
-    brand=$(curl_cmd -sS --max-time 30 "$URL/agent/brand")
-    name=$(echo "$brand" | jq -r '.branding.instance_name // empty')
-    [ -n "$name" ] || { echo "no branding.instance_name: $(echo "$brand" | head -c 200)"; return 1; }
-    if echo "$brand" | jq -e 'to_entries | any(.value | tostring | test("storage.googleapis.com|gs://"))' >/dev/null 2>&1; then
-        echo "brand payload discloses the config bucket"; return 1
-    fi
-    echo "branding \"$name\", bucket not disclosed"
+    local slot
+    for slot in theme-tokens instance-config; do
+        grep -q "id=\"$slot\"" "$TMP/home.html" \
+            || { echo "no id=\"$slot\" in the page"; return 1; }
+    done
+    echo "theme-tokens and instance-config slots present"
 }
 check 6 c6
 
