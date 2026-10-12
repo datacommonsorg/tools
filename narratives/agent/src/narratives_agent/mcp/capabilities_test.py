@@ -16,7 +16,7 @@
 Verifies that `capabilities.from_tools` derives supported features and tool
 names from the tool definitions returned by either MCP server generation:
 - MCP 1.2.x: `search_indicators` and `get_observations`
-- MCP 1.3.x+ (DCP / public Data Commons): six tools including
+- MCP 1.3.x+ (public Data Commons): six tools including
   `get_variable_metadata`, `get_child_observations`, and
   `get_multi_entity_observations`
 """

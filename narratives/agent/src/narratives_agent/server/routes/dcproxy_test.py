@@ -68,7 +68,6 @@ from fastapi.testclient import TestClient
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Message, Scope
 
-from narratives_agent import gcp_auth
 from narratives_agent.server.routes import dcproxy
 
 _API_HOST = "https://api.datacommons.org"
@@ -205,7 +204,6 @@ def recorder(monkeypatch: pytest.MonkeyPatch) -> _Upstream:
     """Returns the stub upstream, with clean auth defaults configured."""
     monkeypatch.delenv("DATA_PLANE_AUTH", raising=False)
     monkeypatch.setenv("DC_API_KEY", _API_KEY)
-    monkeypatch.setattr(gcp_auth, "get_id_token", lambda audience: "fake-jwt")
     return _Upstream()
 
 

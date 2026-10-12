@@ -47,7 +47,7 @@
     "ga_tag_id": ""
   },
   "metrics": {
-    "$comment": "Example dashboard, read by the UI's MetricsPage at mount. Every variable and place below exists in BASE Data Commons, so this renders as-is on DATA_BACKEND=none with nothing ingested — it is a working starting point, not a suggestion of what your instance should show. Replace the tiles with your own DCIDs. Place DCIDs follow Data Commons conventions (country/XXX, geoId/NN, wikidataId/Q####); childPlaceType is the type being aggregated, e.g. Country, State, AdministrativeArea1.",
+    "$comment": "Example dashboard, read by the UI's MetricsPage at mount. Every variable and place below exists in BASE Data Commons, so this renders as-is with nothing ingested — it is a working starting point, not a suggestion of what your instance should show. Replace the tiles with your own DCIDs. Place DCIDs follow Data Commons conventions (country/XXX, geoId/NN, wikidataId/Q####); childPlaceType is the type being aggregated, e.g. Country, State, AdministrativeArea1.",
     "tabs": [
       {
         "id": "population",

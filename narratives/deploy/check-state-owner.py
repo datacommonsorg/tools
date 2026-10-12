@@ -21,13 +21,11 @@ check. TF_DATA_DIR now keeps the pointer per-instance so the race cannot
 happen. This is the second line: even if some future path loads the wrong state
 anyway, the deploy stops before the destroy instead of after it.
 
-The check is deliberately conservative. It reads the deployment name back out
-of the resource the module always creates -- the Cloud Run service named
-"<instance>-app" -- plus the "-datacommons" and "-data-ingest" names that a
-state written before the cdc backend was removed can still hold, and flags only
-a name that is not ours. An empty state (a first deploy) and a correct state
-both pass, and it needs no list of other deployments to compare against, which
-is what it used to require and what this repository no longer has.
+Each resource the module names "<instance>-<suffix>" reveals which instance
+the state belongs to: the "<instance>-app" Cloud Run service, plus the
+"-datacommons" and "-data-ingest" resources that older states may still hold.
+The check fails only if one of those names a different instance. An empty
+state (a first deploy) passes.
 """
 
 import json
