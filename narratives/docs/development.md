@@ -1,282 +1,248 @@
-# Developer & Maintainer Guide
+# Local Development Guide
 
-This guide covers local development workflows, workspace scripts, testing,
-linting, and repository layout for contributors working on Narratives.
+This guide covers local setup, development workflows, workspace scripts,
+testing, linting, and repository structure for Narratives.
 
-For engineering and code style rules, read [`../AGENTS.md`](../AGENTS.md),
-[`../FRONTEND.md`](../FRONTEND.md), and the repository-root
+For coding standards and UI conventions, see [`../AGENTS.md`](../AGENTS.md),
+[`../FRONTEND.md`](../FRONTEND.md), and
 [`../../CODING_GUIDELINES.md`](../../CODING_GUIDELINES.md). For system
-internals, see [`architecture.md`](architecture.md).
-
----
+architecture and protocols, see [`architecture.md`](architecture.md).
 
 ## Contents
 
 - [Prerequisites & installation](#prerequisites--installation)
+- [Running locally](#running-locally)
 - [Workspace scripts](#workspace-scripts)
-- [Local development workflows](#local-development-workflows)
 - [Testing & linting](#testing--linting)
 - [Repository layout](#repository-layout)
 - [Contributing](#contributing)
 
----
-
 ## Prerequisites & installation
 
-All commands run from the root of the `narratives/` directory unless noted.
+Run all commands from the `narratives/` directory unless noted otherwise.
 
-- **Node 24** and **pnpm** (pinned via `.nvmrc` and `packageManager` in
-  `package.json`).
-- **Python 3.14** and **[`uv`](https://docs.astral.sh/uv/)**. The agent declares
-  its direct dependencies in `agent/pyproject.toml` and resolves the full graph
-  into `agent/uv.lock`. `uv sync` creates `agent/.venv` from that lockfile, and
-  commands run via `uv run <command>`. Regenerate the lockfile with `uv lock`
-  after a dependency change, and never hand-edit it.
+### Required tools
+
+- **Node.js 24** (pinned in `.nvmrc`) and **pnpm** (pinned via `packageManager`
+  in `package.json`).
+- **Python 3.14** and **[`uv`](https://docs.astral.sh/uv/)**. Python
+  dependencies are declared in `agent/pyproject.toml` and locked in
+  `agent/uv.lock`.
+
+### Install dependencies
 
 ```sh
-nvm use        # switch to the Node version pinned in .nvmrc (or 'nvm install')
+nvm use        # or 'nvm install' if Node 24 is not yet installed
 corepack enable
 pnpm i
 (cd agent && uv sync)
 ```
 
----
+> [!NOTE]
+> `uv sync` creates and manages `agent/.venv` automatically, and `uv run`
+> executes commands inside that environment without manual activation. If you
+> modify `agent/pyproject.toml`, run `uv lock` to update `agent/uv.lock` (never
+> edit `uv.lock` by hand).
 
-## Workspace scripts
+## Running locally
 
-| Command | What it does |
-| :--- | :--- |
-| `pnpm dev:ui` | Start the frontend Vite development server on port 3000 (`ui/`) |
-| `pnpm dev:agent` | Stage config and start the Python agent development server on port 5001 (`agent/`) |
-| `pnpm build` | Build the React UI and stage compiled assets into `agent/static/` and `defaults/` into `agent/defaults/` |
-| `pnpm build:ui` | Build the React UI bundle into `ui/dist/` without staging |
-| `pnpm test` | Run unit tests and lint checks across packages (Vitest + Pytest + `pnpm lint`) |
-| `pnpm test:ui` | Run the frontend Vitest suite |
-| `pnpm test:agent` | Run the backend Pytest suite |
-| `pnpm lint` | Run all lint, formatting, and type checks (UI, agent, and deployment) |
-| `pnpm fix` | Auto-fix formatting and lint issues (Biome, Ruff, and Terraform) |
+You can run both the frontend and backend locally, or run only the frontend
+against an already-deployed Cloud Run backend.
 
-> [!TIP]
-> Always run `pnpm test` (and `pnpm build` for UI changes) before opening or
-> updating a PR. If lint checks fail, run `pnpm fix` to format and auto-fix.
+### Option 1: Full stack (UI + local agent)
 
----
+1. Copy `.env.local.example` to `.env.local` and set your
+   [Gemini API key](https://aistudio.google.com):
 
-## Local development workflows
+   ```sh
+   cp .env.local.example .env.local
+   $EDITOR .env.local      # Set GEMINI_API_KEY="<your-key>"
+   ```
 
-Two paths. Pick by what you are changing.
+   By default, `.env.local.example` points to the public Data Commons endpoints:
 
-### Path A — UI only (the fast loop)
+   ```sh
+   MCP_SERVER_URL="https://api.datacommons.org/mcp"
+   DATA_PLANE_URL="https://api.datacommons.org"
+   DATA_PLANE_WEB_URL="https://datacommons.org"
+   AGENT_URL="http://localhost:5001"
+   ```
 
-A hot-reloading Vite dev server proxying every backend call to a deployed
-instance. Real Gemini, real MCP tools, real charts.
+2. Start the backend agent and frontend dev server in two separate terminals:
 
-```sh
-pnpm install
+   ```sh
+   # Terminal 1: Start the Python agent on http://127.0.0.1:5001
+   pnpm dev:agent
 
-# Point at your deployed Cloud Run instance
-cp .env.local.example .env.local
-$EDITOR .env.local
-# Set AGENT_URL to your deployed instance:
-#   AGENT_URL=https://<your-instance>.run.app
+   # Terminal 2: Start the Vite UI server on http://localhost:3000
+   pnpm dev:ui
+   ```
 
-pnpm dev:ui         # http://localhost:3000
-```
+   `pnpm dev:agent` loads `.env.local`, composes `agent/config.json` from
+   `defaults/` + `config/`, and starts Uvicorn with auto-reload. Set
+   `AGENT_PORT` to override port `5001`.
 
-Vite's `server.proxy` (in `ui/vite.config.ts`) forwards `/agent/*` and the data
-routes to `AGENT_URL` (unless `BACKEND_URL` is set separately); it is
-**dev-only**, so `vite build` ignores it. Default is `http://localhost:5001` if
-unset. Vite picks up `.env.local` changes on **restart**, not live.
+3. Open `http://localhost:3000` in your browser.
 
-You need Node 24 and nothing else — no Docker, no Python, no `gcloud`.
+#### Optional: Verify the local agent API directly
 
-### Path B — Full stack locally (agent + UI)
-
-Run commands in this section from `narratives/`.
-
-**1. Install agent dependencies:**
+You can query the local agent endpoints directly with `curl`:
 
 ```sh
-(cd agent && uv sync)   # creates agent/.venv and installs from uv.lock
-```
+# Check health and the resolved MCP endpoint
+curl -s http://localhost:5001/agent/health | jq
 
-There is nothing to activate: `uv sync` creates `.venv` itself, and `uv run`
-uses it.
-
-**2. Configure local environment:**
-
-Copy `.env.local.example` to `.env.local` and add your Gemini API key:
-
-```sh
-cp .env.local.example .env.local
-$EDITOR .env.local      # Add your GEMINI_API_KEY="..."
-```
-
-The template is pre-configured with public Data Commons endpoints:
-
-```sh
-MCP_SERVER_URL="https://api.datacommons.org/mcp"
-DATA_PLANE_URL="https://api.datacommons.org"
-DATA_PLANE_WEB_URL="https://datacommons.org"
-AGENT_URL="http://localhost:5001"
-```
-
-*(If pointing at a custom deployed data plane instead, update `MCP_SERVER_URL`
-and `DATA_PLANE_URL` to your Cloud Run service URL, and remove
-`DATA_PLANE_WEB_URL` so it falls back to `DATA_PLANE_URL`.)*
-
-**3. Start local development:**
-
-Run the agent and UI in two separate terminals:
-
-```sh
-# Terminal 1: backend agent (port 5001)
-pnpm dev:agent
-
-# Terminal 2: frontend Vite dev server (port 3000)
-pnpm dev:ui
-```
-
-`pnpm dev:agent` (or `uv run narratives-agent-dev`) loads `.env.local` and
-stages `agent/config.json` from `defaults/` + `config/` + `prompts/`
-(incorporating your `GEMINI_API_KEY`) before starting the Uvicorn server on
-`127.0.0.1:5001` with auto-reload. Set `AGENT_PORT` to use another port.
-
-**Optional — Serve the compiled SPA directly from the agent:**
-
-To test production static routing (`server/routes/spa.py`) directly on port
-5001:
-
-```sh
-pnpm build
-```
-
-Skip this if you are using `pnpm dev:ui` on port 3000 or only testing `/agent/*`
-endpoints (`/` will 404 when `agent/static/` has not been staged, while
-`/agent/*` still works).
-
-**Optional — Smoke-test the local agent with `curl`:**
-
-```sh
-curl -s localhost:5001/agent/health | jq    # inspect resolved mcp_url
-curl -sN -X POST localhost:5001/agent/chat/stream \
+# Stream a chat response over Server-Sent Events (SSE)
+curl -sN -X POST http://localhost:5001/agent/chat/stream \
   -H 'Content-Type: application/json' \
   -d '{"message":"What is the population of France?","turns":[]}'
 ```
 
-For details on the SSE stream events and multi-turn request format, see
-[`architecture.md`](architecture.md#chat-pipeline--typed-sse-protocol).
+#### Optional: Serve the compiled SPA from the Python server
 
----
+In production, the FastAPI server serves the compiled UI from `agent/static/`.
+To test production static file routing locally on `http://localhost:5001`:
+
+```sh
+pnpm build
+pnpm dev:agent
+```
+
+### Option 2: UI only (against a deployed backend)
+
+If you are only making frontend changes and have a deployed Cloud Run instance,
+you can run the Vite dev server without starting the local Python agent:
+
+1. Copy `.env.local.example` to `.env.local` and set `AGENT_URL` to your Cloud
+   Run service URL:
+
+   ```sh
+   cp .env.local.example .env.local
+   $EDITOR .env.local      # Set AGENT_URL="https://<your-instance>.run.app"
+   ```
+
+2. Start the Vite dev server:
+
+   ```sh
+   pnpm dev:ui             # http://localhost:3000
+   ```
+
+Vite's development proxy (`ui/vite.config.ts`) forwards `/agent/*` and Data
+Commons API routes to `AGENT_URL`. Restart `pnpm dev:ui` after editing
+`.env.local`.
+
+## Workspace scripts
+
+All scripts run from `narratives/`:
+
+| Command | Description |
+| :--- | :--- |
+| `pnpm dev:ui` | Start the Vite frontend dev server on port 3000 (`ui/`) |
+| `pnpm dev:agent` | Stage config and start the Python agent dev server on port 5001 (`agent/`) |
+| `pnpm build` | Compile the React UI (`ui/dist/`) and stage assets into `agent/static/` and `agent/defaults/` |
+| `pnpm build:ui` | Compile the React UI into `ui/dist/` without staging into `agent/` |
+| `pnpm test` | Run all unit tests and lint checks (`test:ui`, `test:agent`, and `lint`) |
+| `pnpm test:ui` | Run the frontend Vitest unit test suite |
+| `pnpm test:agent` | Run the backend Pytest unit test suite |
+| `pnpm lint` | Run all type-checking, linting, and formatting checks across UI, agent, and deploy |
+| `pnpm lint:ui` | Run TypeScript (`tsc --noEmit`) and Biome checks (`biome check`) |
+| `pnpm lint:agent` | Run Ruff (`ruff format --check`, `ruff check`) and `mypy --strict` |
+| `pnpm lint:deploy` | Run Terraform (`fmt -check`, `validate`), ShellCheck, and Hadolint |
+| `pnpm fix` | Auto-fix formatting and lint issues across UI (Biome), Python (Ruff), and Terraform |
 
 ## Testing & linting
 
-Nothing is mocked that matters.
+Run the full verification suite before opening or updating a pull request:
 
 ```sh
-# Run all unit tests and lint checks across UI, agent, and deployment:
 pnpm test
-
-# Or run by component:
-pnpm test:ui                               # Vitest UI suite
-pnpm test:agent                            # Pytest agent suite
-pnpm lint                                  # All lint, format, and type checks
-pnpm fix                                   # Auto-fix formatting and lint issues
 ```
 
-Agent tests are pytest modules named `*_test.py`, colocated beside the module
-under test inside `agent/src/narratives_agent/`. UI tests are Vitest modules
-named `*.test.ts` or `*.test.tsx`, colocated inside `ui/src/`.
-
-Linting, formatting, and static type-checking can also be run by layer (`pnpm
-lint:ui`, `pnpm lint:agent`, `pnpm lint:deploy`), and CI fails on any of them:
+If formatting or lint checks fail, auto-fix them with:
 
 ```sh
-pnpm lint:ui                    # tsc --noEmit + Biome
-pnpm lint:agent                 # Ruff format/lint + mypy --strict
-pnpm lint:deploy                # Terraform + ShellCheck + Hadolint
+pnpm fix
 ```
 
-> [!NOTE]
-> The agent type-checks under `mypy --strict`, tests included, with no
-> per-module exemptions.
+### Test organization
 
----
+- **Frontend (`ui/`):** Vitest unit tests are colocated with source files as
+  `*.test.ts` and `*.test.tsx` under `ui/src/`.
+- **Backend (`agent/`):** Pytest unit tests are colocated with source modules as
+  `*_test.py` under `agent/src/narratives_agent/`. All backend modules and test
+  files are type-checked under `mypy --strict`.
 
 ## Repository layout
 
 ```
-README.md                  overview and local/cloud quickstarts
-AGENTS.md                  agent and contributor guide (commands, conventions)
-FRONTEND.md                Tailwind v4, theme tokens, and React conventions
-deploy.sh                  the single deploy entry point; no --instance flag
-.env.local.example         template for local .env.local development settings
-
-docs/                      documentation and verification scripts
-  deployment.md            GCP deployment, customization, secrets, and ops
-  development.md           local workflows, scripts, testing, repository layout
-  architecture.md          system seams, SSE protocol, HMAC transcripts, config
-  smoke.sh                 post-deploy smoke checks
-
-config/                    YOURS — this deployment's settings and overrides
-  instance.env             required: project, region, access
-  branding.json            optional override
-  agent-config.json        optional override
-  prompts/  assets/        optional overrides
-defaults/                  upstream baseline; config/ is laid over this
-schemas/                   JSON Schemas + example branding — code, not config
-scripts/                   build-time static asset staging (stage_static.mjs)
-
-agent/                     app plane — API + SPA, one uvicorn process
-  pyproject.toml           direct dependencies; ruff, mypy, and pytest config
-  uv.lock                  the resolved graph; generated by uv lock
-  src/narratives_agent/    the Python package; imports are narratives_agent.*
-    dev.py                 dev entry point: uv run narratives-agent-dev
-    server/app.py          the FastAPI app; production serves it with uvicorn
-    server/routes/         spa · chat · system · dcproxy
-    mcp/                   client · capabilities · schema · data_utils
-    workflows/             chat_pipeline · mcp_loop · chart_config · follow_up
-    gemini/                client · schemas
-    *_test.py              pytest, colocated beside the module under test
-
-ui/                        React 19 + Vite SPA; staged into agent/static/
-  src/api/                 Data Commons REST callers
-  src/components/          presentational and feature components
-  src/config/              instance and navigation config
-  src/hooks/               chat session, SSE, hash routing, autosize
-  src/utils/               PDF export, turn inspection, DC web components
-
-deploy/terraform-…/        Terraform module tree
-deploy/*.py                deploy-time guards: state ownership, branding schema
-cloudbuild/                PR validation and deploy pipelines
+narratives/
+├── README.md                  Overview and local/cloud quickstarts
+├── AGENTS.md                  Coding conventions and commands for contributors
+├── FRONTEND.md                Tailwind v4, theme tokens, and React conventions
+├── deploy.sh                  Deployment CLI for Google Cloud Run and Terraform
+├── .env.local.example         Template for local development environment vars
+├── docs/
+│   ├── development.md         Local development, testing, and repo layout
+│   ├── deployment.md          Cloud Run deployment, customization, and ops
+│   ├── architecture.md        System architecture, SSE protocol, and state
+│   └── smoke.sh               Post-deployment smoke test script
+├── config/                    Instance-specific deployment overrides
+│   ├── instance.env           Project, region, instance name, and access mode
+│   ├── branding.json          Optional UI theme and branding overrides
+│   ├── agent-config.json      Optional model and template variable overrides
+│   ├── prompts/               Optional system prompt overrides (*.md)
+│   └── assets/                Optional static assets (logos, icons)
+├── defaults/                  Default branding, agent config, and prompts
+├── schemas/                   JSON Schemas and example configuration files
+├── scripts/
+│   └── stage_static.mjs       Copies ui/dist/ and defaults/ into agent/
+├── agent/                     Python 3.14 FastAPI backend (managed with uv)
+│   ├── pyproject.toml         Dependencies and ruff, mypy, and pytest config
+│   ├── uv.lock                Locked Python dependency graph
+│   └── src/narratives_agent/
+│       ├── dev.py             Local dev server entry point
+│       ├── config.py          Config, prompt rendering, and Secret Manager
+│       ├── gcp_auth.py        Host-based authentication helpers
+│       ├── settings.py        Environment variable settings
+│       ├── telemetry.py       OpenTelemetry and structured logging
+│       ├── server/            FastAPI app and routes (spa, chat, dcproxy)
+│       ├── mcp/               MCP client, capability discovery, and schemas
+│       ├── workflows/         Chat pipeline, MCP tool loop, charts, follow-ups
+│       └── gemini/            Gemini SDK client and Pydantic schemas
+├── ui/                        React 19 + Vite frontend (managed with pnpm)
+│   └── src/
+│       ├── api/               Data Commons REST API callers
+│       ├── components/        React UI components
+│       ├── config/            Instance and navigation configuration
+│       ├── hooks/             Session state, SSE streaming, and routing hooks
+│       ├── types/             Shared TypeScript interfaces
+│       └── utils/             PDF export, formatting, and web component helpers
+├── deploy/                    Terraform modules and validation scripts
+└── cloudbuild/                Cloud Build CI and deployment pipeline configs
 ```
-
-Two things are deliberately **not** here: API keys, which live only in Secret
-Manager (or gitignored `.env.local` for local dev), and a second deployment path
-— `deploy.sh` is the only one.
-
----
 
 ## Contributing
 
-Before opening a PR, run what CI runs:
+Before submitting a pull request:
 
-```sh
-pnpm test
-pnpm build
-```
+1. Ensure your changes follow
+   [`../../CODING_GUIDELINES.md`](../../CODING_GUIDELINES.md),
+   [`../FRONTEND.md`](../FRONTEND.md), and [`../AGENTS.md`](../AGENTS.md).
+2. Run the full test and lint suite:
 
-If you modified `schemas/` or `defaults/`, also validate each example and
-default config against its JSON Schema in `schemas/` (see
-[`cloudbuild/pr-validate.yaml`](../cloudbuild/pr-validate.yaml)).
+   ```sh
+   pnpm test
+   ```
 
-Three rules that are easy to break by accident:
+3. If your changes affect the UI or build pipeline, verify the production build
+   succeeds:
 
-- **Keep a deployment clone private.** `config/` is committed by design, and
-  `config/instance.env` names the project, the region, a service URL that embeds
-  the project number, and everyone allowed in.
-- **Change only `config/` in a deployment clone.** Anything else and every later
-  `git pull upstream main` conflicts, and the clone stops being updatable. Code
-  changes belong upstream.
-- **Never commit a key.** Every `*_API_KEY` is empty in committed files; real
-  values live only in Secret Manager or your local gitignored `.env.local`.
+   ```sh
+   pnpm build
+   ```
+
+4. If you modified files in `schemas/` or `defaults/`, validate the example and
+   default configuration files against their JSON Schemas (see
+   [`../cloudbuild/pr-validate.yaml`](../cloudbuild/pr-validate.yaml)).
+5. Never commit API keys or secrets. Keep local keys in `.env.local` (which is
+   gitignored) and production keys in Google Cloud Secret Manager.
