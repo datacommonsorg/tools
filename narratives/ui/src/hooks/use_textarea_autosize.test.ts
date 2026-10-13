@@ -57,7 +57,7 @@ describe('useTextareaAutosize', () => {
     // Situation: The text does not wrap.
     // Expectation: Not expanded; the height is one line.
     const { textarea, hook } = renderAutosize('short');
-    expect(hook.result.current).toBe(false);
+    expect(hook.result.current.isExpanded).toBe(false);
     expect(textarea.style.height).toBe(`${LINE_HEIGHT}px`);
   });
 
@@ -67,7 +67,7 @@ describe('useTextareaAutosize', () => {
     // Expectation: Expanded; the height fits all three lines.
     lines = 3;
     const { textarea, hook } = renderAutosize('a value long enough to wrap');
-    expect(hook.result.current).toBe(true);
+    expect(hook.result.current.isExpanded).toBe(true);
     expect(textarea.style.height).toBe(`${3 * LINE_HEIGHT}px`);
   });
 
@@ -77,7 +77,7 @@ describe('useTextareaAutosize', () => {
     // Expectation: Not expanded; the height stays one line.
     lines = 2;
     const { textarea, hook } = renderAutosize('');
-    expect(hook.result.current).toBe(false);
+    expect(hook.result.current.isExpanded).toBe(false);
     expect(textarea.style.height).toBe(`${LINE_HEIGHT}px`);
   });
 
@@ -89,12 +89,12 @@ describe('useTextareaAutosize', () => {
 
     lines = 2;
     hook.rerender({ value: 'a value long enough to wrap' });
-    expect(hook.result.current).toBe(true);
+    expect(hook.result.current.isExpanded).toBe(true);
     expect(textarea.style.height).toBe(`${2 * LINE_HEIGHT}px`);
 
     lines = 1;
     hook.rerender({ value: 'short' });
-    expect(hook.result.current).toBe(false);
+    expect(hook.result.current.isExpanded).toBe(false);
     expect(textarea.style.height).toBe(`${LINE_HEIGHT}px`);
   });
 
@@ -116,6 +116,15 @@ describe('useTextareaAutosize', () => {
     hook.rerender({ value: 'six lines' });
     expect(textarea.style.height).toBe(`${4 * LINE_HEIGHT}px`);
     expect(textarea.style.overflowY).toBe('auto');
+    expect(hook.result.current.isScrolling).toBe(true);
+    // Still scrolling once the text is back under the cap: it only resets at
+    // one line.
+    lines = 3;
+    hook.rerender({ value: 'three lines' });
+    expect(hook.result.current.isScrolling).toBe(true);
+    lines = 1;
+    hook.rerender({ value: 'one' });
+    expect(hook.result.current.isScrolling).toBe(false);
     textarea.remove();
   });
 
@@ -125,6 +134,6 @@ describe('useTextareaAutosize', () => {
     // Expectation: Not expanded and no error.
     const ref = { current: null };
     const { result } = renderHook(() => useTextareaAutosize(ref, 'text'));
-    expect(result.current).toBe(false);
+    expect(result.current).toEqual({ isExpanded: false, isScrolling: false });
   });
 });

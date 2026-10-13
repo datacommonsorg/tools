@@ -171,7 +171,7 @@ select:not(:disabled) {
 
 /*
  * Rotating gradient ring traced just inside a rounded box — the prompt box's
- * focus glow. The mask punches out the content box, so only the 1.5px padding
+ * focus glow. The mask punches out the content box, so only the 2px padding
  * shows. The conic gradient is a separate layer behind that mask, turned with
  * `rotate` so the animation stays on the compositor instead of repainting the
  * gradient every frame. The rotation starts paused; the caller resumes it
@@ -187,7 +187,7 @@ select:not(:disabled) {
 @utility glow-ring {
   position: relative;
   overflow: clip;
-  padding: 1.5px;
+  padding: 2px;
   border-radius: inherit;
   mask:
     linear-gradient(black 0 0) content-box,
