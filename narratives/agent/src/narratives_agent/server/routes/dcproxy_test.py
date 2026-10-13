@@ -398,12 +398,13 @@ def test_upstream_request_exception_returns_502(
 ) -> None:
     # Test: Error handling when the upstream request fails.
     # Situation: The upstream transport raises `httpx2.ConnectError`.
-    # Expectation: The proxy catches the exception and returns HTTP 502.
+    # Expectation: The proxy catches the exception and returns HTTP 502 with a
+    #   generic error message that does not expose internal transport details.
     recorder.error = httpx2.ConnectError("upstream connection refused")
 
     response = client.get("/api/observations")
     assert response.status_code == 502
-    assert "Data plane unreachable" in response.json()["error"]
+    assert response.json() == {"error": "Data plane unreachable"}
 
 
 @pytest.mark.usefixtures("split_hosts")
