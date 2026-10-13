@@ -28,6 +28,7 @@ import { type CardClones, registerCardClones } from './register_card_clones';
 import { registerCardFocus } from './register_card_focus';
 import {
   type CardPlacement,
+  type RowStart,
   registerCardPlacement,
 } from './register_card_placement';
 import { registerCardStoreSync } from './register_card_store_sync';
@@ -55,9 +56,17 @@ export interface CardHandle<TVariant extends CardVariant> {
 export interface AtlasContextProps {
   /** The mounted tldraw editor, or `null` before mount. */
   editor: Editor | null;
+
+  /**
+   * Add a card to the canvas. Pass `rowStart` when this card opens a row of
+   * its own — see `CardPlacement['place']`. Callers that register several
+   * cards at once pass it on the first of the set, with every card's width,
+   * so the row can be centered before any of them exist.
+   */
   add<TVariant extends CardVariant>(
     content: ContentForVariant<TVariant>,
     customId?: string,
+    rowStart?: RowStart | null,
   ): CardHandle<TVariant>;
 }
 
@@ -154,14 +163,14 @@ export const AtlasProvider = ({ children, licenseKey }: AtlasProviderProps) => {
   const providerValue = useMemo<AtlasContextProps>(
     () => ({
       editor,
-      add: (content, customId) => {
+      add: (content, customId, rowStart = null) => {
         const shapeId = customId ? createShapeId(customId) : createShapeId();
 
         // First: Create the shape with any immediately available content, once
         // the editor has mounted (immediately, if it already has)
         canvasReadyRef.current.promise.then(({ editor, placeCard }) => {
           const size = CARD_VARIANT_SIZE_DEFAULT[content.variant];
-          const position = placeCard(shapeId, size);
+          const position = placeCard(shapeId, size, rowStart);
           editor.createShape({
             ...contentToShape(shapeId, content, position, size),
 

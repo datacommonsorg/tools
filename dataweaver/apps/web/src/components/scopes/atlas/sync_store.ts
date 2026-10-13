@@ -19,6 +19,7 @@ import type {
 } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { type CardHandle, useAtlas } from './atlas_provider';
+import { CARD_VARIANT_SIZE_DEFAULT } from './config';
 import type { AtlasContent, CardVariant } from './helpers';
 
 // --- Derivation functions ---
@@ -409,7 +410,13 @@ export const useStoreShapeSync = () => {
         const handles = handlesRef.current;
         const nodes = useAtlasStore.getState().nodes;
 
-        // Detect new cards
+        // Detect new cards. Everything registered in a single store update
+        // belongs to one batch (a query result's table/notes/chart), so the
+        // first card of the set opens a row sized for all of them. Keying the
+        // row off the batch rather than off task timing keeps one row per
+        // result regardless of how the stream packs events into chunks.
+        const created: { shapeId: string; content: AtlasContent }[] = [];
+
         for (const [shapeId, card] of Object.entries(cards)) {
           if (prevCards[shapeId]) continue;
 
@@ -433,11 +440,23 @@ export const useStoreShapeSync = () => {
           );
           if (!content) continue;
 
+          created.push({ shapeId, content });
+        }
+
+        const batchWidths = created.map(
+          ({ content }) => CARD_VARIANT_SIZE_DEFAULT[content.variant].w,
+        );
+
+        created.forEach(({ shapeId, content }, index) => {
           // Pass raw ID (strip "shape:" prefix) so tldraw shape ID matches store key.
           const rawId = shapeId.replace(/^shape:/, '');
-          const handle = add(content, rawId);
+          const handle = add(
+            content,
+            rawId,
+            index === 0 ? { kind: 'batch', widths: batchWidths } : null,
+          );
           handles.set(shapeId, handle);
-        }
+        });
 
         // Detect cards whose type changed (loading → real)
         for (const [shapeId, card] of Object.entries(cards)) {
