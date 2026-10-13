@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `#theme-tokens` holds optional `--theme-*` CSS custom property overrides,
+         and `#instance-config` holds optional theme JSON read by `getInstanceConfig()`. -->
+    <title id="theme-title">Data Commons</title>
+    <link id="theme-favicon" rel="icon" type="image/svg+xml" href="/dc-logo.svg" />
+    <style id="theme-tokens"></style>
+    <script id="instance-config" type="application/json"></script>
+    <!-- Data Commons web components (used by ChartTile to render charts). -->
+    <script src="https://datacommons.org/datacommons.js" defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

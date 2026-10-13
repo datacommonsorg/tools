@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data-commons-deployment/schemas/theme.schema.json",
+  "title": "Custom Data Commons theme configuration",
+  "description": "Schema for an instance's theme.json configuration. Colors, fonts, and radii map to --theme-* CSS custom properties in ui/src/index.css; content and asset fields map to InstanceConfig in ui/src/config/instance_config.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "hexColor": {
+      "type": "string",
+      "description": "CSS hex color, 3- or 6-digit (e.g. '#175C75').",
+      "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$"
+    },
+    "cssLength": {
+      "type": "string",
+      "description": "CSS length (e.g. '16px', '1rem').",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(px|rem|em|%)$"
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "href"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "href": {
+          "type": "string"
+        }
+      }
+    },
+    "metricsTile": {
+      "type": "object",
+      "description": "One tile → one <datacommons-${type}> web component on the Key Metrics dashboard. `title` is the card's chrome header; the rest pass through as attributes.",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "title"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "line",
+            "bar",
+            "map",
+            "ranking",
+            "highlight",
+            "scatter",
+            "pie",
+            "gauge",
+            "slider"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "header": {
+          "type": "string"
+        },
+        "variable": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "string",
+          "description": "Space-separated StatVar DCIDs for multi-series tiles."
+        },
+        "place": {
+          "type": "string"
+        },
+        "places": {
+          "type": "string",
+          "description": "Space-separated place DCIDs."
+        },
+        "parentPlace": {
+          "type": "string"
+        },
+        "childPlaceType": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "rankingCount": {
+          "type": "integer"
+        },
+        "showHighestLowest": {
+          "type": "boolean"
+        },
+        "showLowest": {
+          "type": "boolean"
+        },
+        "showPlaceLabels": {
+          "type": "boolean"
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "ascending",
+            "descending",
+            "ascendingPopulation",
+            "descendingPopulation"
+          ]
+        },
+        "colors": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "endDate": {
+          "type": "string"
+        }
+      }
+    },
+    "metricsTab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "tiles"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsTile"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "$comment": {
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "Theme schema version string.",
+      "type": "string"
+    },
+    "instance_id": {
+      "description": "Short DNS-safe instance label, e.g. 'india'.",
+      "type": "string"
+    },
+    "instance_name": {
+      "description": "Display name of the instance, e.g. 'India Data Commons'. Shown in the header/title.",
+      "type": "string"
+    },
+    "domain_hint": {
+      "description": "Domain or DNS-safe label for the instance (informational).",
+      "type": "string"
+    },
+    "logo": {
+      "description": "Same-origin path starting with '/' (e.g. '/dc-logo.svg'), http(s) URL, or config-bucket-relative path (e.g. 'assets/logo.png', rewritten by the deploy-time injection step) to the instance logo.",
+      "type": "string"
+    },
+    "logo_height": {
+      "$ref": "#/$defs/cssLength",
+      "description": "Header logo height, e.g. \"28px\" (--theme-logo-height). Omitted, the bundled Data Commons mark renders at its natural 28px — the same size datacommons.org uses."
+    },
+    "logo_text": {
+      "type": "string",
+      "description": "Wordmark rendered beside the logo in the header, e.g. \"Data Commons\". When a custom theme overrides `logo` or `instance_name` and omits `logo_text` (or sets it to \"\"), the header renders the logo mark alone."
+    },
+    "logo_alt": {
+      "description": "Alt text for the logo image.",
+      "type": "string"
+    },
+    "favicon": {
+      "description": "Same-origin path starting with '/' (e.g. '/dc-logo.svg'), http(s) URL, or config-bucket-relative path (e.g. 'assets/logo.png', rewritten by the deploy-time injection step) to the favicon.",
+      "type": "string"
+    },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Theme palette. Applied as --theme-* CSS variables; each maps to a design token in ui/src/index.css with a built-in fallback, so omitted keys keep the shipped design value.",
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Primary interactive color: active nav tabs, links, buttons, send button (--theme-primary → --color-theme-primary)."
+        },
+        "accent": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Accent color (--theme-accent → --color-theme-accent) used in the prompt input focus glow ring."
+        },
+        "text": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Primary body text (--theme-text → --color-on-surface)."
+        },
+        "text_muted": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Secondary/muted text (--theme-text-muted → --color-on-surface-variant)."
+        },
+        "background": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Page background (--theme-background)."
+        },
+        "surface": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Elevated surface / panel / card background (--theme-surface → --color-surface-soft)."
+        },
+        "gradient_start": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Hero 'Data Agent' heading gradient start stop (--theme-gradient-start → --color-theme-gradient-start)."
+        },
+        "gradient_end": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Hero 'Data Agent' heading gradient end stop (--theme-gradient-end → --color-theme-gradient-end)."
+        },
+        "surface_narrative": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Tile behind a rendered narrative — response card and its skeleton (--theme-surface-narrative → --color-surface-narrative)."
+        },
+        "skeleton_bar": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Skeleton ('ghost loader') bars shown while a narrative streams in (--theme-skeleton-bar → --color-skeleton-bar)."
+        },
+        "border": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Card borders and divider rules (--theme-border → --color-border)."
+        },
+        "user_message": {
+          "$ref": "#/$defs/hexColor",
+          "description": "User-message bubble background (--theme-user-msg → --color-user-msg)."
+        },
+        "container": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Tonal-button container, e.g. the Export button (--theme-container → --color-theme-container). Omitted, it is mixed automatically from `primary`."
+        },
+        "on_container": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Tonal-button label and icon (--theme-on-container → --color-on-theme-container). Omitted, it follows `primary`."
+        },
+        "nav_active": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Active header-tab label and underline (--theme-nav-active → --color-nav-active). Omitted, it follows `text`."
+        }
+      }
+    },
+    "radius": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Corner radii as CSS lengths. Applied as --theme-radius-* CSS variables; each maps to a design token in ui/src/index.css with a built-in fallback, so omitted keys keep the shipped design value.",
+      "properties": {
+        "card": {
+          "$ref": "#/$defs/cssLength",
+          "description": "Cards, response tiles and message bubbles (--theme-radius-card → rounded-card). Default 16px."
+        },
+        "input": {
+          "$ref": "#/$defs/cssLength",
+          "description": "Query input box (--theme-radius-input → rounded-input). Default 36px."
+        },
+        "chip": {
+          "$ref": "#/$defs/cssLength",
+          "description": "Suggestion chips (--theme-radius-chip → rounded-chip). Default 20px."
+        }
+      }
+    },
+    "headline": {
+      "type": "string",
+      "description": "Hero heading on the empty Data Agent screen, e.g. \"Data agent explorer\"."
+    },
+    "tagline": {
+      "type": "string",
+      "description": "Sub-heading under `headline`, e.g. \"powered by Google's Data Commons\"."
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "description": "Display/heading font family stack (--theme-font → --font-display).",
+          "type": "string"
+        },
+        "body": {
+          "description": "Body font family stack (--theme-font-body → --font-sans).",
+          "type": "string"
+        }
+      }
+    },
+    "navigation": {
+      "description": "Header navigation entries. An empty array renders no header menu.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "suggestions": {
+      "description": "Starter prompt suggestions on the empty Data Agent screen.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "footer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Reserved; not currently read by the UI.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        }
+      }
+    },
+    "analytics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ga_tag_id": {
+          "description": "Google Analytics tag ID; empty string disables analytics. Reserved; not currently read by the UI.",
+          "type": "string"
+        }
+      }
+    },
+    "splash_assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Same-origin paths starting with '/', http(s) URLs, or config-bucket-relative paths (rewritten by the deploy-time injection step) for the turn-state indicator marks.",
+      "properties": {
+        "thinking_indicator": {
+          "type": "string",
+          "description": "Path or URL of the animated mark shown while a turn is streaming."
+        },
+        "done_indicator": {
+          "type": "string",
+          "description": "Path or URL of the mark shown once a turn has finished."
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Key Metrics dashboard composition. When absent, or when `tabs` is empty, the Key Metrics page renders its empty state.",
+      "properties": {
+        "$comment": {
+          "type": "string"
+        },
+        "tabs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricsTab"
+          }
+        }
+      }
+    }
+  }
+}

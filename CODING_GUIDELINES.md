@@ -95,7 +95,7 @@ application's formatter and is not restated here.
 |---|---|---|
 | TypeScript / JavaScript | [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) | Biome, ESLint, or `tsc` as configured per app |
 | HTML / CSS / SCSS | [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html) | Stylelint / Biome as configured per app |
-| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | `ruff` (format + check) for new code; existing apps keep their configured toolchain |
+| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | `ruff` (format + check) and `mypy` (strict) for new code; existing apps keep their configured toolchain |
 | Go | [Google Go Style Guide](https://google.github.io/styleguide/go/) | `gofmt`, `go vet`, `golangci-lint` |
 | Java | [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) | `google-java-format` |
 | Shell | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shellcheck` |
@@ -131,7 +131,7 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
 ### 3.1 File naming
 
 * `snake_case` for source files by default (`chat_pipeline.py`,
-  `use_branding.ts`, `card_chart.tsx`).
+  `instance_config.ts`, `card_chart.tsx`).
 * `dash-case` only where a framework requires it — e.g. Next.js App Router
   segments under `apps/web/src/app`.
 * `PascalCase` for component/class identifiers (`CardChart`), regardless of the
@@ -161,7 +161,7 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   call-site.** An icon that draws a pencil is `icon_pencil`, not `icon_export` —
   so it still reads correctly at the next call-site.
 * **Follow the ecosystem's casing.** `camelCase` properties in TypeScript
-  (`brandConfigUrl`, not `brand_config_url`); `snake_case` in Python.
+  (`thinkingIndicatorUrl`, not `thinking_indicator_url`); `snake_case` in Python.
 
 ---
 
@@ -209,8 +209,18 @@ Vitest-specific conventions:
 
 * Follow the Google Python Style Guide; 4-space indent, `snake_case` functions
   and modules, `PascalCase` classes.
-* Type-hint public function signatures; use `Optional[...]` explicitly rather
-  than relying on an implicit `None` default.
+* Type-hint public function signatures. Write an optional parameter as
+  `X | None`, never as a bare `X` with a `None` default — an implicit optional
+  misstates the signature, and `ruff` rejects it.
+* **New and rewritten Python type-checks under `mypy --strict`, and CI fails on
+  any error.** A new module is annotated as it is written, and is never added
+  to the exemption list.
+* Modules that predate the standard are exempted individually in the app's
+  `pyproject.toml`, under `[[tool.mypy.overrides]]` with `ignore_errors`. Each
+  entry names the change that rewrites or deletes the module it covers. An
+  exemption is retired by deleting that module, never by annotating code that
+  is scheduled for replacement. **The list only shrinks**, and it should reach
+  the standard small set — third-party stubs and nothing else.
 * Module-level docstring describing the file's responsibility; docstrings on
   public functions covering arguments, return value, and raised exceptions.
 * Use the `logging` module, never `print`, for anything that runs in a server or
@@ -510,12 +520,9 @@ clean identifiers alone:
 ## 16. Verification before submitting
 
 Run the application's full verification suite locally before opening or updating
-a PR. Do not guess commands — each app documents its own in `<app>/AGENTS.md`:
-
-| App | Lint / types | Tests | Build |
-|---|---|---|---|
-| `dataweaver` | `pnpm lint` | `pnpm test` | `pnpm build` |
-| `narratives` | `npm run lint` | `npm run test` | `npm run build` |
+a PR. Do not guess commands — consult the `<app>/AGENTS.md` of the application
+being worked on for its exact lint, test, and build commands before running
+verification.
 
 For UI changes, also run the production build and verify the change manually in
 the browser. Every app must be wired into the CI orchestrator so that

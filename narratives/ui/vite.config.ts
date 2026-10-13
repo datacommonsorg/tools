@@ -1,0 +1,83 @@
+/// <reference types="vitest" />
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import {defineConfig, loadEnv} from 'vite';
+
+// Dev-proxy default for a local agent.
+const DEFAULT_AGENT_URL = 'http://localhost:5001';
+
+export default defineConfig(({mode}) => {
+  const envDir = path.resolve(__dirname, '..');
+  // Load environment variables from narratives/.env.local
+  const env = loadEnv(mode, envDir, '');
+  const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
+  // Data routes default to AGENT_URL (handled by dcproxy.py on the local or
+  // deployed agent) unless BACKEND_URL is explicitly set to a separate host.
+  const backendProxy = {
+    target: env.BACKEND_URL || agentTarget,
+    changeOrigin: true,
+  };
+  // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
+  // /agent/* requests are forwarded verbatim to AGENT_URL, whether a local
+  // agent or a deployed instance.
+  //
+  // Set AGENT_STRIP_PREFIX=true in .env.local only when the agent serves its
+  // API at the root (AGENT_API_PREFIX=/). An empty AGENT_API_PREFIX counts as
+  // unset and selects /agent.
+  const agentProxy = {
+    target: agentTarget,
+    changeOrigin: true,
+    ...(env.AGENT_STRIP_PREFIX === 'true'
+      ? {rewrite: (urlPath: string) => urlPath.replace(/^\/agent/, '')}
+      : {}),
+  };
+  return {
+    envDir,
+    // Vitest: happy-dom gives useHashRoute.test.ts a window/location + hashchange.
+    test: {
+      environment: 'happy-dom',
+      globals: true,
+    },
+    plugins: [react(), tailwindcss()],
+    // No GEMINI_API_KEY (or any secret) is injected into the client bundle.
+    // All LLM calls go through the server-side agent proxy (/agent/*); the key
+    // lives only in the agent container (Secret Manager). See dc-pr-standards §7.
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modify - file watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Path A (UI + remote agent): set AGENT_URL in .env.local.
+      // Path B (full local stack):  defaults target localhost:5001.
+      // server.proxy is dev-only - `vite build` ignores it, so production is unaffected.
+      proxy: {
+        '/api':     backendProxy,
+        '/mcp':     backendProxy,
+        '/place':   backendProxy,
+        '/browser': backendProxy,
+        '/explore': backendProxy,
+        '/core':    backendProxy,
+        '/agent':   agentProxy,
+        // /tools/* paths host upstream Flask-rendered pages we iframe — currently
+        // /tools/download. /css, /custom_dc, /queryStore.js, /base.js, /download.js
+        // and friends are the absolute-path assets those pages reference. All
+        // routed to BACKEND_URL so the iframe behaves identically in dev and in
+        // the baked production image (where nginx covers the same paths).
+        '/tools':         backendProxy,
+        '/css':           backendProxy,
+        '/custom_dc':     backendProxy,
+        '/queryStore.js': backendProxy,
+        '/base.js':       backendProxy,
+        '/download.js':   backendProxy,
+        '/stat_var.js':   backendProxy,
+      },
+    },
+  };
+});

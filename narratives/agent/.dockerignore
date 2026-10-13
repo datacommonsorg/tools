@@ -1,0 +1,20 @@
+# Local virtual environments and tool caches.
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+
+# Colocated test modules (not needed in the production container).
+*_test.py
+tests/
+
+# Runtime state and local overrides.
+config.json
+logs/
+.env
+.env.*
+.DS_Store
