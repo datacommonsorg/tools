@@ -66,7 +66,7 @@ export default defineConfig(({mode}) => {
         '/core':    backendProxy,
         // Regex, not the '/agent' prefix: a prefix also captures the public
         // assets /agent-thinking.svg and /agent-done-thinking.svg.
-        '^/agent(/|$)': agentProxy,
+        '^/agent([/?]|$)': agentProxy,
         // /tools/* paths host upstream Flask-rendered pages we iframe — currently
         // /tools/download. /css, /custom_dc, /queryStore.js, /base.js, /download.js
         // and friends are the absolute-path assets those pages reference. All
