@@ -14,9 +14,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, master, narratives-dev]
+    branches: [main, master]
   push:
-    branches: [main, master, narratives-dev]
+    branches: [main, master]
 
 permissions:
   contents: read
