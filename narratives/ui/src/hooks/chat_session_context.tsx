@@ -102,14 +102,17 @@ function emptySession(): ChatSession {
  * the page closed will never receive a terminal event because its stream is
  * gone, so it is converted into an interrupted error turn rather than being
  * dropped. This preserves the user's question and any partial answer across a
- * page reload.
+ * page reload. Settled `done`, `refused`, and `error` turns are restored as
+ * saved.
  */
 export function cleanTurns(turns: ChatTurn[]): ChatTurn[] {
   if (!Array.isArray(turns)) return [];
   return turns
     .filter((turn) => turn && typeof turn === "object")
     .map((turn) =>
-      turn.status === "done" || turn.status === "error"
+      turn.status === "done" ||
+      turn.status === "refused" ||
+      turn.status === "error"
         ? turn
         : {
             ...turn,

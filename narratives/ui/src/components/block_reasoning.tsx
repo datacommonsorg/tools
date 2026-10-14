@@ -136,6 +136,7 @@ interface ReasoningBlockProps {
   status?: TurnStatus;
 }
 
+const PLACEHOLDER_CLASSIFY = "Reviewing your question…";
 const PLACEHOLDER_STREAMING =
   "Searching Data Commons for relevant indicators and observations…";
 const PLACEHOLDER_DONE =
@@ -143,12 +144,14 @@ const PLACEHOLDER_DONE =
 
 /**
  * Header label is derived from the turn status. The server's `status` events
- * move the turn through the `mcp` and `synthesis` phases, and its `terminal`
- * event ends it; these strings are the UI-side copy for each phase.
+ * move the turn through the `classify`, `mcp`, and `synthesis` phases, and its
+ * `terminal` event ends it; these strings are the UI-side copy for each phase.
  */
 function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   if (!streaming) return "Reasoning details";
   switch (status) {
+    case "classify":
+      return "Understanding your question…";
     case "mcp":
       return "Querying data tools…";
     case "synthesis":
@@ -177,7 +180,9 @@ export function ReasoningBlock({
     thoughts.length > 0
       ? thoughts.map((thought) => thought.text).join("\n\n")
       : streaming
-        ? PLACEHOLDER_STREAMING
+        ? status === "classify"
+          ? PLACEHOLDER_CLASSIFY
+          : PLACEHOLDER_STREAMING
         : done
           ? PLACEHOLDER_DONE
           : "";
