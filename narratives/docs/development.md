@@ -184,8 +184,7 @@ narratives/
 ├── docs/
 │   ├── development.md         Local development, testing, and repo layout
 │   ├── deployment.md          Cloud Run deployment, customization, and ops
-│   ├── architecture.md        System architecture, SSE protocol, and state
-│   └── smoke.sh               Post-deployment smoke test script
+│   └── architecture.md        System architecture, SSE protocol, and state
 ├── config/                    Instance-specific deployment overrides
 │   ├── instance.env           Project, region, instance name, and access mode
 │   ├── branding.json          Optional UI theme and branding overrides
