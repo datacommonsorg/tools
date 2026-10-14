@@ -24,9 +24,14 @@ from narratives_agent.gemini.schemas import (
     ChartVizType,
     DataValidationResponse,
     FollowUpResponse,
+    GeographicShape,
+    QueryClassification,
+    QueryPattern,
+    RefusalReason,
 )
 
 _MODELS: list[type[BaseModel]] = [
+    QueryClassification,
     ChartItem,
     ChartConfigResponse,
     DataValidationResponse,
@@ -35,6 +40,7 @@ _MODELS: list[type[BaseModel]] = [
 
 # Holds the smallest valid payload for each schema model.
 _MINIMAL_PAYLOADS: dict[type[BaseModel], dict[str, Any]] = {
+    QueryClassification: {"serviceable": True},
     ChartItem: {"title": "Population of California"},
     ChartConfigResponse: {"should_render": False},
     DataValidationResponse: {"data_found": True},
@@ -76,6 +82,7 @@ def test_a_chart_config_response_parses_nested_charts() -> None:
 @pytest.mark.parametrize(
     ("model", "required_field"),
     [
+        (QueryClassification, "serviceable"),
         (ChartItem, "title"),
         (ChartConfigResponse, "should_render"),
         (DataValidationResponse, "data_found"),
@@ -125,6 +132,102 @@ def test_an_unsupported_viz_type_is_rejected() -> None:
     viz_schema = ChartItem.model_json_schema()["properties"]["viz_type"]
     enums = [option.get("enum") for option in viz_schema["anyOf"]]
     assert list(get_args(ChartVizType)) in enums
+
+
+def test_query_classification_populates_defaults() -> None:
+    # Test: Default values on `QueryClassification` when only `serviceable` is
+    #   supplied.
+    # Situation: `QueryClassification` is validated with
+    #   `{"serviceable": True}`.
+    # Expectation: Optional fields default to `refusal_reason=None`,
+    #   `clarification=None`, `pattern="exploratory"`,
+    #   `geographic_shape="single_place"`, `requires_computation=False`, and
+    #   `off_topic_premise=""`.
+    parsed = QueryClassification.model_validate({"serviceable": True})
+
+    assert parsed.serviceable is True
+    assert parsed.refusal_reason is None
+    assert parsed.clarification is None
+    assert parsed.pattern == "exploratory"
+    assert parsed.geographic_shape == "single_place"
+    assert parsed.requires_computation is False
+    assert parsed.off_topic_premise == ""
+
+
+@pytest.mark.parametrize("pattern", get_args(QueryPattern))
+def test_every_query_pattern_is_accepted(pattern: str) -> None:
+    # Test: Accepted analytical pattern values on `QueryClassification`.
+    # Situation: `QueryClassification` is validated with each value in
+    #   `QueryPattern`.
+    # Expectation: Validation succeeds and preserves `pattern`.
+    parsed = QueryClassification.model_validate(
+        {"serviceable": True, "pattern": pattern}
+    )
+
+    assert parsed.pattern == pattern
+
+
+@pytest.mark.parametrize("shape", get_args(GeographicShape))
+def test_every_geographic_shape_is_accepted(shape: str) -> None:
+    # Test: Accepted geographic shape values on `QueryClassification`.
+    # Situation: `QueryClassification` is validated with each value in
+    #   `GeographicShape`.
+    # Expectation: Validation succeeds and preserves `geographic_shape`.
+    parsed = QueryClassification.model_validate(
+        {"serviceable": True, "geographic_shape": shape}
+    )
+
+    assert parsed.geographic_shape == shape
+
+
+@pytest.mark.parametrize("reason", get_args(RefusalReason))
+def test_every_refusal_reason_is_accepted(reason: str) -> None:
+    # Test: Accepted refusal reason values on `QueryClassification`.
+    # Situation: `QueryClassification` is validated with `serviceable=False`
+    #   and each value in `RefusalReason`.
+    # Expectation: Validation succeeds and preserves `refusal_reason`.
+    parsed = QueryClassification.model_validate(
+        {"serviceable": False, "refusal_reason": reason}
+    )
+
+    assert parsed.refusal_reason == reason
+
+
+def test_invalid_query_classification_enums_are_rejected() -> None:
+    # Test: Rejection of unknown enum values on `QueryClassification`.
+    # Situation: `QueryClassification` is given an unknown `pattern`,
+    #   `geographic_shape`, or `refusal_reason`.
+    # Expectation: Each invalid value raises `ValidationError` on the
+    #   corresponding field.
+    for field, bad_value in (
+        ("pattern", "unknown_pattern"),
+        ("geographic_shape", "planet"),
+        ("refusal_reason", "safety_blocked"),
+    ):
+        with pytest.raises(ValidationError) as raised:
+            QueryClassification.model_validate(
+                {"serviceable": True, field: bad_value}
+            )
+        assert raised.value.errors()[0]["loc"] == (field,)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"serviceable": False, "refusal_reason": None},
+        {"serviceable": True, "refusal_reason": "adversarial"},
+        {"serviceable": True, "refusal_reason": "off_domain"},
+    ],
+)
+def test_inconsistent_refusal_fields_are_rejected(
+    payload: dict[str, Any],
+) -> None:
+    # Test: Consistency check between `serviceable` and `refusal_reason`.
+    # Situation: `QueryClassification` is validated with `serviceable=False`
+    #   and no `refusal_reason`, or `serviceable=True` with a `refusal_reason`.
+    # Expectation: Validation fails with `ValidationError`.
+    with pytest.raises(ValidationError):
+        QueryClassification.model_validate(payload)
 
 
 @pytest.mark.parametrize("model", _MODELS)
