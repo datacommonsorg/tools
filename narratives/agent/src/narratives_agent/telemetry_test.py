@@ -365,6 +365,50 @@ def test_turn_span_severity_matches_the_terminal_state(
     assert json.loads(message)["severity"] == severity
 
 
+def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
+    monkeypatch: pytest.MonkeyPatch, turn_records: list[str]
+) -> None:
+    # Test: The `pattern` field of the turn summary and span.
+    # Situation: One turn is classified as `trend_delta` and completes; a
+    #   second turn is refused as `off_domain` before any classification is
+    #   assigned; a third turn is classified as `single_point` and later
+    #   refused as `safety_blocked`.
+    # Expectation: The first summary and span carry `pattern` and the classify
+    #   phase duration; both refused turns omit `pattern` from the summary and
+    #   `narratives.pattern` from the span while recording their refusal
+    #   reasons in `error_type`.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer(__name__))
+
+    classified = telemetry.TurnTelemetry()
+    with classified.phase("classify"):
+        classified.pattern = "trend_delta"
+    classified.finish("complete")
+    telemetry.TurnTelemetry().finish("refused", "off_domain")
+    later_refused = telemetry.TurnTelemetry()
+    later_refused.pattern = "single_point"
+    later_refused.finish("refused", "safety_blocked")
+
+    first, second, third = (json.loads(message) for message in turn_records)
+    assert first["pattern"] == "trend_delta"
+    assert "classify" in first["phase_durations_ms"]
+    assert "pattern" not in second
+    assert second["error_type"] == "off_domain"
+    assert "pattern" not in third
+    assert third["error_type"] == "safety_blocked"
+    turn_spans = [
+        span
+        for span in exporter.get_finished_spans()
+        if span.name == "narratives.turn"
+    ]
+    attributes = [dict(span.attributes or {}) for span in turn_spans]
+    assert attributes[0]["narratives.pattern"] == "trend_delta"
+    assert "narratives.pattern" not in attributes[1]
+    assert "narratives.pattern" not in attributes[2]
+
+
 def _finished_span() -> ReadableSpan:
     """Returns one finished span with an allowlisted attribute."""
     exporter = InMemorySpanExporter()

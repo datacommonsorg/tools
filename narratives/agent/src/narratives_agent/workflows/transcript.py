@@ -71,6 +71,7 @@ from pydantic import (
 from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
+    GeminiBlocked,
     async_gemini_request,
 )
 from narratives_agent.settings import get_settings
@@ -763,6 +764,12 @@ async def _compact(
         logger.warning(
             "Compaction failed with %s; using the structured summary",
             type(error).__name__,
+        )
+        return _fallback_summary(previous, evicted)
+    if isinstance(response, GeminiBlocked):
+        logger.warning(
+            "Compaction blocked (%s); using the structured summary",
+            response.block_reason,
         )
         return _fallback_summary(previous, evicted)
     summary = _response_text(response).strip()

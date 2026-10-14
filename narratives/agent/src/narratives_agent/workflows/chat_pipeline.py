@@ -12,27 +12,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Runs the phases of one chat turn as native asyncio code.
+"""Runs the agent loop, the phases of one chat turn, as native asyncio code.
 
-`run_turn` drives a turn through its phases in order: the MCP tool loop,
-streamed synthesis, chart configuration, the final event, and follow-up
-questions. Each phase reports progress by calling the turn's `emit`
-callback with one typed SSE event at a time (an event name from
-`EventName` and its JSON payload) and hands its results to the next phase
-as typed values rather than through shared mutable state.
+`run_turn` drives a turn through its phases in order: classification, the
+MCP tool loop, streamed synthesis, chart configuration, turn signing, and
+follow-up questions. Each phase reports progress by calling the turn's `emit`
+callback with one typed SSE event at a time (`EventName` and its JSON payload)
+and hands its results to the next phase as typed values rather than shared
+mutable state.
 
-Every turn that is not canceled ends in exactly one `terminal` event. An
-`error` terminal event carries a user-safe `error` message and a
-machine-readable `reason`. A `complete` terminal event carries the signed
-transcript window that the browser sends with its next request; see
-`terminal_frame`.
-
-Every phase reads the conversation through the verified `Transcript` that
-the route loaded, and the turn is appended to it and signed by
-`finalize_turn` before the `complete` event is sent.
-
-Chart configuration runs as an `asyncio.Task` concurrently with synthesis
-and is awaited, with a timeout, once synthesis has finished streaming.
+Every turn that is not canceled ends in one `terminal` event (`complete`,
+`refused`, or `error`) built by `terminal_frame`. Every phase reads the
+conversation through the verified `Transcript`, and completed turns are
+appended and signed by `finalize_turn` before the `complete` event is sent.
+Chart configuration runs as an `asyncio.Task` concurrently with synthesis and
+is awaited, with a timeout, once synthesis has finished streaming.
 """
 
 import asyncio
@@ -43,9 +37,11 @@ from typing import Any, Literal
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
+    GeminiBlocked,
     GeminiStreamError,
     async_gemini_stream,
 )
+from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.data_utils import (
     annotate_truncation,
@@ -57,13 +53,22 @@ from narratives_agent.workflows.chart_config import (
     get_chart_config,
     validate_data_response,
 )
+from narratives_agent.workflows.classify import (
+    REFUSED_MESSAGE,
+    Clarification,
+    TurnRefusedError,
+    classify_query,
+)
 from narratives_agent.workflows.follow_up import generate_follow_up_questions
 from narratives_agent.workflows.mcp_loop import (
+    McpLoopBlockedError,
     McpLoopError,
     execute_mcp_tool_loop,
 )
+from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
 from narratives_agent.workflows.state_slots import extract_state_slots
 from narratives_agent.workflows.transcript import (
+    ConversationStateSlots,
     SignedWindow,
     Transcript,
     finalize_turn,
@@ -97,6 +102,11 @@ _MCP_UNAVAILABLE = "The data service is unavailable. Please try again."
 _MCP_TOOLS_TIMEOUT = "The data service did not respond. Please try again."
 _INTERNAL_ERROR = "An internal error occurred. Please try again."
 
+_CLASSIFY_STATUS = "Understanding the question..."
+
+# Default pattern recorded in telemetry when the classifier call failed.
+_UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
+
 type EventName = Literal[
     "status", "thought", "content", "terminal", "follow_ups"
 ]
@@ -118,12 +128,17 @@ class TurnAbortedError(Exception):
 
 @dataclass(frozen=True)
 class TurnContext:
-    """Holds the inputs and callbacks shared across every phase of a turn."""
+    """Holds the inputs and callbacks shared across every phase of a turn.
+
+    `classification` is the classify phase verdict, or `None` when the
+    classifier call failed and the turn proceeds without a pattern directive.
+    """
 
     transcript: Transcript
     config: dict[str, Any]
     telemetry: TurnTelemetry
     emit: Emit
+    classification: QueryClassification | None = None
 
 
 @dataclass
@@ -141,7 +156,7 @@ class McpPhaseResult:
 
 
 async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
-    """Gathers data through the MCP tool loop during Phase 1.
+    """Gathers data through the MCP tool loop during the discovery phase.
 
     Streams the tool calls, the data status, and the provenance sources, and
     starts chart configuration in the background when observations are
@@ -152,6 +167,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             fails. MCP is a hard dependency: synthesis must not answer from
             general knowledge or run on the empty or partial results left
             behind by a failed loop.
+        TurnRefusedError: If Gemini blocks the prompt of a loop iteration.
     """
     result = McpPhaseResult()
     if not ctx.config.get("mcp", {}).get("enabled", True):
@@ -185,7 +201,10 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             thought_callback=lambda text: ctx.emit(
                 "thought", {"thought": text, "phase": "mcp"}
             ),
+            classification=ctx.classification,
         )
+    except McpLoopBlockedError as error:
+        raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE) from error
     except McpLoopError as error:
         raise TurnAbortedError(error.error_type, str(error)) from error
 
@@ -283,7 +302,7 @@ def _synthesis_message(user_message: str, mcp: McpPhaseResult) -> str:
 
 
 async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
-    """Streams the narrative answer during Phase 2.
+    """Streams the narrative answer during the synthesis phase.
 
     Returns:
         The complete answer text.
@@ -294,6 +313,8 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
             leaves the answer missing or truncated, so chart validation and
             follow-up generation would spend more Gemini calls judging an
             incomplete answer.
+        TurnRefusedError: If Gemini blocks the synthesis prompt before any text
+            chunk is yielded.
     """
     ctx.emit(
         "status", {"phase": "synthesis", "message": "Generating response..."}
@@ -307,13 +328,18 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
     )
     stream = await async_gemini_stream(
         messages=messages,
-        system_instruction=config.get("prompts", {}).get("synthesis", ""),
+        system_instruction=with_pattern_guidance(
+            config.get("prompts", {}).get("synthesis", ""), ctx.classification
+        ),
         model=get_gemini_model(config),
         temperature=_SYNTHESIS_TEMPERATURE,
         thinking_level=config.get("thinking", {}).get("synthesis_level", "low"),
         token_usage=ctx.telemetry.tokens,
         include_thoughts=True,
     )
+    if isinstance(stream, GeminiBlocked):
+        # The Gemini client has already logged the block reason.
+        raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
     if isinstance(stream, dict):
         # The client has already logged the redacted upstream error, so the
         # user receives a fixed message.
@@ -447,27 +473,30 @@ def terminal_frame(
     idempotency_key: str,
     *,
     error: TurnAbortedError | None = None,
+    refusal: TurnRefusedError | None = None,
     window: SignedWindow | None = None,
 ) -> dict[str, Any]:
     """Builds the payload of a `terminal` event.
 
     An `error` frame adds the user-safe `error` message and the
-    machine-readable `reason`. A frame with a signed `window` adds the
-    completed turn's `turn_index`, `hmac`, and `state_slots`, the window's
-    `compacted_summary`, and `window`: the `turn_index`,
-    `idempotency_key`, and `hmac` of every turn the browser must send next,
-    oldest first. Compaction re-signs the whole window, so the browser
-    replaces the signatures it holds with these and drops any turn that
-    `window` does not list. A `complete` frame without a window marks a
-    turn that was not signed, which the browser leaves out of later
+    machine-readable `reason`. A `refused` frame adds the machine-readable
+    `reason` and user-safe `message` without an `error` key. A frame with a
+    signed `window` adds the completed turn's `turn_index`, `hmac`, and
+    `state_slots`, the window's `compacted_summary`, and `window`: the
+    `turn_index`, `idempotency_key`, and `hmac` of every turn the browser
+    must send next, oldest first. Compaction re-signs the whole window, so
+    the browser replaces the signatures it holds with these and drops any
+    turn that `window` does not list. A `complete` frame without a window
+    marks a turn that was not signed, which the browser leaves out of later
     requests.
 
     Args:
-        state: The terminal state of the turn (`"complete"`, `"error"`, or
-            `"canceled"`).
+        state: The terminal state of the turn (`"complete"`, `"error"`,
+            `"refused"`, or `"canceled"`).
         idempotency_key: The request's idempotency key echoed back to the
             client.
         error: The optional `TurnAbortedError` when `state == "error"`.
+        refusal: The optional `TurnRefusedError` when `state == "refused"`.
         window: The optional `SignedWindow` when the completed turn was signed.
 
     Returns:
@@ -477,6 +506,9 @@ def terminal_frame(
     if error is not None:
         frame["error"] = str(error)
         frame["reason"] = error.error_type
+    if refusal is not None:
+        frame["reason"] = refusal.reason
+        frame["message"] = str(refusal)
     if window is not None:
         turn = window.turn
         frame.update(
@@ -499,16 +531,17 @@ def terminal_frame(
 async def run_turn(transcript: Transcript, emit: Emit) -> None:
     """Runs one chat turn and emits its typed SSE events through `emit`.
 
-    The turn ends in one `terminal` event: `complete` once the answer and
-    chart config are delivered and the turn is signed into the transcript,
-    or `error` with a user-safe message. Every
-    failure is reported through that event and recorded in telemetry. Only
-    `asyncio.CancelledError` is re-raised to the caller; cancellation emits
-    no terminal event because the client that would read it has already
-    disconnected, and it is recorded as `canceled` unless the turn has
-    already completed. Follow-up questions are emitted after the terminal
-    event. The background chart task is settled whenever the turn ends, so
-    no orphaned task outlives the request.
+    Runs classification first: refuses adversarial or off-domain queries,
+    streams and signs a clarification question when disambiguation is
+    required, or admits the query into the MCP tool loop, synthesis, chart
+    configuration, and turn signing. Every non-canceled turn ends in one
+    `terminal` event (`complete`, `refused`, or `error`) and records its
+    outcome and classified pattern in telemetry. Only `asyncio.CancelledError`
+    is re-raised to the caller; cancellation emits no terminal event because
+    the client has already disconnected, and it is recorded as `canceled`
+    unless the turn has already completed. Follow-up questions are emitted
+    after the terminal event, and the background chart task is settled
+    whenever the turn ends so no orphaned task outlives the request.
 
     Args:
         transcript: The verified transcript holding the current query,
@@ -521,7 +554,30 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     error_type: str | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
-        ctx = TurnContext(transcript, _load_turn_config(), telemetry, emit)
+        config = _load_turn_config()
+        emit("status", {"phase": "classify", "message": _CLASSIFY_STATUS})
+        with telemetry.phase("classify"):
+            admission = await classify_query(transcript, config, telemetry)
+        if isinstance(admission, Clarification):
+            telemetry.pattern = admission.classification.pattern
+            ctx = TurnContext(
+                transcript, config, telemetry, emit, admission.classification
+            )
+            window = await run_clarification(ctx, admission.question)
+            state = "complete"
+            emit(
+                "terminal",
+                terminal_frame(state, idempotency_key, window=window),
+            )
+            return
+        telemetry.pattern = (
+            admission.classification.pattern
+            if admission.classification is not None
+            else _UNCLASSIFIED_PATTERN
+        )
+        ctx = TurnContext(
+            transcript, config, telemetry, emit, admission.classification
+        )
         with telemetry.phase("mcp"):
             mcp = await run_mcp_phase(ctx)
         chart_task = mcp.chart_task
@@ -532,12 +588,19 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         emit("content", {"chart_config": chart_config})
         with telemetry.phase("finalize"):
             window = await _sign_turn(
-                transcript, full_text, mcp, chart_config, ctx
+                ctx,
+                full_text,
+                lambda: extract_state_slots(mcp.tool_calls, chart_config),
             )
         state = "complete"
         emit("terminal", terminal_frame(state, idempotency_key, window=window))
         with telemetry.phase("follow_ups"):
             await run_followups(ctx, chart_config)
+    except TurnRefusedError as refusal:
+        state, error_type = "refused", refusal.reason
+        emit(
+            "terminal", terminal_frame(state, idempotency_key, refusal=refusal)
+        )
     except TurnAbortedError as error:
         state, error_type = "error", error.error_type
         emit("terminal", terminal_frame(state, idempotency_key, error=error))
@@ -554,25 +617,35 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         telemetry.finish(state or "error", error_type)
 
 
-async def _sign_turn(
-    transcript: Transcript,
-    full_text: str,
-    mcp: McpPhaseResult,
-    chart_config: dict[str, Any],
-    ctx: TurnContext,
+async def run_clarification(
+    ctx: TurnContext, question: str
 ) -> SignedWindow | None:
-    """Extracts the turn's state slots and signs it into the window.
+    """Streams `question` as the turn response and signs it with empty slots.
 
-    The answer and chart config have already been delivered, so a failure
-    here must not turn the turn into an error. It is logged, and the turn
-    completes unsigned, as an answer too long to sign does: the browser
-    leaves it out of later context and keeps the window it holds.
+    No `data_status`, `sources`, `chart_config`, or `follow_ups` events are
+    emitted because no observations were retrieved.
+    """
+    ctx.emit("content", {"text": question})
+    with ctx.telemetry.phase("finalize"):
+        return await _sign_turn(ctx, question, ConversationStateSlots)
+
+
+async def _sign_turn(
+    ctx: TurnContext,
+    full_text: str,
+    state_slots: Callable[[], ConversationStateSlots],
+) -> SignedWindow | None:
+    """Builds the turn's state slots and signs the turn into the window.
+
+    Because the answer has already been delivered, a failure here is logged
+    and the turn completes unsigned, as an answer too long to sign does: the
+    browser leaves it out of later context and keeps the window it holds.
     """
     try:
         return await finalize_turn(
-            transcript,
+            ctx.transcript,
             full_text,
-            extract_state_slots(mcp.tool_calls, chart_config),
+            state_slots(),
             ctx.config,
             ctx.telemetry.tokens,
         )

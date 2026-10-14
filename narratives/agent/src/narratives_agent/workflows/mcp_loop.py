@@ -41,11 +41,14 @@ from typing import Any
 
 from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import (
+    GeminiBlocked,
     async_gemini_request_with_thought_streaming,
 )
+from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.schema import transform_schema_for_gemini
 from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
 from narratives_agent.workflows.transcript import (
     Transcript,
     transcript_contents,
@@ -95,6 +98,10 @@ class McpLoopError(Exception):
     def __init__(self, error_type: str, message: str) -> None:
         super().__init__(message)
         self.error_type = error_type
+
+
+class McpLoopBlockedError(Exception):
+    """Raised when Gemini blocks the prompt of an MCP loop iteration."""
 
 
 @dataclass
@@ -225,6 +232,7 @@ async def _iterate(
     tools: list[dict[str, Any]],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None,
+    classification: QueryClassification | None,
     result: McpLoopResult,
 ) -> None:
     """Runs model turns until the model stops calling tools.
@@ -233,7 +241,9 @@ async def _iterate(
     all of that turn's calls have completed, so that `result` holds the
     completed calls if the caller's timeout cancels this coroutine.
     """
-    mcp_prompt = config.get("prompts", {}).get("mcp", "")
+    mcp_prompt = with_pattern_guidance(
+        config.get("prompts", {}).get("mcp", ""), classification
+    )
     mcp_model = get_gemini_model(config)
     thinking_level = config.get("thinking", {}).get("mcp_level", "low")
     gemini_tools = _gemini_tools(tools)
@@ -263,6 +273,9 @@ async def _iterate(
             token_usage=telemetry.tokens,
             thought_callback=thought_callback,
         )
+        if isinstance(response, GeminiBlocked):
+            # The Gemini client has already logged the block reason.
+            raise McpLoopBlockedError()
         if "error" in response:
             # The client has already logged the redacted upstream error.
             raise McpLoopError(
@@ -327,6 +340,7 @@ async def execute_mcp_tool_loop(
     tools: list[dict[str, Any]],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None = None,
+    classification: QueryClassification | None = None,
 ) -> McpLoopResult:
     """Runs the MCP tool-calling loop for one user query.
 
@@ -339,6 +353,8 @@ async def execute_mcp_tool_loop(
             iteration count, and tool names.
         thought_callback: Optional callable invoked with each thought chunk
             as the model streams it.
+        classification: Optional `QueryClassification` from the classify phase
+            used to append pattern guidance to the system instruction.
 
     Returns:
         The gathered tool results, tool-call records, and truncation flag.
@@ -348,6 +364,7 @@ async def execute_mcp_tool_loop(
             candidates or an empty reply, an MCP request fails below the
             tool layer, or the loop exceeds `MCP_LOOP_TIMEOUT_SECONDS`
             before any tool call completes.
+        McpLoopBlockedError: If Gemini blocks the prompt of an iteration.
     """
     # Open the turn's MCP session scope in this task, before any tool call
     # is spawned, so that concurrent calls share one session.
@@ -361,6 +378,7 @@ async def execute_mcp_tool_loop(
                 tools,
                 telemetry,
                 thought_callback,
+                classification,
                 result,
             )
     except TimeoutError as error:

@@ -39,6 +39,7 @@ from narratives_agent.gemini.schemas import (
     ChartConfigResponse,
     DataValidationResponse,
     FollowUpResponse,
+    QueryClassification,
 )
 from narratives_agent.telemetry import TokenUsage
 
@@ -559,6 +560,7 @@ async def test_an_api_key_crossing_the_error_length_limit_is_redacted(
 @pytest.mark.parametrize(
     ("schema", "required"),
     [
+        (QueryClassification, ["serviceable"]),
         (ChartConfigResponse, ["should_render"]),
         (DataValidationResponse, ["data_found"]),
         (FollowUpResponse, ["questions"]),
@@ -568,7 +570,7 @@ async def test_each_schema_is_sent_to_gemini_as_expected(
     gemini: _FakeGemini, schema: type[BaseModel], required: list[str]
 ) -> None:
     # Test: The response schema each workflow sends on the wire.
-    # Situation: A structured-output request is made with each of the three
+    # Situation: A structured-output request is made with each of the four
     #   workflow schemas.
     # Expectation: The request carries the required fields and typed
     #   properties, and omits additional_properties (which the Gemini
@@ -771,6 +773,7 @@ async def test_returned_function_call_parts_can_be_sent_back_unchanged(
     first = await client.async_gemini_request_with_thought_streaming(
         _MESSAGES, "", _MODEL
     )
+    assert isinstance(first, dict)
     parts = first["candidates"][0]["content"]["parts"]
 
     history = [
@@ -846,7 +849,7 @@ async def test_an_async_stream_yields_text_and_records_usage(
         include_thoughts=include_thoughts,
     )
 
-    assert not isinstance(stream, dict)
+    assert not isinstance(stream, (dict, client.GeminiBlocked))
     assert [item async for item in stream] == expected
     assert usage == _EXPECTED_USAGE
     thinking = gemini.body()["generationConfig"]["thinkingConfig"]
@@ -901,7 +904,7 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
         (
             "Minimal",
             False,
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
+            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
         ),
         (
             "extreme",
@@ -924,9 +927,9 @@ def test_build_thinking_config_normalizes_the_level(
     # Situation: build_thinking_config is called with uppercase, lowercase,
     #   and unrecognized level strings, including "Minimal", both with and
     #   without include_thoughts.
-    # Expectation: Known levels match case-insensitively, unrecognized values
-    #   default to "low", and include_thoughts is set only when True.
-    #   "minimal" maps to "low" because `gemini-3.8-flash` rejects it.
+    # Expectation: Known levels ("minimal", "low", "medium", "high") match
+    #   case-insensitively, unrecognized values default to "low", and
+    #   include_thoughts is set only when True.
     assert client.build_thinking_config(value, include_thoughts) == expected
 
 
@@ -1011,6 +1014,7 @@ async def test_a_failed_thought_stream_closes_the_sdk_stream(
         thought_callback=failing_callback,
     )
 
+    assert isinstance(response, dict)
     assert "error" in response
     assert closed == [True]
 
@@ -1061,3 +1065,87 @@ async def test_a_failed_first_chunk_closes_the_sdk_stream(
     assert isinstance(response, dict)
     assert "error" in response
     assert closed == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _MODES)
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "SAFETY",
+        "PROHIBITED_CONTENT",
+        "BLOCKLIST",
+        "MODEL_ARMOR",
+        "JAILBREAK",
+    ],
+)
+async def test_a_prompt_blocked_response_returns_gemini_blocked(
+    gemini: _FakeGemini, mode: str, reason: str
+) -> None:
+    # Test: Mapping of `promptFeedback.blockReason` to `GeminiBlocked` across
+    #   all client entry points.
+    # Situation: Gemini responds with `promptFeedback.blockReason` set to one
+    #   of the five blocked reasons (`SAFETY`, `PROHIBITED_CONTENT`,
+    #   `BLOCKLIST`, `MODEL_ARMOR`, or `JAILBREAK`) and `usageMetadata`.
+    # Expectation: Every entry point returns `GeminiBlocked(block_reason=...)`
+    #   and records the call's token usage.
+    body = {
+        "promptFeedback": {"blockReason": reason},
+        "usageMetadata": _USAGE,
+    }
+    if mode == "async_request":
+        gemini.respond(_answer(200, json=body))
+    else:
+        gemini.respond(_answer(200, content=_sse(body)))
+    usage = TokenUsage()
+
+    result = await _call(mode, token_usage=usage)
+
+    assert result == client.GeminiBlocked(block_reason=reason)
+    assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+async def test_an_unlisted_block_reason_falls_through_as_an_empty_response(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Handling of `promptFeedback.blockReason` values outside
+    #   `_BLOCKED_REASONS`.
+    # Situation: Gemini responds with `promptFeedback.blockReason = "OTHER"`.
+    # Expectation: `async_gemini_request` returns a normal response dict with no
+    #   `candidates` key rather than `GeminiBlocked`.
+    gemini.respond(
+        _answer(200, json={"promptFeedback": {"blockReason": "OTHER"}})
+    )
+
+    result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+
+    assert isinstance(result, dict)
+    assert "candidates" not in result
+
+
+@pytest.mark.asyncio
+async def test_normalize_response_includes_candidate_finish_reason(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Preservation of `finishReason` on normalized candidates.
+    # Situation: Gemini returns a candidate with `finishReason = "SAFETY"`.
+    # Expectation: `result["candidates"][0]["finishReason"]` is `"SAFETY"`.
+    gemini.respond(
+        _answer(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {"parts": [], "role": "model"},
+                        "finishReason": "SAFETY",
+                    }
+                ]
+            },
+        )
+    )
+
+    result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+
+    assert isinstance(result, dict)
+    assert result["candidates"][0]["finishReason"] == "SAFETY"

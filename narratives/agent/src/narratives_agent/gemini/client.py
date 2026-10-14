@@ -26,22 +26,26 @@ requests, parses responses, counts tokens, and reports errors:
 `TokenUsage` to which the call's token counts are added, for the turn's
 telemetry record.
 
-The SDK returns response objects, but the code in `workflows/` (the model loop)
+The SDK returns response objects, but the code in `workflows/` (the agent loop)
 reads responses as plain dictionaries, for example
 `response["candidates"][0]["content"]["parts"][0]["text"]`. Every function
 therefore converts the SDK's response into a dictionary with the keys the
 Gemini REST API uses (`candidates`, `content`, `parts`, `functionCall`,
 `usageMetadata`).
 
-Errors are reported in one of two ways:
+Errors and prompt blocks are reported in one of three ways:
 
+- If the prompt is blocked by Gemini safety filters or by Vertex AI Model Armor
+  floor settings (`promptFeedback.blockReason`), the function returns a
+  `GeminiBlocked` value so the caller can end the turn as `refused` rather than
+  `error`.
 - If the request fails before Gemini returns any output, the function returns
   `{"error": <message>}`.
 - If a streamed response fails after output has started, the stream raises
   `GeminiStreamError`, because the caller already holds the stream and can no
   longer receive a returned value.
 
-In both cases, the API key is removed from the error message.
+In both error cases, the API key is removed from the error message.
 """
 
 import asyncio
@@ -81,7 +85,11 @@ _NO_PROJECT_ERROR = (
     "GOOGLE_CLOUD_PROJECT environment variable is not set"
 )
 
+# "minimal" is used by the classifier on gemini-3.5-flash-lite;
+# gemini-3.7-flash and gemini-3.8-flash reject "minimal" and require at
+# least "low".
 _THINKING_LEVELS = {
+    "minimal": types.ThinkingLevel.MINIMAL,
     "low": types.ThinkingLevel.LOW,
     "medium": types.ThinkingLevel.MEDIUM,
     "high": types.ThinkingLevel.HIGH,
@@ -91,6 +99,18 @@ _DEFAULT_THINKING_LEVEL = "low"
 # Thinking level for the small structured calls that run after the answer:
 # chart configuration, chart validation, and follow-up questions.
 LIGHTWEIGHT_THINKING_LEVEL = "low"
+
+# `promptFeedback.blockReason` values that represent a content-policy or Model
+# Armor refusal. `MODEL_ARMOR` and `JAILBREAK` are emitted only by Vertex AI.
+_BLOCKED_REASONS = frozenset(
+    {
+        types.BlockedReason.SAFETY,
+        types.BlockedReason.PROHIBITED_CONTENT,
+        types.BlockedReason.BLOCKLIST,
+        types.BlockedReason.MODEL_ARMOR,
+        types.BlockedReason.JAILBREAK,
+    }
+)
 
 # Upper bound on a single Gemini call, including a full streamed response.
 # `HttpOptions.timeout` is in milliseconds.
@@ -144,6 +164,18 @@ class GeminiStreamError(RuntimeError):
     The message is the same redacted error string that `_report_failure`
     logs.
     """
+
+
+@dataclass(frozen=True)
+class GeminiBlocked:
+    """Returned when Gemini blocks the prompt (`promptFeedback.blockReason`).
+
+    `block_reason` holds the SDK enum name (`SAFETY`, `PROHIBITED_CONTENT`,
+    `BLOCKLIST`, `MODEL_ARMOR`, or `JAILBREAK`) so callers can map any
+    blocked call to a `refused` turn with reason `safety_blocked`.
+    """
+
+    block_reason: str
 
 
 def reset_client() -> None:
@@ -263,14 +295,36 @@ def _report_failure(error: str, model: str) -> dict[str, Any]:
     return {"error": redacted}
 
 
+def _block_reason(
+    response: types.GenerateContentResponse | None,
+) -> str | None:
+    """Returns the blocked-reason name when `response` was prompt-blocked."""
+    if response is None or response.prompt_feedback is None:
+        return None
+    reason = response.prompt_feedback.block_reason
+    if reason in _BLOCKED_REASONS:
+        return reason.name
+    return None
+
+
+def _report_blocked(block_reason: str, model: str) -> GeminiBlocked:
+    """Logs a prompt-blocked Gemini call and returns its `GeminiBlocked`."""
+    logger.warning(
+        "Gemini request to %s blocked by promptFeedback.blockReason=%s",
+        model,
+        block_reason,
+    )
+    return GeminiBlocked(block_reason=block_reason)
+
+
 def build_thinking_config(
     thinking_value: str, include_thoughts: bool = False
 ) -> types.ThinkingConfig:
     """Builds the thinking configuration for Gemini 3 models.
 
     Args:
-        thinking_value: Thinking level: "low", "medium", or "high", in any
-            case. Any other value selects "low".
+        thinking_value: Thinking level: "minimal", "low", "medium", or "high",
+            in any case. Any other value selects "low".
         include_thoughts: Whether the response includes thought summaries.
 
     Returns:
@@ -443,7 +497,12 @@ def _normalize_response(
         content = candidate.content or types.Content()
         parts = [_dump_part(part) for part in content.parts or []]
         role = content.role or "model"
-        candidates.append({"content": {"parts": parts, "role": role}})
+        entry: dict[str, Any] = {"content": {"parts": parts, "role": role}}
+        if candidate.finish_reason is not None:
+            # Include finishReason so callers can detect safety-stopped
+            # candidates when promptFeedback.blockReason is unset.
+            entry["finishReason"] = candidate.finish_reason.name
+        candidates.append(entry)
     if candidates:
         result["candidates"] = candidates
     usage = _usage_dict(response.usage_metadata)
@@ -501,10 +560,12 @@ class _ThoughtStreamCollector:
     text: str = ""
     function_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: dict[str, int] | None = None
+    block_reason: str | None = None
 
     def add(self, chunk: types.GenerateContentResponse) -> None:
         """Accumulates one chunk and forwards any thought text."""
         self.usage = _usage_dict(chunk.usage_metadata) or self.usage
+        self.block_reason = _block_reason(chunk) or self.block_reason
         for part in _chunk_parts(chunk):
             if part.function_call:
                 self.function_calls.append(_dump_part(part))
@@ -588,7 +649,7 @@ async def async_gemini_request(
     thinking_level: str | None = None,
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | GeminiBlocked:
     """Sends a request to Gemini without blocking the event loop.
 
     Args:
@@ -605,7 +666,8 @@ async def async_gemini_request(
             are added.
 
     Returns:
-        The response dict, or a dict with an "error" key if the call failed.
+        The response dict, a `GeminiBlocked` when the prompt was blocked, or a
+        dict with an "error" key if the call failed.
     """
     call = await _prepare_call(
         messages,
@@ -627,6 +689,9 @@ async def async_gemini_request(
         return _report_failure(_describe_error(error), model)
     result = _normalize_response(response)
     _record_usage(token_usage, result.get("usageMetadata"))
+    block_reason = _block_reason(response)
+    if block_reason is not None:
+        return _report_blocked(block_reason, model)
     return result
 
 
@@ -640,12 +705,12 @@ async def async_gemini_stream(
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     include_thoughts: bool = False,
-) -> AsyncGenerator[StreamItem] | dict[str, Any]:
+) -> AsyncGenerator[StreamItem] | dict[str, Any] | GeminiBlocked:
     """Starts a streamed request to Gemini without blocking the event loop.
 
     The coroutine completes once the first chunk has arrived, so a request
-    that fails outright is reported as an error dict rather than surfacing
-    partway through iteration.
+    that fails outright or is blocked by `promptFeedback.blockReason` is
+    reported before the caller begins iterating.
 
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
@@ -664,7 +729,8 @@ async def async_gemini_stream(
         An async generator yielding text strings, or `{"type": "thought" |
         "text", "content": str}` dicts with `include_thoughts`; it raises
         `GeminiStreamError` if the stream fails after its first chunk. If
-        the request fails before then, a dict with an "error" key.
+        the prompt is blocked on the first chunk, a `GeminiBlocked`. If the
+        request fails before its first chunk, a dict with an "error" key.
     """
     call = await _prepare_call(
         messages,
@@ -684,13 +750,19 @@ async def async_gemini_stream(
             model=model, contents=call.contents, config=call.config
         )
         # The SDK sends the request when the first chunk is requested, so
-        # fetch it here to report a failed request as an error dict.
+        # fetch it here to report a failed or blocked request before iteration.
         first = await anext(chunks, None)
     except BaseException as error:
         await _close_chunks(chunks)
         if isinstance(error, Exception):
             return _report_failure(_describe_error(error), model)
         raise
+    if first is not None:
+        block_reason = _block_reason(first)
+        if block_reason is not None:
+            _record_usage(token_usage, _usage_dict(first.usage_metadata))
+            await _close_chunks(chunks)
+            return _report_blocked(block_reason, model)
     return _async_iterate_stream(
         first,
         chunks,
@@ -710,7 +782,7 @@ async def async_gemini_request_with_thought_streaming(
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     thought_callback: Callable[[str], None] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | GeminiBlocked:
     """Streams a request without blocking, forwarding thoughts as they arrive.
 
     Thought summaries reach `thought_callback` while the response streams,
@@ -731,8 +803,8 @@ async def async_gemini_request_with_thought_streaming(
         thought_callback: Optional callable invoked with each thought chunk.
 
     Returns:
-        The complete response dict, or a dict with an "error" key if the
-        call failed.
+        The complete response dict, a `GeminiBlocked` when the prompt was
+        blocked, or a dict with an "error" key if the call failed.
     """
     call = await _prepare_call(
         messages,
@@ -759,4 +831,6 @@ async def async_gemini_request_with_thought_streaming(
     finally:
         _record_usage(token_usage, collector.usage)
         await _close_chunks(chunks)
+    if collector.block_reason is not None:
+        return _report_blocked(collector.block_reason, model)
     return collector.finish()

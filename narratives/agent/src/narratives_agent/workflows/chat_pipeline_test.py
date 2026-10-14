@@ -31,6 +31,14 @@ Verifies that:
 6. Synthesis receives the verified window before the current query, an
    `error` terminal event carries no signing fields, and a failure while
    signing leaves the delivered turn complete and unsigned.
+7. The classify phase runs first behind a `classify` status frame: a
+   refusal ends the turn in one `refused` terminal frame without an `error`
+   key and without any model call, a clarification is streamed as the
+   answer and signed with empty state slots, a classification carries its
+   pattern directive into the tool loop and synthesis and its pattern into
+   telemetry, and a classifier failure proceeds as `exploratory` without a
+   directive. A prompt that Gemini blocks in the tool loop or in synthesis
+   ends the turn as `refused` with reason `safety_blocked`.
 """
 
 import asyncio
@@ -43,13 +51,26 @@ from typing import Any
 
 import pytest
 
-from narratives_agent.gemini.client import GeminiStreamError
+from narratives_agent.gemini.client import GeminiBlocked, GeminiStreamError
+from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.chat_pipeline import EventName
-from narratives_agent.workflows.mcp_loop import McpLoopError, McpLoopResult
+from narratives_agent.workflows.classify import (
+    REFUSED_MESSAGE,
+    Admitted,
+    Clarification,
+    RefusedReason,
+    TurnRefusedError,
+)
+from narratives_agent.workflows.mcp_loop import (
+    McpLoopBlockedError,
+    McpLoopError,
+    McpLoopResult,
+)
+from narratives_agent.workflows.pattern_guidance import pattern_directive
 from narratives_agent.workflows.transcript import (
     MAX_RESPONSE_CHARS,
     ConversationStateSlots,
@@ -98,6 +119,17 @@ _SCOPES = {
         }
     ]
 }
+_CLASSIFICATION = QueryClassification.model_validate(
+    {
+        "serviceable": True,
+        "pattern": "single_point",
+        "geographic_shape": "single_place",
+        "requires_computation": False,
+    }
+)
+_CLARIFICATION_QUESTION = (
+    "Do you mean Georgia the country or the U.S. state of Georgia?"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -141,8 +173,13 @@ class _Turn:
     finished: list[tuple[TerminalState, str | None]] = field(
         default_factory=list
     )
+    telemetry: TurnTelemetry | None = None
     synthesis_calls: int = 0
     synthesis_messages: list[list[dict[str, Any]]] = field(default_factory=list)
+    synthesis_instructions: list[str] = field(default_factory=list)
+    loop_classifications: list[QueryClassification | None] = field(
+        default_factory=list
+    )
     chart_canceled: asyncio.Event = field(default_factory=asyncio.Event)
     chart_release: asyncio.Event = field(default_factory=asyncio.Event)
     synthesis_release: asyncio.Event = field(default_factory=asyncio.Event)
@@ -167,12 +204,17 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     def telemetry() -> _RecordingTelemetry:
         recording = _RecordingTelemetry()
         recording.finished = stub.finished
+        stub.telemetry = recording
         return recording
 
     async def get_tools() -> list[dict[str, Any]]:
         return [{"name": "get_observations"}]
 
+    async def classify(*args: Any, **kwargs: Any) -> Admitted:
+        return Admitted(_CLASSIFICATION)
+
     async def tool_loop(*args: Any, **kwargs: Any) -> McpLoopResult:
+        stub.loop_classifications.append(kwargs.get("classification"))
         return McpLoopResult(
             results_text="Tool: get_observations\nResult: 68000000",
             tool_calls=[dict(_TOOL_CALL)],
@@ -185,6 +227,7 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
         stub.synthesis_calls += 1
         stub.synthesis_messages.append(list(kwargs["messages"]))
+        stub.synthesis_instructions.append(kwargs["system_instruction"])
         return answer()
 
     async def chart_config(
@@ -208,8 +251,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", telemetry)
     monkeypatch.setattr(
-        chat_pipeline, "load_config", lambda: {"mcp": {"enabled": True}}
+        chat_pipeline,
+        "load_config",
+        lambda: {
+            "mcp": {"enabled": True},
+            "prompts": {"mcp": "Gather data.", "synthesis": "Write prose."},
+        },
     )
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(mcp_client, "ensure_session_scope", lambda: None)
     monkeypatch.setattr(mcp_client, "async_get_tools", get_tools)
     monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", tool_loop)
@@ -797,3 +846,212 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
 
     assert _only_terminal(turn)["reason"] == "synthesis_error"
     assert "Chart config failed: ValueError" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
+    turn: _Turn,
+) -> None:
+    # Test: The classified outcome of the classify phase.
+    # Situation: `classify_query` returns `Admitted(_CLASSIFICATION)` for a
+    #   `single_point` lookup and all subsequent phases succeed.
+    # Expectation: The stream opens with a `classify` status frame followed by
+    #   `mcp`, the classification is passed to `execute_mcp_tool_loop`, the
+    #   synthesis system instruction ends with the pattern directive, and
+    #   telemetry records `pattern == "single_point"` and the `classify` phase
+    #   duration.
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[0] == (
+        "status",
+        {"phase": "classify", "message": chat_pipeline._CLASSIFY_STATUS},
+    )
+    statuses = [
+        data["phase"] for event, data in turn.events if event == "status"
+    ]
+    assert statuses[:2] == ["classify", "mcp"]
+    assert turn.loop_classifications == [_CLASSIFICATION]
+    (instruction,) = turn.synthesis_instructions
+    assert instruction.startswith("Write prose.")
+    assert instruction.endswith(pattern_directive(_CLASSIFICATION))
+    assert turn.telemetry is not None
+    assert turn.telemetry.pattern == "single_point"
+    assert "classify" in turn.telemetry.phase_durations_ms
+    assert turn.finished == [("complete", None)]
+
+
+@pytest.mark.parametrize(
+    ("reason", "message"),
+    [
+        ("adversarial", REFUSED_MESSAGE),
+        (
+            "off_domain",
+            "That request is outside the public statistical data this "
+            "service covers (brand-specific coffee prices). Ask about a "
+            "demographic, economic, health, climate, or social indicator "
+            "for a place.",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_refusal_ends_the_turn_in_one_refused_frame(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    reason: RefusedReason,
+    message: str,
+) -> None:
+    # Test: The refused outcome of the classify phase.
+    # Situation: `classify_query` raises `TurnRefusedError` with `adversarial`
+    #   or `off_domain`.
+    # Expectation: The stream emits `status` (`classify`) and one `terminal`
+    #   frame with `state="refused"`, `idempotency_key`, `reason`, and
+    #   `message`, without `error` or signing fields; neither the MCP loop nor
+    #   synthesis runs; telemetry records `refused` with `reason` and
+    #   `pattern=None`.
+    async def refusing_classify(*args: Any, **kwargs: Any) -> Admitted:
+        raise TurnRefusedError(reason, message)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", refusing_classify)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.names() == ["status", "terminal"]
+    assert turn.events[1][1] == {
+        "state": "refused",
+        "idempotency_key": _IDEMPOTENCY_KEY,
+        "reason": reason,
+        "message": message,
+    }
+    assert turn.loop_classifications == []
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [("refused", reason)]
+    assert turn.telemetry is not None
+    assert turn.telemetry.pattern is None
+
+
+@pytest.mark.asyncio
+async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The clarification outcome of the classify phase.
+    # Situation: `classify_query` returns `Clarification` for an ambiguous
+    #   place query.
+    # Expectation: The clarification question is streamed as `content {text}`,
+    #   the turn ends in a signed `complete` terminal frame with empty state
+    #   slots, no `data_status`, `sources`, `chart_config`, or `follow_ups`
+    #   frames are emitted, and the signed turn verifies on the next request.
+    async def clarifying_classify(*args: Any, **kwargs: Any) -> Clarification:
+        return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", clarifying_classify)
+    question = "What is the population of Georgia?"
+    transcript = Transcript(
+        turns=[],
+        compacted_summary=None,
+        current_query=question,
+        current_idempotency_key=_IDEMPOTENCY_KEY,
+    )
+
+    await chat_pipeline.run_turn(transcript, turn.emit)
+
+    assert turn.names() == ["status", "content", "terminal"]
+    assert turn.events[1][1] == {"text": _CLARIFICATION_QUESTION}
+    terminal = turn.events[2][1]
+    assert terminal["state"] == "complete"
+    assert terminal["turn_index"] == 0
+    assert terminal["state_slots"] == {"scopes": []}
+    assert terminal["window"] == [
+        {
+            "turn_index": 0,
+            "idempotency_key": _IDEMPOTENCY_KEY,
+            "hmac": terminal["hmac"],
+        }
+    ]
+    assert turn.loop_classifications == []
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [("complete", None)]
+    assert turn.telemetry is not None
+    assert turn.telemetry.pattern == "single_point"
+    stored = Turn.model_validate(
+        {
+            "turn_index": terminal["turn_index"],
+            "idempotency_key": terminal["idempotency_key"],
+            "user_query": question,
+            "model_response": _CLARIFICATION_QUESTION,
+            "state_slots": terminal["state_slots"],
+            "hmac": terminal["hmac"],
+        }
+    )
+    loaded = load_transcript(_Request("The country", "key-2", [stored]))
+    assert loaded.turns == [stored]
+
+
+@pytest.mark.asyncio
+async def test_a_classifier_failure_proceeds_as_exploratory(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Fall-through when the classifier returns `Admitted(None)`.
+    # Situation: `classify_query` admits the query without a classification.
+    # Expectation: The turn completes normally, the tool loop receives
+    #   `classification=None`, the synthesis system instruction is unmodified,
+    #   and telemetry records `pattern == "exploratory"`.
+    async def unclassified(*args: Any, **kwargs: Any) -> Admitted:
+        return Admitted(None)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", unclassified)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.loop_classifications == [None]
+    assert turn.synthesis_instructions == ["Write prose."]
+    assert turn.telemetry is not None
+    assert turn.telemetry.pattern == "exploratory"
+    assert turn.finished == [("complete", None)]
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_prompt_in_the_tool_loop_refuses_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Blocked prompt handling in `run_mcp_phase`.
+    # Situation: `execute_mcp_tool_loop` raises `McpLoopBlockedError`.
+    # Expectation: The turn ends in a `refused` terminal frame with
+    #   `reason="safety_blocked"` and `REFUSED_MESSAGE`, synthesis does not
+    #   run, and telemetry records `("refused", "safety_blocked")`.
+    async def blocked_loop(*args: Any, **kwargs: Any) -> McpLoopResult:
+        raise McpLoopBlockedError()
+
+    monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", blocked_loop)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    terminal = _only_terminal(turn)
+    assert terminal["state"] == "refused"
+    assert terminal["reason"] == "safety_blocked"
+    assert terminal["message"] == REFUSED_MESSAGE
+    assert "error" not in terminal
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [("refused", "safety_blocked")]
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_synthesis_prompt_refuses_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Blocked prompt handling in `run_synthesis_phase`.
+    # Situation: `async_gemini_stream` returns `GeminiBlocked("SAFETY")`.
+    # Expectation: No answer text is emitted, the turn ends in a `refused`
+    #   terminal frame with `reason="safety_blocked"`, and telemetry records
+    #   `("refused", "safety_blocked")`.
+    async def blocked_synthesis(**kwargs: Any) -> GeminiBlocked:
+        return GeminiBlocked("SAFETY")
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blocked_synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert not any("text" in data for event, data in turn.events)
+    terminal = _only_terminal(turn)
+    assert terminal["state"] == "refused"
+    assert terminal["reason"] == "safety_blocked"
+    assert turn.finished == [("refused", "safety_blocked")]
