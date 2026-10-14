@@ -51,6 +51,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     `gemini/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
+    - `workflows/`: agent loop orchestration (`chat_pipeline.py`), query
+      classification and pattern guidance (`classify.py`,
+      `pattern_guidance.py`), MCP tool loop (`mcp_loop.py`), chart
+      configuration (`chart_config.py`), follow-up generation (`follow_up.py`),
+      and signed transcripts (`transcript.py`).
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
