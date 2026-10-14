@@ -846,14 +846,14 @@ if [ "$CODE_ONLY" = false ]; then
     # dance is worth retiring once smoke.sh can present a token.
     if [ "$ACCESS_MODE" = "public" ]; then
         log_info "Running post-deployment smoke tests (public access; no IAP toggle needed)..."
-        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
     else
         log_info "Temporarily disabling Identity-Aware Proxy (IAP) for validation..."
         gcloud beta run services update "${APP_SERVICE}" \
             --no-iap --region="$REGION" --project="$PROJECT_ID"
 
         log_info "Running automated post-deployment smoke tests..."
-        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
 
         log_info "Re-enabling Identity-Aware Proxy (IAP) on Cloud Run service..."
         gcloud beta run services update "${APP_SERVICE}" \
