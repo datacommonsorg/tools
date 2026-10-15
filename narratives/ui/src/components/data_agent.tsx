@@ -28,6 +28,13 @@ import { PromptInput } from "./input_prompt";
 import { assignCitationNumbers, type ChatTurn } from "../hooks/use_sse_chat";
 import { useChatSession } from "../hooks/chat_session_context";
 
+/** How long the scroll to a new question glides. */
+const PIN_GLIDE_MS = 400;
+/** How long the new question is held at the top while late layout settles. */
+const PIN_HOLD_MS = 600;
+/** Gap left above the pinned question. */
+const PIN_TOP_OFFSET_PX = 8;
+
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
  * prompt input with send/stop controls, and pins each new question to the top.
@@ -76,7 +83,7 @@ export function DataAgent() {
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
       const from = container?.scrollTop ?? 0;
-      const glideMs = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400;
+      const glideMs = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PIN_GLIDE_MS;
       const scrollToLatest = (elapsed: number) => {
         if (!container) return;
         const target = container.querySelector<HTMLElement>(
@@ -92,9 +99,9 @@ export function DataAgent() {
         // Ease-out cubic. The target is re-read every frame, so the glide
         // lands on the bubble even if the layout above it is still settling.
         const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
-        container.scrollTop = from + (Math.max(0, top - 8) - from) * progress;
+        container.scrollTop = from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress;
       };
-      // Glide there, then hold on every animation frame up to ~600ms so late
+      // Glide there, then hold on every animation frame for PIN_HOLD_MS so late
       // layout shifts from the previous turn's AnswerPanel (e.g. Data Commons
       // chart hydration, FollowUpQuestions unmounting) don't leave the new
       // bubble stranded mid-scroller. Canceled when the user scrolls away.
@@ -109,14 +116,14 @@ export function DataAgent() {
         if (canceled) return;
         const elapsed = performance.now() - start;
         scrollToLatest(elapsed);
-        if (elapsed < 600) requestAnimationFrame(tick);
+        if (elapsed < PIN_HOLD_MS) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
       // Tidy listeners after the pin window closes.
       window.setTimeout(() => {
         container?.removeEventListener("wheel", onUserScroll);
         container?.removeEventListener("touchmove", onUserScroll);
-      }, 700);
+      }, PIN_HOLD_MS + 100);
     }
     prevTurnsLength.current = turns.length;
   }, [turns.length]);

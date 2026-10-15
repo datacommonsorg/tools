@@ -77,4 +77,38 @@ describe('ReasoningBlock', () => {
     rerender(<ReasoningBlock thoughts={[]} done />);
     expect(getIndicatorSrc(container)).toBe('/theme/custom-done.svg');
   });
+
+  it('streams new thoughts in without replaying earlier ones', () => {
+    // Test: Live thoughts reveal word by word, once.
+    // Situation: A streaming block gets one thought, then a second.
+    // Expectation: The first thought's words are the same DOM nodes after the
+    //              second arrives, and both are wrapped for the reveal.
+    const first = { text: 'Looking up data.', phase: 'mcp' as const };
+    const { container, rerender } = render(
+      <ReasoningBlock thoughts={[first]} streaming />,
+    );
+    const before = container.querySelector('.stream-word');
+    rerender(
+      <ReasoningBlock
+        thoughts={[first, { text: 'Found it.', phase: 'mcp' }]}
+        streaming
+      />,
+    );
+
+    expect(before).not.toBeNull();
+    expect(container.querySelector('.stream-word')).toBe(before);
+    expect(container.querySelectorAll('.markdown-stream')).toHaveLength(2);
+  });
+
+  it('shows thoughts restored with a finished turn without a reveal', () => {
+    // Test: Restored thoughts are simply there.
+    // Situation: The block mounts for a turn that is already done.
+    // Expectation: No word spans or reveal class are rendered.
+    const { container } = render(
+      <ReasoningBlock thoughts={[{ text: 'Done.', phase: 'mcp' }]} done />,
+    );
+
+    expect(container.querySelector('.markdown-stream')).toBeNull();
+    expect(container.querySelector('.stream-word')).toBeNull();
+  });
 });

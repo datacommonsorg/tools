@@ -45,7 +45,7 @@ export interface StreamNode {
 }
 
 /** Returns how long the reveal of `text` runs, in milliseconds. */
-export function streamDurationMs(text: string): number {
+export function calculateStreamDurationMs(text: string): number {
   const words = text.split(/\s+/).filter(Boolean).length;
   return Math.min(words * MS_PER_WORD, MAX_STREAM_MS);
 }

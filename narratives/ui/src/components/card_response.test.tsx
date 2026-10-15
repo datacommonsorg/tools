@@ -198,3 +198,36 @@ describe("ResponseCard streaming", () => {
     expect(container.querySelector(".stream-word")).toBe(before);
   });
 });
+
+describe("ResponseCard streaming plain text", () => {
+  it("leaves citation markers in code as written", () => {
+    // Test: Code is not formatted as prose.
+    // Situation: A streaming answer has `[1]` inside inline code and a code
+    //   block, where every word is wrapped in a stream span.
+    // Expectation: Both still read `[1]` verbatim rather than a citation chip.
+    const { container } = render(
+      <ResponseCard
+        title="q"
+        body={"Use `x[1]` here.\n\n```\ny = x[1]\n```"}
+        sources={SOURCES}
+        bare
+        streamMs={300}
+      />,
+    );
+    const code = Array.from(container.querySelectorAll("code"));
+
+    expect(code.map((c) => c.textContent)).toEqual(["x[1]", "y = x[1]\n"]);
+  });
+
+  it("drops the animation class once the reveal is over", () => {
+    // Test: A finished reveal does not replay in a copy of the DOM.
+    // Situation: The card keeps its stream spans but is no longer revealing.
+    // Expectation: The markdown-stream class is gone; the spans stay.
+    const { container } = render(
+      <ResponseCard title="q" body="One two." bare streamMs={300} revealing={false} />,
+    );
+
+    expect(container.querySelector(".markdown-stream")).toBeNull();
+    expect(container.querySelector(".stream-word")).not.toBeNull();
+  });
+});
