@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
-# ===========================================================================
-# CUSTOM DATA COMMONS - UNIFIED ONE-COMMAND DEPLOYER & UPDATE MANAGER
-# ===========================================================================
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -euo pipefail
 
 # Parse command line arguments
@@ -109,6 +120,14 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# The modes other than a deploy live in deploy/modes/. Sourcing them only
+# defines their functions.
+DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+for mode in preflight destroy config_sync bootstrap_secrets; do
+    # shellcheck source=/dev/null
+    . "${DEPLOY_ROOT}/deploy/modes/${mode}.sh"
+done
+
 # Early check for required CLI tools
 for cmd in gcloud terraform pnpm python3; do
     if ! command -v "$cmd" &>/dev/null; then
@@ -121,7 +140,6 @@ done
 #
 # One repository is one deployment, so the location is fixed. config/ holds what
 # this deployment overrides; defaults/ holds the baseline it inherits.
-INSTANCE_DIR="config"
 ENV_FILE="config/instance.env"
 if [ ! -f "$ENV_FILE" ]; then
     log_error "No configuration at '${ENV_FILE}'."
@@ -238,161 +256,11 @@ log_success "theme.json validates against its schema."
 # loaded -- INSTANCE does not exist before that, and under `set -u` referencing
 # it earlier aborts the script.
 APP_SERVICE="${INSTANCE}-app"
+STATE_BUCKET="${PROJECT_ID}-tfstate"
+CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
+DC_SECRET="${INSTANCE}-dc-api-key"
+GEMINI_SECRET="${INSTANCE}-gemini-api-key"
 
-
-# ===========================================================================
-# --preflight : check everything, create nothing
-# ===========================================================================
-#
-# The failure this prevents is the worst kind: a deploy that reports success and
-# produces a service nobody can open. Most commonly because the organization
-# forbids public access, or because IAP has no consent screen to sign people in
-# with. Both are invisible until someone tries the URL.
-run_preflight() {
-    local fail=0 warn=0
-    # Never let a gcloud call block on a prompt. An expired token otherwise
-    # makes preflight hang forever instead of telling the operator to re-auth,
-    # and a check that can hang is worse than no check at all. Every call below
-    # also reads from /dev/null for the same reason.
-    export CLOUDSDK_CORE_DISABLE_PROMPTS=1
-    STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
-    CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
-    echo -e "\n=== Preflight: ${INSTANCE} (${ACCESS_MODE} access) ===\n"
-
-    _ok()   { echo -e "  ${GREEN}ok${NC}    $1"; }
-    _bad()  { echo -e "  ${RED}FAIL${NC}  $1"; fail=1; }
-    _warn() { echo -e "  ${YELLOW}warn${NC}  $1"; warn=1; }
-
-    # --- tooling -----------------------------------------------------------
-    local node_major uv_py
-    if command -v uv &>/dev/null; then
-        _ok "$(uv --version)"
-        if uv_py=$(uv python find '>=3.14' 2>/dev/null); then
-            _ok "$("$uv_py" --version 2>&1) ($uv_py)"
-        else
-            _bad "python >=3.14 missing — run: uv python install 3.14"
-        fi
-    else
-        _bad "uv missing — install from https://docs.astral.sh/uv/"
-    fi
-    node_major=$(node -v 2>/dev/null | sed 's/^v//; s/\..*//' || echo 0)
-    if [ "${node_major:-0}" -eq 24 ]; then _ok "node ${node_major}"; else _bad "node ${node_major:-missing} — the UI build needs 24"; fi
-    if command -v pnpm &>/dev/null; then _ok "pnpm $(pnpm --version)"; else _bad "pnpm missing — run: corepack enable"; fi
-
-    # --- credentials -------------------------------------------------------
-    if gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null </dev/null | grep -q .; then
-        _ok "gcloud authenticated as $(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null </dev/null | head -1)"
-    else
-        _bad "not authenticated — run: gcloud auth login"
-    fi
-    # Terraform reads Application Default Credentials, which are a SEPARATE
-    # login from `gcloud auth login`. Missing ADC fails inside terraform, well
-    # after the deploy looks like it is working.
-    if [ -f "${CLOUDSDK_CONFIG:-$HOME/.config/gcloud}/application_default_credentials.json" ]; then
-        _ok "application-default credentials present (Terraform uses these)"
-    else
-        _bad "no ADC — run: gcloud auth application-default login"
-    fi
-
-    # --- project -----------------------------------------------------------
-    if gcloud projects describe "$PROJECT_ID" >/dev/null 2>&1 </dev/null; then
-        _ok "project ${PROJECT_ID} reachable"
-        if gcloud beta billing projects describe "$PROJECT_ID" \
-             --format='value(billingEnabled)' 2>/dev/null | grep -qi true; then
-            _ok "billing enabled"
-        else
-            _warn "could not confirm billing is enabled (needs the billing API, or permission to read it)"
-        fi
-    else
-        _bad "project ${PROJECT_ID} not found, or no permission to read it"
-    fi
-
-    # --- the two checks that actually matter -------------------------------
-    case "$ACCESS_MODE" in
-      public)
-        # Domain Restricted Sharing forbids allUsers in many organizations. The
-        # deploy still succeeds; the binding is simply refused, and the result
-        # is a URL that returns 403 to everyone.
-        local policy
-        policy=$(gcloud resource-manager org-policies describe \
-                   constraints/iam.allowedPolicyMemberDomains \
-                   --effective --project="$PROJECT_ID" 2>/dev/null || true)
-        if [ -n "$policy" ] && ! echo "$policy" | grep -qi "allowAll\|allValues: ALLOW"; then
-            _bad "this organization restricts who can be granted access, so ACCESS_MODE=public will be refused"
-            echo -e "        Everyone would get 403 on a deploy that otherwise reports success." >&2
-            echo -e "        Set ACCESS_MODE=\"iap\" in config/instance.env." >&2
-        else
-            _ok "public access is permitted by org policy"
-        fi
-        ;;
-      iap)
-        # IAP cannot sign anyone in without an OAuth consent screen, and
-        # creating one is a console action Terraform cannot perform.
-        if gcloud iap oauth-brands list --project="$PROJECT_ID" --format='value(name)' 2>/dev/null </dev/null | grep -q .; then
-            _ok "OAuth consent screen exists — IAP can sign users in"
-        else
-            _bad "no OAuth consent screen in this project; IAP has nothing to sign users in with"
-            echo -e "        Create it once, here:" >&2
-            echo -e "        https://console.cloud.google.com/apis/credentials/consent?project=${PROJECT_ID}" >&2
-        fi
-        ;;
-      private)
-        _ok "private — reach it with: gcloud run services proxy ${APP_SERVICE} --port=8080"
-        ;;
-    esac
-
-    # --- secrets -----------------------------------------------------------
-    local missing_secrets=""
-    for s in "${INSTANCE}-dc-api-key" "${INSTANCE}-gemini-api-key"; do
-        gcloud secrets describe "$s" --project="$PROJECT_ID" >/dev/null 2>&1 </dev/null || missing_secrets="${missing_secrets} ${s}"
-    done
-    if [ -z "$missing_secrets" ]; then
-        _ok "API keys present in Secret Manager"
-    else
-        _warn "secrets not created yet:${missing_secrets}"
-        echo -e "        DC_API_KEY=... GEMINI_API_KEY=... ./deploy.sh --bootstrap-secrets" >&2
-    fi
-
-    echo ""
-    if [ "$fail" -ne 0 ]; then
-        log_error "Preflight failed. Fix the items above before deploying."
-        return 1
-    fi
-    [ "$warn" -ne 0 ] && log_warn "Preflight passed with warnings." || log_success "Preflight passed. Run ./deploy.sh to deploy."
-    return 0
-}
-
-# ===========================================================================
-# --destroy : tear this deployment down
-# ===========================================================================
-#
-# Clients get the configuration wrong on a first attempt and need a way back to
-# nothing. Without this they delete resources by hand and leave state behind
-# that makes the next deploy fail in a confusing way.
-run_destroy() {
-    STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
-    CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
-    echo -e "\n${RED}This destroys every resource for '${INSTANCE}' in ${PROJECT_ID}.${NC}"
-    echo -e "The config bucket gs://${CONFIG_BUCKET} is left alone; delete it separately if you want it gone.\n"
-    printf "Type the deployment name (%s) to confirm: " "$INSTANCE"
-    local answer; read -r answer
-    [ "$answer" = "$INSTANCE" ] || { log_error "Not confirmed; nothing was destroyed."; return 1; }
-
-    cd deploy/terraform-custom-datacommons/modules
-    export TF_DATA_DIR=".terraform-${INSTANCE}"
-    terraform init \
-        -backend-config="bucket=${STATE_BUCKET}" \
-        -backend-config="prefix=custom-datacommons/${INSTANCE}" \
-        -reconfigure
-    # The same guard the apply path uses: never destroy resources belonging to
-    # another deployment.
-    if ! terraform show -json 2>/dev/null | python3 ../../../deploy/check-state-owner.py "$INSTANCE"; then
-        log_error "Refusing to destroy: the loaded state describes a different deployment."
-        return 1
-    fi
-    terraform destroy -var-file="../${INSTANCE}.tfvars"
-    log_success "Destroyed. The config bucket and Secret Manager entries remain."
-}
 
 if [ "$PREFLIGHT" = true ]; then
     run_preflight
@@ -407,38 +275,9 @@ fi
 log_info "Configuring active gcloud project to '$PROJECT_ID'..."
 gcloud config set project "$PROJECT_ID" --quiet
 
-# Sync config/ to the bucket without building images, running Terraform,
-# updating secrets, or ingesting data.
 if [ "$CONFIG_ONLY" = true ]; then
-    CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
-    if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
-        log_error "Config bucket 'gs://${CONFIG_BUCKET}' does not exist. Run a full deploy first."
-        exit 1
-    fi
-
-    log_info "[Config-Only] Synchronizing config/ assets to GCS config bucket..."
-    gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env"
-    log_success "Configuration assets synced."
-
-    # The agent reads its configuration once at startup, so a new revision is
-    # required for uploaded config changes to take effect.
-    if [ "$RESTART" = true ]; then
-        log_info "[Config-Only] Forcing a new revision so the agent reloads config..."
-        if gcloud run services update "${APP_SERVICE}" \
-            --region="$REGION" --project="$PROJECT_ID" \
-            --update-env-vars "FORCE_RESTART=$(date +%s)"; then
-            log_success "[Config-Only] Done. New revision rolling out with the new config."
-        else
-            log_error "Restart failed. The bucket has the new config; the service does not."
-            exit 1
-        fi
-    else
-        log_warn "[Config-Only] Uploaded to the bucket, but NOT live on the service."
-        echo "  The agent reads config once at startup and serves it from memory," >&2
-        echo "  so a running revision keeps the old values until it is replaced:" >&2
-        echo "    ./deploy.sh --config-only --restart" >&2
-    fi
-    exit 0
+    run_config_sync "$RESTART"
+    exit $?
 fi
 
 # 2. Enable Required APIs (Skipped in --code-only mode)
@@ -460,7 +299,6 @@ else
 fi
 
 # 3. Bootstrap State Bucket & Artifact Registry (Skipped in --code-only mode)
-STATE_BUCKET="${PROJECT_ID}-tfstate"
 AR_REPO="custom-dc"
 if [ "$CODE_ONLY" = false ]; then
     if ! gcloud storage buckets describe "gs://${STATE_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
@@ -489,119 +327,12 @@ fi
 
 # 4. Secret Manager Setup (Skipped in --code-only mode)
 if [ "$CODE_ONLY" = false ]; then
-    create_secret_if_missing() {
-        local secret_id="$1"
-        if ! gcloud secrets describe "$secret_id" --project="$PROJECT_ID" &>/dev/null; then
-            log_info "Creating secret '$secret_id' in Secret Manager..."
-            gcloud secrets create "$secret_id" --replication-policy="automatic" --project="$PROJECT_ID"
-        fi
-    }
-
-    add_secret_version_if_changed() {
-        local secret_id="$1"
-        local secret_val="$2"
-        if gcloud secrets versions describe latest --secret="$secret_id" --project="$PROJECT_ID" &>/dev/null; then
-            local current_val
-            # Fetch current value, suppressing errors if inaccessible
-            current_val=$(gcloud secrets versions access latest --secret="$secret_id" --project="$PROJECT_ID" 2>/dev/null || echo "")
-            if [ "$current_val" = "$secret_val" ]; then
-                log_info "Secret '$secret_id' value matches latest version. Skipping upload."
-                return
-            fi
-        fi
-        log_info "Uploading new version for secret '$secret_id'..."
-        echo -n "$secret_val" | gcloud secrets versions add "$secret_id" --data-file=- --project="$PROJECT_ID" >/dev/null
-    }
-
-    DC_SECRET="${INSTANCE}-dc-api-key"
-    GEMINI_SECRET="${INSTANCE}-gemini-api-key"
-
     # Values come from THIS PROCESS's environment, never from a file on disk,
     # and only during --bootstrap-secrets. A normal deploy verifies the secrets
     # exist and never handles a plaintext key at all.
     if [ "$BOOTSTRAP_SECRETS" = true ]; then
-        secret_pairs=("DC_SECRET:DC_API_KEY" "GEMINI_SECRET:GEMINI_API_KEY")
-        # MAPS_API_KEY was read only by the removed cdc data plane. Say so
-        # rather than drop it in silence and still report "Secrets written".
-        if [ -n "${MAPS_API_KEY:-}" ]; then
-            log_warn "MAPS_API_KEY was supplied, but no backend reads it. NOTHING was stored for it."
-        fi
-        for pair in "${secret_pairs[@]}"; do
-            secret_var="${pair%%:*}"; value_var="${pair##*:}"
-            secret_id="${!secret_var}"; value="${!value_var:-}"
-            create_secret_if_missing "$secret_id"
-            if [ -z "$value" ]; then
-                log_warn "${value_var} not set in the environment; leaving '${secret_id}' as-is."
-                continue
-            fi
-
-            # Trim surrounding whitespace. A key pasted from a terminal or an
-            # email routinely carries a leading space or a trailing newline, and
-            # both are invisible in the value and fatal at the API.
-            value="$(printf '%s' "$value" | tr -d '[:space:]')"
-
-            # Validate before storing. Getting this wrong is expensive to find:
-            # the deploy succeeds, the service starts, and the only symptom is
-            # every chat turn failing with "The data service is unavailable"
-            # while /agent/health reports zero tools, which looks like a
-            # broken deployment rather than a mistyped key, and sends you into
-            # the logs for an hour.
-            if [ "$value_var" = "DC_API_KEY" ]; then
-                dc_probe="${PUBLIC_DC_URL:-https://api.datacommons.org}"
-                log_info "Checking DC_API_KEY against ${dc_probe} ..."
-                dc_code=$(curl -s --max-time 30 -o /dev/null -w "%{http_code}" \
-                    -X POST "${dc_probe}/mcp" \
-                    -H "Content-Type: application/json" \
-                    -H "Accept: application/json, text/event-stream" \
-                    -H "X-API-Key: ${value}" \
-                    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"deploy","version":"1"}}}' \
-                    || echo "000")
-                if [ "$dc_code" = "401" ] || [ "$dc_code" = "403" ]; then
-                    log_error "DC_API_KEY was rejected by ${dc_probe} (HTTP ${dc_code}). Nothing was written."
-                    case "$value" in
-                        *%) echo "  The value ends in '%'. zsh prints a reverse-video % at the end of" >&2
-                            echo "  output with no trailing newline, and copying from the terminal picks" >&2
-                            echo "  it up as a real character. Re-copy the key without it." >&2 ;;
-                        *)  echo "  Check the key at https://apikeys.datacommons.org" >&2 ;;
-                    esac
-                    exit 1
-                elif [ "$dc_code" = "000" ]; then
-                    log_warn "Could not reach ${dc_probe} to check the key; storing it unverified."
-                else
-                    log_success "DC_API_KEY accepted (HTTP ${dc_code})."
-                fi
-            fi
-            if [ "$value_var" = "GEMINI_API_KEY" ]; then
-                # Store the bare API key string in Secret Manager and verify it
-                # against the Gemini API before writing a new secret version so
-                # invalid credentials fail during bootstrap rather than at
-                # runtime.
-                case "$value" in
-                    \[*|\"*)
-                        log_error "GEMINI_API_KEY looks like a JSON array or quoted string. Supply the bare API key string. Nothing was written."
-                        exit 1 ;;
-                esac
-                gem_base="https://generativelanguage.googleapis.com/v1beta/models"
-                log_info "Checking GEMINI_API_KEY against the Gemini API ..."
-                gem_code=$(curl -g -s --max-time 25 -o /dev/null -w "%{http_code}" \
-                    "${gem_base}?key=${value}&pageSize=1" || echo "000")
-                case "$gem_code" in
-                    200) log_success "GEMINI_API_KEY accepted." ;;
-                    000) log_warn "Could not reach the Gemini API to check the key; storing it unverified." ;;
-                    *)   log_error "GEMINI_API_KEY was rejected by the Gemini API (HTTP ${gem_code}). Nothing was written."
-                         echo "  Check the key at https://aistudio.google.com" >&2
-                         case "$value" in
-                             *%) echo "  The value ends in '%' -- that is zsh's end-of-line marker, copied by mistake." >&2 ;;
-                         esac
-                         exit 1 ;;
-                esac
-            fi
-            add_secret_version_if_changed "$secret_id" "$value"
-        done
-        log_success "Secrets written to Secret Manager for instance '${INSTANCE}'."
-        echo
-        log_info "Nothing was written to disk. Deploy with: ./deploy.sh"
-        exit 0
+        run_bootstrap_secrets
+        exit $?
     fi
 
     # Normal deploy: the keys must already be in Secret Manager.
@@ -676,7 +407,6 @@ log_success "Resolved Container Images:"
 echo "  Agent:    $AGENT_IMAGE"
 
 # 7. Create & Seed Configuration Bucket (Skipped in --code-only mode)
-CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
 if [ "$CODE_ONLY" = false ]; then
     if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
         log_info "Creating GCS configuration bucket 'gs://${CONFIG_BUCKET}'..."
@@ -846,14 +576,14 @@ if [ "$CODE_ONLY" = false ]; then
     # dance is worth retiring once smoke.sh can present a token.
     if [ "$ACCESS_MODE" = "public" ]; then
         log_info "Running post-deployment smoke tests (public access; no IAP toggle needed)..."
-        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
     else
         log_info "Temporarily disabling Identity-Aware Proxy (IAP) for validation..."
         gcloud beta run services update "${APP_SERVICE}" \
             --no-iap --region="$REGION" --project="$PROJECT_ID"
 
         log_info "Running automated post-deployment smoke tests..."
-        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash docs/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
 
         log_info "Re-enabling Identity-Aware Proxy (IAP) on Cloud Run service..."
         gcloud beta run services update "${APP_SERVICE}" \
