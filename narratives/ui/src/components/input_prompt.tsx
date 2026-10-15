@@ -98,8 +98,8 @@ export function PromptInput({
           rows={1}
           // Caps at four lines (max-h-24); the autosize hook turns scrolling
           // on only past that cap.
-          className={`bg-transparent outline-none resize-none max-h-24 overflow-y-hidden text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out ${
-            isScrolling ? 'pr-4 mr-4' : 'flex-1'
+          className={`bg-transparent outline-none resize-none max-h-24 overflow-y-hidden thin-scrollbar text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out ${
+            isScrolling ? 'pr-4 mr-4.5' : 'flex-1'
           }`}
           onKeyDown={(e) => {
             // Shift+Enter inserts a newline; Enter mid-IME-composition commits
