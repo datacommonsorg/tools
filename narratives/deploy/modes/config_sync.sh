@@ -14,14 +14,19 @@
 # limitations under the License.
 #
 # Sourced by deploy.sh, after config/instance.env is loaded.
+#
+# Globals:
+#   PROJECT_ID, REGION, CONFIG_BUCKET, CONFIG_SRC, APP_SERVICE
+# Arguments:
+#   $1: "true" to force a new revision after the sync.
 
 # Sync config/ to the bucket without building images, running Terraform,
 # updating secrets, or ingesting data.
 run_config_sync() {
-    CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
+    local restart="${1:-false}"
     if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
         log_error "Config bucket 'gs://${CONFIG_BUCKET}' does not exist. Run a full deploy first."
-        exit 1
+        return 1
     fi
 
     log_info "[Config-Only] Synchronizing config/ assets to GCS config bucket..."
@@ -30,7 +35,7 @@ run_config_sync() {
 
     # The agent reads its configuration once at startup, so a new revision is
     # required for uploaded config changes to take effect.
-    if [ "$RESTART" = true ]; then
+    if [ "$restart" = true ]; then
         log_info "[Config-Only] Forcing a new revision so the agent reloads config..."
         if gcloud run services update "${APP_SERVICE}" \
             --region="$REGION" --project="$PROJECT_ID" \
@@ -38,7 +43,7 @@ run_config_sync() {
             log_success "[Config-Only] Done. New revision rolling out with the new config."
         else
             log_error "Restart failed. The bucket has the new config; the service does not."
-            exit 1
+            return 1
         fi
     else
         log_warn "[Config-Only] Uploaded to the bucket, but NOT live on the service."
@@ -46,5 +51,5 @@ run_config_sync() {
         echo "  so a running revision keeps the old values until it is replaced:" >&2
         echo "    ./deploy.sh --config-only --restart" >&2
     fi
-    exit 0
+    return 0
 }

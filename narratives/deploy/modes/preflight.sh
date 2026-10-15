@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 # Sourced by deploy.sh, after config/instance.env is loaded.
+#
+# Globals:
+#   PROJECT_ID, INSTANCE, ACCESS_MODE, APP_SERVICE, DC_SECRET, GEMINI_SECRET
 
 # ===========================================================================
 # --preflight : check everything, create nothing
@@ -30,8 +33,6 @@ run_preflight() {
     # and a check that can hang is worse than no check at all. Every call below
     # also reads from /dev/null for the same reason.
     export CLOUDSDK_CORE_DISABLE_PROMPTS=1
-    STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
-    CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
     echo -e "\n=== Preflight: ${INSTANCE} (${ACCESS_MODE} access) ===\n"
 
     _ok()   { echo -e "  ${GREEN}ok${NC}    $1"; }
@@ -118,7 +119,7 @@ run_preflight() {
 
     # --- secrets -----------------------------------------------------------
     local missing_secrets=""
-    for s in "${INSTANCE}-dc-api-key" "${INSTANCE}-gemini-api-key"; do
+    for s in "$DC_SECRET" "$GEMINI_SECRET"; do
         gcloud secrets describe "$s" --project="$PROJECT_ID" >/dev/null 2>&1 </dev/null || missing_secrets="${missing_secrets} ${s}"
     done
     if [ -z "$missing_secrets" ]; then

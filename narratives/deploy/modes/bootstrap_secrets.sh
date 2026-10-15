@@ -14,6 +14,10 @@
 # limitations under the License.
 #
 # Sourced by deploy.sh, after config/instance.env is loaded.
+#
+# Globals:
+#   PROJECT_ID, INSTANCE, DC_SECRET, GEMINI_SECRET, PUBLIC_DC_URL, and the
+#   keys DC_API_KEY and GEMINI_API_KEY from the environment.
 
 create_secret_if_missing() {
     local secret_id="$1"
@@ -40,15 +44,16 @@ add_secret_version_if_changed() {
 }
 
 run_bootstrap_secrets() {
-    secret_pairs=("DC_SECRET:DC_API_KEY" "GEMINI_SECRET:GEMINI_API_KEY")
+    local pair secret_id value_var value dc_probe dc_code gem_base gem_code
+    local secret_pairs=("${DC_SECRET}:DC_API_KEY" "${GEMINI_SECRET}:GEMINI_API_KEY")
     # MAPS_API_KEY was read only by the removed cdc data plane. Say so
     # rather than drop it in silence and still report "Secrets written".
     if [ -n "${MAPS_API_KEY:-}" ]; then
         log_warn "MAPS_API_KEY was supplied, but no backend reads it. NOTHING was stored for it."
     fi
     for pair in "${secret_pairs[@]}"; do
-        secret_var="${pair%%:*}"; value_var="${pair##*:}"
-        secret_id="${!secret_var}"; value="${!value_var:-}"
+        secret_id="${pair%%:*}"; value_var="${pair##*:}"
+        value="${!value_var:-}"
         create_secret_if_missing "$secret_id"
         if [ -z "$value" ]; then
             log_warn "${value_var} not set in the environment; leaving '${secret_id}' as-is."
@@ -84,7 +89,7 @@ run_bootstrap_secrets() {
                         echo "  it up as a real character. Re-copy the key without it." >&2 ;;
                     *)  echo "  Check the key at https://apikeys.datacommons.org" >&2 ;;
                 esac
-                exit 1
+                return 1
             elif [ "$dc_code" = "000" ]; then
                 log_warn "Could not reach ${dc_probe} to check the key; storing it unverified."
             else
@@ -99,7 +104,7 @@ run_bootstrap_secrets() {
             case "$value" in
                 \[*|\"*)
                     log_error "GEMINI_API_KEY looks like a JSON array or quoted string. Supply the bare API key string. Nothing was written."
-                    exit 1 ;;
+                    return 1 ;;
             esac
             gem_base="https://generativelanguage.googleapis.com/v1beta/models"
             log_info "Checking GEMINI_API_KEY against the Gemini API ..."
@@ -113,7 +118,7 @@ run_bootstrap_secrets() {
                      case "$value" in
                          *%) echo "  The value ends in '%' -- that is zsh's end-of-line marker, copied by mistake." >&2 ;;
                      esac
-                     exit 1 ;;
+                     return 1 ;;
             esac
         fi
         add_secret_version_if_changed "$secret_id" "$value"
@@ -121,5 +126,5 @@ run_bootstrap_secrets() {
     log_success "Secrets written to Secret Manager for instance '${INSTANCE}'."
     echo
     log_info "Nothing was written to disk. Deploy with: ./deploy.sh"
-    exit 0
+    return 0
 }

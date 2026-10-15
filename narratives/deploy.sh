@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
-# ===========================================================================
-# CUSTOM DATA COMMONS - UNIFIED ONE-COMMAND DEPLOYER & UPDATE MANAGER
-# ===========================================================================
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -euo pipefail
 
 # Parse command line arguments
@@ -112,7 +123,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # The modes other than a deploy live in deploy/modes/. Sourcing them only
 # defines their functions.
 DEPLOY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-for mode in preflight destroy config-sync bootstrap-secrets; do
+for mode in preflight destroy config_sync bootstrap_secrets; do
     # shellcheck source=/dev/null
     . "${DEPLOY_ROOT}/deploy/modes/${mode}.sh"
 done
@@ -129,7 +140,6 @@ done
 #
 # One repository is one deployment, so the location is fixed. config/ holds what
 # this deployment overrides; defaults/ holds the baseline it inherits.
-INSTANCE_DIR="config"
 ENV_FILE="config/instance.env"
 if [ ! -f "$ENV_FILE" ]; then
     log_error "No configuration at '${ENV_FILE}'."
@@ -246,6 +256,10 @@ log_success "theme.json validates against its schema."
 # loaded -- INSTANCE does not exist before that, and under `set -u` referencing
 # it earlier aborts the script.
 APP_SERVICE="${INSTANCE}-app"
+STATE_BUCKET="${PROJECT_ID}-tfstate"
+CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
+DC_SECRET="${INSTANCE}-dc-api-key"
+GEMINI_SECRET="${INSTANCE}-gemini-api-key"
 
 
 if [ "$PREFLIGHT" = true ]; then
@@ -262,7 +276,8 @@ log_info "Configuring active gcloud project to '$PROJECT_ID'..."
 gcloud config set project "$PROJECT_ID" --quiet
 
 if [ "$CONFIG_ONLY" = true ]; then
-    run_config_sync
+    run_config_sync "$RESTART"
+    exit $?
 fi
 
 # 2. Enable Required APIs (Skipped in --code-only mode)
@@ -284,7 +299,6 @@ else
 fi
 
 # 3. Bootstrap State Bucket & Artifact Registry (Skipped in --code-only mode)
-STATE_BUCKET="${PROJECT_ID}-tfstate"
 AR_REPO="custom-dc"
 if [ "$CODE_ONLY" = false ]; then
     if ! gcloud storage buckets describe "gs://${STATE_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
@@ -313,14 +327,12 @@ fi
 
 # 4. Secret Manager Setup (Skipped in --code-only mode)
 if [ "$CODE_ONLY" = false ]; then
-    DC_SECRET="${INSTANCE}-dc-api-key"
-    GEMINI_SECRET="${INSTANCE}-gemini-api-key"
-
     # Values come from THIS PROCESS's environment, never from a file on disk,
     # and only during --bootstrap-secrets. A normal deploy verifies the secrets
     # exist and never handles a plaintext key at all.
     if [ "$BOOTSTRAP_SECRETS" = true ]; then
         run_bootstrap_secrets
+        exit $?
     fi
 
     # Normal deploy: the keys must already be in Secret Manager.
@@ -395,7 +407,6 @@ log_success "Resolved Container Images:"
 echo "  Agent:    $AGENT_IMAGE"
 
 # 7. Create & Seed Configuration Bucket (Skipped in --code-only mode)
-CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
 if [ "$CODE_ONLY" = false ]; then
     if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
         log_info "Creating GCS configuration bucket 'gs://${CONFIG_BUCKET}'..."

@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 # Sourced by deploy.sh, after config/instance.env is loaded.
+#
+# Globals:
+#   PROJECT_ID, INSTANCE, STATE_BUCKET, CONFIG_BUCKET
 
 # ===========================================================================
 # --destroy : tear this deployment down
@@ -23,8 +26,6 @@
 # nothing. Without this they delete resources by hand and leave state behind
 # that makes the next deploy fail in a confusing way.
 run_destroy() {
-    STATE_BUCKET="${STATE_BUCKET:-${PROJECT_ID}-tfstate}"
-    CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
     echo -e "\n${RED}This destroys every resource for '${INSTANCE}' in ${PROJECT_ID}.${NC}"
     echo -e "The config bucket gs://${CONFIG_BUCKET} is left alone; delete it separately if you want it gone.\n"
     printf "Type the deployment name (%s) to confirm: " "$INSTANCE"
