@@ -44,7 +44,7 @@ export function DataAgent() {
   // Pulled from the Context (ChatSessionProvider in app.tsx) so turns
   // survive when the user navigates to another SPA tab and back, and across
   // browser refreshes (persisted to localStorage).
-  const { turns, isStreaming, error, send, stop } = useChatSession();
+  const { turns, isStreaming, error, send, stop, currentSessionId } = useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
@@ -56,6 +56,14 @@ export function DataAgent() {
   // Turns already here when the surface mounts (a restored session, or coming
   // back from another tab) are not news, so they do not animate in.
   const restoredTurns = useRef(turns.length);
+  // The surface stays mounted across session switches and "New chat", so a
+  // different session counts as a fresh mount: its turns are not news either.
+  const prevSessionId = useRef(currentSessionId);
+  if (prevSessionId.current !== currentSessionId) {
+    prevSessionId.current = currentSessionId;
+    prevTurnsLength.current = turns.length;
+    restoredTurns.current = turns.length;
+  }
 
   // `override` lets a caller (e.g. a suggestion chip in InitialView) submit
   // a message directly without first round-tripping through the `query`
