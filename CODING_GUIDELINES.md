@@ -53,11 +53,11 @@ Contribution process, PR expectations, and review policy live in
   logic into the same PR.
 * **Do not compound structural debt to keep a diff small.** Match the existing
   style and patterns of the file you are editing — unless extending the local
-  pattern worsens a design smell (such as adding a third ad-hoc return type to
-  a function, threading more untyped `dict[str, Any]` payloads across callers,
-  or bloating an already overloaded module). When a feature requires reshaping
-  an interface or module boundary first, extract and land that
-  behavior-preserving refactor in its own PR before building the feature on top.
+  pattern worsens a design smell (such as widening an ad-hoc return union,
+  threading untyped maps across callers, or adding another responsibility to an
+  overloaded module). When a feature requires reshaping an interface or module
+  boundary first, extract and land that behavior-preserving refactor in its own
+  PR before building the feature on top.
 * Clean up orphans **you** created (unused imports, variables, functions). Leave
   pre-existing dead code alone — mention it instead.
 * Remove debugging logs, commented-out code, and scratch files before
@@ -157,43 +157,40 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
 
 * **Typed domain objects at boundaries (no primitive or dict obsession).** Parse
   external JSON, configuration files, and third-party SDK responses into typed
-  domain objects (`@dataclass(frozen=True)`, Pydantic `BaseModel`, or TypeScript
+  domain objects (dataclasses, Pydantic models, structs, or TypeScript
   interfaces) at the boundary where they enter the application. Do not pass raw
-  `dict[str, Any]` or `Record<string, unknown>` across internal module
-  boundaries, and do not scatter chained `.get("a", {}).get("b", default)`
-  lookups across callers.
+  untyped maps (`dict[str, Any]`, `Record<string, unknown>`) across internal
+  module boundaries, and do not scatter nested key lookups with fallback
+  defaults across callers.
 * **Uniform error and outcome contracts.** Each client or module interface must
   use a single, consistent mechanism for signaling failures. Do not mix raised
-  exceptions, error dictionaries (`{"error": ...}`), and sentinel return objects
-  across the same API. Raise typed domain exceptions for failure and abort paths
-  (see §8) and return typed domain objects for expected outcomes.
+  exceptions, error dictionaries, and sentinel return values across the same
+  API. Raise typed domain exceptions for failure and abort paths (see §8) and
+  return typed domain objects for expected outcomes.
 * **Cohesive module interfaces and factories.** Keep module interfaces narrow
-  and explicit. When a client or subsystem grows to manage authentication,
-  transport setup, request construction, and response/stream parsing,
-  encapsulate it behind a clear interface or factory rather than exposing a
-  large file of loosely related functions and module-level state.
-* **Typed capability presets over stringly-typed parameters.** When model names,
-  reasoning/thinking levels, timeouts, or execution options are coupled to
-  specific workloads or model capabilities, define them as typed preset configs
-  or enums in code rather than passing raw string literals (`"minimal"`,
-  `"low"`) across callers. Centralizing presets makes model upgrades and
-  capability audits a single-file change.
+  and explicit. When a client or subsystem grows to manage multiple concerns
+  (such as authentication, transport setup, request construction, and response
+  parsing), encapsulate it behind a cohesive class, interface, or factory rather
+  than exposing a large file of loosely related functions and module-level
+  state.
+* **Typed configuration and capability presets.** When configuration parameters,
+  timeouts, or execution options are coupled to specific profiles or backend
+  capabilities, define them as typed preset objects or enums in code rather than
+  passing raw strings or ad-hoc option bags across callers. Centralizing presets
+  keeps upgrades and capability audits in one place.
 * **Discriminated unions for state machines.** Model mutually exclusive states
-  (for example, turn or request lifecycle states: `streaming`, `complete`,
-  `refused`, `error`, `stopped`) as a discriminated union keyed by a status or
-  kind field rather than independent optional fields (`error?: string`,
-  `refusalMessage?: string`, `stopped?: boolean`) that permit invalid state
-  combinations and force compound boolean guards in callers.
+  (such as `idle`, `loading`, `success`, and `error`) as a discriminated union
+  keyed by a discriminant field rather than independent optional fields (`data?`,
+  `error?`, `isCanceled?`) that permit invalid state combinations and force
+  compound boolean guards in callers.
 * **Table-driven / strategy dispatch over parallel conditionals.** When behavior
-  varies across a fixed taxonomy (such as query patterns, chart types, or phase
-  handlers), co-locate each variant's policy in a typed registry or strategy
-  table rather than scattering parallel `if/elif` or `switch` blocks across
-  multiple modules.
-* **Centralize user-visible copy and prompt templates.** Keep user-facing
-  status, refusal, and error strings in a dedicated messages module rather than
-  inline string literals in workflow code. Keep LLM prompt prose in prompt
-  files or templates rather than concatenating multi-line prompt paragraphs
-  inside application logic.
+  varies across a fixed set of variants, co-locate each variant's policy in a
+  typed registry or strategy table rather than scattering parallel `if/elif` or
+  `switch` blocks across multiple modules.
+* **Separate presentation copy and templates from control flow.** Keep
+  user-facing strings, status messages, and long-form templates in dedicated
+  resource or template modules rather than embedding or concatenating multi-line
+  prose inside business and control-flow logic.
 
 ---
 

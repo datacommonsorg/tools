@@ -98,20 +98,18 @@ Three judgment calls the documents cannot make for you:
 * **Precedent vs. rule (and when to prescribe a preparatory refactor PR).** A
   change that follows a bad local precedent is not automatically a blocker when
   the surface area of fixing it would blow up the feature PR. However, if
-  extending the local precedent compounds structural debt (e.g. adding a third
-  ad-hoc return type instead of raising typed exceptions, threading more raw
-  `dict[str, Any]` payloads across modules, or adding another responsibility to
-  an overloaded file), call it out explicitly (`[SUGGESTION]` or `[FOLLOWUP]`):
-  recommend extracting a **standalone, behavior-preserving refactor PR** before
-  (or immediately after) the feature change per `CODING_GUIDELINES.md` §1.2 and
-  §3.2.
+  extending the local precedent compounds structural debt (e.g. widening an
+  ad-hoc return union instead of raising typed exceptions, threading untyped
+  maps across modules, or adding another responsibility to an overloaded file),
+  call it out explicitly (`[SUGGESTION]` or `[FOLLOWUP]`): recommend extracting
+  a **standalone, behavior-preserving refactor PR** before (or immediately
+  after) the feature change per `CODING_GUIDELINES.md` §1.2 and §3.2.
 * **Enforced vs. advisory.** If the linter already enforces a rule, do not
   spend review comments on it — spend them on what tooling cannot catch,
   especially **software design and module boundaries**
-  (`CODING_GUIDELINES.md` §3.2): untyped dictionary boundaries, mixed
-  error-signaling mechanisms (returning `{"error": ...}` dicts vs. sentinel
-  objects vs. raising exceptions), stringly-typed model/reasoning presets,
-  scattered user-visible strings, and optional-flag state bags where a
+  (`CODING_GUIDELINES.md` §3.2): untyped maps crossing module boundaries, mixed
+  error-signaling mechanisms, stringly-typed configuration presets, scattered
+  user-facing copy or templates, and optional-flag state bags where a
   discriminated union belongs.
 * **Rule vs. gap.** If the diff does something questionable that no document
   covers, say so as a judgment, not as a violation, and propose the rule if it
@@ -200,10 +198,10 @@ Prefix every comment:
   architectural violations, unvetted heavyweight dependencies, misplaced files.
 * `[WARNING]` — oversized or multi-concern PR, performance risk under
   realistic load, or design/maintainability issues that compound structural debt
-  (e.g. mixed error-signaling contracts or untyped dicts crossing module
+  (e.g. inconsistent error-signaling contracts or untyped maps crossing module
   boundaries).
 * `[SUGGESTION]` — readability, software design improvements (cohesive
-  interfaces, typed presets, discriminated unions, centralized messages),
+  interfaces, typed presets, discriminated unions, separated copy/templates),
   naming, constant extraction, simplification, diff pruning. Non-blocking.
 * `[FOLLOWUP]` — pre-existing debt the PR sits on top of; acceptable now,
   should be scheduled as a separate behavior-preserving refactor PR.

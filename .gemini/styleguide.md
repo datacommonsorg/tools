@@ -26,10 +26,10 @@ Prefix every review comment with an appropriate severity tag:
   misplaced files.
 * `[WARNING]` — Oversized or multi-concern PR, performance risk under
   realistic load, or design/maintainability issues that compound structural debt
-  (e.g. mixed error-signaling contracts or untyped dicts crossing module
+  (e.g. inconsistent error-signaling contracts or untyped maps crossing module
   boundaries).
 * `[SUGGESTION]` — Readability, software design improvements (cohesive
-  interfaces, typed presets, discriminated unions, centralized messages),
+  interfaces, typed presets, discriminated unions, separated copy/templates),
   naming, constant extraction, simplification, diff pruning. Non-blocking.
 * `[FOLLOWUP]` — Pre-existing debt the PR sits on top of; acceptable now,
   should be scheduled as a separate behavior-preserving refactor PR.
@@ -51,36 +51,32 @@ Prefix every review comment with an appropriate severity tag:
 * **Surgical diffs and preparatory refactoring**: Every changed line must trace
   directly to the PR's stated goal. Flag unrelated reformatting, drive-by
   refactoring, or touched adjacent code. Conversely, when a feature change
-  compounds structural debt by extending a local anti-pattern (e.g. adding a
-  third ad-hoc return type or bloating an overloaded module), recommend
+  compounds structural debt by extending a local anti-pattern, recommend
   extracting a standalone, behavior-preserving refactor PR first before landing
   the feature change.
 * **No magic values**: Extract raw numbers, thresholds, and durations into
   named constants at module scope.
 * **Software design and module boundaries**:
   * **Typed domain objects at boundaries**: Parse external JSON, config files,
-    and SDK responses into typed domain objects (`@dataclass(frozen=True)`,
-    Pydantic `BaseModel`, or TypeScript `interface`) at the boundary. Flag raw
-    `dict[str, Any]` or `Record<string, unknown>` passed across internal module
-    boundaries or repeated `.get("a", {}).get("b")` chains.
+    and SDK responses into typed domain objects at the boundary. Flag raw
+    untyped maps (`dict[str, Any]`, `Record<string, unknown>`) passed across
+    internal module boundaries or repeated nested key lookups.
   * **Uniform error contracts**: Do not mix raised exceptions, error
-    dictionaries (`{"error": ...}`), and sentinel return objects across the same
-    interface. Raise typed domain exceptions for failure/abort paths.
+    dictionaries, and sentinel return values across the same interface. Raise
+    typed domain exceptions for failure and abort paths.
   * **Cohesive interfaces and factories**: Flag modules that accumulate
-    unrelated responsibilities (transport, normalization, business logic,
-    prompt prose). Recommend a clean interface or factory when a client module
-    grows large.
-  * **Typed capability presets**: Group coupled model names, reasoning/thinking
-    levels, and timeouts into typed preset configs or enums in code rather than
-    passing raw string literals across callers.
+    unrelated responsibilities. Recommend encapsulating growing clients or
+    subsystems behind a cohesive interface or factory.
+  * **Typed configuration and presets**: Group coupled configuration options,
+    capabilities, and timeouts into typed preset objects or enums in code rather
+    than passing raw string literals across callers.
   * **Discriminated unions for state machines**: Model mutually exclusive states
-    (e.g. `streaming`, `complete`, `refused`, `error`, `stopped`) as a
-    discriminated union rather than independent optional fields (`error?`,
-    `refusalMessage?`, `stopped?`).
-  * **Centralized user-visible copy and prompts**: Keep user-facing status,
-    refusal, and error strings in a dedicated messages module, and keep LLM
-    prompt prose in prompt files/templates rather than concatenating multi-line
-    prompt strings inside workflow code.
+    as a discriminated union rather than independent optional flags that allow
+    invalid state combinations.
+  * **Table-driven dispatch and separated copy**: Co-locate variant-specific
+    policy in a typed registry/strategy table rather than parallel conditionals
+    across files, and keep user-facing copy and templates separate from control
+    flow.
 * **Naming**:
   * Self-documenting over terse (`source` not `s`, `index` not `i`).
   * Verb-led function names (`getComponentAttributes`, `resolvePlaceDcid`).
