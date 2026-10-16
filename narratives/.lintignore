@@ -14,6 +14,5 @@
 
 # Existing shell scripts and Dockerfiles pending lint cleanup.
 # Remove entries as files are refactored so ShellCheck and Hadolint enforce them.
-deploy.sh
 deploy/smoke.sh
 agent/Dockerfile
