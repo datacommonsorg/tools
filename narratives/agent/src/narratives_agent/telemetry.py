@@ -66,6 +66,8 @@ from opentelemetry.util.genai.environment_variables import (
     OTEL_INSTRUMENTATION_GENAI_EMIT_EVENT,
 )
 
+from narratives_agent.gemini.schemas import QueryPattern
+
 SERVICE_NAME = "narratives-agent"
 
 type TerminalState = Literal["complete", "error", "refused", "canceled"]
@@ -310,6 +312,9 @@ class TurnTelemetry:
     tool_calls: Counter[str] = field(default_factory=Counter)
     mcp_iterations: int = 0
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
+    # The analytical pattern assigned during the classify phase, or `None` when
+    # the turn was refused or ended before classification.
+    pattern: QueryPattern | None = None
     _start: float = field(default_factory=time.monotonic)
     _span: trace.Span = field(
         default_factory=lambda: _tracer.start_span("narratives.turn")
@@ -340,12 +345,14 @@ class TurnTelemetry:
         """Ends the turn span and emits the turn summary.
 
         Only the first call has an effect, so the terminal state recorded is
-        the one reached first.
+        the one reached first. The summary includes `pattern` only when the
+        classify phase assigned one and the turn was not refused.
 
         Args:
             state: The terminal state the turn reached.
             error_type: A short machine-readable reason for `error` and
-                `refused` states. It must not contain user content.
+                `refused` states, such as `mcp_timeout` or `off_domain`. It
+                must not contain user content.
         """
         if self._finished:
             return
@@ -365,6 +372,8 @@ class TurnTelemetry:
             "tool_calls": dict(self.tool_calls),
             "tokens": asdict(self.tokens),
         }
+        if self.pattern is not None and state != "refused":
+            record["pattern"] = self.pattern
         self._span.set_attributes(
             {
                 "narratives.turn_id": self.turn_id,
@@ -378,6 +387,8 @@ class TurnTelemetry:
                 },
             }
         )
+        if self.pattern is not None and state != "refused":
+            self._span.set_attribute("narratives.pattern", self.pattern)
         if error_type:
             self._span.set_attribute("error.type", error_type)
         # `format_span` derives severity from the span status, so an error

@@ -22,6 +22,7 @@ from typing import Any
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
+    GeminiBlocked,
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import (
@@ -101,6 +102,9 @@ Set should_render to false if no meaningful data for visualization."""
         token_usage=token_usage,
     )
 
+    if isinstance(response, GeminiBlocked):
+        return {"should_render": False}
+
     try:
         if "candidates" in response:
             text = response["candidates"][0]["content"]["parts"][0].get(
@@ -162,6 +166,13 @@ Return false if the response says data is "not available", "not found", \
         token_usage=token_usage,
     )
 
+    if isinstance(response, GeminiBlocked):
+        logger.warning(
+            "Data validation blocked (%s) on %s, hiding charts.",
+            response.block_reason,
+            model,
+        )
+        return False
     if "candidates" not in response:
         logger.error(
             "Data validation got no candidates from %s, hiding charts. "

@@ -272,13 +272,19 @@ function TurnView({
       {/* Reasoning block — sparkle + "Reasoning" header, expanded by default.
           Always renders above the response card per Figma 3427-16715;
           falls back to a status placeholder when the agent emits no thoughts.
-          Suppressed when the turn was stopped — we replace the half-finished
-          reasoning with the "Stopped per your request" note below. */}
-      {!turn.stopped && (
+          Suppressed when the turn was stopped or refused, and `done` is gated
+          on evidence of a data call so clarification turns do not render the
+          completed data-retrieval placeholder. */}
+      {!turn.stopped && turn.status !== "refused" && (
         <ReasoningBlock
           thoughts={turn.thoughts}
           streaming={isStreaming && turn.status !== "done" && turn.status !== "error"}
-          done={turn.status === "done"}
+          done={
+            turn.status === "done" &&
+            (turn.thoughts.length > 0 ||
+              turn.toolCalls.length > 0 ||
+              turn.provenance.length > 0)
+          }
           status={turn.status}
         />
       )}
@@ -316,6 +322,17 @@ function TurnView({
       {turn.stopped && (
         <div className="self-start shrink-0 w-full max-w-4xl text-body-large text-on-surface-variant">
           Stopped per your request
+        </div>
+      )}
+
+      {/* Refusal notice for unserviceable or safety-blocked requests. */}
+      {turn.status === "refused" && turn.refusalMessage && (
+        <div
+          role="note"
+          data-testid="turn-refusal-notice"
+          className="self-start px-4 py-3 rounded-2xl bg-surface-soft text-on-surface-variant text-body-large max-w-4xl"
+        >
+          {turn.refusalMessage}
         </div>
       )}
 
