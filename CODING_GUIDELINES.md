@@ -56,8 +56,8 @@ Contribution process, PR expectations, and review policy live in
   pattern worsens a design smell (such as adding a third ad-hoc return type to
   a function, threading more untyped `dict[str, Any]` payloads across callers,
   or bloating an already overloaded module). When a feature requires reshaping
-  an interface or module boundary first, extract and land that behavior-
-  preserving refactor in its own PR before building the feature on top.
+  an interface or module boundary first, extract and land that
+  behavior-preserving refactor in its own PR before building the feature on top.
 * Clean up orphans **you** created (unused imports, variables, functions). Leave
   pre-existing dead code alone — mention it instead.
 * Remove debugging logs, commented-out code, and scratch files before

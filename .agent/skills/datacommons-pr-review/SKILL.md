@@ -107,11 +107,12 @@ Three judgment calls the documents cannot make for you:
   §3.2.
 * **Enforced vs. advisory.** If the linter already enforces a rule, do not
   spend review comments on it — spend them on what tooling cannot catch,
-  especially **software design and maintainability** (`CODING_GUIDELINES.md`
-  §3.2): untyped dictionary boundaries, mixed error-signaling mechanisms
-  (returning `{"error": ...}` dicts vs. sentinel objects vs. raising
-  exceptions), stringly-typed model/reasoning presets, scattered user-visible
-  strings, and optional-flag state bags where a discriminated union belongs.
+  especially **software design and module boundaries**
+  (`CODING_GUIDELINES.md` §3.2): untyped dictionary boundaries, mixed
+  error-signaling mechanisms (returning `{"error": ...}` dicts vs. sentinel
+  objects vs. raising exceptions), stringly-typed model/reasoning presets,
+  scattered user-visible strings, and optional-flag state bags where a
+  discriminated union belongs.
 * **Rule vs. gap.** If the diff does something questionable that no document
   covers, say so as a judgment, not as a violation, and propose the rule if it
   is worth writing down.
