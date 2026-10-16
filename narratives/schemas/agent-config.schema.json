@@ -25,6 +25,11 @@
           "description": "Model used for the MCP tool-loop / planner.",
           "type": "string",
           "default": "gemini-3.8-flash"
+        },
+        "classify_model": {
+          "description": "Model used for the classify phase. Must support thinking_level='minimal' (see _THINKING_LEVELS in gemini/client.py).",
+          "type": "string",
+          "default": "gemini-3.5-flash-lite"
         }
       }
     },
@@ -80,6 +85,9 @@
       "description": "System prompts. Prompt bodies live in defaults/prompts/*.md, overridable in config/prompts/*.md and are loaded by the agent at startup; this object can override individual slots inline if desired. The agent renders {{instance.*}} placeholders against template_vars before sending to Gemini.",
       "additionalProperties": false,
       "properties": {
+        "classify": {
+          "type": "string"
+        },
         "mcp": {
           "type": "string"
         },

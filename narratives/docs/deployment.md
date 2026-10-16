@@ -207,7 +207,7 @@ config/
 ├── instance.env        Required: GCP project, region, instance, access mode
 ├── branding.json       Optional: UI identity, theme colors, nav, metrics
 ├── agent-config.json   Optional: Gemini model, thinking levels, template vars
-├── prompts/            Optional: Prompt overrides (mcp, synthesis, follow_up)
+├── prompts/            Optional: Prompt overrides (classify, mcp, ...)
 └── assets/             Optional: Custom logos, favicons, and static assets
 ```
 
@@ -254,10 +254,19 @@ The `navigation` key supports three distinct states:
 
 ### System prompts (`config/prompts/*.md`) and template variables
 
-System prompts for the MCP tool loop (`mcp.md`), answer synthesis
-(`synthesis.md`), and follow-up generation (`follow_up.md`) can be overridden in
-`config/prompts/`. When customizing prompts, start from the baseline files in
-`defaults/prompts/` and add your domain or regional guidance.
+System prompts for query classification (`classify.md`), the MCP tool loop
+(`mcp.md`), answer synthesis (`synthesis.md`), and follow-up generation
+(`follow_up.md`) can be overridden in `config/prompts/`. When customizing
+prompts, start from the baseline files in `defaults/prompts/` and add your
+domain or regional guidance.
+
+`classify.md` governs the admission phase that runs at the start of every turn
+to decide whether a question is served, refused, or answered with a
+clarification question, and which analytical pattern it follows. The classify
+phase runs on the model configured in `gemini.classify_model` in
+`agent-config.json` (which defaults to `gemini-3.5-flash-lite`), while the tool
+loop, synthesis, chart selection, and follow-up generation use
+`gemini.mcp_model`.
 
 Prompts support runtime template placeholders:
 
@@ -423,4 +432,8 @@ instead.
 For further diagnostics, inspect the Cloud Run service logs. Each completed chat
 turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
 containing the terminal state, error reason (if any), phase latencies, MCP tool
-names, and token usage (user query text is never logged).
+names, token usage, and the analytical `pattern` assigned by the `classify`
+phase (user query text is never logged). On a `refused` turn, `error_type` holds
+the refusal reason (`adversarial`, `off_domain`, or `safety_blocked`) and
+`pattern` is omitted; if the classifier call itself fails, the turn falls
+through with `pattern` set to `exploratory`.
