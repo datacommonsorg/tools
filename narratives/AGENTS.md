@@ -7,9 +7,8 @@ and commands below are relative to `/narratives` (or to `/narratives/ui` and
 The application consists of two components packaged into a single container in
 production:
 - `ui/` — React 19 + Vite single-page application (pnpm).
-- `agent/` — Python 3.14 server that hosts the `/agent/*` API, serves the
-  compiled SPA (`server/routes/spa.py`), and reverse-proxies Data Commons data
-  routes (`server/routes/dcproxy.py`) to the configured `DATA_PLANE_URL` (uv).
+- `agent/` — Python 3.14 server that hosts the `/agent/*` API and serves the
+  compiled SPA (`server/routes/spa.py`) (uv).
 
 ## Required reading
 
@@ -171,17 +170,13 @@ backend, public Data Commons or a local MCP server as preferred.
   `AGENT_URL` in `.env.local` (from `.env.local.example`) to point at a
   deployed instance, and run `pnpm dev:ui` (or `pnpm -C ui run dev`). In
   development, Vite's `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*`
-  and Data Commons routes to `AGENT_URL` (or `BACKEND_URL` if set separately);
-  in production, the Python server in `agent/` serves the compiled SPA
-  (`server/routes/spa.py`) and proxies Data Commons routes
-  (`server/routes/dcproxy.py`). Restart Vite after editing `.env.local`.
+  to `AGENT_URL`; in production, the Python server in `agent/` serves the
+  compiled SPA (`server/routes/spa.py`). Restart Vite after editing
+  `.env.local`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, configure `.env.local` (from
   `.env.local.example`) with `GEMINI_API_KEY`, `DC_API_KEY` (which is optional
-  for some MCP servers), and optional `MCP_SERVER_URL` and `DATA_PLANE_URL`, and
-  run `pnpm dev:agent` (or `uv run narratives-agent-dev`). When pointing at
-  public Data Commons, set both `DATA_PLANE_URL=https://api.datacommons.org`
-  (for MCP and versioned REST) and `DATA_PLANE_WEB_URL=https://datacommons.org`
-  (for website routes used by the chart web components).
+  for some MCP servers), and optional `MCP_SERVER_URL`, and run `pnpm dev:agent`
+  (or `uv run narratives-agent-dev`).
 - **Secrets** — never place API keys or secrets in the client bundle. All
   model and data-plane credentials stay server-side in `agent/`.
 

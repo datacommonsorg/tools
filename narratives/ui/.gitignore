@@ -6,7 +6,7 @@ dist
 *.tsbuildinfo
 
 # Local env (per-developer; never commit)
-# Holds BACKEND_URL / AGENT_URL pointing at a specific deployed instance.
+# Holds AGENT_URL pointing at a specific deployed instance.
 # Each developer creates their own.
 .env
 .env.local

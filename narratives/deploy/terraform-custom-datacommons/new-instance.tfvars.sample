@@ -45,11 +45,8 @@ alert_notification_channels = []
 # public -> nothing, allUsers already covers everyone.
 authorized_members = [REPLACE_AUTHORIZED_MEMBERS]
 
-# Public Data Commons, on two hosts: public_dc_url serves the versioned REST
-# API and /mcp (what the agent calls), while public_dc_web_url serves the
-# website routes the chart components call from the browser.
-public_dc_url     = "REPLACE_PUBLIC_DC_URL"
-public_dc_web_url = "REPLACE_PUBLIC_DC_WEB_URL"
+# Public Data Commons origin serving the versioned REST API and /mcp.
+public_dc_url = "REPLACE_PUBLIC_DC_URL"
 
 # How the app plane is exposed:
 #   "public"   allUsers can reach it
