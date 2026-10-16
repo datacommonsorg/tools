@@ -95,11 +95,23 @@ author can go read the rule rather than argue with the reviewer.
 
 Three judgment calls the documents cannot make for you:
 
-* **Precedent vs. rule.** A change that follows a bad local precedent is not
-  automatically a blocker. Note it, tag `[FOLLOWUP]`, and propose the cleanup
-  as a separate change rather than blocking on it.
+* **Precedent vs. rule (and when to prescribe a preparatory refactor PR).** A
+  change that follows a bad local precedent is not automatically a blocker when
+  the surface area of fixing it would blow up the feature PR. However, if
+  extending the local precedent compounds structural debt (e.g. adding a third
+  ad-hoc return type instead of raising typed exceptions, threading more raw
+  `dict[str, Any]` payloads across modules, or adding another responsibility to
+  an overloaded file), call it out explicitly (`[SUGGESTION]` or `[FOLLOWUP]`):
+  recommend extracting a **standalone, behavior-preserving refactor PR** before
+  (or immediately after) the feature change per `CODING_GUIDELINES.md` §1.2 and
+  §3.2.
 * **Enforced vs. advisory.** If the linter already enforces a rule, do not
-  spend review comments on it — spend them on what tooling cannot catch.
+  spend review comments on it — spend them on what tooling cannot catch,
+  especially **software design and maintainability** (`CODING_GUIDELINES.md`
+  §3.2): untyped dictionary boundaries, mixed error-signaling mechanisms
+  (returning `{"error": ...}` dicts vs. sentinel objects vs. raising
+  exceptions), stringly-typed model/reasoning presets, scattered user-visible
+  strings, and optional-flag state bags where a discriminated union belongs.
 * **Rule vs. gap.** If the diff does something questionable that no document
   covers, say so as a judgment, not as a violation, and propose the rule if it
   is worth writing down.
