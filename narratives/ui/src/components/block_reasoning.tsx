@@ -19,11 +19,15 @@
  */
 
 import { useState, type CSSProperties } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDownIcon } from "./icons";
 import { getInstanceConfig } from "@/src/config/instance_config";
 import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
+import {
+  calculateStreamDurationMs,
+  rehypeStreamWords,
+} from "../utils/rehype_stream_words";
 
 /**
  * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
@@ -115,6 +119,70 @@ function isBoldOnlyParagraph(node?: HastNode): boolean {
   );
 }
 
+/**
+ * Markdown overrides for the reasoning body. Module-level so their identity is
+ * stable: rebuilt on each render, every thought would remount and replay its
+ * entrance animation whenever a new one streamed in.
+ */
+const REASONING_COMPONENTS: Components = {
+  // Headings break the left bar (see HEADING_STYLE).
+  h1: ReasoningHeading,
+  h2: ReasoningHeading,
+  h3: ReasoningHeading,
+  h4: ReasoningHeading,
+  h5: ReasoningHeading,
+  h6: ReasoningHeading,
+  // A lone-bold paragraph is really a section heading (breaks the
+  // bar); everything else is a barred body paragraph.
+  p: ({ node, children }) =>
+    isBoldOnlyParagraph(node as unknown as HastNode) ? (
+      <h3 style={HEADING_STYLE}>{children}</h3>
+    ) : (
+      <p style={BODY_BLOCK_STYLE}>{children}</p>
+    ),
+  strong: ({ children }) => (
+    <strong style={{ fontWeight: 600 }}>{children}</strong>
+  ),
+  em: ({ children }) => (
+    <em style={{ fontStyle: "italic" }}>{children}</em>
+  ),
+  ul: ({ children }) => (
+    <ul
+      className="list-disc space-y-0.5"
+      style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol
+      className="list-decimal space-y-0.5"
+      style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
+    >
+      {children}
+    </ol>
+  ),
+  code: ({ children }) => (
+    <code
+      className="px-1 rounded font-mono"
+      style={{ backgroundColor: "#F2F2F2", fontSize: "0.92em" }}
+    >
+      {children}
+    </code>
+  ),
+  a: ({ children, href }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="hover:underline"
+      style={{ color: "var(--color-theme-primary)" }}
+    >
+      {children}
+    </a>
+  ),
+};
+
 interface ReasoningBlockProps {
   thoughts: ThoughtEvent[];
   // Whether the body starts expanded. Collapsed by default: the header alone
@@ -172,24 +240,21 @@ export function ReasoningBlock({
   const [open, setOpen] = useState(defaultOpen);
   const label = phaseLabel(streaming, status);
 
-  // Flatten to a single markdown string (newline-separated): the reasoning
-  // renders as one continuous block, not grouped per phase. When the agent
-  // emits no thoughts, we render a short status placeholder so the section
-  // stays present above the response card per Figma 3427-16715.
-  const joined =
-    thoughts.length > 0
-      ? thoughts.map((thought) => thought.text).join("\n\n")
-      : streaming
-        ? status === "classify"
-          ? PLACEHOLDER_CLASSIFY
-          : PLACEHOLDER_STREAMING
-        : done
-          ? PLACEHOLDER_DONE
-          : "";
+  // The thoughts render back to back as one continuous block, not grouped
+  // per phase. When the agent emits none, we render a short status
+  // placeholder so the section stays present above the response card per
+  // Figma 3427-16715.
+  const placeholder = streaming
+    ? status === "classify"
+      ? PLACEHOLDER_CLASSIFY
+      : PLACEHOLDER_STREAMING
+    : done
+      ? PLACEHOLDER_DONE
+      : "";
 
   // If we have nothing at all (e.g. error before stream started),
   // skip rendering entirely.
-  if (!joined) return null;
+  if (thoughts.length === 0 && !placeholder) return null;
 
   return (
     <div className="self-start shrink-0 w-full max-w-4xl">
@@ -218,7 +283,16 @@ export function ReasoningBlock({
           />
         </span>
       </button>
-      {open && (
+      {/* The body stays mounted and its grid row runs 0fr <-> 1fr, which lets
+          the height animate to and from `auto`. `inert` keeps the collapsed
+          text away from the keyboard and screen readers. */}
+      <div
+        inert={!open}
+        className={`grid motion-safe:transition-[grid-template-rows,opacity] duration-200 ease-out ${
+          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="overflow-hidden min-h-0">
         <div
           className="mt-2 reasoning-markdown"
           style={{
@@ -233,71 +307,46 @@ export function ReasoningBlock({
             fontStyle: "italic",
           }}
         >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              // Headings break the left bar (see HEADING_STYLE).
-              h1: ReasoningHeading,
-              h2: ReasoningHeading,
-              h3: ReasoningHeading,
-              h4: ReasoningHeading,
-              h5: ReasoningHeading,
-              h6: ReasoningHeading,
-              // A lone-bold paragraph is really a section heading (breaks the
-              // bar); everything else is a barred body paragraph.
-              p: ({ node, children }) =>
-                isBoldOnlyParagraph(node as unknown as HastNode) ? (
-                  <h3 style={HEADING_STYLE}>{children}</h3>
-                ) : (
-                  <p style={BODY_BLOCK_STYLE}>{children}</p>
-                ),
-              strong: ({ children }) => (
-                <strong style={{ fontWeight: 600 }}>{children}</strong>
-              ),
-              em: ({ children }) => (
-                <em style={{ fontStyle: "italic" }}>{children}</em>
-              ),
-              ul: ({ children }) => (
-                <ul
-                  className="list-disc space-y-0.5"
-                  style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
-                >
-                  {children}
-                </ul>
-              ),
-              ol: ({ children }) => (
-                <ol
-                  className="list-decimal space-y-0.5"
-                  style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
-                >
-                  {children}
-                </ol>
-              ),
-              code: ({ children }) => (
-                <code
-                  className="px-1 rounded font-mono"
-                  style={{ backgroundColor: "#F2F2F2", fontSize: "0.92em" }}
-                >
-                  {children}
-                </code>
-              ),
-              a: ({ children, href }) => (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:underline"
-                  style={{ color: "var(--color-theme-primary)" }}
-                >
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {joined}
-          </ReactMarkdown>
+          {thoughts.length > 0 ? (
+            thoughts.map((thought, i) => (
+              // Thoughts only ever append, so the index is a stable key.
+              <Thought key={i} text={thought.text} animate={streaming} />
+            ))
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={REASONING_COMPONENTS}
+            >
+              {placeholder}
+            </ReactMarkdown>
+          )}
         </div>
-      )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One thought, revealed word by word like the answer when it arrives live.
+ * Whether it animates is fixed at mount: a thought restored with its session,
+ * or still on screen when the turn ends, does not replay or cut short.
+ */
+function Thought({ text, animate }: { text: string; animate: boolean }) {
+  const [streamMs] = useState(() =>
+    animate ? calculateStreamDurationMs(text) : undefined,
+  );
+  return (
+    <div className={streamMs === undefined ? undefined : "markdown-stream"}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={
+          streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
+        }
+        components={REASONING_COMPONENTS}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

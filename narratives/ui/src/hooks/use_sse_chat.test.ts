@@ -378,6 +378,25 @@ describe("applyEvent", () => {
     });
   });
 
+  it("marks the text complete when the chart phase starts", () => {
+    // Test: End-of-text signal.
+    // Situation: Text streams, then the agent announces the chart phase.
+    // Expectation: The text is incomplete while it streams and complete once
+    //   the chart phase starts, without leaving the synthesis status.
+    const streaming = applyEvent(
+      { ...blankTurn(), status: "synthesis" },
+      { event: "content", data: { text: "About 68 million." } },
+    );
+    const finished = applyEvent(streaming, {
+      event: "status",
+      data: { phase: "chart_config" },
+    });
+
+    expect(streaming.textComplete).toBeUndefined();
+    expect(finished.textComplete).toBe(true);
+    expect(finished.status).toBe("synthesis");
+  });
+
   it.each([
     ["complete", undefined, "done", undefined],
     ["error", "The data request failed.", "error", "The data request failed."],
