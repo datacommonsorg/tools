@@ -29,7 +29,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   CitationChip,
@@ -43,6 +43,7 @@ import {
   type MarkdownNode,
   type TableAnalysis,
 } from "../utils/markdown_table";
+import { rehypeStreamWords } from "../utils/rehype_stream_words";
 import type { ProvenanceItem } from "../hooks/use_sse_chat";
 
 interface ResponseCardProps {
@@ -57,21 +58,33 @@ interface ResponseCardProps {
   // bar. Used inside AnswerPanel's "Side panel" card where the user's
   // question is already shown in the toolbar.
   bare?: boolean;
+  // When set, the content animates in over this many milliseconds. When
+  // unset, it appears immediately.
+  streamMs?: number;
+  // Whether the animation is still running. Once it ends the animation class
+  // is dropped, so a copy of the DOM (the PDF export) does not replay it.
+  revealing?: boolean;
 }
 
 const LINK_COLOR = "var(--color-theme-primary)";
 
-/** Renders the agent's answer text as markdown, with citation chips and streaming cursor. */
+/** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
   title,
   body,
   streaming,
   sources,
   bare = false,
+  streamMs,
+  revealing = streamMs !== undefined,
 }: ResponseCardProps) {
   const markdown = (
-    <div className={bare ? "markdown-body" : "px-[56px] py-6 text-on-surface markdown-body"}>
-      <ReactMarkdownInner body={body} streaming={streaming} sources={sources} />
+    <div
+      className={`${bare ? "" : "px-[56px] py-6 text-on-surface "}markdown-body${
+        revealing ? " markdown-stream" : ""
+      }`}
+    >
+      <ReactMarkdownInner body={body} sources={sources} streamMs={streamMs} />
     </div>
   );
 
@@ -101,18 +114,24 @@ export function ResponseCard({
  */
 function ReactMarkdownInner({
   body,
-  streaming,
   sources,
+  streamMs,
 }: {
   body: string;
-  streaming?: boolean;
   sources?: ProvenanceItem[];
+  streamMs?: number;
 }) {
-  return (
-    <>
-      <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
+  // Memoized so streaming updates don't remount the answer and restart its
+  // reveal.
+  const components = useMemo(
+    (): Components => ({
+            // Word spans added by rehypeStreamWords. Citations and numbers
+            // inside them render as in any other text.
+            span: ({ children, className, style }) => (
+              <StreamSpan className={className} style={style} sources={sources}>
+                {children}
+              </StreamSpan>
+            ),
             p: ({ children }) => (
               <p className="text-body-large mb-3 last:mb-0">
                 {renderWithCitations(children, sources)}
@@ -147,8 +166,12 @@ function ReactMarkdownInner({
             ol: ({ children }) => (
               <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
             ),
-            li: ({ children }) => (
-              <li className="leading-relaxed">{renderWithCitations(children, sources)}</li>
+            // `style` on li, blockquote, table and hr carries their stream
+            // delay, so a bullet or a rule waits for the text it belongs to.
+            li: ({ children, style }) => (
+              <li className="leading-relaxed" style={style}>
+                {renderWithCitations(children, sources)}
+              </li>
             ),
             a: ({ children, href }) => (
               <a
@@ -158,7 +181,9 @@ function ReactMarkdownInner({
                 className="hover:underline"
                 style={{ color: LINK_COLOR }}
               >
-                {children}
+                <PlainTextContext.Provider value={true}>
+                  {children}
+                </PlainTextContext.Provider>
               </a>
             ),
             code: ({ children, ...props }) => {
@@ -169,12 +194,17 @@ function ReactMarkdownInner({
                     "",
                 )
               );
+              const plain = (
+                <PlainTextContext.Provider value={true}>
+                  {children}
+                </PlainTextContext.Provider>
+              );
               return inline ? (
                 <code className="px-1 py-0.5 rounded bg-surface-muted text-[0.92em] font-mono">
-                  {children}
+                  {plain}
                 </code>
               ) : (
-                <code className="font-mono">{children}</code>
+                <code className="font-mono">{plain}</code>
               );
             },
             pre: ({ children }) => (
@@ -182,8 +212,11 @@ function ReactMarkdownInner({
                 {children}
               </pre>
             ),
-            blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3">
+            blockquote: ({ children, style }) => (
+              <blockquote
+                className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3"
+                style={style}
+              >
                 {renderWithCitations(children, sources)}
               </blockquote>
             ),
@@ -199,15 +232,46 @@ function ReactMarkdownInner({
                 {renderWithCitations(children, sources)}
               </strong>
             ),
-            hr: () => <hr className="my-4 border-outline" />,
-          }}
-        >
-          {body}
-        </ReactMarkdown>
-        {streaming && (
-          <span className="inline-block animate-pulse">▍</span>
-        )}
-    </>
+            hr: ({ style }) => (
+              <hr className="my-4 border-outline" style={style} />
+            ),
+    }),
+    [sources],
+  );
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={
+        streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
+      }
+      components={components}
+    >
+      {body}
+    </ReactMarkdown>
+  );
+}
+
+/** True inside code and links, whose text renders verbatim: no citation chips. */
+const PlainTextContext = createContext(false);
+
+/** A word span from rehypeStreamWords, with citations unless inside plain text. */
+function StreamSpan({
+  children,
+  className,
+  style,
+  sources,
+}: {
+  children?: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+  sources?: ProvenanceItem[];
+}) {
+  const isPlainText = useContext(PlainTextContext);
+  return (
+    <span className={className} style={style}>
+      {isPlainText ? children : renderWithCitations(children, sources)}
+    </span>
   );
 }
 
@@ -232,7 +296,7 @@ interface MarkdownCellProps {
 }
 
 /** A markdown table, with the whole-column facts read off the AST once. */
-function MarkdownTable({ children, node }: MarkdownCellProps) {
+function MarkdownTable({ children, node, style }: MarkdownCellProps) {
   const analysis = useMemo(
     () => analyzeMarkdownTable(node as MarkdownNode | undefined),
     [node],
@@ -240,7 +304,9 @@ function MarkdownTable({ children, node }: MarkdownCellProps) {
   return (
     <TableAnalysisContext.Provider value={analysis}>
       <div className="overflow-x-auto mb-3">
-        <table className="min-w-full text-sm border-collapse">{children}</table>
+        <table className="min-w-full text-sm border-collapse" style={style}>
+          {children}
+        </table>
       </div>
     </TableAnalysisContext.Provider>
   );

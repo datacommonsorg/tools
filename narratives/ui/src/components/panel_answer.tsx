@@ -18,7 +18,7 @@
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatTurn } from "../hooks/use_sse_chat";
 import { ChartTile } from "./tile_chart";
 import { DisclaimerNote } from "./note_disclaimer";
@@ -34,6 +34,7 @@ import { Tooltip } from "./tooltip";
 import { CitationNumberingProvider } from "./chip_citation";
 import { CitationsList } from "./list_citations";
 import { downloadPdf } from "../utils/download_pdf";
+import { calculateStreamDurationMs } from "../utils/rehype_stream_words";
 import { Toast } from "./toast";
 
 /**
@@ -89,6 +90,19 @@ export function AnswerPanel({
 }: AnswerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const hasCharts = !!turn.chartConfig;
+  // A panel that mounts mid-stream is taking over from the skeleton, so its
+  // text reveals in reading order; one restored with its session is already
+  // there. Everything below the text waits for the reveal to finish.
+  const [enters] = useState(isStreaming);
+  const streamMs = enters ? calculateStreamDurationMs(turn.text) : undefined;
+  const [revealing, setRevealing] = useState(enters);
+  useEffect(() => {
+    if (streamMs === undefined) return;
+    const timer = window.setTimeout(() => setRevealing(false), streamMs);
+    return () => window.clearTimeout(timer);
+  }, [streamMs]);
+  const settled =
+    !isStreaming || turn.status === "done" || turn.status === "error";
   /**
    * `turn.provenance` is the sources that actually supplied the answer's
    * numbers. The backend decides membership from which facet each observation
@@ -172,7 +186,7 @@ export function AnswerPanel({
             component is still hydrating produces a PDF missing the chart.
             This matches the filled "Export PDF" button below, which also
             waits for status === "done". */}
-        {turn.status === "done" && (
+        {turn.status === "done" && !revealing && (
           <div className="flex items-center gap-1 shrink-0" data-non-print="true">
             {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
@@ -182,9 +196,15 @@ export function AnswerPanel({
         )}
       </div>
 
-      {/* Content body */}
+      {/* Content body — dimmed while the turn is in flight and brought to full
+          strength once its terminal event lands. Everything after the text
+          stays hidden until the text has finished revealing. */}
       <div
-        className="flex flex-col p-4 sm:p-6"
+        className={`flex flex-col p-4 sm:p-6 motion-safe:transition-opacity duration-300 ease-out ${
+          settled ? "opacity-100" : "opacity-80"
+        } motion-safe:[&>:not(.markdown-body)]:transition-opacity motion-safe:[&>:not(.markdown-body)]:duration-300${
+          revealing ? " motion-safe:[&>:not(.markdown-body)]:opacity-0" : ""
+        }`}
         style={{
           gap: 16,
           background: COLOR_BODY_BG,
@@ -195,6 +215,8 @@ export function AnswerPanel({
           title={turn.userMessage}
           body={turn.text}
           streaming={isStreaming && turn.status !== "done"}
+          streamMs={streamMs}
+          revealing={revealing}
           sources={turn.provenance}
           bare
         />
@@ -231,7 +253,7 @@ export function AnswerPanel({
         {(hasCharts || hasCitations) && <DisclaimerNote />}
 
         {/* 6. Export PDF (filled, in-content) */}
-        {turn.status === "done" && (
+        {turn.status === "done" && !revealing && (
           <ExportPdfButton onExport={onExport} busy={exporting} />
         )}
 
