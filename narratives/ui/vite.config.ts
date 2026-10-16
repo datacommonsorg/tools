@@ -12,10 +12,10 @@ export default defineConfig(({mode}) => {
   // Load environment variables from narratives/.env.local
   const env = loadEnv(mode, envDir, '');
   const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
-  // Data routes default to AGENT_URL (handled by dcproxy.py on the local or
-  // deployed agent) unless BACKEND_URL is explicitly set to a separate host.
+  // Data and tool routes proxy directly to BACKEND_URL (defaulting to public
+  // Data Commons).
   const backendProxy = {
-    target: env.BACKEND_URL || agentTarget,
+    target: env.BACKEND_URL || 'https://datacommons.org',
     changeOrigin: true,
   };
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so

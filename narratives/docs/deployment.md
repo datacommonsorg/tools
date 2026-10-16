@@ -78,7 +78,6 @@ it. Do not place API keys or secrets in this file.
 | `ACCESS_MODE` | Yes | Access control mode: `public`, `iap`, or `private` (see [Access modes](#access-modes)) |
 | `AUTHORIZED_MEMBERS` | For `iap` & `private` | Comma-separated IAM principals granted access (for example, `user:alice@example.com,group:team@example.com`) |
 | `PUBLIC_DC_URL` | No | Data Commons API and MCP host used by the backend agent (defaults to `https://api.datacommons.org`) |
-| `PUBLIC_DC_WEB_URL` | No | Data Commons web host used by browser chart components (defaults to `https://datacommons.org`) |
 
 ### Access modes
 
@@ -398,19 +397,7 @@ The IAP service agent is missing `roles/run.invoker` on the Cloud Run service.
 Re-run `./deploy.sh --infra-only` and verify that the `iap_agent_invoker`
 binding is present in the Terraform plan.
 
-### Charts, APIs & monitoring
-
-**Chat responses work, but charts do not render (`404` in the browser console)**
-
-Browser chart web components are querying the Data Commons API host instead of
-the web host. Leave `PUBLIC_DC_WEB_URL` empty in `config/instance.env` (so it
-defaults to `https://datacommons.org`) or point it to your Data Commons web
-host.
-
-**Chat responses work, but `/dcproxy` returns `401` or `403`**
-
-The Data Commons API key in Secret Manager is missing or invalid. Re-run
-`./deploy.sh --bootstrap-secrets` with a valid `DC_API_KEY`.
+### Monitoring
 
 **External uptime checks against `/healthz` fail**
 

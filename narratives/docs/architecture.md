@@ -23,27 +23,29 @@ configuration work under the hood.
 │              │  SSE   │  Narratives Container (FastAPI)         │
 │   Browser    ├───────►│  - React web app (routes/spa.py)        │
 │  (React SPA) │  HTTP  │  - Agent API (/agent/*)                 │
-│              ├───────►│  - Reverse proxy (/dcproxy/*)           │
-└──────────────┘        └───────────┬──────────────────┬──────────┘
-                                    │ MCP              │ HTTP
-                                    ▼                  ▼
-                        ┌──────────────────┐ ┌────────────────────┐
-                        │ Data Commons MCP │ │ Data Commons Web   │
-                        │ (api.datacommons │ │ (datacommons.org)  │
-                        │  .org/mcp)       │ │                    │
-                        └──────────────────┘ └────────────────────┘
+│              │        └────────────────────┬────────────────────┘
+│              │                             │ MCP
+│              │                             ▼
+│              │                 ┌──────────────────────┐
+│              │                 │ Data Commons MCP     │
+│              │                 │ (api.datacommons.org │
+│              │                 │  /mcp)               │
+│              │                 └──────────────────────┘
+│              │  HTTP
+│              └───────►┌────────────────────┐
+                        │ Data Commons Web   │
+                        │ (datacommons.org)  │
+                        └────────────────────┘
 ```
 
 In production, a single FastAPI container (`narratives_agent.server.app:app`)
 serves both the frontend and backend from one origin:
 
 1. **React web app (`server/routes/spa.py`)** — serves `index.html`, static
-   JavaScript/CSS bundles (`/assets/` and `/theme/`), and `/healthz` for Cloud
-   Run container startup checks.
+   JavaScript/CSS bundles (`/assets/` and `/theme/`), and `/healthz` for
+   container health checks.
 2. **Agent API (`/agent/*`)** — handles chat streaming (`/agent/chat/stream`)
    and health checks (`/agent/health`).
-3. **Data Commons proxy (`server/routes/dcproxy.py`)** — forwards chart data
-   requests from the browser to Data Commons.
 
 ## How Narratives connects to Data Commons
 
@@ -56,31 +58,12 @@ When a user asks a question, the Python agent uses the Model Context Protocol
 (`mcp/client.py`) over HTTP to search Data Commons for places, statistical
 variables, and observations.
 
-### 2. Browser chart requests (via `/dcproxy`)
+### 2. Browser chart requests
 
 When an answer includes a chart, the UI renders Data Commons web components
 (such as `<datacommons-line>` or `<datacommons-bar>`). Those components fetch
-their own chart data and place names by making HTTP requests back to the page's
-origin. The `/dcproxy` route forwards those requests directly to Data Commons so
-the browser never needs its own API keys or cross-origin (CORS) access.
-
-When using public Data Commons, the agent and `/dcproxy` talk to two different
-default URLs:
-
-| Environment variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `DATA_PLANE_URL` (`PUBLIC_DC_URL`) | `https://api.datacommons.org` | Used by the Python agent for MCP (`/mcp`) and versioned REST calls |
-| `DATA_PLANE_WEB_URL` (`PUBLIC_DC_WEB_URL`) | `https://datacommons.org` | Used by `/dcproxy` for browser chart requests (`/api/observations/series`, `/api/place/name`, `/core/api/...`) |
-
-To keep credentials safe, `/dcproxy` enforces two rules on every proxied
-request:
-
-- **API key scoping:** The server attaches `DC_API_KEY` only when forwarding
-  requests to a recognized Data Commons host, never to arbitrary URLs.
-- **Identity token stripping:** When Identity-Aware Proxy (IAP) is enabled on
-  Cloud Run, incoming browser requests carry the user's IAP `Authorization`
-  header. `/dcproxy` strips incoming auth headers before forwarding the request
-  so user identity tokens are never sent outside the container.
+their own chart data and place names directly from Data Commons
+(`datacommons.org` or the same-origin Data Commons website host).
 
 ## MCP tool discovery & session recovery
 

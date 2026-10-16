@@ -85,8 +85,7 @@ _REQUEST_TIMEOUT_SECONDS = 300.0
 # rather than hold it until the request timeout.
 _CONNECT_TIMEOUT_SECONDS = 10.0
 # `_MAX_IDLE_CONNECTIONS` caps how many idle connections to the MCP server
-# are kept open for reuse. Concurrent connections are not capped, matching
-# the data-plane proxy client.
+# are kept open for reuse. Concurrent connections are not capped.
 _MAX_IDLE_CONNECTIONS = 64
 
 _SESSION_ID_HEADER = "Mcp-Session-Id"

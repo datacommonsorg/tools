@@ -717,7 +717,6 @@ V_IMAGE_TAG="$IMAGE_TAG" \
 V_AUTHORIZED_MEMBERS="${AUTHORIZED_MEMBERS:-}" \
 V_CONFIG_BUCKET="$CONFIG_BUCKET" \
 V_PUBLIC_DC_URL="${PUBLIC_DC_URL:-https://api.datacommons.org}" \
-V_PUBLIC_DC_WEB_URL="${PUBLIC_DC_WEB_URL:-https://datacommons.org}" \
 V_ACCESS_MODE="$ACCESS_MODE" \
 python3 - <<'PY'
 import os, re, sys
@@ -739,9 +738,8 @@ replacements = {
         if m.strip()
     ),
     "REPLACE_CONFIG_BUCKET":  os.environ["V_CONFIG_BUCKET"],
-    "REPLACE_PUBLIC_DC_URL":     os.environ["V_PUBLIC_DC_URL"],
-    "REPLACE_PUBLIC_DC_WEB_URL": os.environ["V_PUBLIC_DC_WEB_URL"],
-    "REPLACE_ACCESS_MODE":     os.environ["V_ACCESS_MODE"],
+    "REPLACE_PUBLIC_DC_URL":  os.environ["V_PUBLIC_DC_URL"],
+    "REPLACE_ACCESS_MODE":    os.environ["V_ACCESS_MODE"],
 }
 for k, v in replacements.items():
     content = content.replace(k, v)

@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Routers for the agent API, the data-plane proxy, and the UI.
+"""Routers for the agent API and the UI.
 
 Each module defines a module-level `router`. `create_app()` in
 `narratives_agent.server.app` includes them and owns their order.

@@ -43,12 +43,6 @@ check() {
     fi
 }
 
-# An MCP response over Streamable HTTP may arrive as plain JSON or as an SSE
-# frame. Reduce both to the JSON payload so jq can read either.
-mcp_body() {
-    sed -n 's/^data: //p;/^{/p' | tail -1
-}
-
 # ---------------------------------------------------------------------------
 
 # 1. The SPA is served.
@@ -94,9 +88,9 @@ check 2 c2
 #    The budget is a deadline rather than a fixed retry count, because a data
 #    plane that has to cold-start can take ~60s to answer.
 #
-#    This check also gates the ones after it: 4, 5 and 7 all need the same data
-#    plane, so letting 3 block until it answers keeps them from failing for a
-#    reason that has nothing to do with what they test.
+#    This check also gates the chat check after it: both need the same data
+#    plane, so letting 3 block until it answers keeps check 5 from failing for a
+#    reason that has nothing to do with what it tests.
 WARMUP_SECS="${SMOKE_WARMUP_SECS:-120}"
 
 c3() {
@@ -127,77 +121,9 @@ c3() {
 }
 check 3 c3
 
-# 4. MCP initialize through the same-origin proxy. Proves /dcproxy forwards,
-#    strips the inbound identity headers, and attaches the app plane's own
-#    credential -- the browser has none of its own.
-c4() {
-    local body name
-    body=$(curl_cmd -sS --max-time 60 -X POST "$URL/mcp" \
-        -H 'Content-Type: application/json' \
-        -H 'Accept: application/json, text/event-stream' \
-        -D "$TMP/mcp.headers" \
-        -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}' \
-        | mcp_body)
-    name=$(echo "$body" | jq -r '.result.serverInfo.name // empty')
-    [ -n "$name" ] || { echo "no serverInfo: $(echo "$body" | head -c 200)"; return 1; }
-    echo "serverInfo $name"
-}
-check 4 c4
-
-# 5. A real tools/call that returns numbers, over a full MCP session through
-#    the proxy. This is the end-to-end data path minus the model: session
-#    handshake, notifications/initialized, then get_observations.
-#
-#    get_observations is used, with variable_dcid + place_dcid, because that is
-#    the one call whose name AND required arguments are identical across both
-#    generations. Verified against a live 1.2.x server (2 tools) and a live
-#    1.3.x server (6 tools): 1.3.x splits the fat tools apart but keeps this
-#    signature. The 1.3.x-only names -- entity_dcids, get_multi_entity_
-#    observations -- would 400 against a 1.2.x server.
-#
-#    The session id is treated as OPTIONAL. Streamable HTTP allows a stateless
-#    server, and the Data Commons MCP servers are stateless: they return no
-#    Mcp-Session-Id at all and accept tools/call without one. Requiring the
-#    header made this check fail against a perfectly healthy backend.
-c5() {
-    local sid session_hdr body
-    curl_cmd -sS --max-time 60 -X POST "$URL/mcp" \
-        -H 'Content-Type: application/json' \
-        -H 'Accept: application/json, text/event-stream' \
-        -D "$TMP/h5b" -o /dev/null \
-        -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}'
-    sid=$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/{print $2}' "$TMP/h5b" | tr -d '\r')
-    session_hdr="X-Smoke-Stateless: 1"
-    [ -n "$sid" ] && session_hdr="Mcp-Session-Id: $sid"
-
-    curl_cmd -sS --max-time 30 -X POST "$URL/mcp" \
-        -H 'Content-Type: application/json' \
-        -H 'Accept: application/json, text/event-stream' \
-        -H "$session_hdr" \
-        -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' >/dev/null
-
-    body=$(curl_cmd -sS --max-time 90 -X POST "$URL/mcp" \
-        -H 'Content-Type: application/json' \
-        -H 'Accept: application/json, text/event-stream' \
-        -H "$session_hdr" \
-        -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_observations","arguments":{"variable_dcid":"Count_Person","place_dcid":"country/IND"}}}' \
-        | mcp_body)
-    echo "$body" | grep -qi 'validation error' \
-        && { echo "tools/call rejected the arguments: $(echo "$body" | head -c 200)"; return 1; }
-    echo "$body" | jq -e '.result' >/dev/null 2>&1 \
-        || { echo "tools/call returned no result: $(echo "$body" | head -c 200)"; return 1; }
-    # Any digit run of 4+ is a population-scale number; enough to distinguish a
-    # real observation from an empty envelope without pinning a value that
-    # moves when the source updates.
-    echo "$body" | grep -qE '[0-9]{4,}' \
-        || { echo "tools/call result carried no observations"; return 1; }
-    echo "get_observations returned data"
-}
-check 5 c5
-
-# 6. Verify that the HTML shell includes the #theme-tokens and #instance-config
+# 4. Verify that the HTML shell includes the #theme-tokens and #instance-config
 #    elements.
-c6() {
+c4() {
     local slot
     for slot in theme-tokens instance-config; do
         grep -q "id=\"$slot\"" "$TMP/home.html" \
@@ -205,11 +131,11 @@ c6() {
     done
     echo "theme-tokens and instance-config slots present"
 }
-check 6 c6
+check 4 c4
 
-# 7. A real chat turn. The only check that exercises the model, so it is last
+# 5. A real chat turn. The only check that exercises the model, so it is last
 #    and it is the slowest.
-c7() {
+c5() {
     local out
     # Written to a file rather than piped from a variable: `grep -q` exits on
     # its first match, which SIGPIPEs the feeding echo, and under `pipefail`
@@ -225,7 +151,7 @@ c7() {
     grep -q '"hmac": "[0-9a-f]\{64\}"' "$out" || { echo "complete terminal event carries no transcript signature"; return 1; }
     echo "chat streamed $(grep -c '^id:' "$out") events"
 }
-check 7 c7
+check 5 c5
 
 echo
 echo "Pass: $PASS  Fail: $FAIL"
