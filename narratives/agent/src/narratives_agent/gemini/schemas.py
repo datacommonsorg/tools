@@ -200,7 +200,6 @@ class FollowUpResponse(BaseModel):
 
 
 # The workflows pass these names as `response_schema`.
-QUERY_CLASSIFICATION_SCHEMA = QueryClassification
 CHART_CONFIG_SCHEMA = ChartConfigResponse
 DATA_VALIDATION_SCHEMA = DataValidationResponse
 FOLLOW_UP_SCHEMA = FollowUpResponse
