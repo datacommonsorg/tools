@@ -16,7 +16,8 @@ production:
 Read these before writing code, in this order:
 
 1. [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) (repository root) —
-   general engineering rules for all languages: simplicity, file organization,
+   general engineering rules for all languages: simplicity, preparatory
+   refactoring, file organization, software design and module boundaries,
    naming, TypeScript and Python standards, error handling, testing, security,
    and Data Commons pipeline conventions. Narratives has no local copy, so the
    root document applies in full.
@@ -127,7 +128,9 @@ frontend rules in [`FRONTEND.md`](FRONTEND.md). What is specific to this app:
   type-checked with the TypeScript compiler (`tsc --noEmit`) via `pnpm lint:ui`
   (auto-fixable with `pnpm fix:ui`). Existing files pending cleanup are listed
   as `!<path>` exclusions under `files.includes` in `biome.json`; remove a
-  file's exclusion entry when refactoring it.
+  file's exclusion entry in a dedicated, behavior-preserving refactor PR (see
+  [`CODING_GUIDELINES.md` §1.2](../CODING_GUIDELINES.md#12-surgical-changes-and-preparatory-refactoring))
+  rather than mixing whole-file lint/format churn into a feature PR.
 - **Enforcement (Agent)** — formatted and linted with `ruff` at 80 columns and
   type-checked with `mypy --strict`, both configured in `agent/pyproject.toml`
   and run via `pnpm lint:agent` (auto-fixable with `pnpm fix:agent`).

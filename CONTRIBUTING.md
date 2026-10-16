@@ -31,7 +31,8 @@ repositories within the `datacommonsorg` GitHub organization.
 Read the guidelines that govern your change, in this order:
 
 1. [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) — general engineering rules
-   for every language and every application: simplicity, file organization,
+   for every language and every application: simplicity, preparatory
+   refactoring, file organization, software design and module boundaries,
    naming, language style guides, error handling, testing, security, and the
    Data Commons pipeline conventions.
 2. [`FRONTEND.md`](FRONTEND.md) — additional rules for frontend/UI work: React,

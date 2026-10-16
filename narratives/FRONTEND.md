@@ -4,11 +4,12 @@
 > This document covers **narratives frontend** work only. It augments the
 > repository-root [`FRONTEND.md`](../FRONTEND.md); it does not replace it. Where
 > the two differ, this document takes precedence.
-> General engineering rules — simplicity, file organization, naming, TypeScript
-> language rules, error handling, testing, security — live in
-> [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) at the repository root and
-> apply here in full. Narratives has no local coding-guidelines copy, and no
-> app-level `AGENTS.md`.
+> General engineering rules — simplicity, file organization, software design and
+> module boundaries, naming, TypeScript language rules, error handling, testing,
+> security — live in [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) at the
+> repository root and apply here in full. Narratives has no local
+> coding-guidelines copy; project layout, commands, and workflows are in
+> [`AGENTS.md`](AGENTS.md).
 
 ## 1. Styling — Tailwind v4
 

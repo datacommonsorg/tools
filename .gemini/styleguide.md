@@ -25,11 +25,14 @@ Prefix every review comment with an appropriate severity tag:
   fix, architectural violations, unvetted heavyweight dependencies,
   misplaced files.
 * `[WARNING]` — Oversized or multi-concern PR, performance risk under
-  realistic load.
-* `[SUGGESTION]` — Readability, naming, constant extraction, simplification,
-  diff pruning. Non-blocking.
+  realistic load, or design/maintainability issues that compound structural debt
+  (e.g. mixed error-signaling contracts or untyped dicts crossing module
+  boundaries).
+* `[SUGGESTION]` — Readability, software design improvements (cohesive
+  interfaces, typed presets, discriminated unions, centralized messages),
+  naming, constant extraction, simplification, diff pruning. Non-blocking.
 * `[FOLLOWUP]` — Pre-existing debt the PR sits on top of; acceptable now,
-  should be scheduled.
+  should be scheduled as a separate behavior-preserving refactor PR.
 * `[NIT]` — Typos, wording, trivial consistency.
 
 ### Tone and structure

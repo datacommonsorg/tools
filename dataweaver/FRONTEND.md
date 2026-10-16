@@ -7,7 +7,8 @@ before touching any component, hook, or stylesheet.
 > This document covers **Dataweaver frontend** work only. It augments the
 > repository-root [`FRONTEND.md`](../FRONTEND.md); it does not replace it. Where
 > the two differ, this document takes precedence.
-> General engineering rules — simplicity, file organization, naming, TypeScript
+> General engineering rules — simplicity, preparatory refactoring, file
+> organization, software design and module boundaries, naming, TypeScript
 > language rules, error handling, testing, security — live in
 > [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) at the repository root and
 > apply here in full. Dataweaver has no local coding-guidelines override.

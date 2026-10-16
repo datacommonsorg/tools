@@ -198,11 +198,14 @@ Prefix every comment:
   cleanup, security or secret exposure, missing regression test for a bug fix,
   architectural violations, unvetted heavyweight dependencies, misplaced files.
 * `[WARNING]` — oversized or multi-concern PR, performance risk under
-  realistic load.
-* `[SUGGESTION]` — readability, naming, constant extraction, simplification,
-  diff pruning. Non-blocking.
+  realistic load, or design/maintainability issues that compound structural debt
+  (e.g. mixed error-signaling contracts or untyped dicts crossing module
+  boundaries).
+* `[SUGGESTION]` — readability, software design improvements (cohesive
+  interfaces, typed presets, discriminated unions, centralized messages),
+  naming, constant extraction, simplification, diff pruning. Non-blocking.
 * `[FOLLOWUP]` — pre-existing debt the PR sits on top of; acceptable now,
-  should be scheduled.
+  should be scheduled as a separate behavior-preserving refactor PR.
 * `[NIT]` — typos, wording, trivial consistency.
 
 ### Report format and inline comments
@@ -227,7 +230,8 @@ size/splitting.]
 
 ### Architecture & Layering
 [Trace of the change through prompt → MCP → server → client → UI; whether
-each responsibility sits at the right layer.]
+each responsibility sits at the right layer; module boundaries, typed domain
+models vs. raw dicts, and error-contract uniformity.]
 
 ### Standards & Conventions
 [Findings against `CODING_GUIDELINES.md` / `FRONTEND.md` / `<app>/AGENTS.md`,
