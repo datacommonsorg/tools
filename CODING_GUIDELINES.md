@@ -180,9 +180,9 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   keeps upgrades and capability audits in one place.
 * **Discriminated unions for state machines.** Model mutually exclusive states
   (such as `idle`, `loading`, `success`, and `error`) as a discriminated union
-  keyed by a discriminant field rather than independent optional fields (`data?`,
-  `error?`, `isCanceled?`) that permit invalid state combinations and force
-  compound boolean guards in callers.
+  keyed by a discriminant field rather than independent optional fields
+  (`data?`, `error?`, `isCanceled?`) that permit invalid state combinations and
+  force compound boolean guards in callers.
 * **Table-driven / strategy dispatch over parallel conditionals.** When behavior
   varies across a fixed set of variants, co-locate each variant's policy in a
   typed registry or strategy table rather than scattering parallel `if/elif` or
