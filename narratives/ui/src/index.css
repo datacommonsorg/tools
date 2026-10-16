@@ -143,9 +143,8 @@ html, body {
   color: var(--color-on-surface);
   margin: 0;
   padding: 0;
-  /* Prevent any rogue fixed-width child from causing a horizontal scrollbar
-     on narrow viewports. `clip`, not `hidden`: hidden would turn <body>
-     into a scroll container that never scrolls, breaking position: sticky. */
+  /* No horizontal scrollbar from wide children. `clip`, not `hidden`, which
+     would make <body> a scroll container and break position: sticky. */
   overflow-x: clip;
 }
 

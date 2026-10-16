@@ -117,8 +117,7 @@ describe('useTextareaAutosize', () => {
     expect(textarea.style.height).toBe(`${4 * LINE_HEIGHT}px`);
     expect(textarea.style.overflowY).toBe('auto');
     expect(hook.result.current.isScrolling).toBe(true);
-    // Still scrolling once the text is back under the cap: it only resets at
-    // one line.
+    // Stays scrolling under the cap; resets only at one line.
     lines = 3;
     hook.rerender({ value: 'three lines' });
     expect(hook.result.current.isScrolling).toBe(true);

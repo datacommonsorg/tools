@@ -77,10 +77,8 @@ export function PromptInput({
         className="glow-ring col-start-1 row-start-1 pointer-events-none opacity-0 group-focus-within:opacity-100 group-focus-within:[animation-play-state:running] motion-safe:transition-opacity duration-200 ease-linear"
       />
 
-      {/* 8px + 40px button + 8px = the 56px pill. The button sits at the
-          bottom so it stays on the last row as the box grows. Once the text
-          scrolls, the textarea takes the full width and the button drops to
-          its own row. */}
+      {/* 8px + 40px button + 8px = the 56px pill. The button stays on the
+          last row; once the text scrolls it drops to its own row. */}
       <div
         className={`col-start-1 row-start-1 flex p-2 ${
           isScrolling ? 'flex-col gap-1' : 'items-end gap-3'

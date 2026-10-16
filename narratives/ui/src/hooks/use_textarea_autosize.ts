@@ -20,16 +20,14 @@ import { type RefObject, useLayoutEffect, useState } from 'react';
  * hidden while the text fits (no scrollbar flashing as a line is added), auto
  * once it passes the cap.
  *
- * `isScrolling` latches: it turns on when the text passes the cap and stays on
- * until the text is back to one line. A caller that widens the textarea while
- * it scrolls rewraps the text onto fewer lines, which would otherwise drop it
- * back under the cap and flip the layout on every keystroke at the boundary.
+ * `isScrolling` latches on past the cap and resets only at one line, so a
+ * caller that widens the textarea while scrolling doesn't flip-flop the layout
+ * as the text rewraps under the cap.
  *
  * @param textareaRef The textarea to size.
  * @param value The textarea's current controlled value.
- * @returns `isExpanded`: whether `value` is non-empty and spans more than one
- *   line. `isScrolling`: whether it has passed the max height since it last
- *   fit on one line.
+ * @returns `isExpanded`: non-empty and multi-line. `isScrolling`: past the
+ *   max height since it last fit on one line.
  */
 export const useTextareaAutosize = (
   textareaRef: RefObject<HTMLTextAreaElement | null>,

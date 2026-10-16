@@ -32,10 +32,9 @@ import { useChatSession } from "../hooks/chat_session_context";
 const PIN_GLIDE_MS = 400;
 /** How long the new question is held at the top while late layout settles. */
 const PIN_HOLD_MS = 600;
-/** Gap left between the sticky header and the pinned question. */
+/** Gap between the sticky header and the pinned question. */
 const PIN_TOP_OFFSET_PX = 8;
-// Centered reading column. The page itself scrolls, so the content is
-// constrained rather than any scroll container.
+/** Centered content column; the page scrolls at full width. */
 const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
 
 /**
@@ -100,8 +99,7 @@ export function DataAgent() {
           `[data-turn-index="${targetIndex}"]`,
         );
         if (!target) return;
-        // Summed offsetTop rather than getBoundingClientRect, which would
-        // follow the bubble's translate-in animation.
+        // offsetTop ignores the enter animation's translate.
         let top = 0;
         let node: HTMLElement | null = target;
         while (node) {
@@ -141,8 +139,7 @@ export function DataAgent() {
     prevTurnsLength.current = turns.length;
   }, [turns.length]);
 
-  // Publishes the sticky header and prompt heights as --chrome-h, so the last
-  // turn can reserve exactly the viewport space left between them (see TurnView).
+  // Exposes the sticky header + prompt height as --chrome-h for TurnView.
   useEffect(() => {
     const prompt = promptRef.current;
     const header = document.querySelector<HTMLElement>("main > header");
@@ -192,13 +189,9 @@ export function DataAgent() {
         )}
       </div>
 
-      {/* Follow-up input, stuck to the bottom of the viewport while the page
-          scrolls. Its background spans the full width so content scrolling
-          behind it is hidden in the side gutters too. */}
+      {/* Sticky follow-up input; full-width background hides content behind it. */}
       <div ref={promptRef} className="sticky bottom-0 z-[5] w-full bg-surface">
-        {/* 16px transparent-to-white gradient just above the bar — chat content
-            scrolling up "behind" the input box visibly fades into the chrome
-            rather than terminating in a hard edge. */}
+        {/* Fade above the bar so content softens into it. */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute left-0 right-0 bottom-full h-4"
@@ -207,8 +200,7 @@ export function DataAgent() {
               "linear-gradient(to top, #FFFFFF 0%, rgba(255,255,255,0) 100%)",
           }}
         />
-        {/* Positioned so it paints over the fade, which would otherwise clip
-            the top of the prompt's shadow. */}
+        {/* Relative so the prompt's shadow paints over the fade. */}
         <div className={`${COLUMN} relative flex flex-col items-center gap-3 pb-4 sm:pb-6`}>
           <PromptInput
             value={query}
@@ -260,16 +252,15 @@ function TurnView({
     "shrink-0 flex flex-col gap-6",
     COLUMN,
     animate && "motion-safe:*:animate-enter",
-    // Viewport minus the sticky header and prompt, and the list's pb-6.
+    // Viewport minus sticky chrome and the list's pb-6.
     isLast && "min-h-[calc(100dvh-var(--chrome-h,0px)-1.5rem)]",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    // The last turn is at least as tall as the viewport between header and prompt, so its question
-    // can be pinned to the top before any of the answer exists and the answer
-    // can fill in beneath it without the view moving.
+    // The last turn fills the viewport between header and prompt, so its
+    // question can be pinned to the top while the answer streams in below.
     <div className={className}>
       {/* User bubble — Figma uses Type scale Body L (16/28/400). The
           .text-body-large utility gives the right family + size + weight,
