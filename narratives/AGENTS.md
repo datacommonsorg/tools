@@ -164,9 +164,8 @@ backend, public Data Commons or a local MCP server as preferred.
   `AGENT_URL` in `.env.local` (from `.env.local.example`) to point at a
   deployed instance, and run `pnpm dev:ui` (or `pnpm -C ui run dev`). In
   development, Vite's `server.proxy` (`ui/vite.config.ts`) forwards `/agent/*`
-  to `AGENT_URL` and Data Commons routes to `BACKEND_URL` (defaulting to
-  `https://datacommons.org`); in production, the Python server in `agent/`
-  serves the compiled SPA (`server/routes/spa.py`). Restart Vite after editing
+  to `AGENT_URL`; in production, the Python server in `agent/` serves the
+  compiled SPA (`server/routes/spa.py`). Restart Vite after editing
   `.env.local`.
 - **Agent (`narratives/agent/`)** — run `uv sync`, configure `.env.local` (from
   `.env.local.example`) with `GEMINI_API_KEY`, `DC_API_KEY` (which is optional

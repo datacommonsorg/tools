@@ -12,12 +12,6 @@ export default defineConfig(({mode}) => {
   // Load environment variables from narratives/.env.local
   const env = loadEnv(mode, envDir, '');
   const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
-  // Data and tool routes proxy directly to BACKEND_URL (defaulting to public
-  // Data Commons).
-  const backendProxy = {
-    target: env.BACKEND_URL || 'https://datacommons.org',
-    changeOrigin: true,
-  };
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
   // /agent/* requests are forwarded verbatim to AGENT_URL, whether a local
   // agent or a deployed instance.
@@ -58,26 +52,8 @@ export default defineConfig(({mode}) => {
       // Path B (full local stack):  defaults target localhost:5001.
       // server.proxy is dev-only - `vite build` ignores it, so production is unaffected.
       proxy: {
-        '/api':     backendProxy,
-        '/mcp':     backendProxy,
-        '/place':   backendProxy,
-        '/browser': backendProxy,
-        '/explore': backendProxy,
-        '/core':    backendProxy,
         // Match the `/agent` path segment without capturing `/agent*` public assets.
         '^/agent([/?]|$)': agentProxy,
-        // /tools/* paths host upstream Flask-rendered pages we iframe — currently
-        // /tools/download. /css, /custom_dc, /queryStore.js, /base.js, /download.js
-        // and friends are the absolute-path assets those pages reference. All
-        // routed to BACKEND_URL so the iframe behaves identically in dev and in
-        // the baked production image (where nginx covers the same paths).
-        '/tools':         backendProxy,
-        '/css':           backendProxy,
-        '/custom_dc':     backendProxy,
-        '/queryStore.js': backendProxy,
-        '/base.js':       backendProxy,
-        '/download.js':   backendProxy,
-        '/stat_var.js':   backendProxy,
       },
     },
   };

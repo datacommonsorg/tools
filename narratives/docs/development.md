@@ -127,8 +127,7 @@ you can run the Vite dev server without starting the local Python agent:
    ```
 
 Vite's development proxy (`ui/vite.config.ts`) forwards `/agent/*` to
-`AGENT_URL` and Data Commons routes to `BACKEND_URL` (defaulting to
-`https://datacommons.org`). Restart `pnpm dev:ui` after editing `.env.local`.
+`AGENT_URL`. Restart `pnpm dev:ui` after editing `.env.local`.
 
 ## Workspace scripts
 
