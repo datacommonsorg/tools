@@ -27,6 +27,7 @@ from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import classify
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
+from narratives_agent.workflows.messages import REFUSED_MESSAGE
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
     Transcript,
@@ -267,7 +268,7 @@ async def test_a_prefilter_match_refuses_without_a_model_call(
         await classify.classify_query(_transcript(query), _CONFIG, telemetry)
 
     assert raised.value.reason == "adversarial"
-    assert str(raised.value) == classify.REFUSED_MESSAGE
+    assert str(raised.value) == REFUSED_MESSAGE
     assert requests == []
     (record,) = caplog.records
     assert "instruction_override" in record.getMessage()
@@ -295,7 +296,7 @@ async def test_an_adversarial_verdict_refuses_with_the_fixed_message(
         await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
     assert raised.value.reason == "adversarial"
-    assert str(raised.value) == classify.REFUSED_MESSAGE
+    assert str(raised.value) == REFUSED_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -536,7 +537,7 @@ async def test_a_blocked_classifier_prompt_refuses_as_safety_blocked(
         await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
     assert raised.value.reason == "safety_blocked"
-    assert str(raised.value) == classify.REFUSED_MESSAGE
+    assert str(raised.value) == REFUSED_MESSAGE
 
 
 @pytest.mark.asyncio

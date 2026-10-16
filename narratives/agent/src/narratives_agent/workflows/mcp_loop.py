@@ -48,6 +48,12 @@ from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.schema import transform_schema_for_gemini
 from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.workflows.messages import (
+    MCP_LOOP_TIMEOUT,
+    MCP_MODEL_ERROR,
+    MCP_NO_RESPONSE,
+    MCP_UNAVAILABLE,
+)
 from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
 from narratives_agent.workflows.transcript import (
     Transcript,
@@ -178,10 +184,7 @@ async def _run_tool(
             result = await mcp_client.async_call_tool(name, arguments)
     except mcp_client.McpTransportError as error:
         # The client has already logged the underlying failure.
-        raise McpLoopError(
-            "mcp_transport_error",
-            "The data service is unavailable. Please try again.",
-        ) from error
+        raise McpLoopError("mcp_transport_error", MCP_UNAVAILABLE) from error
     telemetry.record_tool_call(name if name in declared else _UNDECLARED_TOOL)
     result_text = _result_text(result)
     return {
@@ -278,16 +281,10 @@ async def _iterate(
             raise McpLoopBlockedError()
         if "error" in response:
             # The client has already logged the redacted upstream error.
-            raise McpLoopError(
-                "mcp_model_error",
-                "The data request failed. Please try again.",
-            )
+            raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR)
         candidates = response.get("candidates") or []
         if not candidates:
-            raise McpLoopError(
-                "mcp_no_candidates",
-                "The model returned no response. Please try again.",
-            )
+            raise McpLoopError("mcp_no_candidates", MCP_NO_RESPONSE)
 
         parts = candidates[0].get("content", {}).get("parts", [])
         function_calls = [
@@ -298,10 +295,7 @@ async def _iterate(
                 # A reply with neither a tool call nor text is an empty
                 # response rather than a completed answer; continuing would
                 # run synthesis without gathered data.
-                raise McpLoopError(
-                    "mcp_empty_response",
-                    "The model returned no response. Please try again.",
-                )
+                raise McpLoopError("mcp_empty_response", MCP_NO_RESPONSE)
             return
 
         contents.append({"role": "model", "parts": parts})
@@ -387,10 +381,7 @@ async def execute_mcp_tool_loop(
                 "MCP loop exceeded %.0f seconds before any tool call completed",
                 MCP_LOOP_TIMEOUT_SECONDS,
             )
-            raise McpLoopError(
-                "mcp_timeout",
-                "The data request took too long. Please try again.",
-            ) from error
+            raise McpLoopError("mcp_timeout", MCP_LOOP_TIMEOUT) from error
         logger.warning(
             "MCP loop exceeded %.0f seconds after %d iterations and %d tool "
             "calls; the answer will be built on partial data",

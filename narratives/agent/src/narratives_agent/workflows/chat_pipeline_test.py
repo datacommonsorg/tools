@@ -59,7 +59,6 @@ from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.chat_pipeline import EventName
 from narratives_agent.workflows.classify import (
-    REFUSED_MESSAGE,
     Admitted,
     Clarification,
     RefusedReason,
@@ -69,6 +68,13 @@ from narratives_agent.workflows.mcp_loop import (
     McpLoopBlockedError,
     McpLoopError,
     McpLoopResult,
+)
+from narratives_agent.workflows.messages import (
+    CLASSIFY_STATUS,
+    INTERNAL_ERROR,
+    MCP_UNAVAILABLE,
+    REFUSED_MESSAGE,
+    SYNTHESIS_FAILED,
 )
 from narratives_agent.workflows.pattern_guidance import pattern_directive
 from narratives_agent.workflows.transcript import (
@@ -497,7 +503,7 @@ async def test_failed_synthesis_reports_a_fixed_message(
 
     event, terminal = turn.events[-1]
     assert event == "terminal"
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert terminal["reason"] == "synthesis_error"
     assert upstream not in terminal["error"]
     assert turn.finished == [("error", "synthesis_error")]
@@ -678,7 +684,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
 
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "mcp_unavailable"
-    assert terminal["error"] == chat_pipeline._MCP_UNAVAILABLE
+    assert terminal["error"] == MCP_UNAVAILABLE
     assert turn.synthesis_calls == 0
     assert turn.finished == [("error", "mcp_unavailable")]
 
@@ -728,7 +734,7 @@ async def test_an_empty_synthesis_fails_the_turn(
 
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "synthesis_empty"
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert not any("chart_config" in data for _, data in turn.events)
     assert turn.finished == [("error", "synthesis_empty")]
 
@@ -759,7 +765,7 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     assert ("content", {"text": "About "}) in turn.events
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "synthesis_stream_error"
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [("error", "synthesis_stream_error")]
 
 
@@ -783,7 +789,7 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
 
     terminal = _only_terminal(turn)
     assert terminal["reason"] == "internal_error"
-    assert terminal["error"] == chat_pipeline._INTERNAL_ERROR
+    assert terminal["error"] == INTERNAL_ERROR
     assert turn.finished == [("error", "internal_error")]
 
 
@@ -864,7 +870,7 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
 
     assert turn.events[0] == (
         "status",
-        {"phase": "classify", "message": chat_pipeline._CLASSIFY_STATUS},
+        {"phase": "classify", "message": CLASSIFY_STATUS},
     )
     statuses = [
         data["phase"] for event, data in turn.events if event == "status"
@@ -1103,7 +1109,7 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     #   `GeminiStreamError` with `block_reason="SAFETY"`.
     # Expectation: The partial text is emitted, and the turn ends in an `error`
     #   terminal frame with `reason="synthesis_stream_error"` and
-    #   `_SYNTHESIS_FAILED` rather than `refused`.
+    #   `SYNTHESIS_FAILED` rather than `refused`.
     async def blocked_after_text() -> AsyncIterator[str]:
         yield "About "
         raise GeminiStreamError(
@@ -1121,5 +1127,5 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     terminal = _only_terminal(turn)
     assert terminal["state"] == "error"
     assert terminal["reason"] == "synthesis_stream_error"
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [("error", "synthesis_stream_error")]

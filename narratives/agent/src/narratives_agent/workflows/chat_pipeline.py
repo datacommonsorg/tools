@@ -54,7 +54,6 @@ from narratives_agent.workflows.chart_config import (
     validate_data_response,
 )
 from narratives_agent.workflows.classify import (
-    REFUSED_MESSAGE,
     Clarification,
     TurnRefusedError,
     classify_query,
@@ -64,6 +63,17 @@ from narratives_agent.workflows.mcp_loop import (
     McpLoopBlockedError,
     McpLoopError,
     execute_mcp_tool_loop,
+)
+from narratives_agent.workflows.messages import (
+    CHART_CONFIG_STATUS,
+    CLASSIFY_STATUS,
+    INTERNAL_ERROR,
+    MCP_STATUS,
+    MCP_TOOLS_TIMEOUT,
+    MCP_UNAVAILABLE,
+    REFUSED_MESSAGE,
+    SYNTHESIS_FAILED,
+    SYNTHESIS_STATUS,
 )
 from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
 from narratives_agent.workflows.state_slots import extract_state_slots
@@ -96,13 +106,6 @@ _SYNTHESIS_TEMPERATURE = 0.3
 _FALLBACK_SOURCE = {"name": "Data Commons", "url": "https://datacommons.org/"}
 
 _NO_CHARTS: dict[str, Any] = {"should_render": False}
-
-_SYNTHESIS_FAILED = "The response could not be generated. Please try again."
-_MCP_UNAVAILABLE = "The data service is unavailable. Please try again."
-_MCP_TOOLS_TIMEOUT = "The data service did not respond. Please try again."
-_INTERNAL_ERROR = "An internal error occurred. Please try again."
-
-_CLASSIFY_STATUS = "Understanding the question..."
 
 # Default pattern recorded in telemetry when the classifier call failed.
 _UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
@@ -186,12 +189,12 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             "MCP tool list did not arrive within %d seconds",
             MCP_TOOLS_TIMEOUT_SECONDS,
         )
-        raise TurnAbortedError("mcp_timeout", _MCP_TOOLS_TIMEOUT) from error
+        raise TurnAbortedError("mcp_timeout", MCP_TOOLS_TIMEOUT) from error
     if not tools:
         logger.warning("MCP unavailable: not connected or no tools available")
-        raise TurnAbortedError("mcp_unavailable", _MCP_UNAVAILABLE)
+        raise TurnAbortedError("mcp_unavailable", MCP_UNAVAILABLE)
 
-    ctx.emit("status", {"phase": "mcp", "message": "Querying data tools..."})
+    ctx.emit("status", {"phase": "mcp", "message": MCP_STATUS})
     try:
         loop_result = await execute_mcp_tool_loop(
             ctx.transcript,
@@ -316,9 +319,7 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
         TurnRefusedError: If Gemini blocks the synthesis prompt before any text
             chunk is yielded.
     """
-    ctx.emit(
-        "status", {"phase": "synthesis", "message": "Generating response..."}
-    )
+    ctx.emit("status", {"phase": "synthesis", "message": SYNTHESIS_STATUS})
     config = ctx.config
     # The verified window comes first, with earlier answers in full, then
     # the current query with the MCP context.
@@ -343,7 +344,7 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
     if isinstance(stream, dict):
         # The client has already logged the redacted upstream error, so the
         # user receives a fixed message.
-        raise TurnAbortedError("synthesis_error", _SYNTHESIS_FAILED)
+        raise TurnAbortedError("synthesis_error", SYNTHESIS_FAILED)
 
     full_text = ""
     try:
@@ -365,13 +366,13 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
         # Once answer text has streamed to the client, a mid-stream block
         # leaves the response truncated and is reported as a stream error.
         raise TurnAbortedError(
-            "synthesis_stream_error", _SYNTHESIS_FAILED
+            "synthesis_stream_error", SYNTHESIS_FAILED
         ) from error
     finally:
         await stream.aclose()
     if not full_text.strip():
         logger.warning("Synthesis returned no answer text")
-        raise TurnAbortedError("synthesis_empty", _SYNTHESIS_FAILED)
+        raise TurnAbortedError("synthesis_empty", SYNTHESIS_FAILED)
     return full_text
 
 
@@ -389,7 +390,7 @@ async def resolve_chart_config(
     if mcp.chart_task is None:
         return dict(_NO_CHARTS)
     ctx.emit(
-        "status", {"phase": "chart_config", "message": "Preparing charts..."}
+        "status", {"phase": "chart_config", "message": CHART_CONFIG_STATUS}
     )
     show_charts = True
     if full_text:
@@ -559,7 +560,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
         config = _load_turn_config()
-        emit("status", {"phase": "classify", "message": _CLASSIFY_STATUS})
+        emit("status", {"phase": "classify", "message": CLASSIFY_STATUS})
         with telemetry.phase("classify"):
             admission = await classify_query(transcript, config, telemetry)
         if isinstance(admission, Clarification):
@@ -613,7 +614,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         raise
     except Exception:
         logger.exception("Chat turn failed")
-        internal = TurnAbortedError("internal_error", _INTERNAL_ERROR)
+        internal = TurnAbortedError("internal_error", INTERNAL_ERROR)
         state, error_type = "error", internal.error_type
         emit("terminal", terminal_frame(state, idempotency_key, error=internal))
     finally:

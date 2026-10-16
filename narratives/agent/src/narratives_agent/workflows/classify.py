@@ -37,6 +37,10 @@ from narratives_agent.gemini.client import (
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
+from narratives_agent.workflows.messages import (
+    OFF_DOMAIN_TEMPLATE,
+    REFUSED_MESSAGE,
+)
 from narratives_agent.workflows.transcript import (
     Transcript,
     transcript_contents,
@@ -59,16 +63,6 @@ _CLASSIFY_THINKING_LEVEL = "minimal"
 # Maximum character length for the sanitized premise quoted in an off-domain
 # refusal message.
 MAX_PREMISE_CHARS = 80
-
-# User-safe message for `adversarial` and `safety_blocked` refusals, which
-# never surface model-generated text.
-REFUSED_MESSAGE = "We cannot service that request."
-
-_OFF_DOMAIN_MESSAGE = (
-    "That request is outside the public statistical data this service "
-    "covers{premise}. Ask about a demographic, economic, health, climate, "
-    "or social indicator for a place."
-)
 
 # Zero-width spaces, joiners, byte-order marks, and soft hyphens stripped prior
 # to pre-filter matching.
@@ -198,7 +192,7 @@ def off_domain_message(premise: str) -> str:
     """
     plain = " ".join(_CONTROL_CHARS.sub(" ", premise).split())
     plain = plain[:MAX_PREMISE_CHARS].strip()
-    return _OFF_DOMAIN_MESSAGE.format(premise=f" ({plain})" if plain else "")
+    return OFF_DOMAIN_TEMPLATE.format(premise=f" ({plain})" if plain else "")
 
 
 def _candidate_text(candidate: dict[str, Any]) -> str:
