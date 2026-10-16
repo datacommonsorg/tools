@@ -1129,8 +1129,8 @@ async def test_normalize_response_includes_candidate_finish_reason(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Preservation of `finishReason` on normalized candidates.
-    # Situation: Gemini returns a candidate with `finishReason = "SAFETY"`.
-    # Expectation: `result["candidates"][0]["finishReason"]` is `"SAFETY"`.
+    # Situation: Gemini returns a candidate with `finishReason = "MAX_TOKENS"`.
+    # Expectation: `result["candidates"][0]["finishReason"]` is `"MAX_TOKENS"`.
     gemini.respond(
         _answer(
             200,
@@ -1138,7 +1138,7 @@ async def test_normalize_response_includes_candidate_finish_reason(
                 "candidates": [
                     {
                         "content": {"parts": [], "role": "model"},
-                        "finishReason": "SAFETY",
+                        "finishReason": "MAX_TOKENS",
                     }
                 ]
             },
@@ -1148,4 +1148,252 @@ async def test_normalize_response_includes_candidate_finish_reason(
     result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
     assert isinstance(result, dict)
-    assert result["candidates"][0]["finishReason"] == "SAFETY"
+    assert result["candidates"][0]["finishReason"] == "MAX_TOKENS"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _MODES)
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "SAFETY",
+        "PROHIBITED_CONTENT",
+        "BLOCKLIST",
+        "SPII",
+        # Vertex AI only; not a `types.FinishReason` member in google-genai.
+        "MODEL_ARMOR",
+    ],
+)
+async def test_a_candidate_safety_finish_reason_returns_gemini_blocked(
+    gemini: _FakeGemini, mode: str, reason: str
+) -> None:
+    # Test: Candidate-level safety `finishReason` handling across all client
+    #   entry points.
+    # Situation: Gemini returns a candidate with `finishReason` set to one of
+    #   the five candidate safety finish reasons (`SAFETY`,
+    #   `PROHIBITED_CONTENT`, `BLOCKLIST`, `SPII`, or `MODEL_ARMOR`) and no
+    #   answer text or function calls.
+    # Expectation: Every entry point returns
+    #   `GeminiBlocked(block_reason=reason)` and records token usage.
+    body = {
+        "candidates": [
+            {
+                "content": {"parts": [], "role": "model"},
+                "finishReason": reason,
+            }
+        ],
+        "usageMetadata": _USAGE,
+    }
+    if mode == "async_request":
+        gemini.respond(_answer(200, json=body))
+    else:
+        gemini.respond(_answer(200, content=_sse(body)))
+    usage = TokenUsage()
+
+    result = await _call(mode, token_usage=usage)
+
+    assert result == client.GeminiBlocked(block_reason=reason)
+    assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+async def test_thought_streaming_blocked_after_thoughts_returns_gemini_blocked(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Candidate safety `finishReason` after a thought chunk in
+    #   `async_gemini_request_with_thought_streaming`.
+    # Situation: The stream delivers a thought chunk followed by a candidate
+    #   chunk with `finishReason = "SAFETY"` and no function call or answer
+    #   text.
+    # Expectation: The thought is forwarded to `thought_callback`, token usage
+    #   is recorded, and `GeminiBlocked(block_reason="SAFETY")` is returned.
+    gemini.respond(
+        _answer(
+            200,
+            content=_sse(
+                _response_json([{"text": "Considering.", "thought": True}]),
+                {
+                    "candidates": [
+                        {
+                            "content": {"parts": [], "role": "model"},
+                            "finishReason": "SAFETY",
+                        }
+                    ],
+                    "usageMetadata": _USAGE,
+                },
+            ),
+        )
+    )
+    thoughts: list[str] = []
+    usage = TokenUsage()
+
+    result = await _call(
+        "async_thought_streaming",
+        token_usage=usage,
+        thought_callback=thoughts.append,
+    )
+
+    assert thoughts == ["Considering."]
+    assert result == client.GeminiBlocked(block_reason="SAFETY")
+    assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "partial_part",
+    [
+        pytest.param({"text": "Partial answer "}, id="text"),
+        pytest.param(
+            {"functionCall": {"name": "get_data", "args": {}}},
+            id="function-call",
+        ),
+    ],
+)
+async def test_thought_streaming_blocked_after_output_returns_gemini_blocked(
+    gemini: _FakeGemini, partial_part: dict[str, Any]
+) -> None:
+    # Test: Candidate safety `finishReason` after partial output in
+    #   `async_gemini_request_with_thought_streaming`.
+    # Situation: The stream delivers answer text or a function call, then a
+    #   candidate chunk with `finishReason = "SAFETY"` and empty parts.
+    # Expectation: The partial output is discarded and
+    #   `GeminiBlocked(block_reason="SAFETY")` is returned with token usage
+    #   recorded, so the caller refuses the turn instead of acting on output
+    #   that the safety filter stopped.
+    gemini.respond(
+        _answer(
+            200,
+            content=_sse(
+                _response_json([partial_part]),
+                {
+                    "candidates": [
+                        {
+                            "content": {"parts": [], "role": "model"},
+                            "finishReason": "SAFETY",
+                        }
+                    ],
+                    "usageMetadata": _USAGE,
+                },
+            ),
+        )
+    )
+    usage = TokenUsage()
+
+    result = await _call("async_thought_streaming", token_usage=usage)
+
+    assert result == client.GeminiBlocked(block_reason="SAFETY")
+    assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "RECITATION",
+        "MALFORMED_FUNCTION_CALL",
+        "MAX_TOKENS",
+        "STOP",
+        "OTHER",
+    ],
+)
+async def test_non_safety_finish_reason_without_parts_omits_candidates(
+    gemini: _FakeGemini, reason: str
+) -> None:
+    # Test: Non-safety candidate `finishReason` values on an empty streamed
+    #   reply.
+    # Situation: Gemini ends `async_gemini_request_with_thought_streaming` with
+    #   a non-safety `finishReason` (`RECITATION`, `MALFORMED_FUNCTION_CALL`,
+    #   `MAX_TOKENS`, `STOP`, or `OTHER`) and no function calls or answer text.
+    # Expectation: The call returns a dict with no `"candidates"` key rather
+    #   than `GeminiBlocked`, so the caller treats the empty generation as a
+    #   model error rather than a safety refusal.
+    gemini.respond(
+        _answer(
+            200,
+            content=_sse(
+                {
+                    "candidates": [
+                        {
+                            "content": {"parts": [], "role": "model"},
+                            "finishReason": reason,
+                        }
+                    ],
+                    "usageMetadata": _USAGE,
+                }
+            ),
+        )
+    )
+
+    result = await _call("async_thought_streaming")
+
+    assert isinstance(result, dict)
+    assert "candidates" not in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("blocked_chunk", "expected_reason"),
+    [
+        (
+            {
+                "promptFeedback": {"blockReason": "SAFETY"},
+                "usageMetadata": _USAGE,
+            },
+            "SAFETY",
+        ),
+        (
+            {
+                "candidates": [
+                    {
+                        "content": {"parts": [], "role": "model"},
+                        "finishReason": "PROHIBITED_CONTENT",
+                    }
+                ],
+                "usageMetadata": _USAGE,
+            },
+            "PROHIBITED_CONTENT",
+        ),
+    ],
+)
+async def test_an_async_stream_blocked_mid_stream_raises_with_block_reason(
+    gemini: _FakeGemini,
+    blocked_chunk: dict[str, Any],
+    expected_reason: str,
+) -> None:
+    # Test: Mid-stream safety block in `async_gemini_stream`.
+    # Situation: The first chunk carries a thought summary and the second chunk
+    #   carries either `promptFeedback.blockReason` or a candidate safety
+    #   `finishReason` along with usage metadata.
+    # Expectation: Iterating the stream yields the thought item, raises
+    #   `GeminiStreamError` with `block_reason` set to the blocking reason, and
+    #   records token usage when the stream closes.
+    gemini.respond(
+        _answer(
+            200,
+            content=_sse(
+                _response_json(
+                    [{"text": "Weighing sources.", "thought": True}]
+                ),
+                blocked_chunk,
+            ),
+        )
+    )
+    usage = TokenUsage()
+
+    stream = await client.async_gemini_stream(
+        _MESSAGES,
+        "",
+        _MODEL,
+        token_usage=usage,
+        include_thoughts=True,
+    )
+    assert not isinstance(stream, (dict, client.GeminiBlocked))
+
+    received: list[Any] = []
+    with pytest.raises(client.GeminiStreamError) as raised:
+        async for item in stream:
+            received.append(item)
+
+    assert received == [{"type": "thought", "content": "Weighing sources."}]
+    assert raised.value.block_reason == expected_reason
+    assert usage == _EXPECTED_USAGE

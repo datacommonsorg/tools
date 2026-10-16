@@ -35,15 +35,15 @@ Gemini REST API uses (`candidates`, `content`, `parts`, `functionCall`,
 
 Errors and prompt blocks are reported in one of three ways:
 
-- If the prompt is blocked by Gemini safety filters or by Vertex AI Model Armor
-  floor settings (`promptFeedback.blockReason`), the function returns a
-  `GeminiBlocked` value so the caller can end the turn as `refused` rather than
-  `error`.
+- If the prompt or candidate output is blocked by Gemini safety filters or by
+  Vertex AI Model Armor floor settings (`promptFeedback.blockReason` or a
+  safety `candidates[0].finishReason`), the function returns a `GeminiBlocked`
+  value so the caller can end the turn as `refused` rather than `error`.
 - If the request fails before Gemini returns any output, the function returns
   `{"error": <message>}`.
-- If a streamed response fails after output has started, the stream raises
-  `GeminiStreamError`, because the caller already holds the stream and can no
-  longer receive a returned value.
+- If a streamed response fails or is blocked after iteration has started, the
+  generator raises `GeminiStreamError`, because `async_gemini_stream` has
+  already returned the async iterator to the caller.
 
 In both error cases, the API key is removed from the error message.
 """
@@ -100,8 +100,18 @@ _DEFAULT_THINKING_LEVEL = "low"
 # chart configuration, chart validation, and follow-up questions.
 LIGHTWEIGHT_THINKING_LEVEL = "low"
 
-# `promptFeedback.blockReason` values that represent a content-policy or Model
-# Armor refusal. `MODEL_ARMOR` and `JAILBREAK` are emitted only by Vertex AI.
+# `promptFeedback.blockReason` values that represent an input content-policy or
+# Model Armor refusal:
+# - `SAFETY`: Prompt exceeded a Gemini harm-category safety threshold.
+# - `PROHIBITED_CONTENT`: Prompt matched Google's non-configurable
+#   prohibited-content policy.
+# - `BLOCKLIST`: Prompt contains a term from Gemini's Google-maintained
+#   terminology blocklist; customer-defined term policies are a Vertex AI
+#   Model Armor feature and are reported as `MODEL_ARMOR`.
+# - `MODEL_ARMOR`: Prompt was blocked by Vertex AI Model Armor inspection
+#   (Vertex AI only).
+# - `JAILBREAK`: Prompt was flagged by Vertex AI's jailbreak detector (Vertex
+#   AI only).
 _BLOCKED_REASONS = frozenset(
     {
         types.BlockedReason.SAFETY,
@@ -109,6 +119,25 @@ _BLOCKED_REASONS = frozenset(
         types.BlockedReason.BLOCKLIST,
         types.BlockedReason.MODEL_ARMOR,
         types.BlockedReason.JAILBREAK,
+    }
+)
+
+# Candidate `finishReason` names indicating that Gemini halted generation on a
+# safety, prohibited-content, terminology-blocklist, sensitive-PII, or Model
+# Armor filter after the input prompt passed `promptFeedback` screening. Names
+# are compared rather than enum members because Vertex AI reports a Model
+# Armor response block as `MODEL_ARMOR`, which `google-genai` does not define
+# on `FinishReason`; the SDK parses an unknown value into a member whose
+# `name` is the raw string. `RECITATION` is excluded because verbatim
+# training-data recitation on model output is a generation failure rather
+# than an unsafe request.
+_BLOCKED_FINISH_REASONS = frozenset(
+    {
+        types.FinishReason.SAFETY.name,
+        types.FinishReason.PROHIBITED_CONTENT.name,
+        types.FinishReason.BLOCKLIST.name,
+        types.FinishReason.SPII.name,
+        "MODEL_ARMOR",
     }
 )
 
@@ -159,20 +188,28 @@ _cached_client: tuple[_ClientKey, genai.Client] | None = None
 
 
 class GeminiStreamError(RuntimeError):
-    """Raised when a stream fails after its first chunk was delivered.
+    """Raised when a stream fails or is blocked after its first chunk.
 
-    The message is the same redacted error string that `_report_failure`
-    logs.
+    When the stream failed, the message is the redacted error string that
+    `_report_failure` logs and `block_reason` is `None`. When the stream
+    was stopped mid-stream by a safety or policy filter, `block_reason`
+    holds the filter reason name.
     """
+
+    def __init__(
+        self, message: str, *, block_reason: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.block_reason = block_reason
 
 
 @dataclass(frozen=True)
 class GeminiBlocked:
-    """Returned when Gemini blocks the prompt (`promptFeedback.blockReason`).
+    """Returned when Gemini blocks the prompt or candidate on a safety rule.
 
     `block_reason` holds the SDK enum name (`SAFETY`, `PROHIBITED_CONTENT`,
-    `BLOCKLIST`, `MODEL_ARMOR`, or `JAILBREAK`) so callers can map any
-    blocked call to a `refused` turn with reason `safety_blocked`.
+    `BLOCKLIST`, `SPII`, `MODEL_ARMOR`, or `JAILBREAK`) so callers can map
+    any blocked call to a `refused` turn with reason `safety_blocked`.
     """
 
     block_reason: str
@@ -307,10 +344,22 @@ def _block_reason(
     return None
 
 
+def _candidate_block_reason(
+    response: types.GenerateContentResponse | None,
+) -> str | None:
+    """Returns the safety finish-reason name when the candidate was blocked."""
+    if response is None or not response.candidates:
+        return None
+    reason = response.candidates[0].finish_reason
+    if reason is not None and reason.name in _BLOCKED_FINISH_REASONS:
+        return reason.name
+    return None
+
+
 def _report_blocked(block_reason: str, model: str) -> GeminiBlocked:
-    """Logs a prompt-blocked Gemini call and returns its `GeminiBlocked`."""
+    """Logs a safety-blocked Gemini call and returns its `GeminiBlocked`."""
     logger.warning(
-        "Gemini request to %s blocked by promptFeedback.blockReason=%s",
+        "Gemini request to %s blocked by %s",
         model,
         block_reason,
     )
@@ -499,8 +548,8 @@ def _normalize_response(
         role = content.role or "model"
         entry: dict[str, Any] = {"content": {"parts": parts, "role": role}}
         if candidate.finish_reason is not None:
-            # Include finishReason so callers can detect safety-stopped
-            # candidates when promptFeedback.blockReason is unset.
+            # Include finishReason, as the REST API does, so callers can tell
+            # a truncated candidate from a complete one.
             entry["finishReason"] = candidate.finish_reason.name
         candidates.append(entry)
     if candidates:
@@ -565,7 +614,11 @@ class _ThoughtStreamCollector:
     def add(self, chunk: types.GenerateContentResponse) -> None:
         """Accumulates one chunk and forwards any thought text."""
         self.usage = _usage_dict(chunk.usage_metadata) or self.usage
-        self.block_reason = _block_reason(chunk) or self.block_reason
+        self.block_reason = (
+            _block_reason(chunk)
+            or _candidate_block_reason(chunk)
+            or self.block_reason
+        )
         for part in _chunk_parts(chunk):
             if part.function_call:
                 self.function_calls.append(_dump_part(part))
@@ -579,10 +632,9 @@ class _ThoughtStreamCollector:
     def finish(self) -> dict[str, Any]:
         """Returns the assembled response.
 
-        A stream that produced neither a function call nor answer text (such
-        as an empty or safety-blocked reply) is returned without `candidates`,
-        matching the non-streamed response shape so callers can distinguish it
-        from a normal final reply.
+        A stream that produced neither a function call nor answer text is
+        returned without `candidates`, matching the non-streamed response
+        shape so callers can distinguish it from a normal final reply.
         """
         parts = list(self.function_calls)
         if self.text:
@@ -630,8 +682,20 @@ async def _async_iterate_stream(
             for item in stream.items(first):
                 yield item
         async for chunk in chunks:
+            block_reason = _block_reason(chunk) or _candidate_block_reason(
+                chunk
+            )
+            if block_reason is not None:
+                stream.usage = _usage_dict(chunk.usage_metadata) or stream.usage
+                _report_blocked(block_reason, model)
+                raise GeminiStreamError(
+                    f"Gemini stream to {model} blocked: {block_reason}",
+                    block_reason=block_reason,
+                )
             for item in stream.items(chunk):
                 yield item
+    except GeminiStreamError:
+        raise
     except Exception as error:
         report = _report_failure(_describe_error(error), model)
         raise GeminiStreamError(report["error"]) from error
@@ -666,8 +730,8 @@ async def async_gemini_request(
             are added.
 
     Returns:
-        The response dict, a `GeminiBlocked` when the prompt was blocked, or a
-        dict with an "error" key if the call failed.
+        The response dict, a `GeminiBlocked` when the prompt or candidate was
+        blocked, or a dict with an "error" key if the call failed.
     """
     call = await _prepare_call(
         messages,
@@ -689,7 +753,7 @@ async def async_gemini_request(
         return _report_failure(_describe_error(error), model)
     result = _normalize_response(response)
     _record_usage(token_usage, result.get("usageMetadata"))
-    block_reason = _block_reason(response)
+    block_reason = _block_reason(response) or _candidate_block_reason(response)
     if block_reason is not None:
         return _report_blocked(block_reason, model)
     return result
@@ -709,8 +773,8 @@ async def async_gemini_stream(
     """Starts a streamed request to Gemini without blocking the event loop.
 
     The coroutine completes once the first chunk has arrived, so a request
-    that fails outright or is blocked by `promptFeedback.blockReason` is
-    reported before the caller begins iterating.
+    that fails outright or is blocked on its first chunk is reported before
+    the caller begins iterating.
 
     Args:
         messages: Conversation history as REST-shaped dicts or `Content`.
@@ -729,7 +793,7 @@ async def async_gemini_stream(
         An async generator yielding text strings, or `{"type": "thought" |
         "text", "content": str}` dicts with `include_thoughts`; it raises
         `GeminiStreamError` if the stream fails after its first chunk. If
-        the prompt is blocked on the first chunk, a `GeminiBlocked`. If the
+        the request is blocked on the first chunk, a `GeminiBlocked`. If the
         request fails before its first chunk, a dict with an "error" key.
     """
     call = await _prepare_call(
@@ -758,7 +822,7 @@ async def async_gemini_stream(
             return _report_failure(_describe_error(error), model)
         raise
     if first is not None:
-        block_reason = _block_reason(first)
+        block_reason = _block_reason(first) or _candidate_block_reason(first)
         if block_reason is not None:
             _record_usage(token_usage, _usage_dict(first.usage_metadata))
             await _close_chunks(chunks)
@@ -803,8 +867,9 @@ async def async_gemini_request_with_thought_streaming(
         thought_callback: Optional callable invoked with each thought chunk.
 
     Returns:
-        The complete response dict, a `GeminiBlocked` when the prompt was
-        blocked, or a dict with an "error" key if the call failed.
+        The complete response dict, a `GeminiBlocked` when the prompt or
+        candidate was blocked (any output that preceded the block is
+        discarded), or a dict with an "error" key if the call failed.
     """
     call = await _prepare_call(
         messages,
@@ -832,5 +897,8 @@ async def async_gemini_request_with_thought_streaming(
         _record_usage(token_usage, collector.usage)
         await _close_chunks(chunks)
     if collector.block_reason is not None:
+        # Text or function calls that arrived before the block were stopped
+        # by the same filter, so they are discarded rather than returned as
+        # a normal reply.
         return _report_blocked(collector.block_reason, model)
     return collector.finish()

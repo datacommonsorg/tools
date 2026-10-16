@@ -1055,3 +1055,71 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
     assert terminal["state"] == "refused"
     assert terminal["reason"] == "safety_blocked"
     assert turn.finished == [("refused", "safety_blocked")]
+
+
+@pytest.mark.asyncio
+async def test_a_synthesis_stream_blocked_after_thoughts_refuses_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Mid-stream safety block in `run_synthesis_phase` before answer text.
+    # Situation: The synthesis stream yields a thought chunk and then raises
+    #   `GeminiStreamError` with `block_reason="SAFETY"`.
+    # Expectation: No answer text is emitted, the turn ends in a `refused`
+    #   terminal frame with `reason="safety_blocked"`, and telemetry records
+    #   `("refused", "safety_blocked")`.
+    async def blocked_after_thought() -> AsyncIterator[dict[str, str]]:
+        yield {"type": "thought", "content": "Reviewing data."}
+        raise GeminiStreamError(
+            "Gemini stream blocked: SAFETY", block_reason="SAFETY"
+        )
+
+    async def synthesis(**kwargs: Any) -> AsyncIterator[dict[str, str]]:
+        return blocked_after_thought()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert (
+        "thought",
+        {"thought": "Reviewing data.", "phase": "synthesis"},
+    ) in turn.events
+    assert not any(
+        event == "content" and "text" in data for event, data in turn.events
+    )
+    terminal = _only_terminal(turn)
+    assert terminal["state"] == "refused"
+    assert terminal["reason"] == "safety_blocked"
+    assert terminal["message"] == REFUSED_MESSAGE
+    assert turn.finished == [("refused", "safety_blocked")]
+
+
+@pytest.mark.asyncio
+async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Mid-stream safety block in `run_synthesis_phase` after answer text.
+    # Situation: The synthesis stream yields answer text and then raises
+    #   `GeminiStreamError` with `block_reason="SAFETY"`.
+    # Expectation: The partial text is emitted, and the turn ends in an `error`
+    #   terminal frame with `reason="synthesis_stream_error"` and
+    #   `_SYNTHESIS_FAILED` rather than `refused`.
+    async def blocked_after_text() -> AsyncIterator[str]:
+        yield "About "
+        raise GeminiStreamError(
+            "Gemini stream blocked: SAFETY", block_reason="SAFETY"
+        )
+
+    async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
+        return blocked_after_text()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert ("content", {"text": "About "}) in turn.events
+    terminal = _only_terminal(turn)
+    assert terminal["state"] == "error"
+    assert terminal["reason"] == "synthesis_stream_error"
+    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert turn.finished == [("error", "synthesis_stream_error")]

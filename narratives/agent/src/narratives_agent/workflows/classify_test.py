@@ -433,6 +433,14 @@ async def test_classifier_receives_conversation_with_capped_answers(
             _verdict(serviceable=False, refusal_reason=None),
             id="does-not-validate",
         ),
+        pytest.param(
+            {
+                "candidates": [
+                    {"content": {"parts": []}, "finishReason": "RECITATION"}
+                ]
+            },
+            id="recitation-stopped",
+        ),
     ],
 )
 @pytest.mark.asyncio
@@ -444,7 +452,8 @@ async def test_a_classifier_failure_admits_the_query_unclassified(
 ) -> None:
     # Test: Fall-through when the classifier request or validation fails.
     # Situation: The classifier returns an error dict, no candidates, malformed
-    #   JSON, or JSON that fails `QueryClassification` validation.
+    #   JSON, JSON that fails `QueryClassification` validation, or a candidate
+    #   stopped for recitation with no text.
     # Expectation: `Admitted(None)` is returned and a warning is logged without
     #   leaking the raw model output.
     model(reply)
@@ -528,34 +537,6 @@ async def test_a_blocked_classifier_prompt_refuses_as_safety_blocked(
 
     assert raised.value.reason == "safety_blocked"
     assert str(raised.value) == classify.REFUSED_MESSAGE
-
-
-@pytest.mark.parametrize(
-    "finish_reason",
-    ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"],
-)
-@pytest.mark.asyncio
-async def test_a_stopped_classifier_reply_refuses_as_safety_blocked(
-    model: Callable[..., list[Any]],
-    telemetry: TurnTelemetry,
-    finish_reason: str,
-) -> None:
-    # Test: Safety finish-reason handling in `classify_query`.
-    # Situation: The classifier candidate has `finishReason` set to a blocking
-    #   reason and empty parts.
-    # Expectation: `TurnRefusedError` is raised with reason `safety_blocked`.
-    model(
-        {
-            "candidates": [
-                {"content": {"parts": []}, "finishReason": finish_reason}
-            ]
-        }
-    )
-
-    with pytest.raises(classify.TurnRefusedError) as raised:
-        await classify.classify_query(_transcript(), _CONFIG, telemetry)
-
-    assert raised.value.reason == "safety_blocked"
 
 
 @pytest.mark.asyncio

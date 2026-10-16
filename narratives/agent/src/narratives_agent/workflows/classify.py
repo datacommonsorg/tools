@@ -70,12 +70,6 @@ _OFF_DOMAIN_MESSAGE = (
     "or social indicator for a place."
 )
 
-# Candidate finish reasons indicating that safety or recitation filters stopped
-# the classifier response.
-_BLOCKED_FINISH_REASONS = frozenset(
-    {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"}
-)
-
 # Zero-width spaces, joiners, byte-order marks, and soft hyphens stripped prior
 # to pre-filter matching.
 _INVISIBLE_CHARS = re.compile("[\u200b\u200c\u200d\u2060\ufeff\u00ad]")
@@ -270,13 +264,6 @@ async def _request_classification(
             "Classifier returned no candidates; proceeding unclassified"
         )
         return None
-    finish_reason = candidates[0].get("finishReason")
-    if finish_reason in _BLOCKED_FINISH_REASONS:
-        logger.warning(
-            "Classifier candidate stopped with finish reason %s; refusing turn",
-            finish_reason,
-        )
-        raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
     try:
         return QueryClassification.model_validate_json(
             _candidate_text(candidates[0])

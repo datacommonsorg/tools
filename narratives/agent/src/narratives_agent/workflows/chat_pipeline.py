@@ -360,6 +360,10 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
                 full_text += chunk["content"]
                 ctx.emit("content", {"text": chunk["content"]})
     except GeminiStreamError as error:
+        if error.block_reason is not None and not full_text.strip():
+            raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE) from error
+        # Once answer text has streamed to the client, a mid-stream block
+        # leaves the response truncated and is reported as a stream error.
         raise TurnAbortedError(
             "synthesis_stream_error", _SYNTHESIS_FAILED
         ) from error

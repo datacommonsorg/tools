@@ -120,4 +120,8 @@ filterwarnings = [
     # google-genai 2.25.0 references typing._UnionGenericAlias, deprecated
     # in Python 3.14. Remove when the SDK stops using it.
     "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai.types",
+    # Vertex AI reports a Model Armor response block as finishReason
+    # MODEL_ARMOR, which google-genai 2.25.0 does not define; the SDK warns
+    # when it parses the value. Remove when the SDK adds the member.
+    "ignore:MODEL_ARMOR is not a valid FinishReason:UserWarning:google.genai._common",
 ]
