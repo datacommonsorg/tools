@@ -53,10 +53,10 @@ export function App() {
   return (
     <ChatSessionProvider>
       <ChatResetOnTabChange route={route} />
-      <div className="flex h-screen w-full bg-surface overflow-hidden relative">
+      <div className="flex min-h-dvh w-full bg-surface relative">
         <Sidebar />
         <SessionDrawer />
-        <main className="flex-1 flex flex-col h-full relative min-w-0">
+        <main className="flex-1 flex flex-col relative min-w-0">
           <Header />
           {renderContent(route)}
         </main>
@@ -78,6 +78,8 @@ function ChatResetOnTabChange({ route }: { route: string }) {
   useEffect(() => {
     if (prevRoute.current === route) return;
     prevRoute.current = route;
+    // The page is the scroller, so each view starts at its top.
+    window.scrollTo(0, 0);
     if (turns.length > 0 && !isStreaming) {
       newSession();
     }
