@@ -31,7 +31,8 @@ repositories within the `datacommonsorg` GitHub organization.
 Read the guidelines that govern your change, in this order:
 
 1. [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) — general engineering rules
-   for every language and every application: simplicity, file organization,
+   for every language and every application: simplicity, preparatory
+   refactoring, file organization, software design and module boundaries,
    naming, language style guides, error handling, testing, security, and the
    Data Commons pipeline conventions.
 2. [`FRONTEND.md`](FRONTEND.md) — additional rules for frontend/UI work: React,
@@ -69,10 +70,15 @@ establish.
   follow. For UI changes, include before/after screenshots or recordings
   covering desktop and mobile viewports. When goldens or fixtures change,
   confirm the change is intentional.
-* **Size and scope:** Keep PRs focused. A PR beyond roughly 400–500 lines of
-  substantive change (excluding generated files and lockfiles), or one that
-  touches unrelated subsystems, should be split — typically: pure refactor and
-  renames first, then core logic with tests, then wiring and UI.
+* **Size, scope, and preparatory refactoring:** Keep PRs focused. A PR beyond
+  roughly 400–500 lines of substantive change (excluding generated files and
+  lockfiles), or one that touches unrelated subsystems, should be split —
+  typically: pure refactor and renames first, then core logic with tests, then
+  wiring and UI. When a feature requires reshaping an existing module's
+  interface, types, or error handling so that the feature does not compound
+  technical debt, land a **separate, behavior-preserving refactoring PR**
+  before (or immediately after) the feature change (where existing tests pass
+  before and after without behavioral changes).
 * **Documentation:** A change that introduces a new convention, command, or
   architectural pattern updates the relevant guideline document in the same PR.
 * **How to write it:** No first-person pronouns — describe the change, not the

@@ -95,11 +95,22 @@ author can go read the rule rather than argue with the reviewer.
 
 Three judgment calls the documents cannot make for you:
 
-* **Precedent vs. rule.** A change that follows a bad local precedent is not
-  automatically a blocker. Note it, tag `[FOLLOWUP]`, and propose the cleanup
-  as a separate change rather than blocking on it.
+* **Precedent vs. rule (and when to prescribe a preparatory refactor PR).** A
+  change that follows a bad local precedent is not automatically a blocker when
+  the surface area of fixing it would blow up the feature PR. However, if
+  extending the local precedent compounds structural debt (e.g. widening an
+  ad-hoc return union instead of raising typed exceptions, threading untyped
+  maps across modules, or adding another responsibility to an overloaded file),
+  call it out explicitly (`[SUGGESTION]` or `[FOLLOWUP]`): recommend extracting
+  a **standalone, behavior-preserving refactor PR** before (or immediately
+  after) the feature change per `CODING_GUIDELINES.md` §1.2 and §3.2.
 * **Enforced vs. advisory.** If the linter already enforces a rule, do not
-  spend review comments on it — spend them on what tooling cannot catch.
+  spend review comments on it — spend them on what tooling cannot catch,
+  especially **software design and module boundaries**
+  (`CODING_GUIDELINES.md` §3.2): untyped maps crossing module boundaries, mixed
+  error-signaling mechanisms, stringly-typed configuration presets, scattered
+  user-facing copy or templates, and optional-flag state bags where a
+  discriminated union belongs.
 * **Rule vs. gap.** If the diff does something questionable that no document
   covers, say so as a judgment, not as a violation, and propose the rule if it
   is worth writing down.
@@ -186,11 +197,15 @@ Prefix every comment:
   cleanup, security or secret exposure, missing regression test for a bug fix,
   architectural violations, unvetted heavyweight dependencies, misplaced files.
 * `[WARNING]` — oversized or multi-concern PR, performance risk under
-  realistic load.
-* `[SUGGESTION]` — readability, naming, constant extraction, simplification,
-  diff pruning. Non-blocking.
-* `[FOLLOWUP]` — pre-existing debt the PR sits on top of; acceptable now,
-  should be scheduled.
+  realistic load, or newly introduced design/maintainability issues that add
+  technical debt within this PR (e.g. inconsistent error-signaling contracts or
+  untyped maps crossing module boundaries). Must be addressed in this PR.
+* `[SUGGESTION]` — readability, software design improvements (cohesive
+  interfaces, typed presets, discriminated unions, separated copy/templates),
+  naming, constant extraction, simplification, diff pruning. Non-blocking.
+* `[FOLLOWUP]` — pre-existing debt or local anti-patterns the PR extends or
+  sits on top of; acceptable now if scheduled as a separate
+  behavior-preserving refactor PR before (or immediately after).
 * `[NIT]` — typos, wording, trivial consistency.
 
 ### Report format and inline comments
@@ -215,7 +230,8 @@ size/splitting.]
 
 ### Architecture & Layering
 [Trace of the change through prompt → MCP → server → client → UI; whether
-each responsibility sits at the right layer.]
+each responsibility sits at the right layer; module boundaries, typed domain
+models vs. raw dicts, and error-contract uniformity.]
 
 ### Standards & Conventions
 [Findings against `CODING_GUIDELINES.md` / `FRONTEND.md` / `<app>/AGENTS.md`,

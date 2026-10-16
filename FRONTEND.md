@@ -3,9 +3,10 @@
 > [!NOTE]
 > This document covers **frontend web application development** only: React,
 > component structure, motion, and accessibility. General engineering rules —
-> simplicity, file organization, naming, TypeScript language rules, testing,
-> error handling, security — live in
-> [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) and apply here too.
+> simplicity, preparatory refactoring, file organization, software design and
+> module boundaries, naming, TypeScript language rules, testing, error handling,
+> security — live in [`CODING_GUIDELINES.md`](CODING_GUIDELINES.md) and apply
+> here too.
 >
 > **Styling stacks are app-level.** Each app states its stack and its rules in
 > its own `FRONTEND.md`: [`dataweaver/FRONTEND.md`](dataweaver/FRONTEND.md) for
