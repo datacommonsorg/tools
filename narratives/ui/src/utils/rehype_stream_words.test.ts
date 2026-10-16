@@ -20,9 +20,9 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  calculateStreamDurationMs,
   rehypeStreamWords,
   type StreamNode,
-  streamDurationMs,
 } from './rehype_stream_words';
 
 const text = (value: string): StreamNode => ({ type: 'text', value });
@@ -66,12 +66,12 @@ describe('rehypeStreamWords', () => {
   });
 });
 
-describe('streamDurationMs', () => {
+describe('calculateStreamDurationMs', () => {
   it('grows with the answer and stops at the cap', () => {
     // Test: Reveal duration.
     // Situation: A two-word answer and a very long one.
     // Expectation: The short one takes 20ms a word; the long one is capped.
-    expect(streamDurationMs('two words')).toBe(40);
-    expect(streamDurationMs('word '.repeat(1000))).toBe(3000);
+    expect(calculateStreamDurationMs('two words')).toBe(40);
+    expect(calculateStreamDurationMs('word '.repeat(1000))).toBe(3000);
   });
 });

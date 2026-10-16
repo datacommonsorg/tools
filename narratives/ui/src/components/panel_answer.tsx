@@ -34,7 +34,7 @@ import { Tooltip } from "./tooltip";
 import { CitationNumberingProvider } from "./chip_citation";
 import { CitationsList } from "./list_citations";
 import { downloadPdf } from "../utils/download_pdf";
-import { streamDurationMs } from "../utils/rehype_stream_words";
+import { calculateStreamDurationMs } from "../utils/rehype_stream_words";
 import { Toast } from "./toast";
 
 /**
@@ -94,7 +94,7 @@ export function AnswerPanel({
   // text reveals in reading order; one restored with its session is already
   // there. Everything below the text waits for the reveal to finish.
   const [enters] = useState(isStreaming);
-  const streamMs = enters ? streamDurationMs(turn.text) : undefined;
+  const streamMs = enters ? calculateStreamDurationMs(turn.text) : undefined;
   const [revealing, setRevealing] = useState(enters);
   useEffect(() => {
     if (streamMs === undefined) return;
@@ -186,7 +186,7 @@ export function AnswerPanel({
             component is still hydrating produces a PDF missing the chart.
             This matches the filled "Export PDF" button below, which also
             waits for status === "done". */}
-        {turn.status === "done" && (
+        {turn.status === "done" && !revealing && (
           <div className="flex items-center gap-1 shrink-0" data-non-print="true">
             {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
@@ -197,13 +197,14 @@ export function AnswerPanel({
       </div>
 
       {/* Content body — dimmed while the turn is in flight and brought to full
-          strength once its terminal event lands. `stream-rest` holds back
-          everything after the text until the text has finished revealing. */}
+          strength once its terminal event lands. Everything after the text
+          stays hidden until the text has finished revealing. */}
       <div
         className={`flex flex-col p-4 sm:p-6 motion-safe:transition-opacity duration-300 ease-out ${
           settled ? "opacity-100" : "opacity-80"
-        } stream-rest`}
-        data-revealing={revealing}
+        } motion-safe:[&>:not(.markdown-body)]:transition-opacity motion-safe:[&>:not(.markdown-body)]:duration-300${
+          revealing ? " motion-safe:[&>:not(.markdown-body)]:opacity-0" : ""
+        }`}
         style={{
           gap: 16,
           background: COLOR_BODY_BG,
@@ -215,6 +216,7 @@ export function AnswerPanel({
           body={turn.text}
           streaming={isStreaming && turn.status !== "done"}
           streamMs={streamMs}
+          revealing={revealing}
           sources={turn.provenance}
           bare
         />
@@ -251,7 +253,7 @@ export function AnswerPanel({
         {(hasCharts || hasCitations) && <DisclaimerNote />}
 
         {/* 6. Export PDF (filled, in-content) */}
-        {turn.status === "done" && (
+        {turn.status === "done" && !revealing && (
           <ExportPdfButton onExport={onExport} busy={exporting} />
         )}
 
