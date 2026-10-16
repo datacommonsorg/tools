@@ -30,8 +30,8 @@ Covers seven configuration behaviors in `config`:
    preferring Secret Manager over `config.json`, rejecting placeholder,
    empty, or JSON-wrapped secret payloads, and reusing a key another thread
    loaded while the caller waited.
-6. Resolution of `get_gemini_model` across configured, empty, and null `gemini`
-   configuration sections.
+6. Resolution of `get_gemini_model` and `get_gemini_classify_model` across
+   configured, empty, and null `gemini` configuration sections.
 7. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
    resolved.
 """
@@ -236,16 +236,16 @@ class _RecordingFetch:
     [
         (
             "https://storage.googleapis.com/bucket/dir/agent-config.json",
-            "https://storage.googleapis.com/bucket/dir/prompts/mcp.md",
+            "https://storage.googleapis.com/bucket/dir/prompts/classify.md",
         ),
         (
             "https://example.com/agent-config.json",
-            "https://example.com/prompts/mcp.md",
+            "https://example.com/prompts/classify.md",
         ),
         (
             "https://storage.googleapis.com/bucket/agent-config.json"
             "?generation=17&x=a/b",
-            "https://storage.googleapis.com/bucket/prompts/mcp.md",
+            "https://storage.googleapis.com/bucket/prompts/classify.md",
         ),
     ],
     ids=["bucket subdirectory", "host root", "query containing a slash"],
@@ -849,6 +849,46 @@ def test_get_gemini_model_returns_configured_model() -> None:
     # Expectation: `get_gemini_model` returns `"gemini-3-pro"`.
     document = {"gemini": {"mcp_model": "gemini-3-pro"}}
     assert config.get_gemini_model(document) == "gemini-3-pro"
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {},
+        {"gemini": None},
+        {"gemini": {}},
+        {"gemini": {"classify_model": ""}},
+        {"gemini": {"classify_model": "   "}},
+    ],
+    ids=[
+        "missing gemini section",
+        "null gemini section",
+        "empty gemini section",
+        "empty classify_model string",
+        "whitespace classify_model string",
+    ],
+)
+def test_get_gemini_classify_model_defaults_when_unconfigured_or_null(
+    document: dict[str, object],
+) -> None:
+    # Test: Fallback to `DEFAULT_GEMINI_CLASSIFY_MODEL` in
+    #   `get_gemini_classify_model`.
+    # Situation: The configuration omits `gemini`, sets `gemini` to `None`, or
+    #   sets `gemini.classify_model` to an empty or whitespace-only string.
+    # Expectation: `get_gemini_classify_model` returns
+    #   `config.DEFAULT_GEMINI_CLASSIFY_MODEL`.
+    assert (
+        config.get_gemini_classify_model(document)
+        == config.DEFAULT_GEMINI_CLASSIFY_MODEL
+    )
+
+
+def test_get_gemini_classify_model_returns_configured_model() -> None:
+    # Test: Resolution of an explicit model name in `get_gemini_classify_model`.
+    # Situation: `gemini.classify_model` is set to `"gemini-3.8-flash"`.
+    # Expectation: `get_gemini_classify_model` returns `"gemini-3.8-flash"`.
+    document = {"gemini": {"classify_model": "gemini-3.8-flash"}}
+    assert config.get_gemini_classify_model(document) == "gemini-3.8-flash"
 
 
 # --- prompt datetime rendering ----------------------------------------------

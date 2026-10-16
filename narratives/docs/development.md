@@ -204,7 +204,7 @@ narratives/
 │       ├── telemetry.py       OpenTelemetry and structured logging
 │       ├── server/            FastAPI app and routes (spa, chat, system)
 │       ├── mcp/               MCP client, capability discovery, and schemas
-│       ├── workflows/         Chat pipeline, MCP tool loop, charts, follow-ups
+│       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)
 │   └── src/

@@ -28,6 +28,8 @@ Verifies that:
 6. A tool call's status is derived from the shape of its result.
 7. The first request carries the verified window as alternating messages,
    with earlier answers shortened, then the scopes and the current query.
+8. A classification appends its pattern directive to the system instruction,
+   and a prompt that Gemini blocks ends the loop with `McpLoopBlockedError`.
 """
 
 import asyncio
@@ -36,9 +38,12 @@ from typing import Any
 
 import pytest
 
+from narratives_agent.gemini.client import GeminiBlocked
+from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import mcp_loop
+from narratives_agent.workflows.pattern_guidance import pattern_directive
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
     QueryScope,
@@ -520,3 +525,71 @@ async def test_the_first_request_carries_the_transcript(
     assert final.endswith(
         "<current_request>\nAnd for Germany?\n</current_request>"
     )
+
+
+_CLASSIFICATION = QueryClassification.model_validate(
+    {
+        "serviceable": True,
+        "pattern": "top_n_ranking",
+        "geographic_shape": "comparison",
+        "requires_computation": True,
+    }
+)
+
+
+@pytest.mark.asyncio
+async def test_the_classification_directive_is_appended_to_the_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Pattern guidance in the discovery loop system instruction.
+    # Situation: The loop runs once with a `top_n_ranking` classification of
+    #   comparison shape, and once with `classification=None`.
+    # Expectation: With the classification, the system instruction is the
+    #   `mcp` prompt followed by the pattern directive and comparison sentence;
+    #   without it, the system instruction is the base prompt alone.
+    instructions: list[str] = []
+
+    async def request(**kwargs: Any) -> dict[str, Any]:
+        instructions.append(kwargs["system_instruction"])
+        return _text_turn("Done.")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+    config = {"prompts": {"mcp": "Be an analyst."}}
+
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, config, _TOOLS, telemetry, classification=_CLASSIFICATION
+    )
+    await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, config, _TOOLS, telemetry)
+
+    guided, plain = instructions
+    assert guided.startswith("Be an analyst.")
+    assert guided.endswith(pattern_directive(_CLASSIFICATION))
+    assert plain == "Be an analyst."
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_prompt_ends_the_loop_as_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Blocked prompt handling in `execute_mcp_tool_loop`.
+    # Situation: `async_gemini_request_with_thought_streaming` returns
+    #   `GeminiBlocked("PROHIBITED_CONTENT")`.
+    # Expectation: `execute_mcp_tool_loop` raises `McpLoopBlockedError`, which
+    #   is distinct from `McpLoopError`.
+    async def request(**kwargs: Any) -> GeminiBlocked:
+        return GeminiBlocked("PROHIBITED_CONTENT")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+
+    with pytest.raises(mcp_loop.McpLoopBlockedError) as raised:
+        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+
+    assert not isinstance(raised.value, mcp_loop.McpLoopError)
