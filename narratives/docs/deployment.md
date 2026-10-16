@@ -186,11 +186,11 @@ Run the post-deploy smoke test suite and inspect `/agent/health`:
 
 ```sh
 # Public deployment
-bash docs/smoke.sh "$URL"
+bash deploy/smoke.sh "$URL"
 curl -s "$URL/agent/health" | jq
 
 # Private or IAM-gated deployment
-BEARER_TOKEN="$(gcloud auth print-identity-token)" bash docs/smoke.sh "$URL"
+BEARER_TOKEN="$(gcloud auth print-identity-token)" bash deploy/smoke.sh "$URL"
 ```
 
 In the `/agent/health` response, `mcp.generation` and

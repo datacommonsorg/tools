@@ -230,6 +230,12 @@ export interface ChatTurn {
   toolCalls: ToolCallEvent[];
   thoughts: ThoughtEvent[];
   text: string;
+  /**
+   * Set once the answer text has finished streaming: on the first event the
+   * agent sends after synthesis, which is the chart phase's status or, when
+   * there is no chart to prepare, the chart config itself.
+   */
+  textComplete?: boolean;
   chartConfig?: ChartConfig;
   provenance: ProvenanceItem[];
   /** Holds self-contained follow-up questions emitted by the agent after the terminal event. */
@@ -817,7 +823,11 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
     next = { ...next, truncated: true };
   }
   if (content.chart_config) {
-    next = { ...next, chartConfig: mapRawChartConfig(content.chart_config) };
+    next = {
+      ...next,
+      textComplete: true,
+      chartConfig: mapRawChartConfig(content.chart_config),
+    };
   }
   return next;
 }
@@ -829,7 +839,8 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
       if (evt.data.phase === "mcp" || evt.data.phase === "synthesis") {
         return { ...turn, status: evt.data.phase };
       }
-      return turn;
+      // The chart phase only starts once synthesis has finished streaming.
+      return { ...turn, textComplete: true };
     case "thought":
       return {
         ...turn,

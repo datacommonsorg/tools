@@ -2,10 +2,10 @@
 # Post-deploy smoke test for a unified-architecture app plane.
 #
 # Usage:
-#   bash docs/smoke.sh https://<instance>-app-<hash>-<region>.a.run.app
+#   bash deploy/smoke.sh https://<instance>-app-<hash>-<region>.a.run.app
 #
 # Set BEARER_TOKEN for an IAM/IAP-gated stack:
-#   BEARER_TOKEN=$(gcloud auth print-identity-token) bash docs/smoke.sh "$URL"
+#   BEARER_TOKEN=$(gcloud auth print-identity-token) bash deploy/smoke.sh "$URL"
 #
 # Final line is "SMOKE: PASS" or "SMOKE: FAIL".
 
