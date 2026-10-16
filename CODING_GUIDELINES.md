@@ -160,7 +160,9 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   domain objects (dataclasses, Pydantic models, structs, or TypeScript
   interfaces) at the boundary where they enter the application. Do not pass raw
   untyped maps (`dict[str, Any]`, `Record<string, unknown>`) across internal
-  module boundaries, and do not scatter nested key lookups with fallback
+  module boundaries, unless the map genuinely represents open-ended or
+  pass-through data (such as a JSON Schema definition, dynamic tool arguments,
+  or telemetry attributes). Do not scatter nested key lookups with fallback
   defaults across callers.
 * **Uniform error and outcome contracts.** Each client or module interface must
   use a single, consistent mechanism for signaling failures. Do not mix raised
@@ -187,10 +189,12 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   varies across a fixed set of variants, co-locate each variant's policy in a
   typed registry or strategy table rather than scattering parallel `if/elif` or
   `switch` blocks across multiple modules.
-* **Separate presentation copy and templates from control flow.** Keep
-  user-facing strings, status messages, and long-form templates in dedicated
-  resource or template modules rather than embedding or concatenating multi-line
-  prose inside business and control-flow logic.
+* **Separate user-facing copy and templates from logic and markup.** Keep all
+  user-facing content, including UI text (button labels, placeholders, and
+  human-readable accessibility strings such as `aria-label`), status
+  messages, and long-form templates, in dedicated resource or template modules
+  rather than hardcoding or concatenating strings inside business logic,
+  control flow, or component markup.
 
 ---
 

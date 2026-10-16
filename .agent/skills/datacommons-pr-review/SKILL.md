@@ -197,14 +197,15 @@ Prefix every comment:
   cleanup, security or secret exposure, missing regression test for a bug fix,
   architectural violations, unvetted heavyweight dependencies, misplaced files.
 * `[WARNING]` — oversized or multi-concern PR, performance risk under
-  realistic load, or design/maintainability issues that compound structural debt
-  (e.g. inconsistent error-signaling contracts or untyped maps crossing module
-  boundaries).
+  realistic load, or newly introduced design/maintainability issues that add
+  technical debt within this PR (e.g. inconsistent error-signaling contracts or
+  untyped maps crossing module boundaries). Must be addressed in this PR.
 * `[SUGGESTION]` — readability, software design improvements (cohesive
   interfaces, typed presets, discriminated unions, separated copy/templates),
   naming, constant extraction, simplification, diff pruning. Non-blocking.
-* `[FOLLOWUP]` — pre-existing debt the PR sits on top of; acceptable now,
-  should be scheduled as a separate behavior-preserving refactor PR.
+* `[FOLLOWUP]` — pre-existing debt or local anti-patterns the PR extends or
+  sits on top of; acceptable now if scheduled as a separate
+  behavior-preserving refactor PR before (or immediately after).
 * `[NIT]` — typos, wording, trivial consistency.
 
 ### Report format and inline comments

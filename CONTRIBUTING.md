@@ -76,9 +76,9 @@ establish.
   typically: pure refactor and renames first, then core logic with tests, then
   wiring and UI. When a feature requires reshaping an existing module's
   interface, types, or error handling so that the feature does not compound
-  technical debt, land a **separate, behavior-preserving refactoring PR first**
-  (where existing tests pass before and after without behavioral changes) before
-  submitting the feature PR.
+  technical debt, land a **separate, behavior-preserving refactoring PR**
+  before (or immediately after) the feature change (where existing tests pass
+  before and after without behavioral changes).
 * **Documentation:** A change that introduces a new convention, command, or
   architectural pattern updates the relevant guideline document in the same PR.
 * **How to write it:** No first-person pronouns — describe the change, not the

@@ -25,14 +25,15 @@ Prefix every review comment with an appropriate severity tag:
   fix, architectural violations, unvetted heavyweight dependencies,
   misplaced files.
 * `[WARNING]` — Oversized or multi-concern PR, performance risk under
-  realistic load, or design/maintainability issues that compound structural debt
-  (e.g. inconsistent error-signaling contracts or untyped maps crossing module
-  boundaries).
+  realistic load, or newly introduced design/maintainability issues that add
+  technical debt within this PR (e.g. inconsistent error-signaling contracts or
+  untyped maps crossing module boundaries). Must be addressed in this PR.
 * `[SUGGESTION]` — Readability, software design improvements (cohesive
   interfaces, typed presets, discriminated unions, separated copy/templates),
   naming, constant extraction, simplification, diff pruning. Non-blocking.
-* `[FOLLOWUP]` — Pre-existing debt the PR sits on top of; acceptable now,
-  should be scheduled as a separate behavior-preserving refactor PR.
+* `[FOLLOWUP]` — Pre-existing debt or local anti-patterns the PR extends or
+  sits on top of; acceptable now if scheduled as a separate
+  behavior-preserving refactor PR before (or immediately after).
 * `[NIT]` — Typos, wording, trivial consistency.
 
 ### Tone and structure
@@ -60,7 +61,9 @@ Prefix every review comment with an appropriate severity tag:
   * **Typed domain objects at boundaries**: Parse external JSON, config files,
     and SDK responses into typed domain objects at the boundary. Flag raw
     untyped maps (`dict[str, Any]`, `Record<string, unknown>`) passed across
-    internal module boundaries or repeated nested key lookups.
+    internal module boundaries or repeated nested key lookups, unless the map
+    genuinely represents open-ended or pass-through data (such as JSON Schema
+    definitions, dynamic tool arguments, or telemetry attributes).
   * **Uniform error contracts**: Do not mix raised exceptions, error
     dictionaries, and sentinel return values across the same interface. Raise
     typed domain exceptions for failure and abort paths.
@@ -75,8 +78,8 @@ Prefix every review comment with an appropriate severity tag:
     invalid state combinations.
   * **Table-driven dispatch and separated copy**: Co-locate variant-specific
     policy in a typed registry/strategy table rather than parallel conditionals
-    across files, and keep user-facing copy and templates separate from control
-    flow.
+    across files, and keep user-facing copy, UI strings, and templates separate
+    from logic and markup.
 * **Naming**:
   * Self-documenting over terse (`source` not `s`, `index` not `i`).
   * Verb-led function names (`getComponentAttributes`, `resolvePlaceDcid`).
