@@ -563,18 +563,6 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         emit("status", {"phase": "classify", "message": CLASSIFY_STATUS})
         with telemetry.phase("classify"):
             admission = await classify_query(transcript, config, telemetry)
-        if isinstance(admission, Clarification):
-            telemetry.pattern = admission.classification.pattern
-            ctx = TurnContext(
-                transcript, config, telemetry, emit, admission.classification
-            )
-            window = await run_clarification(ctx, admission.question)
-            state = "complete"
-            emit(
-                "terminal",
-                terminal_frame(state, idempotency_key, window=window),
-            )
-            return
         telemetry.pattern = (
             admission.classification.pattern
             if admission.classification is not None
@@ -583,6 +571,14 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         ctx = TurnContext(
             transcript, config, telemetry, emit, admission.classification
         )
+        if isinstance(admission, Clarification):
+            window = await run_clarification(ctx, admission.question)
+            state = "complete"
+            emit(
+                "terminal",
+                terminal_frame(state, idempotency_key, window=window),
+            )
+            return
         with telemetry.phase("mcp"):
             mcp = await run_mcp_phase(ctx)
         chart_task = mcp.chart_task
