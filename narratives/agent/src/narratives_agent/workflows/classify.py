@@ -13,7 +13,7 @@
 # limitations under the License.
 """Runs the classify phase, the admission step of the agent loop.
 
-Applies a deterministic regex pre-filter (`prefilter_match`) to reject prompt
+Applies the deterministic regex pre-filter in `prefilter.py` to reject prompt
 injections and exploit payloads before any model call, then requests a
 structured `QueryClassification` from Gemini at temperature zero to refuse
 adversarial or off-domain queries, return a clarification question, or admit
@@ -23,7 +23,6 @@ the query with its analytical pattern.
 import asyncio
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -41,6 +40,7 @@ from narratives_agent.workflows.messages import (
     OFF_DOMAIN_TEMPLATE,
     REFUSED_MESSAGE,
 )
+from narratives_agent.workflows.prefilter import prefilter_match
 from narratives_agent.workflows.transcript import (
     Transcript,
     transcript_contents,
@@ -64,68 +64,7 @@ _CLASSIFY_THINKING_LEVEL = "minimal"
 # refusal message.
 MAX_PREMISE_CHARS = 80
 
-# Zero-width spaces, joiners, byte-order marks, and soft hyphens stripped prior
-# to pre-filter matching.
-_INVISIBLE_CHARS = re.compile("[\u200b\u200c\u200d\u2060\ufeff\u00ad]")
-
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
-
-# Compiled regex patterns paired with the attack family logged on a match.
-# Instruction-override rules require an explicit instruction noun paired with
-# `all`, `any`, `your`, or `system` so conversational self-corrections
-# ("ignore the previous prompt, I meant Texas") and analytical constraints
-# ("ignore the previous constraints on years") pass through to the classifier.
-PREFILTER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
-    (family, re.compile(pattern, re.IGNORECASE))
-    for family, pattern in (
-        (
-            "instruction_override",
-            r"\b(ignore|disregard|forget)\s+"
-            r"((all|any|your)\s+(of\s+)?(the\s+)?"
-            r"(previous|prior|above|earlier|preceding)\s+"
-            r"(system\s+)?(instructions?|prompts?|directives?)|"
-            r"(the\s+)?(previous|prior|above|earlier|preceding)\s+"
-            r"system\s+(instructions?|prompts?|directives?))\b",
-        ),
-        (
-            "persona_override",
-            r"\byou\s+are\s+now\s+(acting\s+as\s+)?(an?\s+)?"
-            r"(unrestricted|unfiltered|unmoderated)\b",
-        ),
-        (
-            "persona_override",
-            r"\bpretend\s+(you\s+are|to\s+be|you're)\s+(an?\s+)?"
-            r"(unmoderated|unrestricted|unfiltered)\b",
-        ),
-        (
-            "secret_exfiltration",
-            r"\b(reveal|print|output|dump|show|display|repeat|leak|"
-            r"exfiltrate)\b[^.?!]{0,40}?"
-            r"\b(system|initial|original|hidden)\s*(prompt|instructions)\b",
-        ),
-        (
-            "secret_exfiltration",
-            r"\b(GEMINI_API_KEY(_SECRET)?|DC_API_KEY|TRANSCRIPT_HMAC_SECRET)"
-            r"\b|\.env\.local\b",
-        ),
-        (
-            "jailbreak_mode",
-            r"\b(DAN\s+mode|developer\s+mode|god\s+mode|system\s+override|"
-            r"new\s+system\s+directive)\b",
-        ),
-        (
-            "injection_payload",
-            r";\s*DROP\s+TABLE\b"
-            r"|\bUNION\s+(ALL\s+)?SELECT\s+(NULL\b|\*|[^.?!]*"
-            r"\b(information_schema|sqlite_master|pg_catalog|password)\b)"
-            r"|'\s*OR\s+'?1'?\s*=\s*'?1"
-            r"|\$\{jndi:ldap://"
-            r"|/etc/passwd\b"
-            r"|169\.254\.169\.254"
-            r"|metadata\.google\.internal",
-        ),
-    )
-)
 
 
 class TurnRefusedError(Exception):
@@ -162,25 +101,6 @@ class Admitted:
     """
 
     classification: QueryClassification | None
-
-
-def normalize_query(text: str) -> str:
-    """Normalizes `text` for pre-filter pattern matching.
-
-    Applies NFKC compatibility decomposition, strips invisible formatting
-    characters, and collapses whitespace runs to a single space.
-    """
-    folded = unicodedata.normalize("NFKC", text)
-    return " ".join(_INVISIBLE_CHARS.sub("", folded).split())
-
-
-def prefilter_match(query: str) -> str | None:
-    """Returns the first pre-filter family matched by `query`, or `None`."""
-    normalized = normalize_query(query)
-    for family, pattern in PREFILTER_PATTERNS:
-        if pattern.search(normalized):
-            return family
-    return None
 
 
 def off_domain_message(premise: str) -> str:
