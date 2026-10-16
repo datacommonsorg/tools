@@ -35,7 +35,7 @@ export function Sidebar() {
   const isAgent = route === "" || route === "agent";
 
   return (
-    <aside className="hidden lg:flex w-[72px] h-full bg-surface-blue flex-col items-center py-4 gap-4 shrink-0">
+    <aside className="hidden lg:flex sticky top-0 w-[72px] h-dvh bg-surface-blue flex-col items-center py-4 gap-4 shrink-0">
       {isAgent && (
         <>
           {/* Menu / "accordion" icon — toggles the SessionDrawer that lists

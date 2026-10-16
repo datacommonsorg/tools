@@ -32,8 +32,11 @@ import { useChatSession } from "../hooks/chat_session_context";
 const PIN_GLIDE_MS = 400;
 /** How long the new question is held at the top while late layout settles. */
 const PIN_HOLD_MS = 600;
-/** Gap left above the pinned question. */
+/** Gap left between the sticky header and the pinned question. */
 const PIN_TOP_OFFSET_PX = 8;
+// Centered reading column. The page itself scrolls, so the content is
+// constrained rather than any scroll container.
+const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -48,7 +51,8 @@ export function DataAgent() {
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const promptRef = useRef<HTMLDivElement>(null);
+  const showConversation = turns.length > 0 || isStreaming;
   // Track the turn count we last reacted to so we only scroll when a NEW
   // turn is added (e.g. follow-up question click) — not on every re-render
   // caused by streaming text chunks arriving.
@@ -87,27 +91,28 @@ export function DataAgent() {
   // the last turn's min-height (see TurnView) reserves the room for it.
   useEffect(() => {
     if (turns.length > prevTurnsLength.current) {
-      const container = scrollRef.current;
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
-      const from = container?.scrollTop ?? 0;
+      const from = window.scrollY;
       const glideMs = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PIN_GLIDE_MS;
       const scrollToLatest = (elapsed: number) => {
-        if (!container) return;
-        const target = container.querySelector<HTMLElement>(
+        const target = document.querySelector<HTMLElement>(
           `[data-turn-index="${targetIndex}"]`,
         );
         if (!target) return;
+        // Summed offsetTop rather than getBoundingClientRect, which would
+        // follow the bubble's translate-in animation.
         let top = 0;
         let node: HTMLElement | null = target;
-        while (node && node !== container) {
+        while (node) {
           top += node.offsetTop;
           node = node.offsetParent as HTMLElement | null;
         }
+        top -= document.querySelector<HTMLElement>("main > header")?.offsetHeight ?? 0;
         // Ease-out cubic. The target is re-read every frame, so the glide
         // lands on the bubble even if the layout above it is still settling.
         const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
-        container.scrollTop = from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress;
+        window.scrollTo(0, from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress);
       };
       // Glide there, then hold on every animation frame for PIN_HOLD_MS so late
       // layout shifts from the previous turn's AnswerPanel (e.g. Data Commons
@@ -118,8 +123,8 @@ export function DataAgent() {
       const onUserScroll = () => {
         canceled = true;
       };
-      container?.addEventListener("wheel", onUserScroll, { passive: true });
-      container?.addEventListener("touchmove", onUserScroll, { passive: true });
+      window.addEventListener("wheel", onUserScroll, { passive: true });
+      window.addEventListener("touchmove", onUserScroll, { passive: true });
       const tick = () => {
         if (canceled) return;
         const elapsed = performance.now() - start;
@@ -129,14 +134,31 @@ export function DataAgent() {
       requestAnimationFrame(tick);
       // Tidy listeners after the pin window closes.
       window.setTimeout(() => {
-        container?.removeEventListener("wheel", onUserScroll);
-        container?.removeEventListener("touchmove", onUserScroll);
+        window.removeEventListener("wheel", onUserScroll);
+        window.removeEventListener("touchmove", onUserScroll);
       }, PIN_HOLD_MS + 100);
     }
     prevTurnsLength.current = turns.length;
   }, [turns.length]);
 
-  if (turns.length === 0 && !isStreaming) {
+  // Publishes the sticky header and prompt heights as --chrome-h, so the last
+  // turn can reserve exactly the viewport space left between them (see TurnView).
+  useEffect(() => {
+    const prompt = promptRef.current;
+    const header = document.querySelector<HTMLElement>("main > header");
+    if (!prompt) return;
+    const observer = new ResizeObserver(() =>
+      prompt.parentElement?.style.setProperty(
+        "--chrome-h",
+        `${prompt.offsetHeight + (header?.offsetHeight ?? 0)}px`,
+      ),
+    );
+    observer.observe(prompt);
+    if (header) observer.observe(header);
+    return () => observer.disconnect();
+  }, [showConversation]);
+
+  if (!showConversation) {
     return (
       <InitialView
         query={query}
@@ -147,61 +169,58 @@ export function DataAgent() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8 pt-4 sm:pt-6 relative overflow-hidden min-w-0">
-      <div className="flex-1 min-h-0 relative">
-        <div
-          ref={scrollRef}
-          className="absolute inset-0 overflow-y-auto no-scrollbar flex flex-col gap-6 pt-4 pb-6"
-        >
-          {turns.map((t, i) => (
-            <TurnView
-              key={i}
-              turn={t}
-              index={i}
-              citationNumbers={citationNumbers[i]}
-              isLast={i === turns.length - 1}
-              animate={i >= restoredTurns.current}
-              isStreaming={isStreaming && i === turns.length - 1}
-              onAsk={(question) => send(question)}
-            />
-          ))}
-          {error && turns.length === 0 && (
-            <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large">
+    <div className="flex-1 flex flex-col w-full min-w-0">
+      <div className="flex-1 flex flex-col gap-6 pt-8 sm:pt-10 pb-6">
+        {turns.map((t, i) => (
+          <TurnView
+            key={i}
+            turn={t}
+            index={i}
+            citationNumbers={citationNumbers[i]}
+            isLast={i === turns.length - 1}
+            animate={i >= restoredTurns.current}
+            isStreaming={isStreaming && i === turns.length - 1}
+            onAsk={(question) => send(question)}
+          />
+        ))}
+        {error && turns.length === 0 && (
+          <div className={COLUMN}>
+            <div className="w-fit px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large">
               {error}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
 
-        {/* 16px transparent-to-white gradient overlaying the bottom of the
-            scroll area — chat content scrolling up "behind" the input box
-            visibly fades into the chrome rather than terminating in a hard
-            edge. Positioned absolutely so it sits ON TOP of the scrollable
-            content (not as a sibling in the white gap). */}
+      {/* Follow-up input, stuck to the bottom of the viewport while the page
+          scrolls. Its background spans the full width so content scrolling
+          behind it is hidden in the side gutters too. */}
+      <div ref={promptRef} className="sticky bottom-0 z-[5] w-full bg-surface">
+        {/* 16px transparent-to-white gradient just above the bar — chat content
+            scrolling up "behind" the input box visibly fades into the chrome
+            rather than terminating in a hard edge. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute left-0 right-0 bottom-0 h-4"
+          className="pointer-events-none absolute left-0 right-0 bottom-full h-4"
           style={{
             background:
               "linear-gradient(to top, #FFFFFF 0%, rgba(255,255,255,0) 100%)",
           }}
         />
-      </div>
-
-      {/* Follow-up input — flush against the fade (no top margin) so the
-          gradient reads as a continuous merge rather than a separator.
-          Positioned so it paints over the fade, which would otherwise clip
-          the top of the prompt's shadow. */}
-      <div className="relative w-full flex flex-col items-center gap-3 bg-surface pb-4 sm:pb-6">
-        <PromptInput
-          value={query}
-          placeholder="Ask a follow-up question"
-          onValueChange={setQuery}
-          onSubmit={() => handleSend()}
-          isStreaming={isStreaming}
-          onStop={stop}
-        />
-        <div className="text-center text-caption text-muted max-w-xl">
-          {DISCLAIMER_TEXT}
+        {/* Positioned so it paints over the fade, which would otherwise clip
+            the top of the prompt's shadow. */}
+        <div className={`${COLUMN} relative flex flex-col items-center gap-3 pb-4 sm:pb-6`}>
+          <PromptInput
+            value={query}
+            placeholder="Ask a follow-up question"
+            onValueChange={setQuery}
+            onSubmit={() => handleSend()}
+            isStreaming={isStreaming}
+            onStop={stop}
+          />
+          <div className="text-center text-caption text-muted max-w-xl">
+            {DISCLAIMER_TEXT}
+          </div>
         </div>
       </div>
     </div>
@@ -239,14 +258,16 @@ function TurnView({
   const showSkeleton = !showAnswer && turn.status === "synthesis";
   const className = [
     "shrink-0 flex flex-col gap-6",
+    COLUMN,
     animate && "motion-safe:*:animate-enter",
-    isLast && "min-h-full",
+    // Viewport minus the sticky header and prompt, and the list's pb-6.
+    isLast && "min-h-[calc(100dvh-var(--chrome-h,0px)-1.5rem)]",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    // The last turn is at least as tall as the scroll area, so its question
+    // The last turn is at least as tall as the viewport between header and prompt, so its question
     // can be pinned to the top before any of the answer exists and the answer
     // can fill in beneath it without the view moving.
     <div className={className}>

@@ -144,9 +144,9 @@ html, body {
   margin: 0;
   padding: 0;
   /* Prevent any rogue fixed-width child from causing a horizontal scrollbar
-     on narrow viewports. Internal scrollable regions (chat list, drawer)
-     handle their own overflow. */
-  overflow-x: hidden;
+     on narrow viewports. `clip`, not `hidden`: hidden would turn <body>
+     into a scroll container that never scrolls, breaking position: sticky. */
+  overflow-x: clip;
 }
 
 /*
