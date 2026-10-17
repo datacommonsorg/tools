@@ -177,12 +177,18 @@ export interface ProvenanceItem {
   dateRange?: string;
 }
 
-/** Represents the lifecycle of one chat turn, driven by `status` and `terminal` events. */
+/**
+ * Represents the lifecycle of one chat turn, driven by `status` and `terminal`
+ * events. A `refused` turn is settled with a refusal notice rather than an
+ * answer or an error, and is never signed into the multi-turn window.
+ */
 export type TurnStatus =
   | "idle"
+  | "classify"
   | "mcp"
   | "synthesis"
   | "done"
+  | "refused"
   | "error";
 
 /**
@@ -199,6 +205,9 @@ export const INTERRUPTED_TURN_ERROR =
  */
 export const TRANSCRIPT_REJECTED_ERROR =
   "The conversation history could not be verified, so earlier context was cleared. Please ask again.";
+
+/** Defines the default notice message shown when a turn is refused without a server message. */
+export const DEFAULT_REFUSAL_MESSAGE = "The request was declined.";
 
 /** Identifies the HTTP 400 body the agent returns for an unverifiable transcript. */
 const TRANSCRIPT_INVALID_REASON = "transcript_invalid";
@@ -241,6 +250,8 @@ export interface ChatTurn {
   /** Holds self-contained follow-up questions emitted by the agent after the terminal event. */
   followUps?: string[];
   error?: string;
+  /** Holds the refusal notice message when `status === "refused"`. */
+  refusalMessage?: string;
   /**
    * Set when the user aborts the turn via Stop. Drives the "Stopped per your
    * request" note in place of the (now-irrelevant) reasoning/answer chrome.
@@ -300,8 +311,10 @@ interface SignedWindowEntry {
 /**
  * Represents the payload of a `terminal` event. An `error` event carries a
  * user-safe `error` message and a machine-readable `reason` (for example,
- * `mcp_timeout`). A `complete` event for a signed turn also carries the
- * turn's `turn_index`, `hmac`, and `state_slots`, the window's
+ * `mcp_timeout`). A `refused` event carries a `reason` (for example,
+ * `adversarial`, `off_domain`, or `safety_blocked`) and a user-facing
+ * `message` with no `error`. A `complete` event for a signed turn also
+ * carries the turn's `turn_index`, `hmac`, and `state_slots`, the window's
  * `compacted_summary`, and `window`, which lists every turn the next request
  * must send with its current signature.
  */
@@ -309,6 +322,7 @@ interface TerminalPayload {
   state: TerminalState;
   error?: string;
   reason?: string;
+  message?: string;
   idempotency_key: string;
   turn_index?: number;
   hmac?: string;
@@ -331,7 +345,10 @@ export interface WireTurn {
 export type ChatStreamEvent =
   | {
       event: "status";
-      data: { phase: "mcp" | "synthesis" | "chart_config"; message?: string };
+      data: {
+        phase: "classify" | "mcp" | "synthesis" | "chart_config";
+        message?: string;
+      };
     }
   | { event: "thought"; data: { thought: string; phase?: ThoughtEvent["phase"] } }
   | { event: "content"; data: ContentPayload }
@@ -738,7 +755,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
             terminal = payload;
             if (payload.state === "complete") {
               setTurns((prev) => applySignedWindow(prev, position, payload));
-            } else {
+            } else if (payload.state !== "refused") {
               setError(terminalError(payload));
             }
           }
@@ -787,14 +804,32 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
   return { isStreaming, error, send, stop };
 }
 
-/** Returns the message shown for a terminal event that is not `complete`. */
+/** Returns the message shown for a terminal event that ends the turn in `error`. */
 function terminalError(terminal: TerminalPayload): string {
   if (terminal.error) return terminal.error;
-  if (terminal.state === "refused") return "The request was declined.";
   if (terminal.state === "canceled") {
     return "The response was canceled before it finished.";
   }
   return "The response failed. Please try again.";
+}
+
+/**
+ * Applies a `terminal` event to the turn state. A `refused` event settles the
+ * turn with a notice message and no `error`, because a refusal is a normal
+ * terminal outcome rather than a request failure.
+ */
+function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
+  if (terminal.state === "complete") {
+    return { ...turn, status: "done" };
+  }
+  if (terminal.state === "refused") {
+    return {
+      ...turn,
+      status: "refused",
+      refusalMessage: terminal.message || DEFAULT_REFUSAL_MESSAGE,
+    };
+  }
+  return { ...turn, status: "error", error: terminalError(terminal) };
 }
 
 /** Applies one `content` payload to the turn state. */
@@ -836,7 +871,11 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
 export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
   switch (evt.event) {
     case "status":
-      if (evt.data.phase === "mcp" || evt.data.phase === "synthesis") {
+      if (
+        evt.data.phase === "classify" ||
+        evt.data.phase === "mcp" ||
+        evt.data.phase === "synthesis"
+      ) {
         return { ...turn, status: evt.data.phase };
       }
       // The chart phase only starts once synthesis has finished streaming.
@@ -852,9 +891,7 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
     case "content":
       return applyContent(turn, evt.data);
     case "terminal":
-      return evt.data.state === "complete"
-        ? { ...turn, status: "done" }
-        : { ...turn, status: "error", error: terminalError(evt.data) };
+      return applyTerminal(turn, evt.data);
     case "follow_ups":
       return Array.isArray(evt.data.follow_up_questions)
         ? { ...turn, followUps: evt.data.follow_up_questions }

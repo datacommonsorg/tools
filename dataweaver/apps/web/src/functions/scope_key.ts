@@ -1,3 +1,4 @@
+import { COMPARISON_PLACE_KEY } from '~/functions/card_shape_id';
 import { normalizePlaceType } from '~/functions/normalize_place_type';
 import type { QueryResult } from '~/server/types';
 
@@ -63,7 +64,9 @@ export const resolveResultForPlace = (
   results: Record<string, QueryResult> | undefined,
   placeDcid: string,
 ): QueryResult | undefined => {
-  if (!results || !placeDcid || placeDcid === '__comparison') return undefined;
+  if (!results || !placeDcid || placeDcid === COMPARISON_PLACE_KEY) {
+    return undefined;
+  }
 
   // 1. Direct key match (e.g. "africa:Country" or "country/KEN")
   if (results[placeDcid]) {

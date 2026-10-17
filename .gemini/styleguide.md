@@ -25,11 +25,15 @@ Prefix every review comment with an appropriate severity tag:
   fix, architectural violations, unvetted heavyweight dependencies,
   misplaced files.
 * `[WARNING]` — Oversized or multi-concern PR, performance risk under
-  realistic load.
-* `[SUGGESTION]` — Readability, naming, constant extraction, simplification,
-  diff pruning. Non-blocking.
-* `[FOLLOWUP]` — Pre-existing debt the PR sits on top of; acceptable now,
-  should be scheduled.
+  realistic load, or newly introduced design/maintainability issues that add
+  technical debt within this PR (e.g. inconsistent error-signaling contracts or
+  untyped maps crossing module boundaries). Must be addressed in this PR.
+* `[SUGGESTION]` — Readability, software design improvements (cohesive
+  interfaces, typed presets, discriminated unions, separated copy/templates),
+  naming, constant extraction, simplification, diff pruning. Non-blocking.
+* `[FOLLOWUP]` — Pre-existing debt or local anti-patterns the PR extends or
+  sits on top of; acceptable now if scheduled as a separate
+  behavior-preserving refactor PR before (or immediately after).
 * `[NIT]` — Typos, wording, trivial consistency.
 
 ### Tone and structure
@@ -45,11 +49,37 @@ Prefix every review comment with an appropriate severity tag:
 
 * **Simplicity first**: Write the minimum code that solves the problem. Flag
   speculative features, unused parameters, or abstractions for single-use code.
-* **Surgical diffs**: Every changed line must trace directly to the PR's stated
-  goal. Flag unrelated reformatting, drive-by refactoring, or touched adjacent
-  code.
+* **Surgical diffs and preparatory refactoring**: Every changed line must trace
+  directly to the PR's stated goal. Flag unrelated reformatting, drive-by
+  refactoring, or touched adjacent code. Conversely, when a feature change
+  compounds structural debt by extending a local anti-pattern, recommend
+  extracting a standalone, behavior-preserving refactor PR first before landing
+  the feature change.
 * **No magic values**: Extract raw numbers, thresholds, and durations into
   named constants at module scope.
+* **Software design and module boundaries**:
+  * **Typed domain objects at boundaries**: Parse external JSON, config files,
+    and SDK responses into typed domain objects at the boundary. Flag raw
+    untyped maps (`dict[str, Any]`, `Record<string, unknown>`) passed across
+    internal module boundaries or repeated nested key lookups, unless the map
+    genuinely represents open-ended or pass-through data (such as JSON Schema
+    definitions, dynamic tool arguments, or telemetry attributes).
+  * **Uniform error contracts**: Do not mix raised exceptions, error
+    dictionaries, and sentinel return values across the same interface. Raise
+    typed domain exceptions for failure and abort paths.
+  * **Cohesive interfaces and factories**: Flag modules that accumulate
+    unrelated responsibilities. Recommend encapsulating growing clients or
+    subsystems behind a cohesive interface or factory.
+  * **Typed configuration and presets**: Group coupled configuration options,
+    capabilities, and timeouts into typed preset objects or enums in code rather
+    than passing raw string literals across callers.
+  * **Discriminated unions for state machines**: Model mutually exclusive states
+    as a discriminated union rather than independent optional flags that allow
+    invalid state combinations.
+  * **Table-driven dispatch and separated copy**: Co-locate variant-specific
+    policy in a typed registry/strategy table rather than parallel conditionals
+    across files, and keep user-facing copy, UI strings, and templates separate
+    from logic and markup.
 * **Naming**:
   * Self-documenting over terse (`source` not `s`, `index` not `i`).
   * Verb-led function names (`getComponentAttributes`, `resolvePlaceDcid`).

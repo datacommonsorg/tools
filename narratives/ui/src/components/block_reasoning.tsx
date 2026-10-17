@@ -204,6 +204,7 @@ interface ReasoningBlockProps {
   status?: TurnStatus;
 }
 
+const PLACEHOLDER_CLASSIFY = "Reviewing your question…";
 const PLACEHOLDER_STREAMING =
   "Searching Data Commons for relevant indicators and observations…";
 const PLACEHOLDER_DONE =
@@ -211,12 +212,14 @@ const PLACEHOLDER_DONE =
 
 /**
  * Header label is derived from the turn status. The server's `status` events
- * move the turn through the `mcp` and `synthesis` phases, and its `terminal`
- * event ends it; these strings are the UI-side copy for each phase.
+ * move the turn through the `classify`, `mcp`, and `synthesis` phases, and its
+ * `terminal` event ends it; these strings are the UI-side copy for each phase.
  */
 function phaseLabel(streaming: boolean, status?: TurnStatus): string {
   if (!streaming) return "Reasoning details";
   switch (status) {
+    case "classify":
+      return "Understanding your question…";
     case "mcp":
       return "Querying data tools…";
     case "synthesis":
@@ -224,6 +227,25 @@ function phaseLabel(streaming: boolean, status?: TurnStatus): string {
     default:
       return "Thinking…";
   }
+}
+
+/**
+ * Returns the body text for a reasoning block that has no thoughts associated
+ * with it. During classification the text indicates that the question is
+ * being reviewed. In later phases it indicates that a search is in progress.
+ * Once the turn is done, the text says that data was retrieved. In any other
+ * state, such as an error before the stream opened, the function returns an
+ * empty string and the block is not rendered.
+ */
+function placeholderText(
+  streaming: boolean,
+  done: boolean,
+  status?: TurnStatus,
+): string {
+  if (streaming) {
+    return status === "classify" ? PLACEHOLDER_CLASSIFY : PLACEHOLDER_STREAMING;
+  }
+  return done ? PLACEHOLDER_DONE : "";
 }
 
 /** Collapsible "Reasoning" block: sparkle header plus the streamed thinking text. */
@@ -238,14 +260,8 @@ export function ReasoningBlock({
   const label = phaseLabel(streaming, status);
 
   // The thoughts render back to back as one continuous block, not grouped
-  // per phase. When the agent emits none, we render a short status
-  // placeholder so the section stays present above the response card per
-  // Figma 3427-16715.
-  const placeholder = streaming
-    ? PLACEHOLDER_STREAMING
-    : done
-      ? PLACEHOLDER_DONE
-      : "";
+  // per phase; the placeholder stands in only when there are none.
+  const placeholder = placeholderText(streaming, done, status);
 
   // If we have nothing at all (e.g. error before stream started),
   // skip rendering entirely.

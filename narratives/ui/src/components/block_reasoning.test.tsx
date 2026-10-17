@@ -78,6 +78,38 @@ describe('ReasoningBlock', () => {
     expect(getIndicatorSrc(container)).toBe('/theme/custom-done.svg');
   });
 
+  it('shows the phase label and placeholder body for classify, mcp, synthesis, and done', () => {
+    // Test: Phase-specific header copy and placeholder body in ReasoningBlock.
+    // Situation: ReasoningBlock renders expanded while streaming in each
+    //            pipeline phase with no thoughts and then after completion.
+    // Expectation: Each phase renders its label, classify renders its
+    //              non-data placeholder body, mcp renders the data-search
+    //              placeholder body, and the completed turn renders
+    //              `Reasoning details`.
+    const { container, rerender } = render(
+      <ReasoningBlock thoughts={[]} defaultOpen streaming status="classify" />,
+    );
+    expect(container.textContent).toContain('Understanding your question…');
+    expect(container.textContent).toContain('Reviewing your question…');
+    expect(container.textContent).not.toContain('Searching Data Commons');
+
+    rerender(
+      <ReasoningBlock thoughts={[]} defaultOpen streaming status="mcp" />,
+    );
+    expect(container.textContent).toContain('Querying data tools…');
+    expect(container.textContent).toContain(
+      'Searching Data Commons for relevant indicators and observations…',
+    );
+
+    rerender(
+      <ReasoningBlock thoughts={[]} defaultOpen streaming status="synthesis" />,
+    );
+    expect(container.textContent).toContain('Synthesizing answer…');
+
+    rerender(<ReasoningBlock thoughts={[]} defaultOpen done status="done" />);
+    expect(container.textContent).toContain('Reasoning details');
+  });
+
   it('streams new thoughts in without replaying earlier ones', () => {
     // Test: Live thoughts reveal word by word, once.
     // Situation: A streaming block gets one thought, then a second.
