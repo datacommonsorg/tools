@@ -76,6 +76,26 @@ describe('FacetSelector', () => {
     expect(html).toContain('US Census Bureau');
   });
 
+  // Test: Resilient fallback to first populated facet when selectedFacetId is stale and facets[0] is empty
+  // Situation: selectedFacetId is unmatched, facets[0] has no observations, and facets[1] has observations.
+  // Expectation: Selects facets[1] via resolveActiveFacet rather than empty facets[0].
+  it('falls back to first facet with observations when selectedFacetId is stale and facets[0] is empty', () => {
+    const populatedFacetB: FacetInfo = {
+      ...mockFacetB,
+      observations: [{ date: '2022', value: 100 }],
+    };
+    const html = renderToStaticMarkup(
+      <FacetSelector
+        facets={[mockFacetA, populatedFacetB]}
+        selectedFacetId="stale_unknown_id"
+        onSelect={vi.fn()}
+        label="Income"
+      />,
+    );
+
+    expect(html).toContain('Bureau of Labor Statistics');
+  });
+
   // Test: Null render when facets array is empty
   // Situation: facets array has length 0.
   // Expectation: Returns empty markup.

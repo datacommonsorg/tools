@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { COMPARISON_PLACE_KEY } from '~/functions/card_shape_id';
 import type { ComparisonResult, QueryResult } from '~/server/types';
 import { useAtlasStore } from '~/store';
 import { deriveChartContent, deriveContentForCard } from './sync_store';
@@ -1430,5 +1431,227 @@ describe('useAtlasStore child place card selection & combining', () => {
     expect(
       updatedCards['shape:node_mixed__country/DEU__chart__VarA'],
     ).toBeUndefined();
+  });
+
+  // Test: Child place name fallback to timeSeries.entityName in getResultsForSelectedCards.
+  // Situation: Child place is absent from result.entities, but its timeSeries entry carries entityName.
+  // Expectation: getResultsForSelectedCards uses filteredTimeSeries[0]?.entityName instead of raw placeDcid.
+  it('uses filteredTimeSeries entityName in getResultsForSelectedCards when child entity is absent from result.entities', () => {
+    const store = useAtlasStore.getState();
+    const shapeIdMco = 'shape:node_mco__country/MCO__chart__GDP';
+
+    useAtlasStore.setState({
+      nodes: {
+        node_mco: {
+          id: 'node_mco',
+          parentId: null,
+          query: 'GDP across Europe',
+          parsedQuery: null,
+          results: {
+            europe: {
+              id: 'res_europe_partial',
+              title: 'GDP across Europe',
+              placeDcid: 'europe',
+              placeName: 'Europe',
+              isChildQuery: true,
+              parentPlaceDcid: 'europe',
+              variables: [{ dcid: 'GDP', name: 'Gross Domestic Product' }],
+              entities: [{ dcid: 'country/FRA', name: 'France' }],
+              timeSeries: [
+                {
+                  variableDcid: 'GDP',
+                  entityDcid: 'country/MCO',
+                  entityName: 'Monaco',
+                  facets: [
+                    {
+                      facetId: 'f_mco',
+                      source: 'World Bank',
+                      sourceUrl: '',
+                      earliestDate: '2020',
+                      latestDate: '2021',
+                      observationCount: 1,
+                      unit: '$',
+                      observations: [{ date: '2020', value: 100000 }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          cardIds: [shapeIdMco],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        [shapeIdMco]: {
+          shapeId: shapeIdMco,
+          historyNodeId: 'node_mco',
+          type: 'chart',
+          placeDcid: 'country/MCO',
+          resultPlaceDcid: 'europe',
+          variableDcid: 'GDP',
+        },
+      },
+      focusTarget: null,
+    });
+
+    const results = store.getResultsForSelectedCards([shapeIdMco]);
+    expect(results).toHaveLength(1);
+    expect(results[0]?.placeName).toBe('Monaco');
+    expect(results[0]?.title).toBe('Gross Domestic Product in Monaco');
+    expect(results[0]?.entities).toEqual([
+      { dcid: 'country/MCO', name: 'Monaco' },
+    ]);
+    expect(results[0]?.variables[0]?.placeName).toBe('Monaco');
+  });
+
+  // Test: Comparison chart deduplication and variable narrowing in getResultsForSelectedCards.
+  // Situation: A comparison chart card and a child/regular chart card for one of the compared places and same variable are selected; and two comparison chart cards for different variables on the same node are selected.
+  // Expectation: Comparison branch keys seen by place::variable and narrows results per variable, deduplicating overlapping place::variable pairs while preserving distinct variables.
+  it('deduplicates comparison cards against child/regular cards by place::variable and narrows results to card.variableDcid', () => {
+    const store = useAtlasStore.getState();
+
+    const makePlaceResult = (
+      id: string,
+      placeDcid: string,
+      placeName: string,
+    ): QueryResult => ({
+      id,
+      title: `Metrics in ${placeName}`,
+      placeDcid,
+      placeName,
+      variables: [
+        { dcid: 'UnemploymentRate', name: 'Unemployment Rate' },
+        { dcid: 'InflationRate', name: 'Inflation Rate' },
+      ],
+      entities: [{ dcid: placeDcid, name: placeName }],
+      timeSeries: [
+        {
+          variableDcid: 'UnemploymentRate',
+          entityDcid: placeDcid,
+          facets: [
+            {
+              facetId: 'f_unemp',
+              source: 'Eurostat',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2020',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 7.0 }],
+            },
+          ],
+        },
+        {
+          variableDcid: 'InflationRate',
+          entityDcid: placeDcid,
+          facets: [
+            {
+              facetId: 'f_infl',
+              source: 'Eurostat',
+              sourceUrl: '',
+              earliestDate: '2020',
+              latestDate: '2020',
+              observationCount: 1,
+              unit: '%',
+              observations: [{ date: '2020', value: 2.0 }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const compUnempShapeId =
+      'shape:node_comp____comparison____chart__UnemploymentRate';
+    const compInflShapeId =
+      'shape:node_comp____comparison____chart__InflationRate';
+    const childFraUnempShapeId =
+      'shape:node_reg__country/FRA__chart__UnemploymentRate';
+
+    useAtlasStore.setState({
+      nodes: {
+        node_comp: {
+          id: 'node_comp',
+          parentId: null,
+          query: 'Compare France and Germany',
+          parsedQuery: null,
+          results: {
+            'country/FRA': makePlaceResult('res_fra', 'country/FRA', 'France'),
+            'country/DEU': makePlaceResult('res_deu', 'country/DEU', 'Germany'),
+          },
+          cardIds: [compUnempShapeId, compInflShapeId],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+        node_reg: {
+          id: 'node_reg',
+          parentId: null,
+          query: 'Unemployment in Europe',
+          parsedQuery: null,
+          results: { europe: mockChildResult },
+          cardIds: [childFraUnempShapeId],
+          timestamp: Date.now(),
+          status: 'complete',
+        },
+      },
+      cards: {
+        [compUnempShapeId]: {
+          shapeId: compUnempShapeId,
+          historyNodeId: 'node_comp',
+          type: 'chart',
+          placeDcid: COMPARISON_PLACE_KEY,
+          variableDcid: 'UnemploymentRate',
+        },
+        [compInflShapeId]: {
+          shapeId: compInflShapeId,
+          historyNodeId: 'node_comp',
+          type: 'chart',
+          placeDcid: COMPARISON_PLACE_KEY,
+          variableDcid: 'InflationRate',
+        },
+        [childFraUnempShapeId]: {
+          shapeId: childFraUnempShapeId,
+          historyNodeId: 'node_reg',
+          type: 'chart',
+          placeDcid: 'country/FRA',
+          resultPlaceDcid: 'europe',
+          variableDcid: 'UnemploymentRate',
+        },
+      },
+      focusTarget: null,
+    });
+
+    // 1. Selecting child France (UnemploymentRate) + comparison (UnemploymentRate)
+    // deduplicates France::UnemploymentRate and narrows Germany to UnemploymentRate.
+    const dedupedResults = store.getResultsForSelectedCards([
+      childFraUnempShapeId,
+      compUnempShapeId,
+    ]);
+    expect(dedupedResults).toHaveLength(2);
+    expect(dedupedResults[0]?.id).toBe(
+      'res_europe__country/FRA__UnemploymentRate',
+    );
+    expect(dedupedResults[1]?.id).toBe('res_deu__UnemploymentRate');
+    expect(dedupedResults[1]?.variables.map((v) => v.dcid)).toEqual([
+      'UnemploymentRate',
+    ]);
+    expect(dedupedResults[1]?.timeSeries.map((ts) => ts.variableDcid)).toEqual([
+      'UnemploymentRate',
+    ]);
+
+    // 2. Selecting two comparison charts (UnemploymentRate + InflationRate)
+    // yields 4 narrowed per-place/per-variable results with unique IDs.
+    const multiCompResults = store.getResultsForSelectedCards([
+      compUnempShapeId,
+      compInflShapeId,
+    ]);
+    expect(multiCompResults).toHaveLength(4);
+    expect(multiCompResults.map((r) => r.id)).toEqual([
+      'res_fra__UnemploymentRate',
+      'res_deu__UnemploymentRate',
+      'res_fra__InflationRate',
+      'res_deu__InflationRate',
+    ]);
   });
 });

@@ -108,6 +108,30 @@ const removeNode = (
   };
 };
 
+/**
+ * When a chart card targets a specific variable, narrow the `QueryResult` to
+ * only that variable's metadata and time series so the combine API receives
+ * per-variable data with a distinct ID.
+ */
+const narrowResultToVariable = (
+  result: QueryResult,
+  variableDcid: string | undefined,
+): QueryResult => {
+  if (!variableDcid) return result;
+  const variable = result.variables.find(
+    (entry) => entry.dcid === variableDcid,
+  );
+  const timeSeries = result.timeSeries.filter(
+    (entry) => entry.variableDcid === variableDcid,
+  );
+  return {
+    ...result,
+    id: `${result.id}__${variableDcid}`,
+    variables: variable ? [variable] : result.variables,
+    timeSeries,
+  };
+};
+
 export const useAtlasStore = create<AtlasStore>()(
   subscribeWithSelector(
     devtools(
@@ -349,12 +373,6 @@ export const useAtlasStore = create<AtlasStore>()(
             ) ??
               false);
 
-          const plottableVar = result?.timeSeries.find(
-            (ts) =>
-              (!effectiveResultPlaceDcid || ts.entityDcid === placeDcid) &&
-              ts.facets.some((f) => f.observations.length > 0),
-          )?.variableDcid;
-
           // Inherit the parent card's variable so a drill-down keeps the metric
           // the user was looking at — but only when that metric has data for
           // the target place, otherwise fall back to the first one that does.
@@ -363,7 +381,11 @@ export const useAtlasStore = create<AtlasStore>()(
             (isPlottable(parent.variableDcid)
               ? parent.variableDcid
               : undefined) ||
-            plottableVar;
+            result?.timeSeries.find(
+              (ts) =>
+                (!effectiveResultPlaceDcid || ts.entityDcid === placeDcid) &&
+                ts.facets.some((f) => f.observations.length > 0),
+            )?.variableDcid;
 
           const shapeId = buildCardShapeId({
             historyNodeId: parent.historyNodeId,
@@ -538,15 +560,22 @@ export const useAtlasStore = create<AtlasStore>()(
             if (!node) continue;
 
             if (card.placeDcid === COMPARISON_PLACE_KEY) {
-              // Comparison chart — extract all per-place results from the node.
+              // Comparison chart — extract all per-place results from the node,
+              // keyed by `place::variable` and narrowed to the card's variable
+              // so it deduplicates cleanly against regular/child cards and
+              // allows combining distinct comparison metrics from the same node.
               for (const [key, result] of Object.entries(node.results)) {
                 const placeKey =
                   result.placeDcid ||
                   (key.includes(':') ? key.split(':')[0] : key) ||
                   result.entities[0]?.dcid;
-                if (!placeKey || seen.has(placeKey)) continue;
-                seen.add(placeKey);
-                results.push(result);
+                if (!placeKey) continue;
+                const dedupeKey = card.variableDcid
+                  ? `${placeKey}::${card.variableDcid}`
+                  : placeKey;
+                if (seen.has(dedupeKey)) continue;
+                seen.add(dedupeKey);
+                results.push(narrowResultToVariable(result, card.variableDcid));
               }
             } else {
               // Regular chart — extract the single place result.
@@ -569,13 +598,16 @@ export const useAtlasStore = create<AtlasStore>()(
                 const entity = result.entities.find(
                   (e) => e.dcid === card.placeDcid,
                 );
-                const placeName = entity?.name || card.placeDcid;
                 const filteredTimeSeries = result.timeSeries.filter(
                   (entry) =>
                     entry.entityDcid === card.placeDcid &&
                     (!card.variableDcid ||
                       entry.variableDcid === card.variableDcid),
                 );
+                const placeName =
+                  entity?.name ||
+                  filteredTimeSeries[0]?.entityName ||
+                  card.placeDcid;
                 const filteredVariables = card.variableDcid
                   ? result.variables.filter(
                       (entry) => entry.dcid === card.variableDcid,
@@ -627,25 +659,7 @@ export const useAtlasStore = create<AtlasStore>()(
               if (seen.has(dedupeKey)) continue;
               seen.add(dedupeKey);
 
-              // When the card targets a specific variable, return a narrowed
-              // result containing only that variable's time series so the
-              // combine API receives per-variable data.
-              if (card.variableDcid) {
-                const variable = result.variables.find(
-                  (entry) => entry.dcid === card.variableDcid,
-                );
-                const timeSeries = result.timeSeries.filter(
-                  (entry) => entry.variableDcid === card.variableDcid,
-                );
-                results.push({
-                  ...result,
-                  id: `${result.id}__${card.variableDcid}`,
-                  variables: variable ? [variable] : result.variables,
-                  timeSeries,
-                });
-              } else {
-                results.push(result);
-              }
+              results.push(narrowResultToVariable(result, card.variableDcid));
             }
           }
 
