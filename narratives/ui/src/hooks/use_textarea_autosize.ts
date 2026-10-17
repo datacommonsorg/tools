@@ -22,7 +22,8 @@ import { type RefObject, useLayoutEffect, useState } from 'react';
  *
  * `isScrolling` latches on past the cap and resets only at one line, so a
  * caller that widens the textarea while scrolling doesn't flip-flop the layout
- * as the text rewraps under the cap.
+ * as the text rewraps under the cap. The box is re-measured when it flips, since
+ * the caller's layout change can rewrap the text without `value` changing.
  *
  * @param textareaRef The textarea to size.
  * @param value The textarea's current controlled value.
@@ -48,14 +49,12 @@ export const useTextareaAutosize = (
     const maxHeight = Number.parseFloat(getComputedStyle(el).maxHeight);
     const contentHeight = hasContent ? el.scrollHeight : el.clientHeight;
     const isOverLimit = Number.isFinite(maxHeight) && contentHeight > maxHeight;
-    setIsScrolling(
-      (wasScrolling) => isMultiline && (wasScrolling || isOverLimit),
-    );
+    setIsScrolling(isMultiline && (isScrolling || isOverLimit));
     el.style.height = prev;
     void el.offsetHeight;
     el.style.height = `${isOverLimit ? maxHeight : contentHeight}px`;
     el.style.overflowY = isOverLimit ? 'auto' : 'hidden';
-  }, [value, textareaRef]);
+  }, [value, textareaRef, isScrolling]);
 
   return { isExpanded, isScrolling };
 };

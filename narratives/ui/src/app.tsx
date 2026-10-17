@@ -78,7 +78,7 @@ function ChatResetOnTabChange({ route }: { route: string }) {
   useEffect(() => {
     if (prevRoute.current === route) return;
     prevRoute.current = route;
-    // The page is the scroller, so each view starts at its top.
+    // Scrolling is managed on the page level, so each view starts at its top.
     window.scrollTo(0, 0);
     if (turns.length > 0 && !isStreaming) {
       newSession();

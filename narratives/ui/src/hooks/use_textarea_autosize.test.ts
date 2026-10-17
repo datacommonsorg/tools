@@ -127,6 +127,45 @@ describe('useTextareaAutosize', () => {
     textarea.remove();
   });
 
+  it('re-measures when the scrolling layout turns off', () => {
+    // Test: Layout change at the one-line boundary.
+    // Situation: The caller widens the textarea while scrolling. The text fits
+    //   one wide line, which resets scrolling; the narrow layout that follows
+    //   rewraps it to two lines with no change to the value.
+    // Expectation: The box is re-measured at two lines, so no text is hidden.
+    const textarea = document.createElement('textarea');
+    textarea.style.maxHeight = `${4 * LINE_HEIGHT}px`;
+    document.body.append(textarea);
+    const ref = { current: textarea };
+    let isScrolling = false;
+    const hook = renderHook(
+      ({ value }) => {
+        const result = useTextareaAutosize(ref, value);
+        isScrolling = result.isScrolling;
+        return result;
+      },
+      { initialProps: { value: 'six lines' } },
+    );
+    lines = 6;
+    hook.rerender({ value: 'six lines, now measured' });
+    expect(hook.result.current.isScrolling).toBe(true);
+    // Wide (scrolling) layout fits one line; narrow layout wraps to two.
+    vi.spyOn(
+      HTMLTextAreaElement.prototype,
+      'scrollHeight',
+      'get',
+    ).mockImplementation(() => (isScrolling ? 1 : 2) * LINE_HEIGHT);
+    hook.rerender({ value: 'one wide line' });
+    expect(hook.result.current.isScrolling).toBe(false);
+    expect(textarea.style.height).toBe(`${2 * LINE_HEIGHT}px`);
+    vi.spyOn(
+      HTMLTextAreaElement.prototype,
+      'scrollHeight',
+      'get',
+    ).mockImplementation(() => lines * LINE_HEIGHT);
+    textarea.remove();
+  });
+
   it('does nothing when the ref is not attached', () => {
     // Test: Unattached ref.
     // Situation: The textarea has not mounted, so the ref is null.

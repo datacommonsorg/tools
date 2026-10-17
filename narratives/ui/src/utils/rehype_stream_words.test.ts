@@ -64,6 +64,18 @@ describe('rehypeStreamWords', () => {
     ]);
     expect(item.properties?.style).toBe('animation-delay:300ms');
   });
+
+  it("keeps a container's existing inline style", () => {
+    // Test: Container with an inline style.
+    // Situation: A list item already carries `color:red`.
+    // Expectation: The animation delay is appended, not substituted.
+    const item = element('li', [text('one')]);
+    item.properties = { style: 'color:red' };
+
+    rehypeStreamWords(100)(element('root', [item]));
+
+    expect(item.properties?.style).toBe('color:red;animation-delay:0ms');
+  });
 });
 
 describe('calculateStreamDurationMs', () => {
