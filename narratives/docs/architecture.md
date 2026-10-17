@@ -108,20 +108,43 @@ agent automatically starts a fresh MCP session and retries the tool call.
 
 ### What happens during a chat turn
 
-Each `POST /agent/chat/stream` request runs through four steps:
+Each `POST /agent/chat/stream` request runs through the agent loop in five
+steps:
 
-1. **Data gathering (`mcp`)** — Gemini calls Data Commons MCP tools to look up
+1. **Query classification (`classify`):** Before any tool is called, a
+   deterministic pre-filter screens out prompt injection, persona overrides,
+   secret exfiltration, jailbreak phrases, and injection payloads without a
+   model call. One structured Gemini call on `gemini.classify_model`
+   (`gemini-3.5-flash-lite` by default) then produces one of three outcomes:
+   - **Refused:** Ends the turn in a single `terminal` frame
+     `{state: "refused", idempotency_key, reason, message}` with no `error` key
+     (`reason` is `adversarial`, `off_domain`, or `safety_blocked`). The turn is
+     not signed and is excluded from the multi-turn window, and the UI renders
+     the message as a notice rather than an error card.
+   - **Clarification:** When a place name is ambiguous or required and omitted,
+     streams the clarification question as answer `text`, signs the turn with
+     empty state slots, and emits a signed `complete` terminal frame without
+     `data_status`, `sources`, `chart_config`, or `follow_ups` frames.
+   - **Classified:** Continues into the discovery loop and synthesis with the
+     analytical `pattern` (`single_point`, `top_n_ranking`, `distribution`,
+     `trend_delta`, `outliers`, `correlation`, `composition`,
+     `sequential_stages`, `clustering`, `forecasting`, `exploratory`, or
+     `data_availability`) recorded in telemetry and its directive from
+     `workflows/pattern_guidance.py` appended to the system instructions of both
+     calls. If the classifier call fails, the turn falls through as
+     `exploratory` without a directive.
+2. **Data gathering (`mcp`):** Gemini calls Data Commons MCP tools to look up
    places, variables, and observations. If the MCP server cannot be reached, the
    turn stops and returns an error so the model never guesses numbers without
    data.
-2. **Answer synthesis & chart selection (`synthesis` / `chart_config`)** —
+3. **Answer synthesis & chart selection (`synthesis` / `chart_config`):**
    Gemini writes a markdown response with inline citations while checking in
    parallel whether the data can be shown in a chart. A chart is included only
    if validation confirms that matching data exists.
-3. **Turn signing (`finalize`)** — The server packages the updated conversation
+4. **Turn signing (`finalize`):** The server packages the updated conversation
    history and signs the completed turn so the browser can include it in
    follow-up questions.
-4. **Follow-up suggestions (`follow_up`)** — Suggested follow-up questions are
+5. **Follow-up suggestions (`follow_up`):** Suggested follow-up questions are
    streamed after the main answer finishes.
 
 ### Server-Sent Events (SSE)
@@ -132,19 +155,20 @@ for `heartbeat`) a sequential `id` starting at `1`:
 
 | Event | What it contains |
 | :--- | :--- |
-| `status` | Current step (`mcp`, `synthesis`, or `chart_config`) and status message |
+| `status` | Current step (`classify`, `mcp`, `synthesis`, or `chart_config`) and status message |
 | `thought` | Model reasoning summary from the `mcp` or `synthesis` step |
 | `content` | Answer text (`{text}`), tool call details (`{tool_call}`), citations (`{sources}`), data status (`{data_status}`), or chart config (`{chart_config}`) |
-| `terminal` | Final turn status (`state: "complete"` or `"error"`), plus the signed conversation state on completion or `{error, reason}` on failure |
+| `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `heartbeat` | `{}`, sent every 15 seconds so proxies do not close idle connections |
 
 How the stream ends:
 
 - **Explicit completion (`terminal`):** Every finished turn sends a single
-  `terminal` event with `state: "complete"` or `state: "error"`. If the
-  connection drops before a `terminal` event arrives, the UI shows that the
-  response was interrupted.
+  `terminal` event with `state: "complete"`, `state: "refused"`, or
+  `state: "error"`. A `refused` frame carries `{reason, message}` and no `error`
+  key, and is left unsigned. If the connection drops before a `terminal` event
+  arrives, the UI shows that the response was interrupted.
 - **Client disconnect:** If the user closes the tab or stops the request, the
   server cancels any in-progress model calls and logs the turn as `canceled`.
 - **Duplicate protection (`idempotency_key`):** Each request includes a unique
@@ -225,10 +249,10 @@ At startup, `narratives_agent/config.py` loads configuration into memory from
 the first available source:
 
 1. **Cloud Run (`CONFIG_URL`):** Downloads `agent-config.json` and
-   `prompts/*.md` (`mcp`, `synthesis`, `follow_up`) once at startup from the
-   private GCS config bucket. HTML comments (`<!-- ... -->`) are stripped from
-   prompt files, and `{{instance.*}}` placeholders are filled in from
-   `template_vars` in `agent-config.json`.
+   `prompts/*.md` (`classify`, `mcp`, `synthesis`, `follow_up`) once at startup
+   from the private GCS config bucket. HTML comments (`<!-- ... -->`) are
+   stripped from prompt files, and `{{instance.*}}` placeholders are filled in
+   from `template_vars` in `agent-config.json`.
 2. **Local development (`agent/config.json`):** Generated by `pnpm dev:agent`
    (`dev.py`) by merging `defaults/`, `config/`, and `.env.local`, and
    automatically reloaded whenever the file changes.

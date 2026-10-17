@@ -19,16 +19,25 @@ const turn = (overrides: Partial<ChatTurn>): ChatTurn => ({
 describe('cleanTurns', () => {
   it('keeps settled turns unchanged', () => {
     // Test: Restoring finished turns.
-    // Situation: Storage holds a done turn and an error turn.
-    // Expectation: Both are restored exactly as saved.
+    // Situation: Storage holds a done turn, a refused turn, and an error turn.
+    // Expectation: All three are restored exactly as saved.
     const done = turn({ status: 'done', text: 'About 68 million.' });
+    const refused = turn({
+      status: 'refused',
+      refusalMessage: 'We cannot service that request.',
+    });
     const failed = turn({ status: 'error', error: 'The data request failed.' });
 
-    expect(cleanTurns([done, failed])).toEqual([done, failed]);
+    expect(cleanTurns([done, refused, failed])).toEqual([
+      done,
+      refused,
+      failed,
+    ]);
   });
 
   it.each([
     'idle',
+    'classify',
     'mcp',
     'synthesis',
   ] as const)('turns a %s turn into an interrupted error turn instead of dropping it', (status) => {

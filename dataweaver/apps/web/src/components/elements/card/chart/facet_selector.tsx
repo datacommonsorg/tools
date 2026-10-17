@@ -3,6 +3,7 @@
 import { Select } from '~/components/elements/select';
 import { formatFacetLabel } from '~/functions/format_facet';
 import type { FacetInfo } from '~/server/types';
+import { resolveActiveFacet } from './facet_resolution';
 import s from './facet_selector.module.scss';
 
 interface FacetSelectorProps {
@@ -18,7 +19,7 @@ export const FacetSelector = ({
   onSelect,
   label = 'Facet',
 }: FacetSelectorProps) => {
-  const currentFacet = facets.find((f) => f.facetId === selectedFacetId);
+  const currentFacet = resolveActiveFacet(facets, selectedFacetId);
 
   if (!currentFacet || facets.length <= 1) {
     return currentFacet ? (

@@ -44,11 +44,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Model used whenever agent-config.json names none. The shipped defaults name
-# no model, so this is the model a deployment runs unless it overrides it.
-# Every caller reads the model through get_gemini_model() rather than spelling
-# its own default, so that every call in a turn uses the same model.
+# Default models used when agent-config.json omits a model override. Every
+# caller reads the configured model through get_gemini_model() or
+# get_gemini_classify_model() rather than spelling its own default.
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 
 
 def get_gemini_model(config: dict[str, Any]) -> str:
@@ -60,6 +60,19 @@ def get_gemini_model(config: dict[str, Any]) -> str:
     if isinstance(model, str) and model.strip():
         return model.strip()
     return DEFAULT_GEMINI_MODEL
+
+
+def get_gemini_classify_model(config: dict[str, Any]) -> str:
+    """Returns `gemini.classify_model`, or `DEFAULT_GEMINI_CLASSIFY_MODEL`."""
+    gemini_cfg = config.get("gemini")
+    model = (
+        gemini_cfg.get("classify_model")
+        if isinstance(gemini_cfg, dict)
+        else None
+    )
+    if isinstance(model, str) and model.strip():
+        return model.strip()
+    return DEFAULT_GEMINI_CLASSIFY_MODEL
 
 
 # Secret Manager client for runtime key loading (optional import).
@@ -99,7 +112,7 @@ _secret_manager_lock = threading.Lock()
 # `follow_up` is the only slot with an in-code default
 # (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
 # than to no system instruction.
-PROMPT_SLOTS = ("mcp", "synthesis", "follow_up")
+PROMPT_SLOTS = ("classify", "mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -244,9 +257,9 @@ def _apply_prompts(config: dict[str, Any], prompts: dict[str, str]) -> None:
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
         logger.warning(
-            "Missing prompt bodies for %s. 'follow_up' falls back to its "
-            "in-code default; any other missing slot runs without a system "
-            "instruction.",
+            "Missing prompt bodies for %s. 'classify' skips classification, "
+            "'follow_up' falls back to its in-code default, and any other "
+            "missing slot runs without a system instruction.",
             missing,
         )
 

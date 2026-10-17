@@ -23,6 +23,7 @@ from typing import Any
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
+    GeminiBlocked,
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import (
@@ -78,7 +79,7 @@ Generate the self-contained follow-up questions now."""
             token_usage=token_usage,
         )
         questions: list[Any] = []
-        if "candidates" in response:
+        if not isinstance(response, GeminiBlocked) and "candidates" in response:
             text = response["candidates"][0]["content"]["parts"][0].get(
                 "text", "{}"
             )
