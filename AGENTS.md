@@ -9,12 +9,11 @@ guide lives.
 | Directory | What it is | App guide |
 |---|---|---|
 | `dataweaver/` | Next.js 16 / React 19 app (pnpm workspaces) | [`dataweaver/AGENTS.md`](dataweaver/AGENTS.md) |
-| `narratives/` | React + Vite SPA and its Python agent sidecar | — |
+| `narratives/` | React + Vite SPA and Python server (pnpm workspace) | [`narratives/AGENTS.md`](narratives/AGENTS.md) |
 | `bigtable_automation/`, `gcf/` | Older standalone tools; no app guide | — |
 
-`narratives/` has no app guide. Its frontend conventions are in
-[`narratives/FRONTEND.md`](narratives/FRONTEND.md); for everything else the root
-documents govern. Its owners should add one.
+Each application manages its own developer workflows and toolchains. Refer to
+the application's `AGENTS.md` for commands governing lint, test, and build.
 
 ## Which document governs what
 
@@ -25,6 +24,8 @@ documents govern. Its owners should add one.
 | `<app>/AGENTS.md` | App layout, commands, app-specific conventions |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution process, PR expectations, review policy |
 | [`CONTINUOUS_INTEGRATION.md`](CONTINUOUS_INTEGRATION.md) | CI orchestrator and how to wire a new app into it |
+| [`.agent/skills/datacommons-pr-review/SKILL.md`](.agent/skills/datacommons-pr-review/SKILL.md) | Pull request review workflow and verification checklist |
+| [`.gemini/styleguide.md`](.gemini/styleguide.md) | Automated GitHub code review checklist (Gemini Code Assist) |
 
 ## Resolution rule
 
@@ -45,3 +46,5 @@ a local `CODING_GUIDELINES.md`, so the root copy governs both.
    and use the commands documented there — do not guess build, test, or lint
    commands.
 4. Run that application's lint, test, and build before submitting.
+5. When reviewing a pull request or branch diff, follow
+   [`.agent/skills/datacommons-pr-review/SKILL.md`](.agent/skills/datacommons-pr-review/SKILL.md).

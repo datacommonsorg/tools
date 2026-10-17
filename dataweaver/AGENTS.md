@@ -13,10 +13,11 @@ tool's agent entry point so every assistant reads the same rules.
 Read these before writing code, in this order:
 
 1. [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md) (repository root) — general
-   engineering rules for every language: simplicity, file organization, naming,
-   TypeScript and Vitest rules, error handling, testing, security, and the Data
-   Commons pipeline conventions. Dataweaver has no local copy, so the root
-   document applies in full.
+   engineering rules for every language: simplicity, preparatory refactoring,
+   file organization, software design and module boundaries, naming, TypeScript
+   and Vitest rules, error handling, testing, security, and the Data Commons
+   pipeline conventions. Dataweaver has no local copy, so the root document
+   applies in full.
 2. [`FRONTEND.md`](FRONTEND.md) (this directory) — the authoritative frontend
    reference for React, SCSS modules, primitives, motion, performance, and
    accessibility. It augments the repository-root

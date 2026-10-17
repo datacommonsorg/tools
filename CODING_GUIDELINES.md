@@ -41,14 +41,23 @@ Contribution process, PR expectations, and review policy live in
 * Ask of every change: *would a senior engineer call this overcomplicated?* If a
   50-line implementation works, do not write 200.
 
-### 1.2 Surgical changes
+### 1.2 Surgical changes and preparatory refactoring
 
 * Every changed line must trace directly to the stated goal of the change.
 * Do not "improve" adjacent code, comments, or formatting that is unrelated to
   your change; unrelated churn expands the review surface and hides the real
   diff.
-* Match the existing style and patterns of the file you are editing, even where
-  you would have chosen differently.
+* **Separate refactoring from feature work.** Make the change easy (as a
+  standalone, behavior-preserving refactor PR), then make the easy change (in
+  the feature PR). Never bundle a broad structural refactor and new behavioral
+  logic into the same PR.
+* **Do not compound structural debt to keep a diff small.** Match the existing
+  style and patterns of the file you are editing — unless extending the local
+  pattern worsens a design smell (such as widening an ad-hoc return union,
+  threading untyped maps across callers, or adding another responsibility to an
+  overloaded module). When a feature requires reshaping an interface or module
+  boundary first, extract and land that behavior-preserving refactor in its own
+  PR before building the feature on top.
 * Clean up orphans **you** created (unused imports, variables, functions). Leave
   pre-existing dead code alone — mention it instead.
 * Remove debugging logs, commented-out code, and scratch files before
@@ -95,7 +104,7 @@ application's formatter and is not restated here.
 |---|---|---|
 | TypeScript / JavaScript | [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) | Biome, ESLint, or `tsc` as configured per app |
 | HTML / CSS / SCSS | [Google HTML/CSS Style Guide](https://google.github.io/styleguide/htmlcssguide.html) | Stylelint / Biome as configured per app |
-| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | `ruff` (format + check) for new code; existing apps keep their configured toolchain |
+| Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) | `ruff` (format + check) and `mypy` (strict) for new code; existing apps keep their configured toolchain |
 | Go | [Google Go Style Guide](https://google.github.io/styleguide/go/) | `gofmt`, `go vet`, `golangci-lint` |
 | Java | [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html) | `google-java-format` |
 | Shell | [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) | `shellcheck` |
@@ -131,7 +140,7 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
 ### 3.1 File naming
 
 * `snake_case` for source files by default (`chat_pipeline.py`,
-  `use_branding.ts`, `card_chart.tsx`).
+  `instance_config.ts`, `card_chart.tsx`).
 * `dash-case` only where a framework requires it — e.g. Next.js App Router
   segments under `apps/web/src/app`.
 * `PascalCase` for component/class identifiers (`CardChart`), regardless of the
@@ -143,6 +152,49 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   files, folders, identifiers, and CSS classes.
 * No relative parent imports (`../`). Use the project's path alias (`~/`, `@/`)
   so files can move without rewriting import paths.
+
+### 3.2 Software design and module boundaries
+
+* **Typed domain objects at boundaries (no primitive or dict obsession).** Parse
+  external JSON, configuration files, and third-party SDK responses into typed
+  domain objects (dataclasses, Pydantic models, structs, or TypeScript
+  interfaces) at the boundary where they enter the application. Do not pass raw
+  untyped maps (`dict[str, Any]`, `Record<string, unknown>`) across internal
+  module boundaries, unless the map genuinely represents open-ended or
+  pass-through data (such as a JSON Schema definition, dynamic tool arguments,
+  or telemetry attributes). Do not scatter nested key lookups with fallback
+  defaults across callers.
+* **Uniform error and outcome contracts.** Each client or module interface must
+  use a single, consistent mechanism for signaling failures. Do not mix raised
+  exceptions, error dictionaries, and sentinel return values across the same
+  API. Raise typed domain exceptions for failure and abort paths (see §8) and
+  return typed domain objects for expected outcomes.
+* **Cohesive module interfaces and factories.** Keep module interfaces narrow
+  and explicit. When a client or subsystem grows to manage multiple concerns
+  (such as authentication, transport setup, request construction, and response
+  parsing), encapsulate it behind a cohesive class, interface, or factory rather
+  than exposing a large file of loosely related functions and module-level
+  state.
+* **Typed configuration and capability presets.** When configuration parameters,
+  timeouts, or execution options are coupled to specific profiles or backend
+  capabilities, define them as typed preset objects or enums in code rather than
+  passing raw strings or ad-hoc option bags across callers. Centralizing presets
+  keeps upgrades and capability audits in one place.
+* **Discriminated unions for state machines.** Model mutually exclusive states
+  (such as `idle`, `loading`, `success`, and `error`) as a discriminated union
+  keyed by a discriminant field rather than independent optional fields
+  (`data?`, `error?`, `isCanceled?`) that permit invalid state combinations and
+  force compound boolean guards in callers.
+* **Table-driven / strategy dispatch over parallel conditionals.** When behavior
+  varies across a fixed set of variants, co-locate each variant's policy in a
+  typed registry or strategy table rather than scattering parallel `if/elif` or
+  `switch` blocks across multiple modules.
+* **Separate user-facing copy and templates from logic and markup.** Keep all
+  user-facing content, including UI text (button labels, placeholders, and
+  human-readable accessibility strings such as `aria-label`), status
+  messages, and long-form templates, in dedicated resource or template modules
+  rather than hardcoding or concatenating strings inside business logic,
+  control flow, or component markup.
 
 ---
 
@@ -161,7 +213,7 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   call-site.** An icon that draws a pencil is `icon_pencil`, not `icon_export` —
   so it still reads correctly at the next call-site.
 * **Follow the ecosystem's casing.** `camelCase` properties in TypeScript
-  (`brandConfigUrl`, not `brand_config_url`); `snake_case` in Python.
+  (`thinkingIndicatorUrl`, not `thinking_indicator_url`); `snake_case` in Python.
 
 ---
 
@@ -209,8 +261,18 @@ Vitest-specific conventions:
 
 * Follow the Google Python Style Guide; 4-space indent, `snake_case` functions
   and modules, `PascalCase` classes.
-* Type-hint public function signatures; use `Optional[...]` explicitly rather
-  than relying on an implicit `None` default.
+* Type-hint public function signatures. Write an optional parameter as
+  `X | None`, never as a bare `X` with a `None` default — an implicit optional
+  misstates the signature, and `ruff` rejects it.
+* **New and rewritten Python type-checks under `mypy --strict`, and CI fails on
+  any error.** A new module is annotated as it is written, and is never added
+  to the exemption list.
+* Modules that predate the standard are exempted individually in the app's
+  `pyproject.toml`, under `[[tool.mypy.overrides]]` with `ignore_errors`. Each
+  entry names the change that rewrites or deletes the module it covers. An
+  exemption is retired by deleting that module, never by annotating code that
+  is scheduled for replacement. **The list only shrinks**, and it should reach
+  the standard small set — third-party stubs and nothing else.
 * Module-level docstring describing the file's responsibility; docstrings on
   public functions covering arguments, return value, and raised exceptions.
 * Use the `logging` module, never `print`, for anything that runs in a server or
@@ -232,6 +294,11 @@ Vitest-specific conventions:
 * **Distinguish expected from exceptional.** Missing data for a query is an
   expected outcome to be surfaced in the UI; a malformed API response is an
   error to be logged.
+* **Raise typed domain exceptions rather than returning error dicts.** Do not
+  encode failure states as `{"error": str}` dictionaries or ad-hoc union return
+  types that every caller must manually inspect and translate. Define a clear
+  domain exception hierarchy so failure and abort paths propagate cleanly to the
+  orchestrating boundary.
 * **Log at the right level**: `debug` for tracing, `info` for lifecycle events,
   `warning` for degraded-but-handled conditions, `error` for failures that need
   attention.
@@ -412,6 +479,87 @@ reliability — when they are, note the upstream fix they stand in for.
   # permissions and limitations under the License.
   ```
 
+### 14.1 Comment style: tone, length, and content
+
+Comments explain *why* code exists and define its *contracts*; the code itself
+explains *how* it works. High-quality comments reduce cognitive load for future
+readers. Comments that read as conversational essays, personify code, or are 
+otherwise not focused nor clear increase cognitive load and obscure bugs.
+
+#### 14.1.1 Tone
+
+* **Technical, declarative, and direct.** Write clear, neutral technical prose.
+  Use imperative or declarative phrasing ("Formats values for display",
+  "Guards against negative zero"). Avoid conversational filler, stream of
+  consciousness, or casual editorializing.
+* **Idiomatic, professional language.** Write clear, idiomatic technical prose.
+  Describe system behavior directly, avoiding informal jargon and anthropomorphic
+  framing (attributing intent, feelings, or agency to code and data structures).
+  * *Avoid:* `// The socket wants to close, but the queue fears data loss.`
+  * *Prefer:* `// Drain pending messages before closing the socket connection.`
+* **Use standard domain terminology.** Do not invent colloquial shorthand or
+  use regional idioms. Use established terms from networking, compilers,
+  TypeScript, and data structures.
+* **Neutral and egoless.** Avoid first-person pronouns ("I", "we") or rhetorical
+  flourishes ("leaves much to be desired", "pointless churn"). Avoid criticizing
+  libraries or APIs, but do indicate where you had to take measures to circumvent
+  library or API behavior. Focus strictly on the technical invariant. All comments
+  should be measured, professional, and neutral.
+
+#### 14.1.2 Length and proportionality
+
+* **Proportionality rule.** The visual and cognitive weight of a comment must
+  match the complexity of what it annotates. A five-line function should not
+  carry a twenty-line comment.
+* **Inline comments (1–2 lines).** Inline comments are brief signposts
+  explaining non-obvious branches, workarounds, or subtle regex logic. If an
+  explanation requires multiple paragraphs, summarize the invariant in 1–2
+  lines in the code and document the fuller context in a PR description, issue,
+  or design document.
+* **JSDocs / Docstrings (2–4 lines typical).** Begin with a concise summary
+  sentence describing what the symbol does or represents. Follow with any
+  non-obvious constraints, side effects, or parameters.
+* **File-overview headers (3–5 lines).** State the file's architectural scope
+  and single responsibility. Do not list internal implementation steps.
+
+#### 14.1.3 What is wrong: comment anti-patterns
+
+Avoid these patterns when writing comments and docstrings:
+
+* **Avoid paraphrasing the code.** Do not restate in English what
+  the code already expresses in syntax. Trust the reader to know the language.
+  * *Avoid:* `// Increment counter by one` above `counter += 1;`.
+* **Avoid conflating anecdotal test queries with general invariants.** Never hardcode
+  transient data points from a specific local test run or fixture into
+  general utility comments. Comments must describe general behavior for all
+  callers.
+* **Avoid rationale without contract.** A docstring should both explain the functionality
+  and document inputs, outputs, and behavioral guarantees.
+* **Avoid needless complexity.** Avoid double negatives or
+  inverted clauses. State conditions positively and directly.
+* **Avoid commit history and review chatter.** Never write `// Added per PR review`
+  or `// Used to do X in v1`. Git history tracks changes and rationale across
+  time.
+
+#### 14.1.4 What to write: positive patterns
+
+Good comments capture information that cannot be expressed through types or
+clean identifiers alone:
+
+* **The contract (abstraction).** Document assumptions, preconditions,
+  postconditions, and guarantees that the compiler cannot enforce (e.g.
+  "Assumes observations are pre-sorted by date in ascending order").
+* **Programmatic bounds and concrete requirements.** Write clearly and
+  concisely without being clipped. Keep comments focused on programmatic bounds
+  and concrete requirements.
+* **The "why" behind non-obvious decisions.** Explain why an intuitive or
+  standard approach was rejected in favor of an unexpected one.
+* **Platform and library workarounds.** Document browser quirks, external API
+  irregularities, or third-party AST structure behaviors that necessitate
+  defensive handling.
+* **Invariants and boundary conditions.** Clarify edge-case thresholds, sign
+  preservation rules, or rounding guarantees (e.g. preventing negative zero).
+
 ---
 
 ## 15. Shell scripts and CLIs
@@ -429,12 +577,9 @@ reliability — when they are, note the upstream fix they stand in for.
 ## 16. Verification before submitting
 
 Run the application's full verification suite locally before opening or updating
-a PR. Do not guess commands — each app documents its own in `<app>/AGENTS.md`:
-
-| App | Lint / types | Tests | Build |
-|---|---|---|---|
-| `dataweaver` | `pnpm lint` | `pnpm test` | `pnpm build` |
-| `narratives` | `npm run lint` | `npm run test` | `npm run build` |
+a PR. Do not guess commands — consult the `<app>/AGENTS.md` of the application
+being worked on for its exact lint, test, and build commands before running
+verification.
 
 For UI changes, also run the production build and verify the change manually in
 the browser. Every app must be wired into the CI orchestrator so that
@@ -449,6 +594,8 @@ the browser. Every app must be wired into the CI orchestrator so that
   convention must update the relevant document **in the same PR**.
 * Put each rule in exactly one place: general rules here, UI rules in
   `FRONTEND.md`, app-specific rules in `<app>/AGENTS.md`. Cross-reference
-  instead of duplicating.
+  instead of duplicating. Changes to core standards must also update the
+  flattened review checklist in `.gemini/styleguide.md` so automated GitHub PR
+  reviews stay aligned.
 * Reviewers — human or agent — flag changes that violate these guidelines, and
   flag guidelines that the codebase has outgrown.

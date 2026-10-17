@@ -1,0 +1,3 @@
+# Share the exact build-context exclusions with Docker so `gcloud builds submit`
+# and `docker buildx build` upload the same minimal file set.
+#!include:.dockerignore
