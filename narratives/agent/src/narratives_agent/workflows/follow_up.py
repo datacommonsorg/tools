@@ -26,10 +26,7 @@ from narratives_agent.gemini.client import (
     GeminiBlocked,
     async_gemini_request,
 )
-from narratives_agent.gemini.schemas import (
-    DEFAULT_FOLLOW_UP_PROMPT,
-    FOLLOW_UP_SCHEMA,
-)
+from narratives_agent.gemini.schemas import FOLLOW_UP_SCHEMA
 from narratives_agent.telemetry import TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -49,6 +46,8 @@ async def generate_follow_up_questions(
     Mirrors datacommons.org's related.generate_follow_up_questions: returns []
     when there are no topics (no static fallback), uses a structured Gemini
     call, and filters out any question that leaks a context-dependent pronoun.
+    Also returns [] when the `follow_up` prompt slot is empty, so the model is
+    never called without its system instruction.
     """
     topics = [
         t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()
@@ -58,9 +57,13 @@ async def generate_follow_up_questions(
 
     config = load_config()
     model = get_gemini_model(config)
-    system_prompt = (
-        config.get("prompts", {}).get("follow_up") or DEFAULT_FOLLOW_UP_PROMPT
-    )
+    system_prompt = config.get("prompts", {}).get("follow_up", "")
+    if not system_prompt:
+        logger.warning(
+            "The follow_up prompt is not configured; skipping follow-up "
+            "generation"
+        )
+        return []
 
     prompt = f"""The user's original research question is: {user_message}
 

@@ -25,12 +25,16 @@ async def test_follow_ups_request_the_low_thinking_level(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: The thinking level that follow-up generation sends to Gemini.
-    # Situation: Follow-up questions are generated for a question with one
-    #   related topic.
+    # Situation: The configuration carries a `follow_up` prompt, and follow-up
+    #   questions are generated for a question with one related topic.
     # Expectation: The request asks for "low". `gemini-3.8-flash` rejects
     #   "minimal" with a 400 error. This call catches that error and returns
     #   no questions, so the failure would be silent.
-    monkeypatch.setattr(follow_up, "load_config", lambda: {})
+    monkeypatch.setattr(
+        follow_up,
+        "load_config",
+        lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
+    )
     levels: list[str | None] = []
 
     async def request(**kwargs: Any) -> dict[str, Any]:
@@ -44,3 +48,35 @@ async def test_follow_ups_request_the_low_thinking_level(
     )
 
     assert levels == ["low"]
+
+
+@pytest.mark.asyncio
+async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Follow-up generation when the `follow_up` prompt slot is empty.
+    # Situation: The configuration has no `prompts` section, and follow-up
+    #   questions are requested for a question with one related topic.
+    # Expectation: Gemini is not called, no questions are returned, and a
+    #   warning names the `follow_up` prompt.
+    monkeypatch.setattr(follow_up, "load_config", lambda: {})
+    calls: list[dict[str, Any]] = []
+
+    async def request(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return {"error": "stubbed"}
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+
+    with caplog.at_level("WARNING"):
+        questions = await follow_up.generate_follow_up_questions(
+            "What is the population of California?", ["California population"]
+        )
+
+    assert questions == []
+    assert calls == []
+    assert any(
+        r.levelname == "WARNING" and "follow_up prompt" in r.getMessage()
+        for r in caplog.records
+    )
