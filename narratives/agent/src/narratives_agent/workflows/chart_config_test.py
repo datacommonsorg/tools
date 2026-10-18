@@ -14,24 +14,29 @@
 """Tests for the chart configuration workflow.
 
 Verifies that `validate_data_response` fails closed (returns `False`) when the
-Gemini validation call returns an error dict, invalid JSON, or a JSON object
-without a boolean `data_found` field, and returns the model's boolean verdict
-when `data_found` is present. Verifies that `get_chart_config` returns a dict
-whatever JSON value the model produces, and that both calls request a thinking
-level that `gemini-3.8-flash` accepts.
+Gemini validation call raises `GeminiError` or `GeminiBlockedError`, or
+returns invalid JSON or a JSON object without a boolean `data_found` field,
+and returns the model's boolean verdict when `data_found` is present. Verifies
+that `get_chart_config` returns a dict whatever JSON value the model produces
+or error the client raises, and that both calls request a thinking level that
+`gemini-3.8-flash` accepts.
 """
 
 import json
+import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
 import pytest
 
+from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.workflows import chart_config
 
 _SYNTHESIS = "Population reached 39,538,223 in 2020."
 _QUESTION = "What is the population of California?"
 _RESULTS = "Tool: get_observations\nResult: 39538223"
+
+type GeminiAnswers = Callable[[dict[str, Any] | Exception], None]
 
 
 def _candidates(text: str) -> dict[str, Any]:
@@ -40,14 +45,18 @@ def _candidates(text: str) -> dict[str, Any]:
 
 
 @pytest.fixture
-def gemini_answers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Callable[[dict[str, Any]], None]:
-    """Stub `chart_config.async_gemini_request` to return a fixed response."""
+def gemini_answers(monkeypatch: pytest.MonkeyPatch) -> GeminiAnswers:
+    """Stub `chart_config.async_gemini_request` with a response or an error.
+
+    An exception is raised by the stub, as the Gemini client raises on a
+    failed or blocked request.
+    """
     monkeypatch.setattr(chart_config, "load_config", lambda: {})
 
-    def install(response: dict[str, Any]) -> None:
+    def install(response: dict[str, Any] | Exception) -> None:
         async def request(**kwargs: Any) -> dict[str, Any]:
+            if isinstance(response, Exception):
+                raise response
             return response
 
         monkeypatch.setattr(chart_config, "async_gemini_request", request)
@@ -56,25 +65,46 @@ def gemini_answers(
 
 
 @pytest.mark.asyncio
-async def test_an_api_error_hides_the_charts(
-    gemini_answers: Callable[[dict[str, Any]], None],
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(GeminiError("HTTP 404: model not found"), id="error"),
+        pytest.param(GeminiBlockedError("SAFETY"), id="blocked"),
+    ],
+)
+async def test_a_failed_or_blocked_call_hides_the_charts(
+    gemini_answers: GeminiAnswers,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
 ) -> None:
-    # Test: Chart suppression when the Gemini validation call returns an error.
-    # Situation: async_gemini_request returns an error dict without a
-    #   "candidates" key.
-    # Expectation: validate_data_response returns False so charts are hidden
-    #   when validation fails.
-    gemini_answers({"error": "HTTP 404: model not found"})
+    # Test: Chart suppression when a Gemini call fails or is blocked.
+    # Situation: async_gemini_request raises `GeminiError` or
+    #   `GeminiBlockedError`.
+    # Expectation: validate_data_response returns False and get_chart_config
+    #   returns `{"should_render": False}`, so no charts are shown. Each call
+    #   logs one WARNING, not an ERROR, because the client already logged the
+    #   redacted upstream error; a block names its reason.
+    gemini_answers(error)
 
-    assert (
-        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
-        is False
-    )
+    with caplog.at_level(logging.WARNING, logger=chart_config.logger.name):
+        assert (
+            await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+            is False
+        )
+        assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == {
+            "should_render": False
+        }
+
+    assert [record.levelno for record in caplog.records] == [
+        logging.WARNING,
+        logging.WARNING,
+    ]
+    assert ("SAFETY" in caplog.text) is isinstance(error, GeminiBlockedError)
 
 
 @pytest.mark.asyncio
 async def test_a_response_that_is_not_json_hides_the_charts(
-    gemini_answers: Callable[[dict[str, Any]], None],
+    gemini_answers: GeminiAnswers,
 ) -> None:
     # Test: Chart suppression when the validation response text is not valid
     #   JSON.
@@ -92,7 +122,7 @@ async def test_a_response_that_is_not_json_hides_the_charts(
 
 @pytest.mark.asyncio
 async def test_a_verdict_missing_the_field_hides_the_charts(
-    gemini_answers: Callable[[dict[str, Any]], None],
+    gemini_answers: GeminiAnswers,
 ) -> None:
     # Test: Chart suppression when the parsed JSON omits `data_found`.
     # Situation: The model returns a valid JSON object without the required
@@ -110,7 +140,7 @@ async def test_a_verdict_missing_the_field_hides_the_charts(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("payload", ["null", "[]", "false", "123"])
 async def test_a_non_object_json_payload_hides_the_charts(
-    gemini_answers: Callable[[dict[str, Any]], None], payload: str
+    gemini_answers: GeminiAnswers, payload: str
 ) -> None:
     # Test: Chart suppression when the validation response is valid non-object
     #   JSON.
@@ -129,7 +159,7 @@ async def test_a_non_object_json_payload_hides_the_charts(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("data_found", [True, False])
 async def test_a_clear_verdict_is_passed_through(
-    gemini_answers: Callable[[dict[str, Any]], None], data_found: bool
+    gemini_answers: GeminiAnswers, data_found: bool
 ) -> None:
     # Test: Pass-through of a valid boolean `data_found` verdict.
     # Situation: The model returns a JSON object with `data_found` set to True
@@ -147,7 +177,7 @@ async def test_a_clear_verdict_is_passed_through(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("payload", ["null", "[]", "false", "123"])
 async def test_a_non_object_chart_config_is_replaced_by_no_charts(
-    gemini_answers: Callable[[dict[str, Any]], None], payload: str
+    gemini_answers: GeminiAnswers, payload: str
 ) -> None:
     # Test: `get_chart_config` never returns a value that is not a dict.
     # Situation: The chart-config response is valid JSON that is None, a
@@ -163,7 +193,7 @@ async def test_a_non_object_chart_config_is_replaced_by_no_charts(
 
 @pytest.mark.asyncio
 async def test_an_object_chart_config_is_passed_through(
-    gemini_answers: Callable[[dict[str, Any]], None],
+    gemini_answers: GeminiAnswers,
 ) -> None:
     # Test: Pass-through of a well-formed chart configuration.
     # Situation: The chart-config response is a JSON object.
@@ -197,7 +227,7 @@ async def test_chart_calls_request_the_low_thinking_level(
 
     async def request(**kwargs: Any) -> dict[str, Any]:
         levels.append(kwargs.get("thinking_level"))
-        return {"error": "stubbed"}
+        raise GeminiError("stubbed")
 
     monkeypatch.setattr(chart_config, "async_gemini_request", request)
 

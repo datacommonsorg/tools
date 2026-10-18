@@ -29,7 +29,8 @@ Verifies that:
 7. The first request carries the verified window as alternating messages,
    with earlier answers shortened, then the scopes and the current query.
 8. A classification appends its pattern directive to the system instruction,
-   and a prompt that Gemini blocks ends the loop with `McpLoopBlockedError`.
+   and a prompt that Gemini blocks propagates out of the loop as the client's
+   `GeminiBlockedError`.
 """
 
 import asyncio
@@ -38,7 +39,7 @@ from typing import Any
 
 import pytest
 
-from narratives_agent.gemini.client import GeminiBlocked
+from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TurnTelemetry
@@ -112,13 +113,20 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def model_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Callable[..., None]:
-    """Scripts the model's responses, one per loop iteration."""
+    """Scripts the model's responses, one per loop iteration.
 
-    def install(*responses: dict[str, Any]) -> None:
+    An exception in the script is raised by that iteration's call, as the
+    Gemini client raises on a failed or blocked request.
+    """
+
+    def install(*responses: dict[str, Any] | Exception) -> None:
         remaining = list(responses)
 
         async def request(**kwargs: Any) -> dict[str, Any]:
-            return remaining.pop(0)
+            response = remaining.pop(0)
+            if isinstance(response, Exception):
+                raise response
+            return response
 
         monkeypatch.setattr(
             mcp_loop, "async_gemini_request_with_thought_streaming", request
@@ -195,7 +203,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     ("response", "error_type"),
     [
         pytest.param(
-            {"error": _UPSTREAM_ERROR}, "mcp_model_error", id="model-error"
+            GeminiError(_UPSTREAM_ERROR), "mcp_model_error", id="model-error"
         ),
         pytest.param({"candidates": []}, "mcp_no_candidates", id="empty"),
         pytest.param({}, "mcp_no_candidates", id="no-candidates-key"),
@@ -209,16 +217,17 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
 )
 @pytest.mark.asyncio
 async def test_unusable_model_response_fails_closed(
-    response: dict[str, Any],
+    response: dict[str, Any] | Exception,
     error_type: str,
     calls: list[str],
     model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
 ) -> None:
     # Test: Fail-closed handling of an unusable model response.
-    # Situation: After one successful tool turn, the model call returns an
-    #   error, an empty candidate list, no candidates at all, a candidate
-    #   with no parts, or a candidate whose only text is blank.
+    # Situation: After one successful tool turn, the model call raises
+    #   `GeminiError`, or returns an empty candidate list, no candidates at
+    #   all, a candidate with no parts, or a candidate whose only text is
+    #   blank.
     # Expectation: The loop raises `McpLoopError` with the matching type and
     #   a message that does not carry the upstream error text, instead of
     #   returning the partial results.
@@ -572,24 +581,20 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
 
 
 @pytest.mark.asyncio
-async def test_a_blocked_prompt_ends_the_loop_as_blocked(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_a_blocked_prompt_propagates_out_of_the_loop(
     calls: list[str],
+    model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
 ) -> None:
     # Test: Blocked prompt handling in `execute_mcp_tool_loop`.
-    # Situation: `async_gemini_request_with_thought_streaming` returns
-    #   `GeminiBlocked("PROHIBITED_CONTENT")`.
-    # Expectation: `execute_mcp_tool_loop` raises `McpLoopBlockedError`, which
-    #   is distinct from `McpLoopError`.
-    async def request(**kwargs: Any) -> GeminiBlocked:
-        return GeminiBlocked("PROHIBITED_CONTENT")
+    # Situation: `async_gemini_request_with_thought_streaming` raises
+    #   `GeminiBlockedError("PROHIBITED_CONTENT")`.
+    # Expectation: The same `GeminiBlockedError` propagates out of
+    #   `execute_mcp_tool_loop` with its block reason, rather than being
+    #   converted to `McpLoopError`.
+    model_answers(GeminiBlockedError("PROHIBITED_CONTENT"))
 
-    monkeypatch.setattr(
-        mcp_loop, "async_gemini_request_with_thought_streaming", request
-    )
-
-    with pytest.raises(mcp_loop.McpLoopBlockedError) as raised:
+    with pytest.raises(GeminiBlockedError) as raised:
         await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
 
-    assert not isinstance(raised.value, mcp_loop.McpLoopError)
+    assert raised.value.block_reason == "PROHIBITED_CONTENT"

@@ -37,8 +37,9 @@ Verifies that:
    answer and signed with empty state slots, a classification carries its
    pattern directive into the tool loop and synthesis and its pattern into
    telemetry, and a classifier failure proceeds as `exploratory` without a
-   directive. A prompt that Gemini blocks in the tool loop or in synthesis
-   ends the turn as `refused` with reason `safety_blocked`.
+   directive. A model call that Gemini blocks in the classify phase, the
+   tool loop, or synthesis ends the turn as `refused` with reason
+   `safety_blocked`.
 """
 
 import asyncio
@@ -51,7 +52,11 @@ from typing import Any
 
 import pytest
 
-from narratives_agent.gemini.client import GeminiBlocked, GeminiStreamError
+from narratives_agent.gemini.client import (
+    GeminiBlockedError,
+    GeminiError,
+    GeminiStreamError,
+)
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
@@ -64,11 +69,7 @@ from narratives_agent.workflows.classify import (
     RefusedReason,
     TurnRefusedError,
 )
-from narratives_agent.workflows.mcp_loop import (
-    McpLoopBlockedError,
-    McpLoopError,
-    McpLoopResult,
-)
+from narratives_agent.workflows.mcp_loop import McpLoopError, McpLoopResult
 from narratives_agent.workflows.messages import (
     CLASSIFY_STATUS,
     INTERNAL_ERROR,
@@ -488,14 +489,15 @@ async def test_failed_synthesis_reports_a_fixed_message(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
     # Test: The user-facing message of a failed synthesis request.
-    # Situation: The synthesis request fails with upstream error text.
+    # Situation: The synthesis request raises `GeminiError` with upstream
+    #   error text.
     # Expectation: The turn ends in an `error` terminal event whose message
     #   is the fixed synthesis failure rather than the upstream text, and is
     #   recorded as `error` with `synthesis_error`.
     upstream = "HTTP 500: upstream detail"
 
-    async def failing_synthesis(**kwargs: Any) -> dict[str, str]:
-        return {"error": upstream}
+    async def failing_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+        raise GeminiError(upstream)
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", failing_synthesis)
 
@@ -837,10 +839,10 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
         chart_failed.set()
         raise ValueError("chart detail")
 
-    async def late_failing_synthesis(**kwargs: Any) -> dict[str, str]:
+    async def late_failing_synthesis(**kwargs: Any) -> AsyncIterator[str]:
         await chart_failed.wait()
         await asyncio.sleep(0)
-        return {"error": "upstream"}
+        raise GeminiError("upstream")
 
     monkeypatch.setattr(chat_pipeline, "get_chart_config", failing_chart_config)
     monkeypatch.setattr(
@@ -1015,19 +1017,25 @@ async def test_a_classifier_failure_proceeds_as_exploratory(
     assert turn.finished == [("complete", None)]
 
 
+@pytest.mark.parametrize(
+    "phase_call", ["classify_query", "execute_mcp_tool_loop"]
+)
 @pytest.mark.asyncio
-async def test_a_blocked_prompt_in_the_tool_loop_refuses_the_turn(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+async def test_a_blocked_call_before_synthesis_refuses_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, phase_call: str
 ) -> None:
-    # Test: Blocked prompt handling in `run_mcp_phase`.
-    # Situation: `execute_mcp_tool_loop` raises `McpLoopBlockedError`.
-    # Expectation: The turn ends in a `refused` terminal frame with
-    #   `reason="safety_blocked"` and `REFUSED_MESSAGE`, synthesis does not
-    #   run, and telemetry records `("refused", "safety_blocked")`.
-    async def blocked_loop(*args: Any, **kwargs: Any) -> McpLoopResult:
-        raise McpLoopBlockedError()
+    # Test: Central handling of a blocked model call in `run_turn`.
+    # Situation: `classify_query` or `execute_mcp_tool_loop` raises
+    #   `GeminiBlockedError("PROHIBITED_CONTENT")`, as the Gemini client does
+    #   when a prompt or candidate is blocked.
+    # Expectation: The turn ends in one `refused` terminal frame with
+    #   `reason="safety_blocked"` and `REFUSED_MESSAGE` and no `error` key,
+    #   synthesis does not run, and telemetry records
+    #   `("refused", "safety_blocked")`.
+    async def blocked(*args: Any, **kwargs: Any) -> Any:
+        raise GeminiBlockedError("PROHIBITED_CONTENT")
 
-    monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", blocked_loop)
+    monkeypatch.setattr(chat_pipeline, phase_call, blocked)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
@@ -1045,12 +1053,13 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
     # Test: Blocked prompt handling in `run_synthesis_phase`.
-    # Situation: `async_gemini_stream` returns `GeminiBlocked("SAFETY")`.
+    # Situation: `async_gemini_stream` raises `GeminiBlockedError("SAFETY")`
+    #   before returning a stream.
     # Expectation: No answer text is emitted, the turn ends in a `refused`
     #   terminal frame with `reason="safety_blocked"`, and telemetry records
     #   `("refused", "safety_blocked")`.
-    async def blocked_synthesis(**kwargs: Any) -> GeminiBlocked:
-        return GeminiBlocked("SAFETY")
+    async def blocked_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+        raise GeminiBlockedError("SAFETY")
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blocked_synthesis)
 
@@ -1069,15 +1078,13 @@ async def test_a_synthesis_stream_blocked_after_thoughts_refuses_the_turn(
 ) -> None:
     # Test: Mid-stream safety block in `run_synthesis_phase` before answer text.
     # Situation: The synthesis stream yields a thought chunk and then raises
-    #   `GeminiStreamError` with `block_reason="SAFETY"`.
+    #   `GeminiBlockedError("SAFETY")`.
     # Expectation: No answer text is emitted, the turn ends in a `refused`
     #   terminal frame with `reason="safety_blocked"`, and telemetry records
     #   `("refused", "safety_blocked")`.
     async def blocked_after_thought() -> AsyncIterator[dict[str, str]]:
         yield {"type": "thought", "content": "Reviewing data."}
-        raise GeminiStreamError(
-            "Gemini stream blocked: SAFETY", block_reason="SAFETY"
-        )
+        raise GeminiBlockedError("SAFETY")
 
     async def synthesis(**kwargs: Any) -> AsyncIterator[dict[str, str]]:
         return blocked_after_thought()
@@ -1106,15 +1113,13 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
 ) -> None:
     # Test: Mid-stream safety block in `run_synthesis_phase` after answer text.
     # Situation: The synthesis stream yields answer text and then raises
-    #   `GeminiStreamError` with `block_reason="SAFETY"`.
+    #   `GeminiBlockedError("SAFETY")`.
     # Expectation: The partial text is emitted, and the turn ends in an `error`
     #   terminal frame with `reason="synthesis_stream_error"` and
     #   `SYNTHESIS_FAILED` rather than `refused`.
     async def blocked_after_text() -> AsyncIterator[str]:
         yield "About "
-        raise GeminiStreamError(
-            "Gemini stream blocked: SAFETY", block_reason="SAFETY"
-        )
+        raise GeminiBlockedError("SAFETY")
 
     async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
         return blocked_after_text()
