@@ -38,6 +38,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import TokenUsage
 from narratives_agent.workflows import transcript
@@ -223,25 +224,29 @@ async def test_compaction_extends_the_previous_summary(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "failure", ["raises", "returns_error", "returns_blank", "times_out"]
+    "failure",
+    ["raises", "fails", "blocked", "returns_blank", "times_out"],
 )
 async def test_a_failed_compaction_falls_back_and_verifies(
     failure: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Test: Compaction falls back to a structured summary when the model call
     #   fails.
-    # Situation: The compaction model call raises, returns an error dict,
-    #   returns blank text, or does not finish in time.
+    # Situation: The compaction model call raises an unexpected exception,
+    #   raises `GeminiError`, raises `GeminiBlockedError`, returns blank text,
+    #   or does not finish in time.
     # Expectation: The summary is built from the evicted turn without the
     #   model, and the re-signed window verifies.
     async def request(**kwargs: Any) -> dict[str, Any]:
         if failure == "raises":
             raise RuntimeError("boom")
+        if failure == "fails":
+            raise GeminiError("HTTP 500")
+        if failure == "blocked":
+            raise GeminiBlockedError("SAFETY")
         if failure == "times_out":
             await asyncio.sleep(1)
-        if failure == "returns_blank":
-            return _candidates("  ")
-        return {"error": "HTTP 500"}
+        return _candidates("  ")
 
     monkeypatch.setattr(transcript, "async_gemini_request", request)
     monkeypatch.setattr(transcript, "COMPACTION_TIMEOUT_SECONDS", 0.01)
