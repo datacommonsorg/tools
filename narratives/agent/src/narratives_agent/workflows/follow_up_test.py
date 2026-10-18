@@ -67,7 +67,7 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
 
     async def request(**kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs)
-        return {"error": "stubbed"}
+        raise GeminiError("stubbed")
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
 
@@ -98,12 +98,16 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
     error: Exception,
 ) -> None:
     # Test: Fail-open handling of a failed or blocked follow-up call.
-    # Situation: `async_gemini_request` raises `GeminiError` or
-    #   `GeminiBlockedError`.
+    # Situation: The configuration carries a `follow_up` prompt, and
+    #   `async_gemini_request` raises `GeminiError` or `GeminiBlockedError`.
     # Expectation: No questions are returned and the failure is logged once
     #   at WARNING, not at ERROR, because the client already logged the
     #   redacted upstream error.
-    monkeypatch.setattr(follow_up, "load_config", lambda: {})
+    monkeypatch.setattr(
+        follow_up,
+        "load_config",
+        lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
+    )
 
     async def request(**kwargs: Any) -> dict[str, Any]:
         raise error
@@ -118,3 +122,4 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
 
     assert questions == []
     assert [record.levelno for record in caplog.records] == [logging.WARNING]
+    assert "returning no questions" in caplog.records[0].getMessage()
