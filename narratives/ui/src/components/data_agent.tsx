@@ -34,6 +34,8 @@ const PIN_GLIDE_MS = 400;
 const PIN_HOLD_MS = 600;
 /** Gap left above the pinned question. */
 const PIN_TOP_OFFSET_PX = 8;
+/** Skeleton-to-answer crossfade; matches `stream-in`. */
+const HANDOFF_MS = 400;
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -236,7 +238,21 @@ function TurnView({
   const textReady =
     turn.textComplete || turn.status === "done" || turn.status === "error";
   const showAnswer = Boolean(turn.text) && !turn.stopped && textReady;
-  const showSkeleton = !showAnswer && turn.status === "synthesis";
+  const showSkeleton =
+    !showAnswer &&
+    !turn.stopped &&
+    (turn.status === "mcp" || turn.status === "synthesis");
+  // Keep a shown skeleton under the answer until the crossfade ends.
+  // Restored turns never had one, so they skip it.
+  const [hadSkeleton, setHadSkeleton] = useState(false);
+  if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
+  const [handedOff, setHandedOff] = useState(false);
+  useEffect(() => {
+    if (!showAnswer || !hadSkeleton) return;
+    const timer = window.setTimeout(() => setHandedOff(true), HANDOFF_MS);
+    return () => window.clearTimeout(timer);
+  }, [showAnswer, hadSkeleton]);
+  const crossfading = showAnswer && hadSkeleton && !handedOff;
   const className = [
     "shrink-0 flex flex-col gap-6",
     animate && "motion-safe:*:animate-enter",
@@ -293,26 +309,39 @@ function TurnView({
           once and the skeleton hands over to the answer in place rather than
           the card leaving and coming back.
 
-          Loading: only once the agent starts constructing the narrative (the
-          `synthesis` phase), not during mcp (tools running). Through that
-          earlier phase the user sees just the reasoning.
+          Loading: `mcp` through `synthesis`; not during `classify`, which
+          may still refuse.
 
-          Answer: the full Figma AnswerPanel, shown once the text is whole
-          and fading in over the skeleton. Hidden
-          when the turn was stopped so we don't show a truncated partial
-          answer. */}
+          Answer: AnswerPanel once the text is whole, crossfading over the
+          skeleton in a shared grid cell. Hidden when stopped. */}
       {(showSkeleton || showAnswer) && (
-        <div className="self-start shrink-0 w-full max-w-4xl">
-          {showAnswer ? (
-            <AnswerPanel
-              turn={turn}
-              isStreaming={isStreaming}
-              onAsk={onAsk}
-              citationNumbers={citationNumbers}
-              turnIndex={index}
-            />
-          ) : (
-            <SkeletonCard query={turn.userMessage} />
+        <div className="self-start shrink-0 w-full max-w-4xl grid *:col-start-1 *:row-start-1">
+          {(showSkeleton || crossfading) && (
+            <div
+              aria-hidden={showAnswer}
+              className={`motion-safe:transition-opacity duration-400 ease-out${
+                showAnswer ? " opacity-0" : ""
+              }`}
+            >
+              <SkeletonCard query={turn.userMessage} />
+            </div>
+          )}
+          {showAnswer && (
+            <div
+              className={
+                hadSkeleton
+                  ? "motion-safe:animate-[stream-in_400ms_cubic-bezier(0,0,0,1)_both]"
+                  : undefined
+              }
+            >
+              <AnswerPanel
+                turn={turn}
+                isStreaming={isStreaming}
+                onAsk={onAsk}
+                citationNumbers={citationNumbers}
+                turnIndex={index}
+              />
+            </div>
           )}
         </div>
       )}
