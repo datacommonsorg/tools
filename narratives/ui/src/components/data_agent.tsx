@@ -157,7 +157,9 @@ export function DataAgent() {
         >
           {turns.map((t, i) => (
             <TurnView
-              key={i}
+              // Keyed by turn identity so a new turn or session at the same
+              // index gets fresh state; older saved turns fall back to index.
+              key={t.idempotencyKey ?? i}
               turn={t}
               index={i}
               citationNumbers={citationNumbers[i]}
