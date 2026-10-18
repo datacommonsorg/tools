@@ -278,7 +278,9 @@ def _layer_prompts(
     `prompts_dir`, then `fetched_prompts`, then a non-empty string already in
     `config["prompts"]`. The default prompts are read first so that a
     configured prompt that is absent or fails to load degrades to the default
-    body, never to an empty slot.
+    body, never to an empty slot. An inline key that is not in `PROMPT_SLOTS`
+    is dropped with a warning, so a misspelled override is reported rather
+    than silently replaced by the default prompt.
 
     A slot that is still empty after layering means the default file itself is
     missing, unreadable, or empty. That is a packaging defect, so it is logged
@@ -298,6 +300,13 @@ def _layer_prompts(
     inline = config.get("prompts")
     if isinstance(inline, dict):
         for slot, body in inline.items():
+            if slot not in PROMPT_SLOTS:
+                logger.warning(
+                    "Inline prompt slot %r is not one of %s; ignoring it",
+                    slot,
+                    PROMPT_SLOTS,
+                )
+                continue
             if isinstance(body, str) and body.strip():
                 prompts[slot] = body
                 sources[slot] = "inline"

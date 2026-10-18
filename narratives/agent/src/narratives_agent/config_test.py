@@ -688,6 +688,37 @@ def test_load_config_layers_config_json_over_the_default_prompts(
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
+def test_load_config_warns_about_an_unknown_inline_prompt_slot(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Inline `prompts` keys outside `PROMPT_SLOTS` in `_layer_prompts`.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` carries an
+    #   inline prompt under the misspelled key `classfy`, and `defaults_dir`
+    #   holds all four default prompts.
+    # Expectation: The misspelled key is dropped and a warning names it along
+    #   with the valid slots; `classify` carries the default body, and no error
+    #   is logged.
+    (agent_root / "config.json").write_text(
+        json.dumps({"prompts": {"classfy": "Typo."}}), "utf-8"
+    )
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == {"prompts": _DEFAULT_PROMPTS}
+    warning_messages = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert any(
+        "'classfy'" in message and "'classify'" in message
+        for message in warning_messages
+    )
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
 @pytest.mark.parametrize(
     "bodies",
     [{}, {_CONFIG_URL: "{not json"}, {_CONFIG_URL: "[1, 2]"}],
