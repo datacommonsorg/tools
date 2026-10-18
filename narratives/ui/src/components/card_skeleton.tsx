@@ -55,10 +55,12 @@ export function SkeletonCard({ query }: SkeletonCardProps) {
         className="pointer-events-none absolute inset-0 rounded-card border border-border mask-[linear-gradient(to_bottom,black,transparent)]"
       ></div>
       {/* Matches AnswerPanel so nothing shifts on handoff. */}
-      <div className="py-3 pr-3 pl-5 border-b border-border bg-surface">
-        <span className="block truncate text-label-large text-on-surface">
+      <div className="flex items-center gap-3 py-3 pr-3 pl-5 border-b border-border bg-surface">
+        <span className="flex-1 truncate text-label-large text-on-surface">
           {query}
         </span>
+        {/* Reserves the toolbar actions' height. */}
+        <div className="shrink-0 min-h-8"></div>
       </div>
       <div className="markdown-stream p-4 sm:p-6 flex flex-col gap-6">
         <div className="absolute top-50 bottom-0 right-0 left-0 bg-linear-to-b from-transparent to-surface z-10"></div>

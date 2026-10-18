@@ -186,14 +186,18 @@ export function AnswerPanel({
             component is still hydrating produces a PDF missing the chart.
             This matches the filled "Export PDF" button below, which also
             waits for status === "done". */}
-        {turn.status === "done" && !revealing && (
-          <div className="flex items-center gap-1 shrink-0" data-non-print="true">
-            {/* Opens the provenance slide-over. Only under ?debug=provenance,
-                so end users never see it. */}
-            {isProvenanceDebugEnabled() && <ProvenanceInspector turn={turn} />}
-            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-          </div>
-        )}
+        {/* Always mounted at the pill's 32px height so the header doesn't
+            grow when the actions appear. */}
+        <div className="flex items-center gap-1 shrink-0 min-h-8" data-non-print="true">
+          {turn.status === "done" && !revealing && (
+            <>
+              {/* Opens the provenance slide-over. Only under ?debug=provenance,
+                  so end users never see it. */}
+              {isProvenanceDebugEnabled() && <ProvenanceInspector turn={turn} />}
+              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Content body — dimmed while the turn is in flight and brought to full
