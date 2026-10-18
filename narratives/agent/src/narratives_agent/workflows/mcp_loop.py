@@ -29,7 +29,9 @@ loop raises `McpLoopError`.
 A failed model call, an empty model reply, or an MCP transport failure ends
 the loop with `McpLoopError` rather than with what was gathered so far: the
 results it leaves behind have gaps that nothing flags, so synthesis would
-present missing data as an answer.
+present missing data as an answer. A model call that Gemini blocks on a
+safety rule leaves the loop as the client's `GeminiBlockedError`, which the
+pipeline turns into a refused turn.
 """
 
 import asyncio
@@ -41,7 +43,8 @@ from typing import Any
 
 from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import (
-    GeminiBlocked,
+    GeminiBlockedError,
+    GeminiError,
     async_gemini_request_with_thought_streaming,
 )
 from narratives_agent.gemini.schemas import QueryClassification
@@ -104,10 +107,6 @@ class McpLoopError(Exception):
     def __init__(self, error_type: str, message: str) -> None:
         super().__init__(message)
         self.error_type = error_type
-
-
-class McpLoopBlockedError(Exception):
-    """Raised when Gemini blocks the prompt of an MCP loop iteration."""
 
 
 @dataclass
@@ -266,22 +265,23 @@ async def _iterate(
         logger.info(
             "MCP tool loop iteration %d/%d", iteration + 1, MAX_ITERATIONS
         )
-        response = await async_gemini_request_with_thought_streaming(
-            messages=contents,
-            system_instruction=mcp_prompt,
-            model=mcp_model,
-            tools=gemini_tools,
-            temperature=_MCP_TEMPERATURE,
-            thinking_level=thinking_level,
-            token_usage=telemetry.tokens,
-            thought_callback=thought_callback,
-        )
-        if isinstance(response, GeminiBlocked):
-            # The Gemini client has already logged the block reason.
-            raise McpLoopBlockedError()
-        if "error" in response:
+        try:
+            response = await async_gemini_request_with_thought_streaming(
+                messages=contents,
+                system_instruction=mcp_prompt,
+                model=mcp_model,
+                tools=gemini_tools,
+                temperature=_MCP_TEMPERATURE,
+                thinking_level=thinking_level,
+                token_usage=telemetry.tokens,
+                thought_callback=thought_callback,
+            )
+        except GeminiBlockedError:
+            # Propagates to `run_turn`, which ends the turn as `refused`.
+            raise
+        except GeminiError as error:
             # The client has already logged the redacted upstream error.
-            raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR)
+            raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR) from error
         candidates = response.get("candidates") or []
         if not candidates:
             raise McpLoopError("mcp_no_candidates", MCP_NO_RESPONSE)
@@ -358,7 +358,8 @@ async def execute_mcp_tool_loop(
             candidates or an empty reply, an MCP request fails below the
             tool layer, or the loop exceeds `MCP_LOOP_TIMEOUT_SECONDS`
             before any tool call completes.
-        McpLoopBlockedError: If Gemini blocks the prompt of an iteration.
+        GeminiBlockedError: If Gemini blocks the prompt or the candidate of an
+            iteration.
     """
     # Open the turn's MCP session scope in this task, before any tool call
     # is spawned, so that concurrent calls share one session.

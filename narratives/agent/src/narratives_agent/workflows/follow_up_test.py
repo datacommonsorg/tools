@@ -13,10 +13,12 @@
 # limitations under the License.
 """Tests for the follow-up question workflow."""
 
+import logging
 from typing import Any
 
 import pytest
 
+from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.workflows import follow_up
 
 
@@ -39,7 +41,7 @@ async def test_follow_ups_request_the_low_thinking_level(
 
     async def request(**kwargs: Any) -> dict[str, Any]:
         levels.append(kwargs.get("thinking_level"))
-        return {"error": "stubbed"}
+        raise GeminiError("stubbed")
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
 
@@ -80,3 +82,39 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
         r.levelname == "WARNING" and "follow_up prompt" in r.getMessage()
         for r in caplog.records
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(GeminiError("HTTP 500: upstream detail"), id="error"),
+        pytest.param(GeminiBlockedError("SAFETY"), id="blocked"),
+    ],
+)
+async def test_a_failed_or_blocked_call_returns_no_questions(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+) -> None:
+    # Test: Fail-open handling of a failed or blocked follow-up call.
+    # Situation: `async_gemini_request` raises `GeminiError` or
+    #   `GeminiBlockedError`.
+    # Expectation: No questions are returned and the failure is logged once
+    #   at WARNING, not at ERROR, because the client already logged the
+    #   redacted upstream error.
+    monkeypatch.setattr(follow_up, "load_config", lambda: {})
+
+    async def request(**kwargs: Any) -> dict[str, Any]:
+        raise error
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+
+    with caplog.at_level(logging.WARNING, logger=follow_up.logger.name):
+        questions = await follow_up.generate_follow_up_questions(
+            "What is the population of California?",
+            ["California population"],
+        )
+
+    assert questions == []
+    assert [record.levelno for record in caplog.records] == [logging.WARNING]

@@ -23,7 +23,8 @@ from typing import Any
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
-    GeminiBlocked,
+    GeminiBlockedError,
+    GeminiError,
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import FOLLOW_UP_SCHEMA
@@ -82,7 +83,7 @@ Generate the self-contained follow-up questions now."""
             token_usage=token_usage,
         )
         questions: list[Any] = []
-        if not isinstance(response, GeminiBlocked) and "candidates" in response:
+        if "candidates" in response:
             text = response["candidates"][0]["content"]["parts"][0].get(
                 "text", "{}"
             )
@@ -90,6 +91,16 @@ Generate the self-contained follow-up questions now."""
             questions = (
                 loaded.get("questions", []) if isinstance(loaded, dict) else []
             ) or []
+    except GeminiBlockedError as error:
+        logger.warning(
+            "Follow-up generation blocked (%s); returning no questions",
+            error.block_reason,
+        )
+        return []
+    except GeminiError:
+        # The client has already logged the redacted upstream error.
+        logger.warning("Follow-up generation failed; returning no questions")
+        return []
     except Exception as error:
         logger.error("Follow-up generation error: %s", error)
         return []
