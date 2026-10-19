@@ -89,9 +89,11 @@ export function rehypeStreamWords(durationMs: number) {
     walk(tree);
     const step = durationMs / Math.max(words, 1);
     for (const [node, index] of timed) {
+      const delay = `animation-delay:${Math.round(index * step)}ms`;
+      const style = node.properties?.style;
       node.properties = {
         ...node.properties,
-        style: `animation-delay:${Math.round(index * step)}ms`,
+        style: typeof style === 'string' ? `${style};${delay}` : delay,
       };
     }
   };

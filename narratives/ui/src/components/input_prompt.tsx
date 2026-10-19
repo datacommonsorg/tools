@@ -51,7 +51,7 @@ export function PromptInput({
   onStop,
 }: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isExpanded = useTextareaAutosize(textareaRef, value);
+  const { isExpanded, isScrolling } = useTextareaAutosize(textareaRef, value);
   const actionLabel = isStreaming ? 'Stop Response' : 'Submit';
   // The one gate for every submit path: the button, the form and Enter.
   const canSubmit = !isStreaming && value.trim().length > 0;
@@ -77,9 +77,13 @@ export function PromptInput({
         className="glow-ring col-start-1 row-start-1 pointer-events-none opacity-0 group-focus-within:opacity-100 group-focus-within:[animation-play-state:running] motion-safe:transition-opacity duration-200 ease-linear"
       />
 
-      {/* 8px + 40px button + 8px = the 56px pill. The button sits at the
-          bottom so it stays on the last row as the box grows. */}
-      <div className="col-start-1 row-start-1 flex items-end gap-3 p-2">
+      {/* 8px + 40px button + 8px = the 56px pill. The button stays on the
+          last row; once the text scrolls it drops to its own row. */}
+      <div
+        className={`col-start-1 row-start-1 flex p-2 ${
+          isScrolling ? 'flex-col gap-1' : 'items-end gap-3'
+        }`}
+      >
         <textarea
           ref={textareaRef}
           value={value}
@@ -92,7 +96,9 @@ export function PromptInput({
           rows={1}
           // Caps at four lines (max-h-24); the autosize hook turns scrolling
           // on only past that cap.
-          className="flex-1 bg-transparent outline-none resize-none max-h-24 overflow-y-hidden text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out"
+          className={`bg-transparent outline-none resize-none max-h-24 overflow-y-hidden thin-scrollbar text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out ${
+            isScrolling ? 'pr-4 mr-4.5' : 'flex-1'
+          }`}
           onKeyDown={(e) => {
             // Shift+Enter inserts a newline; Enter mid-IME-composition commits
             // the composition rather than submitting.
@@ -118,7 +124,7 @@ export function PromptInput({
             // beside it does not reflow during the transition. The ::before
             // widens the 40px circle to a 44px touch target without changing
             // the 56px pill.
-            className={`relative before:absolute before:-inset-0.5 w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-surface-blue enabled:hover:bg-button-hover transition-colors motion-safe:transition-[translate,background-color] duration-200 ease-out disabled:opacity-50 ${
+            className={`relative before:absolute before:-inset-0.5 w-10 h-10 shrink-0 self-end rounded-full flex items-center justify-center bg-surface-blue enabled:hover:bg-button-hover transition-colors motion-safe:transition-[translate,background-color] duration-200 ease-out disabled:opacity-50 ${
               isExpanded ? '-translate-x-1.25 -translate-y-1.25' : ''
             }`}
           >
