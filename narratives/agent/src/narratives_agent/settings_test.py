@@ -24,8 +24,9 @@ Verifies that `Settings`:
 6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
 7. Rejects a port that is not a number.
-8. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
-   rejects a value shorter than `MIN_SECRET_BYTES`.
+8. Reads `transcript_hmac_secret` without revealing it in `repr()` output,
+   rejects a value shorter than `MIN_SECRET_BYTES`, and reads
+   `transcript_hmac_secret_name`.
 """
 
 from pathlib import Path

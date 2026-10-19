@@ -26,10 +26,11 @@ Covers seven configuration behaviors in `config`:
 4. `load_config` falling back to `config.json` under `agent_root`, re-read when
    it changes, and then to `agent-config.json` and `prompts/` under
    `defaults_dir`, returning a copy in each case.
-5. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
-   preferring Secret Manager over `config.json`, rejecting placeholder,
-   empty, or JSON-wrapped secret payloads, and reusing a key another thread
-   loaded while the caller waited.
+5. Resolution of `get_gemini_api_key`, `get_transcript_hmac_secret`, and
+   `_fetch_key_from_secret_manager`, preferring Secret Manager over
+   `config.json`, enforcing minimum secret length on the transcript HMAC key,
+   rejecting placeholder, empty, or JSON-wrapped secret payloads, and reusing
+   a key another thread loaded while the caller waited.
 6. Resolution of `get_gemini_model` and `get_gemini_classify_model` across
    configured, empty, and null `gemini` configuration sections.
 7. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be

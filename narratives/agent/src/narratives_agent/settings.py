@@ -156,8 +156,9 @@ class Settings(BaseSettings):
     # zone falls back to UTC.
     timezone: str = "UTC"
 
-    # A short `gemini_api_key_secret` name resolves against this project, and
-    # Vertex AI calls run against it when `google_genai_use_vertexai` is true.
+    # Short `gemini_api_key_secret` and `transcript_hmac_secret_name` values
+    # resolve against this project, and Vertex AI calls run against it when
+    # `google_genai_use_vertexai` is true.
     google_cloud_project: str = ""
 
     # Region for Vertex AI Gemini calls when `google_genai_use_vertexai` is
