@@ -298,8 +298,12 @@ def test_turn_summary_records_operations_without_content(
         turn.mcp_iterations = 3
         turn.record_tool_call("search_indicators")
         turn.record_tool_call("get_observations")
-    turn.tokens.add({"promptTokenCount": 10, "totalTokenCount": 15})
-    turn.tokens.add({"candidatesTokenCount": 4, "thoughtsTokenCount": 2})
+    turn.tokens.add(
+        telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
+    )
+    turn.tokens.add(
+        telemetry.TokenCounts(prompt=0, candidates=4, thoughts=2, total=0)
+    )
 
     turn.finish("complete")
     turn.finish("error", "late_error")

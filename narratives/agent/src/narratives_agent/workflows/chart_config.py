@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Max characters of the synthesis text sent to the data-validation check.
 SYNTHESIS_PREVIEW_LENGTH = 2000
 
-# Max characters of a raw response or parsed payload quoted in error logs.
+# Max characters of a parsed payload quoted in error logs.
 _LOG_EXCERPT_LENGTH = 300
 
 
@@ -116,11 +116,8 @@ Set should_render to false if no meaningful data for visualization."""
         return {"should_render": False}
 
     try:
-        if "candidates" in response:
-            text = response["candidates"][0]["content"]["parts"][0].get(
-                "text", "{}"
-            )
-            chart_config = json.loads(text)
+        if response.text.strip():
+            chart_config = json.loads(response.text)
             # The model can return valid JSON that is not an object, such as
             # `null` or `[]`. The caller expects a dict, so anything else is
             # treated as "no charts".
@@ -136,6 +133,11 @@ Set should_render to false if no meaningful data for visualization."""
                 "Chart config result: %s", json.dumps(chart_config, indent=2)
             )
             return chart_config
+        logger.warning(
+            "Chart config returned no text (finish reason: %s); rendering "
+            "without charts",
+            response.finish_reason,
+        )
     except Exception as error:
         logger.error("Chart config parse error: %s", error)
 
@@ -192,20 +194,17 @@ Return false if the response says data is "not available", "not found", \
             "Data validation request to %s failed, hiding charts.", model
         )
         return False
-    if "candidates" not in response:
+    if not response.text.strip():
         logger.error(
-            "Data validation got no candidates from %s, hiding charts. "
-            "Response: %s",
+            "Data validation got no text from %s (finish reason: %s), hiding "
+            "charts.",
             model,
-            str(response)[:_LOG_EXCERPT_LENGTH],
+            response.finish_reason,
         )
         return False
 
     try:
-        text = response["candidates"][0]["content"]["parts"][0].get(
-            "text", "{}"
-        )
-        result = json.loads(text)
+        result = json.loads(response.text)
     except Exception as error:
         logger.error("Data validation parse error, hiding charts: %s", error)
         return False
