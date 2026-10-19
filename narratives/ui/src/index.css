@@ -13,7 +13,6 @@
   --font-display: var(--theme-font, "Google Sans", "Roboto", system-ui, sans-serif);
 
   --color-theme-primary: var(--theme-primary, #0B57D0);
-  --color-theme-accent: var(--theme-accent, #0B57D0);
   /* Selected-item pills and active tabs tint the theme primary at 14% opacity
      when no explicit container color is set. */
   --color-theme-container: var(
@@ -23,6 +22,12 @@
   --color-on-theme-container: var(--theme-on-container, var(--color-theme-primary));
   --color-theme-gradient-start: var(--theme-gradient-start, #0B57D0);
   --color-theme-gradient-end: var(--theme-gradient-end, #0B57D0);
+
+  /* Prompt input glow ring gradient */
+  --color-theme-gradient-border-stop-1: var(--theme-gradient-border-stop-1, #0B57D0);
+  --color-theme-gradient-border-stop-2: var(--theme-gradient-border-stop-2, #0B84D0);
+  --color-theme-gradient-border-stop-3: var(--theme-gradient-border-stop-3, #0BACD0);
+  --color-theme-gradient-border-stop-4: var(--theme-gradient-border-stop-4, #8CB8FF);
 
   /* Surfaces */
   --color-surface: #ffffff;
@@ -223,11 +228,13 @@ select:not(:disabled) {
     aspect-ratio: 1;
     translate: -50% -50%;
     background: conic-gradient(
-      var(--color-theme-primary),
-      var(--color-theme-accent),
-      var(--color-theme-primary),
-      var(--color-theme-accent),
-      var(--color-theme-primary)
+      var(--color-theme-gradient-border-stop-1),
+      var(--color-theme-gradient-border-stop-2),
+      var(--color-theme-gradient-border-stop-3),
+      var(--color-theme-gradient-border-stop-4),
+      var(--color-theme-gradient-border-stop-3),
+      var(--color-theme-gradient-border-stop-2),
+      var(--color-theme-gradient-border-stop-1)
     );
     animation: glow-rotate 6s linear infinite;
     animation-play-state: inherit;
