@@ -259,6 +259,14 @@ System prompts for query classification (`classify.md`), the MCP tool loop
 prompts, start from the baseline files in `defaults/prompts/` and add your
 domain or regional guidance.
 
+The default prompts in `defaults/prompts/*.md` are always loaded first. A file
+in `config/prompts/` (uploaded to the config bucket by `./deploy.sh`) replaces
+the default prompt for that slot, and a non-empty `prompts.<slot>` entry in
+`agent-config.json` replaces both. If a prompt object in the bucket is missing,
+fails to download, or is empty once its HTML comments are stripped, the default
+prompt applies to that slot and the agent logs a warning naming it, so a
+bucket-side failure never leaves a phase without its system instruction.
+
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
 clarification question, and which analytical pattern it follows. The classify
