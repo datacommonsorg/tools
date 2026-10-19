@@ -46,7 +46,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncGenerator, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -228,11 +228,11 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
             tool_calls=[dict(_TOOL_CALL)],
         )
 
-    async def answer() -> AsyncIterator[StreamChunk]:
+    async def answer() -> AsyncGenerator[StreamChunk]:
         await stub.synthesis_release.wait()
         yield StreamChunk("text", _ANSWER)
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         stub.synthesis_calls += 1
         stub.synthesis_messages.append(list(kwargs["messages"]))
         stub.synthesis_instructions.append(kwargs["system_instruction"])
@@ -439,10 +439,10 @@ async def test_an_answer_too_long_to_sign_completes_unsigned(
     # Situation: Synthesis streams more than `MAX_RESPONSE_CHARS` characters.
     # Expectation: The turn completes, and its terminal event carries no
     #   signing fields, so the browser leaves the turn out of later context.
-    async def long_answer() -> AsyncIterator[StreamChunk]:
+    async def long_answer() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("text", "x" * (MAX_RESPONSE_CHARS + 1))
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return long_answer()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
@@ -497,7 +497,7 @@ async def test_failed_synthesis_reports_a_fixed_message(
     #   recorded as `error` with `synthesis_error`.
     upstream = "HTTP 500: upstream detail"
 
-    async def failing_synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def failing_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         raise GeminiError(upstream)
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", failing_synthesis)
@@ -725,10 +725,10 @@ async def test_an_empty_synthesis_fails_the_turn(
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `synthesis_empty` and the fixed synthesis message, and no chart
     #   config is emitted.
-    async def blank() -> AsyncIterator[StreamChunk]:
+    async def blank() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("text", " \n")
 
-    async def blank_synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def blank_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return blank()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blank_synthesis)
@@ -754,11 +754,11 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     #   fixed message rather than the upstream text.
     upstream = "HTTP 503: upstream detail"
 
-    async def broken() -> AsyncIterator[StreamChunk]:
+    async def broken() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("text", "About ")
         raise GeminiStreamError(upstream)
 
-    async def broken_synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def broken_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return broken()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", broken_synthesis)
@@ -842,7 +842,7 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
 
     async def late_failing_synthesis(
         **kwargs: Any,
-    ) -> AsyncIterator[StreamChunk]:
+    ) -> AsyncGenerator[StreamChunk]:
         await chart_failed.wait()
         await asyncio.sleep(0)
         raise GeminiError("upstream")
@@ -1061,7 +1061,7 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
     # Expectation: No answer text is emitted, the turn ends in a `refused`
     #   terminal frame with `reason="safety_blocked"`, and telemetry records
     #   `("refused", "safety_blocked")`.
-    async def blocked_synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def blocked_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         raise GeminiBlockedError("SAFETY")
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blocked_synthesis)
@@ -1085,11 +1085,11 @@ async def test_a_synthesis_stream_blocked_after_thoughts_refuses_the_turn(
     # Expectation: No answer text is emitted, the turn ends in a `refused`
     #   terminal frame with `reason="safety_blocked"`, and telemetry records
     #   `("refused", "safety_blocked")`.
-    async def blocked_after_thought() -> AsyncIterator[StreamChunk]:
+    async def blocked_after_thought() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("thought", "Reviewing data.")
         raise GeminiBlockedError("SAFETY")
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return blocked_after_thought()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
@@ -1120,11 +1120,11 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     # Expectation: The partial text is emitted, and the turn ends in an `error`
     #   terminal frame with `reason="synthesis_stream_error"` and
     #   `SYNTHESIS_FAILED` rather than `refused`.
-    async def blocked_after_text() -> AsyncIterator[StreamChunk]:
+    async def blocked_after_text() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("text", "About ")
         raise GeminiBlockedError("SAFETY")
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[StreamChunk]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return blocked_after_text()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
