@@ -39,7 +39,7 @@ export function MetricsPage() {
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 lg:px-12 py-8 w-full">
+    <div className="flex-1 px-4 lg:px-12 py-8 w-full">
       <div className="max-w-7xl mx-auto">
         <header className="mb-6">
           <h1

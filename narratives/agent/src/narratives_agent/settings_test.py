@@ -16,17 +16,15 @@
 Verifies that `Settings`:
 1. Strips surrounding whitespace from values of every field type.
 2. Treats a variable that is empty or only whitespace as unset.
-3. Strips trailing slashes from the API prefix and the base URLs, so "/"
-   selects the root prefix.
-4. Falls back to `data_plane_url` for `data_plane_web_url`.
-5. Derives the default `static_root` from `agent_root`, and rejects a
+3. Strips trailing slashes from the API prefix, so "/" selects the root prefix.
+4. Derives the default `static_root` from `agent_root`, and rejects a
    `static_root` that equals or contains `agent_root`.
-6. Reads `defaults_dir` from the environment, and otherwise resolves it to
+5. Reads `defaults_dir` from the environment, and otherwise resolves it to
    the copy staged under `agent_root` or to the repository copy beside it.
-7. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
+6. Defaults `google_genai_use_vertexai` to `False`, and parses an explicit
    value after stripping and lowercasing it.
-8. Rejects a port that is not a number.
-9. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
+7. Rejects a port that is not a number.
+8. Reads `transcript_hmac_secret` without revealing it in `repr()` output, and
    rejects a value shorter than `MIN_SECRET_BYTES`.
 """
 
@@ -40,8 +38,6 @@ from narratives_agent.settings import Settings
 # Matches the shape of a Google API key while using explicit
 # test/dummy/example/fake tokens to avoid secret-scanner false alarms.
 _KEY_SHAPED = "AIza_test_dummy_example_fake_key_0000"
-
-_DATA_PLANE = "https://data-plane-uc.a.run.app"
 
 
 @pytest.fixture(autouse=True)
@@ -114,66 +110,25 @@ def test_blank_variable_counts_as_unset(
     ("name", "raw", "expected"),
     [
         pytest.param("AGENT_API_PREFIX", "/agent/", "/agent", id="prefix"),
-        pytest.param("AGENT_API_PREFIX", "/", "", id="root-prefix"),
         pytest.param(
-            "DATA_PLANE_URL", f"{_DATA_PLANE}/", _DATA_PLANE, id="url"
-        ),
-        pytest.param(
-            "DATA_PLANE_WEB_URL",
-            "https://datacommons.org//",
-            "https://datacommons.org",
+            "AGENT_API_PREFIX",
+            "/agent//",
+            "/agent",
             id="repeated-slashes",
         ),
+        pytest.param("AGENT_API_PREFIX", "/", "", id="root-prefix"),
     ],
 )
 def test_trailing_slashes_are_stripped(
     monkeypatch: pytest.MonkeyPatch, name: str, raw: str, expected: str
 ) -> None:
-    # Test: Trailing-slash handling for the API prefix and the base URLs.
+    # Test: Trailing-slash handling for the API prefix.
     # Situation: A variable ends in one or more slashes, has whitespace after
     #   the slash, or is "/" alone.
     # Expectation: The field holds the value without trailing slashes, so "/"
     #   yields the empty prefix that mounts the API at the root.
     settings = _read_settings(monkeypatch, {name: raw})
     assert getattr(settings, name.lower()) == expected
-
-
-@pytest.mark.parametrize(
-    ("env", "expected"),
-    [
-        pytest.param(
-            {"DATA_PLANE_URL": f"{_DATA_PLANE}/"}, _DATA_PLANE, id="unset"
-        ),
-        pytest.param(
-            {"DATA_PLANE_URL": f"{_DATA_PLANE}/", "DATA_PLANE_WEB_URL": ""},
-            _DATA_PLANE,
-            id="empty",
-        ),
-        pytest.param(
-            {"DATA_PLANE_URL": f"{_DATA_PLANE}/", "DATA_PLANE_WEB_URL": "/"},
-            _DATA_PLANE,
-            id="slash-only",
-        ),
-        pytest.param(
-            {
-                "DATA_PLANE_URL": "https://api.datacommons.org",
-                "DATA_PLANE_WEB_URL": "https://datacommons.org",
-            },
-            "https://datacommons.org",
-            id="split-hosts",
-        ),
-    ],
-)
-def test_data_plane_web_url_falls_back_to_data_plane_url(
-    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], expected: str
-) -> None:
-    # Test: Resolution of `data_plane_web_url`.
-    # Situation: `DATA_PLANE_URL` is set, and `DATA_PLANE_WEB_URL` is unset,
-    #   empty, only a slash, or names a host of its own.
-    # Expectation: The web URL is the normalized `data_plane_url` unless
-    #   `DATA_PLANE_WEB_URL` names a host of its own.
-    settings = _read_settings(monkeypatch, env)
-    assert settings.data_plane_web_url == expected
 
 
 def test_static_root_follows_agent_root(

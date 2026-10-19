@@ -15,14 +15,15 @@
  */
 
 /**
- * @fileoverview Tests for refused, clarification, and error turn rendering in DataAgent.
+ * @fileoverview Tests for DataAgent turn rendering and its skeleton handoff timing.
  */
 
+import { readFileSync } from 'node:fs';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
-import { DataAgent } from './data_agent';
+import { DataAgent, HANDOFF_MS } from './data_agent';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -129,5 +130,20 @@ describe('DataAgent refused and clarification turns', () => {
         'Analyzed the query and retrieved relevant data from Data Commons.',
       ),
     ).toBeNull();
+  });
+});
+
+describe('DataAgent skeleton handoff', () => {
+  it('keeps HANDOFF_MS equal to the --animate-stream-in duration', () => {
+    // Test: The skeleton unmount timer against the answer's fade-in.
+    // Situation: HANDOFF_MS unmounts the skeleton; --animate-stream-in in
+    //            index.css fades the answer in over it.
+    // Expectation: Both durations are equal, so the skeleton is not removed
+    //              before or long after the answer has fully appeared.
+    // Vitest runs from the ui/ package root.
+    const css = readFileSync('src/index.css', 'utf8');
+    const duration = css.match(/--animate-stream-in:\s*stream-in\s+(\d+)ms/);
+    expect(duration).not.toBeNull();
+    expect(Number(duration?.[1])).toBe(HANDOFF_MS);
   });
 });

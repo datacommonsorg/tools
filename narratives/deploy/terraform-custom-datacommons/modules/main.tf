@@ -13,19 +13,8 @@
 # config_base_url only.
 
 locals {
-  data_plane_url = var.public_dc_url
-  mcp_url        = "${local.data_plane_url}/mcp"
-
-  # Where the BROWSER's data routes go. These are two hosts: api.datacommons.org
-  # serves the versioned REST API and /mcp, while the routes the chart web
-  # components call -- /api/observations/series, /api/place/name,
-  # /core/api/... -- exist only on datacommons.org.
-  #
-  # Collapsing both onto data_plane_url meant every chart request got a Cloud
-  # Endpoints 404 ("The current request is not defined by this API"). The agent
-  # answered correctly and no chart ever rendered.
-  data_plane_web_url = var.public_dc_web_url
-
+  data_plane_url   = var.public_dc_url
+  mcp_url          = "${local.data_plane_url}/mcp"
   app_service_name = "${var.instance}-app"
 }
 
@@ -57,10 +46,8 @@ data "google_secret_manager_secret" "gemini_api_key" {
 # ---------------------------------------------------------------------------
 # APP PLANE — the agent API plus the compiled SPA, in one container.
 #
-# This is the only public surface. It serves the UI, runs the chat
-# orchestration, and reverse-proxies the browser's data routes to the data
-# plane so everything stays on one origin (required by IAP and by the two
-# same-origin iframe tools).
+# This is the only public surface. It serves the UI and runs the chat
+# orchestration against the configured Data Commons MCP endpoint.
 # ---------------------------------------------------------------------------
 resource "google_cloud_run_v2_service" "dc_app_service" {
   provider = google-beta
@@ -115,19 +102,10 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
         name  = "AGENT_PORT"
         value = "8080"
       }
-      # Where the MCP tool loop and the /dcproxy reverse proxy send their
-      # traffic. Both point at the data plane's own URL now, not localhost.
+      # Where the MCP tool loop sends its traffic.
       env {
         name  = "MCP_SERVER_URL"
         value = local.mcp_url
-      }
-      env {
-        name  = "DATA_PLANE_URL"
-        value = local.data_plane_url
-      }
-      env {
-        name  = "DATA_PLANE_WEB_URL"
-        value = local.data_plane_web_url
       }
       env {
         name  = "TIMEZONE"

@@ -103,6 +103,22 @@
       transform: translateY(8px);
     }
   }
+
+  /* Answer text reveal and the skeleton-to-answer handoff. Must match
+     HANDOFF_MS in components/data_agent.tsx; data_agent.test.tsx checks it. */
+  --animate-stream-in: stream-in 400ms cubic-bezier(0, 0, 0, 1) both;
+
+  /* Skeleton line entering: fades in while growing from its left edge.
+     Consumed as `animate-skeleton-line-in`, gated with `motion-safe:`. */
+  --animate-skeleton-line-in: skeleton-line-in 500ms cubic-bezier(0, 0, 0, 1)
+    both;
+
+  @keyframes skeleton-line-in {
+    from {
+      opacity: 0;
+      transform: scaleX(0);
+    }
+  }
 }
 
 :root {
@@ -143,10 +159,9 @@ html, body {
   color: var(--color-on-surface);
   margin: 0;
   padding: 0;
-  /* Prevent any rogue fixed-width child from causing a horizontal scrollbar
-     on narrow viewports. Internal scrollable regions (chat list, drawer)
-     handle their own overflow. */
-  overflow-x: hidden;
+  /* No horizontal scrollbar from wide children. `clip`, not `hidden`, which
+     would make <body> a scroll container and break position: sticky. */
+  overflow-x: clip;
 }
 
 /*
@@ -171,7 +186,7 @@ select:not(:disabled) {
 
 /*
  * Rotating gradient ring traced just inside a rounded box — the prompt box's
- * focus glow. The mask punches out the content box, so only the 1.5px padding
+ * focus glow. The mask punches out the content box, so only the 2px padding
  * shows. The conic gradient is a separate layer behind that mask, turned with
  * `rotate` so the animation stays on the compositor instead of repainting the
  * gradient every frame. The rotation starts paused; the caller resumes it
@@ -187,7 +202,7 @@ select:not(:disabled) {
 @utility glow-ring {
   position: relative;
   overflow: clip;
-  padding: 1.5px;
+  padding: 2px;
   border-radius: inherit;
   mask:
     linear-gradient(black 0 0) content-box,
@@ -229,6 +244,30 @@ select:not(:disabled) {
 .no-scrollbar {
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
+}
+
+/* Floating rounded thumb: transparent track, thumb inset from the edges. */
+.thin-scrollbar::-webkit-scrollbar {
+    width: 10px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--color-on-surface-variant) 40%, transparent);
+    border: 3px solid transparent;  /* gap around the pill */
+    background-clip: padding-box;
+    border-radius: 9999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--color-on-surface-variant) 60%, transparent);
+}
+/* Firefox only: Chrome 121+ ignores ::-webkit-scrollbar once these are set. */
+@supports not selector(::-webkit-scrollbar) {
+    .thin-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--color-on-surface-variant) 40%, transparent) transparent;
+    }
 }
 
 .text-display-small {
@@ -613,7 +652,7 @@ body[data-print-preflight] .dc-chart-card datacommons-scatter {
 
 @media (prefers-reduced-motion: no-preference) {
   .markdown-stream :is(.stream-word, li, table, hr, blockquote) {
-    animation: stream-in 400ms cubic-bezier(0, 0, 0, 1) both;
+    animation: var(--animate-stream-in);
   }
 }
 

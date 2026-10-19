@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
  * @warning `window.location.hash` is attacker-controllable input. The returned
  * token must never be fed unvalidated into redirects, `href`s, or other DOM
  * sinks. Any `?query` suffix is stripped so it cannot ride along into matching.
- * @returns The route token, e.g. `""` | `"metrics"` | `"download"` | `"statvar"`.
+ * @returns The route token, e.g. `""` | `"metrics"`.
  */
 function readRoute(): string {
   if (typeof window === 'undefined') return '';
