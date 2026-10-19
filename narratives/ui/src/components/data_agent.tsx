@@ -34,8 +34,8 @@ const PIN_GLIDE_MS = 400;
 const PIN_HOLD_MS = 600;
 /** Gap left above the pinned question. */
 const PIN_TOP_OFFSET_PX = 8;
-/** Skeleton-to-answer crossfade; matches `stream-in`. */
-const HANDOFF_MS = 400;
+/** Must match the duration in `--animate-stream-in` (ui/src/index.css). */
+export const HANDOFF_MS = 400;
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -321,9 +321,10 @@ function TurnView({
           {(showSkeleton || crossfading) && (
             <div
               aria-hidden={showAnswer}
-              className={`motion-safe:transition-opacity duration-400 ease-out${
+              className={`motion-safe:transition-opacity ease-out${
                 showAnswer ? " opacity-0" : ""
               }`}
+              style={{ transitionDuration: `${HANDOFF_MS}ms` }}
             >
               <SkeletonCard query={turn.userMessage} />
             </div>
@@ -332,7 +333,7 @@ function TurnView({
             <div
               className={
                 hadSkeleton
-                  ? "motion-safe:animate-[stream-in_400ms_cubic-bezier(0,0,0,1)_both]"
+                  ? "motion-safe:animate-stream-in"
                   : undefined
               }
             >

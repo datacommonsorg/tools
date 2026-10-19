@@ -18,8 +18,8 @@
  * @fileoverview Renders the loading skeleton shown while the first answer is prepared.
  */
 
-import { useEffect, useState } from 'react';
-import { STREAM_WORD_CLASS } from '@/src/utils/rehype_stream_words';
+import { useState } from 'react';
+import { CardHeader } from './card_header';
 
 const PARAGRAPHS = 3;
 const LINES_PER_PARAGRAPH = 4;
@@ -40,12 +40,6 @@ interface SkeletonCardProps {
 /** Loading placeholder card shown while the agent works on `query`. */
 export function SkeletonCard({ query }: SkeletonCardProps) {
   const [lineWidths] = useState(randomLineWidths);
-  // Mount at 0% width, grow on the next frame.
-  const [grown, setGrown] = useState(false);
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setGrown(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
 
   return (
     <div className="relative w-full rounded-card overflow-hidden bg-linear-to-b from-surface-narrative to-transparent">
@@ -54,15 +48,8 @@ export function SkeletonCard({ query }: SkeletonCardProps) {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 rounded-card border border-border mask-[linear-gradient(to_bottom,black,transparent)]"
       ></div>
-      {/* Matches AnswerPanel so nothing shifts on handoff. */}
-      <div className="flex items-center gap-3 py-3 pr-3 pl-5 border-b border-border bg-surface">
-        <span className="flex-1 truncate text-label-large text-on-surface">
-          {query}
-        </span>
-        {/* Reserves the toolbar actions' height. */}
-        <div className="shrink-0 min-h-8"></div>
-      </div>
-      <div className="markdown-stream p-4 sm:p-6 flex flex-col gap-6">
+      <CardHeader title={query} />
+      <div className="p-4 sm:p-6 flex flex-col gap-6">
         <div className="absolute top-1/2 bottom-0 right-0 left-0 bg-linear-to-b from-transparent to-surface z-10"></div>
         {lineWidths.map((paragraph, p) => (
           <div key={p} className="flex flex-row gap-4 items-start">
@@ -71,11 +58,10 @@ export function SkeletonCard({ query }: SkeletonCardProps) {
                 // Wrapper fades/grows; inner bar pulses.
                 <div
                   key={l}
-                  className={`${STREAM_WORD_CLASS} motion-safe:transition-[width] duration-500 ease-in-out`}
+                  className="origin-left motion-safe:animate-skeleton-line-in"
                   style={{
-                    width: `${grown ? width : 0}%`,
+                    width: `${width}%`,
                     animationDelay: `${(p * LINES_PER_PARAGRAPH + l) * LINE_STAGGER_MS}ms`,
-                    transitionDelay: `${(p * LINES_PER_PARAGRAPH + l) * LINE_STAGGER_MS}ms`,
                   }}
                 >
                   <div className="h-3 rounded animate-pulse bg-skeleton-bar"></div>

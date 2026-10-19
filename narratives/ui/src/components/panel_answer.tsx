@@ -36,6 +36,7 @@ import { CitationsList } from "./list_citations";
 import { downloadPdf } from "../utils/download_pdf";
 import { calculateStreamDurationMs } from "../utils/rehype_stream_words";
 import { Toast } from "./toast";
+import { CardHeader } from "./card_header";
 
 /**
  * Wraps the full answer in a "Side panel" card (Figma node 3427:16726):
@@ -62,8 +63,7 @@ interface AnswerPanelProps {
 
 const COLOR_BORDER = "var(--color-border)";
 /**
- * Per Figma 3427-16727 the toolbar fills with WHITE (fill_M9951K) and
- * 3427-16728 the content body fills the narrative surface — light gray in the
+ * Per Figma 3427-16728 the content body fills the narrative surface — light gray in the
  * neutral theme, tinted blue (#F5FAFF) in the Base DC one.
  *
  * The body takes --color-surface-narrative rather than --color-surface-soft:
@@ -72,11 +72,9 @@ const COLOR_BORDER = "var(--color-border)";
  * --color-surface-soft the card rendered blue while streaming and then flipped
  * to gray the moment the content replaced the skeleton.
  */
-const COLOR_TOOLBAR_BG = "#FFFFFF";
 const COLOR_BODY_BG = "var(--color-surface-narrative)";
 const COLOR_TONAL_CONTAINER = "var(--color-theme-container)";
 const COLOR_TONAL_CONTENT = "var(--color-on-theme-container)";
-const COLOR_TITLE = "var(--color-on-surface)";
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
@@ -154,51 +152,21 @@ export function AnswerPanel({
         background: COLOR_BODY_BG,
       }}
     >
-      {/* Toolbar header */}
-      <div
-        className="flex items-center"
-        style={{
-          background: COLOR_TOOLBAR_BG,
-          padding: "12px 12px 12px 20px",
-          gap: 12,
-          borderBottom: `1px solid ${COLOR_BORDER}`,
-        }}
-      >
-        {/* On screen this is a one-line card title, so it truncates. In the
-            exported PDF it is the document's heading and has to be readable in
-            full, so the print rules in index.css undo the truncation and size
-            it up — hence the hook class rather than styling it twice. */}
-        <span
-          className="flex-1 truncate print-question"
-          style={{
-            fontFamily: FONT_LABEL,
-            fontSize: 14,
-            lineHeight: "20px",
-            fontWeight: 500,
-            color: COLOR_TITLE,
-          }}
-          title={turn.userMessage}
-        >
-          {turn.userMessage}
-        </span>
-        {/* Only expose the toolbar pill once the turn is fully streamed —
-            otherwise clicking it while the ChartTile's DataCommons web
-            component is still hydrating produces a PDF missing the chart.
-            This matches the filled "Export PDF" button below, which also
-            waits for status === "done". */}
-        {/* Always mounted at the pill's 32px height so the header doesn't
-            grow when the actions appear. */}
-        <div className="flex items-center gap-1 shrink-0 min-h-8" data-non-print="true">
-          {turn.status === "done" && !revealing && (
-            <>
-              {/* Opens the provenance slide-over. Only under ?debug=provenance,
-                  so end users never see it. */}
-              {isProvenanceDebugEnabled() && <ProvenanceInspector turn={turn} />}
-              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-            </>
-          )}
-        </div>
-      </div>
+      {/* Toolbar header, shared with SkeletonCard. Only expose the toolbar
+          pill once the turn is fully streamed — otherwise clicking it while
+          the ChartTile's DataCommons web component is still hydrating
+          produces a PDF missing the chart. This matches the filled "Export
+          PDF" button below, which also waits for status === "done". */}
+      <CardHeader title={turn.userMessage}>
+        {turn.status === "done" && !revealing && (
+          <>
+            {/* Opens the provenance slide-over. Only under ?debug=provenance,
+                so end users never see it. */}
+            {isProvenanceDebugEnabled() && <ProvenanceInspector turn={turn} />}
+            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
+          </>
+        )}
+      </CardHeader>
 
       {/* Content body — dimmed while the turn is in flight and brought to full
           strength once its terminal event lands. Everything after the text

@@ -103,6 +103,22 @@
       transform: translateY(8px);
     }
   }
+
+  /* Answer text reveal and the skeleton-to-answer handoff. Must match
+     HANDOFF_MS in components/data_agent.tsx; data_agent.test.tsx checks it. */
+  --animate-stream-in: stream-in 400ms cubic-bezier(0, 0, 0, 1) both;
+
+  /* Skeleton line entering: fades in while growing from its left edge.
+     Consumed as `animate-skeleton-line-in`, gated with `motion-safe:`. */
+  --animate-skeleton-line-in: skeleton-line-in 500ms cubic-bezier(0, 0, 0, 1)
+    both;
+
+  @keyframes skeleton-line-in {
+    from {
+      opacity: 0;
+      transform: scaleX(0);
+    }
+  }
 }
 
 :root {
@@ -613,7 +629,7 @@ body[data-print-preflight] .dc-chart-card datacommons-scatter {
 
 @media (prefers-reduced-motion: no-preference) {
   .markdown-stream :is(.stream-word, li, table, hr, blockquote) {
-    animation: stream-in 400ms cubic-bezier(0, 0, 0, 1) both;
+    animation: var(--animate-stream-in);
   }
 }
 
