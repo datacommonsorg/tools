@@ -22,7 +22,8 @@ from typing import Any
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
-    GeminiBlocked,
+    GeminiBlockedError,
+    GeminiError,
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import (
@@ -88,21 +89,30 @@ NOT include year/date in the title.
 
 Set should_render to false if no meaningful data for visualization."""
 
-    response = await async_gemini_request(
-        messages=[{"role": "user", "parts": [{"text": prompt}]}],
-        system_instruction=(
-            "You are a data visualization expert. Extract chart "
-            "configurations from data results, grouping compatible variables "
-            "together and separating incompatible ones into multiple charts."
-        ),
-        model=mcp_model,
-        temperature=0.2,
-        thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
-        response_schema=CHART_CONFIG_SCHEMA,
-        token_usage=token_usage,
-    )
-
-    if isinstance(response, GeminiBlocked):
+    try:
+        response = await async_gemini_request(
+            messages=[{"role": "user", "parts": [{"text": prompt}]}],
+            system_instruction=(
+                "You are a data visualization expert. Extract chart "
+                "configurations from data results, grouping compatible "
+                "variables together and separating incompatible ones into "
+                "multiple charts."
+            ),
+            model=mcp_model,
+            temperature=0.2,
+            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            response_schema=CHART_CONFIG_SCHEMA,
+            token_usage=token_usage,
+        )
+    except GeminiBlockedError as error:
+        logger.warning(
+            "Chart config blocked (%s); rendering without charts",
+            error.block_reason,
+        )
+        return {"should_render": False}
+    except GeminiError:
+        # The client has already logged the redacted upstream error.
+        logger.warning("Chart config request failed; rendering without charts")
         return {"should_render": False}
 
     try:
@@ -139,9 +149,10 @@ async def validate_data_response(
 ) -> bool:
     """Validate via Gemini whether the synthesis text contains chartable data.
 
-    Returns False and logs an error if the validation request fails, returns
-    malformed JSON, or omits the boolean `data_found` field so that charts are
-    suppressed unless explicitly confirmed.
+    Returns False so that charts are suppressed unless explicitly confirmed:
+    with a warning if the validation request fails or is blocked (the client
+    has already logged the upstream failure), and with an error if the
+    response is malformed JSON or omits the boolean `data_found` field.
     """
     config = load_config()
     model = get_gemini_model(config)
@@ -156,21 +167,29 @@ question?
 Return false if the response says data is "not available", "not found", \
 "doesn't exist", or similar."""
 
-    response = await async_gemini_request(
-        messages=[{"role": "user", "parts": [{"text": prompt}]}],
-        system_instruction="You validate if a response contains actual data.",
-        model=model,
-        temperature=0,
-        thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
-        response_schema=DATA_VALIDATION_SCHEMA,
-        token_usage=token_usage,
-    )
-
-    if isinstance(response, GeminiBlocked):
+    try:
+        response = await async_gemini_request(
+            messages=[{"role": "user", "parts": [{"text": prompt}]}],
+            system_instruction=(
+                "You validate if a response contains actual data."
+            ),
+            model=model,
+            temperature=0,
+            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            response_schema=DATA_VALIDATION_SCHEMA,
+            token_usage=token_usage,
+        )
+    except GeminiBlockedError as error:
         logger.warning(
             "Data validation blocked (%s) on %s, hiding charts.",
-            response.block_reason,
+            error.block_reason,
             model,
+        )
+        return False
+    except GeminiError:
+        # The client has already logged the redacted upstream error.
+        logger.warning(
+            "Data validation request to %s failed, hiding charts.", model
         )
         return False
     if "candidates" not in response:
