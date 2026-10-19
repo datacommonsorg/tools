@@ -68,7 +68,10 @@ from pydantic import (
     model_validator,
 )
 
-from narratives_agent.config import get_gemini_model
+from narratives_agent.config import (
+    get_gemini_model,
+    get_transcript_hmac_secret,
+)
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
@@ -328,22 +331,28 @@ class TranscriptError(Exception):
 def _signing_key() -> bytes:
     """Returns the transcript signing key, resolved once per process.
 
-    The key is `TRANSCRIPT_HMAC_SECRET` when it is set. Otherwise it is a
-    random key that lives as long as the process, which suffices for a
-    single local server; on Cloud Run, where requests reach several
-    instances and instances restart, a warning is logged.
+    The key is read from `TRANSCRIPT_HMAC_SECRET` when set, and otherwise from
+    the Secret Manager secret named by `TRANSCRIPT_HMAC_SECRET_NAME`. When
+    neither yields a key, a random key is generated for the life of the
+    process, which suffices for a single local server; on Cloud Run or
+    Kubernetes, where requests reach several instances and instances restart,
+    a warning is logged.
     """
     settings = get_settings()
     secret = settings.transcript_hmac_secret.get_secret_value()
     if secret:
         return secret.encode("utf-8")
-    if settings.k_service:
+    sm_secret = get_transcript_hmac_secret()
+    if sm_secret:
+        return sm_secret.encode("utf-8")
+    if settings.k_service or settings.kubernetes_service_host:
         logger.warning(
             "TRANSCRIPT_HMAC_SECRET is not set, so transcripts are signed "
             "with a key that exists only in this instance. A follow-up turn "
             "that reaches another instance, or arrives after a restart, "
             "fails verification and loses its earlier context. Set "
-            "TRANSCRIPT_HMAC_SECRET to a secret shared by every instance."
+            "TRANSCRIPT_HMAC_SECRET or TRANSCRIPT_HMAC_SECRET_NAME to a "
+            "secret shared by every instance."
         )
     return secrets.token_bytes(_GENERATED_KEY_BYTES)
 

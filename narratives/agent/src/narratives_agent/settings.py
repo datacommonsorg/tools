@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     # else, such as on a developer machine.
     k_service: str = ""
 
+    # Kubernetes sets this to the cluster API server host in every pod. It is
+    # empty outside Kubernetes.
+    kubernetes_service_host: str = ""
+
     # "off", compared case-insensitively, stops credentials from being attached
     # to MCP requests; any other value, like the default "auto", chooses them by
     # target host.
@@ -171,10 +175,15 @@ class Settings(BaseSettings):
 
     # Transcript turns are signed with HMAC-SHA256 under this secret, so a
     # turn signed by one instance verifies on any other. When it is unset,
-    # each process signs with a random key of its own, and a transcript then
-    # verifies only on the process that signed it. `SecretStr` keeps the value
+    # `transcript_hmac_secret_name` is consulted next, and otherwise each
+    # process signs with a random key of its own. `SecretStr` keeps the value
     # out of `repr()` output and logs.
     transcript_hmac_secret: SecretStr = SecretStr("")
+
+    # This Secret Manager secret, named in full or by a short secret ID
+    # resolved against `google_cloud_project`, holds the transcript HMAC
+    # signing secret when `transcript_hmac_secret` is unset.
+    transcript_hmac_secret_name: str = ""
 
     @model_validator(mode="before")
     @classmethod

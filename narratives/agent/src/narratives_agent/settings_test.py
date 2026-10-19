@@ -291,3 +291,28 @@ def test_a_short_transcript_hmac_secret_is_rejected(
     #   variable.
     with pytest.raises(ValidationError, match="TRANSCRIPT_HMAC_SECRET"):
         _read_settings(monkeypatch, {"TRANSCRIPT_HMAC_SECRET": "s" * 31})
+
+
+def test_transcript_hmac_secret_name_is_read_and_trimmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `TRANSCRIPT_HMAC_SECRET_NAME` defaults to empty and trims
+    #   surrounding whitespace when set.
+    # Situation: The variable is first unset and then exported with surrounding
+    #   whitespace.
+    # Expectation: When unset, `transcript_hmac_secret_name` is `""`; when set,
+    #   it holds the trimmed secret resource or short ID.
+    assert Settings().transcript_hmac_secret_name == ""
+
+    settings = _read_settings(
+        monkeypatch,
+        {
+            "TRANSCRIPT_HMAC_SECRET_NAME": (
+                "  narratives-transcript-hmac-secret\n"
+            )
+        },
+    )
+    assert (
+        settings.transcript_hmac_secret_name
+        == "narratives-transcript-hmac-secret"
+    )

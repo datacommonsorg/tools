@@ -83,7 +83,9 @@ class _Request:
 def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Signs with a fixed secret and resolves the key afresh per test."""
     monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET", _SECRET)
+    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET_NAME", raising=False)
     monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
     transcript.reset_signing_key()
     yield
     transcript.reset_signing_key()
@@ -494,22 +496,31 @@ async def test_an_oversized_answer_is_not_signed() -> None:
 
 
 @pytest.mark.parametrize(
-    ("k_service", "warned"), [("narratives-agent", True), ("", False)]
+    ("k_service", "k8s_host", "warned"),
+    [
+        ("narratives-agent", "", True),
+        ("", "10.0.0.1", True),
+        ("", "", False),
+    ],
 )
 def test_a_missing_secret_uses_a_generated_key(
     k_service: str,
+    k8s_host: str,
     warned: bool,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: When `TRANSCRIPT_HMAC_SECRET` is unset, a process-local random key
+    # Test: When neither `TRANSCRIPT_HMAC_SECRET` nor
+    #   `TRANSCRIPT_HMAC_SECRET_NAME` yields a key, a process-local random key
     #   is generated.
-    # Situation: The secret is unset, either on Cloud Run (`K_SERVICE` set) or
-    #   in local development.
+    # Situation: Both secrets are unset, on Cloud Run (`K_SERVICE` set), on
+    #   Kubernetes (`KUBERNETES_SERVICE_HOST` set), or in local development.
     # Expectation: A random 32-byte key is used for the life of the process,
-    #   and a warning is logged only when `K_SERVICE` is set.
+    #   and a warning is logged when `K_SERVICE` or `KUBERNETES_SERVICE_HOST`
+    #   is set.
     monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
     monkeypatch.setenv("K_SERVICE", k_service)
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", k8s_host)
     transcript.reset_signing_key()
 
     with caplog.at_level(logging.WARNING, logger=transcript.__name__):
@@ -526,6 +537,26 @@ def test_the_configured_secret_is_the_key() -> None:
     # Situation: The `signing_secret` fixture sets `TRANSCRIPT_HMAC_SECRET`.
     # Expectation: `_signing_key()` returns the secret's UTF-8 bytes.
     assert transcript._signing_key() == _SECRET.encode("utf-8")
+
+
+def test_secret_manager_supplies_the_key_when_env_secret_is_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: When `TRANSCRIPT_HMAC_SECRET` is unset, `_signing_key()` falls back
+    #   to `get_transcript_hmac_secret()`.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset and
+    #   `get_transcript_hmac_secret()` returns a 32+ byte secret from Secret
+    #   Manager.
+    # Expectation: `_signing_key()` returns the Secret Manager secret's UTF-8
+    #   bytes.
+    sm_secret = "sm-transcript-hmac-secret-0123456789abcdef"
+    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
+    monkeypatch.setattr(
+        transcript, "get_transcript_hmac_secret", lambda: sm_secret
+    )
+    transcript.reset_signing_key()
+
+    assert transcript._signing_key() == sm_secret.encode("utf-8")
 
 
 @pytest.mark.parametrize(

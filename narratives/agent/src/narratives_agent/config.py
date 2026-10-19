@@ -36,7 +36,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from narratives_agent.settings import get_settings
+from narratives_agent.settings import MIN_SECRET_BYTES, get_settings
 
 # Setup logging
 logging.basicConfig(
@@ -531,3 +531,38 @@ def get_gemini_api_key() -> str:
     if not config_key or config_key.startswith(("DEPRECATED", "REPLACE_ME")):
         return ""
     return config_key
+
+
+def get_transcript_hmac_secret() -> str:
+    """Return the transcript HMAC secret from Secret Manager, or `""`.
+
+    Resolves `TRANSCRIPT_HMAC_SECRET_NAME` through Secret Manager when set
+    (accepting either a full `projects/<proj>/secrets/<name>/versions/<v>`
+    resource name or a short secret ID resolved against `GOOGLE_CLOUD_PROJECT`)
+    and verifies that the UTF-8 payload is at least `MIN_SECRET_BYTES` bytes.
+
+    Returns:
+        The stripped secret string when `TRANSCRIPT_HMAC_SECRET_NAME` is set
+        and yields a secret of at least `MIN_SECRET_BYTES` UTF-8 bytes; `""`
+        when `TRANSCRIPT_HMAC_SECRET_NAME` is unset, the Secret Manager lookup
+        fails or returns an empty/non-bare payload, or the secret is shorter
+        than `MIN_SECRET_BYTES` bytes.
+    """
+    secret_name = get_settings().transcript_hmac_secret_name
+    if not secret_name:
+        return ""
+    secret = _fetch_key_from_secret_manager(secret_name)
+    if not secret:
+        logger.warning(
+            "TRANSCRIPT_HMAC_SECRET_NAME set but returned no secret from "
+            "Secret Manager"
+        )
+        return ""
+    if len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
+        logger.error(
+            "TRANSCRIPT_HMAC_SECRET_NAME secret in Secret Manager is shorter "
+            "than %d bytes; ignoring weak secret",
+            MIN_SECRET_BYTES,
+        )
+        return ""
+    return secret

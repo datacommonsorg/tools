@@ -45,6 +45,8 @@ def credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     "url",
     [
         "https://api.datacommons.org/mcp",
+        "https://autopush.api.datacommons.org/mcp",
+        "https://staging.api.datacommons.org/mcp",
         "https://datacommons.org/api",
     ],
 )

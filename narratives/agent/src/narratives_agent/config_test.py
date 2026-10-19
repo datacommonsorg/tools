@@ -396,6 +396,40 @@ def test_get_gemini_api_key_prefers_secret_manager_and_falls_back_on_empty(
 
 
 @pytest.mark.parametrize(
+    ("secret_name", "fetched", "expected"),
+    [
+        ("", "s" * 32, ""),
+        ("hmac-secret-id", "s" * 32, "s" * 32),
+        ("hmac-secret-id", "s" * 31, ""),
+        ("hmac-secret-id", "", ""),
+    ],
+    ids=[
+        "unset secret name",
+        "valid 32-byte secret",
+        "rejected 31-byte weak secret",
+        "empty secret manager result",
+    ],
+)
+def test_get_transcript_hmac_secret_resolves_and_validates_length(
+    monkeypatch: pytest.MonkeyPatch,
+    secret_name: str,
+    fetched: str,
+    expected: str,
+) -> None:
+    # Test: Secret Manager lookup and minimum-byte length enforcement in
+    #   `get_transcript_hmac_secret`.
+    # Situation: `TRANSCRIPT_HMAC_SECRET_NAME` is unset, or set while Secret
+    #   Manager returns a valid >=32-byte secret, a 31-byte weak secret, or "".
+    # Expectation: Returns "" when unset, empty, or shorter than 32 UTF-8
+    #   bytes, and returns the secret when >= 32 bytes.
+    monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET_NAME", secret_name)
+    monkeypatch.setattr(
+        config, "_fetch_key_from_secret_manager", lambda name: fetched
+    )
+    assert config.get_transcript_hmac_secret() == expected
+
+
+@pytest.mark.parametrize(
     ("raw_payload", "expected"),
     [
         (b"  test-bare-gemini-key\n", "test-bare-gemini-key"),
