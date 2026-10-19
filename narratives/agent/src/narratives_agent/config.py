@@ -445,7 +445,9 @@ def render_prompt(prompt: str) -> str:
 
 
 def _fetch_key_from_secret_manager(
-    secret_name: str, env_var: str = "GEMINI_API_KEY_SECRET"
+    secret_name: str,
+    env_var: str = "GEMINI_API_KEY_SECRET",
+    min_bytes: int = 0,
 ) -> str:
     """Load a secret string from Secret Manager, or return an empty string.
 
@@ -466,11 +468,14 @@ def _fetch_key_from_secret_manager(
         now = time.time()
         if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
             return cached[1]
-        return _load_secret(secret_name, now, env_var)
+        return _load_secret(secret_name, now, env_var, min_bytes)
 
 
 def _load_secret(
-    secret_name: str, now: float, env_var: str = "GEMINI_API_KEY_SECRET"
+    secret_name: str,
+    now: float,
+    env_var: str = "GEMINI_API_KEY_SECRET",
+    min_bytes: int = 0,
 ) -> str:
     """Reads `secret_name` from Secret Manager and caches a usable key."""
     project = get_settings().google_cloud_project
@@ -502,6 +507,14 @@ def _load_secret(
             )
             return ""
         _secret_manager_cache[secret_name] = (now, key)
+        if min_bytes and len(key.encode("utf-8")) < min_bytes:
+            logger.error(
+                "%s secret in Secret Manager is shorter than %d bytes; "
+                "ignoring weak secret",
+                env_var,
+                min_bytes,
+            )
+            return key
         logger.info("Loaded %s from Secret Manager", env_var)
         return key
     except Exception as e:
@@ -559,19 +572,10 @@ def get_transcript_hmac_secret() -> str:
     if not secret_name:
         return ""
     secret = _fetch_key_from_secret_manager(
-        secret_name, "TRANSCRIPT_HMAC_SECRET_NAME"
+        secret_name,
+        "TRANSCRIPT_HMAC_SECRET_NAME",
+        min_bytes=MIN_SECRET_BYTES,
     )
-    if not secret:
-        logger.warning(
-            "TRANSCRIPT_HMAC_SECRET_NAME set but returned no secret from "
-            "Secret Manager"
-        )
-        return ""
-    if len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
-        logger.error(
-            "TRANSCRIPT_HMAC_SECRET_NAME secret in Secret Manager is shorter "
-            "than %d bytes; ignoring weak secret",
-            MIN_SECRET_BYTES,
-        )
+    if not secret or len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
         return ""
     return secret

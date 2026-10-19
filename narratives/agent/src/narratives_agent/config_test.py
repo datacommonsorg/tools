@@ -45,6 +45,7 @@ from pathlib import Path
 import pytest
 
 from narratives_agent import config
+from narratives_agent.settings import MIN_SECRET_BYTES
 
 
 @pytest.fixture(autouse=True)
@@ -423,17 +424,23 @@ def test_get_transcript_hmac_secret_resolves_and_validates_length(
     #   Manager returns a valid >=32-byte secret, a 31-byte weak secret, or "".
     # Expectation: Returns "" when unset, empty, or shorter than 32 UTF-8
     #   bytes, and returns the secret when >= 32 bytes.
-    recorded_env_vars: list[str] = []
+    recorded_calls: list[tuple[str, int]] = []
 
-    def _stub_fetch(name: str, env_var: str = "GEMINI_API_KEY_SECRET") -> str:
-        recorded_env_vars.append(env_var)
+    def _stub_fetch(
+        name: str,
+        env_var: str = "GEMINI_API_KEY_SECRET",
+        min_bytes: int = 0,
+    ) -> str:
+        recorded_calls.append((env_var, min_bytes))
         return fetched
 
     monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET_NAME", secret_name)
     monkeypatch.setattr(config, "_fetch_key_from_secret_manager", _stub_fetch)
     assert config.get_transcript_hmac_secret() == expected
     if secret_name:
-        assert recorded_env_vars == ["TRANSCRIPT_HMAC_SECRET_NAME"]
+        assert recorded_calls == [
+            ("TRANSCRIPT_HMAC_SECRET_NAME", MIN_SECRET_BYTES)
+        ]
 
 
 @pytest.mark.parametrize(
@@ -493,6 +500,51 @@ def test_fetch_key_from_secret_manager_validates_secret_payload(
         assert config._secret_manager_cache[secret_path][1] == expected
     else:
         assert secret_path not in config._secret_manager_cache
+
+
+def test_weak_secret_in_secret_manager_logs_once_per_cache_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Weak secret logging and caching in `_load_secret` /
+    #   `get_transcript_hmac_secret`.
+    # Situation: `TRANSCRIPT_HMAC_SECRET_NAME` is configured with a 31-byte
+    #   secret in Secret Manager, and `get_transcript_hmac_secret` is called
+    #   twice within the 5-minute cache TTL.
+    # Expectation: Both calls return `""`, the weak-secret error is logged only
+    #   once when fetched from Secret Manager (not on the cached second call),
+    #   and no `"Loaded TRANSCRIPT_HMAC_SECRET_NAME"` info message is logged.
+    class _StubPayload:
+        data = b"s" * 31
+
+    class _StubVersionResponse:
+        payload = _StubPayload()
+
+    class _StubSecretClient:
+        def access_secret_version(
+            self, request: dict[str, str], timeout: float
+        ) -> _StubVersionResponse:
+            return _StubVersionResponse()
+
+    class _StubSecretModule:
+        SecretManagerServiceClient = _StubSecretClient
+
+    secret_path = "projects/test-proj/secrets/hmac-secret/versions/latest"
+    monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET_NAME", secret_path)
+    monkeypatch.setattr(config, "_SECRET_MANAGER_AVAILABLE", True)
+    monkeypatch.setattr(
+        config, "secretmanager", _StubSecretModule, raising=False
+    )
+    monkeypatch.setattr(config, "_secret_manager_cache", {})
+
+    with caplog.at_level("INFO", logger=config.__name__):
+        assert config.get_transcript_hmac_secret() == ""
+        assert config.get_transcript_hmac_secret() == ""
+
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) == 1
+    assert "shorter than 32 bytes" in error_records[0].getMessage()
+    assert "Loaded TRANSCRIPT_HMAC_SECRET_NAME" not in caplog.text
 
 
 # --- prompt bodies ----------------------------------------------------------
