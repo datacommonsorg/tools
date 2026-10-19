@@ -59,11 +59,13 @@ export type DataCommonsComponentAttributes = Record<
 >;
 
 /**
- * API root the DC components fetch from. Public Data Commons, which serves
- * these endpoints with an open CORS policy and needs no API key from the
- * browser. See the fileoverview for why this is not the page origin.
+ * API root the DC components fetch from. Defaults to public Data Commons
+ * (`https://datacommons.org`), which serves these endpoints with an open CORS
+ * policy and needs no API key from the browser; overridable at build time via
+ * `VITE_DC_API_ROOT` (for example, `https://autopush.datacommons.org`).
  */
-export const API_ROOT = 'https://datacommons.org';
+export const API_ROOT: string =
+  import.meta.env.VITE_DC_API_ROOT || 'https://datacommons.org';
 
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({

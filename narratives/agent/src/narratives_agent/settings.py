@@ -42,9 +42,10 @@ _TRUTHY_ENV_VALUES = ("1", "true", "yes")
 MIN_SECRET_BYTES = 32
 
 
-def _strip_trailing_slashes(value: str) -> str:
-    """Returns `value` without trailing slashes."""
-    return value.rstrip("/")
+def _normalize_url_path_prefix(value: str) -> str:
+    """Normalizes `value` to a leading-slash path without trailing slashes."""
+    stripped = value.strip("/")
+    return f"/{stripped}" if stripped else ""
 
 
 def _is_truthy_env_value(value: bool | str) -> bool:
@@ -78,9 +79,9 @@ def _default_defaults_dir(data: dict[str, Any]) -> Path:
     return agent_root.parent / "defaults"
 
 
-# Trailing slashes are stripped from these strings, so a base URL or path
-# prefix joins with "/<path>" without doubling the separator.
-_NoTrailingSlashStr = Annotated[str, AfterValidator(_strip_trailing_slashes)]
+# URL path prefixes are normalized to start with a single "/" and have no
+# trailing slashes, so they join with "/<path>" without doubling the separator.
+_UrlPathPrefixStr = Annotated[str, AfterValidator(_normalize_url_path_prefix)]
 _EnvBool = Annotated[bool, BeforeValidator(_is_truthy_env_value)]
 
 
@@ -117,9 +118,14 @@ class Settings(BaseSettings):
     # this port.
     agent_port: int = 5001
 
+    # The URL subpath under which the application (API, healthz, and SPA) is
+    # served when mounted behind a path-routing load balancer (e.g.
+    # "/narratives"); "/" or empty serves at the root.
+    base_path: _UrlPathPrefixStr = ""
+
     # The agent API routers are mounted under this URL path prefix; "/" mounts
     # them at the root because trailing slashes are stripped.
-    agent_api_prefix: _NoTrailingSlashStr = "/agent"
+    agent_api_prefix: _UrlPathPrefixStr = "/agent"
 
     # CORS allows the comma-separated origins listed here. Left unset, it
     # allows only the local development origins, and none at all on Cloud Run.

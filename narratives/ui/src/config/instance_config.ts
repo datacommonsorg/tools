@@ -52,6 +52,16 @@ export interface InstanceConfig {
   metrics: MetricsConfig;
 }
 
+/**
+ * Prefixes a built-in public asset filename with Vite's `BASE_URL` so root
+ * builds resolve to `/<filename>` and subpath builds resolve to
+ * `/<subpath>/<filename>`.
+ */
+const withBaseUrl = (filename: string): string => {
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+  return `${base}/${filename.replace(/^\/+/, '')}`;
+};
+
 export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   instanceName: 'Data Commons',
   logoUrl: '/dc-logo.svg',
@@ -69,6 +79,13 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   ],
   metrics: { tabs: [] },
 };
+
+const getDefaultInstanceConfig = (): Readonly<InstanceConfig> => ({
+  ...DEFAULT_INSTANCE_CONFIG,
+  logoUrl: withBaseUrl('dc-logo.svg'),
+  thinkingIndicatorUrl: withBaseUrl('agent-thinking.svg'),
+  doneIndicatorUrl: withBaseUrl('agent-done-thinking.svg'),
+});
 
 const INSTANCE_CONFIG_ELEMENT_ID = 'instance-config';
 const LOG_PREFIX = '[instance-config]';
@@ -165,7 +182,7 @@ const pick = <T>(
 };
 
 const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
-  const defaults = DEFAULT_INSTANCE_CONFIG;
+  const defaults = getDefaultInstanceConfig();
   const splashAssets = pick('splash_assets', raw.splash_assets, isRecord, {});
   const hasCustomIdentity =
     raw.logo !== undefined || raw.instance_name !== undefined;
@@ -267,7 +284,9 @@ export const getInstanceConfig = (): Readonly<InstanceConfig> => {
   if (cachedConfig === null) {
     const overrides = readOverrides();
     cachedConfig =
-      overrides === null ? DEFAULT_INSTANCE_CONFIG : mergeOverrides(overrides);
+      overrides === null
+        ? getDefaultInstanceConfig()
+        : mergeOverrides(overrides);
   }
   return cachedConfig;
 };

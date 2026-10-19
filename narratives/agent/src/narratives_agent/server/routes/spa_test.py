@@ -237,3 +237,44 @@ def test_healthz_answers_ok(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == "ok\n"
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "cache_control"),
+    [
+        ("/narratives/", _INDEX, "no-cache"),
+        ("/narratives/index.html", _INDEX, "no-cache"),
+        ("/narratives/assets/index-a1b2c3d4.js", _BUNDLE, _IMMUTABLE),
+        ("/narratives/dc-logo.svg", _SVG, "no-cache"),
+    ],
+)
+def test_static_files_serve_under_base_path(
+    path: str,
+    body: bytes,
+    cache_control: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Static SPA mount under a configured `BASE_PATH`.
+    # Situation: `BASE_PATH` is `/narratives` and a client requests the SPA
+    #   shell, a hashed bundle under `assets/`, and an SVG asset under
+    #   `/narratives/*`, as well as the root path `/`.
+    # Expectation: Subpath requests return the expected content and cache
+    #   headers, while `/` outside the subpath returns 404.
+    agent_root = tmp_path / "agent"
+    static_root = agent_root / "static"
+    (static_root / "assets").mkdir(parents=True)
+    (static_root / "index.html").write_bytes(_INDEX)
+    (static_root / "assets" / "index-a1b2c3d4.js").write_bytes(_BUNDLE)
+    (static_root / "dc-logo.svg").write_bytes(_SVG)
+    monkeypatch.setenv("AGENT_ROOT", str(agent_root))
+    monkeypatch.setenv("STATIC_ROOT", str(static_root))
+    monkeypatch.setenv("BASE_PATH", "/narratives")
+    subpath_client = TestClient(create_app())
+
+    response = subpath_client.get(path)
+
+    assert response.status_code == 200
+    assert response.content == body
+    assert response.headers["cache-control"] == cache_control
+    assert subpath_client.get("/").status_code == 404

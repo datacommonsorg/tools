@@ -117,16 +117,33 @@ def test_blank_variable_counts_as_unset(
             id="repeated-slashes",
         ),
         pytest.param("AGENT_API_PREFIX", "/", "", id="root-prefix"),
+        pytest.param(
+            "BASE_PATH", "/narratives/", "/narratives", id="base-path"
+        ),
+        pytest.param(
+            "BASE_PATH",
+            "narratives/",
+            "/narratives",
+            id="base-path-missing-leading-slash",
+        ),
+        pytest.param("BASE_PATH", "/", "", id="root-base-path"),
+        pytest.param(
+            "BASE_PATH",
+            "//narratives//",
+            "/narratives",
+            id="base-path-repeated-slashes",
+        ),
     ],
 )
 def test_trailing_slashes_are_stripped(
     monkeypatch: pytest.MonkeyPatch, name: str, raw: str, expected: str
 ) -> None:
-    # Test: Trailing-slash handling for the API prefix.
-    # Situation: A variable ends in one or more slashes, has whitespace after
-    #   the slash, or is "/" alone.
-    # Expectation: The field holds the value without trailing slashes, so "/"
-    #   yields the empty prefix that mounts the API at the root.
+    # Test: Normalization of URL path prefixes (`AGENT_API_PREFIX`,
+    #   `BASE_PATH`).
+    # Situation: A variable ends in one or more slashes, omits the leading
+    #   slash, or is "/" alone.
+    # Expectation: The field holds the value with a leading slash and without
+    #   trailing slashes, and "/" yields the empty prefix for the root.
     settings = _read_settings(monkeypatch, {name: raw})
     assert getattr(settings, name.lower()) == expected
 

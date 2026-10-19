@@ -22,8 +22,9 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from narratives_agent import telemetry
 from narratives_agent.config import bootstrap_config_from_url
@@ -96,12 +97,13 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def create_app() -> FastAPI:
     """Builds the application from its middleware, routers, and static files.
 
-    Each part of the URL space has one owner:
+    Each part of the URL space has one owner (prefixed by `base_path` when
+    mounted under a subpath such as `/narratives`):
 
-      /agent/*                  the agent's own API
+      <base_path>/agent/*       the agent's own API
       everything else           the SPA
 
-    The API routers are included under `agent_api_prefix`.
+    The API routers are included under `<base_path><agent_api_prefix>`.
 
     Returns:
         The application, without API documentation routes.
@@ -125,14 +127,28 @@ def create_app() -> FastAPI:
     telemetry.instrument_app(app)
 
     # The app serves each request from the first route that matches, in
-    # registration order, and the static mount at "/" matches every path. The
-    # mount therefore comes last, so every path the routers do not claim falls
-    # through to the SPA.
+    # registration order, and the static mount matches every path under
+    # `base_path` (or "/"). The mount therefore comes last, so every path the
+    # routers do not claim falls through to the SPA.
+    base_path = settings.base_path
+    api_prefix = f"{base_path}{settings.agent_api_prefix}"
     for api_router in (system.router, chat.router):
-        app.include_router(api_router, prefix=settings.agent_api_prefix)
+        app.include_router(api_router, prefix=api_prefix)
     app.include_router(spa.router)
+    if base_path:
+        app.include_router(spa.router, prefix=base_path)
+
+        @app.api_route(base_path, methods=["GET", "HEAD"])
+        async def _redirect_base_path(request: Request) -> RedirectResponse:
+            target = f"{base_path}/"
+            if request.url.query:
+                target = f"{target}?{request.url.query}"
+            return RedirectResponse(
+                url=target, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+            )
+
     app.mount(
-        "/",
+        base_path or "/",
         spa.SpaStaticFiles(
             directory=settings.static_root, html=True, check_dir=False
         ),

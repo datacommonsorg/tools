@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /// <reference types="vitest" />
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -11,6 +12,9 @@ export default defineConfig(({mode}) => {
   const envDir = path.resolve(__dirname, '..');
   // Load environment variables from narratives/.env.local
   const env = loadEnv(mode, envDir, '');
+  const rawBasePath = (env.VITE_BASE_PATH || '/').trim();
+  const strippedBasePath = rawBasePath.replace(/^\/+|\/+$/g, '');
+  const base = strippedBasePath ? `/${strippedBasePath}/` : '/';
   const agentTarget = env.AGENT_URL || DEFAULT_AGENT_URL;
   // By default, the agent serves its API under /agent (AGENT_API_PREFIX), so
   // /agent/* requests are forwarded verbatim to AGENT_URL, whether a local
@@ -27,6 +31,7 @@ export default defineConfig(({mode}) => {
       : {}),
   };
   return {
+    base,
     envDir,
     // Vitest: happy-dom gives useHashRoute.test.ts a window/location + hashchange.
     test: {
