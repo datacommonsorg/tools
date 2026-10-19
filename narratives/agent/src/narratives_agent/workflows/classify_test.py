@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 
 from narratives_agent.config import DEFAULT_GEMINI_CLASSIFY_MODEL
-from narratives_agent.gemini.client import GeminiBlocked
+from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import classify
@@ -78,12 +78,18 @@ def telemetry() -> Iterator[TurnTelemetry]:
 
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[Any]]:
-    """Installs a stub classifier response and returns the recorded requests."""
+    """Installs a stub classifier response and returns the recorded requests.
+
+    An exception installed as the reply is raised by the stub, as the Gemini
+    client raises on a failed or blocked request.
+    """
     requests: list[dict[str, Any]] = []
 
-    def install(reply: dict[str, Any] | GeminiBlocked) -> list[Any]:
-        async def request(**kwargs: Any) -> dict[str, Any] | GeminiBlocked:
+    def install(reply: dict[str, Any] | Exception) -> list[Any]:
+        async def request(**kwargs: Any) -> dict[str, Any]:
             requests.append(kwargs)
+            if isinstance(reply, Exception):
+                raise reply
             return reply
 
         monkeypatch.setattr(classify, "async_gemini_request", request)
@@ -310,7 +316,7 @@ async def test_classifier_receives_conversation_with_capped_answers(
 @pytest.mark.parametrize(
     "reply",
     [
-        pytest.param({"error": "HTTP 500: upstream detail"}, id="error"),
+        pytest.param(GeminiError("HTTP 500: upstream detail"), id="error"),
         pytest.param({"candidates": []}, id="no-candidates"),
         pytest.param(
             {"candidates": [{"content": {"parts": [{"text": "{not json"}]}}]},
@@ -335,12 +341,12 @@ async def test_a_classifier_failure_admits_the_query_unclassified(
     model: Callable[..., list[Any]],
     telemetry: TurnTelemetry,
     caplog: pytest.LogCaptureFixture,
-    reply: dict[str, Any],
+    reply: dict[str, Any] | Exception,
 ) -> None:
     # Test: Fall-through when the classifier request or validation fails.
-    # Situation: The classifier returns an error dict, no candidates, malformed
-    #   JSON, JSON that fails `QueryClassification` validation, or a candidate
-    #   stopped for recitation with no text.
+    # Situation: The classifier raises `GeminiError`, or returns no
+    #   candidates, malformed JSON, JSON that fails `QueryClassification`
+    #   validation, or a candidate stopped for recitation with no text.
     # Expectation: `Admitted(None)` is returned and a warning is logged without
     #   leaking the raw model output.
     model(reply)
@@ -410,20 +416,26 @@ async def test_a_missing_prompt_admits_the_query_without_a_call(
 
 
 @pytest.mark.asyncio
-async def test_a_blocked_classifier_prompt_refuses_as_safety_blocked(
-    model: Callable[..., list[Any]], telemetry: TurnTelemetry
+async def test_a_blocked_classifier_prompt_propagates_the_block(
+    model: Callable[..., list[Any]],
+    telemetry: TurnTelemetry,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Blocked prompt handling in `classify_query`.
-    # Situation: `async_gemini_request` returns `GeminiBlocked("SAFETY")`.
-    # Expectation: `TurnRefusedError` is raised with reason `safety_blocked` and
-    #   `REFUSED_MESSAGE`.
-    model(GeminiBlocked("SAFETY"))
+    # Situation: `async_gemini_request` raises `GeminiBlockedError("SAFETY")`.
+    # Expectation: The same `GeminiBlockedError` propagates out of
+    #   `classify_query` so that the turn ends `refused`, and the fail-open
+    #   path for other client errors does not run (no warning is logged).
+    model(GeminiBlockedError("SAFETY"))
 
-    with pytest.raises(classify.TurnRefusedError) as raised:
+    with (
+        caplog.at_level(logging.WARNING, logger=classify.logger.name),
+        pytest.raises(GeminiBlockedError) as raised,
+    ):
         await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
-    assert raised.value.reason == "safety_blocked"
-    assert str(raised.value) == REFUSED_MESSAGE
+    assert raised.value.block_reason == "SAFETY"
+    assert caplog.records == []
 
 
 @pytest.mark.asyncio

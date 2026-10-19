@@ -30,7 +30,8 @@ from pydantic import ValidationError
 
 from narratives_agent.config import get_gemini_classify_model
 from narratives_agent.gemini.client import (
-    GeminiBlocked,
+    GeminiBlockedError,
+    GeminiError,
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import QueryClassification
@@ -134,8 +135,9 @@ async def _request_classification(
         output fails schema validation.
 
     Raises:
-        TurnRefusedError: If Gemini blocks the prompt or stops the candidate
-            with a safety finish reason.
+        GeminiBlockedError: If Gemini blocks the prompt or stops the candidate
+            with a safety finish reason. The error propagates so that the
+            turn ends as `refused`.
     """
     prompt = config.get("prompts", {}).get("classify", "")
     if not prompt:
@@ -166,9 +168,10 @@ async def _request_classification(
             CLASSIFY_TIMEOUT_SECONDS,
         )
         return None
-    if isinstance(response, GeminiBlocked):
-        raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
-    if "error" in response:
+    except GeminiBlockedError:
+        # Propagates to `run_turn`, which ends the turn as `refused`.
+        raise
+    except GeminiError:
         # The Gemini client has already logged the redacted upstream error.
         logger.warning("Classifier request failed; proceeding unclassified")
         return None
@@ -208,8 +211,9 @@ async def classify_query(
         or `Admitted` when the turn continues into the discovery phase.
 
     Raises:
-        TurnRefusedError: If the pre-filter matches, the classifier marks the
-            query unserviceable, or Gemini blocks the classification call.
+        TurnRefusedError: If the pre-filter matches or the classifier marks
+            the query unserviceable.
+        GeminiBlockedError: If Gemini blocks the classification call.
     """
     family = prefilter_match(transcript.current_query)
     if family is not None:
