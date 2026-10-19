@@ -199,6 +199,7 @@ narratives/
 │   └── src/narratives_agent/
 │       ├── dev.py             Local dev server entry point
 │       ├── config.py          Config, prompt rendering, and Secret Manager
+│       ├── config_model.py    Typed AgentConfig dataclasses and their parser
 │       ├── gcp_auth.py        Host-based authentication helpers
 │       ├── settings.py        Environment variable settings
 │       ├── telemetry.py       OpenTelemetry and structured logging

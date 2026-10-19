@@ -22,7 +22,12 @@ from typing import Any
 
 import pytest
 
-from narratives_agent.config import DEFAULT_GEMINI_CLASSIFY_MODEL
+from narratives_agent.config_model import (
+    DEFAULT_GEMINI_CLASSIFY_MODEL,
+    AgentConfig,
+    GeminiConfig,
+    Prompts,
+)
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
@@ -38,10 +43,10 @@ from narratives_agent.workflows.transcript import (
 
 _QUESTION = "What is the population of France?"
 _PROMPT = "Classify the request."
-_CONFIG: dict[str, Any] = {
-    "prompts": {"classify": _PROMPT},
-    "gemini": {"classify_model": "gemini-classifier-test"},
-}
+_CONFIG = AgentConfig(
+    prompts=Prompts(classify=_PROMPT),
+    gemini=GeminiConfig(classify_model="gemini-classifier-test"),
+)
 _SERVICEABLE: dict[str, Any] = {
     "serviceable": True,
     "refusal_reason": None,
@@ -297,7 +302,7 @@ async def test_classifier_receives_conversation_with_capped_answers(
     )
 
     await classify.classify_query(
-        transcript, {"prompts": {"classify": _PROMPT}}, telemetry
+        transcript, AgentConfig(prompts=Prompts(classify=_PROMPT)), telemetry
     )
 
     (request,) = requests
@@ -403,7 +408,9 @@ async def test_a_missing_prompt_admits_the_query_without_a_call(
     requests = model(_verdict())
 
     with caplog.at_level(logging.WARNING, logger=classify.logger.name):
-        outcome = await classify.classify_query(_transcript(), {}, telemetry)
+        outcome = await classify.classify_query(
+            _transcript(), AgentConfig(), telemetry
+        )
 
     assert outcome == classify.Admitted(None)
     assert requests == []

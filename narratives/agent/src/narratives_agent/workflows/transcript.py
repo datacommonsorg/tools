@@ -68,7 +68,7 @@ from pydantic import (
     model_validator,
 )
 
-from narratives_agent.config import get_gemini_model
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
@@ -494,7 +494,7 @@ async def finalize_turn(
     transcript: Transcript,
     model_response: str,
     state_slots: ConversationStateSlots,
-    config: dict[str, Any],
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> SignedWindow | None:
     """Appends the completed turn to the window and signs the result.
@@ -509,7 +509,8 @@ async def finalize_turn(
         transcript: The verified transcript the turn ran with.
         model_response: The complete answer text streamed to the browser.
         state_slots: The scopes extracted from the turn's tool calls.
-        config: The agent configuration used to select the compaction model.
+        config: The agent configuration; compaction runs on
+            `gemini.mcp_model`.
         token_usage: Optional turn totals that receive the compaction call's
             token counts.
 
@@ -729,7 +730,7 @@ def _fallback_summary(previous: str | None, evicted: Sequence[Turn]) -> str:
 async def _compact(
     previous: str | None,
     evicted: Sequence[Turn],
-    config: dict[str, Any],
+    config: AgentConfig,
     token_usage: TokenUsage | None,
 ) -> str:
     """Folds the evicted turns into the summary of earlier turns.
@@ -751,7 +752,7 @@ async def _compact(
                     }
                 ],
                 system_instruction=_COMPACTION_INSTRUCTION,
-                model=get_gemini_model(config),
+                model=config.gemini.mcp_model,
                 temperature=_COMPACTION_TEMPERATURE,
                 thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
                 token_usage=token_usage,

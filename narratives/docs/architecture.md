@@ -244,6 +244,12 @@ the first available source:
    layer on every configuration path, and `agent-config.json` is used when
    neither `CONFIG_URL` nor `agent/config.json` is present.
 
+Whichever source applies, the loaded document is parsed once by
+`narratives_agent/config_model.py` into a frozen `AgentConfig`, and the
+workflows read typed fields from it (for example `config.gemini.mcp_model`)
+rather than the document itself; a value of the wrong type is reported at load
+time and replaced by its default.
+
 For the Gemini API key (`get_gemini_api_key()`):
 
 - **Cloud Run:** Reads `GEMINI_API_KEY_SECRET` from Secret Manager and caches it

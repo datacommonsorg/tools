@@ -41,6 +41,7 @@ from typing import Any
 
 import pytest
 
+from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import FunctionCall, GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
@@ -61,6 +62,7 @@ _TRANSCRIPT = Transcript(
     current_query="What is the population of France?",
     current_idempotency_key="key-1",
 )
+_CONFIG = AgentConfig()
 _TOOLS = [
     {"name": name, "description": "A tool."} for name in ("first", "second")
 ]
@@ -143,7 +145,7 @@ async def test_text_answer_ends_the_loop(
     model_answers(_text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert result == mcp_loop.McpLoopResult()
@@ -177,7 +179,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     model_answers(_tool_turn("first", "second"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert calls == ["scope", "tool:first", "tool:second"]
@@ -233,7 +235,9 @@ async def test_unusable_model_response_fails_closed(
         caplog.at_level(logging.WARNING, logger=mcp_loop.logger.name),
         pytest.raises(mcp_loop.McpLoopError) as raised,
     ):
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.error_type == error_type
     assert _UPSTREAM_ERROR not in str(raised.value)
@@ -269,7 +273,9 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
     )
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.error_type == "mcp_timeout"
     assert canceled.is_set()
@@ -301,7 +307,7 @@ async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert result.truncated
@@ -327,7 +333,7 @@ async def test_iteration_cap_returns_partial_results_flagged_truncated(
     model_answers(_tool_turn("first"), _tool_turn("second"))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert result.truncated
@@ -371,7 +377,9 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     model_answers(_tool_turn("first", "second"))
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.error_type == "mcp_transport_error"
     assert _UPSTREAM_ERROR not in str(raised.value)
@@ -411,7 +419,7 @@ async def test_tool_calls_in_flight_are_bounded(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert len(result.tool_calls) == 4
@@ -431,7 +439,9 @@ async def test_telemetry_records_undeclared_tool_names_as_unknown(
     #   and records the other as "unknown".
     model_answers(_tool_turn("first", "invented_tool"), _text_turn("Done."))
 
-    await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+    )
 
     assert calls == ["scope", "tool:first", "tool:invented_tool"]
     assert telemetry.tool_calls == {"first": 1, "unknown": 1}
@@ -469,7 +479,7 @@ async def test_tool_status_follows_the_result_shape(
     model_answers(_tool_turn("first"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     (record,) = result.tool_calls
@@ -519,7 +529,7 @@ async def test_the_first_request_carries_the_transcript(
         current_idempotency_key="key-1",
     )
 
-    await mcp_loop.execute_mcp_tool_loop(transcript, {}, _TOOLS, telemetry)
+    await mcp_loop.execute_mcp_tool_loop(transcript, _CONFIG, _TOOLS, telemetry)
 
     (contents,) = sent
     assert [message["role"] for message in contents] == [
@@ -559,7 +569,9 @@ async def test_the_next_request_replays_the_response_and_the_results(
         mcp_loop, "async_gemini_request_with_thought_streaming", request
     )
 
-    await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+    )
 
     first, second = sent
     assert second == [
@@ -610,7 +622,7 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     monkeypatch.setattr(
         mcp_loop, "async_gemini_request_with_thought_streaming", request
     )
-    config = {"prompts": {"mcp": "Be an analyst."}}
+    config = AgentConfig(prompts=Prompts(mcp="Be an analyst."))
 
     await mcp_loop.execute_mcp_tool_loop(
         _TRANSCRIPT, config, _TOOLS, telemetry, classification=_CLASSIFICATION
@@ -638,6 +650,8 @@ async def test_a_blocked_prompt_propagates_out_of_the_loop(
     model_answers(GeminiBlockedError("PROHIBITED_CONTENT"))
 
     with pytest.raises(GeminiBlockedError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.block_reason == "PROHIBITED_CONTENT"

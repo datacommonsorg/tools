@@ -41,6 +41,7 @@ import httpx2
 import pytest
 from mcp import MCPError, types
 
+from narratives_agent.config_model import AgentConfig, McpConfig
 from narratives_agent.mcp import client
 from narratives_agent.settings import Settings
 
@@ -227,13 +228,13 @@ def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeMcpServer]:
 
     Clears the cached URL, tool cache, session scope, shared HTTP client, and
     background refresh tasks before and after each test so that state does
-    not leak between test cases. Stubs `load_config` so the handshake uses the
-    default client name without reading from disk.
+    not leak between test cases. Stubs `load_config` so that no test reads a
+    configuration from disk.
     """
     fake = _FakeMcpServer()
     client.reset_client()
     monkeypatch.setitem(client._URL_CACHE, "url", _URL)
-    monkeypatch.setattr(client, "load_config", lambda: {})
+    monkeypatch.setattr(client, "load_config", lambda: None)
     monkeypatch.setattr(client, "_HTTP_CLIENT", client._HttpClientHolder())
     monkeypatch.setattr(client, "_REFRESH_TASKS", set())
     monkeypatch.setattr(
@@ -903,38 +904,53 @@ def test_normalize_url_appends_mcp_only_to_bare_origins(
 
 
 @pytest.mark.parametrize(
-    ("env_url", "config_url", "expected"),
+    ("env_url", "loaded", "expected"),
     [
         (
             "https://env.example",
-            "https://config.example",
+            AgentConfig(mcp=McpConfig(server_url="https://config.example")),
             "https://env.example/mcp",
         ),
-        ("", "https://config.example", "https://config.example/mcp"),
-        ("", "", "http://localhost:4321/mcp"),
+        (
+            "",
+            AgentConfig(mcp=McpConfig(server_url="https://config.example")),
+            "https://config.example/mcp",
+        ),
+        ("", AgentConfig(), "http://localhost:4321/mcp"),
+        ("", None, "http://localhost:4321/mcp"),
     ],
-    ids=["MCP_SERVER_URL wins", "config next", "localhost fallback"],
+    ids=[
+        "MCP_SERVER_URL wins",
+        "config next",
+        "localhost fallback",
+        "no configuration loaded",
+    ],
 )
 def test_mcp_url_resolution_order(
     monkeypatch: pytest.MonkeyPatch,
     env_url: str,
-    config_url: str,
+    loaded: AgentConfig | None,
     expected: str,
 ) -> None:
     # Test: `mcp_url` resolves the endpoint from `MCP_SERVER_URL`, then
-    #   `config.json`, and finally the localhost fallback, caching the result.
+    #   `mcp.server_url`, and finally the localhost fallback, caching the
+    #   result.
     # Situation: `mcp_url` is called with `MCP_SERVER_URL` and `mcp.server_url`
-    #   configured in each precedence combination.
+    #   configured in each precedence combination, and once with no
+    #   configuration loaded.
     # Expectation: `MCP_SERVER_URL` takes precedence over `mcp.server_url`,
-    #   which takes precedence over `http://localhost:<mcp_port>/mcp`, and
-    #   subsequent calls return the cached URL.
+    #   which takes precedence over `http://localhost:<mcp_port>/mcp`; a
+    #   missing configuration selects the fallback; and a later call returns
+    #   the cached URL even though the configuration has changed.
     monkeypatch.setattr(client, "_URL_CACHE", {})
     settings = Settings(mcp_server_url=env_url, mcp_port=4321)
     monkeypatch.setattr(client, "get_settings", lambda: settings)
-    monkeypatch.setattr(
-        client, "load_config", lambda: {"mcp": {"server_url": config_url}}
-    )
+    monkeypatch.setattr(client, "load_config", lambda: loaded)
 
     assert client.mcp_url() == expected
-    monkeypatch.setattr(client, "load_config", lambda: {})
+    monkeypatch.setattr(
+        client,
+        "load_config",
+        lambda: AgentConfig(mcp=McpConfig(server_url="https://other.example")),
+    )
     assert client.mcp_url() == expected

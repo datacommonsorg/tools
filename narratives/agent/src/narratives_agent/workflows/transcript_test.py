@@ -38,6 +38,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.settings import get_settings
@@ -57,6 +58,7 @@ from narratives_agent.workflows.transcript import (
 )
 
 _SECRET = "test-transcript-secret-0123456789abcdef"
+_CONFIG = AgentConfig()
 _SLOTS = ConversationStateSlots(
     scopes=[
         QueryScope(
@@ -124,7 +126,7 @@ async def _converse(count: int, start: Window = ([], None)) -> Window:
                 compacted_summary=summary,
             )
         )
-        window = await finalize_turn(loaded, f"Answer {index}", _SLOTS, {})
+        window = await finalize_turn(loaded, f"Answer {index}", _SLOTS, _CONFIG)
         assert window is not None
         turns, summary = window.turns, window.compacted_summary
     return turns, summary
@@ -205,7 +207,7 @@ async def test_compaction_extends_the_previous_summary(
         _Request("Question 7", "key-7", _wire(window[0]), window[1])
     )
 
-    await finalize_turn(loaded, "Answer 7", _SLOTS, {}, tokens)
+    await finalize_turn(loaded, "Answer 7", _SLOTS, _CONFIG, tokens)
 
     call = compaction_calls[-1]
     prompt = call["messages"][0]["parts"][0]["text"]
@@ -369,7 +371,7 @@ async def test_a_spliced_turn_is_rejected(
         ),
         "Other answer",
         _SLOTS,
-        {},
+        _CONFIG,
     )
     assert other is not None
 
@@ -484,7 +486,9 @@ async def test_an_oversized_answer_is_not_signed() -> None:
     loaded = load_transcript(_next_request(window))
 
     assert (
-        await finalize_turn(loaded, "x" * (MAX_RESPONSE_CHARS + 1), _SLOTS, {})
+        await finalize_turn(
+            loaded, "x" * (MAX_RESPONSE_CHARS + 1), _SLOTS, _CONFIG
+        )
         is None
     )
     assert load_transcript(_next_request(window)).turns == window[0]

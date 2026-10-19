@@ -19,7 +19,7 @@ import json
 import logging
 from typing import Any
 
-from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
@@ -44,18 +44,26 @@ _LOG_EXCERPT_LENGTH = 300
 async def get_chart_config(
     mcp_results: str,
     user_message: str,
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> dict[str, Any]:
     """Get chart configuration using structured output.
 
     Supports multiple charts for variables with different units/scales.
 
+    Args:
+        mcp_results: The gathered tool results to chart.
+        user_message: The user's query.
+        config: The agent configuration; the request runs on
+            `gemini.mcp_model`.
+        token_usage: Optional turn totals that receive the call's token
+            counts.
+
     Returns:
         The parsed chart configuration, or `{"should_render": False}` if the
         request fails or its response cannot be parsed.
     """
-    config = load_config()
-    mcp_model = get_gemini_model(config)
+    mcp_model = config.gemini.mcp_model
 
     prompt = f"""Based on the data query and results, determine chart \
 configurations.
@@ -147,6 +155,7 @@ Set should_render to false if no meaningful data for visualization."""
 async def validate_data_response(
     synthesis_text: str,
     user_message: str,
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> bool:
     """Validate via Gemini whether the synthesis text contains chartable data.
@@ -155,9 +164,16 @@ async def validate_data_response(
     with a warning if the validation request fails or is blocked (the client
     has already logged the upstream failure), and with an error if the
     response is malformed JSON or omits the boolean `data_found` field.
+
+    Args:
+        synthesis_text: The streamed answer to judge.
+        user_message: The user's query.
+        config: The agent configuration; the request runs on
+            `gemini.mcp_model`.
+        token_usage: Optional turn totals that receive the call's token
+            counts.
     """
-    config = load_config()
-    model = get_gemini_model(config)
+    model = config.gemini.mcp_model
 
     prompt = f"""User asked: {user_message}
 
