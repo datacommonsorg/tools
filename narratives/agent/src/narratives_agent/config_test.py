@@ -21,11 +21,14 @@ Covers seven configuration behaviors in `config`:
    bucket directory prefixes while stripping query parameters, and stripping
    HTML authoring comments from loaded prompt files.
 3. `bootstrap_config_from_url` holding the fetched configuration in memory,
-   where `load_config` reads it ahead of any file, and holding an empty
-   configuration when the fetch fails or the response is not a JSON object.
+   where `load_config` reads it ahead of any file, layering the fetched
+   prompts over the default prompts in `defaults/prompts/`, and holding an
+   empty configuration when the fetch fails or the response is not a JSON
+   object.
 4. `load_config` falling back to `config.json` under `agent_root`, re-read when
-   it changes, and then to `agent-config.json` and `prompts/` under
-   `defaults_dir`, returning a copy in each case.
+   it changes, and then to `agent-config.json` under `defaults_dir`, with the
+   default `prompts/` as the base layer of every path, returning a copy in
+   each case.
 5. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
    preferring Secret Manager over `config.json`, rejecting placeholder,
    empty, or JSON-wrapped secret payloads, and reusing a key another thread
@@ -39,9 +42,11 @@ Covers seven configuration behaviors in `config`:
 import json
 import os
 import threading
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
+import requests
 
 from narratives_agent import config
 
@@ -486,37 +491,36 @@ def test_html_comments_are_stripped_from_prompt_bodies(
     assert prompts["mcp"] == "Answer plainly.\n\nCite."
 
 
-def test_prompt_containing_only_html_comment_leaves_slot_unset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Handling of prompt files that are empty after HTML comment removal.
-    # Situation: A fetched `.md` prompt file contains only an HTML comment and
-    #   whitespace.
-    # Expectation: `_fetch_prompt_bodies` omits the slot from the returned
-    #   dictionary rather than setting it to an empty string.
-    monkeypatch.setattr(
-        config, "_fetch_gcs_url", _BodyFetch("<!-- not written yet -->")
-    )
-    assert config._fetch_prompt_bodies("https://example.com/c.json") == {}
-
-
 # --- config loading ---------------------------------------------------------
 
 _CONFIG_URL = "https://storage.googleapis.com/bucket/dir/agent-config.json"
 _PROMPTS_URL = "https://storage.googleapis.com/bucket/dir/prompts"
 
 
-class _UrlFetch:
-    """Answers each configured URL and raises `ConnectionError` otherwise."""
+class _NotFoundResponse(_StubResponse):
+    """Response for an object that is absent from the bucket."""
 
-    def __init__(self, bodies: dict[str, str]) -> None:
+    def raise_for_status(self) -> None:
+        raise requests.HTTPError("404 Client Error: Not Found")
+
+
+class _UrlFetch:
+    """Answers each configured URL and raises `ConnectionError` otherwise.
+
+    A URL whose body is `None` answers with a 404 response.
+    """
+
+    def __init__(self, bodies: Mapping[str, str | None]) -> None:
         self.bodies = bodies
 
     def __call__(self, url: str) -> _StubResponse:
         if url not in self.bodies:
             raise ConnectionError(url)
+        body = self.bodies[url]
+        if body is None:
+            return _NotFoundResponse()
         response = _StubResponse()
-        response.text = self.bodies[url]
+        response.text = body
         return response
 
 
@@ -550,14 +554,17 @@ def _write_defaults(
         (prompts_dir / f"{slot}.md").write_text(body, encoding="utf-8")
 
 
+_DEFAULT_PROMPTS = {slot: f"Default {slot}." for slot in config.PROMPT_SLOTS}
+
+
 def test_bootstrap_holds_the_fetched_config_in_memory(
     monkeypatch: pytest.MonkeyPatch, agent_root: Path
 ) -> None:
     # Test: In-memory caching of `CONFIG_URL` in `bootstrap_config_from_url`.
     # Situation: `CONFIG_URL` serves a document with an inline `synthesis`
     #   prompt, `prompts/mcp.md` and `prompts/synthesis.md` are served in the
-    #   same directory, `prompts/follow_up.md` is absent, and `agent_root`
-    #   contains a local `config.json`.
+    #   same directory, `prompts/follow_up.md` is absent, `defaults_dir` holds
+    #   no prompts, and `agent_root` contains a local `config.json`.
     # Expectation: `load_config` returns the fetched configuration with the file
     #   prompt in `mcp`, the inline prompt in `synthesis`, and no `follow_up`.
     #   Each call returns a deep copy, and `agent_root/config.json` is not
@@ -597,6 +604,119 @@ def test_bootstrap_holds_the_fetched_config_in_memory(
         "prompts": {"mcp": "Fetched mcp.", "synthesis": "Inline synthesis."},
     }
     assert (agent_root / "config.json").read_text("utf-8") == disk_config
+
+
+@pytest.mark.parametrize(
+    "classify_body",
+    [None, "<!-- not written yet -->"],
+    ids=["fetch returns 404", "empty after comment stripping"],
+)
+def test_bootstrap_layers_fetched_prompts_over_the_default_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+    classify_body: str | None,
+) -> None:
+    # Test: Prompt precedence in `bootstrap_config_from_url` when a configured
+    #   prompt is unusable.
+    # Situation: `defaults_dir` holds all four default prompts. `CONFIG_URL`
+    #   serves a document with an inline `synthesis` prompt; `prompts/mcp.md`
+    #   and `prompts/synthesis.md` are served, `prompts/classify.md` answers
+    #   404 or contains only an HTML comment, and `prompts/follow_up.md` is
+    #   unreachable.
+    # Expectation: `classify` and `follow_up` carry the default bodies, `mcp`
+    #   carries the fetched body, and `synthesis` carries the inline body. The
+    #   unusable fetches are logged as warnings and no error is logged.
+    monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
+    monkeypatch.setattr(
+        config,
+        "_fetch_gcs_url",
+        _UrlFetch(
+            {
+                _CONFIG_URL: json.dumps(
+                    {"prompts": {"synthesis": "Inline synthesis."}}
+                ),
+                f"{_PROMPTS_URL}/classify.md": classify_body,
+                f"{_PROMPTS_URL}/mcp.md": "Fetched mcp.",
+                f"{_PROMPTS_URL}/synthesis.md": "Fetched synthesis.",
+            }
+        ),
+    )
+
+    with caplog.at_level("WARNING"):
+        config.bootstrap_config_from_url()
+
+    assert config.load_config() == {
+        "prompts": {
+            "classify": "Default classify.",
+            "mcp": "Fetched mcp.",
+            "synthesis": "Inline synthesis.",
+            "follow_up": "Default follow_up.",
+        }
+    }
+    warning_messages = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert any("'classify'" in message for message in warning_messages)
+    assert any("'follow_up'" in message for message in warning_messages)
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+def test_load_config_layers_config_json_over_the_default_prompts(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Default prompts on the `agent_root/config.json` path.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` has no
+    #   `prompts` key, and `defaults_dir` holds all four default prompts.
+    # Expectation: `load_config` returns the file's own settings with every
+    #   prompt slot carrying the default body, and no error is logged.
+    (agent_root / "config.json").write_text(
+        '{"template_vars": {"name": "Disk"}}', "utf-8"
+    )
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == {
+        "template_vars": {"name": "Disk"},
+        "prompts": _DEFAULT_PROMPTS,
+    }
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+def test_load_config_warns_about_an_unknown_inline_prompt_slot(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Inline `prompts` keys outside `PROMPT_SLOTS` in `_layer_prompts`.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` carries an
+    #   inline prompt under the misspelled key `classfy`, and `defaults_dir`
+    #   holds all four default prompts.
+    # Expectation: The misspelled key is dropped and a warning names it along
+    #   with the valid slots; `classify` carries the default body, and no error
+    #   is logged.
+    (agent_root / "config.json").write_text(
+        json.dumps({"prompts": {"classfy": "Typo."}}), "utf-8"
+    )
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == {"prompts": _DEFAULT_PROMPTS}
+    warning_messages = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert any(
+        "'classfy'" in message and "'classify'" in message
+        for message in warning_messages
+    )
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
 @pytest.mark.parametrize(
@@ -742,69 +862,73 @@ def test_load_config_falls_back_to_the_defaults_dir(
     }
 
 
-def test_load_config_skips_unreadable_default_prompt_slot(
+@pytest.mark.parametrize(
+    "mcp_bytes",
+    [b"\xff", b"<!-- not written yet -->"],
+    ids=["not UTF-8", "empty after comment stripping"],
+)
+def test_load_config_reports_an_unusable_default_prompt_as_an_error(
     agent_root: Path,
     defaults_dir: Path,
     caplog: pytest.LogCaptureFixture,
+    mcp_bytes: bytes,
 ) -> None:
-    # Test: `_read_prompt_files` skips an unreadable prompt file while keeping
-    #   `agent-config.json` and the remaining prompt slots.
-    # Situation: `defaults_dir/agent-config.json` and `prompts/synthesis.md` are
-    #   valid, while `prompts/mcp.md` contains invalid UTF-8 bytes.
-    # Expectation: `load_config` logs a warning for `mcp.md` and returns the
-    #   parsed `agent-config.json` merged with `synthesis.md`.
+    # Test: `load_config` when a default prompt file yields no body and no
+    #   configured prompt covers that slot.
+    # Situation: `defaults_dir/agent-config.json` and the default `classify`,
+    #   `synthesis`, and `follow_up` prompts are valid, while `prompts/mcp.md`
+    #   contains invalid UTF-8 bytes or only an HTML comment.
+    # Expectation: `load_config` returns the parsed `agent-config.json` with
+    #   the three valid slots and no `mcp` slot, logs a warning naming
+    #   `mcp.md`, and logs one error naming exactly `['mcp']` and the default
+    #   prompts directory.
+    valid_prompts = {
+        slot: body for slot, body in _DEFAULT_PROMPTS.items() if slot != "mcp"
+    }
     _write_defaults(
-        defaults_dir,
-        {"template_vars": {"name": "Shipped"}},
-        {"synthesis": "Shipped synthesis."},
+        defaults_dir, {"template_vars": {"name": "Shipped"}}, valid_prompts
     )
-    (defaults_dir / "prompts" / "mcp.md").write_bytes(b"\xff")
+    (defaults_dir / "prompts" / "mcp.md").write_bytes(mcp_bytes)
 
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
 
     assert loaded == {
         "template_vars": {"name": "Shipped"},
-        "prompts": {"synthesis": "Shipped synthesis."},
+        "prompts": valid_prompts,
     }
     assert "mcp.md" in caplog.text
+    errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "'mcp'" in errors[0]
+    assert not any(f"'{slot}'" in errors[0] for slot in valid_prompts)
+    assert str(defaults_dir / "prompts") in errors[0]
 
 
 @pytest.mark.parametrize(
-    ("config_bytes", "prompt_bytes"),
-    [
-        (None, b"Shipped mcp."),
-        (b"{not json", b"Shipped mcp."),
-        (b"[1, 2]", b"Shipped mcp."),
-        (b"\xff", b"Shipped mcp."),
-        (b"{}", b"\xff"),
-    ],
-    ids=[
-        "missing",
-        "malformed",
-        "not an object",
-        "not UTF-8",
-        "prompt not UTF-8",
-    ],
+    "config_bytes",
+    [None, b"{not json", b"[1, 2]", b"\xff"],
+    ids=["missing", "malformed", "not an object", "not UTF-8"],
 )
 def test_load_config_is_empty_when_the_defaults_are_unreadable(
     agent_root: Path,
     defaults_dir: Path,
     caplog: pytest.LogCaptureFixture,
     config_bytes: bytes | None,
-    prompt_bytes: bytes,
 ) -> None:
     # Test: `load_config` when `defaults_dir` does not contain a readable
     #   configuration.
-    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` is absent, and
-    #   `defaults_dir/agent-config.json` or `defaults_dir/prompts/mcp.md` is
-    #   missing, invalid JSON, not a JSON object, or not valid UTF-8.
-    # Expectation: `load_config` returns an empty dictionary and logs a warning
-    #   or error referencing `defaults_dir`.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` is absent,
+    #   `defaults_dir/prompts/mcp.md` is valid, and
+    #   `defaults_dir/agent-config.json` is missing, invalid JSON, not a JSON
+    #   object, or not valid UTF-8.
+    # Expectation: `load_config` returns an empty dictionary, without the
+    #   default prompts, and logs a warning or error referencing
+    #   `defaults_dir`.
     if config_bytes is not None:
         (defaults_dir / "agent-config.json").write_bytes(config_bytes)
     (defaults_dir / "prompts").mkdir()
-    (defaults_dir / "prompts" / "mcp.md").write_bytes(prompt_bytes)
+    (defaults_dir / "prompts" / "mcp.md").write_bytes(b"Shipped mcp.")
 
     with caplog.at_level("WARNING"):
         loaded = config.load_config()

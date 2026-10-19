@@ -240,7 +240,9 @@ the first available source:
    (`dev.py`) by merging `defaults/`, `config/`, and `.env.local`, and
    automatically reloaded whenever the file changes.
 3. **Container defaults (`agent/defaults/`):** Built into the container image by
-   `scripts/stage_static.mjs` as a fallback.
+   `scripts/stage_static.mjs`. Its `prompts/*.md` files provide the base prompt
+   layer on every configuration path, and `agent-config.json` is used when
+   neither `CONFIG_URL` nor `agent/config.json` is present.
 
 For the Gemini API key (`get_gemini_api_key()`):
 
