@@ -117,7 +117,7 @@ export function SessionDrawer() {
 
       {/* ─── Desktop: single-level list, anchored left beside the rail ─── */}
       <aside
-        className="hidden lg:flex absolute top-0 left-[72px] h-full bg-surface border-r border-outline shadow-lg z-20 flex-col"
+        className="hidden lg:flex fixed top-0 left-[72px] h-full bg-surface border-r border-outline shadow-lg z-20 flex-col"
         style={{
           // Cap at PANEL_WIDTH, but never exceed the viewport left of the rail.
           width: `min(${DESKTOP_PANEL_WIDTH}px, calc(100vw - ${SIDEBAR_OFFSET}px))`,
@@ -150,7 +150,7 @@ export function SessionDrawer() {
 
       {/* ─── Mobile: two-level slide-in panel, anchored right ─── */}
       <aside
-        className="lg:hidden absolute top-0 right-0 h-full bg-surface border-l border-outline shadow-lg z-20 overflow-hidden"
+        className="lg:hidden fixed top-0 right-0 h-full bg-surface border-l border-outline shadow-lg z-20 overflow-hidden"
         style={{
           // Cap at PANEL_WIDTH but always leave a peek of the content behind.
           width: `min(${MOBILE_PANEL_WIDTH}px, calc(100vw - 48px))`,

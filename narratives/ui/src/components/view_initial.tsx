@@ -59,7 +59,7 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         variants={cascade}
         // Reduced motion: no initial/animate, so everything renders at rest.
         {...(!reduceMotion && { initial: "hidden", animate: "show" })}
-        className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative overflow-y-auto">
+        className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative">
 
         <m.h1 variants={fadeUp} className="text-display-small-gradient mb-1 tracking-tight text-center">
           {headline}
