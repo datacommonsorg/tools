@@ -34,6 +34,8 @@ const PIN_GLIDE_MS = 400;
 const PIN_HOLD_MS = 600;
 /** Gap between the sticky header and the pinned question. */
 const PIN_TOP_OFFSET_PX = 8;
+/** Must match the duration in `--animate-stream-in` (ui/src/index.css). */
+export const HANDOFF_MS = 400;
 /** Centered content column; the page scrolls at full width. */
 const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
 
@@ -170,7 +172,9 @@ export function DataAgent() {
       <div className="flex-1 flex flex-col gap-6 pt-8 sm:pt-10 pb-6">
         {turns.map((t, i) => (
           <TurnView
-            key={i}
+            // Keyed by turn identity so a new turn or session at the same
+            // index gets fresh state; older saved turns fall back to index.
+            key={t.idempotencyKey ?? i}
             turn={t}
             index={i}
             citationNumbers={citationNumbers[i]}
@@ -247,7 +251,21 @@ function TurnView({
   const textReady =
     turn.textComplete || turn.status === "done" || turn.status === "error";
   const showAnswer = Boolean(turn.text) && !turn.stopped && textReady;
-  const showSkeleton = !showAnswer && turn.status === "synthesis";
+  const showSkeleton =
+    !showAnswer &&
+    !turn.stopped &&
+    (turn.status === "mcp" || turn.status === "synthesis");
+  // Keep a shown skeleton under the answer until the crossfade ends.
+  // Restored turns never had one, so they skip it.
+  const [hadSkeleton, setHadSkeleton] = useState(false);
+  if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
+  const [handedOff, setHandedOff] = useState(false);
+  useEffect(() => {
+    if (!showAnswer || !hadSkeleton) return;
+    const timer = window.setTimeout(() => setHandedOff(true), HANDOFF_MS);
+    return () => window.clearTimeout(timer);
+  }, [showAnswer, hadSkeleton]);
+  const crossfading = showAnswer && hadSkeleton && !handedOff;
   const className = [
     "shrink-0 flex flex-col gap-6",
     COLUMN,
@@ -305,26 +323,40 @@ function TurnView({
           once and the skeleton hands over to the answer in place rather than
           the card leaving and coming back.
 
-          Loading: only once the agent starts constructing the narrative (the
-          `synthesis` phase), not during mcp (tools running). Through that
-          earlier phase the user sees just the reasoning.
+          Loading: `mcp` through `synthesis`; not during `classify`, which
+          may still refuse.
 
-          Answer: the full Figma AnswerPanel, shown once the text is whole
-          and fading in over the skeleton. Hidden
-          when the turn was stopped so we don't show a truncated partial
-          answer. */}
+          Answer: AnswerPanel once the text is whole, crossfading over the
+          skeleton in a shared grid cell. Hidden when stopped. */}
       {(showSkeleton || showAnswer) && (
-        <div className="self-start shrink-0 w-full max-w-4xl">
-          {showAnswer ? (
-            <AnswerPanel
-              turn={turn}
-              isStreaming={isStreaming}
-              onAsk={onAsk}
-              citationNumbers={citationNumbers}
-              turnIndex={index}
-            />
-          ) : (
-            <SkeletonCard query={turn.userMessage} />
+        <div className="self-start shrink-0 w-full max-w-4xl grid *:col-start-1 *:row-start-1">
+          {(showSkeleton || crossfading) && (
+            <div
+              aria-hidden={showAnswer}
+              className={`motion-safe:transition-opacity ease-out${
+                showAnswer ? " opacity-0" : ""
+              }`}
+              style={{ transitionDuration: `${HANDOFF_MS}ms` }}
+            >
+              <SkeletonCard query={turn.userMessage} />
+            </div>
+          )}
+          {showAnswer && (
+            <div
+              className={
+                hadSkeleton
+                  ? "motion-safe:animate-stream-in"
+                  : undefined
+              }
+            >
+              <AnswerPanel
+                turn={turn}
+                isStreaming={isStreaming}
+                onAsk={onAsk}
+                citationNumbers={citationNumbers}
+                turnIndex={index}
+              />
+            </div>
           )}
         </div>
       )}
