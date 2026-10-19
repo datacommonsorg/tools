@@ -422,11 +422,17 @@ def test_get_transcript_hmac_secret_resolves_and_validates_length(
     #   Manager returns a valid >=32-byte secret, a 31-byte weak secret, or "".
     # Expectation: Returns "" when unset, empty, or shorter than 32 UTF-8
     #   bytes, and returns the secret when >= 32 bytes.
+    recorded_env_vars: list[str] = []
+
+    def _stub_fetch(name: str, env_var: str = "GEMINI_API_KEY_SECRET") -> str:
+        recorded_env_vars.append(env_var)
+        return fetched
+
     monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET_NAME", secret_name)
-    monkeypatch.setattr(
-        config, "_fetch_key_from_secret_manager", lambda name: fetched
-    )
+    monkeypatch.setattr(config, "_fetch_key_from_secret_manager", _stub_fetch)
     assert config.get_transcript_hmac_secret() == expected
+    if secret_name:
+        assert recorded_env_vars == ["TRANSCRIPT_HMAC_SECRET_NAME"]
 
 
 @pytest.mark.parametrize(

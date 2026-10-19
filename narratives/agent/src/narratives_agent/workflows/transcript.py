@@ -49,7 +49,6 @@ session store.
 """
 
 import asyncio
-import functools
 import hashlib
 import hmac
 import json
@@ -327,24 +326,48 @@ class TranscriptError(Exception):
         self.reason = reason
 
 
-@functools.cache
+_resolved_signing_key: bytes | None = None
+_fallback_signing_key: bytes | None = None
+
+
 def _signing_key() -> bytes:
     """Returns the transcript signing key, resolved once per process.
 
     The key is read from `TRANSCRIPT_HMAC_SECRET` when set, and otherwise from
     the Secret Manager secret named by `TRANSCRIPT_HMAC_SECRET_NAME`. When
-    neither yields a key, a random key is generated for the life of the
+    neither is configured, a random key is generated for the life of the
     process, which suffices for a single local server; on Cloud Run or
     Kubernetes, where requests reach several instances and instances restart,
-    a warning is logged.
+    a warning is logged. If `TRANSCRIPT_HMAC_SECRET_NAME` is configured but
+    Secret Manager does not return a usable secret, an instance-local fallback
+    key is used for the turn without caching it as the resolved key so a later
+    request can retry Secret Manager.
     """
+    global _resolved_signing_key, _fallback_signing_key
+    if _resolved_signing_key is not None:
+        return _resolved_signing_key
+
     settings = get_settings()
     secret = settings.transcript_hmac_secret.get_secret_value()
     if secret:
-        return secret.encode("utf-8")
+        _resolved_signing_key = secret.encode("utf-8")
+        return _resolved_signing_key
+
     sm_secret = get_transcript_hmac_secret()
     if sm_secret:
-        return sm_secret.encode("utf-8")
+        _resolved_signing_key = sm_secret.encode("utf-8")
+        return _resolved_signing_key
+
+    if settings.transcript_hmac_secret_name:
+        if _fallback_signing_key is None:
+            logger.warning(
+                "TRANSCRIPT_HMAC_SECRET_NAME did not yield a usable secret "
+                "from Secret Manager; using an instance-local fallback key "
+                "until Secret Manager succeeds."
+            )
+            _fallback_signing_key = secrets.token_bytes(_GENERATED_KEY_BYTES)
+        return _fallback_signing_key
+
     if settings.k_service or settings.kubernetes_service_host:
         logger.warning(
             "TRANSCRIPT_HMAC_SECRET is not set, so transcripts are signed "
@@ -354,12 +377,15 @@ def _signing_key() -> bytes:
             "TRANSCRIPT_HMAC_SECRET or TRANSCRIPT_HMAC_SECRET_NAME to a "
             "secret shared by every instance."
         )
-    return secrets.token_bytes(_GENERATED_KEY_BYTES)
+    _resolved_signing_key = secrets.token_bytes(_GENERATED_KEY_BYTES)
+    return _resolved_signing_key
 
 
 def reset_signing_key() -> None:
     """Makes the next signature resolve the signing key again."""
-    _signing_key.cache_clear()
+    global _resolved_signing_key, _fallback_signing_key
+    _resolved_signing_key = None
+    _fallback_signing_key = None
 
 
 def _turn_signature(

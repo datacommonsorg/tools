@@ -444,10 +444,12 @@ def render_prompt(prompt: str) -> str:
     return rendered
 
 
-def _fetch_key_from_secret_manager(secret_name: str) -> str:
-    """Load the Gemini API key from Secret Manager, or return an empty string.
+def _fetch_key_from_secret_manager(
+    secret_name: str, env_var: str = "GEMINI_API_KEY_SECRET"
+) -> str:
+    """Load a secret string from Secret Manager, or return an empty string.
 
-    The secret payload must contain the bare API key string. `secret_name` may
+    The secret payload must contain the bare secret string. `secret_name` may
     be either a full resource name
     (`projects/<proj>/secrets/<name>/versions/<v>`) or a short secret ID
     resolved against `GOOGLE_CLOUD_PROJECT` at version `latest`. Successful
@@ -464,17 +466,20 @@ def _fetch_key_from_secret_manager(secret_name: str) -> str:
         now = time.time()
         if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
             return cached[1]
-        return _load_secret(secret_name, now)
+        return _load_secret(secret_name, now, env_var)
 
 
-def _load_secret(secret_name: str, now: float) -> str:
+def _load_secret(
+    secret_name: str, now: float, env_var: str = "GEMINI_API_KEY_SECRET"
+) -> str:
     """Reads `secret_name` from Secret Manager and caches a usable key."""
     project = get_settings().google_cloud_project
     if not secret_name.startswith("projects/"):
         if not project:
             logger.error(
                 "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
-                "name in GEMINI_API_KEY_SECRET"
+                "name in %s",
+                env_var,
             )
             return ""
         full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
@@ -491,16 +496,18 @@ def _load_secret(secret_name: str, now: float) -> str:
             return ""
         if key.startswith(("[", '"')):
             logger.error(
-                "GEMINI_API_KEY_SECRET holds a legacy JSON array of keys; "
-                "re-run ./deploy.sh --bootstrap-secrets to store the bare key"
+                "%s holds a legacy JSON array of keys; "
+                "re-run ./deploy.sh --bootstrap-secrets to store the bare key",
+                env_var,
             )
             return ""
         _secret_manager_cache[secret_name] = (now, key)
-        logger.info("Loaded the Gemini API key from Secret Manager")
+        logger.info("Loaded %s from Secret Manager", env_var)
         return key
     except Exception as e:
         logger.error(
-            "Failed to load GEMINI_API_KEY_SECRET from Secret Manager (%s)",
+            "Failed to load %s from Secret Manager (%s)",
+            env_var,
             type(e).__name__,
         )
         return ""
@@ -551,7 +558,9 @@ def get_transcript_hmac_secret() -> str:
     secret_name = get_settings().transcript_hmac_secret_name
     if not secret_name:
         return ""
-    secret = _fetch_key_from_secret_manager(secret_name)
+    secret = _fetch_key_from_secret_manager(
+        secret_name, "TRANSCRIPT_HMAC_SECRET_NAME"
+    )
     if not secret:
         logger.warning(
             "TRANSCRIPT_HMAC_SECRET_NAME set but returned no secret from "

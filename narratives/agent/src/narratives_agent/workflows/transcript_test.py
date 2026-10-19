@@ -541,21 +541,35 @@ def test_the_configured_secret_is_the_key() -> None:
 
 def test_secret_manager_supplies_the_key_when_env_secret_is_unset(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: When `TRANSCRIPT_HMAC_SECRET` is unset, `_signing_key()` falls back
-    #   to `get_transcript_hmac_secret()`.
+    #   to `get_transcript_hmac_secret()`, and retries after a transient
+    #   Secret Manager failure without permanently caching the fallback key.
     # Situation: `TRANSCRIPT_HMAC_SECRET` is unset and
-    #   `get_transcript_hmac_secret()` returns a 32+ byte secret from Secret
-    #   Manager.
-    # Expectation: `_signing_key()` returns the Secret Manager secret's UTF-8
-    #   bytes.
+    #   `TRANSCRIPT_HMAC_SECRET_NAME` is set. On the first call, Secret Manager
+    #   returns `""`; on the second call, it returns a 32+ byte secret.
+    # Expectation: The first call logs a warning and returns a 32-byte
+    #   instance-local fallback key; the second call retries Secret Manager and
+    #   caches the Secret Manager secret's UTF-8 bytes.
     sm_secret = "sm-transcript-hmac-secret-0123456789abcdef"
+    responses = iter(["", sm_secret])
     monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
+    monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET_NAME", "hmac-secret-id")
     monkeypatch.setattr(
-        transcript, "get_transcript_hmac_secret", lambda: sm_secret
+        transcript, "get_transcript_hmac_secret", lambda: next(responses)
     )
     transcript.reset_signing_key()
 
+    with caplog.at_level(logging.WARNING, logger=transcript.__name__):
+        fallback_key = transcript._signing_key()
+
+    assert len(fallback_key) == 32
+    assert (
+        "TRANSCRIPT_HMAC_SECRET_NAME did not yield a usable secret"
+        in caplog.text
+    )
+    assert transcript._signing_key() == sm_secret.encode("utf-8")
     assert transcript._signing_key() == sm_secret.encode("utf-8")
 
 
