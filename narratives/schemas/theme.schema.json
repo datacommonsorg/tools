@@ -201,10 +201,6 @@
           "$ref": "#/$defs/hexColor",
           "description": "Primary interactive color: active nav tabs, links, buttons, send button (--theme-primary → --color-theme-primary)."
         },
-        "accent": {
-          "$ref": "#/$defs/hexColor",
-          "description": "Accent color (--theme-accent → --color-theme-accent) used in the prompt input focus glow ring."
-        },
         "text": {
           "$ref": "#/$defs/hexColor",
           "description": "Primary body text (--theme-text → --color-on-surface)."
@@ -228,6 +224,22 @@
         "gradient_end": {
           "$ref": "#/$defs/hexColor",
           "description": "Hero 'Data Agent' heading gradient end stop (--theme-gradient-end → --color-theme-gradient-end)."
+        },
+        "gradient_border_stop_1": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Prompt input glow ring gradient, stop 1 of 4; the ring cycles 1→4→1 (--theme-gradient-border-stop-1 → --color-theme-gradient-border-stop-1)."
+        },
+        "gradient_border_stop_2": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Prompt input glow ring gradient, stop 2 of 4; the ring cycles 1→4→1 (--theme-gradient-border-stop-2 → --color-theme-gradient-border-stop-2)."
+        },
+        "gradient_border_stop_3": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Prompt input glow ring gradient, stop 3 of 4; the ring cycles 1→4→1 (--theme-gradient-border-stop-3 → --color-theme-gradient-border-stop-3)."
+        },
+        "gradient_border_stop_4": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Prompt input glow ring gradient, stop 4 of 4; the ring cycles 1→4→1 (--theme-gradient-border-stop-4 → --color-theme-gradient-border-stop-4)."
         },
         "surface_narrative": {
           "$ref": "#/$defs/hexColor",

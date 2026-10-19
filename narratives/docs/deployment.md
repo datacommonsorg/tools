@@ -231,7 +231,7 @@ You only need to include the keys you want to override in
 | Category | Configurable keys |
 | :--- | :--- |
 | **Identity** | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
-| **Theme** | `colors` (`primary`, `accent`, text, surfaces, borders), `radius` (`card`, `input`, `chip`), `fonts` |
+| **Theme** | `colors` (`primary`, text, surfaces, borders, `gradient_border_stop_1`–`_4` for the prompt glow ring), `radius` (`card`, `input`, `chip`), `fonts` |
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
 
@@ -258,6 +258,14 @@ System prompts for query classification (`classify.md`), the MCP tool loop
 (`follow_up.md`) can be overridden in `config/prompts/`. When customizing
 prompts, start from the baseline files in `defaults/prompts/` and add your
 domain or regional guidance.
+
+The default prompts in `defaults/prompts/*.md` are always loaded first. A file
+in `config/prompts/` (uploaded to the config bucket by `./deploy.sh`) replaces
+the default prompt for that slot, and a non-empty `prompts.<slot>` entry in
+`agent-config.json` replaces both. If a prompt object in the bucket is missing,
+fails to download, or is empty once its HTML comments are stripped, the default
+prompt applies to that slot and the agent logs a warning naming it, so a
+bucket-side failure never leaves a phase without its system instruction.
 
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a

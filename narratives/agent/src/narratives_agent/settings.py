@@ -107,8 +107,10 @@ class Settings(BaseSettings):
     # container build.
     static_root: Path = Field(default_factory=_default_static_root)
 
-    # When `config_url` is unset and `agent_root/config.json` is absent, the
-    # agent loads `agent-config.json` and `prompts/` from this directory.
+    # The `prompts/` directory under this path holds the default prompt bodies,
+    # which are the base layer of the prompt slots on every configuration path.
+    # When `config_url` is unset and `agent_root/config.json` is absent,
+    # `agent-config.json` is read from here as well.
     defaults_dir: Path = Field(default_factory=_default_defaults_dir)
 
     # The local development server (`uv run narratives-agent-dev`) listens on

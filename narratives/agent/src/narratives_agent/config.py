@@ -19,6 +19,11 @@ The configuration is held in process memory. It is loaded from `CONFIG_URL` once
 at startup, from `agent_root/config.json` in local development (reloaded when
 the file's modification time changes), or from the `defaults/` directory shipped
 with the image.
+
+On every path the default prompt bodies in `defaults/prompts/` are read first,
+and the configured prompts (`prompts/<slot>.md` beside `CONFIG_URL`, then
+inline `prompts` entries) are layered over them slot by slot. A configured
+prompt that is absent or fails to load leaves the default prompt in place.
 """
 
 import copy
@@ -108,10 +113,9 @@ _secret_manager_cache: dict[str, tuple[float, str]] = {}
 _secret_manager_lock = threading.Lock()
 
 # Prompt slots the workflows read out of config["prompts"]. Bodies are authored
-# as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
-# `follow_up` is the only slot with an in-code default
-# (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
-# than to no system instruction.
+# as `prompts/<slot>.md`; default versions are found in `defaults/prompts/`, and
+# a deployment's overrides are uploaded beside agent-config.json in the config
+# bucket.
 PROMPT_SLOTS = ("classify", "mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -175,9 +179,10 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     The prompt URLs are derived from `config_url`, so the prompts always come
     from the same bucket as the configuration they belong to.
 
-    A slot that fails to fetch is skipped with a warning instead of failing
-    startup: an absent prompt leaves that phase with no system instruction, so
-    a partial fetch degrades the agent rather than taking it down.
+    A slot that fails to fetch, or is empty once its comments are stripped, is
+    left out of the result with a warning instead of failing startup. The
+    caller layers the result over the default prompts, so that slot keeps the
+    default body.
     """
     # Prompt bodies live in a `prompts/` directory beside the config object, so
     # the URL is the config's own with its last path segment swapped out. Query
@@ -204,23 +209,37 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
             body = strip_prompt_comments(r.text)
         except Exception as e:
             logger.warning(
-                "Prompt %r fetch failed (%s): %s", slot, prompt_url, e
+                "Prompt %r fetch failed (%s): %s; the default or inline "
+                "prompt applies",
+                slot,
+                prompt_url,
+                e,
             )
             continue
         if not body:
             logger.warning(
-                "Prompt %r at %s is empty; leaving slot unset", slot, prompt_url
+                "Prompt %r at %s is empty; the default or inline prompt "
+                "applies",
+                slot,
+                prompt_url,
             )
             continue
         prompts[slot] = body
         logger.info(
-            "Prompt %r loaded: %d bytes from %s", slot, len(body), prompt_url
+            "Prompt %r loaded: %d characters from %s",
+            slot,
+            len(body),
+            prompt_url,
         )
     return prompts
 
 
 def _read_prompt_files(prompts_dir: Path) -> dict[str, str]:
-    """Reads `<slot>.md` files from `prompts_dir` and strips HTML comments."""
+    """Reads `<slot>.md` files from `prompts_dir` and strips HTML comments.
+
+    A file that is unreadable, or empty once its comments are stripped, is
+    left out of the result with a warning.
+    """
     prompts: dict[str, str] = {}
     for slot in PROMPT_SLOTS:
         prompt_path = prompts_dir / f"{slot}.md"
@@ -235,41 +254,84 @@ def _read_prompt_files(prompts_dir: Path) -> dict[str, str]:
                 "Prompt %r read failed (%s): %s", slot, prompt_path, e
             )
             continue
-        if body:
-            prompts[slot] = body
+        if not body:
+            logger.warning("Prompt %r at %s is empty", slot, prompt_path)
+            continue
+        prompts[slot] = body
+        logger.info(
+            "Prompt %r read: %d characters from %s",
+            slot,
+            len(body),
+            prompt_path,
+        )
     return prompts
 
 
-def _apply_prompts(config: dict[str, Any], prompts: dict[str, str]) -> None:
-    """Merges `prompts` into `config["prompts"]`, keeping inline overrides."""
+def _layer_prompts(
+    config: dict[str, Any],
+    fetched_prompts: dict[str, str],
+    prompts_dir: Path,
+) -> None:
+    """Sets `config["prompts"]` to the default prompts with overrides applied.
+
+    Precedence per slot, lowest first: the default `<slot>.md` in
+    `prompts_dir`, then `fetched_prompts`, then a non-empty string already in
+    `config["prompts"]`. The default prompts are read first so that a
+    configured prompt that is absent or fails to load degrades to the default
+    body, never to an empty slot. An inline key that is not in `PROMPT_SLOTS`
+    is dropped with a warning, so a misspelled override is reported rather
+    than silently replaced by the default prompt.
+
+    A slot that is still empty after layering means the default file itself is
+    missing, unreadable, or empty. That is a packaging defect, so it is logged
+    as an error and loading continues with the slots that have a body.
+
+    Args:
+        config: The configuration document, updated in place.
+        fetched_prompts: Prompt bodies fetched from beside `CONFIG_URL`, keyed
+            by slot; empty when there is no `CONFIG_URL`. Every value must be
+            a non-empty string, which `_fetch_prompt_bodies` guarantees.
+        prompts_dir: The directory holding the default `<slot>.md` files.
+    """
+    prompts = _read_prompt_files(prompts_dir)
+    sources = dict.fromkeys(prompts, "default")
+    prompts.update(fetched_prompts)
+    sources.update(dict.fromkeys(fetched_prompts, "fetched"))
     inline = config.get("prompts")
     if isinstance(inline, dict):
         for slot, body in inline.items():
-            if isinstance(body, str) and body.strip():
-                logger.info(
-                    "Prompt %r overridden inline by agent-config.json", slot
+            if slot not in PROMPT_SLOTS:
+                logger.warning(
+                    "Inline prompt slot %r is not one of %s; ignoring it",
+                    slot,
+                    PROMPT_SLOTS,
                 )
+                continue
+            if isinstance(body, str) and body.strip():
                 prompts[slot] = body
+                sources[slot] = "inline"
     if prompts:
         config["prompts"] = prompts
     else:
         config.pop("prompts", None)
+    logger.info("Prompt sources after layering: %s", sources)
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
-        logger.warning(
-            "Missing prompt bodies for %s. 'classify' skips classification, "
-            "'follow_up' falls back to its in-code default, and any other "
-            "missing slot runs without a system instruction.",
+        logger.error(
+            "No prompt body for %s: the default prompt files under %s are "
+            "missing, unreadable, or empty, and no configured prompt covers "
+            "these slots",
             missing,
+            prompts_dir,
         )
 
 
 def bootstrap_config_from_url() -> None:
     """Fetches `CONFIG_URL` at startup and caches the merged configuration.
 
-    Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
-    `config["prompts"]`, while allowing non-empty inline `prompts` entries in
-    `agent-config.json` to take precedence.
+    Prompt bodies are layered per slot: `defaults/prompts/<slot>.md` first,
+    then `<bucket>/prompts/<slot>.md`, then any non-empty inline `prompts`
+    entry in `agent-config.json`.
 
     If the fetch fails or the response is not a JSON object, an empty
     configuration is cached so that `load_config()` does not fall back to the
@@ -277,7 +339,8 @@ def bootstrap_config_from_url() -> None:
     """
     global _bootstrapped_config
 
-    url = get_settings().config_url
+    settings = get_settings()
+    url = settings.config_url
     if not url:
         _bootstrapped_config = None
         return
@@ -313,12 +376,19 @@ def bootstrap_config_from_url() -> None:
         _bootstrapped_config = {}
         return
 
-    _apply_prompts(config, _fetch_prompt_bodies(url))
+    _layer_prompts(
+        config, _fetch_prompt_bodies(url), settings.defaults_dir / "prompts"
+    )
     _bootstrapped_config = config
 
 
-def _load_config_file(config_path: Path) -> dict[str, Any]:
-    """Loads `config_path` and caches it by path and modification time."""
+def _load_config_file(config_path: Path, prompts_dir: Path) -> dict[str, Any]:
+    """Loads `config_path` and caches it by path and modification time.
+
+    The default prompts in `prompts_dir` are layered into the document each
+    time it is read, so an edit to `config_path` also picks up the current
+    default prompt files.
+    """
     global _config_cache, _config_mtime, _config_path
 
     try:
@@ -337,6 +407,7 @@ def _load_config_file(config_path: Path) -> dict[str, Any]:
             _config_mtime = 0.0
             _config_path = None
             return {}
+        _layer_prompts(document, {}, prompts_dir)
         _config_cache = document
         _config_mtime = current_mtime
         _config_path = config_path
@@ -362,8 +433,7 @@ def _load_defaults_config(defaults_dir: Path) -> dict[str, Any]:
     try:
         document = json.loads(config_path.read_text(encoding="utf-8"))
         if isinstance(document, dict):
-            prompts = _read_prompt_files(defaults_dir / "prompts")
-            _apply_prompts(document, prompts)
+            _layer_prompts(document, {}, defaults_dir / "prompts")
             config = document
             logger.info("Config loaded from %s", defaults_dir)
         else:
@@ -393,7 +463,9 @@ def load_config() -> dict[str, Any]:
     settings = get_settings()
     config_path = settings.agent_root / "config.json"
     if config_path.exists():
-        return copy.deepcopy(_load_config_file(config_path))
+        return copy.deepcopy(
+            _load_config_file(config_path, settings.defaults_dir / "prompts")
+        )
     return copy.deepcopy(_load_defaults_config(settings.defaults_dir))
 
 
