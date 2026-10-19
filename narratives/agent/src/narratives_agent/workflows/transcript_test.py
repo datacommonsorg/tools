@@ -39,6 +39,7 @@ import pytest
 from pydantic import ValidationError
 
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
+from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import TokenUsage
 from narratives_agent.workflows import transcript
@@ -89,9 +90,9 @@ def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     transcript.reset_signing_key()
 
 
-def _candidates(text: str) -> dict[str, Any]:
-    """Wraps model output text in the Gemini REST response envelope."""
-    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+def _reply(text: str) -> GeminiResponse:
+    """Returns a model response whose text is `text`."""
+    return GeminiResponse(text=text)
 
 
 @pytest.fixture
@@ -101,9 +102,9 @@ def compaction_calls(
     """Stubs the compaction model call and records its arguments."""
     calls: list[dict[str, Any]] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         calls.append(kwargs)
-        return _candidates(f"Summary {len(calls)}")
+        return _reply(f"Summary {len(calls)}")
 
     monkeypatch.setattr(transcript, "async_gemini_request", request)
     return calls
@@ -237,7 +238,7 @@ async def test_a_failed_compaction_falls_back_and_verifies(
     #   or does not finish in time.
     # Expectation: The summary is built from the evicted turn without the
     #   model, and the re-signed window verifies.
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         if failure == "raises":
             raise RuntimeError("boom")
         if failure == "fails":
@@ -246,7 +247,7 @@ async def test_a_failed_compaction_falls_back_and_verifies(
             raise GeminiBlockedError("SAFETY")
         if failure == "times_out":
             await asyncio.sleep(1)
-        return _candidates("  ")
+        return _reply("  ")
 
     monkeypatch.setattr(transcript, "async_gemini_request", request)
     monkeypatch.setattr(transcript, "COMPACTION_TIMEOUT_SECONDS", 0.01)

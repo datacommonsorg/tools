@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
+from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.workflows import follow_up
 
 
@@ -39,7 +40,7 @@ async def test_follow_ups_request_the_low_thinking_level(
     )
     levels: list[str | None] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
         raise GeminiError("stubbed")
 
@@ -65,7 +66,7 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
     monkeypatch.setattr(follow_up, "load_config", lambda: {})
     calls: list[dict[str, Any]] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         calls.append(kwargs)
         raise GeminiError("stubbed")
 
@@ -109,7 +110,7 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
         lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
     )
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         raise error
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
@@ -123,3 +124,45 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
     assert questions == []
     assert [record.levelno for record in caplog.records] == [logging.WARNING]
     assert "returning no questions" in caplog.records[0].getMessage()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param(GeminiResponse(finish_reason="MAX_TOKENS"), id="empty"),
+        pytest.param(GeminiResponse(text=" \n"), id="blank-text"),
+    ],
+)
+async def test_an_empty_response_returns_no_questions(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    response: GeminiResponse,
+) -> None:
+    # Test: Follow-up generation when Gemini returns nothing to parse.
+    # Situation: The configuration carries a `follow_up` prompt, and
+    #   `async_gemini_request` returns a reply with no text, or with only
+    #   whitespace.
+    # Expectation: No questions are returned, and one WARNING names the
+    #   finish reason; an empty reply is not a parse failure, so nothing is
+    #   logged at ERROR.
+    monkeypatch.setattr(
+        follow_up,
+        "load_config",
+        lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
+    )
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        return response
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+
+    with caplog.at_level(logging.WARNING, logger=follow_up.logger.name):
+        questions = await follow_up.generate_follow_up_questions(
+            "What is the population of California?",
+            ["California population"],
+        )
+
+    assert questions == []
+    assert [record.levelno for record in caplog.records] == [logging.WARNING]
+    assert f"finish reason: {response.finish_reason}" in caplog.text

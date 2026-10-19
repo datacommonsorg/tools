@@ -352,17 +352,14 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
     full_text = ""
     try:
         async for chunk in stream:
-            if isinstance(chunk, str):
-                full_text += chunk
-                ctx.emit("content", {"text": chunk})
-            elif chunk["type"] == "thought":
+            if chunk.kind == "thought":
                 ctx.emit(
                     "thought",
-                    {"thought": chunk["content"], "phase": "synthesis"},
+                    {"thought": chunk.text, "phase": "synthesis"},
                 )
             else:
-                full_text += chunk["content"]
-                ctx.emit("content", {"text": chunk["content"]})
+                full_text += chunk.text
+                ctx.emit("content", {"text": chunk.text})
     except GeminiBlockedError as error:
         if not full_text.strip():
             raise
