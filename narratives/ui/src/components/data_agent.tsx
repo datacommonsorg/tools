@@ -45,10 +45,10 @@ const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
  */
 export function DataAgent() {
   const [query, setQuery] = useState("");
-  // Pulled from the Context (ChatSessionProvider in app.tsx) so turns
-  // survive when the user navigates to another SPA tab and back, and across
-  // browser refreshes (persisted to localStorage).
-  const { turns, isStreaming, error, send, stop, currentSessionId } = useChatSession();
+  // Pulled from the Context (ChatSessionProvider in app.tsx), which outlives
+  // this surface, so remounting it does not lose the chat. Nothing is stored
+  // on the device, so a browser refresh starts an empty one.
+  const { turns, isStreaming, error, send, stop } = useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
@@ -58,14 +58,13 @@ export function DataAgent() {
   // turn is added (e.g. follow-up question click) — not on every re-render
   // caused by streaming text chunks arriving.
   const prevTurnsLength = useRef(turns.length);
-  // Turns already here when the surface mounts (a restored session, or coming
-  // back from another tab) are not news, so they do not animate in.
+  // Turns already here when the surface mounts (coming back from another tab)
+  // are not news, so they do not animate in.
   const restoredTurns = useRef(turns.length);
-  // The surface stays mounted across session switches and "New chat", so a
-  // different session counts as a fresh mount: its turns are not news either.
-  const prevSessionId = useRef(currentSessionId);
-  if (prevSessionId.current !== currentSessionId) {
-    prevSessionId.current = currentSessionId;
+  // The surface stays mounted across "New chat", which empties the turns. What
+  // the refs remember belongs to the conversation just discarded, so they
+  // follow it down and the next question reads as news again.
+  if (turns.length < prevTurnsLength.current) {
     prevTurnsLength.current = turns.length;
     restoredTurns.current = turns.length;
   }
@@ -172,8 +171,8 @@ export function DataAgent() {
       <div className="flex-1 flex flex-col gap-6 pt-8 sm:pt-10 pb-6">
         {turns.map((t, i) => (
           <TurnView
-            // Keyed by turn identity so a new turn or session at the same
-            // index gets fresh state; older saved turns fall back to index.
+            // Keyed by turn identity so a new turn at the same index gets
+            // fresh state; a turn with no key falls back to its index.
             key={t.idempotencyKey ?? i}
             turn={t}
             index={i}

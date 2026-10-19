@@ -20,7 +20,7 @@
 
 import { useEffect, useRef } from 'react';
 import { DataAgent } from './components/data_agent';
-import { SessionDrawer } from './components/drawer_session';
+import { MenuDrawer } from './components/drawer_menu';
 import { Header } from './components/header';
 import { MetricsPage } from './components/metrics_page';
 import { Sidebar } from './components/sidebar';
@@ -49,7 +49,7 @@ export function App() {
       <ChatResetOnTabChange route={route} />
       <div className="flex min-h-dvh w-full bg-surface relative">
         <Sidebar />
-        <SessionDrawer />
+        <MenuDrawer />
         <main className="flex-1 flex flex-col relative min-w-0">
           <Header />
           {renderContent(route)}
@@ -61,13 +61,12 @@ export function App() {
 
 /**
  * Switching tabs (Data Agent ↔ Metrics) should land the user on a
- * fresh Data Agent surface, not the previous conversation. The old chat is
- * preserved in the session drawer; we just rotate to a new empty session so
- * the next return to / starts clean. Skip when streaming so a tab-bounce mid
- * answer doesn't orphan the in-flight turn.
+ * fresh Data Agent surface, not the previous conversation, so the turns are
+ * dropped on the way out. Skip when streaming so a tab-bounce mid answer
+ * doesn't orphan the in-flight turn.
  */
 function ChatResetOnTabChange({ route }: { route: string }) {
-  const { turns, isStreaming, newSession } = useChatSession();
+  const { turns, isStreaming, newChat } = useChatSession();
   const prevRoute = useRef<string>(route);
   useEffect(() => {
     if (prevRoute.current === route) return;
@@ -75,8 +74,8 @@ function ChatResetOnTabChange({ route }: { route: string }) {
     // Scrolling is managed on the page level, so each view starts at its top.
     window.scrollTo(0, 0);
     if (turns.length > 0 && !isStreaming) {
-      newSession();
+      newChat();
     }
-  }, [route, turns.length, isStreaming, newSession]);
+  }, [route, turns.length, isStreaming, newChat]);
   return null;
 }

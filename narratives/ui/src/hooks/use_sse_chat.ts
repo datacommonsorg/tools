@@ -411,10 +411,8 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
  * on. Numbering one would retire `[1]` and `[2]` to a turn with no Citations
  * list, and the next answer would open at `[3]`.
  *
- * `provenance` is typed as required and still read defensively: turns are
- * rehydrated from localStorage, which `chat_session_context` parses and
- * filters by `status` alone, so one persisted by an older build arrives
- * without the array the type promises.
+ * `provenance` is typed as required and still read defensively: the fallback
+ * keeps a turn built without one -- in a test, say -- from throwing here.
  */
 export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   const assigned = new Map<string, number>();
@@ -643,9 +641,9 @@ export interface UseSseChatResult {
 
 /**
  * Configures {@link useSseChat}. This is a controlled hook: turns live in the
- * parent (`ChatSessionProvider`) so multiple chat threads can share one
- * streaming machine. Switching the current session is a parent-level decision;
- * this hook reads and writes whichever turns array it is given.
+ * parent (`ChatSessionProvider`), which outlives the chat surface and can
+ * empty them for "New chat"; this hook reads and writes whichever turns array
+ * it is given.
  */
 export interface UseSseChatProps {
   endpoint?: string;

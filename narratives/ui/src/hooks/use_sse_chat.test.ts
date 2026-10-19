@@ -837,17 +837,16 @@ describe("assignCitationNumbers", () => {
     ]);
   });
 
-  it("survives a turn rehydrated without provenance", () => {
-    // Test: A turn restored from storage by an older build.
-    // Situation: chat_session_context parses persisted turns and filters them
-    //   by status alone, so one can arrive without the array its type
-    //   promises.
+  it("survives a turn built without provenance", () => {
+    // Test: A turn that arrives without the array its type promises.
+    // Situation: `provenance` is required on the type, so only a turn built
+    //   by hand -- in a test, or by a caller added later -- can lack it.
     // Expectation: An empty row, not a TypeError that blanks the chat.
-    const legacy = {
+    const handBuilt = {
       ...citedTurn([]),
       provenance: undefined,
     } as unknown as ChatTurn;
-    expect(assignCitationNumbers([legacy, citedTurn([WDI])])).toEqual([
+    expect(assignCitationNumbers([handBuilt, citedTurn([WDI])])).toEqual([
       [],
       [1],
     ]);

@@ -15,7 +15,7 @@
  */
 
 /**
- * @fileoverview Tests for SessionDrawer section navigation.
+ * @fileoverview Tests for MenuDrawer section navigation and its chat controls.
  */
 
 import {
@@ -28,7 +28,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
-import { SessionDrawer } from './drawer_session';
+import { MenuDrawer } from './drawer_menu';
 import { Header } from './header';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
@@ -44,7 +44,7 @@ const renderOpenDrawer = (): void => {
   render(
     <ChatSessionProvider>
       <Header />
-      <SessionDrawer />
+      <MenuDrawer />
     </ChatSessionProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
@@ -54,14 +54,13 @@ afterEach(() => {
   cleanup();
   document.getElementById('instance-config')?.remove();
   resetInstanceConfigForTests();
-  window.localStorage.clear();
 });
 
-describe('SessionDrawer', () => {
+describe('MenuDrawer', () => {
   it('renders no section tabs for the built-in configuration', () => {
-    // Test: Default Base Data Commons session drawer.
+    // Test: Default Base Data Commons menu drawer.
     // Situation: The instance-config element is absent, so `navigation` is empty,
-    //            and the session drawer is open.
+    //            and the menu drawer is open.
     // Expectation: The drawer renders without a "Sections" navigation landmark.
     renderOpenDrawer();
     expect(screen.getByRole('button', { name: 'Close menu' })).toBeTruthy();
@@ -69,7 +68,7 @@ describe('SessionDrawer', () => {
   });
 
   it('renders the instance tabs as section links', () => {
-    // Test: Custom navigation tabs in the session drawer.
+    // Test: Custom navigation tabs in the menu drawer.
     // Situation: The theme document declares two navigation tabs and the current
     //            hash route is empty (which maps to the `agent` route).
     // Expectation: The "Sections" navigation landmark renders both links in order,
@@ -89,5 +88,16 @@ describe('SessionDrawer', () => {
     ]);
     expect(links[0].getAttribute('aria-current')).toBe('page');
     expect(links[1].getAttribute('aria-current')).toBeNull();
+  });
+
+  it('offers a new chat and no way to reopen an old one', () => {
+    // Test: The chat controls in the menu drawer.
+    // Situation: The menu drawer is open.
+    // Expectation: "New chat" is offered, and nothing lists saved chats,
+    //              because chats are not saved.
+    renderOpenDrawer();
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
+    expect(screen.queryByText('Chats')).toBeNull();
   });
 });

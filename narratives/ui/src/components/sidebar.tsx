@@ -15,59 +15,40 @@
  */
 
 /**
- * @fileoverview Renders the desktop left rail: new-chat and chat-history controls.
+ * @fileoverview Renders the desktop left rail: the new-chat control.
  */
 
 import { useHashRoute } from "../hooks/use_hash_route";
 import { useChatSession } from "../hooks/chat_session_context";
-import { NewChatIcon, ChatsIcon } from "./icons";
+import { NewChatIcon } from "./icons";
 import { Tooltip } from "./tooltip";
 
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)
- * so the page layout doesn't jump as the user navigates. Only the two icons
- * (the "accordion" hamburger and the "start new chat" pencil) are tied to
- * the Agent tab; on every other tab the rail renders empty.
+ * so the page layout doesn't jump as the user navigates. Only the "start new
+ * chat" pencil is tied to the Agent tab; on every other tab the rail renders
+ * empty.
  */
 export function Sidebar() {
   const [route] = useHashRoute();
-  const { newSession, toggleDrawer, isDrawerOpen } = useChatSession();
+  const { newChat } = useChatSession();
   const isAgent = route === "" || route === "agent";
 
   return (
     <aside className="hidden lg:flex sticky top-0 w-[72px] h-dvh bg-surface-blue flex-col items-center py-4 gap-4 shrink-0">
       {isAgent && (
-        <>
-          {/* Menu / "accordion" icon — toggles the SessionDrawer that lists
-              all chat threads. */}
-          <Tooltip label="Chats" placement="right">
-          <button
-            type="button"
-            aria-label="Toggle chats list"
-            aria-expanded={isDrawerOpen}
-            onClick={toggleDrawer}
-            className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors ${
-              isDrawerOpen
-                ? "bg-button-hover text-on-surface"
-                : "hover:bg-button-hover text-on-surface-variant"
-            }`}
-          >
-            <ChatsIcon />
-          </button>
-          </Tooltip>
-          {/* Start a fresh chat thread — does NOT delete other sessions; they
-              remain accessible from the drawer above. */}
-          <Tooltip label="New Chat" placement="right">
+        /* Clears the conversation on screen and starts an empty one. Chats
+           are not saved, so there is nothing to come back to. */
+        <Tooltip label="New Chat" placement="right">
           <button
             type="button"
             aria-label="Start new chat"
-            onClick={newSession}
+            onClick={newChat}
             className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant"
           >
             <NewChatIcon />
           </button>
-          </Tooltip>
-        </>
+        </Tooltip>
       )}
     </aside>
   );

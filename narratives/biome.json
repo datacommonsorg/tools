@@ -19,7 +19,6 @@
       "!ui/src/components/chip_citation.test.ts",
       "!ui/src/components/chip_citation.tsx",
       "!ui/src/components/data_agent.tsx",
-      "!ui/src/components/drawer_session.tsx",
       "!ui/src/components/icons.tsx",
       "!ui/src/components/list_citations.test.ts",
       "!ui/src/components/list_citations.tsx",

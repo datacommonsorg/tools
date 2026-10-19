@@ -21,7 +21,10 @@
 import { readFileSync } from 'node:fs';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
+import {
+  ChatSessionContext,
+  type ChatSessionContextValue,
+} from '@/src/hooks/chat_session_context';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 import { DataAgent, HANDOFF_MS } from './data_agent';
 
@@ -33,43 +36,41 @@ class NoopResizeObserver {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', NoopResizeObserver);
-  window.localStorage.clear();
 });
 
 afterEach(() => {
   cleanup();
-  window.localStorage.clear();
   vi.unstubAllGlobals();
 });
 
-const seedTurns = (turns: ChatTurn[]): void => {
-  window.localStorage.setItem(
-    'cdc:chat:v2',
-    JSON.stringify({
-      version: 2,
-      currentId: 's1',
-      sessions: [
-        {
-          id: 's1',
-          title: 'Test',
-          createdAt: 1,
-          updatedAt: 1,
-          turns,
-        },
-      ],
-    }),
+/** Renders the surface over a settled chat state holding `turns`. */
+const renderTurns = (turns: ChatTurn[]) => {
+  const chat: ChatSessionContextValue = {
+    turns,
+    isStreaming: false,
+    error: null,
+    send: vi.fn(),
+    stop: vi.fn(),
+    newChat: vi.fn(),
+    isDrawerOpen: false,
+    toggleDrawer: vi.fn(),
+    closeDrawer: vi.fn(),
+  };
+  return render(
+    <ChatSessionContext.Provider value={chat}>
+      <DataAgent />
+    </ChatSessionContext.Provider>,
   );
 };
 
 describe('DataAgent refused and clarification turns', () => {
   it('renders a refused turn as a neutral notice card, not an error card', () => {
     // Test: Rendering a refused turn in DataAgent.
-    // Situation: The active session contains a refused turn with a refusal
-    //            notice message.
+    // Situation: The chat holds a refused turn with a refusal notice message.
     // Expectation: The notice message is rendered in a note region using the
     //              theme surface token, without error styling and without a
     //              ReasoningBlock.
-    seedTurns([
+    const { container } = renderTurns([
       {
         userMessage: 'How much does a latte cost in Seattle?',
         status: 'refused',
@@ -81,12 +82,6 @@ describe('DataAgent refused and clarification turns', () => {
         provenance: [],
       },
     ]);
-
-    const { container } = render(
-      <ChatSessionProvider>
-        <DataAgent />
-      </ChatSessionProvider>,
-    );
 
     const notice = screen.getByRole('note');
     expect(notice.textContent).toContain('retail coffee prices');
@@ -102,7 +97,7 @@ describe('DataAgent refused and clarification turns', () => {
     //            while `thoughts`, `toolCalls`, and `provenance` are all empty.
     // Expectation: The clarification text is rendered and the completed
     //              ReasoningBlock placeholder is omitted.
-    seedTurns([
+    renderTurns([
       {
         userMessage: 'What is the population of Georgia?',
         status: 'done',
@@ -112,12 +107,6 @@ describe('DataAgent refused and clarification turns', () => {
         provenance: [],
       },
     ]);
-
-    render(
-      <ChatSessionProvider>
-        <DataAgent />
-      </ChatSessionProvider>,
-    );
 
     expect(
       screen.getByText(
