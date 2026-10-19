@@ -1,8 +1,7 @@
 import { STATUS } from '~/server/types';
 import { useAtlasStore } from '~/store';
 
-/** Current version of the serialized state format. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 /** Import failure with enough detail for the UI to explain what went wrong. */
 export class ImportError extends Error {

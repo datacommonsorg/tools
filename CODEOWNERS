@@ -4,7 +4,7 @@
 # The last matching pattern takes precedence.
 
 # Default owners for everything in the repo.
-* @datacommonsorg/owners @nick-nlb
+* @datacommonsorg/owners @juliawu @nick-nlb
 
 # Data Weaver stand-alone app.
 dataweaver/ @beets @juliawu @miss-o-soup @nick-nlb

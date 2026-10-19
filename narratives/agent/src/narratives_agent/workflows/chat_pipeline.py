@@ -37,7 +37,8 @@ from typing import Any, Literal
 
 from narratives_agent.config import get_gemini_model, load_config
 from narratives_agent.gemini.client import (
-    GeminiBlocked,
+    GeminiBlockedError,
+    GeminiError,
     GeminiStreamError,
     async_gemini_stream,
 )
@@ -60,7 +61,6 @@ from narratives_agent.workflows.classify import (
 )
 from narratives_agent.workflows.follow_up import generate_follow_up_questions
 from narratives_agent.workflows.mcp_loop import (
-    McpLoopBlockedError,
     McpLoopError,
     execute_mcp_tool_loop,
 )
@@ -170,7 +170,8 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             fails. MCP is a hard dependency: synthesis must not answer from
             general knowledge or run on the empty or partial results left
             behind by a failed loop.
-        TurnRefusedError: If Gemini blocks the prompt of a loop iteration.
+        GeminiBlockedError: If Gemini blocks the prompt or the candidate of a
+            loop iteration.
     """
     result = McpPhaseResult()
     if not ctx.config.get("mcp", {}).get("enabled", True):
@@ -206,8 +207,6 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             ),
             classification=ctx.classification,
         )
-    except McpLoopBlockedError as error:
-        raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE) from error
     except McpLoopError as error:
         raise TurnAbortedError(error.error_type, str(error)) from error
 
@@ -316,8 +315,8 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
             leaves the answer missing or truncated, so chart validation and
             follow-up generation would spend more Gemini calls judging an
             incomplete answer.
-        TurnRefusedError: If Gemini blocks the synthesis prompt before any text
-            chunk is yielded.
+        GeminiBlockedError: If Gemini blocks the prompt or the candidate
+            before any text chunk is yielded.
     """
     ctx.emit("status", {"phase": "synthesis", "message": SYNTHESIS_STATUS})
     config = ctx.config
@@ -327,24 +326,28 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
         ctx.transcript,
         _synthesis_message(ctx.transcript.current_query, mcp),
     )
-    stream = await async_gemini_stream(
-        messages=messages,
-        system_instruction=with_pattern_guidance(
-            config.get("prompts", {}).get("synthesis", ""), ctx.classification
-        ),
-        model=get_gemini_model(config),
-        temperature=_SYNTHESIS_TEMPERATURE,
-        thinking_level=config.get("thinking", {}).get("synthesis_level", "low"),
-        token_usage=ctx.telemetry.tokens,
-        include_thoughts=True,
-    )
-    if isinstance(stream, GeminiBlocked):
-        # The Gemini client has already logged the block reason.
-        raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
-    if isinstance(stream, dict):
+    try:
+        stream = await async_gemini_stream(
+            messages=messages,
+            system_instruction=with_pattern_guidance(
+                config.get("prompts", {}).get("synthesis", ""),
+                ctx.classification,
+            ),
+            model=get_gemini_model(config),
+            temperature=_SYNTHESIS_TEMPERATURE,
+            thinking_level=config.get("thinking", {}).get(
+                "synthesis_level", "low"
+            ),
+            token_usage=ctx.telemetry.tokens,
+            include_thoughts=True,
+        )
+    except GeminiBlockedError:
+        # Propagates to `run_turn`, which ends the turn as `refused`.
+        raise
+    except GeminiError as error:
         # The client has already logged the redacted upstream error, so the
         # user receives a fixed message.
-        raise TurnAbortedError("synthesis_error", SYNTHESIS_FAILED)
+        raise TurnAbortedError("synthesis_error", SYNTHESIS_FAILED) from error
 
     full_text = ""
     try:
@@ -360,11 +363,15 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
             else:
                 full_text += chunk["content"]
                 ctx.emit("content", {"text": chunk["content"]})
-    except GeminiStreamError as error:
-        if error.block_reason is not None and not full_text.strip():
-            raise TurnRefusedError("safety_blocked", REFUSED_MESSAGE) from error
+    except GeminiBlockedError as error:
+        if not full_text.strip():
+            raise
         # Once answer text has streamed to the client, a mid-stream block
         # leaves the response truncated and is reported as a stream error.
+        raise TurnAbortedError(
+            "synthesis_stream_error", SYNTHESIS_FAILED
+        ) from error
+    except GeminiStreamError as error:
         raise TurnAbortedError(
             "synthesis_stream_error", SYNTHESIS_FAILED
         ) from error
@@ -539,14 +546,17 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     Runs classification first: refuses adversarial or off-domain queries,
     streams and signs a clarification question when disambiguation is
     required, or admits the query into the MCP tool loop, synthesis, chart
-    configuration, and turn signing. Every non-canceled turn ends in one
-    `terminal` event (`complete`, `refused`, or `error`) and records its
-    outcome and classified pattern in telemetry. Only `asyncio.CancelledError`
-    is re-raised to the caller; cancellation emits no terminal event because
-    the client has already disconnected, and it is recorded as `canceled`
-    unless the turn has already completed. Follow-up questions are emitted
-    after the terminal event, and the background chart task is settled
-    whenever the turn ends so no orphaned task outlives the request.
+    configuration, and turn signing. A model call that Gemini blocks in any
+    of those phases ends the turn as `refused` with reason `safety_blocked`;
+    the phases let `GeminiBlockedError` propagate here rather than each
+    translating it. Every non-canceled turn ends in one `terminal` event
+    (`complete`, `refused`, or `error`) and records its outcome and
+    classified pattern in telemetry. Only `asyncio.CancelledError` is
+    re-raised to the caller; cancellation emits no terminal event because the
+    client has already disconnected, and it is recorded as `canceled` unless
+    the turn has already completed. Follow-up questions are emitted after the
+    terminal event, and the background chart task is settled whenever the
+    turn ends so no orphaned task outlives the request.
 
     Args:
         transcript: The verified transcript holding the current query,
@@ -601,6 +611,13 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         state, error_type = "refused", refusal.reason
         emit(
             "terminal", terminal_frame(state, idempotency_key, refusal=refusal)
+        )
+    except GeminiBlockedError:
+        # The Gemini client has already logged the block reason.
+        blocked = TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
+        state, error_type = "refused", blocked.reason
+        emit(
+            "terminal", terminal_frame(state, idempotency_key, refusal=blocked)
         )
     except TurnAbortedError as error:
         state, error_type = "error", error.error_type

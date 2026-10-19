@@ -71,7 +71,8 @@ from pydantic import (
 from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
-    GeminiBlocked,
+    GeminiBlockedError,
+    GeminiError,
     async_gemini_request,
 )
 from narratives_agent.settings import get_settings
@@ -757,6 +758,18 @@ async def _compact(
             COMPACTION_TIMEOUT_SECONDS,
         )
         return _fallback_summary(previous, evicted)
+    except GeminiBlockedError as error:
+        logger.warning(
+            "Compaction blocked (%s); using the structured summary",
+            error.block_reason,
+        )
+        return _fallback_summary(previous, evicted)
+    except GeminiError:
+        # The client has already logged the redacted upstream error.
+        logger.warning(
+            "Compaction request failed; using the structured summary"
+        )
+        return _fallback_summary(previous, evicted)
     except Exception as error:
         # The answer has already streamed, so a compaction failure must not
         # fail the turn. The error type alone is logged because the request
@@ -764,12 +777,6 @@ async def _compact(
         logger.warning(
             "Compaction failed with %s; using the structured summary",
             type(error).__name__,
-        )
-        return _fallback_summary(previous, evicted)
-    if isinstance(response, GeminiBlocked):
-        logger.warning(
-            "Compaction blocked (%s); using the structured summary",
-            response.block_reason,
         )
         return _fallback_summary(previous, evicted)
     summary = _response_text(response).strip()

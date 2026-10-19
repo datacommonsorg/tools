@@ -41,14 +41,23 @@ Contribution process, PR expectations, and review policy live in
 * Ask of every change: *would a senior engineer call this overcomplicated?* If a
   50-line implementation works, do not write 200.
 
-### 1.2 Surgical changes
+### 1.2 Surgical changes and preparatory refactoring
 
 * Every changed line must trace directly to the stated goal of the change.
 * Do not "improve" adjacent code, comments, or formatting that is unrelated to
   your change; unrelated churn expands the review surface and hides the real
   diff.
-* Match the existing style and patterns of the file you are editing, even where
-  you would have chosen differently.
+* **Separate refactoring from feature work.** Make the change easy (as a
+  standalone, behavior-preserving refactor PR), then make the easy change (in
+  the feature PR). Never bundle a broad structural refactor and new behavioral
+  logic into the same PR.
+* **Do not compound structural debt to keep a diff small.** Match the existing
+  style and patterns of the file you are editing — unless extending the local
+  pattern worsens a design smell (such as widening an ad-hoc return union,
+  threading untyped maps across callers, or adding another responsibility to an
+  overloaded module). When a feature requires reshaping an interface or module
+  boundary first, extract and land that behavior-preserving refactor in its own
+  PR before building the feature on top.
 * Clean up orphans **you** created (unused imports, variables, functions). Leave
   pre-existing dead code alone — mention it instead.
 * Remove debugging logs, commented-out code, and scratch files before
@@ -143,6 +152,49 @@ explaining why (e.g. `# pylint: disable=line-too-long`,
   files, folders, identifiers, and CSS classes.
 * No relative parent imports (`../`). Use the project's path alias (`~/`, `@/`)
   so files can move without rewriting import paths.
+
+### 3.2 Software design and module boundaries
+
+* **Typed domain objects at boundaries (no primitive or dict obsession).** Parse
+  external JSON, configuration files, and third-party SDK responses into typed
+  domain objects (dataclasses, Pydantic models, structs, or TypeScript
+  interfaces) at the boundary where they enter the application. Do not pass raw
+  untyped maps (`dict[str, Any]`, `Record<string, unknown>`) across internal
+  module boundaries, unless the map genuinely represents open-ended or
+  pass-through data (such as a JSON Schema definition, dynamic tool arguments,
+  or telemetry attributes). Do not scatter nested key lookups with fallback
+  defaults across callers.
+* **Uniform error and outcome contracts.** Each client or module interface must
+  use a single, consistent mechanism for signaling failures. Do not mix raised
+  exceptions, error dictionaries, and sentinel return values across the same
+  API. Raise typed domain exceptions for failure and abort paths (see §8) and
+  return typed domain objects for expected outcomes.
+* **Cohesive module interfaces and factories.** Keep module interfaces narrow
+  and explicit. When a client or subsystem grows to manage multiple concerns
+  (such as authentication, transport setup, request construction, and response
+  parsing), encapsulate it behind a cohesive class, interface, or factory rather
+  than exposing a large file of loosely related functions and module-level
+  state.
+* **Typed configuration and capability presets.** When configuration parameters,
+  timeouts, or execution options are coupled to specific profiles or backend
+  capabilities, define them as typed preset objects or enums in code rather than
+  passing raw strings or ad-hoc option bags across callers. Centralizing presets
+  keeps upgrades and capability audits in one place.
+* **Discriminated unions for state machines.** Model mutually exclusive states
+  (such as `idle`, `loading`, `success`, and `error`) as a discriminated union
+  keyed by a discriminant field rather than independent optional fields
+  (`data?`, `error?`, `isCanceled?`) that permit invalid state combinations and
+  force compound boolean guards in callers.
+* **Table-driven / strategy dispatch over parallel conditionals.** When behavior
+  varies across a fixed set of variants, co-locate each variant's policy in a
+  typed registry or strategy table rather than scattering parallel `if/elif` or
+  `switch` blocks across multiple modules.
+* **Separate user-facing copy and templates from logic and markup.** Keep all
+  user-facing content, including UI text (button labels, placeholders, and
+  human-readable accessibility strings such as `aria-label`), status
+  messages, and long-form templates, in dedicated resource or template modules
+  rather than hardcoding or concatenating strings inside business logic,
+  control flow, or component markup.
 
 ---
 
@@ -242,6 +294,11 @@ Vitest-specific conventions:
 * **Distinguish expected from exceptional.** Missing data for a query is an
   expected outcome to be surfaced in the UI; a malformed API response is an
   error to be logged.
+* **Raise typed domain exceptions rather than returning error dicts.** Do not
+  encode failure states as `{"error": str}` dictionaries or ad-hoc union return
+  types that every caller must manually inspect and translate. Define a clear
+  domain exception hierarchy so failure and abort paths propagate cleanly to the
+  orchestrating boundary.
 * **Log at the right level**: `debug` for tracing, `info` for lifecycle events,
   `warning` for degraded-but-handled conditions, `error` for failures that need
   attention.

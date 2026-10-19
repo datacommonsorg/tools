@@ -89,8 +89,8 @@ _SDK_CLIENT = genai.Client
 
 type Handler = Callable[[httpx.Request], httpx.Response]
 
-# Names of all client entry points for parametrized tests. Streaming entry
-# points return an error dict when a request fails before yielding any chunk.
+# Names of all client entry points for parametrized tests. Every entry point
+# raises `GeminiError` when a request fails before yielding any chunk.
 _MODES = [
     "async_request",
     "async_stream",
@@ -215,24 +215,25 @@ async def _call(mode: str, **kwargs: Any) -> Any:
         (503, "Server error (503)"),
     ],
 )
-async def test_a_non_200_response_is_reported_as_a_string_error(
+async def test_a_non_200_response_raises_a_gemini_error(
     gemini: _FakeGemini, mode: str, status: int, expected: str
 ) -> None:
     # Test: Error formatting for non-200 responses in every entry point.
     # Situation: Gemini answers with HTTP 400, 403, 429, 500, or 503 and a
     #   JSON error payload.
-    # Expectation: The entry point returns a dict whose "error" string is
-    #   "HTTP <code>: <excerpt>" for client errors, "Rate limited (429)" for
-    #   429, and "Server error (<code>)" for 5xx, with no "candidates" key.
+    # Expectation: The entry point raises `GeminiError` (the base type, not a
+    #   stream or block subclass) whose message is "HTTP <code>: <excerpt>"
+    #   for client errors, "Rate limited (429)" for 429, and
+    #   "Server error (<code>)" for 5xx.
     gemini.respond(_answer(status, json=_BAD_REQUEST_BODY))
 
-    result = await _call(mode)
+    with pytest.raises(client.GeminiError) as raised:
+        await _call(mode)
 
-    assert isinstance(result, dict)
-    assert "candidates" not in result
-    assert result["error"].startswith(expected)
+    assert type(raised.value) is client.GeminiError
+    assert str(raised.value).startswith(expected)
     if status in (400, 403):
-        assert "INVALID_ARGUMENT" in result["error"]
+        assert "INVALID_ARGUMENT" in str(raised.value)
 
 
 @pytest.mark.asyncio
@@ -243,15 +244,18 @@ async def test_an_echoed_api_key_is_redacted_from_the_error_and_the_log(
     # Test: Redaction of an API key echoed in an upstream error body.
     # Situation: An intermediate proxy returns an HTTP 403 page that echoes
     #   a request URL containing `key=<api_key>`.
-    # Expectation: The returned error and the error log both show
+    # Expectation: The raised error's message and the error log both show
     #   `key=[REDACTED]` and never the raw key.
     gemini.respond(_answer(403, text=_PROXY_ERROR_BODY))
 
-    with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = await _call(mode)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await _call(mode)
 
-    assert _FAKE_KEY not in result["error"]
-    assert "key=[REDACTED]" in result["error"]
+    assert _FAKE_KEY not in str(raised.value)
+    assert "key=[REDACTED]" in str(raised.value)
     assert _FAKE_KEY not in caplog.text
     assert "key=[REDACTED]" in caplog.text
 
@@ -264,8 +268,8 @@ async def test_a_transport_exception_is_redacted_from_the_error_and_log(
     # Test: Redaction of an API key carried in a transport exception.
     # Situation: The connection fails with an error whose message includes
     #   `?key=<api_key>` in the failed request path.
-    # Expectation: Both the returned error and the error log replace the
-    #   credential with `key=[REDACTED]`.
+    # Expectation: Both the raised error's message and the error log replace
+    #   the credential with `key=[REDACTED]`.
     gemini.respond(
         _raise(
             httpx.ConnectError(
@@ -275,11 +279,14 @@ async def test_a_transport_exception_is_redacted_from_the_error_and_log(
         )
     )
 
-    with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = await _call(mode)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await _call(mode)
 
-    assert _FAKE_KEY not in result["error"]
-    assert "key=[REDACTED]" in result["error"]
+    assert _FAKE_KEY not in str(raised.value)
+    assert "key=[REDACTED]" in str(raised.value)
     assert _FAKE_KEY not in caplog.text
     assert "key=[REDACTED]" in caplog.text
 
@@ -291,31 +298,43 @@ async def test_a_timeout_is_reported_as_a_request_timeout(
 ) -> None:
     # Test: Timeout reporting.
     # Situation: The request times out while waiting for Gemini.
-    # Expectation: The entry point returns {"error": "Request timeout"}.
+    # Expectation: The entry point raises `GeminiError("Request timeout")`.
     gemini.respond(_raise(httpx.ReadTimeout("timed out")))
 
-    result = await _call(mode)
+    with pytest.raises(client.GeminiError) as raised:
+        await _call(mode)
 
-    assert result == {"error": "Request timeout"}
+    assert str(raised.value) == "Request timeout"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", _MODES)
 async def test_a_missing_api_key_fails_without_sending_a_request(
-    gemini: _FakeGemini, monkeypatch: pytest.MonkeyPatch, mode: str
+    gemini: _FakeGemini,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
 ) -> None:
     # Test: API key mode with no key configured.
     # Situation: GOOGLE_GENAI_USE_VERTEXAI is unset and get_gemini_api_key()
     #   returns an empty string.
-    # Expectation: The entry point returns the actionable _NO_KEY_ERROR
-    #   without building a client or sending a request.
+    # Expectation: The entry point raises `GeminiError` carrying the
+    #   actionable _NO_KEY_ERROR without building a client or sending a
+    #   request, and logs the failure once at ERROR, naming the model.
     monkeypatch.setattr(client, "get_gemini_api_key", lambda: "")
 
-    result = await _call(mode)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await _call(mode)
 
-    assert result == {"error": client._NO_KEY_ERROR}
+    assert str(raised.value) == client._NO_KEY_ERROR
     assert gemini.constructions == []
     assert gemini.sent == []
+    assert [record.levelno for record in caplog.records] == [logging.ERROR]
+    assert _MODEL in caplog.text
+    assert client._NO_KEY_ERROR in caplog.text
 
 
 @pytest.mark.asyncio
@@ -345,7 +364,7 @@ async def test_vertex_ai_mode_builds_an_adc_client_for_the_project(
 
     monkeypatch.setattr(client, "get_gemini_api_key", fail)
 
-    built = await client._get_client()
+    built = await client._get_client(_MODEL)
 
     assert isinstance(built, _SDK_CLIENT)
     assert len(gemini.constructions) == 1
@@ -359,19 +378,30 @@ async def test_vertex_ai_mode_builds_an_adc_client_for_the_project(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", _MODES)
 async def test_vertex_ai_mode_without_a_project_names_the_variable(
-    gemini: _FakeGemini, monkeypatch: pytest.MonkeyPatch, mode: str
+    gemini: _FakeGemini,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
 ) -> None:
     # Test: Vertex AI mode with no project configured.
     # Situation: GOOGLE_GENAI_USE_VERTEXAI is "1" but GOOGLE_CLOUD_PROJECT is
     #   unset.
-    # Expectation: The entry point returns an error message mentioning
-    #   GOOGLE_CLOUD_PROJECT without instantiating a client.
+    # Expectation: The entry point raises `GeminiError` with a message
+    #   mentioning GOOGLE_CLOUD_PROJECT without instantiating a client, and
+    #   logs the failure once at ERROR, naming the model.
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "1")
 
-    result = await _call(mode)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await _call(mode)
 
-    assert "GOOGLE_CLOUD_PROJECT" in result["error"]
+    assert "GOOGLE_CLOUD_PROJECT" in str(raised.value)
     assert gemini.constructions == []
+    assert [record.levelno for record in caplog.records] == [logging.ERROR]
+    assert _MODEL in caplog.text
+    assert "GOOGLE_CLOUD_PROJECT" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -463,18 +493,21 @@ async def test_an_invalid_message_is_reported_without_its_content(
     # Test: Invalid message in conversation history.
     # Situation: A message part passes a list containing user text instead of
     #   a string for its "text" field.
-    # Expectation: The entry point returns an "Invalid Gemini request" error
+    # Expectation: The entry point raises an "Invalid Gemini request" error
     #   indicating which field failed validation, sends no HTTP request, and
-    #   does not include the user text in the returned error or the logs.
+    #   does not include the user text in the error message or the logs.
     private = "my private question"
     messages = [{"role": "user", "parts": [{"text": [private]}]}]
 
-    with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = await _call(mode, messages=messages)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await _call(mode, messages=messages)
 
-    assert result["error"].startswith("Invalid Gemini request: ")
-    assert "parts.0.text" in result["error"]
-    assert private not in result["error"]
+    assert str(raised.value).startswith("Invalid Gemini request: ")
+    assert "parts.0.text" in str(raised.value)
+    assert private not in str(raised.value)
     assert private not in caplog.text
     assert gemini.sent == []
 
@@ -513,18 +546,20 @@ async def test_an_api_key_echoed_from_the_header_is_redacted(
     # Test: Redaction of an API key echoed without a `key=` prefix.
     # Situation: A proxy rejects the request with HTTP 400 and echoes the
     #   request headers, including `x-goog-api-key: <api_key>`.
-    # Expectation: The returned error and the log replace the key with
-    #   [REDACTED].
+    # Expectation: The raised error's message and the log replace the key
+    #   with [REDACTED].
     gemini.respond(
         _answer(400, text=f"bad request; headers: x-goog-api-key: {_FAKE_KEY}")
     )
 
-    with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
-    assert isinstance(result, dict)
-    assert _FAKE_KEY not in result["error"]
-    assert "x-goog-api-key: [REDACTED]" in result["error"]
+    assert _FAKE_KEY not in str(raised.value)
+    assert "x-goog-api-key: [REDACTED]" in str(raised.value)
     assert _FAKE_KEY not in caplog.text
 
 
@@ -537,22 +572,24 @@ async def test_an_api_key_crossing_the_error_length_limit_is_redacted(
     #   API key without a `key=` prefix, at a position where the
     #   500-character limit on error text falls in the middle of the key.
     # Expectation: The key is redacted before the text is shortened, so
-    #   neither the key nor its first part appears in the returned error or
-    #   the log.
+    #   neither the key nor its first part appears in the raised error's
+    #   message or the log.
     prefix = "HTTP 400: "
     gemini.respond(_answer(400, text="@"))
-    marker = await client.async_gemini_request(_MESSAGES, "", _MODEL)
-    assert isinstance(marker, dict)
-    offset = marker["error"].index("@") - len(prefix)
+    with pytest.raises(client.GeminiError) as marker:
+        await client.async_gemini_request(_MESSAGES, "", _MODEL)
+    offset = str(marker.value).index("@") - len(prefix)
     padding = client._ERROR_BODY_LENGTH - offset - len(_FAKE_KEY) // 2
     gemini.respond(_answer(400, text="x" * padding + _FAKE_KEY))
 
-    with caplog.at_level(logging.ERROR, logger=client.logger.name):
-        result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
-    assert isinstance(result, dict)
     key_start = _FAKE_KEY[:8]
-    assert key_start not in result["error"]
+    assert key_start not in str(raised.value)
     assert key_start not in caplog.text
 
 
@@ -849,7 +886,6 @@ async def test_an_async_stream_yields_text_and_records_usage(
         include_thoughts=include_thoughts,
     )
 
-    assert not isinstance(stream, (dict, client.GeminiBlocked))
     assert [item async for item in stream] == expected
     assert usage == _EXPECTED_USAGE
     thinking = gemini.body()["generationConfig"]["thinkingConfig"]
@@ -859,7 +895,7 @@ async def test_an_async_stream_yields_text_and_records_usage(
 class _BrokenStream(httpx.AsyncByteStream):
     """A response body that fails after delivering its first chunk."""
 
-    _first = _sse(_response_json([{"text": "California has "}]))
+    _first = _sse(_response_json([{"text": "California has "}], _USAGE))
     _error = httpx.ReadError(f"connection reset for ?key={_FAKE_KEY}")
 
     async def __aiter__(self) -> AsyncIterator[bytes]:
@@ -872,13 +908,15 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
     gemini: _FakeGemini, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: A stream failing after its first chunk.
-    # Situation: The connection resets after one text chunk, with the API key
-    #   in the transport error message.
+    # Situation: The connection resets after one text chunk that carries
+    #   usage metadata, with the API key in the transport error message.
     # Expectation: The first chunk is yielded, then iteration raises
-    #   GeminiStreamError whose message and log redact the key.
+    #   GeminiStreamError whose message and log redact the key, and the
+    #   usage from the chunk received before the failure is recorded.
     gemini.respond(_answer(200, stream=_BrokenStream()))
+    usage = TokenUsage()
 
-    stream = await _call("async_stream")
+    stream = await _call("async_stream", token_usage=usage)
     received: list[Any] = []
     with (
         caplog.at_level(logging.ERROR, logger=client.logger.name),
@@ -891,6 +929,35 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
     assert _FAKE_KEY not in str(raised.value)
     assert "key=[REDACTED]" in str(raised.value)
     assert _FAKE_KEY not in caplog.text
+    assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+async def test_a_thought_stream_that_breaks_midway_raises_and_records_usage(
+    gemini: _FakeGemini, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Test: A thought-streaming request whose stream fails after its first
+    #   chunk.
+    # Situation: The connection resets after one text chunk that carries
+    #   usage metadata, with the API key in the transport error message.
+    # Expectation: The call raises the base GeminiError (not GeminiStreamError,
+    #   because the caller never saw partial output) whose message and log
+    #   redact the key, and the usage from the chunk received before the
+    #   failure is recorded.
+    gemini.respond(_answer(200, stream=_BrokenStream()))
+    usage = TokenUsage()
+
+    with (
+        caplog.at_level(logging.ERROR, logger=client.logger.name),
+        pytest.raises(client.GeminiError) as raised,
+    ):
+        await _call("async_thought_streaming", token_usage=usage)
+
+    assert type(raised.value) is client.GeminiError
+    assert _FAKE_KEY not in str(raised.value)
+    assert "key=[REDACTED]" in str(raised.value)
+    assert _FAKE_KEY not in caplog.text
+    assert usage == _EXPECTED_USAGE
 
 
 @pytest.mark.parametrize(
@@ -965,8 +1032,8 @@ async def test_a_failed_thought_stream_closes_the_sdk_stream(
     #   when it stops reading early.
     # Situation: The SDK stream yields a thought chunk and would yield more,
     #   and the thought callback raises while handling the first chunk.
-    # Expectation: The request reports the failure, and the chunk iterator
-    #   is closed before the request returns rather than when the garbage
+    # Expectation: The request raises GeminiError, and the chunk iterator is
+    #   closed before the error leaves the call rather than when the garbage
     #   collector finalizes it.
     closed: list[bool] = []
     thought = types.GenerateContentResponse(
@@ -1007,15 +1074,14 @@ async def test_a_failed_thought_stream_closes_the_sdk_stream(
 
     monkeypatch.setattr(client, "_prepare_call", prepare_call)
 
-    response = await client.async_gemini_request_with_thought_streaming(
-        messages=[],
-        system_instruction="",
-        model="gemini-test",
-        thought_callback=failing_callback,
-    )
+    with pytest.raises(client.GeminiError):
+        await client.async_gemini_request_with_thought_streaming(
+            messages=[],
+            system_instruction="",
+            model="gemini-test",
+            thought_callback=failing_callback,
+        )
 
-    assert isinstance(response, dict)
-    assert "error" in response
     assert closed == [True]
 
 
@@ -1026,8 +1092,8 @@ async def test_a_failed_first_chunk_closes_the_sdk_stream(
     # Test: `async_gemini_stream` closes the SDK's chunk iterator when
     #   fetching the first chunk raises.
     # Situation: The SDK stream raises on its first `anext` call.
-    # Expectation: `async_gemini_stream` returns an error dict and closes
-    #   the chunk iterator before returning.
+    # Expectation: `async_gemini_stream` raises GeminiError and closes the
+    #   chunk iterator before the error leaves the call.
     closed: list[bool] = []
 
     class _FailingChunks:
@@ -1058,12 +1124,11 @@ async def test_a_failed_first_chunk_closes_the_sdk_stream(
 
     monkeypatch.setattr(client, "_prepare_call", prepare_call)
 
-    response = await client.async_gemini_stream(
-        messages=[], system_instruction="", model="gemini-test"
-    )
+    with pytest.raises(client.GeminiError):
+        await client.async_gemini_stream(
+            messages=[], system_instruction="", model="gemini-test"
+        )
 
-    assert isinstance(response, dict)
-    assert "error" in response
     assert closed == [True]
 
 
@@ -1079,16 +1144,17 @@ async def test_a_failed_first_chunk_closes_the_sdk_stream(
         "JAILBREAK",
     ],
 )
-async def test_a_prompt_blocked_response_returns_gemini_blocked(
+async def test_a_prompt_blocked_response_raises_gemini_blocked_error(
     gemini: _FakeGemini, mode: str, reason: str
 ) -> None:
-    # Test: Mapping of `promptFeedback.blockReason` to `GeminiBlocked` across
-    #   all client entry points.
+    # Test: Mapping of `promptFeedback.blockReason` to `GeminiBlockedError`
+    #   across all client entry points.
     # Situation: Gemini responds with `promptFeedback.blockReason` set to one
     #   of the five blocked reasons (`SAFETY`, `PROHIBITED_CONTENT`,
     #   `BLOCKLIST`, `MODEL_ARMOR`, or `JAILBREAK`) and `usageMetadata`.
-    # Expectation: Every entry point returns `GeminiBlocked(block_reason=...)`
-    #   and records the call's token usage.
+    # Expectation: Every entry point raises `GeminiBlockedError` carrying
+    #   that `block_reason` and records the call's token usage before
+    #   raising.
     body = {
         "promptFeedback": {"blockReason": reason},
         "usageMetadata": _USAGE,
@@ -1099,9 +1165,10 @@ async def test_a_prompt_blocked_response_returns_gemini_blocked(
         gemini.respond(_answer(200, content=_sse(body)))
     usage = TokenUsage()
 
-    result = await _call(mode, token_usage=usage)
+    with pytest.raises(client.GeminiBlockedError) as raised:
+        await _call(mode, token_usage=usage)
 
-    assert result == client.GeminiBlocked(block_reason=reason)
+    assert raised.value.block_reason == reason
     assert usage == _EXPECTED_USAGE
 
 
@@ -1113,14 +1180,13 @@ async def test_an_unlisted_block_reason_falls_through_as_an_empty_response(
     #   `_BLOCKED_REASONS`.
     # Situation: Gemini responds with `promptFeedback.blockReason = "OTHER"`.
     # Expectation: `async_gemini_request` returns a normal response dict with no
-    #   `candidates` key rather than `GeminiBlocked`.
+    #   `candidates` key rather than raising `GeminiBlockedError`.
     gemini.respond(
         _answer(200, json={"promptFeedback": {"blockReason": "OTHER"}})
     )
 
     result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
-    assert isinstance(result, dict)
     assert "candidates" not in result
 
 
@@ -1164,7 +1230,7 @@ async def test_normalize_response_includes_candidate_finish_reason(
         "MODEL_ARMOR",
     ],
 )
-async def test_a_candidate_safety_finish_reason_returns_gemini_blocked(
+async def test_a_candidate_safety_finish_reason_raises_gemini_blocked_error(
     gemini: _FakeGemini, mode: str, reason: str
 ) -> None:
     # Test: Candidate-level safety `finishReason` handling across all client
@@ -1173,8 +1239,8 @@ async def test_a_candidate_safety_finish_reason_returns_gemini_blocked(
     #   the five candidate safety finish reasons (`SAFETY`,
     #   `PROHIBITED_CONTENT`, `BLOCKLIST`, `SPII`, or `MODEL_ARMOR`) and no
     #   answer text or function calls.
-    # Expectation: Every entry point returns
-    #   `GeminiBlocked(block_reason=reason)` and records token usage.
+    # Expectation: Every entry point raises `GeminiBlockedError` carrying
+    #   that `block_reason` and records token usage before raising.
     body = {
         "candidates": [
             {
@@ -1190,14 +1256,15 @@ async def test_a_candidate_safety_finish_reason_returns_gemini_blocked(
         gemini.respond(_answer(200, content=_sse(body)))
     usage = TokenUsage()
 
-    result = await _call(mode, token_usage=usage)
+    with pytest.raises(client.GeminiBlockedError) as raised:
+        await _call(mode, token_usage=usage)
 
-    assert result == client.GeminiBlocked(block_reason=reason)
+    assert raised.value.block_reason == reason
     assert usage == _EXPECTED_USAGE
 
 
 @pytest.mark.asyncio
-async def test_thought_streaming_blocked_after_thoughts_returns_gemini_blocked(
+async def test_thought_streaming_blocked_after_thoughts_raises_blocked_error(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Candidate safety `finishReason` after a thought chunk in
@@ -1206,7 +1273,8 @@ async def test_thought_streaming_blocked_after_thoughts_returns_gemini_blocked(
     #   chunk with `finishReason = "SAFETY"` and no function call or answer
     #   text.
     # Expectation: The thought is forwarded to `thought_callback`, token usage
-    #   is recorded, and `GeminiBlocked(block_reason="SAFETY")` is returned.
+    #   is recorded, and `GeminiBlockedError` is raised with `block_reason`
+    #   `"SAFETY"`.
     gemini.respond(
         _answer(
             200,
@@ -1227,14 +1295,15 @@ async def test_thought_streaming_blocked_after_thoughts_returns_gemini_blocked(
     thoughts: list[str] = []
     usage = TokenUsage()
 
-    result = await _call(
-        "async_thought_streaming",
-        token_usage=usage,
-        thought_callback=thoughts.append,
-    )
+    with pytest.raises(client.GeminiBlockedError) as raised:
+        await _call(
+            "async_thought_streaming",
+            token_usage=usage,
+            thought_callback=thoughts.append,
+        )
 
     assert thoughts == ["Considering."]
-    assert result == client.GeminiBlocked(block_reason="SAFETY")
+    assert raised.value.block_reason == "SAFETY"
     assert usage == _EXPECTED_USAGE
 
 
@@ -1249,17 +1318,17 @@ async def test_thought_streaming_blocked_after_thoughts_returns_gemini_blocked(
         ),
     ],
 )
-async def test_thought_streaming_blocked_after_output_returns_gemini_blocked(
+async def test_thought_streaming_blocked_after_output_raises_blocked_error(
     gemini: _FakeGemini, partial_part: dict[str, Any]
 ) -> None:
     # Test: Candidate safety `finishReason` after partial output in
     #   `async_gemini_request_with_thought_streaming`.
     # Situation: The stream delivers answer text or a function call, then a
     #   candidate chunk with `finishReason = "SAFETY"` and empty parts.
-    # Expectation: The partial output is discarded and
-    #   `GeminiBlocked(block_reason="SAFETY")` is returned with token usage
-    #   recorded, so the caller refuses the turn instead of acting on output
-    #   that the safety filter stopped.
+    # Expectation: The partial output is discarded and `GeminiBlockedError`
+    #   is raised with `block_reason` `"SAFETY"` and token usage recorded, so
+    #   the caller refuses the turn instead of acting on output that the
+    #   safety filter stopped.
     gemini.respond(
         _answer(
             200,
@@ -1279,9 +1348,10 @@ async def test_thought_streaming_blocked_after_output_returns_gemini_blocked(
     )
     usage = TokenUsage()
 
-    result = await _call("async_thought_streaming", token_usage=usage)
+    with pytest.raises(client.GeminiBlockedError) as raised:
+        await _call("async_thought_streaming", token_usage=usage)
 
-    assert result == client.GeminiBlocked(block_reason="SAFETY")
+    assert raised.value.block_reason == "SAFETY"
     assert usage == _EXPECTED_USAGE
 
 
@@ -1305,8 +1375,8 @@ async def test_non_safety_finish_reason_without_parts_omits_candidates(
     #   a non-safety `finishReason` (`RECITATION`, `MALFORMED_FUNCTION_CALL`,
     #   `MAX_TOKENS`, `STOP`, or `OTHER`) and no function calls or answer text.
     # Expectation: The call returns a dict with no `"candidates"` key rather
-    #   than `GeminiBlocked`, so the caller treats the empty generation as a
-    #   model error rather than a safety refusal.
+    #   than raising `GeminiBlockedError`, so the caller treats the empty
+    #   generation as a model error rather than a safety refusal.
     gemini.respond(
         _answer(
             200,
@@ -1326,7 +1396,6 @@ async def test_non_safety_finish_reason_without_parts_omits_candidates(
 
     result = await _call("async_thought_streaming")
 
-    assert isinstance(result, dict)
     assert "candidates" not in result
 
 
@@ -1355,7 +1424,7 @@ async def test_non_safety_finish_reason_without_parts_omits_candidates(
         ),
     ],
 )
-async def test_an_async_stream_blocked_mid_stream_raises_with_block_reason(
+async def test_an_async_stream_blocked_mid_stream_raises_blocked_error(
     gemini: _FakeGemini,
     blocked_chunk: dict[str, Any],
     expected_reason: str,
@@ -1365,8 +1434,8 @@ async def test_an_async_stream_blocked_mid_stream_raises_with_block_reason(
     #   carries either `promptFeedback.blockReason` or a candidate safety
     #   `finishReason` along with usage metadata.
     # Expectation: Iterating the stream yields the thought item, raises
-    #   `GeminiStreamError` with `block_reason` set to the blocking reason, and
-    #   records token usage when the stream closes.
+    #   `GeminiBlockedError` with `block_reason` set to the blocking reason,
+    #   and records token usage when the stream closes.
     gemini.respond(
         _answer(
             200,
@@ -1387,10 +1456,9 @@ async def test_an_async_stream_blocked_mid_stream_raises_with_block_reason(
         token_usage=usage,
         include_thoughts=True,
     )
-    assert not isinstance(stream, (dict, client.GeminiBlocked))
 
     received: list[Any] = []
-    with pytest.raises(client.GeminiStreamError) as raised:
+    with pytest.raises(client.GeminiBlockedError) as raised:
         async for item in stream:
             received.append(item)
 
