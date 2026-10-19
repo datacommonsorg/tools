@@ -40,7 +40,7 @@ import sys
 import time
 import uuid
 from collections import Counter
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
@@ -270,6 +270,16 @@ def instrument_app(
     )
 
 
+@dataclass(frozen=True)
+class TokenCounts:
+    """Holds the token counts of one Gemini call."""
+
+    prompt: int
+    candidates: int
+    thoughts: int
+    total: int
+
+
 @dataclass
 class TokenUsage:
     """Accumulates Gemini token counts across all model calls in a turn."""
@@ -279,14 +289,14 @@ class TokenUsage:
     thoughts_token_count: int = 0
     total_token_count: int = 0
 
-    def add(self, usage: Mapping[str, int] | None) -> None:
-        """Adds one call's REST-shaped `usageMetadata` to the totals."""
-        if not usage:
+    def add(self, counts: TokenCounts | None) -> None:
+        """Adds one call's token counts to the totals; `None` adds nothing."""
+        if counts is None:
             return
-        self.prompt_token_count += usage.get("promptTokenCount", 0)
-        self.candidates_token_count += usage.get("candidatesTokenCount", 0)
-        self.thoughts_token_count += usage.get("thoughtsTokenCount", 0)
-        self.total_token_count += usage.get("totalTokenCount", 0)
+        self.prompt_token_count += counts.prompt
+        self.candidates_token_count += counts.candidates
+        self.thoughts_token_count += counts.thoughts
+        self.total_token_count += counts.total
 
 
 def _elapsed_ms(start: float) -> float:

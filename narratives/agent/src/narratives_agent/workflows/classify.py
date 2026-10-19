@@ -116,14 +116,6 @@ def off_domain_message(premise: str) -> str:
     return OFF_DOMAIN_TEMPLATE.format(premise=f" ({plain})" if plain else "")
 
 
-def _candidate_text(candidate: dict[str, Any]) -> str:
-    """Returns the non-thought text content of `candidate`."""
-    parts = candidate.get("content", {}).get("parts", [])
-    return "".join(
-        str(part.get("text", "")) for part in parts if not part.get("thought")
-    )
-
-
 async def _request_classification(
     transcript: Transcript, config: dict[str, Any], telemetry: TurnTelemetry
 ) -> QueryClassification | None:
@@ -131,7 +123,7 @@ async def _request_classification(
 
     Returns:
         The validated classification, or `None` when the prompt is unconfigured,
-        the request fails or times out, no candidates are returned, or the
+        the request fails or times out, the reply carries no text, or the
         output fails schema validation.
 
     Raises:
@@ -175,16 +167,15 @@ async def _request_classification(
         # The Gemini client has already logged the redacted upstream error.
         logger.warning("Classifier request failed; proceeding unclassified")
         return None
-    candidates = response.get("candidates") or []
-    if not candidates:
+    if not response.text.strip():
         logger.warning(
-            "Classifier returned no candidates; proceeding unclassified"
+            "Classifier returned no text (finish reason: %s); proceeding "
+            "unclassified",
+            response.finish_reason,
         )
         return None
     try:
-        return QueryClassification.model_validate_json(
-            _candidate_text(candidates[0])
-        )
+        return QueryClassification.model_validate_json(response.text)
     except ValidationError as error:
         # Raw output is omitted from logs because it may contain query text.
         logger.warning(

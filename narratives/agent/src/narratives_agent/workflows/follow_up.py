@@ -83,14 +83,17 @@ Generate the self-contained follow-up questions now."""
             token_usage=token_usage,
         )
         questions: list[Any] = []
-        if "candidates" in response:
-            text = response["candidates"][0]["content"]["parts"][0].get(
-                "text", "{}"
-            )
-            loaded = json.loads(text)
+        if response.text.strip():
+            loaded = json.loads(response.text)
             questions = (
                 loaded.get("questions", []) if isinstance(loaded, dict) else []
             ) or []
+        else:
+            logger.warning(
+                "Follow-up generation returned no text (finish reason: %s); "
+                "returning no questions",
+                response.finish_reason,
+            )
     except GeminiBlockedError as error:
         logger.warning(
             "Follow-up generation blocked (%s); returning no questions",
