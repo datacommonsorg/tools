@@ -27,7 +27,6 @@ from pydantic import (
     BeforeValidator,
     Field,
     SecretStr,
-    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -79,16 +78,6 @@ def _default_defaults_dir(data: dict[str, Any]) -> Path:
     return agent_root.parent / "defaults"
 
 
-def _resolve_data_plane_web_url(value: str, info: ValidationInfo) -> str:
-    """Returns `value` without trailing slashes, or else `data_plane_url`.
-
-    The validated `data_plane_url` replaces a value that is empty once its
-    trailing slashes are gone, so "/" falls back just as an unset variable does.
-    """
-    data_plane_url: str = info.data.get("data_plane_url", "")
-    return value.rstrip("/") or data_plane_url
-
-
 # Trailing slashes are stripped from these strings, so a base URL or path
 # prefix joins with "/<path>" without doubling the separator.
 _NoTrailingSlashStr = Annotated[str, AfterValidator(_strip_trailing_slashes)]
@@ -138,35 +127,9 @@ class Settings(BaseSettings):
     # else, such as on a developer machine.
     k_service: str = ""
 
-    # Base URL of the data-plane service. Empty means "not split yet" -- the
-    # data-plane proxy routes then report a clear 503 instead of proxying to
-    # nowhere.
-    data_plane_url: _NoTrailingSlashStr = ""
-
-    # Where the BROWSER's data routes go, which is not always where MCP goes.
-    #
-    # On public Data Commons they are genuinely two hosts:
-    #
-    #   api.datacommons.org  the versioned REST API and /mcp -- what the
-    #                        agent uses
-    #   datacommons.org      the website routes the chart web components
-    #                        call: /api/observations/series,
-    #                        /api/place/name, /core/api/...
-    #
-    # Sending chart traffic to the API host returns
-    #   {"message":"The current request is not defined by this API.","code":404}
-    # from Cloud Endpoints, for every chart, on every turn. The proxy and the
-    # auth are both working at that point -- the routes simply do not exist on
-    # that host, so nothing renders and nothing looks broken server-side.
-    #
-    # Falls back to `data_plane_url` when one host serves both.
-    data_plane_web_url: Annotated[
-        str, AfterValidator(_resolve_data_plane_web_url)
-    ] = ""
-
     # "off", compared case-insensitively, stops credentials from being attached
-    # to data-plane and MCP requests; any other value, like the default "auto",
-    # chooses them by target host.
+    # to MCP requests; any other value, like the default "auto", chooses them by
+    # target host.
     data_plane_auth: str = "auto"
 
     # The agent sends this API key as `X-API-Key` to public Data Commons hosts.

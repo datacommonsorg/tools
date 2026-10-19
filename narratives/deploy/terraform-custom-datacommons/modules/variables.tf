@@ -146,12 +146,6 @@ variable "public_dc_url" {
   default     = "https://api.datacommons.org"
 }
 
-variable "public_dc_web_url" {
-  description = "Public Data Commons WEB origin for browser data routes. Distinct from public_dc_url: api.datacommons.org serves the versioned REST API and /mcp, while the website routes the chart components call (/api/observations/series, /api/place/name, /core/api/...) are only served by datacommons.org."
-  type        = string
-  default     = "https://datacommons.org"
-}
-
 variable "access_mode" {
   description = <<-EOT
     How the APP PLANE is exposed. No mode exposes the data plane.

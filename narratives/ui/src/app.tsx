@@ -20,12 +20,10 @@
 
 import { useEffect, useRef } from 'react';
 import { DataAgent } from './components/data_agent';
-import { DataDownloadTool } from './components/data_download_tool';
 import { SessionDrawer } from './components/drawer_session';
 import { Header } from './components/header';
 import { MetricsPage } from './components/metrics_page';
 import { Sidebar } from './components/sidebar';
-import { StatVarExplorer } from './components/stat_var_explorer';
 import {
   ChatSessionProvider,
   useChatSession,
@@ -37,10 +35,6 @@ function renderContent(route: string) {
   switch (route) {
     case 'metrics':
       return <MetricsPage />;
-    case 'download':
-      return <DataDownloadTool />;
-    case 'statvar':
-      return <StatVarExplorer />;
     default:
       return <DataAgent />;
   }
@@ -66,7 +60,7 @@ export function App() {
 }
 
 /**
- * Switching tabs (Data Agent ↔ Metrics ↔ StatVar) should land the user on a
+ * Switching tabs (Data Agent ↔ Metrics) should land the user on a
  * fresh Data Agent surface, not the previous conversation. The old chat is
  * preserved in the session drawer; we just rotate to a new empty session so
  * the next return to / starts clean. Skip when streaming so a tab-bounce mid

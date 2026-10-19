@@ -59,12 +59,11 @@ against an already-deployed Cloud Run backend.
    $EDITOR .env.local      # Set GEMINI_API_KEY="<your-key>"
    ```
 
-   By default, `.env.local.example` points to the public Data Commons endpoints:
+   By default, `.env.local.example` points to the public Data Commons MCP
+   endpoint:
 
    ```sh
    MCP_SERVER_URL="https://api.datacommons.org/mcp"
-   DATA_PLANE_URL="https://api.datacommons.org"
-   DATA_PLANE_WEB_URL="https://datacommons.org"
    AGENT_URL="http://localhost:5001"
    ```
 
@@ -127,9 +126,8 @@ you can run the Vite dev server without starting the local Python agent:
    pnpm dev:ui             # http://localhost:3000
    ```
 
-Vite's development proxy (`ui/vite.config.ts`) forwards `/agent/*` and Data
-Commons API routes to `AGENT_URL`. Restart `pnpm dev:ui` after editing
-`.env.local`.
+Vite's development proxy (`ui/vite.config.ts`) forwards `/agent/*` to
+`AGENT_URL`. Restart `pnpm dev:ui` after editing `.env.local`.
 
 ## Workspace scripts
 
@@ -204,7 +202,7 @@ narratives/
 │       ├── gcp_auth.py        Host-based authentication helpers
 │       ├── settings.py        Environment variable settings
 │       ├── telemetry.py       OpenTelemetry and structured logging
-│       ├── server/            FastAPI app and routes (spa, chat, dcproxy)
+│       ├── server/            FastAPI app and routes (spa, chat, system)
 │       ├── mcp/               MCP client, capability discovery, and schemas
 │       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
 │       └── gemini/            Gemini SDK client and Pydantic schemas

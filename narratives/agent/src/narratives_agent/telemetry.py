@@ -229,8 +229,8 @@ def configure_telemetry() -> None:
     trace.set_tracer_provider(provider)
     _configured["provider"] = provider
     # The httpx instrumentation covers the google-genai SDK's transport. The
-    # MCP client and the data-plane proxy use `httpx2`, which it does not
-    # patch; their latency is captured by the phase spans instead.
+    # MCP client uses `httpx2`, which it does not patch; its latency is
+    # captured by the phase spans instead.
     HTTPXClientInstrumentor().instrument()
     _genai_instrumentor.instrument()
 
