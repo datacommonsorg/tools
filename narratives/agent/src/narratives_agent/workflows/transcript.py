@@ -328,12 +328,13 @@ class TranscriptError(Exception):
 def _signing_key() -> bytes:
     """Returns the transcript signing key, resolved once per process.
 
-    The key is `TRANSCRIPT_HMAC_SECRET` when it is set. On Kubernetes, where
-    requests reach several pods and pods restart, a missing secret raises
-    `RuntimeError`. Otherwise it is a random key that lives as long as the
-    process, which suffices for a single local server; on Cloud Run, where
-    requests reach several instances and instances restart, a warning is
-    logged.
+    Resolution order:
+    - `TRANSCRIPT_HMAC_SECRET` set: uses the configured secret's UTF-8 bytes.
+    - Unset on Kubernetes (`KUBERNETES_SERVICE_HOST` set): raises
+      `RuntimeError`, since multi-pod deployments require a shared key.
+    - Unset on Cloud Run (`K_SERVICE` set): logs a warning and falls back to a
+      per-process random key.
+    - Unset in local development: generates a per-process random key.
 
     Raises:
         RuntimeError: `TRANSCRIPT_HMAC_SECRET` is unset on Kubernetes.
