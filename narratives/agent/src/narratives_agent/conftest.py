@@ -18,16 +18,20 @@ from collections.abc import Iterator
 import pytest
 
 from narratives_agent.settings import get_settings
+from narratives_agent.workflows.transcript import reset_signing_key
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache() -> Iterator[None]:
-    """Clears the cached settings before and after each test.
+def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Clears the cached settings and signing key before and after each test.
 
-    `get_settings` reads the environment once and caches the result, so without
-    this a test would see the environment of whichever test or import called it
-    first rather than the variables it sets itself.
+    `get_settings` and `_signing_key` read the environment once and cache the
+    result, so without this a test would see the environment of whichever test
+    or import called them first rather than the variables it sets itself.
     """
+    monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
     get_settings.cache_clear()
+    reset_signing_key()
     yield
     get_settings.cache_clear()
+    reset_signing_key()

@@ -158,9 +158,8 @@ class Settings(BaseSettings):
     # zone falls back to UTC.
     timezone: str = "UTC"
 
-    # Short `gemini_api_key_secret` and `transcript_hmac_secret_name` values
-    # resolve against this project, and Vertex AI calls run against it when
-    # `google_genai_use_vertexai` is true.
+    # A short `gemini_api_key_secret` name resolves against this project, and
+    # Vertex AI calls run against it when `google_genai_use_vertexai` is true.
     google_cloud_project: str = ""
 
     # Region for Vertex AI Gemini calls when `google_genai_use_vertexai` is
@@ -177,16 +176,11 @@ class Settings(BaseSettings):
     gemini_api_key_secret: str = ""
 
     # Transcript turns are signed with HMAC-SHA256 under this secret, so a
-    # turn signed by one instance verifies on any other. When it is unset,
-    # `transcript_hmac_secret_name` is consulted next, and otherwise each
-    # process signs with a random key of its own. `SecretStr` keeps the value
-    # out of `repr()` output and logs.
+    # turn signed by one instance verifies on any other. It is required on
+    # Kubernetes; when it is unset elsewhere, each process signs with a random
+    # key of its own, and a transcript then verifies only on the process that
+    # signed it. `SecretStr` keeps the value out of `repr()` output and logs.
     transcript_hmac_secret: SecretStr = SecretStr("")
-
-    # This Secret Manager secret, named in full or by a short secret ID
-    # resolved against `google_cloud_project`, holds the transcript HMAC
-    # signing secret when `transcript_hmac_secret` is unset.
-    transcript_hmac_secret_name: str = ""
 
     @model_validator(mode="before")
     @classmethod

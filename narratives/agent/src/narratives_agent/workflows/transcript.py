@@ -49,6 +49,7 @@ session store.
 """
 
 import asyncio
+import functools
 import hashlib
 import hmac
 import json
@@ -67,10 +68,7 @@ from pydantic import (
     model_validator,
 )
 
-from narratives_agent.config import (
-    get_gemini_model,
-    get_transcript_hmac_secret,
-)
+from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import (
     LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
@@ -326,66 +324,48 @@ class TranscriptError(Exception):
         self.reason = reason
 
 
-_resolved_signing_key: bytes | None = None
-_fallback_signing_key: bytes | None = None
-
-
+@functools.cache
 def _signing_key() -> bytes:
     """Returns the transcript signing key, resolved once per process.
 
-    The key is read from `TRANSCRIPT_HMAC_SECRET` when set, and otherwise from
-    the Secret Manager secret named by `TRANSCRIPT_HMAC_SECRET_NAME`. When
-    neither is configured, a random key is generated for the life of the
-    process, which suffices for a single local server; on Cloud Run or
-    Kubernetes, where requests reach several instances and instances restart,
-    a warning is logged. If `TRANSCRIPT_HMAC_SECRET_NAME` is configured but
-    Secret Manager does not return a usable secret, an instance-local fallback
-    key is used for the turn without caching it as the resolved key so a later
-    request can retry Secret Manager.
-    """
-    global _resolved_signing_key, _fallback_signing_key
-    if _resolved_signing_key is not None:
-        return _resolved_signing_key
+    The key is `TRANSCRIPT_HMAC_SECRET` when it is set. On Kubernetes, where
+    requests reach several pods and pods restart, a missing secret raises
+    `RuntimeError`. Otherwise it is a random key that lives as long as the
+    process, which suffices for a single local server; on Cloud Run, where
+    requests reach several instances and instances restart, a warning is
+    logged.
 
+    Raises:
+        RuntimeError: `TRANSCRIPT_HMAC_SECRET` is unset on Kubernetes.
+    """
     settings = get_settings()
     secret = settings.transcript_hmac_secret.get_secret_value()
     if secret:
-        _resolved_signing_key = secret.encode("utf-8")
-        return _resolved_signing_key
-
-    sm_secret = get_transcript_hmac_secret()
-    if sm_secret:
-        _resolved_signing_key = sm_secret.encode("utf-8")
-        return _resolved_signing_key
-
-    if settings.transcript_hmac_secret_name:
-        if _fallback_signing_key is None:
-            logger.warning(
-                "TRANSCRIPT_HMAC_SECRET_NAME did not yield a usable secret "
-                "from Secret Manager; using an instance-local fallback key "
-                "until Secret Manager succeeds."
-            )
-            _fallback_signing_key = secrets.token_bytes(_GENERATED_KEY_BYTES)
-        return _fallback_signing_key
-
-    if settings.k_service or settings.kubernetes_service_host:
+        return secret.encode("utf-8")
+    if settings.kubernetes_service_host:
+        raise RuntimeError(
+            "TRANSCRIPT_HMAC_SECRET must be set on Kubernetes so every pod "
+            "signs and verifies transcripts with the same key."
+        )
+    if settings.k_service:
         logger.warning(
             "TRANSCRIPT_HMAC_SECRET is not set, so transcripts are signed "
             "with a key that exists only in this instance. A follow-up turn "
             "that reaches another instance, or arrives after a restart, "
             "fails verification and loses its earlier context. Set "
-            "TRANSCRIPT_HMAC_SECRET or TRANSCRIPT_HMAC_SECRET_NAME to a "
-            "secret shared by every instance."
+            "TRANSCRIPT_HMAC_SECRET to a secret shared by every instance."
         )
-    _resolved_signing_key = secrets.token_bytes(_GENERATED_KEY_BYTES)
-    return _resolved_signing_key
+    return secrets.token_bytes(_GENERATED_KEY_BYTES)
+
+
+def init_signing_key() -> None:
+    """Resolves and caches the transcript signing key at server startup."""
+    _signing_key()
 
 
 def reset_signing_key() -> None:
     """Makes the next signature resolve the signing key again."""
-    global _resolved_signing_key, _fallback_signing_key
-    _resolved_signing_key = None
-    _fallback_signing_key = None
+    _signing_key.cache_clear()
 
 
 def _turn_signature(

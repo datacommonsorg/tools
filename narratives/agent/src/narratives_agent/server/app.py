@@ -30,6 +30,7 @@ from narratives_agent.config import bootstrap_config_from_url
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.server.routes import chat, spa, system
 from narratives_agent.settings import get_settings
+from narratives_agent.workflows.transcript import init_signing_key
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
+    init_signing_key()
     try:
         yield
     finally:

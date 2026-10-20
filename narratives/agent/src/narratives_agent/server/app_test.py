@@ -19,7 +19,8 @@ Verifies that:
 2. FastAPI's generated API documentation routes are absent.
 3. Every GET route also answers HEAD, and a trailing slash returns 404 rather
    than a redirect.
-4. Startup bootstraps the config before the first request.
+4. Startup bootstraps the config and initializes the transcript signing key
+   before the first request.
 5. The lifespan writes buffered telemetry at shutdown.
 """
 
@@ -166,20 +167,28 @@ def test_a_trailing_slash_returns_404(path: str) -> None:
 def test_startup_bootstraps_the_config_before_serving_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Startup config bootstrap in the application lifespan.
-    # Situation: `bootstrap_config_from_url` is stubbed to record calls, and
-    #   the application starts and serves a request.
-    # Expectation: `bootstrap_config_from_url` runs once at startup and is not
-    #   called again on subsequent requests.
-    calls: list[None] = []
+    # Test: Startup config and signing-key bootstrap in the application
+    #   lifespan.
+    # Situation: `bootstrap_config_from_url` and `init_signing_key` are stubbed
+    #   to record calls, and the application starts and serves a request.
+    # Expectation: Both run once at startup and are not called again on
+    #   subsequent requests.
+    calls: list[str] = []
     monkeypatch.setattr(
-        server_app, "bootstrap_config_from_url", lambda: calls.append(None)
+        server_app,
+        "bootstrap_config_from_url",
+        lambda: calls.append("config"),
+    )
+    monkeypatch.setattr(
+        server_app,
+        "init_signing_key",
+        lambda: calls.append("signing_key"),
     )
 
     with TestClient(create_app()) as client:
-        assert calls == [None]
+        assert calls == ["config", "signing_key"]
         assert client.get("/healthz").status_code == 200
-        assert calls == [None]
+        assert calls == ["config", "signing_key"]
 
 
 def test_lifespan_flushes_telemetry_at_shutdown(

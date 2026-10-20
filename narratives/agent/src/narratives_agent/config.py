@@ -41,7 +41,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from narratives_agent.settings import MIN_SECRET_BYTES, get_settings
+from narratives_agent.settings import get_settings
 
 # Setup logging
 logging.basicConfig(
@@ -516,14 +516,10 @@ def render_prompt(prompt: str) -> str:
     return rendered
 
 
-def _fetch_key_from_secret_manager(
-    secret_name: str,
-    env_var: str = "GEMINI_API_KEY_SECRET",
-    min_bytes: int = 0,
-) -> str:
-    """Load a secret string from Secret Manager, or return an empty string.
+def _fetch_key_from_secret_manager(secret_name: str) -> str:
+    """Load the Gemini API key from Secret Manager, or return an empty string.
 
-    The secret payload must contain the bare secret string. `secret_name` may
+    The secret payload must contain the bare API key string. `secret_name` may
     be either a full resource name
     (`projects/<proj>/secrets/<name>/versions/<v>`) or a short secret ID
     resolved against `GOOGLE_CLOUD_PROJECT` at version `latest`. Successful
@@ -540,23 +536,17 @@ def _fetch_key_from_secret_manager(
         now = time.time()
         if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
             return cached[1]
-        return _load_secret(secret_name, now, env_var, min_bytes)
+        return _load_secret(secret_name, now)
 
 
-def _load_secret(
-    secret_name: str,
-    now: float,
-    env_var: str = "GEMINI_API_KEY_SECRET",
-    min_bytes: int = 0,
-) -> str:
+def _load_secret(secret_name: str, now: float) -> str:
     """Reads `secret_name` from Secret Manager and caches a usable key."""
     project = get_settings().google_cloud_project
     if not secret_name.startswith("projects/"):
         if not project:
             logger.error(
                 "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
-                "name in %s",
-                env_var,
+                "name in GEMINI_API_KEY_SECRET"
             )
             return ""
         full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
@@ -573,26 +563,16 @@ def _load_secret(
             return ""
         if key.startswith(("[", '"')):
             logger.error(
-                "%s holds a legacy JSON array of keys; "
-                "re-run ./deploy.sh --bootstrap-secrets to store the bare key",
-                env_var,
+                "GEMINI_API_KEY_SECRET holds a legacy JSON array of keys; "
+                "re-run ./deploy.sh --bootstrap-secrets to store the bare key"
             )
             return ""
         _secret_manager_cache[secret_name] = (now, key)
-        if min_bytes and len(key.encode("utf-8")) < min_bytes:
-            logger.error(
-                "%s secret in Secret Manager is shorter than %d bytes; "
-                "ignoring weak secret",
-                env_var,
-                min_bytes,
-            )
-            return key
-        logger.info("Loaded %s from Secret Manager", env_var)
+        logger.info("Loaded the Gemini API key from Secret Manager")
         return key
     except Exception as e:
         logger.error(
-            "Failed to load %s from Secret Manager (%s)",
-            env_var,
+            "Failed to load GEMINI_API_KEY_SECRET from Secret Manager (%s)",
             type(e).__name__,
         )
         return ""
@@ -623,31 +603,3 @@ def get_gemini_api_key() -> str:
     if not config_key or config_key.startswith(("DEPRECATED", "REPLACE_ME")):
         return ""
     return config_key
-
-
-def get_transcript_hmac_secret() -> str:
-    """Return the transcript HMAC secret from Secret Manager, or `""`.
-
-    Resolves `TRANSCRIPT_HMAC_SECRET_NAME` through Secret Manager when set
-    (accepting either a full `projects/<proj>/secrets/<name>/versions/<v>`
-    resource name or a short secret ID resolved against `GOOGLE_CLOUD_PROJECT`)
-    and verifies that the UTF-8 payload is at least `MIN_SECRET_BYTES` bytes.
-
-    Returns:
-        The stripped secret string when `TRANSCRIPT_HMAC_SECRET_NAME` is set
-        and yields a secret of at least `MIN_SECRET_BYTES` UTF-8 bytes; `""`
-        when `TRANSCRIPT_HMAC_SECRET_NAME` is unset, the Secret Manager lookup
-        fails or returns an empty/non-bare payload, or the secret is shorter
-        than `MIN_SECRET_BYTES` bytes.
-    """
-    secret_name = get_settings().transcript_hmac_secret_name
-    if not secret_name:
-        return ""
-    secret = _fetch_key_from_secret_manager(
-        secret_name,
-        "TRANSCRIPT_HMAC_SECRET_NAME",
-        min_bytes=MIN_SECRET_BYTES,
-    )
-    if not secret or len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
-        return ""
-    return secret
