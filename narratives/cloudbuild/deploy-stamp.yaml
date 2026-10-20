@@ -81,9 +81,10 @@ steps:
         rm -f /workspace/config-bundle/instance.env
 
   - id: sync-config
-    name: gcr.io/cloud-builders/gsutil
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
     args:
-      - '-m'
+      - 'storage'
       - 'rsync'
       - '-r'
       - '-d'
