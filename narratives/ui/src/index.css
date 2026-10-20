@@ -48,7 +48,9 @@
   --radius-card: var(--theme-radius-card, 16px);
   --radius-input: var(--theme-radius-input, 36px);
   --radius-chip: var(--theme-radius-chip, 20px);
-  /* Data Commons chart surfaces. Fixed: not part of the theme schema. */
+  /* Data Commons chart surfaces. Fixed at the components' own corner radius
+     (`--border-radius-primary: 8px` inside their shadow roots): any other
+     value clips their content or leaves mismatched corners. */
   --radius-chart: 8px;
   /* Collapsed prompt box radius is half its 56px height so it reads as a pill.
      Fixed rather than theme-driven because it follows from that height, and

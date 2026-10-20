@@ -102,10 +102,11 @@ export function DataCommonsComponent({
       }
       host.appendChild(el);
       // The shadow root exists once the element is defined and connected
-      // (datacommons.js loads deferred, so it may not be defined yet).
+      // (datacommons.js loads deferred, so it may not be defined yet). The
+      // card can unmount while that is pending; skip it then.
       void customElements.whenDefined(tag).then(() => {
         const root = el.shadowRoot;
-        if (!SHADOW_STYLES || !root) return;
+        if (!SHADOW_STYLES || !root || !el.isConnected) return;
         root.adoptedStyleSheets = [...root.adoptedStyleSheets, SHADOW_STYLES];
       });
       lastAttrsRef.current = { ...attrs };

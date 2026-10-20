@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { dcChartRenderState } from './datacommons_component';
+import { act, cleanup, render } from '@testing-library/react';
+import { createElement } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  DataCommonsComponent,
+  type DataCommonsComponentTagName,
+  dcChartRenderState,
+} from './datacommons_component';
 
 /**
  * Builds a stand-in for a mounted `<datacommons-*>` element whose open shadow
@@ -160,5 +166,79 @@ describe('dcChartRenderState', () => {
         ),
       ),
     ).toBe('drawn');
+  });
+});
+
+/**
+ * Registers a stand-in for a DC component under `tag`. Custom element names
+ * can be defined once per document, so each test uses its own tag.
+ */
+function defineDcStub(tag: DataCommonsComponentTagName, withShadow = true) {
+  customElements.define(
+    tag,
+    class extends HTMLElement {
+      connectedCallback() {
+        if (!withShadow || this.shadowRoot) return;
+        // The component's own styles, which the override must not replace.
+        const own = new CSSStyleSheet();
+        own.replaceSync('.chart-container { margin-top: 20px; }');
+        this.attachShadow({ mode: 'open' }).adoptedStyleSheets = [own];
+      }
+    },
+  );
+}
+
+/** The CSS text of each sheet adopted into the mounted component's shadow root. */
+function adoptedCss(container: HTMLElement, tag: string): string[] {
+  const root = container.querySelector(tag)?.shadowRoot;
+  return (root?.adoptedStyleSheets ?? []).map((sheet) =>
+    [...sheet.cssRules].map((rule) => rule.cssText).join(' '),
+  );
+}
+
+describe('DataCommonsComponent shadow styles', () => {
+  afterEach(cleanup);
+
+  it('adds the override after the component sheets', async () => {
+    defineDcStub('datacommons-bar');
+    const { container } = render(
+      createElement(DataCommonsComponent, { tag: 'datacommons-bar' }),
+    );
+    await act(() => customElements.whenDefined('datacommons-bar'));
+    const css = adoptedCss(container, 'datacommons-bar');
+    expect(css).toHaveLength(2);
+    expect(css[0]).toContain('20px');
+    expect(css[1]).toContain('margin-top: 0');
+  });
+
+  it('adds the override when the component is defined after mount', async () => {
+    // datacommons.js loads deferred, so React can mount the element first.
+    const { container } = render(
+      createElement(DataCommonsComponent, { tag: 'datacommons-pie' }),
+    );
+    defineDcStub('datacommons-pie');
+    await act(() => customElements.whenDefined('datacommons-pie'));
+    expect(adoptedCss(container, 'datacommons-pie')).toHaveLength(2);
+  });
+
+  it('skips a component without a shadow root', async () => {
+    defineDcStub('datacommons-gauge', false);
+    const { container } = render(
+      createElement(DataCommonsComponent, { tag: 'datacommons-gauge' }),
+    );
+    await act(() => customElements.whenDefined('datacommons-gauge'));
+    expect(container.querySelector('datacommons-gauge')?.shadowRoot).toBeNull();
+  });
+
+  it('skips a component that unmounted before it was defined', async () => {
+    const { container, unmount } = render(
+      createElement(DataCommonsComponent, { tag: 'datacommons-map' }),
+    );
+    const el = container.querySelector('datacommons-map');
+    unmount();
+    defineDcStub('datacommons-map');
+    await act(() => customElements.whenDefined('datacommons-map'));
+    expect(el?.isConnected).toBe(false);
+    expect(el?.shadowRoot?.adoptedStyleSheets ?? []).toHaveLength(0);
   });
 });
