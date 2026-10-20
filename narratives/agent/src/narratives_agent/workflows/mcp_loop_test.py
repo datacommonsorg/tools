@@ -611,8 +611,8 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     # Situation: The loop runs once with a `top_n_ranking` classification of
     #   comparison shape, and once with `classification=None`.
     # Expectation: With the classification, the system instruction is the
-    #   `mcp` prompt followed by the pattern directive and comparison sentence;
-    #   without it, the system instruction is the base prompt alone.
+    #   `discovery` prompt followed by the pattern directive and comparison
+    #   sentence; without it, the system instruction is the base prompt alone.
     instructions: list[str] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
@@ -622,7 +622,7 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     monkeypatch.setattr(
         mcp_loop, "async_gemini_request_with_thought_streaming", request
     )
-    config = AgentConfig(prompts=Prompts(mcp="Be an analyst."))
+    config = AgentConfig(prompts=Prompts(discovery="Be an analyst."))
 
     await mcp_loop.execute_mcp_tool_loop(
         _TRANSCRIPT, config, _TOOLS, telemetry, classification=_CLASSIFICATION

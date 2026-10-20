@@ -78,12 +78,12 @@ describe('ReasoningBlock', () => {
     expect(getIndicatorSrc(container)).toBe('/theme/custom-done.svg');
   });
 
-  it('shows the phase label and placeholder body for classify, mcp, synthesis, and done', () => {
+  it('shows the phase label and placeholder body for classify, discovery, synthesis, and done', () => {
     // Test: Phase-specific header copy and placeholder body in ReasoningBlock.
     // Situation: ReasoningBlock renders expanded while streaming in each
     //            pipeline phase with no thoughts and then after completion.
     // Expectation: Each phase renders its label, classify renders its
-    //              non-data placeholder body, mcp renders the data-search
+    //              non-data placeholder body, discovery renders the data-search
     //              placeholder body, and the completed turn renders
     //              `Reasoning details`.
     const { container, rerender } = render(
@@ -94,7 +94,7 @@ describe('ReasoningBlock', () => {
     expect(container.textContent).not.toContain('Searching Data Commons');
 
     rerender(
-      <ReasoningBlock thoughts={[]} defaultOpen streaming status="mcp" />,
+      <ReasoningBlock thoughts={[]} defaultOpen streaming status="discovery" />,
     );
     expect(container.textContent).toContain('Querying data tools…');
     expect(container.textContent).toContain(
@@ -115,14 +115,14 @@ describe('ReasoningBlock', () => {
     // Situation: A streaming block gets one thought, then a second.
     // Expectation: The first thought's words are the same DOM nodes after the
     //              second arrives, and both are wrapped for the reveal.
-    const first = { text: 'Looking up data.', phase: 'mcp' as const };
+    const first = { text: 'Looking up data.', phase: 'discovery' as const };
     const { container, rerender } = render(
       <ReasoningBlock thoughts={[first]} streaming />,
     );
     const before = container.querySelector('.stream-word');
     rerender(
       <ReasoningBlock
-        thoughts={[first, { text: 'Found it.', phase: 'mcp' }]}
+        thoughts={[first, { text: 'Found it.', phase: 'discovery' }]}
         streaming
       />,
     );
@@ -137,7 +137,10 @@ describe('ReasoningBlock', () => {
     // Situation: The block mounts for a turn that is already done.
     // Expectation: No word spans or reveal class are rendered.
     const { container } = render(
-      <ReasoningBlock thoughts={[{ text: 'Done.', phase: 'mcp' }]} done />,
+      <ReasoningBlock
+        thoughts={[{ text: 'Done.', phase: 'discovery' }]}
+        done
+      />,
     );
 
     expect(container.querySelector('.markdown-stream')).toBeNull();

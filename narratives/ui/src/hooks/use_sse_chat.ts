@@ -37,7 +37,7 @@ export interface ToolCallEvent {
 /** A reasoning snippet emitted while the agent works, tagged by pipeline phase. */
 export interface ThoughtEvent {
   text: string;
-  phase: "mcp" | "synthesis";
+  phase: "discovery" | "synthesis";
 }
 
 /**
@@ -186,7 +186,7 @@ export interface ProvenanceItem {
 export type TurnStatus =
   | "idle"
   | "classify"
-  | "mcp"
+  | "discovery"
   | "synthesis"
   | "done"
   | "refused"
@@ -347,7 +347,7 @@ export type ChatStreamEvent =
   | {
       event: "status";
       data: {
-        phase: "classify" | "mcp" | "synthesis" | "chart_config";
+        phase: "classify" | "discovery" | "synthesis" | "chart_config";
         message?: string;
       };
     }
@@ -878,7 +878,7 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
     case "status":
       if (
         evt.data.phase === "classify" ||
-        evt.data.phase === "mcp" ||
+        evt.data.phase === "discovery" ||
         evt.data.phase === "synthesis"
       ) {
         return { ...turn, status: evt.data.phase };

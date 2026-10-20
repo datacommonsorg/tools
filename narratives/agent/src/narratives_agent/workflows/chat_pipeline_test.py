@@ -96,7 +96,7 @@ _CHARTS = {"should_render": True, "charts": [{"title": "Population"}]}
 _FOLLOW_UPS = ["And Spain?"]
 _CONFIG = AgentConfig(
     mcp=McpConfig(enabled=True),
-    prompts=Prompts(mcp="Gather data.", synthesis="Write prose."),
+    prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
 )
 _TRANSCRIPT = Transcript(
     turns=[],
@@ -899,8 +899,8 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     # Situation: `classify_query` returns `Admitted(_CLASSIFICATION)` for a
     #   `single_point` lookup and all subsequent phases succeed.
     # Expectation: The stream opens with a `classify` status frame followed by
-    #   `mcp`, the classification is passed to `execute_mcp_tool_loop`, the
-    #   synthesis system instruction ends with the pattern directive, and
+    #   `discovery`, the classification is passed to `execute_mcp_tool_loop`,
+    #   the synthesis system instruction ends with the pattern directive, and
     #   telemetry records `pattern == "single_point"` and the `classify` phase
     #   duration.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -912,7 +912,7 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     statuses = [
         data["phase"] for event, data in turn.events if event == "status"
     ]
-    assert statuses[:2] == ["classify", "mcp"]
+    assert statuses[:2] == ["classify", "discovery"]
     assert turn.loop_classifications == [_CLASSIFICATION]
     (instruction,) = turn.synthesis_instructions
     assert instruction.startswith("Write prose.")

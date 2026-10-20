@@ -243,8 +243,10 @@ async def _iterate(
     all of that turn's calls have completed, so that `result` holds the
     completed calls if the caller's timeout cancels this coroutine.
     """
-    mcp_prompt = with_pattern_guidance(config.prompts.mcp, classification)
-    role = config.resolve_role_config(GeminiRole.MCP)
+    discovery_prompt = with_pattern_guidance(
+        config.prompts.discovery, classification
+    )
+    role = config.resolve_role_config(GeminiRole.DISCOVERY)
     gemini_tools = _gemini_tools(tools)
     declared = frozenset(tool["name"] for tool in gemini_tools)
     limit = asyncio.Semaphore(MAX_CONCURRENT_TOOL_CALLS)
@@ -269,7 +271,7 @@ async def _iterate(
         try:
             response = await async_gemini_request_with_thought_streaming(
                 messages=contents,
-                system_instruction=mcp_prompt,
+                system_instruction=discovery_prompt,
                 model=role.model,
                 tools=gemini_tools,
                 temperature=role.temperature,
@@ -342,9 +344,9 @@ async def execute_mcp_tool_loop(
     Args:
         transcript: The verified transcript, holding the user's query and
             the conversation context it is resolved against.
-        config: The agent configuration; `prompts.mcp` is the system
-            instruction, `gemini.mcp_model` the model, and
-            `thinking.mcp_level` the thinking level.
+        config: The agent configuration; `prompts.discovery` is the system
+            instruction, `gemini.discovery_model` the model, and
+            `thinking.discovery_level` the thinking level.
         tools: MCP tool definitions available to the model.
         telemetry: The turn's telemetry, which receives token counts, the
             iteration count, and tool names.

@@ -59,7 +59,7 @@ _IDEMPOTENCY_KEY = "test-idempotency-key"
 # cancellation does not interrupt cleanup mid-way.
 _CLEANUP_STEPS = 3
 _EVENTS: list[tuple[EventName, dict[str, Any]]] = [
-    ("status", {"phase": "mcp"}),
+    ("status", {"phase": "discovery"}),
     ("content", {"text": "About 68 million."}),
     ("terminal", {"state": "complete"}),
 ]
@@ -141,7 +141,7 @@ def test_stream_sends_each_event_as_a_typed_frame_byte_for_byte(
 
     assert response.status_code == 200
     assert response.content == (
-        b'id: 1\r\nevent: status\r\ndata: {"phase": "mcp"}\r\n\r\n'
+        b'id: 1\r\nevent: status\r\ndata: {"phase": "discovery"}\r\n\r\n'
         b"id: 2\r\nevent: content\r\n"
         b'data: {"text": "About 68 million."}\r\n\r\n'
         b'id: 3\r\nevent: terminal\r\ndata: {"state": "complete"}\r\n\r\n'
@@ -459,7 +459,7 @@ def test_heartbeat_frames_are_sent_while_the_turn_is_idle(
         return original_heartbeat()
 
     async def slow_turn(transcript: Transcript, emit: Emit) -> None:
-        emit("status", {"phase": "mcp"})
+        emit("status", {"phase": "discovery"})
         async with asyncio.timeout(1):
             await heartbeat_built.wait()
         emit("terminal", {"state": "complete"})

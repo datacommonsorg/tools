@@ -21,8 +21,8 @@
           "format": "uri",
           "default": "https://generativelanguage.googleapis.com/v1beta/models"
         },
-        "mcp_model": {
-          "description": "Model used for the MCP tool-loop / planner.",
+        "discovery_model": {
+          "description": "Model used for the discovery phase, where entities and statistical variables are resolved from the MCP server.",
           "type": "string",
           "default": "gemini-3.8-flash"
         },
@@ -58,8 +58,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "mcp_level": {
-          "description": "Reasoning budget for the tool-loop / planner. Primary cost/latency dial.",
+        "discovery_level": {
+          "description": "Reasoning budget for the discovery phase. Primary cost/latency dial.",
           "type": "string",
           "enum": [
             "low",
@@ -88,7 +88,7 @@
         "classify": {
           "type": "string"
         },
-        "mcp": {
+        "discovery": {
           "type": "string"
         },
         "synthesis": {
