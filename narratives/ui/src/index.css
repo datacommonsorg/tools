@@ -48,6 +48,8 @@
   --radius-card: var(--theme-radius-card, 16px);
   --radius-input: var(--theme-radius-input, 36px);
   --radius-chip: var(--theme-radius-chip, 20px);
+  /* Data Commons chart surfaces. Fixed: not part of the theme schema. */
+  --radius-chart: 8px;
   /* Collapsed prompt box radius is half its 56px height so it reads as a pill.
      Fixed rather than theme-driven because it follows from that height, and
      consumed as `rounded-pill`. */
@@ -429,8 +431,7 @@ select:not(:disabled) {
   max-width: 100%;
   box-sizing: border-box;
   background-color: var(--color-surface);
-  border-radius: 8px;
-  
+  border-radius: var(--radius-chart);
 }
 
 /* ────────────────────────────────────────────────────────────────────
