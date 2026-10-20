@@ -69,6 +69,16 @@ export const API_ROOT: string =
   trimTrailingSlashes(import.meta.env.VITE_DC_API_ROOT ?? '') ||
   'https://datacommons.org';
 
+/**
+ * Overrides adopted into each component's shadow root, which page CSS cannot
+ * reach. Beware of upstream class names changes. Null where constructable
+ * stylesheets are unsupported (Safari < 16.4): those keep the upstream look
+ * rather than failing at module load.
+ */
+const SHADOW_STYLES =
+  'replaceSync' in CSSStyleSheet.prototype ? new CSSStyleSheet() : null;
+SHADOW_STYLES?.replaceSync('.chart-container { margin-top: 0 !important; }');
+
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({
   tag,
@@ -95,6 +105,14 @@ export function DataCommonsComponent({
         else el.setAttribute(k, String(v));
       }
       host.appendChild(el);
+      // The shadow root exists once the element is defined and connected
+      // (datacommons.js loads deferred, so it may not be defined yet). The
+      // card can unmount while that is pending; skip it then.
+      void customElements.whenDefined(tag).then(() => {
+        const root = el.shadowRoot;
+        if (!SHADOW_STYLES || !root || !el.isConnected) return;
+        root.adoptedStyleSheets = [...root.adoptedStyleSheets, SHADOW_STYLES];
+      });
       lastAttrsRef.current = { ...attrs };
       return;
     }
