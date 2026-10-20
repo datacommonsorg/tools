@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
+import { withBaseUrl } from "@/src/config/base_url";
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = "\n\n";
@@ -654,21 +655,15 @@ export interface UseSseChatProps {
 }
 
 /**
- * Resolves the default chat streaming endpoint under Vite's `BASE_URL` so root
- * builds target `/agent/chat/stream` and subpath builds target
- * `/<subpath>/agent/chat/stream`.
- */
-function defaultChatEndpoint(): string {
-  const base = (import.meta.env.BASE_URL || "/").replace(/\/+$/, "");
-  return `${base}/agent/chat/stream`;
-}
-
-/**
  * Streams a chat message to the agent and reduces the SSE events into the
  * controlled `turns` array as they arrive.
  */
 export function useSseChat(props: UseSseChatProps): UseSseChatResult {
-  const { endpoint = defaultChatEndpoint(), turns, setTurns } = props;
+  const {
+    endpoint = withBaseUrl("/agent/chat/stream"),
+    turns,
+    setTurns,
+  } = props;
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);

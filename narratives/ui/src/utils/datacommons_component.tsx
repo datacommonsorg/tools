@@ -3,6 +3,7 @@
  */
 
 import { type RefObject, useEffect, useRef } from 'react';
+import { trimTrailingSlashes } from '@/src/config/base_url';
 
 /**
  * <DataCommonsComponent> — render a Data Commons web component (`<datacommons-*>`).
@@ -65,7 +66,8 @@ export type DataCommonsComponentAttributes = Record<
  * `VITE_DC_API_ROOT` (for example, `https://autopush.datacommons.org`).
  */
 export const API_ROOT: string =
-  import.meta.env.VITE_DC_API_ROOT || 'https://datacommons.org';
+  trimTrailingSlashes(import.meta.env.VITE_DC_API_ROOT ?? '') ||
+  'https://datacommons.org';
 
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({

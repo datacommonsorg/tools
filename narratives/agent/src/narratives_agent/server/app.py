@@ -101,7 +101,7 @@ def create_app() -> FastAPI:
     mounted under a subpath such as `/narratives`):
 
       <base_path>/agent/*       the agent's own API
-      everything else           the SPA
+      <base_path>/*             the SPA
 
     The API routers are included under `<base_path><agent_api_prefix>`.
 

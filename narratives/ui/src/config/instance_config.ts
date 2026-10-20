@@ -21,6 +21,7 @@
  */
 
 import type { MetricsConfig, MetricsTab } from '@/src/types/metrics';
+import { withBaseUrl } from './base_url';
 
 export interface NavLink {
   label: string;
@@ -52,16 +53,6 @@ export interface InstanceConfig {
   metrics: MetricsConfig;
 }
 
-/**
- * Prefixes a built-in public asset filename with Vite's `BASE_URL` so root
- * builds resolve to `/<filename>` and subpath builds resolve to
- * `/<subpath>/<filename>`.
- */
-const withBaseUrl = (filename: string): string => {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
-  return `${base}/${filename.replace(/^\/+/, '')}`;
-};
-
 export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   instanceName: 'Data Commons',
   logoUrl: '/dc-logo.svg',
@@ -82,9 +73,11 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
 
 const getDefaultInstanceConfig = (): Readonly<InstanceConfig> => ({
   ...DEFAULT_INSTANCE_CONFIG,
-  logoUrl: withBaseUrl('dc-logo.svg'),
-  thinkingIndicatorUrl: withBaseUrl('agent-thinking.svg'),
-  doneIndicatorUrl: withBaseUrl('agent-done-thinking.svg'),
+  logoUrl: withBaseUrl(DEFAULT_INSTANCE_CONFIG.logoUrl),
+  thinkingIndicatorUrl: withBaseUrl(
+    DEFAULT_INSTANCE_CONFIG.thinkingIndicatorUrl,
+  ),
+  doneIndicatorUrl: withBaseUrl(DEFAULT_INSTANCE_CONFIG.doneIndicatorUrl),
 });
 
 const INSTANCE_CONFIG_ELEMENT_ID = 'instance-config';
