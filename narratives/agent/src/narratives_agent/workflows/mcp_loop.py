@@ -37,7 +37,7 @@ pipeline turns into a refused turn.
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,8 +45,10 @@ from narratives_agent.config import get_gemini_model
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
+    Message,
     async_gemini_request_with_thought_streaming,
 )
+from narratives_agent.gemini.response import FunctionCall
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.schema import transform_schema_for_gemini
@@ -154,7 +156,7 @@ def _result_text(result: dict[str, Any]) -> str:
 
 
 async def _run_tool(
-    function_call: dict[str, Any],
+    function_call: FunctionCall,
     declared: frozenset[str],
     limit: asyncio.Semaphore,
     telemetry: TurnTelemetry,
@@ -162,7 +164,7 @@ async def _run_tool(
     """Runs one model function call against the MCP server.
 
     Args:
-        function_call: The model's `functionCall` part.
+        function_call: The model's function call.
         declared: Names of the tools declared to the model.
         limit: Bounds how many tool calls run at once.
         telemetry: The turn's telemetry, which receives the tool name.
@@ -175,8 +177,8 @@ async def _run_tool(
     Raises:
         McpLoopError: If the MCP request fails below the tool layer.
     """
-    name = str(function_call.get("name", ""))
-    arguments = function_call.get("args") or {}
+    name = function_call.name
+    arguments = function_call.args
     logger.info("Executing MCP tool: %s", name)
     try:
         async with limit:
@@ -195,7 +197,7 @@ async def _run_tool(
 
 
 async def _run_tools(
-    function_calls: list[dict[str, Any]],
+    function_calls: Sequence[FunctionCall],
     declared: frozenset[str],
     limit: asyncio.Semaphore,
     telemetry: TurnTelemetry,
@@ -254,10 +256,14 @@ async def _iterate(
 
     # The verified window comes first so that a follow-up such as "and for
     # Texas?" is resolved against the places and variables already queried.
-    contents = transcript_contents(
-        transcript,
-        transcript.current_query,
-        max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
+    # The messages are copied into a list of `Message` because the loop
+    # appends each model turn's `GeminiResponse` to it.
+    contents: list[Message] = list(
+        transcript_contents(
+            transcript,
+            transcript.current_query,
+            max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
+        )
     )
 
     for iteration in range(MAX_ITERATIONS):
@@ -282,23 +288,23 @@ async def _iterate(
         except GeminiError as error:
             # The client has already logged the redacted upstream error.
             raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR) from error
-        candidates = response.get("candidates") or []
-        if not candidates:
-            raise McpLoopError("mcp_no_candidates", MCP_NO_RESPONSE)
-
-        parts = candidates[0].get("content", {}).get("parts", [])
-        function_calls = [
-            part["functionCall"] for part in parts if "functionCall" in part
-        ]
+        function_calls = response.function_calls
         if not function_calls:
-            if not any(str(part.get("text", "")).strip() for part in parts):
+            if not response.text.strip():
                 # A reply with neither a tool call nor text is an empty
                 # response rather than a completed answer; continuing would
-                # run synthesis without gathered data.
+                # run synthesis without gathered data. The finish reason is
+                # the only record of why the model produced nothing, for
+                # example MAX_TOKENS or MALFORMED_FUNCTION_CALL.
+                logger.warning(
+                    "MCP model turn produced neither a tool call nor text "
+                    "(finish reason: %s)",
+                    response.finish_reason,
+                )
                 raise McpLoopError("mcp_empty_response", MCP_NO_RESPONSE)
             return
 
-        contents.append({"role": "model", "parts": parts})
+        contents.append(response)
         records = await _run_tools(function_calls, declared, limit, telemetry)
         result.tool_calls.extend(records)
         contents.append(
@@ -354,8 +360,8 @@ async def execute_mcp_tool_loop(
         The gathered tool results, tool-call records, and truncation flag.
 
     Raises:
-        McpLoopError: If a model call fails, the model returns no
-            candidates or an empty reply, an MCP request fails below the
+        McpLoopError: If a model call fails, the model returns a reply with
+            neither a tool call nor text, an MCP request fails below the
             tool layer, or the loop exceeds `MCP_LOOP_TIMEOUT_SECONDS`
             before any tool call completes.
         GeminiBlockedError: If Gemini blocks the prompt or the candidate of an

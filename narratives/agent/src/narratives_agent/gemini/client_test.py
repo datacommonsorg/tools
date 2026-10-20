@@ -35,6 +35,11 @@ from google.genai import types
 from pydantic import BaseModel
 
 from narratives_agent.gemini import client
+from narratives_agent.gemini.response import (
+    FunctionCall,
+    GeminiResponse,
+    StreamChunk,
+)
 from narratives_agent.gemini.schemas import (
     ChartConfigResponse,
     DataValidationResponse,
@@ -439,8 +444,8 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
     #   system instruction, temperature 0.2, and "low" thinking.
     # Expectation: The request sets responseMimeType to "application/json"
     #   with the converted responseSchema, includes the rendered system
-    #   instruction and generation settings, and returns the response in the
-    #   Gemini REST dictionary format with usage metadata.
+    #   instruction and generation settings, and returns a `GeminiResponse`
+    #   whose text is the structured reply.
     answer = json.dumps({"should_render": True, "charts": []})
     gemini.respond(
         _answer(200, json=_response_json([{"text": answer}], _USAGE))
@@ -464,9 +469,8 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
     assert gemini.body()["systemInstruction"]["parts"] == [
         {"text": "rendered:Extract charts."}
     ]
-    text = result["candidates"][0]["content"]["parts"][0]["text"]
-    assert json.loads(text) == {"should_render": True, "charts": []}
-    assert result["usageMetadata"] == _USAGE
+    assert isinstance(result, GeminiResponse)
+    assert json.loads(result.text) == {"should_render": True, "charts": []}
 
 
 @pytest.mark.asyncio
@@ -662,29 +666,70 @@ async def test_the_chart_schema_constrains_each_chart_on_the_wire(
 
 
 @pytest.mark.asyncio
-async def test_an_empty_response_omits_candidates(gemini: _FakeGemini) -> None:
+@pytest.mark.parametrize("mode", ["async_request", "async_thought_streaming"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({"usageMetadata": _USAGE}, id="no-candidates-key"),
+        pytest.param(
+            {"candidates": [], "usageMetadata": _USAGE}, id="empty-list"
+        ),
+    ],
+)
+async def test_a_response_without_candidates_is_empty(
+    gemini: _FakeGemini, mode: str, body: dict[str, Any]
+) -> None:
     # Test: A response with no candidates.
-    # Situation: Gemini returns a body with usage metadata but no candidates.
-    # Expectation: The result has no "candidates" key, matching the REST
-    #   shape that callers test with `"candidates" in response`.
-    gemini.respond(_answer(200, json={"usageMetadata": _USAGE}))
+    # Situation: Gemini returns a body with usage metadata and either no
+    #   `candidates` key or an empty `candidates` list, to the unary request
+    #   and to the thought-streaming request.
+    # Expectation: Both shapes produce the empty `GeminiResponse`: no text,
+    #   no function calls, and no finish reason, because no candidate
+    #   reported one.
+    gemini.respond(_answer(200, json=body))
 
-    result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+    result = await _call(mode)
 
-    assert isinstance(result, dict)
-    assert "candidates" not in result
+    assert result == GeminiResponse()
 
 
 @pytest.mark.asyncio
-async def test_a_thought_stream_without_an_answer_omits_candidates(
+async def test_thought_parts_are_left_out_of_the_text(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: Thought parts on a non-streamed response.
+    # Situation: The candidate carries a thought part, then two text parts.
+    # Expectation: `text` joins the two text parts in order and omits the
+    #   thought.
+    gemini.respond(
+        _answer(
+            200,
+            json=_response_json(
+                [
+                    {"text": "Weighing sources.", "thought": True},
+                    {"text": "California has "},
+                    {"text": "39 million people."},
+                ]
+            ),
+        )
+    )
+
+    result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+
+    assert result.text == "California has 39 million people."
+    assert result.function_calls == ()
+
+
+@pytest.mark.asyncio
+async def test_a_thought_stream_without_an_answer_is_empty(
     gemini: _FakeGemini,
 ) -> None:
     # Test: A streamed reply with neither a function call nor answer text.
     # Situation: The stream delivers only a thought chunk and an empty chunk
-    #   with usage, as an empty or safety-blocked reply does.
-    # Expectation: The thought is still forwarded, but the result has no
-    #   "candidates" key, so it cannot be mistaken for a reply that chose to
-    #   stop calling tools.
+    #   with usage, as an empty reply does.
+    # Expectation: The thought is still forwarded, and the result is the
+    #   empty `GeminiResponse`, so the caller reports an empty reply rather
+    #   than treating the thought as an answer.
     gemini.respond(
         _answer(
             200,
@@ -701,7 +746,26 @@ async def test_a_thought_stream_without_an_answer_omits_candidates(
     )
 
     assert thoughts == ["Considering."]
-    assert "candidates" not in result
+    assert result == GeminiResponse()
+
+
+@pytest.mark.asyncio
+async def test_whitespace_only_streamed_text_is_kept(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: A streamed reply whose only answer text is whitespace.
+    # Situation: The stream delivers one text chunk of whitespace and no
+    #   function call.
+    # Expectation: The result carries that text unchanged; the client does
+    #   not strip or drop it, so whether a blank reply counts as empty is
+    #   the caller's decision.
+    gemini.respond(
+        _answer(200, content=_sse(_response_json([{"text": "  \n"}])))
+    )
+
+    result = await _call("async_thought_streaming")
+
+    assert result == GeminiResponse(text="  \n")
 
 
 @pytest.mark.asyncio
@@ -771,13 +835,10 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     )
 
     assert thoughts == ["Planning ", "the query."]
-    parts = result["candidates"][0]["content"]["parts"]
-    assert parts[0]["functionCall"] == {
-        "name": "get_observations",
-        "args": {"place": "geoId/06"},
-    }
-    assert base64.urlsafe_b64decode(parts[0]["thoughtSignature"]) == _SIGNATURE
-    assert parts[1] == {"text": "Looking up."}
+    assert result.function_calls == (
+        FunctionCall("get_observations", {"place": "geoId/06"}, _SIGNATURE),
+    )
+    assert result.text == "Looking up."
     assert usage == _EXPECTED_USAGE
     request = gemini.sent[0]
     assert "streamGenerateContent" in request.url.path
@@ -792,30 +853,46 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
 
 
 @pytest.mark.asyncio
-async def test_returned_function_call_parts_can_be_sent_back_unchanged(
+async def test_replayed_response_carries_the_thought_signature(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Replaying a model turn in the next tool-loop request.
-    # Situation: The model's function-call part, returned with a thought
-    #   signature, is appended to the history as a model message followed by
-    #   a functionResponse, as the MCP loop does.
-    # Expectation: The next request carries the same thought signature and
-    #   the function response, which Gemini 3 requires to continue the turn.
+    # Situation: The model returns two function calls, the first with a
+    #   thought signature, followed by text. The `GeminiResponse` itself is
+    #   appended to the history as the model turn, followed by a
+    #   functionResponse message, as the MCP loop does.
+    # Expectation: The next request carries the model turn rebuilt as every
+    #   function call in order, with the first call's thought signature
+    #   intact and none on the second, then one text part; and then the
+    #   function response. Gemini 3 requires the signature to continue the
+    #   turn.
     signature = base64.b64encode(_SIGNATURE).decode()
-    function_call = {
-        "functionCall": {"name": "search", "args": {"q": "population"}},
-        "thoughtSignature": signature,
-    }
-    gemini.respond(_answer(200, json=_response_json([function_call])))
+    gemini.respond(
+        _answer(
+            200,
+            json=_response_json(
+                [
+                    {
+                        "functionCall": {
+                            "name": "search",
+                            "args": {"q": "population"},
+                        },
+                        "thoughtSignature": signature,
+                    },
+                    {"functionCall": {"name": "lookup", "args": {}}},
+                    {"text": "Searching."},
+                ]
+            ),
+        )
+    )
     first = await client.async_gemini_request_with_thought_streaming(
         _MESSAGES, "", _MODEL
     )
-    assert isinstance(first, dict)
-    parts = first["candidates"][0]["content"]["parts"]
+    assert isinstance(first, GeminiResponse)
 
-    history = [
+    history: list[client.Message] = [
         *_MESSAGES,
-        {"role": "model", "parts": parts},
+        first,
         {
             "role": "user",
             "parts": [
@@ -834,9 +911,13 @@ async def test_returned_function_call_parts_can_be_sent_back_unchanged(
     )
 
     contents = gemini.body()["contents"]
-    replayed = contents[1]["parts"][0]
+    assert contents[1]["role"] == "model"
+    replayed, second, text = contents[1]["parts"]
     assert base64.urlsafe_b64decode(replayed["thoughtSignature"]) == _SIGNATURE
     assert replayed["functionCall"]["name"] == "search"
+    assert replayed["functionCall"]["args"] == {"q": "population"}
+    assert second == {"functionCall": {"name": "lookup", "args": {}}}
+    assert text == {"text": "Searching."}
     assert contents[2]["parts"][0]["functionResponse"]["response"] == {
         "result": "39M"
     }
@@ -856,24 +937,30 @@ _STREAM_BODY = _sse(
         (
             True,
             [
-                {"type": "thought", "content": "Weighing sources."},
-                {"type": "text", "content": "California has "},
-                {"type": "text", "content": "39 million people."},
+                StreamChunk("thought", "Weighing sources."),
+                StreamChunk("text", "California has "),
+                StreamChunk("text", "39 million people."),
             ],
         ),
-        (False, ["California has ", "39 million people."]),
+        (
+            False,
+            [
+                StreamChunk("text", "California has "),
+                StreamChunk("text", "39 million people."),
+            ],
+        ),
     ],
 )
 async def test_an_async_stream_yields_text_and_records_usage(
-    gemini: _FakeGemini, include_thoughts: bool, expected: list[Any]
+    gemini: _FakeGemini, include_thoughts: bool, expected: list[StreamChunk]
 ) -> None:
     # Test: Asynchronous streaming output.
     # Situation: The stream delivers a thought chunk and two text chunks,
     #   with usage on the last.
-    # Expectation: When include_thoughts is True, the stream yields
-    #   {"type": ..., "content": ...} dicts for both thoughts and text, and
-    #   thought summaries are requested; when False, it yields only plain
-    #   text strings. Token usage is recorded once the stream finishes.
+    # Expectation: When include_thoughts is True, the stream yields a
+    #   `StreamChunk` for the thought and for each text chunk, and thought
+    #   summaries are requested; when False, it yields only the text chunks.
+    #   Token usage is recorded once the stream finishes.
     gemini.respond(_answer(200, content=_STREAM_BODY))
     usage = TokenUsage()
 
@@ -925,7 +1012,7 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
         async for item in stream:
             received.append(item)
 
-    assert received == ["California has "]
+    assert received == [StreamChunk("text", "California has ")]
     assert _FAKE_KEY not in str(raised.value)
     assert "key=[REDACTED]" in str(raised.value)
     assert _FAKE_KEY not in caplog.text
@@ -1173,30 +1260,78 @@ async def test_a_prompt_blocked_response_raises_gemini_blocked_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _MODES)
 async def test_an_unlisted_block_reason_falls_through_as_an_empty_response(
-    gemini: _FakeGemini,
+    gemini: _FakeGemini, mode: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Test: Handling of `promptFeedback.blockReason` values outside
     #   `_BLOCKED_REASONS`.
-    # Situation: Gemini responds with `promptFeedback.blockReason = "OTHER"`.
-    # Expectation: `async_gemini_request` returns a normal response dict with no
-    #   `candidates` key rather than raising `GeminiBlockedError`.
+    # Situation: Gemini responds with `promptFeedback.blockReason = "OTHER"`
+    #   and no candidates, to each entry point.
+    # Expectation: No `GeminiBlockedError` is raised. The response-returning
+    #   entry points return the empty `GeminiResponse` and the stream yields
+    #   nothing, and each logs one WARNING naming `OTHER`, because the reply
+    #   carries no finish reason that would otherwise explain why it is
+    #   empty.
     gemini.respond(
         _answer(200, json={"promptFeedback": {"blockReason": "OTHER"}})
     )
 
-    result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
+    with caplog.at_level(logging.WARNING, logger=client.logger.name):
+        result = await _call(mode)
+        if mode == "async_stream":
+            assert [item async for item in result] == []
+        else:
+            assert result == GeminiResponse()
 
-    assert "candidates" not in result
+    assert [record.levelno for record in caplog.records] == [logging.WARNING]
+    assert "blocked by OTHER" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_normalize_response_includes_candidate_finish_reason(
+async def test_an_unlisted_block_reason_after_output_is_logged_once(
+    gemini: _FakeGemini, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Test: `promptFeedback.blockReason` outside `_BLOCKED_REASONS` on a
+    #   chunk after the first of `async_gemini_stream`.
+    # Situation: The stream delivers a text chunk, then a chunk carrying
+    #   `promptFeedback.blockReason = "OTHER"` with usage and no candidates.
+    # Expectation: The text is yielded, the stream ends without raising, one
+    #   WARNING names `OTHER`, and the usage is recorded; the plain stream
+    #   checks later chunks for a withheld reason as it does for a block.
+    gemini.respond(
+        _answer(
+            200,
+            content=_sse(
+                _response_json([{"text": "Partial"}]),
+                {
+                    "promptFeedback": {"blockReason": "OTHER"},
+                    "usageMetadata": _USAGE,
+                },
+            ),
+        )
+    )
+    usage = TokenUsage()
+
+    with caplog.at_level(logging.WARNING, logger=client.logger.name):
+        stream = await _call("async_stream", token_usage=usage)
+        items = [item async for item in stream]
+
+    assert items == [StreamChunk("text", "Partial")]
+    assert [record.levelno for record in caplog.records] == [logging.WARNING]
+    assert "blocked by OTHER" in caplog.text
+    assert usage == _EXPECTED_USAGE
+
+
+@pytest.mark.asyncio
+async def test_an_empty_candidate_keeps_its_finish_reason(
     gemini: _FakeGemini,
 ) -> None:
-    # Test: Preservation of `finishReason` on normalized candidates.
-    # Situation: Gemini returns a candidate with `finishReason = "MAX_TOKENS"`.
-    # Expectation: `result["candidates"][0]["finishReason"]` is `"MAX_TOKENS"`.
+    # Test: A candidate with no parts on the non-streamed path.
+    # Situation: Gemini returns a candidate with `finishReason = "MAX_TOKENS"`
+    #   and an empty `parts` list.
+    # Expectation: The response is empty, with no text and no function
+    #   calls, and `finish_reason` is `"MAX_TOKENS"`.
     gemini.respond(
         _answer(
             200,
@@ -1213,8 +1348,7 @@ async def test_normalize_response_includes_candidate_finish_reason(
 
     result = await client.async_gemini_request(_MESSAGES, "", _MODEL)
 
-    assert isinstance(result, dict)
-    assert result["candidates"][0]["finishReason"] == "MAX_TOKENS"
+    assert result == GeminiResponse(finish_reason="MAX_TOKENS")
 
 
 @pytest.mark.asyncio
@@ -1366,7 +1500,7 @@ async def test_thought_streaming_blocked_after_output_raises_blocked_error(
         "OTHER",
     ],
 )
-async def test_non_safety_finish_reason_without_parts_omits_candidates(
+async def test_an_empty_stream_keeps_a_non_safety_finish_reason(
     gemini: _FakeGemini, reason: str
 ) -> None:
     # Test: Non-safety candidate `finishReason` values on an empty streamed
@@ -1374,9 +1508,10 @@ async def test_non_safety_finish_reason_without_parts_omits_candidates(
     # Situation: Gemini ends `async_gemini_request_with_thought_streaming` with
     #   a non-safety `finishReason` (`RECITATION`, `MALFORMED_FUNCTION_CALL`,
     #   `MAX_TOKENS`, `STOP`, or `OTHER`) and no function calls or answer text.
-    # Expectation: The call returns a dict with no `"candidates"` key rather
-    #   than raising `GeminiBlockedError`, so the caller treats the empty
-    #   generation as a model error rather than a safety refusal.
+    # Expectation: The call returns an empty response carrying that finish
+    #   reason rather than raising `GeminiBlockedError`, so the caller treats
+    #   the empty generation as a model error rather than a safety refusal
+    #   and can log why the model produced nothing.
     gemini.respond(
         _answer(
             200,
@@ -1396,7 +1531,7 @@ async def test_non_safety_finish_reason_without_parts_omits_candidates(
 
     result = await _call("async_thought_streaming")
 
-    assert "candidates" not in result
+    assert result == GeminiResponse(finish_reason=reason)
 
 
 @pytest.mark.asyncio
@@ -1462,6 +1597,6 @@ async def test_an_async_stream_blocked_mid_stream_raises_blocked_error(
         async for item in stream:
             received.append(item)
 
-    assert received == [{"type": "thought", "content": "Weighing sources."}]
+    assert received == [StreamChunk("thought", "Weighing sources.")]
     assert raised.value.block_reason == expected_reason
     assert usage == _EXPECTED_USAGE

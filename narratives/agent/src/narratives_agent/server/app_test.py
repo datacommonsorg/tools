@@ -238,3 +238,66 @@ def test_lifespan_flushes_telemetry_at_shutdown(
         assert flushes == []
 
     assert flushes == [None]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/healthz",
+        "/narratives/healthz",
+        "/narratives/agent/health",
+    ],
+)
+def test_base_path_mounts_api_and_health_routes_under_subpath(
+    path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: API and health routes when `BASE_PATH` is set.
+    # Situation: `BASE_PATH` is `/narratives` and a client sends GET and HEAD
+    #   requests to `/healthz`, `/narratives/healthz`, and
+    #   `/narratives/agent/health`.
+    # Expectation: Each route answers 200 on both GET and HEAD, while the
+    #   unprefixed `/agent/health` route answers 404.
+    monkeypatch.setenv("BASE_PATH", "/narratives")
+    monkeypatch.setattr(system, "mcp_url", lambda: "http://mcp.test/mcp")
+    monkeypatch.setattr(system, "mcp_capabilities", lambda: Capabilities())
+    client = TestClient(create_app())
+
+    get_response = client.get(path)
+    head_response = client.head(path)
+
+    assert get_response.status_code == 200
+    assert head_response.status_code == 200
+    assert head_response.content == b""
+    assert client.get("/agent/health").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("request_path", "expected_location"),
+    [
+        ("/narratives", "/narratives/"),
+        ("/narratives?q=india&tab=metrics", "/narratives/?q=india&tab=metrics"),
+    ],
+)
+def test_base_path_without_trailing_slash_redirects_relatively(
+    request_path: str,
+    expected_location: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Redirect from `BASE_PATH` without a trailing slash.
+    # Situation: `BASE_PATH` is `/narratives` and a client requests
+    #   `/narratives` (with or without a query string) via GET and HEAD.
+    # Expectation: The server answers 307 with a root-relative `Location`
+    #   header pointing to `/narratives/` (preserving any query string) rather
+    #   than an absolute `http://` URL.
+    monkeypatch.setenv("BASE_PATH", "/narratives")
+    client = TestClient(create_app())
+
+    get_response = client.get(request_path, follow_redirects=False)
+    head_response = client.head(request_path, follow_redirects=False)
+
+    assert get_response.status_code == 307
+    assert get_response.headers["location"] == expected_location
+    assert head_response.status_code == 307
+    assert head_response.headers["location"] == expected_location
+    assert head_response.content == b""

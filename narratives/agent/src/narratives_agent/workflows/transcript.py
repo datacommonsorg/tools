@@ -726,17 +726,6 @@ def _fallback_summary(previous: str | None, evicted: Sequence[Turn]) -> str:
     return "\n".join(lines)[-MAX_SUMMARY_CHARS:]
 
 
-def _response_text(response: dict[str, Any]) -> str:
-    """Returns the text of a Gemini response, or "" when it has none."""
-    candidates = response.get("candidates") or []
-    if not candidates:
-        return ""
-    parts = candidates[0].get("content", {}).get("parts", [])
-    return "".join(
-        str(part.get("text", "")) for part in parts if not part.get("thought")
-    )
-
-
 async def _compact(
     previous: str | None,
     evicted: Sequence[Turn],
@@ -795,10 +784,12 @@ async def _compact(
             type(error).__name__,
         )
         return _fallback_summary(previous, evicted)
-    summary = _response_text(response).strip()
+    summary = response.text.strip()
     if not summary:
         logger.warning(
-            "Compaction returned no summary text; using the structured summary"
+            "Compaction returned no summary text (finish reason: %s); using "
+            "the structured summary",
+            response.finish_reason,
         )
         return _fallback_summary(previous, evicted)
     return summary[:MAX_SUMMARY_CHARS]

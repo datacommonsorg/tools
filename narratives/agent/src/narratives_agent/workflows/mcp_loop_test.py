@@ -17,29 +17,32 @@ Verifies that:
 1. The loop ends when the model answers without function calls.
 2. The session scope is opened before any tool call, and every call of one
    model turn runs concurrently.
-3. A model error, a response without candidates, an empty reply, an MCP
+3. A model error, a reply with neither a tool call nor text, an MCP
    transport failure, and a wall-clock timeout before any tool call
    completes end the loop with `McpLoopError` carrying a fixed, user-safe
-   message.
+   message; an empty reply is logged with its finish reason.
 4. Reaching `MAX_ITERATIONS` or the wall-clock timeout after a tool call has
    completed returns the completed calls, flagged truncated.
 5. Tool calls in flight are bounded by `MAX_CONCURRENT_TOOL_CALLS`, and
    telemetry records only declared tool names.
 6. A tool call's status is derived from the shape of its result.
 7. The first request carries the verified window as alternating messages,
-   with earlier answers shortened, then the scopes and the current query.
+   with earlier answers shortened, then the scopes and the current query;
+   the next request replays the model's response and the tool results.
 8. A classification appends its pattern directive to the system instruction,
    and a prompt that Gemini blocks propagates out of the loop as the client's
    `GeminiBlockedError`.
 """
 
 import asyncio
+import logging
 from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
 
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
+from narratives_agent.gemini.response import FunctionCall, GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TurnTelemetry
@@ -64,25 +67,16 @@ _TOOLS = [
 _UPSTREAM_ERROR = "HTTP 500: internal detail that must not reach the user"
 
 
-def _text_turn(text: str) -> dict[str, Any]:
+def _text_turn(text: str) -> GeminiResponse:
     """Returns a model response that answers with text alone."""
-    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+    return GeminiResponse(text=text)
 
 
-def _tool_turn(*names: str) -> dict[str, Any]:
+def _tool_turn(*names: str) -> GeminiResponse:
     """Returns a model response that calls each named tool once."""
-    return {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {"functionCall": {"name": name, "args": {"q": name}}}
-                        for name in names
-                    ]
-                }
-            }
-        ]
-    }
+    return GeminiResponse(
+        function_calls=tuple(FunctionCall(name, {"q": name}) for name in names)
+    )
 
 
 @pytest.fixture
@@ -119,10 +113,10 @@ def model_answers(
     Gemini client raises on a failed or blocked request.
     """
 
-    def install(*responses: dict[str, Any] | Exception) -> None:
+    def install(*responses: GeminiResponse | Exception) -> None:
         remaining = list(responses)
 
-        async def request(**kwargs: Any) -> dict[str, Any]:
+        async def request(**kwargs: Any) -> GeminiResponse:
             response = remaining.pop(0)
             if isinstance(response, Exception):
                 raise response
@@ -205,39 +199,46 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
         pytest.param(
             GeminiError(_UPSTREAM_ERROR), "mcp_model_error", id="model-error"
         ),
-        pytest.param({"candidates": []}, "mcp_no_candidates", id="empty"),
-        pytest.param({}, "mcp_no_candidates", id="no-candidates-key"),
+        pytest.param(GeminiResponse(), "mcp_empty_response", id="empty"),
         pytest.param(
-            {"candidates": [{"content": {"parts": []}}]},
+            GeminiResponse(finish_reason="MALFORMED_FUNCTION_CALL"),
             "mcp_empty_response",
-            id="no-parts",
+            id="empty-with-finish-reason",
         ),
         pytest.param(_text_turn("  \n"), "mcp_empty_response", id="blank-text"),
     ],
 )
 @pytest.mark.asyncio
 async def test_unusable_model_response_fails_closed(
-    response: dict[str, Any] | Exception,
+    response: GeminiResponse | Exception,
     error_type: str,
     calls: list[str],
     model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Fail-closed handling of an unusable model response.
     # Situation: After one successful tool turn, the model call raises
-    #   `GeminiError`, or returns an empty candidate list, no candidates at
-    #   all, a candidate with no parts, or a candidate whose only text is
-    #   blank.
+    #   `GeminiError`, or returns a reply with neither a tool call nor text:
+    #   with no finish reason, with `MALFORMED_FUNCTION_CALL`, or with only
+    #   blank text.
     # Expectation: The loop raises `McpLoopError` with the matching type and
     #   a message that does not carry the upstream error text, instead of
-    #   returning the partial results.
+    #   returning the partial results. An empty reply is logged at WARNING
+    #   with its finish reason, so that the log says why the model produced
+    #   nothing.
     model_answers(_tool_turn("first"), response)
 
-    with pytest.raises(mcp_loop.McpLoopError) as raised:
+    with (
+        caplog.at_level(logging.WARNING, logger=mcp_loop.logger.name),
+        pytest.raises(mcp_loop.McpLoopError) as raised,
+    ):
         await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
 
     assert raised.value.error_type == error_type
     assert _UPSTREAM_ERROR not in str(raised.value)
+    if isinstance(response, GeminiResponse):
+        assert f"finish reason: {response.finish_reason}" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -254,7 +255,7 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
     #   the hung model call is canceled.
     canceled = asyncio.Event()
 
-    async def hung_request(**kwargs: Any) -> dict[str, Any]:
+    async def hung_request(**kwargs: Any) -> GeminiResponse:
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -288,7 +289,7 @@ async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
     #   text, with `truncated` set, rather than raising an exception.
     responses = [_tool_turn("first")]
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         if responses:
             return responses.pop(0)
         await asyncio.Event().wait()
@@ -489,7 +490,7 @@ async def test_the_first_request_carries_the_transcript(
     #   ends with a user message holding the scope and the current query.
     sent: list[list[dict[str, Any]]] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         sent.append(list(kwargs["messages"]))
         return _text_turn("Done.")
 
@@ -536,6 +537,48 @@ async def test_the_first_request_carries_the_transcript(
     )
 
 
+@pytest.mark.asyncio
+async def test_the_next_request_replays_the_response_and_the_results(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: The conversation sent after a tool turn.
+    # Situation: The model calls one tool, then answers with text.
+    # Expectation: The second request carries the first request's messages,
+    #   then the model's `GeminiResponse` itself as the model turn, then a
+    #   user message holding the tool result as a functionResponse.
+    sent: list[list[Any]] = []
+    tool_turn = _tool_turn("first")
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        sent.append(list(kwargs["messages"]))
+        return tool_turn if len(sent) == 1 else _text_turn("Done.")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+
+    await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+
+    first, second = sent
+    assert second == [
+        *first,
+        tool_turn,
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "functionResponse": {
+                        "name": "first",
+                        "response": {"result": "first result"},
+                    }
+                }
+            ],
+        },
+    ]
+
+
 _CLASSIFICATION = QueryClassification.model_validate(
     {
         "serviceable": True,
@@ -560,7 +603,7 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     #   without it, the system instruction is the base prompt alone.
     instructions: list[str] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         instructions.append(kwargs["system_instruction"])
         return _text_turn("Done.")
 
