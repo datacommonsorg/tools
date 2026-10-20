@@ -53,7 +53,8 @@ def credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_public_data_commons_gets_the_api_key(url: str) -> None:
     # Test: Credential selection for public Data Commons endpoints.
     # Situation: The target URL points to an allowlisted public Data Commons
-    #   host (`api.datacommons.org` or `datacommons.org`).
+    #   host (`api.datacommons.org`, `autopush.api.datacommons.org`,
+    #   `staging.api.datacommons.org`, or `datacommons.org`).
     # Expectation: `attach_auth` sets the `X-API-Key` header to `DC_API_KEY`
     #   and does not attach an `Authorization` Bearer token.
     headers: dict[str, str] = {}

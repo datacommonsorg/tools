@@ -31,7 +31,7 @@ Verifies that:
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,14 +80,9 @@ class _Request:
 
 
 @pytest.fixture(autouse=True)
-def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Signs with a fixed secret and resolves the key afresh per test."""
+def signing_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Signs with a fixed secret for each test."""
     monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET", _SECRET)
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
-    transcript.reset_signing_key()
-    yield
-    transcript.reset_signing_key()
 
 
 def _candidates(text: str) -> dict[str, Any]:

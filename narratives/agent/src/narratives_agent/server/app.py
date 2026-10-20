@@ -52,8 +52,9 @@ def _allowed_origins() -> list[str]:
             origin.strip() for origin in configured.split(",") if origin.strip()
         ]
 
-    # K_SERVICE is set by Cloud Run; its presence means "not local dev".
-    if settings.k_service:
+    # K_SERVICE (Cloud Run) and KUBERNETES_SERVICE_HOST (GKE) indicate a
+    # deployed environment rather than local development.
+    if settings.k_service or settings.kubernetes_service_host:
         logger.error(
             "ALLOWED_ORIGIN is unset in a deployed environment; refusing to "
             "allow all origins. Set it to the service URL."
@@ -85,9 +86,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     importing the application in a test or a tool installs no global tracer
     provider. Spans that are still buffered are written at shutdown.
     """
+    init_signing_key()
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
-    init_signing_key()
     try:
         yield
     finally:

@@ -29,7 +29,12 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     result, so without this a test would see the environment of whichever test
     or import called them first rather than the variables it sets itself.
     """
-    monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+    for var in (
+        "K_SERVICE",
+        "KUBERNETES_SERVICE_HOST",
+        "TRANSCRIPT_HMAC_SECRET",
+    ):
+        monkeypatch.delenv(var, raising=False)
     get_settings.cache_clear()
     reset_signing_key()
     yield
