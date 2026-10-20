@@ -81,7 +81,7 @@ steps:
         rm -f /workspace/config-bundle/instance.env
 
   - id: sync-config
-    name: gcr.io/cloud-builders/gsutil
+    name: gcr.io/cloud-builders/gcloud
     args:
       - '-m'
       - 'rsync'
