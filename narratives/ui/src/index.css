@@ -413,13 +413,8 @@ select:not(:disabled) {
 .dc-chart-card {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  /* Provide an opaque background so parent container tints do not show through
-     the transparent Data Commons web components (which are isolated in shadow
-     roots). */
-  background-color: var(--color-surface);
-  border-radius: var(--radius-card);
 }
+
 .dc-chart-card datacommons-line,
 .dc-chart-card datacommons-bar,
 .dc-chart-card datacommons-ranking,
@@ -434,6 +429,8 @@ select:not(:disabled) {
   max-width: 100%;
   box-sizing: border-box;
   background-color: var(--color-surface);
+  border-radius: 8px;
+  
 }
 
 /* ────────────────────────────────────────────────────────────────────

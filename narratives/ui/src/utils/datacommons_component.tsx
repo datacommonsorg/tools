@@ -65,6 +65,13 @@ export type DataCommonsComponentAttributes = Record<
  */
 export const API_ROOT = 'https://datacommons.org';
 
+/**
+ * Overrides adopted into each component's shadow root, which page CSS cannot
+ * reach. Beware of upstream class names changes.
+ */
+const SHADOW_STYLES = new CSSStyleSheet();
+SHADOW_STYLES.replaceSync('.chart-container { margin-top: 0 !important; }');
+
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({
   tag,
@@ -91,6 +98,11 @@ export function DataCommonsComponent({
         else el.setAttribute(k, String(v));
       }
       host.appendChild(el);
+      // The shadow root exists once the element is defined and connected
+      // (datacommons.js loads deferred, so it may not be defined yet).
+      void customElements.whenDefined(tag).then(() => {
+        el.shadowRoot?.adoptedStyleSheets.push(SHADOW_STYLES);
+      });
       lastAttrsRef.current = { ...attrs };
       return;
     }
@@ -119,7 +131,7 @@ export function DataCommonsComponent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   });
 
-  return <div ref={hostRef} />;
+  return <div ref={hostRef} className='dc-chart-card-wapper'/>;
 }
 
 /**
