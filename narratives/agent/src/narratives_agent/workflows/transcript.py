@@ -68,9 +68,8 @@ from pydantic import (
     model_validator,
 )
 
-from narratives_agent.config_model import AgentConfig
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
-    LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
     GeminiError,
     async_gemini_request,
@@ -112,7 +111,6 @@ DATE_PATTERN = r"^[0-9]{4}(-[0-9]{2}){0,2}$"
 # has already streamed when compaction runs, so a slow call falls back to
 # the structured summary rather than delaying the terminal event further.
 COMPACTION_TIMEOUT_SECONDS = 5
-_COMPACTION_TEMPERATURE = 0.1
 _SUMMARY_WORD_BUDGET = 300
 # Maximum characters of each evicted answer quoted to the compaction model.
 _COMPACTION_RESPONSE_CHARS = 4_000
@@ -740,6 +738,7 @@ async def _compact(
         fallback summary when the model call fails, times out, or returns
         no text.
     """
+    role = config.resolve_role_config(GeminiRole.COMPACTION)
     try:
         async with asyncio.timeout(COMPACTION_TIMEOUT_SECONDS):
             response = await async_gemini_request(
@@ -752,9 +751,9 @@ async def _compact(
                     }
                 ],
                 system_instruction=_COMPACTION_INSTRUCTION,
-                model=config.gemini.mcp_model,
-                temperature=_COMPACTION_TEMPERATURE,
-                thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+                model=role.model,
+                temperature=role.temperature,
+                thinking_level=role.thinking_level,
                 token_usage=token_usage,
             )
     except TimeoutError:

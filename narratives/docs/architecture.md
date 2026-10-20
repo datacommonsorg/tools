@@ -246,9 +246,13 @@ the first available source:
 
 Whichever source applies, the loaded document is parsed once by
 `narratives_agent/config_model.py` into a frozen `AgentConfig`, and the
-workflows read typed fields from it (for example `config.gemini.mcp_model`)
+workflows read typed fields from it (for example `config.prompts.synthesis`)
 rather than the document itself; a value of the wrong type is reported at load
-time and replaced by its default.
+time and replaced by its default. Each Gemini call resolves its model,
+temperature, and thinking level through
+`config.resolve_role_config(GeminiRole.<ROLE>)`, which combines the configured
+models and thinking levels with the per-role settings fixed in
+`config_model.py`.
 
 For the Gemini API key (`get_gemini_api_key()`):
 

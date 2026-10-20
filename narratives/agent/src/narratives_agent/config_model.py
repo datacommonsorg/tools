@@ -19,15 +19,27 @@ local `config.json`), layers the prompt bodies into it, and calls
 `AgentConfig`, so the document's shape, the type of each value, and the
 default that applies when a value is absent are known in this one module.
 Field names follow the JSON keys, so `config.thinking.mcp_level` is
-`thinking.mcp_level` in the document. This module does no I/O and does not
-import `config.py`.
+`thinking.mcp_level` in the document.
+
+The module also holds the Gemini settings of every role in the agent loop.
+`GeminiRole` names the roles, `_ROLE_TEMPERATURES` and
+`_FIXED_THINKING_LEVELS` hold the settings that the document cannot change,
+and `AgentConfig.resolve_role_config` combines them with the configured
+models and thinking levels into the `RoleConfig` that the workflows pass to
+the Gemini client, raising a thinking level that the role's model does not
+accept to the lowest level it does. Every model and reasoning setting the
+agent relies on can therefore be read from this one module. This module
+does no I/O and does not import `config.py`.
 """
 
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
+from enum import Enum
 from types import MappingProxyType
 from typing import Any
+
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +47,117 @@ logger = logging.getLogger(__name__)
 # blank. The parser applies them, so no reader spells its own default.
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
+
+# Thinking level of the tool loop and synthesis when agent-config.json omits
+# `thinking.mcp_level` or `thinking.synthesis_level`. It matches the
+# `"default"` that `schemas/agent-config.schema.json` declares for both keys.
+DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
+
+
+class GeminiRole(Enum):
+    """Reasoning roles across the agent loop."""
+
+    CLASSIFY = "classify"
+    MCP = "mcp"
+    SYNTHESIS = "synthesis"
+    CHART_CONFIG = "chart_config"
+    CHART_VALIDATION = "chart_validation"
+    FOLLOW_UP = "follow_up"
+    COMPACTION = "compaction"
+
+
+@dataclass(frozen=True)
+class RoleConfig:
+    """Model, sampling temperature, and thinking level for one Gemini role."""
+
+    model: str
+    temperature: float
+    thinking_level: types.ThinkingLevel
+
+
+# Sampling temperature of each role. agent-config.json cannot change these.
+_ROLE_TEMPERATURES: Mapping[GeminiRole, float] = {
+    GeminiRole.CLASSIFY: 0.0,
+    GeminiRole.MCP: 0.2,
+    GeminiRole.SYNTHESIS: 0.3,
+    GeminiRole.CHART_CONFIG: 0.2,
+    GeminiRole.CHART_VALIDATION: 0.0,
+    # A higher temperature varies the phrasing of the follow-up questions.
+    GeminiRole.FOLLOW_UP: 0.8,
+    GeminiRole.COMPACTION: 0.1,
+}
+
+# Thinking level of the roles that agent-config.json cannot change. `MCP` and
+# `SYNTHESIS` are absent because they read `thinking.mcp_level` and
+# `thinking.synthesis_level`. `CLASSIFY` asks for the least reasoning
+# because it returns a short structured verdict on every turn;
+# `_clamp_thinking_level` raises it on a model that does not accept
+# `MINIMAL`.
+_FIXED_THINKING_LEVELS: Mapping[GeminiRole, types.ThinkingLevel] = {
+    GeminiRole.CLASSIFY: types.ThinkingLevel.MINIMAL,
+    GeminiRole.CHART_CONFIG: types.ThinkingLevel.LOW,
+    GeminiRole.CHART_VALIDATION: types.ThinkingLevel.LOW,
+    GeminiRole.FOLLOW_UP: types.ThinkingLevel.LOW,
+    GeminiRole.COMPACTION: types.ThinkingLevel.LOW,
+}
+
+# The thinking levels that `thinking.mcp_level` and `thinking.synthesis_level`
+# accept, keyed by their configuration string. They match the `enum` that
+# `schemas/agent-config.schema.json` declares for both keys; `MINIMAL` is
+# excluded because the default `gemini.mcp_model` rejects it.
+_CONFIGURABLE_THINKING_LEVELS: Mapping[str, types.ThinkingLevel] = {
+    "low": types.ThinkingLevel.LOW,
+    "medium": types.ThinkingLevel.MEDIUM,
+    "high": types.ThinkingLevel.HIGH,
+}
+
+# Name prefixes of the models that the Gemini model documentation lists as
+# accepting `ThinkingLevel.MINIMAL`. Every other text model in that table
+# requires at least `LOW` and rejects `MINIMAL` with HTTP 400. The API does
+# not report the levels a model accepts (`Model.thinking` is a boolean), so
+# this list is the only source; a model it does not name runs at `LOW` or
+# above, which every model accepts.
+_MINIMAL_THINKING_MODEL_PREFIXES = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3-flash-preview",
+)
+
+# Thinking levels from the least to the most reasoning, for comparing a
+# requested level with a model's floor.
+_THINKING_LEVEL_ORDER = (
+    types.ThinkingLevel.MINIMAL,
+    types.ThinkingLevel.LOW,
+    types.ThinkingLevel.MEDIUM,
+    types.ThinkingLevel.HIGH,
+)
+
+
+def _lowest_thinking_level(model: str) -> types.ThinkingLevel:
+    """Returns the lowest thinking level that `model` accepts.
+
+    `model` is a bare name or a `models/` or Vertex AI resource path; only
+    its final path segment is matched against the prefixes.
+    """
+    name = model.rsplit("/", 1)[-1]
+    if name.startswith(_MINIMAL_THINKING_MODEL_PREFIXES):
+        return types.ThinkingLevel.MINIMAL
+    return types.ThinkingLevel.LOW
+
+
+def _clamp_thinking_level(
+    level: types.ThinkingLevel, model: str
+) -> types.ThinkingLevel:
+    """Returns `level`, raised to the lowest level `model` accepts if below it.
+
+    A level at or above the floor is returned unchanged; the clamp never
+    lowers a level. `level` is one of `_THINKING_LEVEL_ORDER`; the parser
+    and the role tables produce nothing else.
+    """
+    floor = _lowest_thinking_level(model)
+    if _THINKING_LEVEL_ORDER.index(level) < _THINKING_LEVEL_ORDER.index(floor):
+        return floor
+    return level
 
 
 @dataclass(frozen=True)
@@ -69,15 +192,16 @@ class McpConfig:
 
 @dataclass(frozen=True)
 class ThinkingLevels:
-    """Holds the `thinking` section: the reasoning level of each model phase.
+    """Holds the `thinking` section: the configurable thinking levels.
 
-    The levels are passed to the Gemini client as strings. The client maps
-    them to `types.ThinkingLevel` and selects `"low"` for a value it does not
-    recognize; an empty level leaves the model's own default in place.
+    `mcp_level` applies to the tool loop and `synthesis_level` to synthesis.
+    The parser accepts `"low"`, `"medium"`, and `"high"` and falls back to
+    `DEFAULT_THINKING_LEVEL` for any other value. The other roles run at the
+    levels in `_FIXED_THINKING_LEVELS`.
     """
 
-    mcp_level: str = "low"
-    synthesis_level: str = "low"
+    mcp_level: types.ThinkingLevel = DEFAULT_THINKING_LEVEL
+    synthesis_level: types.ThinkingLevel = DEFAULT_THINKING_LEVEL
 
 
 @dataclass(frozen=True)
@@ -124,6 +248,36 @@ class AgentConfig:
                 "template_vars",
                 MappingProxyType(dict(self.template_vars)),
             )
+
+    def resolve_role_config(self, role: GeminiRole) -> RoleConfig:
+        """Returns the model, temperature, and thinking level of `role`.
+
+        `CLASSIFY` runs on `gemini.classify_model` and every other role on
+        `gemini.mcp_model`. `MCP` and `SYNTHESIS` think at
+        `thinking.mcp_level` and `thinking.synthesis_level`; the other roles
+        think at their level in `_FIXED_THINKING_LEVELS`. A level below the
+        lowest the role's model accepts is raised to that floor, so the
+        classifier runs at `LOW` on a model that rejects `MINIMAL` rather
+        than failing its call on every turn and leaving the turn
+        unclassified. Every role samples at its temperature in
+        `_ROLE_TEMPERATURES`.
+        """
+        model = (
+            self.gemini.classify_model
+            if role is GeminiRole.CLASSIFY
+            else self.gemini.mcp_model
+        )
+        if role is GeminiRole.MCP:
+            thinking_level = self.thinking.mcp_level
+        elif role is GeminiRole.SYNTHESIS:
+            thinking_level = self.thinking.synthesis_level
+        else:
+            thinking_level = _FIXED_THINKING_LEVELS[role]
+        return RoleConfig(
+            model=model,
+            temperature=_ROLE_TEMPERATURES[role],
+            thinking_level=_clamp_thinking_level(thinking_level, model),
+        )
 
 
 def _read_section(document: Mapping[str, Any], key: str) -> Mapping[str, Any]:
@@ -204,6 +358,34 @@ def _read_bool(
     return default
 
 
+def _read_thinking_level(
+    section: Mapping[str, Any], key: str, default: types.ThinkingLevel
+) -> types.ThinkingLevel:
+    """Returns the thinking level under `thinking.<key>`, or `default`.
+
+    A string is stripped, lowercased, and matched against
+    `_CONFIGURABLE_THINKING_LEVELS` rather than passed to
+    `types.ThinkingLevel`, whose constructor returns a pseudo-member for an
+    unknown string instead of raising. A value that is present but not a
+    string, or not one of the accepted levels, is reported once with its
+    dotted key and replaced by `default`.
+    """
+    if key not in section:
+        return default
+    value = section[key]
+    if isinstance(value, str):
+        level = _CONFIGURABLE_THINKING_LEVELS.get(value.strip().lower())
+        if level is not None:
+            return level
+    logger.warning(
+        "Agent configuration key %r is not one of %s; using %r",
+        f"thinking.{key}",
+        list(_CONFIGURABLE_THINKING_LEVELS),
+        default.value.lower(),
+    )
+    return default
+
+
 def _read_template_vars(document: Mapping[str, Any]) -> dict[str, str]:
     """Returns `template_vars` with every value coerced to a string.
 
@@ -267,14 +449,11 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
             enabled=_read_bool(mcp, "mcp", "enabled", McpConfig.enabled),
         ),
         thinking=ThinkingLevels(
-            mcp_level=_read_string(
-                thinking, "thinking", "mcp_level", ThinkingLevels.mcp_level
+            mcp_level=_read_thinking_level(
+                thinking, "mcp_level", ThinkingLevels.mcp_level
             ),
-            synthesis_level=_read_string(
-                thinking,
-                "thinking",
-                "synthesis_level",
-                ThinkingLevels.synthesis_level,
+            synthesis_level=_read_thinking_level(
+                thinking, "synthesis_level", ThinkingLevels.synthesis_level
             ),
         ),
         prompts=Prompts(

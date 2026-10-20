@@ -95,21 +95,6 @@ _NO_PROJECT_ERROR = (
     "GOOGLE_CLOUD_PROJECT environment variable is not set"
 )
 
-# "minimal" is used by the classifier on gemini-3.5-flash-lite;
-# gemini-3.7-flash and gemini-3.8-flash reject "minimal" and require at
-# least "low".
-_THINKING_LEVELS = {
-    "minimal": types.ThinkingLevel.MINIMAL,
-    "low": types.ThinkingLevel.LOW,
-    "medium": types.ThinkingLevel.MEDIUM,
-    "high": types.ThinkingLevel.HIGH,
-}
-_DEFAULT_THINKING_LEVEL = "low"
-
-# Thinking level for the small structured calls that run after the answer:
-# chart configuration, chart validation, and follow-up questions.
-LIGHTWEIGHT_THINKING_LEVEL = "low"
-
 # `promptFeedback.blockReason` values that represent an input content-policy or
 # Model Armor refusal:
 # - `SAFETY`: Prompt exceeded a Gemini harm-category safety threshold.
@@ -416,28 +401,6 @@ def _report_withheld(block_reason: str, model: str) -> None:
     )
 
 
-def build_thinking_config(
-    thinking_value: str, include_thoughts: bool = False
-) -> types.ThinkingConfig:
-    """Builds the thinking configuration for Gemini 3 models.
-
-    Args:
-        thinking_value: Thinking level: "minimal", "low", "medium", or "high",
-            in any case. Any other value selects "low".
-        include_thoughts: Whether the response includes thought summaries.
-
-    Returns:
-        The `ThinkingConfig` for `GenerateContentConfig`.
-    """
-    level = _THINKING_LEVELS.get(
-        thinking_value.lower(), _THINKING_LEVELS[_DEFAULT_THINKING_LEVEL]
-    )
-    return types.ThinkingConfig(
-        thinking_level=level,
-        include_thoughts=True if include_thoughts else None,
-    )
-
-
 def _model_turn(response: GeminiResponse) -> types.Content:
     """Rebuilds a response as the model turn of the next request.
 
@@ -488,31 +451,39 @@ def _normalize_tools(
     return [types.Tool(function_declarations=declarations)]
 
 
+def _thinking_config(
+    thinking_level: types.ThinkingLevel | None, include_thoughts: bool
+) -> types.ThinkingConfig | None:
+    """Returns the thinking settings of a request, or `None` to send none.
+
+    With no level and no thought summaries requested, the model keeps its
+    own thinking settings; with summaries alone, it keeps its own level.
+    `include_thoughts` is omitted rather than sent as `False`.
+    """
+    if thinking_level is None and not include_thoughts:
+        return None
+    return types.ThinkingConfig(
+        thinking_level=thinking_level,
+        include_thoughts=True if include_thoughts else None,
+    )
+
+
 def _build_config(
     system_instruction: str,
     tools: Sequence[dict[str, Any]] | None,
     temperature: float,
-    thinking_level: str | None,
+    thinking_level: types.ThinkingLevel | None,
     response_schema: ResponseSchema | None,
     include_thoughts: bool,
 ) -> types.GenerateContentConfig:
     """Builds the `GenerateContentConfig` shared by every entry point."""
-    thinking_config: types.ThinkingConfig | None = None
-    if thinking_level:
-        thinking_config = build_thinking_config(
-            thinking_level, include_thoughts
-        )
-    elif include_thoughts:
-        # No level given: request thought summaries only, so the model keeps
-        # its own default thinking level.
-        thinking_config = types.ThinkingConfig(include_thoughts=True)
     return types.GenerateContentConfig(
         temperature=temperature,
         system_instruction=(
             render_prompt(system_instruction) if system_instruction else None
         ),
         tools=_normalize_tools(tools),
-        thinking_config=thinking_config,
+        thinking_config=_thinking_config(thinking_level, include_thoughts),
         response_mime_type=(
             "application/json" if response_schema is not None else None
         ),
@@ -547,7 +518,7 @@ async def _prepare_call(
     model: str,
     tools: Sequence[dict[str, Any]] | None,
     temperature: float,
-    thinking_level: str | None,
+    thinking_level: types.ThinkingLevel | None,
     response_schema: ResponseSchema | None,
     include_thoughts: bool,
 ) -> _GeminiCall:
@@ -789,7 +760,7 @@ async def async_gemini_request(
     model: str,
     tools: Sequence[dict[str, Any]] | None = None,
     temperature: float = 0.3,
-    thinking_level: str | None = None,
+    thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
 ) -> GeminiResponse:
@@ -852,7 +823,7 @@ async def async_gemini_stream(
     model: str,
     tools: Sequence[dict[str, Any]] | None = None,
     temperature: float = 0.3,
-    thinking_level: str | None = None,
+    thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     include_thoughts: bool = False,
@@ -939,7 +910,7 @@ async def async_gemini_request_with_thought_streaming(
     model: str,
     tools: Sequence[dict[str, Any]] | None = None,
     temperature: float = 0.3,
-    thinking_level: str | None = None,
+    thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,
     token_usage: TokenUsage | None = None,
     thought_callback: Callable[[str], None] | None = None,

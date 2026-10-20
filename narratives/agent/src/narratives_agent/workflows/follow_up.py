@@ -20,9 +20,8 @@ import logging
 import re
 from typing import Any
 
-from narratives_agent.config_model import AgentConfig
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
-    LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
     GeminiError,
     async_gemini_request,
@@ -65,7 +64,7 @@ async def generate_follow_up_questions(
     if not topics or not user_message:
         return []
 
-    model = config.gemini.mcp_model
+    role = config.resolve_role_config(GeminiRole.FOLLOW_UP)
     system_prompt = config.prompts.follow_up
     if not system_prompt:
         logger.warning(
@@ -84,9 +83,9 @@ Generate the self-contained follow-up questions now."""
         response = await async_gemini_request(
             messages=[{"role": "user", "parts": [{"text": prompt}]}],
             system_instruction=system_prompt,
-            model=model,
-            temperature=0.8,  # higher for varied phrasing
-            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             response_schema=FOLLOW_UP_SCHEMA,
             token_usage=token_usage,
         )
