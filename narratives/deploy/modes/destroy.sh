@@ -39,8 +39,13 @@ run_destroy() {
         -backend-config="prefix=custom-datacommons/${INSTANCE}" \
         -reconfigure
     # The same guard the apply path uses: never destroy resources belonging to
-    # another deployment.
-    if ! terraform show -json 2>/dev/null | python3 ../../../deploy/check-state-owner.py "$INSTANCE"; then
+    # another deployment. Status 3 -- a service under a name this module has
+    # since changed -- is this deployment's own, and a teardown removes it
+    # whatever it is called, so only a foreign state stops one.
+    local STATE_CHECK=0
+    terraform show -json 2>/dev/null \
+        | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
+    if [ "$STATE_CHECK" -ne 0 ] && [ "$STATE_CHECK" -ne 3 ]; then
         log_error "Refusing to destroy: the loaded state describes a different deployment."
         return 1
     fi

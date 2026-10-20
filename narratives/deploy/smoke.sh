@@ -50,7 +50,10 @@ c1() {
     local code
     code=$(curl_cmd -sS -o "$TMP/home.html" -w '%{http_code}' "$URL/")
     [ "$code" = "200" ] || { echo "homepage HTTP $code"; return 1; }
-    grep -q '<title>' "$TMP/home.html" || { echo "no <title>"; return 1; }
+    # `<title` without the closing bracket: the shipped page is
+    # `<title id="theme-title">`, which the theme fills in, and a literal
+    # `<title>` has not matched it since static theming landed.
+    grep -q '<title' "$TMP/home.html" || { echo "no <title>"; return 1; }
     echo "homepage 200"
 }
 check 1 c1
