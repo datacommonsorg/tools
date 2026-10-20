@@ -21,6 +21,7 @@
  */
 
 import type { MetricsConfig, MetricsTab } from '@/src/types/metrics';
+import { withBaseUrl } from './base_url';
 
 export interface NavLink {
   label: string;
@@ -69,6 +70,15 @@ export const DEFAULT_INSTANCE_CONFIG: Readonly<InstanceConfig> = {
   ],
   metrics: { tabs: [] },
 };
+
+const getDefaultInstanceConfig = (): Readonly<InstanceConfig> => ({
+  ...DEFAULT_INSTANCE_CONFIG,
+  logoUrl: withBaseUrl(DEFAULT_INSTANCE_CONFIG.logoUrl),
+  thinkingIndicatorUrl: withBaseUrl(
+    DEFAULT_INSTANCE_CONFIG.thinkingIndicatorUrl,
+  ),
+  doneIndicatorUrl: withBaseUrl(DEFAULT_INSTANCE_CONFIG.doneIndicatorUrl),
+});
 
 const INSTANCE_CONFIG_ELEMENT_ID = 'instance-config';
 const LOG_PREFIX = '[instance-config]';
@@ -165,7 +175,7 @@ const pick = <T>(
 };
 
 const mergeOverrides = (raw: Record<string, unknown>): InstanceConfig => {
-  const defaults = DEFAULT_INSTANCE_CONFIG;
+  const defaults = getDefaultInstanceConfig();
   const splashAssets = pick('splash_assets', raw.splash_assets, isRecord, {});
   const hasCustomIdentity =
     raw.logo !== undefined || raw.instance_name !== undefined;
@@ -267,7 +277,9 @@ export const getInstanceConfig = (): Readonly<InstanceConfig> => {
   if (cachedConfig === null) {
     const overrides = readOverrides();
     cachedConfig =
-      overrides === null ? DEFAULT_INSTANCE_CONFIG : mergeOverrides(overrides);
+      overrides === null
+        ? getDefaultInstanceConfig()
+        : mergeOverrides(overrides);
   }
   return cachedConfig;
 };
