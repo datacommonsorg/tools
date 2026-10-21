@@ -67,11 +67,15 @@ export function MenuDrawer() {
   return (
     <>
       {/* Click-outside backdrop, dimmed because the panel floats over
-          full-width content. */}
-      <div
-        className="lg:hidden fixed inset-0 z-10 bg-scrim/30"
+          full-width content. A button rather than a div so the click target
+          is a real control, and hidden from assistive technology with no tab
+          stop, because the close button beside it does the same job. */}
+      <button
+        type="button"
+        className="lg:hidden fixed inset-0 z-10 bg-scrim/30 cursor-default"
         onClick={closeDrawer}
         aria-hidden="true"
+        tabIndex={-1}
       />
 
       <aside
