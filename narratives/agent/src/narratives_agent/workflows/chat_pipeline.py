@@ -50,6 +50,7 @@ from narratives_agent.mcp.data_utils import (
     check_data_availability,
     extract_provenance_from_mcp_results,
 )
+from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import TerminalState, TurnTelemetry
 from narratives_agent.workflows.chart_config import (
     get_chart_config,
@@ -67,6 +68,7 @@ from narratives_agent.workflows.mcp_loop import (
 )
 from narratives_agent.workflows.messages import (
     CHART_CONFIG_STATUS,
+    CHAT_DISABLED,
     CLASSIFY_STATUS,
     INTERNAL_ERROR,
     MCP_STATUS,
@@ -573,6 +575,8 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     error_type: str | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
+        if not get_settings().enable_chat:
+            raise TurnAbortedError("chat_disabled", CHAT_DISABLED)
         config = _load_turn_config()
         emit("status", {"phase": "classify", "message": CLASSIFY_STATUS})
         with telemetry.phase("classify"):

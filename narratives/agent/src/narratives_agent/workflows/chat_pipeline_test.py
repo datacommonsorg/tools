@@ -74,6 +74,7 @@ from narratives_agent.workflows.classify import (
 )
 from narratives_agent.workflows.mcp_loop import McpLoopError, McpLoopResult
 from narratives_agent.workflows.messages import (
+    CHAT_DISABLED,
     CLASSIFY_STATUS,
     INTERNAL_ERROR,
     MCP_UNAVAILABLE,
@@ -1169,3 +1170,41 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     assert terminal["reason"] == "synthesis_stream_error"
     assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [("error", "synthesis_stream_error")]
+
+
+@pytest.mark.asyncio
+async def test_run_turn_aborts_immediately_when_chat_is_disabled(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: `ENABLE_CHAT` off switch in `run_turn`.
+    # Situation: `ENABLE_CHAT` is set to `"false"`.
+    # Expectation: `run_turn` emits only a single `error` terminal frame with
+    #   `reason="chat_disabled"` and `CHAT_DISABLED`, makes no classifier, MCP,
+    #   or synthesis calls, and records `("error", "chat_disabled")` in
+    #   telemetry.
+    monkeypatch.setenv("ENABLE_CHAT", "false")
+
+    async def fail_classify(*args: Any, **kwargs: Any) -> Admitted:
+        pytest.fail("classify_query should not run when chat is disabled")
+
+    async def fail_tools() -> list[dict[str, Any]]:
+        pytest.fail("async_get_tools should not run when chat is disabled")
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", fail_classify)
+    monkeypatch.setattr(mcp_client, "async_get_tools", fail_tools)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events == [
+        (
+            "terminal",
+            {
+                "state": "error",
+                "idempotency_key": _IDEMPOTENCY_KEY,
+                "error": CHAT_DISABLED,
+                "reason": "chat_disabled",
+            },
+        )
+    ]
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [("error", "chat_disabled")]

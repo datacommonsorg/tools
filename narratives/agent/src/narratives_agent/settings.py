@@ -176,6 +176,11 @@ class Settings(BaseSettings):
     # against Vertex AI instead of using a Gemini API key.
     google_genai_use_vertexai: _EnvBool = False
 
+    # When false, `/agent/chat/stream` aborts every turn with reason
+    # `chat_disabled` before making any Gemini or MCP calls.
+    # Acts as an application-level emergency off switch.
+    enable_chat: _EnvBool = True
+
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`
     # in config.json applies.

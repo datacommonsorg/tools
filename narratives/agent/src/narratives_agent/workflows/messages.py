@@ -32,6 +32,7 @@ OFF_DOMAIN_TEMPLATE = (
 )
 
 # Error messages carried on `terminal` SSE frames with `state == "error"`.
+CHAT_DISABLED = "Chat is temporarily unavailable. Please try again later."
 SYNTHESIS_FAILED = "The response could not be generated. Please try again."
 MCP_UNAVAILABLE = "The data service is unavailable. Please try again."
 MCP_TOOLS_TIMEOUT = "The data service did not respond. Please try again."
