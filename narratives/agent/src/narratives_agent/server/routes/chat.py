@@ -94,7 +94,7 @@ async def _turn_events(
 ) -> AsyncGenerator[ServerSentEvent]:
     """Runs the turn in a task and yields its events as they arrive.
 
-    The turn runs in its own task because the MCP phase reports model
+    The turn runs in its own task because the discovery phase reports model
     thoughts through a callback while it awaits the model, so its events
     cannot be yielded from the awaiting code itself. They pass through an
     `asyncio.Queue` that this generator drains. When the generator stops
