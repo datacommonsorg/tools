@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from narratives_agent.config import load_config
-from narratives_agent.config_model import AgentConfig
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -99,8 +99,6 @@ CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
 # `tools/list` request, which must not hold the turn for the MCP client's full
 # request timeout.
 MCP_TOOLS_TIMEOUT_SECONDS = 20
-
-_SYNTHESIS_TEMPERATURE = 0.3
 
 # This source is cited when observation tools ran but reported no
 # `sourceMetadata`; see `run_mcp_phase`.
@@ -322,6 +320,7 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
     """
     ctx.emit("status", {"phase": "synthesis", "message": SYNTHESIS_STATUS})
     config = ctx.config
+    role = config.resolve_role_config(GeminiRole.SYNTHESIS)
     # The verified window comes first, with earlier answers in full, then
     # the current query with the MCP context.
     messages = transcript_contents(
@@ -334,9 +333,9 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
             system_instruction=with_pattern_guidance(
                 config.prompts.synthesis, ctx.classification
             ),
-            model=config.gemini.mcp_model,
-            temperature=_SYNTHESIS_TEMPERATURE,
-            thinking_level=config.thinking.synthesis_level,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             token_usage=ctx.telemetry.tokens,
             include_thoughts=True,
         )

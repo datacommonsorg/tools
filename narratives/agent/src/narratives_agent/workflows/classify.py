@@ -28,7 +28,7 @@ from typing import Literal
 
 from pydantic import ValidationError
 
-from narratives_agent.config_model import AgentConfig
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -54,12 +54,6 @@ type RefusedReason = Literal["adversarial", "off_domain", "safety_blocked"]
 # Upper bound in seconds for the classification model call before the turn
 # proceeds unclassified.
 CLASSIFY_TIMEOUT_SECONDS = 10
-
-_CLASSIFY_TEMPERATURE = 0.0
-# Sent on every classifier call; the configured `gemini.classify_model`
-# must support `ThinkingLevel.MINIMAL` (see `_THINKING_LEVELS` in
-# `gemini/client.py`).
-_CLASSIFY_THINKING_LEVEL = "minimal"
 
 # Maximum character length for the sanitized premise quoted in an off-domain
 # refusal message.
@@ -142,14 +136,15 @@ async def _request_classification(
         transcript.current_query,
         max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
     )
+    role = config.resolve_role_config(GeminiRole.CLASSIFY)
     try:
         async with asyncio.timeout(CLASSIFY_TIMEOUT_SECONDS):
             response = await async_gemini_request(
                 messages=messages,
                 system_instruction=prompt,
-                model=config.gemini.classify_model,
-                temperature=_CLASSIFY_TEMPERATURE,
-                thinking_level=_CLASSIFY_THINKING_LEVEL,
+                model=role.model,
+                temperature=role.temperature,
+                thinking_level=role.thinking_level,
                 response_schema=QueryClassification,
                 token_usage=telemetry.tokens,
             )

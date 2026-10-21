@@ -28,6 +28,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import pytest
+from google.genai import types
 
 from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
@@ -279,10 +280,10 @@ async def test_chart_calls_request_the_low_thinking_level(
 ) -> None:
     # Test: The thinking level that the chart calls send to Gemini.
     # Situation: The chart configuration and chart validation calls run.
-    # Expectation: Each requests "low". `gemini-3.8-flash` rejects "minimal"
-    #   with a 400 error. These calls catch that error and return no charts,
-    #   so the failure would be silent.
-    levels: list[str | None] = []
+    # Expectation: Each requests `ThinkingLevel.LOW`. `gemini-3.8-flash`
+    #   rejects `MINIMAL` with a 400 error. These calls catch that error and
+    #   return no charts, so the failure would be silent.
+    levels: list[types.ThinkingLevel | None] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
@@ -292,4 +293,4 @@ async def test_chart_calls_request_the_low_thinking_level(
 
     await call()
 
-    assert levels == ["low"]
+    assert levels == [types.ThinkingLevel.LOW]

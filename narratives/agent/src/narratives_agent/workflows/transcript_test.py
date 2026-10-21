@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from google.genai import types
 from pydantic import ValidationError
 
 from narratives_agent.config_model import AgentConfig
@@ -216,7 +217,7 @@ async def test_compaction_extends_the_previous_summary(
     assert "Assistant: Answer 1" in prompt
     assert "Question 2" not in prompt
     assert "Total Population (Count_Person)" in prompt
-    assert call["thinking_level"] == "low"
+    assert call["thinking_level"] is types.ThinkingLevel.LOW
     assert call["temperature"] <= 0.2
     assert call["token_usage"] is tokens
 

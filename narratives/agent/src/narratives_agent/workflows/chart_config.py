@@ -19,9 +19,8 @@ import json
 import logging
 from typing import Any
 
-from narratives_agent.config_model import AgentConfig
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
-    LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
     GeminiError,
     async_gemini_request,
@@ -63,7 +62,7 @@ async def get_chart_config(
         The parsed chart configuration, or `{"should_render": False}` if the
         request fails or its response cannot be parsed.
     """
-    mcp_model = config.gemini.mcp_model
+    role = config.resolve_role_config(GeminiRole.CHART_CONFIG)
 
     prompt = f"""Based on the data query and results, determine chart \
 configurations.
@@ -106,9 +105,9 @@ Set should_render to false if no meaningful data for visualization."""
                 "variables together and separating incompatible ones into "
                 "multiple charts."
             ),
-            model=mcp_model,
-            temperature=0.2,
-            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             response_schema=CHART_CONFIG_SCHEMA,
             token_usage=token_usage,
         )
@@ -173,7 +172,7 @@ async def validate_data_response(
         token_usage: Optional turn totals that receive the call's token
             counts.
     """
-    model = config.gemini.mcp_model
+    role = config.resolve_role_config(GeminiRole.CHART_VALIDATION)
 
     prompt = f"""User asked: {user_message}
 
@@ -191,9 +190,9 @@ Return false if the response says data is "not available", "not found", \
             system_instruction=(
                 "You validate if a response contains actual data."
             ),
-            model=model,
-            temperature=0,
-            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             response_schema=DATA_VALIDATION_SCHEMA,
             token_usage=token_usage,
         )
@@ -201,20 +200,20 @@ Return false if the response says data is "not available", "not found", \
         logger.warning(
             "Data validation blocked (%s) on %s, hiding charts.",
             error.block_reason,
-            model,
+            role.model,
         )
         return False
     except GeminiError:
         # The client has already logged the redacted upstream error.
         logger.warning(
-            "Data validation request to %s failed, hiding charts.", model
+            "Data validation request to %s failed, hiding charts.", role.model
         )
         return False
     if not response.text.strip():
         logger.error(
             "Data validation got no text from %s (finish reason: %s), hiding "
             "charts.",
-            model,
+            role.model,
             response.finish_reason,
         )
         return False

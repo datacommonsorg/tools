@@ -59,8 +59,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       signed transcripts (`transcript.py`).
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
-    - `config_model.py`: the frozen `AgentConfig` dataclasses and the parser
-      that applies the defaults; the workflows read configuration from it.
+    - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
+      that applies the defaults, and the per-role Gemini model, temperature,
+      and thinking-level settings (`GeminiRole`,
+      `AgentConfig.resolve_role_config`); the workflows read configuration
+      from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.

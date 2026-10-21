@@ -17,6 +17,7 @@ import logging
 from typing import Any
 
 import pytest
+from google.genai import types
 
 from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
@@ -33,10 +34,10 @@ async def test_follow_ups_request_the_low_thinking_level(
     # Test: The thinking level that follow-up generation sends to Gemini.
     # Situation: The configuration carries a `follow_up` prompt, and follow-up
     #   questions are generated for a question with one related topic.
-    # Expectation: The request asks for "low". `gemini-3.8-flash` rejects
-    #   "minimal" with a 400 error. This call catches that error and returns
-    #   no questions, so the failure would be silent.
-    levels: list[str | None] = []
+    # Expectation: The request asks for `ThinkingLevel.LOW`. `gemini-3.8-flash`
+    #   rejects `MINIMAL` with a 400 error. This call catches that error and
+    #   returns no questions, so the failure would be silent.
+    levels: list[types.ThinkingLevel | None] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
@@ -50,7 +51,7 @@ async def test_follow_ups_request_the_low_thinking_level(
         _CONFIG,
     )
 
-    assert levels == ["low"]
+    assert levels == [types.ThinkingLevel.LOW]
 
 
 @pytest.mark.asyncio
