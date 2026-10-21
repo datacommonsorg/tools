@@ -25,7 +25,7 @@ import `config.py`.
 
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any
 
@@ -93,6 +93,12 @@ class Prompts:
     mcp: str = ""
     synthesis: str = ""
     follow_up: str = ""
+
+
+# Prompt slots, derived from the fields of `Prompts` so the loader and the
+# typed model share one list of slot names. Bodies are authored as
+# `prompts/<slot>.md` in `defaults/prompts/` and in the config bucket.
+PROMPT_SLOTS: tuple[str, ...] = tuple(f.name for f in fields(Prompts))
 
 
 @dataclass(frozen=True)
@@ -210,12 +216,12 @@ def _read_template_vars(document: Mapping[str, Any]) -> dict[str, str]:
     for key, value in _read_section(document, "template_vars").items():
         if key.startswith("_"):
             continue
-        if isinstance(value, (str, int, float)):
+        if isinstance(value, (str, int, float, bool)):
             template_vars[key] = str(value)
         else:
             logger.warning(
-                "Agent configuration key %r is not a string or a number; "
-                "ignoring it",
+                "Agent configuration key %r is not a string, a number, or a "
+                "boolean; ignoring it",
                 f"template_vars.{key}",
             )
     return template_vars

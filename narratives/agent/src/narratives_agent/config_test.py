@@ -48,6 +48,7 @@ import requests
 
 from narratives_agent import config
 from narratives_agent.config_model import (
+    PROMPT_SLOTS,
     AgentConfig,
     GeminiConfig,
     McpConfig,
@@ -220,7 +221,7 @@ def test_prompt_urls_are_derived_from_the_config_url(
 
     # All slots share the same base directory URL and differ only in filename.
     assert fetch.urls[0] == expected
-    assert len(fetch.urls) == len(config.PROMPT_SLOTS)
+    assert len(fetch.urls) == len(PROMPT_SLOTS)
 
 
 @pytest.mark.parametrize(
@@ -505,7 +506,7 @@ def _write_defaults(
         (prompts_dir / f"{slot}.md").write_text(body, encoding="utf-8")
 
 
-_DEFAULT_PROMPTS = {slot: f"Default {slot}." for slot in config.PROMPT_SLOTS}
+_DEFAULT_PROMPTS = {slot: f"Default {slot}." for slot in PROMPT_SLOTS}
 
 
 def test_bootstrap_holds_the_fetched_config_in_memory(
@@ -660,6 +661,44 @@ def test_load_config_warns_about_an_unknown_inline_prompt_slot(
         "'classfy'" in message and "'classify'" in message
         for message in warning_messages
     )
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+@pytest.mark.parametrize(
+    ("prompts_value", "expected_key"),
+    [
+        ("not-an-object", "'prompts'"),
+        ({"classify": 123}, "'prompts.classify'"),
+        ({"classify": "   "}, "'prompts.classify'"),
+    ],
+    ids=["section not an object", "slot not a string", "slot blank"],
+)
+def test_load_config_warns_about_an_unusable_inline_prompt(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+    prompts_value: object,
+    expected_key: str,
+) -> None:
+    # Test: Unusable inline `prompts` values in `_layer_prompts`.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` has a
+    #   non-object `prompts` section or a `classify` entry that is not a
+    #   non-empty string, and `defaults_dir` holds all four default prompts.
+    # Expectation: Every slot carries the default body, one warning names the
+    #   unusable key, and no error is logged.
+    (agent_root / "config.json").write_text(
+        json.dumps({"prompts": prompts_value}), "utf-8"
+    )
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == AgentConfig(prompts=Prompts(**_DEFAULT_PROMPTS))
+    warning_messages = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert [expected_key in message for message in warning_messages] == [True]
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 

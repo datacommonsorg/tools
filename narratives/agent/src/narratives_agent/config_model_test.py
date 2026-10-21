@@ -262,12 +262,13 @@ def test_template_vars_are_coerced_to_strings(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: `template_vars` coercion in `parse_agent_config`.
-    # Situation: `template_vars` holds a string, an integer, a float, a
-    #   boolean, a `_comment` entry, a null value, and a nested object.
-    # Expectation: The string is kept, the number-like values are rendered
-    #   with `str`, the `_comment` entry is dropped without a warning, and the
-    #   null and nested values are dropped with one warning each naming the
-    #   key.
+    # Situation: `template_vars` holds a string, an integer, a float, `True`
+    #   and `False` booleans, a `_comment` entry, a null value, and a nested
+    #   object.
+    # Expectation: The string is kept, the numeric and boolean values are
+    #   rendered with `str`, the `_comment` entry is dropped without a warning,
+    #   and the null and nested values are dropped with one warning each naming
+    #   the key.
     with caplog.at_level(logging.WARNING):
         parsed = parse_agent_config(
             {
@@ -276,6 +277,7 @@ def test_template_vars_are_coerced_to_strings(
                     "count": 7,
                     "ratio": 0.5,
                     "flag": True,
+                    "disabled": False,
                     "_comment": "notes for humans",
                     "missing": None,
                     "nested": {"a": 1},
@@ -288,6 +290,7 @@ def test_template_vars_are_coerced_to_strings(
         "count": "7",
         "ratio": "0.5",
         "flag": "True",
+        "disabled": "False",
     }
     warnings = _warnings(caplog)
     assert len(warnings) == 2

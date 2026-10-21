@@ -35,6 +35,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from typing import Any
 
 import httpx2
@@ -257,13 +258,17 @@ async def test_the_first_operation_stores_the_server_issued_session(
     #   "session-1" in the `mcp-session-id` response header and either answers
     #   or rejects the post-handshake `ping`.
     # Expectation: The tool list is returned, "session-1" is stored in the
-    #   caller's scope, and `notifications/initialized` is flushed before the
-    #   connection closes.
+    #   caller's scope, `initialize` carries the `narratives-agent` package
+    #   name and version, and `notifications/initialized` is flushed before
+    #   the connection closes.
     server.reject_ping = reject_ping
 
     assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
     assert client.get_session_id() == "session-1"
+    assert [
+        r.params["clientInfo"] for r in server.received_for("initialize")
+    ] == [{"name": "narratives-agent", "version": version("narratives-agent")}]
     assert server.count("notifications/initialized") == 1
 
 

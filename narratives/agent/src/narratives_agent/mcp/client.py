@@ -63,6 +63,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from typing import Any
 from urllib.parse import urlparse
 
@@ -91,8 +92,8 @@ _MAX_IDLE_CONNECTIONS = 64
 _SESSION_ID_HEADER = "Mcp-Session-Id"
 _HTTP_NOT_FOUND = 404
 
-_CLIENT_NAME = "dc-mcp-proxy"
-_CLIENT_VERSION = "1.0.0"
+_CLIENT_NAME = "narratives-agent"
+_CLIENT_VERSION = version(_CLIENT_NAME)
 
 # The endpoint URL is resolved on first use rather than at import time because
 # `load_config()` returns the configuration that `bootstrap_config_from_url()`

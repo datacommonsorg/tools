@@ -42,7 +42,11 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from narratives_agent.config_model import AgentConfig, parse_agent_config
+from narratives_agent.config_model import (
+    PROMPT_SLOTS,
+    AgentConfig,
+    parse_agent_config,
+)
 from narratives_agent.settings import get_settings
 
 # Setup logging
@@ -89,12 +93,6 @@ _secret_manager_cache: dict[str, tuple[float, str]] = {}
 # (`asyncio.to_thread`), so concurrent turns can miss the cache together. The
 # lock makes them share one Secret Manager request.
 _secret_manager_lock = threading.Lock()
-
-# Prompt slots, which the workflows read as the fields of `Prompts` in
-# `config_model.py`. Bodies are authored as `prompts/<slot>.md`; default
-# versions are found in `defaults/prompts/`, and a deployment's overrides are
-# uploaded beside agent-config.json in the config bucket.
-PROMPT_SLOTS = ("classify", "mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -256,9 +254,10 @@ def _layer_prompts(
     `prompts_dir`, then `fetched_prompts`, then a non-empty string already in
     `config["prompts"]`. The default prompts are read first so that a
     configured prompt that is absent or fails to load degrades to the default
-    body, never to an empty slot. An inline key that is not in `PROMPT_SLOTS`
-    is dropped with a warning, so a misspelled override is reported rather
-    than silently replaced by the default prompt.
+    body, never to an empty slot. A `prompts` value that is not an object, an
+    inline key that is not in `PROMPT_SLOTS`, or an inline body that is blank
+    or not a string is dropped with a warning, so an unusable override is
+    reported rather than silently replaced by the default prompt.
 
     A slot that is still empty after layering means the default file itself is
     missing, unreadable, or empty. That is a packaging defect, so it is logged
@@ -285,9 +284,27 @@ def _layer_prompts(
                     PROMPT_SLOTS,
                 )
                 continue
-            if isinstance(body, str) and body.strip():
-                prompts[slot] = body
-                sources[slot] = "inline"
+            if not isinstance(body, str):
+                logger.warning(
+                    "Agent configuration key %r is not a string; the default "
+                    "or fetched prompt applies",
+                    f"prompts.{slot}",
+                )
+                continue
+            if not body.strip():
+                logger.warning(
+                    "Agent configuration key %r is blank; the default or "
+                    "fetched prompt applies",
+                    f"prompts.{slot}",
+                )
+                continue
+            prompts[slot] = body
+            sources[slot] = "inline"
+    elif "prompts" in config:
+        logger.warning(
+            "Agent configuration key 'prompts' is not an object; the default "
+            "or fetched prompts apply"
+        )
     if prompts:
         config["prompts"] = prompts
     else:
