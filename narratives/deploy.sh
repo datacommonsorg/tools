@@ -374,7 +374,7 @@ else
 fi
 
 # 5. Build and Stage React UI Frontend
-if [ "$INFRA_ONLY" = false ] && [ "$AGENT_ONLY" = false ] && [ "$PLAN_ONLY" = false ]; then
+if [[ "$INFRA_ONLY" == "false" && "$AGENT_ONLY" == "false" && "$PLAN_ONLY" == "false" ]]; then
     log_info "Compiling React UI production bundle and staging assets..."
     pnpm install --frozen-lockfile
     pnpm build
@@ -559,7 +559,11 @@ terraform init \
 # for a different deployment, and applying would rename them -- which Terraform
 # does by destroying and recreating.
 STATE_CHECK=0
-terraform show -json 2>/dev/null \
+# `|| true` so the status comes from the check alone. Under `pipefail` a
+# `terraform show` that fails -- no state yet, on a first deploy -- would
+# otherwise set STATE_CHECK to its own exit code, and a 1 reads here as
+# "another deployment owns this state", refusing a deploy that is fine.
+(terraform show -json 2>/dev/null || true) \
     | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
 if [ "$STATE_CHECK" -eq 3 ]; then
     # The state is this deployment's own, so the ownership test above passes.

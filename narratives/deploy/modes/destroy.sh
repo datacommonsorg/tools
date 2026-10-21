@@ -43,9 +43,10 @@ run_destroy() {
     # since changed -- is this deployment's own, and a teardown removes it
     # whatever it is called, so only a foreign state stops one.
     local STATE_CHECK=0
-    terraform show -json 2>/dev/null \
+    # `|| true` so the status comes from the check alone; see deploy.sh.
+    (terraform show -json 2>/dev/null || true) \
         | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
-    if [ "$STATE_CHECK" -ne 0 ] && [ "$STATE_CHECK" -ne 3 ]; then
+    if [[ "$STATE_CHECK" -ne 0 && "$STATE_CHECK" -ne 3 ]]; then
         log_error "Refusing to destroy: the loaded state describes a different deployment."
         return 1
     fi
