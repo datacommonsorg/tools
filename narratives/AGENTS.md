@@ -47,8 +47,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
-    `gcp_auth.py`, `telemetry.py`, `server/`, `workflows/`, `mcp/`,
-    `gemini/`).
+    `config_model.py`, `gcp_auth.py`, `telemetry.py`, `server/`,
+    `workflows/`, `mcp/`, `gemini/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
@@ -57,6 +57,13 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`mcp_loop.py`), chart configuration (`chart_config.py`), follow-up
       generation (`follow_up.py`), user-visible messages (`messages.py`), and
       signed transcripts (`transcript.py`).
+    - `config.py`: loads `agent-config.json` (or the local `config.json`),
+      layers the prompts, and returns the result as an `AgentConfig`.
+    - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
+      that applies the defaults, and the per-role Gemini model, temperature,
+      and thinking-level settings (`GeminiRole`,
+      `AgentConfig.resolve_role_config`); the workflows read configuration
+      from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.

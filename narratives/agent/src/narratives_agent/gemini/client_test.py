@@ -441,7 +441,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
 ) -> None:
     # Test: Request configuration for a structured-output call.
     # Situation: A caller passes ChartConfigResponse as response_schema with a
-    #   system instruction, temperature 0.2, and "low" thinking.
+    #   system instruction, temperature 0.2, and `ThinkingLevel.LOW`.
     # Expectation: The request sets responseMimeType to "application/json"
     #   with the converted responseSchema, includes the rendered system
     #   instruction and generation settings, and returns a `GeminiResponse`
@@ -455,7 +455,7 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
         "async_request",
         system_instruction="Extract charts.",
         temperature=0.2,
-        thinking_level="low",
+        thinking_level=types.ThinkingLevel.LOW,
         response_schema=ChartConfigResponse,
     )
 
@@ -773,12 +773,15 @@ async def test_whitespace_only_streamed_text_is_kept(
     ("thinking_level", "expected_thinking_config"),
     [
         (None, {"include_thoughts": True}),
-        ("medium", {"thinking_level": "MEDIUM", "include_thoughts": True}),
+        (
+            types.ThinkingLevel.MEDIUM,
+            {"thinking_level": "MEDIUM", "include_thoughts": True},
+        ),
     ],
 )
 async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     gemini: _FakeGemini,
-    thinking_level: str | None,
+    thinking_level: types.ThinkingLevel | None,
     expected_thinking_config: dict[str, Any],
 ) -> None:
     # Test: Thought streaming with a function call.
@@ -968,7 +971,7 @@ async def test_an_async_stream_yields_text_and_records_usage(
         _MESSAGES,
         "",
         _MODEL,
-        thinking_level="low",
+        thinking_level=types.ThinkingLevel.LOW,
         token_usage=usage,
         include_thoughts=include_thoughts,
     )
@@ -1047,44 +1050,57 @@ async def test_a_thought_stream_that_breaks_midway_raises_and_records_usage(
     assert usage == _EXPECTED_USAGE
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("include_thoughts", [False, True])
 @pytest.mark.parametrize(
-    ("value", "include_thoughts", "expected"),
+    "thinking_level",
     [
-        (
-            "HIGH",
-            False,
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
-        ),
-        (
-            "Minimal",
-            False,
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
-        ),
-        (
-            "extreme",
-            False,
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
-        ),
-        (
-            "medium",
-            True,
-            types.ThinkingConfig(
-                thinking_level=types.ThinkingLevel.MEDIUM, include_thoughts=True
-            ),
-        ),
+        types.ThinkingLevel.MINIMAL,
+        types.ThinkingLevel.LOW,
+        types.ThinkingLevel.MEDIUM,
+        types.ThinkingLevel.HIGH,
     ],
 )
-def test_build_thinking_config_normalizes_the_level(
-    value: str, include_thoughts: bool, expected: types.ThinkingConfig
+async def test_a_requested_thinking_level_is_sent_with_the_request(
+    gemini: _FakeGemini,
+    thinking_level: types.ThinkingLevel,
+    include_thoughts: bool,
 ) -> None:
-    # Test: Thinking level normalization.
-    # Situation: build_thinking_config is called with uppercase, lowercase,
-    #   and unrecognized level strings, including "Minimal", both with and
-    #   without include_thoughts.
-    # Expectation: Known levels ("minimal", "low", "medium", "high") match
-    #   case-insensitively, unrecognized values default to "low", and
-    #   include_thoughts is set only when True.
-    assert client.build_thinking_config(value, include_thoughts) == expected
+    # Test: The thinking configuration sent for a requested level.
+    # Situation: A streamed request is made with each `ThinkingLevel`, with
+    #   and without thought summaries.
+    # Expectation: The request's thinkingConfig carries the level and sets
+    #   `include_thoughts` only when summaries are requested; otherwise the
+    #   field is omitted rather than sent as false.
+    gemini.respond(_answer(200, content=_STREAM_BODY))
+
+    stream = await _call(
+        "async_stream",
+        thinking_level=thinking_level,
+        include_thoughts=include_thoughts,
+    )
+    await stream.aclose()
+
+    expected: dict[str, Any] = {"thinking_level": thinking_level.value}
+    if include_thoughts:
+        expected["include_thoughts"] = True
+    assert gemini.body()["generationConfig"]["thinkingConfig"] == expected
+
+
+@pytest.mark.asyncio
+async def test_a_request_without_a_thinking_level_sends_no_thinking_config(
+    gemini: _FakeGemini,
+) -> None:
+    # Test: A request with neither a thinking level nor thought summaries.
+    # Situation: `async_gemini_request` is called with the default
+    #   `thinking_level=None`; that entry point never requests summaries.
+    # Expectation: The request carries no thinkingConfig at all, so the model
+    #   keeps its own thinking settings.
+    gemini.respond(_answer(200, json=_response_json([{"text": "ok"}])))
+
+    await _call("async_request")
+
+    assert "thinkingConfig" not in gemini.body()["generationConfig"]
 
 
 @pytest.mark.asyncio

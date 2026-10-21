@@ -39,6 +39,7 @@ from fastapi.testclient import TestClient
 from sse_starlette import ServerSentEvent
 from starlette.types import Message
 
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.server.routes import chat
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.chat_pipeline import Emit, EventName
@@ -99,7 +100,7 @@ def _signed_turn() -> dict[str, Any]:
             ),
             "About 68 million.",
             ConversationStateSlots(),
-            {},
+            AgentConfig(),
         )
     )
     assert window is not None

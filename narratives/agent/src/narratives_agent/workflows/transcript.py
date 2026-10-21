@@ -68,9 +68,8 @@ from pydantic import (
     model_validator,
 )
 
-from narratives_agent.config import get_gemini_model
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
-    LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
     GeminiError,
     async_gemini_request,
@@ -112,7 +111,6 @@ DATE_PATTERN = r"^[0-9]{4}(-[0-9]{2}){0,2}$"
 # has already streamed when compaction runs, so a slow call falls back to
 # the structured summary rather than delaying the terminal event further.
 COMPACTION_TIMEOUT_SECONDS = 5
-_COMPACTION_TEMPERATURE = 0.1
 _SUMMARY_WORD_BUDGET = 300
 # Maximum characters of each evicted answer quoted to the compaction model.
 _COMPACTION_RESPONSE_CHARS = 4_000
@@ -328,15 +326,26 @@ class TranscriptError(Exception):
 def _signing_key() -> bytes:
     """Returns the transcript signing key, resolved once per process.
 
-    The key is `TRANSCRIPT_HMAC_SECRET` when it is set. Otherwise it is a
-    random key that lives as long as the process, which suffices for a
-    single local server; on Cloud Run, where requests reach several
-    instances and instances restart, a warning is logged.
+    Resolution order:
+    - `TRANSCRIPT_HMAC_SECRET` set: uses the configured secret's UTF-8 bytes.
+    - Unset on Kubernetes (`KUBERNETES_SERVICE_HOST` set): raises
+      `RuntimeError`, since multi-pod deployments require a shared key.
+    - Unset on Cloud Run (`K_SERVICE` set): logs a warning and falls back to a
+      per-process random key.
+    - Unset in local development: generates a per-process random key.
+
+    Raises:
+        RuntimeError: `TRANSCRIPT_HMAC_SECRET` is unset on Kubernetes.
     """
     settings = get_settings()
     secret = settings.transcript_hmac_secret.get_secret_value()
     if secret:
         return secret.encode("utf-8")
+    if settings.kubernetes_service_host:
+        raise RuntimeError(
+            "TRANSCRIPT_HMAC_SECRET must be set on Kubernetes so every pod "
+            "signs and verifies transcripts with the same key."
+        )
     if settings.k_service:
         logger.warning(
             "TRANSCRIPT_HMAC_SECRET is not set, so transcripts are signed "
@@ -346,6 +355,11 @@ def _signing_key() -> bytes:
             "TRANSCRIPT_HMAC_SECRET to a secret shared by every instance."
         )
     return secrets.token_bytes(_GENERATED_KEY_BYTES)
+
+
+def init_signing_key() -> None:
+    """Resolves and caches the transcript signing key at server startup."""
+    _signing_key()
 
 
 def reset_signing_key() -> None:
@@ -478,7 +492,7 @@ async def finalize_turn(
     transcript: Transcript,
     model_response: str,
     state_slots: ConversationStateSlots,
-    config: dict[str, Any],
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> SignedWindow | None:
     """Appends the completed turn to the window and signs the result.
@@ -493,7 +507,8 @@ async def finalize_turn(
         transcript: The verified transcript the turn ran with.
         model_response: The complete answer text streamed to the browser.
         state_slots: The scopes extracted from the turn's tool calls.
-        config: The agent configuration used to select the compaction model.
+        config: The agent configuration; compaction runs on
+            `gemini.mcp_model`.
         token_usage: Optional turn totals that receive the compaction call's
             token counts.
 
@@ -713,7 +728,7 @@ def _fallback_summary(previous: str | None, evicted: Sequence[Turn]) -> str:
 async def _compact(
     previous: str | None,
     evicted: Sequence[Turn],
-    config: dict[str, Any],
+    config: AgentConfig,
     token_usage: TokenUsage | None,
 ) -> str:
     """Folds the evicted turns into the summary of earlier turns.
@@ -723,6 +738,7 @@ async def _compact(
         fallback summary when the model call fails, times out, or returns
         no text.
     """
+    role = config.resolve_role_config(GeminiRole.COMPACTION)
     try:
         async with asyncio.timeout(COMPACTION_TIMEOUT_SECONDS):
             response = await async_gemini_request(
@@ -735,9 +751,9 @@ async def _compact(
                     }
                 ],
                 system_instruction=_COMPACTION_INSTRUCTION,
-                model=get_gemini_model(config),
-                temperature=_COMPACTION_TEMPERATURE,
-                thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+                model=role.model,
+                temperature=role.temperature,
+                thinking_level=role.thinking_level,
                 token_usage=token_usage,
             )
     except TimeoutError:

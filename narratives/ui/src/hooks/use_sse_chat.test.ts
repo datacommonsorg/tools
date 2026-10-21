@@ -467,6 +467,11 @@ describe("applyEvent", () => {
 });
 
 describe("useSseChat", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
   /** Renders the hook over local turn state and stubs fetch with the body. */
   function renderChat(
     body: string[] | ReadableStream<Uint8Array>,
@@ -755,6 +760,23 @@ describe("useSseChat", () => {
     expect(turn.stopped).toBeUndefined();
     expect(turn.error).toBeUndefined();
     expect(result.current.chat.error).toBeNull();
+  });
+
+  it("prefixes the default chat endpoint with Vite's BASE_URL when mounted under a subpath", async () => {
+    // Test: Default streaming endpoint resolution under a non-root `BASE_URL`.
+    // Situation: `import.meta.env.BASE_URL` is `/narratives/` and `useSseChat`
+    //   is called without an explicit `endpoint` override.
+    // Expectation: `send` posts to `/narratives/agent/chat/stream`.
+    vi.stubEnv("BASE_URL", "/narratives/");
+    const { result, fetchMock } = renderChat([
+      frame("content", { text: "About 68 million." }, 1),
+      frame("terminal", { state: "complete", ...TERMINAL_FIELDS }, 2),
+    ]);
+
+    await act(() => result.current.chat.send("What is the population of France?"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/narratives/agent/chat/stream");
   });
 });
 

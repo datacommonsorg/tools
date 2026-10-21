@@ -27,7 +27,7 @@
           "default": "gemini-3.8-flash"
         },
         "classify_model": {
-          "description": "Model used for the classify phase. Must support thinking_level='minimal' (see _THINKING_LEVELS in gemini/client.py).",
+          "description": "Model used for the classify phase. The classifier runs at minimal thinking when the model name (its final path segment, for a resource path) starts with one of the prefixes in _MINIMAL_THINKING_MODEL_PREFIXES in config_model.py, and at low thinking otherwise.",
           "type": "string",
           "default": "gemini-3.5-flash-lite"
         }

@@ -20,8 +20,8 @@ Verifies that:
    or through the structured fallback, and the re-signed window verifies.
 3. Altering any signed field, dropping, reordering, or splicing turns, or
    swapping the summary is rejected.
-4. The signing key comes from `TRANSCRIPT_HMAC_SECRET`, and a missing
-   secret on Cloud Run is reported.
+4. The signing key comes from `TRANSCRIPT_HMAC_SECRET`, a missing secret
+   on Cloud Run is reported, and a missing secret on Kubernetes is rejected.
 5. The wire models enforce their caps, patterns, and invariants, and a
    window outside its schema is a transcript error.
 6. The window becomes alternating Gemini contents, with the summary and
@@ -31,13 +31,15 @@ Verifies that:
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from google.genai import types
 from pydantic import ValidationError
 
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.settings import get_settings
@@ -57,6 +59,7 @@ from narratives_agent.workflows.transcript import (
 )
 
 _SECRET = "test-transcript-secret-0123456789abcdef"
+_CONFIG = AgentConfig()
 _SLOTS = ConversationStateSlots(
     scopes=[
         QueryScope(
@@ -81,13 +84,9 @@ class _Request:
 
 
 @pytest.fixture(autouse=True)
-def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Signs with a fixed secret and resolves the key afresh per test."""
+def signing_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Signs with a fixed secret for each test."""
     monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET", _SECRET)
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    transcript.reset_signing_key()
-    yield
-    transcript.reset_signing_key()
 
 
 def _reply(text: str) -> GeminiResponse:
@@ -128,7 +127,7 @@ async def _converse(count: int, start: Window = ([], None)) -> Window:
                 compacted_summary=summary,
             )
         )
-        window = await finalize_turn(loaded, f"Answer {index}", _SLOTS, {})
+        window = await finalize_turn(loaded, f"Answer {index}", _SLOTS, _CONFIG)
         assert window is not None
         turns, summary = window.turns, window.compacted_summary
     return turns, summary
@@ -209,7 +208,7 @@ async def test_compaction_extends_the_previous_summary(
         _Request("Question 7", "key-7", _wire(window[0]), window[1])
     )
 
-    await finalize_turn(loaded, "Answer 7", _SLOTS, {}, tokens)
+    await finalize_turn(loaded, "Answer 7", _SLOTS, _CONFIG, tokens)
 
     call = compaction_calls[-1]
     prompt = call["messages"][0]["parts"][0]["text"]
@@ -218,7 +217,7 @@ async def test_compaction_extends_the_previous_summary(
     assert "Assistant: Answer 1" in prompt
     assert "Question 2" not in prompt
     assert "Total Population (Count_Person)" in prompt
-    assert call["thinking_level"] == "low"
+    assert call["thinking_level"] is types.ThinkingLevel.LOW
     assert call["temperature"] <= 0.2
     assert call["token_usage"] is tokens
 
@@ -373,7 +372,7 @@ async def test_a_spliced_turn_is_rejected(
         ),
         "Other answer",
         _SLOTS,
-        {},
+        _CONFIG,
     )
     assert other is not None
 
@@ -488,14 +487,20 @@ async def test_an_oversized_answer_is_not_signed() -> None:
     loaded = load_transcript(_next_request(window))
 
     assert (
-        await finalize_turn(loaded, "x" * (MAX_RESPONSE_CHARS + 1), _SLOTS, {})
+        await finalize_turn(
+            loaded, "x" * (MAX_RESPONSE_CHARS + 1), _SLOTS, _CONFIG
+        )
         is None
     )
     assert load_transcript(_next_request(window)).turns == window[0]
 
 
 @pytest.mark.parametrize(
-    ("k_service", "warned"), [("narratives-agent", True), ("", False)]
+    ("k_service", "warned"),
+    [
+        ("narratives-agent", True),
+        ("", False),
+    ],
 )
 def test_a_missing_secret_uses_a_generated_key(
     k_service: str,
@@ -503,12 +508,12 @@ def test_a_missing_secret_uses_a_generated_key(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: When `TRANSCRIPT_HMAC_SECRET` is unset, a process-local random key
-    #   is generated.
-    # Situation: The secret is unset, either on Cloud Run (`K_SERVICE` set) or
-    #   in local development.
+    # Test: When `TRANSCRIPT_HMAC_SECRET` is unset off Kubernetes, a
+    #   process-local random key is generated.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset, on Cloud Run (`K_SERVICE`
+    #   set) or in local development.
     # Expectation: A random 32-byte key is used for the life of the process,
-    #   and a warning is logged only when `K_SERVICE` is set.
+    #   and a warning is logged when `K_SERVICE` is set.
     monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
     monkeypatch.setenv("K_SERVICE", k_service)
     transcript.reset_signing_key()
@@ -527,6 +532,23 @@ def test_the_configured_secret_is_the_key() -> None:
     # Situation: The `signing_secret` fixture sets `TRANSCRIPT_HMAC_SECRET`.
     # Expectation: `_signing_key()` returns the secret's UTF-8 bytes.
     assert transcript._signing_key() == _SECRET.encode("utf-8")
+
+
+def test_a_missing_secret_on_kubernetes_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: On Kubernetes, a missing `TRANSCRIPT_HMAC_SECRET` raises
+    #   `RuntimeError` instead of generating an instance-local key.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset and
+    #   `KUBERNETES_SERVICE_HOST` is set.
+    # Expectation: `init_signing_key()` raises `RuntimeError` naming
+    #   `TRANSCRIPT_HMAC_SECRET`.
+    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    transcript.reset_signing_key()
+
+    with pytest.raises(RuntimeError, match="TRANSCRIPT_HMAC_SECRET"):
+        transcript.init_signing_key()
 
 
 @pytest.mark.parametrize(

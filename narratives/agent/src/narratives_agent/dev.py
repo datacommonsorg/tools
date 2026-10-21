@@ -43,10 +43,8 @@ from typing import Any
 import uvicorn
 from dotenv import dotenv_values
 
-from narratives_agent.config import (
-    PROMPT_SLOTS,
-    strip_prompt_comments,
-)
+from narratives_agent.config import strip_prompt_comments
+from narratives_agent.config_model import PROMPT_SLOTS
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)

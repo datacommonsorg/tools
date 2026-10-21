@@ -33,7 +33,14 @@ logger = logging.getLogger(__name__)
 # without this allowlist an edit to the agent config could point the agent at
 # an arbitrary host and hand it our key. Restricting the header to known Data
 # Commons hosts keeps a config change from becoming a credential leak.
-_API_KEY_HOSTS = frozenset({"api.datacommons.org", "datacommons.org"})
+_API_KEY_HOSTS = frozenset(
+    {
+        "api.datacommons.org",
+        "autopush.api.datacommons.org",
+        "staging.api.datacommons.org",
+        "datacommons.org",
+    }
+)
 
 
 def attach_auth(headers: dict[str, str], target_url: str) -> None:

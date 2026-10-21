@@ -3,6 +3,7 @@
  */
 
 import { type RefObject, useEffect, useRef } from 'react';
+import { trimTrailingSlashes } from '@/src/config/base_url';
 
 /**
  * <DataCommonsComponent> — render a Data Commons web component (`<datacommons-*>`).
@@ -59,11 +60,14 @@ export type DataCommonsComponentAttributes = Record<
 >;
 
 /**
- * API root the DC components fetch from. Public Data Commons, which serves
- * these endpoints with an open CORS policy and needs no API key from the
- * browser. See the fileoverview for why this is not the page origin.
+ * API root the DC components fetch from. Defaults to public Data Commons
+ * (`https://datacommons.org`), which serves these endpoints with an open CORS
+ * policy and needs no API key from the browser; overridable at build time via
+ * `VITE_DC_API_ROOT` (for example, `https://autopush.datacommons.org`).
  */
-export const API_ROOT = 'https://datacommons.org';
+export const API_ROOT: string =
+  trimTrailingSlashes(import.meta.env.VITE_DC_API_ROOT ?? '') ||
+  'https://datacommons.org';
 
 /**
  * Overrides adopted into each component's shadow root, which page CSS cannot

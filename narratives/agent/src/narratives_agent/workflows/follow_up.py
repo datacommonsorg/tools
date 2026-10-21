@@ -20,9 +20,8 @@ import logging
 import re
 from typing import Any
 
-from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
-    LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
     GeminiError,
     async_gemini_request,
@@ -39,6 +38,7 @@ MAX_FOLLOW_UP_QUESTIONS = 3
 async def generate_follow_up_questions(
     user_message: str,
     topics: list[str],
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> list[str]:
     """Generate self-contained follow-up questions grounded in the resolved
@@ -49,6 +49,14 @@ async def generate_follow_up_questions(
     call, and filters out any question that leaks a context-dependent pronoun.
     Also returns [] when the `follow_up` prompt slot is empty, so the model is
     never called without its system instruction.
+
+    Args:
+        user_message: The user's query.
+        topics: The chart titles that ground the questions.
+        config: The agent configuration; `prompts.follow_up` is the system
+            instruction and `gemini.mcp_model` the model.
+        token_usage: Optional turn totals that receive the call's token
+            counts.
     """
     topics = [
         t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()
@@ -56,9 +64,8 @@ async def generate_follow_up_questions(
     if not topics or not user_message:
         return []
 
-    config = load_config()
-    model = get_gemini_model(config)
-    system_prompt = config.get("prompts", {}).get("follow_up", "")
+    role = config.resolve_role_config(GeminiRole.FOLLOW_UP)
+    system_prompt = config.prompts.follow_up
     if not system_prompt:
         logger.warning(
             "The follow_up prompt is not configured; skipping follow-up "
@@ -76,9 +83,9 @@ Generate the self-contained follow-up questions now."""
         response = await async_gemini_request(
             messages=[{"role": "user", "parts": [{"text": prompt}]}],
             system_instruction=system_prompt,
-            model=model,
-            temperature=0.8,  # higher for varied phrasing
-            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             response_schema=FOLLOW_UP_SCHEMA,
             token_usage=token_usage,
         )

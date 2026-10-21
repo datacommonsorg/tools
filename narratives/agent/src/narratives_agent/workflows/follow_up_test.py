@@ -17,10 +17,14 @@ import logging
 from typing import Any
 
 import pytest
+from google.genai import types
 
+from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.workflows import follow_up
+
+_CONFIG = AgentConfig(prompts=Prompts(follow_up="Suggest follow-up questions."))
 
 
 @pytest.mark.asyncio
@@ -30,15 +34,10 @@ async def test_follow_ups_request_the_low_thinking_level(
     # Test: The thinking level that follow-up generation sends to Gemini.
     # Situation: The configuration carries a `follow_up` prompt, and follow-up
     #   questions are generated for a question with one related topic.
-    # Expectation: The request asks for "low". `gemini-3.8-flash` rejects
-    #   "minimal" with a 400 error. This call catches that error and returns
-    #   no questions, so the failure would be silent.
-    monkeypatch.setattr(
-        follow_up,
-        "load_config",
-        lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
-    )
-    levels: list[str | None] = []
+    # Expectation: The request asks for `ThinkingLevel.LOW`. `gemini-3.8-flash`
+    #   rejects `MINIMAL` with a 400 error. This call catches that error and
+    #   returns no questions, so the failure would be silent.
+    levels: list[types.ThinkingLevel | None] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
@@ -47,10 +46,12 @@ async def test_follow_ups_request_the_low_thinking_level(
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
 
     await follow_up.generate_follow_up_questions(
-        "What is the population of California?", ["California population"]
+        "What is the population of California?",
+        ["California population"],
+        _CONFIG,
     )
 
-    assert levels == ["low"]
+    assert levels == [types.ThinkingLevel.LOW]
 
 
 @pytest.mark.asyncio
@@ -59,11 +60,10 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Follow-up generation when the `follow_up` prompt slot is empty.
-    # Situation: The configuration has no `prompts` section, and follow-up
+    # Situation: The configuration carries no `follow_up` prompt, and follow-up
     #   questions are requested for a question with one related topic.
     # Expectation: Gemini is not called, no questions are returned, and a
     #   warning names the `follow_up` prompt.
-    monkeypatch.setattr(follow_up, "load_config", lambda: {})
     calls: list[dict[str, Any]] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
@@ -74,7 +74,9 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
 
     with caplog.at_level("WARNING"):
         questions = await follow_up.generate_follow_up_questions(
-            "What is the population of California?", ["California population"]
+            "What is the population of California?",
+            ["California population"],
+            AgentConfig(),
         )
 
     assert questions == []
@@ -104,12 +106,6 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
     # Expectation: No questions are returned and the failure is logged once
     #   at WARNING, not at ERROR, because the client already logged the
     #   redacted upstream error.
-    monkeypatch.setattr(
-        follow_up,
-        "load_config",
-        lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
-    )
-
     async def request(**kwargs: Any) -> GeminiResponse:
         raise error
 
@@ -119,6 +115,7 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
         questions = await follow_up.generate_follow_up_questions(
             "What is the population of California?",
             ["California population"],
+            _CONFIG,
         )
 
     assert questions == []
@@ -146,12 +143,6 @@ async def test_an_empty_response_returns_no_questions(
     # Expectation: No questions are returned, and one WARNING names the
     #   finish reason; an empty reply is not a parse failure, so nothing is
     #   logged at ERROR.
-    monkeypatch.setattr(
-        follow_up,
-        "load_config",
-        lambda: {"prompts": {"follow_up": "Suggest follow-up questions."}},
-    )
-
     async def request(**kwargs: Any) -> GeminiResponse:
         return response
 
@@ -161,6 +152,7 @@ async def test_an_empty_response_returns_no_questions(
         questions = await follow_up.generate_follow_up_questions(
             "What is the population of California?",
             ["California population"],
+            _CONFIG,
         )
 
     assert questions == []
