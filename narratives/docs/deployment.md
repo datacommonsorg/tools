@@ -269,11 +269,13 @@ bucket-side failure never leaves a phase without its system instruction.
 
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
-clarification question, and which analytical pattern it follows. The classify
-phase runs on the model configured in `gemini.classify_model` in
-`agent-config.json` (which defaults to `gemini-3.5-flash-lite`), while the tool
-loop, synthesis, chart selection, and follow-up generation use
-`gemini.discovery_model`.
+clarification question, and which analytical pattern it follows. Each LLM stage
+reads its own model key under `gemini` in `agent-config.json`:
+`gemini.classify_model` (default `gemini-3.5-flash-lite`), and
+`gemini.discovery_model`, `gemini.synthesis_model`,
+`gemini.chart_config_model`, `gemini.chart_validation_model`,
+`gemini.follow_up_model`, and `gemini.compaction_model` (each defaulting to
+`gemini-3.8-flash`).
 
 Prompts support runtime template placeholders:
 

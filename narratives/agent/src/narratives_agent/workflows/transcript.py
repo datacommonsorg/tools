@@ -508,7 +508,7 @@ async def finalize_turn(
         model_response: The complete answer text streamed to the browser.
         state_slots: The scopes extracted from the turn's tool calls.
         config: The agent configuration; compaction runs on
-            `gemini.discovery_model`.
+            `gemini.compaction_model`.
         token_usage: Optional turn totals that receive the compaction call's
             token counts.
 

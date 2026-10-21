@@ -21,15 +21,40 @@
           "format": "uri",
           "default": "https://generativelanguage.googleapis.com/v1beta/models"
         },
+        "classify_model": {
+          "description": "Model used for the classify phase. The classifier runs at minimal thinking when the model name (its final path segment, for a resource path) starts with one of the prefixes in _MINIMAL_THINKING_MODEL_PREFIXES in config_model.py, and at low thinking otherwise.",
+          "type": "string",
+          "default": "gemini-3.5-flash-lite"
+        },
         "discovery_model": {
           "description": "Model used for the discovery phase, where entities and statistical variables are resolved from the MCP server.",
           "type": "string",
           "default": "gemini-3.8-flash"
         },
-        "classify_model": {
-          "description": "Model used for the classify phase. The classifier runs at minimal thinking when the model name (its final path segment, for a resource path) starts with one of the prefixes in _MINIMAL_THINKING_MODEL_PREFIXES in config_model.py, and at low thinking otherwise.",
+        "synthesis_model": {
+          "description": "Model used for the synthesis phase, where the narrative answer is streamed from the gathered data.",
           "type": "string",
-          "default": "gemini-3.5-flash-lite"
+          "default": "gemini-3.8-flash"
+        },
+        "chart_config_model": {
+          "description": "Model used for chart configuration, where chart specifications are selected from the gathered observations.",
+          "type": "string",
+          "default": "gemini-3.8-flash"
+        },
+        "chart_validation_model": {
+          "description": "Model used for chart validation, which checks whether the synthesized answer contains chartable data.",
+          "type": "string",
+          "default": "gemini-3.8-flash"
+        },
+        "follow_up_model": {
+          "description": "Model used for follow-up generation, which suggests follow-up questions grounded in the chart topics.",
+          "type": "string",
+          "default": "gemini-3.8-flash"
+        },
+        "compaction_model": {
+          "description": "Model used for transcript compaction, which summarizes evicted turns when the conversation window exceeds its limit.",
+          "type": "string",
+          "default": "gemini-3.8-flash"
         }
       }
     },

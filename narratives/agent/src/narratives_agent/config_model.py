@@ -75,6 +75,11 @@ class RoleConfig:
     thinking_level: types.ThinkingLevel
 
 
+# `GeminiConfig` attribute that holds the model name for each role.
+_ROLE_MODEL_ATTRS: Mapping[GeminiRole, str] = {
+    role: f"{role.value}_model" for role in GeminiRole
+}
+
 # Sampling temperature of each role. agent-config.json cannot change these.
 _ROLE_TEMPERATURES: Mapping[GeminiRole, float] = {
     GeminiRole.CLASSIFY: 0.0,
@@ -104,8 +109,7 @@ _FIXED_THINKING_LEVELS: Mapping[GeminiRole, types.ThinkingLevel] = {
 # The thinking levels that `thinking.discovery_level` and
 # `thinking.synthesis_level` accept, keyed by their configuration string. They
 # match the `enum` that `schemas/agent-config.schema.json` declares for both
-# keys; `MINIMAL` is excluded because the default `gemini.discovery_model`
-# rejects it.
+# keys; `MINIMAL` is excluded because `DEFAULT_GEMINI_MODEL` rejects it.
 _CONFIGURABLE_THINKING_LEVELS: Mapping[str, types.ThinkingLevel] = {
     "low": types.ThinkingLevel.LOW,
     "medium": types.ThinkingLevel.MEDIUM,
@@ -163,18 +167,22 @@ def _clamp_thinking_level(
 
 @dataclass(frozen=True)
 class GeminiConfig:
-    """Holds the `gemini` section: the model each phase calls and the key.
+    """Holds the `gemini` section: the model each role calls and the key.
 
-    `discovery_model` runs the tool loop, synthesis, chart configuration,
-    follow-up generation, and transcript compaction; `classify_model` runs
-    the classify phase. `api_key` is the local-development key from
-    `config.json`, which `get_gemini_api_key` in `config.py` applies after
-    Secret Manager; it is excluded from `repr` so that a logged or printed
-    configuration never carries the key.
+    Each `<role>_model` field names the model for the matching `GeminiRole`
+    in `AgentConfig.resolve_role_config`. `api_key` is the local-development
+    key from `config.json`, which `get_gemini_api_key` in `config.py`
+    applies after Secret Manager; it is excluded from `repr` so that a
+    logged or printed configuration never carries the key.
     """
 
-    discovery_model: str = DEFAULT_GEMINI_MODEL
     classify_model: str = DEFAULT_GEMINI_CLASSIFY_MODEL
+    discovery_model: str = DEFAULT_GEMINI_MODEL
+    synthesis_model: str = DEFAULT_GEMINI_MODEL
+    chart_config_model: str = DEFAULT_GEMINI_MODEL
+    chart_validation_model: str = DEFAULT_GEMINI_MODEL
+    follow_up_model: str = DEFAULT_GEMINI_MODEL
+    compaction_model: str = DEFAULT_GEMINI_MODEL
     api_key: str = field(default="", repr=False)
 
 
@@ -253,21 +261,16 @@ class AgentConfig:
     def resolve_role_config(self, role: GeminiRole) -> RoleConfig:
         """Returns the model, temperature, and thinking level of `role`.
 
-        `CLASSIFY` runs on `gemini.classify_model` and every other role on
-        `gemini.discovery_model`. `DISCOVERY` and `SYNTHESIS` think at
-        `thinking.discovery_level` and `thinking.synthesis_level`; the other
-        roles think at their level in `_FIXED_THINKING_LEVELS`. A level
-        below the lowest the role's model accepts is raised to that floor,
-        so the classifier runs at `LOW` on a model that rejects `MINIMAL`
-        rather than failing its call on every turn and leaving the turn
-        unclassified. Every role samples at its temperature in
-        `_ROLE_TEMPERATURES`.
+        Each role runs on its `gemini.<role>_model` field (`_ROLE_MODEL_ATTRS`).
+        `DISCOVERY` and `SYNTHESIS` think at `thinking.discovery_level` and
+        `thinking.synthesis_level`; the other roles think at their level in
+        `_FIXED_THINKING_LEVELS`. A level below the lowest the role's model
+        accepts is raised to that floor, so the classifier runs at `LOW` on
+        a model that rejects `MINIMAL` rather than failing its call on every
+        turn and leaving the turn unclassified. Every role samples at its
+        temperature in `_ROLE_TEMPERATURES`.
         """
-        model = (
-            self.gemini.classify_model
-            if role is GeminiRole.CLASSIFY
-            else self.gemini.discovery_model
-        )
+        model: str = getattr(self.gemini, _ROLE_MODEL_ATTRS[role])
         if role is GeminiRole.DISCOVERY:
             thinking_level = self.thinking.discovery_level
         elif role is GeminiRole.SYNTHESIS:
@@ -433,11 +436,28 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
     prompts = _read_section(document, "prompts")
     return AgentConfig(
         gemini=GeminiConfig(
+            classify_model=_read_model_name(
+                gemini, "classify_model", GeminiConfig.classify_model
+            ),
             discovery_model=_read_model_name(
                 gemini, "discovery_model", GeminiConfig.discovery_model
             ),
-            classify_model=_read_model_name(
-                gemini, "classify_model", GeminiConfig.classify_model
+            synthesis_model=_read_model_name(
+                gemini, "synthesis_model", GeminiConfig.synthesis_model
+            ),
+            chart_config_model=_read_model_name(
+                gemini, "chart_config_model", GeminiConfig.chart_config_model
+            ),
+            chart_validation_model=_read_model_name(
+                gemini,
+                "chart_validation_model",
+                GeminiConfig.chart_validation_model,
+            ),
+            follow_up_model=_read_model_name(
+                gemini, "follow_up_model", GeminiConfig.follow_up_model
+            ),
+            compaction_model=_read_model_name(
+                gemini, "compaction_model", GeminiConfig.compaction_model
             ),
             api_key=_read_string(
                 gemini, "gemini", "api_key", GeminiConfig.api_key

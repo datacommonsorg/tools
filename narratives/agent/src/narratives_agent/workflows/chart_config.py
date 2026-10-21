@@ -54,7 +54,7 @@ async def get_chart_config(
         mcp_results: The gathered tool results to chart.
         user_message: The user's query.
         config: The agent configuration; the request runs on
-            `gemini.discovery_model`.
+            `gemini.chart_config_model`.
         token_usage: Optional turn totals that receive the call's token
             counts.
 
@@ -168,7 +168,7 @@ async def validate_data_response(
         synthesis_text: The streamed answer to judge.
         user_message: The user's query.
         config: The agent configuration; the request runs on
-            `gemini.discovery_model`.
+            `gemini.chart_validation_model`.
         token_usage: Optional turn totals that receive the call's token
             counts.
     """
