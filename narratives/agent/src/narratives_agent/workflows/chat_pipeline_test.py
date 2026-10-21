@@ -18,10 +18,11 @@ Verifies that:
    terminal event carrying the idempotency key and the signed window, then
    the follow-ups, and is recorded as `complete`. The signed turn verifies
    on the next request, and an answer too long to sign is left unsigned.
-2. A failed MCP loop, an empty or slow tool list, and a failed, broken, or
-   empty synthesis end the turn with one `error` terminal event carrying a
-   fixed message and the machine-readable `reason`, and are recorded as
-   `error` with that reason. MCP failures end the turn before synthesis.
+2. A missing configuration, a failed MCP loop, an empty or slow tool list,
+   and a failed, broken, or empty synthesis end the turn with one `error`
+   terminal event carrying a fixed message and the machine-readable `reason`,
+   and are recorded as `error` with that reason. Configuration and MCP
+   failures end the turn before synthesis.
 3. An unexpected exception ends the turn as `internal_error`; a follow-up
    failure after the terminal event leaves the turn `complete`.
 4. A chart config that misses its join timeout is canceled and the turn
@@ -52,6 +53,7 @@ from typing import Any
 
 import pytest
 
+from narratives_agent.config_model import AgentConfig, McpConfig, Prompts
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -92,6 +94,10 @@ _IDEMPOTENCY_KEY = "test-idempotency-key"
 _ANSWER = "About 68 million."
 _CHARTS = {"should_render": True, "charts": [{"title": "Population"}]}
 _FOLLOW_UPS = ["And Spain?"]
+_CONFIG = AgentConfig(
+    mcp=McpConfig(enabled=True),
+    prompts=Prompts(mcp="Gather data.", synthesis="Write prose."),
+)
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
@@ -239,7 +245,7 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         return answer()
 
     async def chart_config(
-        results: str, question: str, usage: TokenUsage
+        results: str, question: str, config: AgentConfig, usage: TokenUsage
     ) -> dict[str, Any]:
         try:
             await stub.chart_release.wait()
@@ -248,24 +254,22 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
             raise
         return dict(_CHARTS)
 
-    async def validate(text: str, question: str, usage: TokenUsage) -> bool:
+    async def validate(
+        text: str, question: str, config: AgentConfig, usage: TokenUsage
+    ) -> bool:
         return True
 
     async def follow_ups(
-        question: str, topics: list[str], usage: TokenUsage
+        question: str,
+        topics: list[str],
+        config: AgentConfig,
+        usage: TokenUsage,
     ) -> list[str]:
         await stub.follow_ups_release.wait()
         return list(_FOLLOW_UPS)
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", telemetry)
-    monkeypatch.setattr(
-        chat_pipeline,
-        "load_config",
-        lambda: {
-            "mcp": {"enabled": True},
-            "prompts": {"mcp": "Gather data.", "synthesis": "Write prose."},
-        },
-    )
+    monkeypatch.setattr(chat_pipeline, "load_config", lambda: _CONFIG)
     monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(mcp_client, "ensure_session_scope", lambda: None)
     monkeypatch.setattr(mcp_client, "async_get_tools", get_tools)
@@ -602,7 +606,10 @@ async def test_malformed_chart_entries_do_not_fail_the_turn(
         return malformed
 
     async def follow_ups(
-        question: str, chart_topics: list[str], usage: TokenUsage
+        question: str,
+        chart_topics: list[str],
+        config: AgentConfig,
+        usage: TokenUsage,
     ) -> list[str]:
         topics.append(chart_topics)
         return list(_FOLLOW_UPS)
@@ -668,6 +675,28 @@ def _only_terminal(turn: _Turn) -> dict[str, Any]:
     event, terminal = turn.events[-1]
     assert event == "terminal"
     return terminal
+
+
+@pytest.mark.asyncio
+async def test_a_missing_configuration_fails_the_turn_before_classify(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Fail-closed handling when no configuration is loaded.
+    # Situation: `load_config` returns `None`, as it does when `CONFIG_URL`
+    #   could not be fetched or no configuration file holds a JSON object.
+    # Expectation: The turn ends in a single `error` terminal event with
+    #   reason `config_missing` before the `classify` status frame, no phase
+    #   runs, and the turn is recorded as `error` with that reason.
+    monkeypatch.setattr(chat_pipeline, "load_config", lambda: None)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    terminal = _only_terminal(turn)
+    assert turn.names() == ["terminal"]
+    assert terminal["state"] == "error"
+    assert terminal["reason"] == "config_missing"
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [("error", "config_missing")]
 
 
 @pytest.mark.asyncio
@@ -806,7 +835,10 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
     # Expectation: The single terminal event is `complete`, no follow-ups are
     #   emitted, and the turn is recorded as `complete`.
     async def failing_follow_ups(
-        question: str, topics: list[str], usage: TokenUsage
+        question: str,
+        topics: list[str],
+        config: AgentConfig,
+        usage: TokenUsage,
     ) -> list[str]:
         raise RuntimeError("follow-up model failed")
 
@@ -835,7 +867,7 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
     chart_failed = asyncio.Event()
 
     async def failing_chart_config(
-        results: str, question: str, usage: TokenUsage
+        results: str, question: str, config: AgentConfig, usage: TokenUsage
     ) -> dict[str, Any]:
         chart_failed.set()
         raise ValueError("chart detail")

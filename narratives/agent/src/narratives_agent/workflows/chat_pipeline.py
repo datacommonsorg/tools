@@ -35,7 +35,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.config import load_config
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -138,7 +139,7 @@ class TurnContext:
     """
 
     transcript: Transcript
-    config: dict[str, Any]
+    config: AgentConfig
     telemetry: TurnTelemetry
     emit: Emit
     classification: QueryClassification | None = None
@@ -174,7 +175,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             loop iteration.
     """
     result = McpPhaseResult()
-    if not ctx.config.get("mcp", {}).get("enabled", True):
+    if not ctx.config.mcp.enabled:
         return result
     # Readiness is "can we list tools?", not "do we hold a session id?".
     # The session is established on demand and re-established automatically
@@ -254,6 +255,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             get_chart_config(
                 result.results,
                 ctx.transcript.current_query,
+                ctx.config,
                 ctx.telemetry.tokens,
             ),
             name="chart-config",
@@ -330,14 +332,11 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
         stream = await async_gemini_stream(
             messages=messages,
             system_instruction=with_pattern_guidance(
-                config.get("prompts", {}).get("synthesis", ""),
-                ctx.classification,
+                config.prompts.synthesis, ctx.classification
             ),
-            model=get_gemini_model(config),
+            model=config.gemini.mcp_model,
             temperature=_SYNTHESIS_TEMPERATURE,
-            thinking_level=config.get("thinking", {}).get(
-                "synthesis_level", "low"
-            ),
+            thinking_level=config.thinking.synthesis_level,
             token_usage=ctx.telemetry.tokens,
             include_thoughts=True,
         )
@@ -400,7 +399,10 @@ async def resolve_chart_config(
     if full_text:
         try:
             show_charts = await validate_data_response(
-                full_text, ctx.transcript.current_query, ctx.telemetry.tokens
+                full_text,
+                ctx.transcript.current_query,
+                ctx.config,
+                ctx.telemetry.tokens,
             )
         except Exception as error:
             logger.warning(
@@ -461,6 +463,7 @@ async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
         follow_ups = await generate_follow_up_questions(
             ctx.transcript.current_query,
             _chart_topics(chart_config),
+            ctx.config,
             ctx.telemetry.tokens,
         )
         if follow_ups:
@@ -469,10 +472,15 @@ async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
         logger.exception("Follow-up generation failed")
 
 
-def _load_turn_config() -> dict[str, Any]:
-    """Returns the agent configuration, or raises `TurnAbortedError`."""
+def _load_turn_config() -> AgentConfig:
+    """Returns the agent configuration, or raises `TurnAbortedError`.
+
+    Raises:
+        TurnAbortedError: With reason `config_missing` if no configuration
+            is loaded.
+    """
     config = load_config()
-    if not config:
+    if config is None:
         raise TurnAbortedError("config_missing", "Backend config not loaded")
     return config
 

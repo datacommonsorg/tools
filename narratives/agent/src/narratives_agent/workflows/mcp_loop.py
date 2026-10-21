@@ -41,7 +41,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from narratives_agent.config import get_gemini_model
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -232,7 +232,7 @@ async def _run_tools(
 
 async def _iterate(
     transcript: Transcript,
-    config: dict[str, Any],
+    config: AgentConfig,
     tools: list[dict[str, Any]],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None,
@@ -245,11 +245,9 @@ async def _iterate(
     all of that turn's calls have completed, so that `result` holds the
     completed calls if the caller's timeout cancels this coroutine.
     """
-    mcp_prompt = with_pattern_guidance(
-        config.get("prompts", {}).get("mcp", ""), classification
-    )
-    mcp_model = get_gemini_model(config)
-    thinking_level = config.get("thinking", {}).get("mcp_level", "low")
+    mcp_prompt = with_pattern_guidance(config.prompts.mcp, classification)
+    mcp_model = config.gemini.mcp_model
+    thinking_level = config.thinking.mcp_level
     gemini_tools = _gemini_tools(tools)
     declared = frozenset(tool["name"] for tool in gemini_tools)
     limit = asyncio.Semaphore(MAX_CONCURRENT_TOOL_CALLS)
@@ -336,7 +334,7 @@ async def _iterate(
 
 async def execute_mcp_tool_loop(
     transcript: Transcript,
-    config: dict[str, Any],
+    config: AgentConfig,
     tools: list[dict[str, Any]],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None = None,
@@ -347,7 +345,9 @@ async def execute_mcp_tool_loop(
     Args:
         transcript: The verified transcript, holding the user's query and
             the conversation context it is resolved against.
-        config: Agent configuration, for prompts, model, and thinking level.
+        config: The agent configuration; `prompts.mcp` is the system
+            instruction, `gemini.mcp_model` the model, and
+            `thinking.mcp_level` the thinking level.
         tools: MCP tool definitions available to the model.
         telemetry: The turn's telemetry, which receives token counts, the
             iteration count, and tool names.

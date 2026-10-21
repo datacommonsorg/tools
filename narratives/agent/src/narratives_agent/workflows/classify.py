@@ -24,11 +24,11 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import ValidationError
 
-from narratives_agent.config import get_gemini_classify_model
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -117,7 +117,7 @@ def off_domain_message(premise: str) -> str:
 
 
 async def _request_classification(
-    transcript: Transcript, config: dict[str, Any], telemetry: TurnTelemetry
+    transcript: Transcript, config: AgentConfig, telemetry: TurnTelemetry
 ) -> QueryClassification | None:
     """Requests a `QueryClassification` from the configured classifier model.
 
@@ -131,7 +131,7 @@ async def _request_classification(
             with a safety finish reason. The error propagates so that the
             turn ends as `refused`.
     """
-    prompt = config.get("prompts", {}).get("classify", "")
+    prompt = config.prompts.classify
     if not prompt:
         logger.warning(
             "The classify prompt is not configured; proceeding unclassified"
@@ -147,7 +147,7 @@ async def _request_classification(
             response = await async_gemini_request(
                 messages=messages,
                 system_instruction=prompt,
-                model=get_gemini_classify_model(config),
+                model=config.gemini.classify_model,
                 temperature=_CLASSIFY_TEMPERATURE,
                 thinking_level=_CLASSIFY_THINKING_LEVEL,
                 response_schema=QueryClassification,
@@ -187,14 +187,15 @@ async def _request_classification(
 
 
 async def classify_query(
-    transcript: Transcript, config: dict[str, Any], telemetry: TurnTelemetry
+    transcript: Transcript, config: AgentConfig, telemetry: TurnTelemetry
 ) -> Clarification | Admitted:
     """Runs the classify phase for one turn.
 
     Args:
         transcript: Verified transcript holding the current query and prior
             conversation context.
-        config: Agent configuration supplying the classify prompt and model.
+        config: The agent configuration; `prompts.classify` is the system
+            instruction and `gemini.classify_model` the model.
         telemetry: Turn telemetry accumulator receiving token counts.
 
     Returns:

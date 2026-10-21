@@ -29,6 +29,7 @@ from typing import Any
 
 import pytest
 
+from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.workflows import chart_config
@@ -36,6 +37,7 @@ from narratives_agent.workflows import chart_config
 _SYNTHESIS = "Population reached 39,538,223 in 2020."
 _QUESTION = "What is the population of California?"
 _RESULTS = "Tool: get_observations\nResult: 39538223"
+_CONFIG = AgentConfig()
 
 type GeminiAnswers = Callable[[GeminiResponse | Exception], None]
 
@@ -52,7 +54,6 @@ def gemini_answers(monkeypatch: pytest.MonkeyPatch) -> GeminiAnswers:
     An exception is raised by the stub, as the Gemini client raises on a
     failed or blocked request.
     """
-    monkeypatch.setattr(chart_config, "load_config", lambda: {})
 
     def install(response: GeminiResponse | Exception) -> None:
         async def request(**kwargs: Any) -> GeminiResponse:
@@ -89,12 +90,14 @@ async def test_a_failed_or_blocked_call_hides_the_charts(
 
     with caplog.at_level(logging.WARNING, logger=chart_config.logger.name):
         assert (
-            await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+            await chart_config.validate_data_response(
+                _SYNTHESIS, _QUESTION, _CONFIG
+            )
             is False
         )
-        assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == {
-            "should_render": False
-        }
+        assert await chart_config.get_chart_config(
+            _RESULTS, _QUESTION, _CONFIG
+        ) == {"should_render": False}
 
     assert [record.levelno for record in caplog.records] == [
         logging.WARNING,
@@ -127,12 +130,14 @@ async def test_an_empty_response_hides_the_charts(
 
     with caplog.at_level(logging.WARNING, logger=chart_config.logger.name):
         assert (
-            await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+            await chart_config.validate_data_response(
+                _SYNTHESIS, _QUESTION, _CONFIG
+            )
             is False
         )
-        assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == {
-            "should_render": False
-        }
+        assert await chart_config.get_chart_config(
+            _RESULTS, _QUESTION, _CONFIG
+        ) == {"should_render": False}
 
     assert [record.levelno for record in caplog.records] == [
         logging.ERROR,
@@ -157,7 +162,9 @@ async def test_a_response_that_is_not_json_hides_the_charts(
     gemini_answers(_reply("I think so, yes."))
 
     assert (
-        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        await chart_config.validate_data_response(
+            _SYNTHESIS, _QUESTION, _CONFIG
+        )
         is False
     )
 
@@ -174,7 +181,9 @@ async def test_a_verdict_missing_the_field_hides_the_charts(
     gemini_answers(_reply(json.dumps({"reason": "unsure"})))
 
     assert (
-        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        await chart_config.validate_data_response(
+            _SYNTHESIS, _QUESTION, _CONFIG
+        )
         is False
     )
 
@@ -193,7 +202,9 @@ async def test_a_non_object_json_payload_hides_the_charts(
     gemini_answers(_reply(payload))
 
     assert (
-        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        await chart_config.validate_data_response(
+            _SYNTHESIS, _QUESTION, _CONFIG
+        )
         is False
     )
 
@@ -211,7 +222,9 @@ async def test_a_clear_verdict_is_passed_through(
     gemini_answers(_reply(json.dumps({"data_found": data_found})))
 
     assert (
-        await chart_config.validate_data_response(_SYNTHESIS, _QUESTION)
+        await chart_config.validate_data_response(
+            _SYNTHESIS, _QUESTION, _CONFIG
+        )
         is data_found
     )
 
@@ -228,9 +241,9 @@ async def test_a_non_object_chart_config_is_replaced_by_no_charts(
     #   rather than the parsed value, so the caller can index the result.
     gemini_answers(_reply(payload))
 
-    assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == {
-        "should_render": False
-    }
+    assert await chart_config.get_chart_config(
+        _RESULTS, _QUESTION, _CONFIG
+    ) == {"should_render": False}
 
 
 @pytest.mark.asyncio
@@ -243,15 +256,20 @@ async def test_an_object_chart_config_is_passed_through(
     config = {"should_render": True, "charts": [{"title": "Population"}]}
     gemini_answers(_reply(json.dumps(config)))
 
-    assert await chart_config.get_chart_config(_RESULTS, _QUESTION) == config
+    assert (
+        await chart_config.get_chart_config(_RESULTS, _QUESTION, _CONFIG)
+        == config
+    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call",
     [
-        lambda: chart_config.get_chart_config(_RESULTS, _QUESTION),
-        lambda: chart_config.validate_data_response(_SYNTHESIS, _QUESTION),
+        lambda: chart_config.get_chart_config(_RESULTS, _QUESTION, _CONFIG),
+        lambda: chart_config.validate_data_response(
+            _SYNTHESIS, _QUESTION, _CONFIG
+        ),
     ],
     ids=["get_chart_config", "validate_data_response"],
 )
@@ -264,7 +282,6 @@ async def test_chart_calls_request_the_low_thinking_level(
     # Expectation: Each requests "low". `gemini-3.8-flash` rejects "minimal"
     #   with a 400 error. These calls catch that error and return no charts,
     #   so the failure would be silent.
-    monkeypatch.setattr(chart_config, "load_config", lambda: {})
     levels: list[str | None] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:

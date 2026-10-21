@@ -11,31 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for config loading, prompt rendering, model selection, and keys.
+"""Tests for config loading, prompt rendering, and keys.
 
-Covers seven configuration behaviors in `config`:
+Covers six configuration behaviors in `config`:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
-   prompts.
+   prompts, including when no configuration is loaded.
 2. Derivation of `prompts/<slot>.md` URLs relative to `CONFIG_URL`, preserving
    bucket directory prefixes while stripping query parameters, and stripping
    HTML authoring comments from loaded prompt files.
-3. `bootstrap_config_from_url` holding the fetched configuration in memory,
-   where `load_config` reads it ahead of any file, layering the fetched
-   prompts over the default prompts in `defaults/prompts/`, and holding an
-   empty configuration when the fetch fails or the response is not a JSON
-   object.
+3. `bootstrap_config_from_url` holding the fetched configuration in memory as
+   an `AgentConfig`, where `load_config` reads it ahead of any file, layering
+   the fetched prompts over the default prompts in `defaults/prompts/`, and
+   holding `None` when the fetch fails or the response is not a JSON object.
 4. `load_config` falling back to `config.json` under `agent_root`, re-read when
    it changes, and then to `agent-config.json` under `defaults_dir`, with the
-   default `prompts/` as the base layer of every path, returning a copy in
-   each case.
+   default `prompts/` as the base layer of every path, returning `None` when
+   neither holds a JSON object, and reporting a value of the wrong type once
+   while loading the rest of the document.
 5. Resolution of `get_gemini_api_key` and `_fetch_key_from_secret_manager`,
    preferring Secret Manager over `config.json`, rejecting placeholder,
    empty, or JSON-wrapped secret payloads, and reusing a key another thread
    loaded while the caller waited.
-6. Resolution of `get_gemini_model` and `get_gemini_classify_model` across
-   configured, empty, and null `gemini` configuration sections.
-7. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
+6. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
    resolved.
 """
 
@@ -49,11 +47,20 @@ import pytest
 import requests
 
 from narratives_agent import config
+from narratives_agent.config_model import (
+    PROMPT_SLOTS,
+    AgentConfig,
+    GeminiConfig,
+    McpConfig,
+    Prompts,
+    ThinkingLevels,
+)
 
 
 @pytest.fixture(autouse=True)
 def reset_config_caches(monkeypatch: pytest.MonkeyPatch) -> None:
     """Resets in-memory config caches before each test."""
+    monkeypatch.setattr(config, "_bootstrapped", False)
     monkeypatch.setattr(config, "_bootstrapped_config", None)
     monkeypatch.setattr(config, "_config_cache", None)
     monkeypatch.setattr(config, "_config_mtime", 0.0)
@@ -63,13 +70,19 @@ def reset_config_caches(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _with_config(
-    monkeypatch: pytest.MonkeyPatch, doc: dict[str, object]
+    monkeypatch: pytest.MonkeyPatch, loaded: AgentConfig | None
 ) -> None:
-    """Stub `config.load_config` to return `doc` for the current test."""
-    monkeypatch.setattr(config, "load_config", lambda: doc)
+    """Stub `config.load_config` to return `loaded` for the current test."""
+    monkeypatch.setattr(config, "load_config", lambda: loaded)
 
 
 # --- {{instance.*}} substitution -------------------------------------------
+
+_TEMPLATE_VARS = {
+    "name": "Example DC",
+    "region": "the world",
+    "states_term": "regions",
+}
 
 
 @pytest.mark.parametrize(
@@ -100,16 +113,7 @@ def test_instance_placeholders_are_substituted(
     #   placeholders, or no placeholders.
     # Expectation: Every configured placeholder is replaced with its configured
     #   value, and prompts without placeholders are returned unchanged.
-    _with_config(
-        monkeypatch,
-        {
-            "template_vars": {
-                "name": "Example DC",
-                "region": "the world",
-                "states_term": "regions",
-            }
-        },
-    )
+    _with_config(monkeypatch, AgentConfig(template_vars=_TEMPLATE_VARS))
     assert config.render_prompt(prompt) == expected
 
 
@@ -118,85 +122,31 @@ def test_unknown_placeholder_is_left_intact(
 ) -> None:
     # Test: Handling of placeholders not defined in template_vars.
     # Situation: A prompt references {{instance.fiscal_year_start}}, which is
-    #   not present in the configured template_vars dictionary.
+    #   not present in the configured template_vars.
     # Expectation: The unknown placeholder is left intact in the rendered output
     #   rather than replaced with an empty string, making missing configuration
     #   values immediately visible.
-    _with_config(
-        monkeypatch,
-        {
-            "template_vars": {
-                "name": "Example DC",
-                "region": "the world",
-                "states_term": "regions",
-            }
-        },
-    )
+    _with_config(monkeypatch, AgentConfig(template_vars=_TEMPLATE_VARS))
     assert (
         config.render_prompt("fiscal year {{instance.fiscal_year_start}}")
         == "fiscal year {{instance.fiscal_year_start}}"
     )
 
 
-def test_comment_keys_are_not_substitutable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Exclusion of "_comment" metadata keys from prompt substitution.
-    # Situation: template_vars contains a "_comment" documentation entry
-    #   alongside a valid template variable.
-    # Expectation: {{instance._comment}} is not substituted into the prompt,
-    #   while the valid {{instance.name}} placeholder is replaced normally.
-    _with_config(
-        monkeypatch,
-        {
-            "template_vars": {
-                "_comment": "notes for humans",
-                "name": "Example DC",
-            }
-        },
-    )
-    rendered = config.render_prompt("{{instance._comment}}|{{instance.name}}")
-    assert rendered == "{{instance._comment}}|Example DC"
-
-
-def test_non_string_scalars_are_coerced(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Coercion of non-string scalar values in template_vars.
-    # Situation: template_vars includes an integer value alongside a string.
-    # Expectation: The integer value is converted to its string representation
-    #   and substituted into the prompt.
-    _with_config(
-        monkeypatch,
-        {"template_vars": {"fiscal_year_start": "04-01", "count": 7}},
-    )
-    rendered = config.render_prompt(
-        "{{instance.count}} on {{instance.fiscal_year_start}}"
-    )
-    assert rendered == "7 on 04-01"
-
-
+@pytest.mark.parametrize(
+    "loaded",
+    [AgentConfig(), None],
+    ids=["no template_vars", "no configuration loaded"],
+)
 def test_absent_template_vars_leaves_placeholders_intact(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, loaded: AgentConfig | None
 ) -> None:
-    # Test: Prompt rendering when template_vars is omitted from the config.
-    # Situation: The configuration dictionary does not contain a template_vars
-    #   key.
+    # Test: Prompt rendering without template variables.
+    # Situation: The loaded configuration has no template_vars, or no
+    #   configuration is loaded at all.
     # Expectation: All {{instance.*}} placeholders remain untouched in the
-    #   rendered prompt.
-    _with_config(monkeypatch, {})
-    assert config.render_prompt("{{instance.name}}") == "{{instance.name}}"
-
-
-def test_malformed_template_vars_does_not_raise(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Graceful handling when template_vars has an invalid JSON type.
-    # Situation: template_vars is configured as a string instead of a
-    #   dictionary.
-    # Expectation: render_prompt does not raise an exception and leaves
-    #   placeholders unchanged.
-    _with_config(monkeypatch, {"template_vars": "not-an-object"})
+    #   rendered prompt and nothing is raised.
+    _with_config(monkeypatch, loaded)
     assert config.render_prompt("{{instance.name}}") == "{{instance.name}}"
 
 
@@ -207,7 +157,7 @@ def test_datetime_is_substituted_alongside_instance_vars(
     # Situation: A prompt contains both {{CURRENT_DATETIME}} and
     #   {{instance.name}}.
     # Expectation: Both placeholders are replaced with their resolved values.
-    _with_config(monkeypatch, {"template_vars": {"name": "Example DC"}})
+    _with_config(monkeypatch, AgentConfig(template_vars={"name": "Example DC"}))
     rendered = config.render_prompt("{{CURRENT_DATETIME}} at {{instance.name}}")
     assert "{{CURRENT_DATETIME}}" not in rendered
     assert rendered.endswith("at Example DC")
@@ -271,7 +221,7 @@ def test_prompt_urls_are_derived_from_the_config_url(
 
     # All slots share the same base directory URL and differ only in filename.
     assert fetch.urls[0] == expected
-    assert len(fetch.urls) == len(config.PROMPT_SLOTS)
+    assert len(fetch.urls) == len(PROMPT_SLOTS)
 
 
 @pytest.mark.parametrize(
@@ -340,38 +290,38 @@ def test_fetch_gcs_url_attaches_metadata_token_only_for_https_gcs_hosts(
 
 
 @pytest.mark.parametrize(
-    ("gemini_section", "expected"),
+    ("loaded", "expected"),
     [
-        ({"api_key": "  test-valid-gemini-key  "}, "test-valid-gemini-key"),
-        ({"api_key": "REPLACE_ME_WITH_KEY"}, ""),
-        ({"api_key": "DEPRECATED_KEY"}, ""),
-        ({"api_key": None}, ""),
-        ({"api_key": ""}, ""),
+        (
+            AgentConfig(gemini=GeminiConfig(api_key="test-valid-gemini-key")),
+            "test-valid-gemini-key",
+        ),
+        (AgentConfig(gemini=GeminiConfig(api_key="REPLACE_ME_WITH_KEY")), ""),
+        (AgentConfig(gemini=GeminiConfig(api_key="DEPRECATED_KEY")), ""),
+        (AgentConfig(), ""),
         (None, ""),
     ],
     ids=[
-        "trimmed valid key",
+        "valid key",
         "replace_me placeholder",
         "deprecated placeholder",
-        "null api_key",
-        "empty api_key",
-        "null gemini section",
+        "no api_key",
+        "no configuration loaded",
     ],
 )
 def test_get_gemini_api_key_resolves_and_validates_config_fallback(
     monkeypatch: pytest.MonkeyPatch,
-    gemini_section: dict[str, object] | None,
+    loaded: AgentConfig | None,
     expected: str,
 ) -> None:
     # Test: Local config fallback in get_gemini_api_key.
-    # Situation: GEMINI_API_KEY_SECRET is unset and config.json contains a
-    #   valid key, placeholder string, empty string, or null value.
-    # Expectation: Valid keys are stripped and returned; placeholders, empty
-    #   strings, and nulls return "".
+    # Situation: GEMINI_API_KEY_SECRET is unset and the loaded configuration
+    #   carries a valid key, a placeholder string, or no key, or no
+    #   configuration is loaded.
+    # Expectation: A valid key is returned; placeholders, a missing key, and
+    #   a missing configuration return "".
     monkeypatch.delenv("GEMINI_API_KEY_SECRET", raising=False)
-    monkeypatch.setattr(
-        config, "load_config", lambda: {"gemini": gemini_section}
-    )
+    monkeypatch.setattr(config, "load_config", lambda: loaded)
 
     assert config.get_gemini_api_key() == expected
 
@@ -386,7 +336,9 @@ def test_get_gemini_api_key_prefers_secret_manager_and_falls_back_on_empty(
     #   fallback is used when Secret Manager returns "".
     monkeypatch.setenv("GEMINI_API_KEY_SECRET", "gemini-key-secret")
     monkeypatch.setattr(
-        config, "load_config", lambda: {"gemini": {"api_key": "fallback-key"}}
+        config,
+        "load_config",
+        lambda: AgentConfig(gemini=GeminiConfig(api_key="fallback-key")),
     )
 
     monkeypatch.setattr(
@@ -554,7 +506,7 @@ def _write_defaults(
         (prompts_dir / f"{slot}.md").write_text(body, encoding="utf-8")
 
 
-_DEFAULT_PROMPTS = {slot: f"Default {slot}." for slot in config.PROMPT_SLOTS}
+_DEFAULT_PROMPTS = {slot: f"Default {slot}." for slot in PROMPT_SLOTS}
 
 
 def test_bootstrap_holds_the_fetched_config_in_memory(
@@ -567,8 +519,8 @@ def test_bootstrap_holds_the_fetched_config_in_memory(
     #   no prompts, and `agent_root` contains a local `config.json`.
     # Expectation: `load_config` returns the fetched configuration with the file
     #   prompt in `mcp`, the inline prompt in `synthesis`, and no `follow_up`.
-    #   Each call returns a deep copy, and `agent_root/config.json` is not
-    #   modified.
+    #   Each call returns the same instance, and `agent_root/config.json` is
+    #   not modified.
     monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
     monkeypatch.setattr(
         config,
@@ -592,17 +544,11 @@ def test_bootstrap_holds_the_fetched_config_in_memory(
     config.bootstrap_config_from_url()
     loaded = config.load_config()
 
-    assert loaded == {
-        "template_vars": {"name": "Fetched"},
-        "prompts": {"mcp": "Fetched mcp.", "synthesis": "Inline synthesis."},
-    }
-    loaded["template_vars"]["name"] = "Mutated"
-    loaded["prompts"]["mcp"] = "Mutated"
-    loaded["template_vars"] = {}
-    assert config.load_config() == {
-        "template_vars": {"name": "Fetched"},
-        "prompts": {"mcp": "Fetched mcp.", "synthesis": "Inline synthesis."},
-    }
+    assert loaded == AgentConfig(
+        template_vars={"name": "Fetched"},
+        prompts=Prompts(mcp="Fetched mcp.", synthesis="Inline synthesis."),
+    )
+    assert config.load_config() is loaded
     assert (agent_root / "config.json").read_text("utf-8") == disk_config
 
 
@@ -647,14 +593,14 @@ def test_bootstrap_layers_fetched_prompts_over_the_default_prompts(
     with caplog.at_level("WARNING"):
         config.bootstrap_config_from_url()
 
-    assert config.load_config() == {
-        "prompts": {
-            "classify": "Default classify.",
-            "mcp": "Fetched mcp.",
-            "synthesis": "Inline synthesis.",
-            "follow_up": "Default follow_up.",
-        }
-    }
+    assert config.load_config() == AgentConfig(
+        prompts=Prompts(
+            classify="Default classify.",
+            mcp="Fetched mcp.",
+            synthesis="Inline synthesis.",
+            follow_up="Default follow_up.",
+        )
+    )
     warning_messages = [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -681,10 +627,9 @@ def test_load_config_layers_config_json_over_the_default_prompts(
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
 
-    assert loaded == {
-        "template_vars": {"name": "Disk"},
-        "prompts": _DEFAULT_PROMPTS,
-    }
+    assert loaded == AgentConfig(
+        template_vars={"name": "Disk"}, prompts=Prompts(**_DEFAULT_PROMPTS)
+    )
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
@@ -708,7 +653,7 @@ def test_load_config_warns_about_an_unknown_inline_prompt_slot(
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
 
-    assert loaded == {"prompts": _DEFAULT_PROMPTS}
+    assert loaded == AgentConfig(prompts=Prompts(**_DEFAULT_PROMPTS))
     warning_messages = [
         r.getMessage() for r in caplog.records if r.levelname == "WARNING"
     ]
@@ -720,11 +665,49 @@ def test_load_config_warns_about_an_unknown_inline_prompt_slot(
 
 
 @pytest.mark.parametrize(
+    ("prompts_value", "expected_key"),
+    [
+        ("not-an-object", "'prompts'"),
+        ({"classify": 123}, "'prompts.classify'"),
+        ({"classify": "   "}, "'prompts.classify'"),
+    ],
+    ids=["section not an object", "slot not a string", "slot blank"],
+)
+def test_load_config_warns_about_an_unusable_inline_prompt(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+    prompts_value: object,
+    expected_key: str,
+) -> None:
+    # Test: Unusable inline `prompts` values in `_layer_prompts`.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` has a
+    #   non-object `prompts` section or a `classify` entry that is not a
+    #   non-empty string, and `defaults_dir` holds all four default prompts.
+    # Expectation: Every slot carries the default body, one warning names the
+    #   unusable key, and no error is logged.
+    (agent_root / "config.json").write_text(
+        json.dumps({"prompts": prompts_value}), "utf-8"
+    )
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
+
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
+
+    assert loaded == AgentConfig(prompts=Prompts(**_DEFAULT_PROMPTS))
+    warning_messages = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert [expected_key in message for message in warning_messages] == [True]
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+@pytest.mark.parametrize(
     "bodies",
     [{}, {_CONFIG_URL: "{not json"}, {_CONFIG_URL: "[1, 2]"}],
     ids=["unreachable", "malformed", "not an object"],
 )
-def test_bootstrap_holds_an_empty_config_for_an_unusable_response(
+def test_bootstrap_holds_no_config_for_an_unusable_response(
     monkeypatch: pytest.MonkeyPatch,
     agent_root: Path,
     defaults_dir: Path,
@@ -735,8 +718,8 @@ def test_bootstrap_holds_an_empty_config_for_an_unusable_response(
     # Situation: Fetching `CONFIG_URL` raises an error, returns invalid JSON, or
     #   returns a JSON array, while valid configurations exist in `agent_root`
     #   and `defaults_dir`.
-    # Expectation: `load_config` returns an empty dictionary rather than falling
-    #   back to local files, and `agent_root/config.json` is not modified.
+    # Expectation: `load_config` returns `None` rather than falling back to
+    #   local files, and `agent_root/config.json` is not modified.
     monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
     monkeypatch.setattr(config, "_fetch_gcs_url", _UrlFetch(bodies))
     disk_config = '{"template_vars": {"name": "Disk"}}'
@@ -745,7 +728,7 @@ def test_bootstrap_holds_an_empty_config_for_an_unusable_response(
 
     config.bootstrap_config_from_url()
 
-    assert config.load_config() == {}
+    assert config.load_config() is None
     assert (agent_root / "config.json").read_text("utf-8") == disk_config
 
 
@@ -755,18 +738,39 @@ def test_load_config_reads_config_json_before_the_defaults(
     # Test: Precedence of `agent_root/config.json` over `defaults_dir`.
     # Situation: `CONFIG_URL` is unset, `agent_root/config.json` exists, and
     #   `defaults_dir` contains a different configuration.
-    # Expectation: `load_config` returns a deep copy of
-    #   `agent_root/config.json`.
+    # Expectation: `load_config` returns the configuration parsed from
+    #   `agent_root/config.json`, and the same instance while the file is
+    #   unchanged.
     config_path = agent_root / "config.json"
     config_path.write_text('{"template_vars": {"name": "Disk"}}', "utf-8")
     _write_defaults(defaults_dir, {"template_vars": {"name": "Shipped"}}, {})
 
     loaded = config.load_config()
 
-    assert loaded == {"template_vars": {"name": "Disk"}}
-    loaded["template_vars"]["name"] = "Mutated"
-    loaded["template_vars"] = {}
-    assert config.load_config() == {"template_vars": {"name": "Disk"}}
+    assert loaded == AgentConfig(template_vars={"name": "Disk"})
+    assert config.load_config() is loaded
+
+
+def test_bootstrap_without_config_url_releases_the_other_sources(
+    monkeypatch: pytest.MonkeyPatch, agent_root: Path
+) -> None:
+    # Test: `bootstrap_config_from_url` when `CONFIG_URL` is unset.
+    # Situation: An earlier bootstrap with `CONFIG_URL` set failed, so
+    #   `load_config` returns `None`; the variable is then unset and
+    #   `bootstrap_config_from_url` runs again, with `agent_root/config.json`
+    #   present.
+    # Expectation: The second bootstrap clears the `CONFIG_URL` state, and
+    #   `load_config` reads `agent_root/config.json`.
+    monkeypatch.setattr(config, "_bootstrapped", True)
+    monkeypatch.setattr(config, "_bootstrapped_config", None)
+    (agent_root / "config.json").write_text(
+        '{"template_vars": {"name": "Disk"}}', "utf-8"
+    )
+    assert config.load_config() is None
+
+    config.bootstrap_config_from_url()
+
+    assert config.load_config() == AgentConfig(template_vars={"name": "Disk"})
 
 
 def test_load_config_rereads_config_json_when_it_changes(
@@ -779,13 +783,13 @@ def test_load_config_rereads_config_json_when_it_changes(
     # Expectation: `load_config` returns the updated configuration.
     config_path = agent_root / "config.json"
     config_path.write_text('{"template_vars": {"name": "First"}}', "utf-8")
-    assert config.load_config() == {"template_vars": {"name": "First"}}
+    assert config.load_config() == AgentConfig(template_vars={"name": "First"})
 
     config_path.write_text('{"template_vars": {"name": "Second"}}', "utf-8")
     later = config_path.stat().st_mtime + 10
     os.utime(config_path, (later, later))
 
-    assert config.load_config() == {"template_vars": {"name": "Second"}}
+    assert config.load_config() == AgentConfig(template_vars={"name": "Second"})
 
 
 @pytest.mark.parametrize(
@@ -793,7 +797,7 @@ def test_load_config_rereads_config_json_when_it_changes(
     [b"{not json", b"[1, 2]", b"\xff"],
     ids=["malformed", "not an object", "not UTF-8"],
 )
-def test_load_config_is_empty_when_config_json_is_unreadable(
+def test_load_config_is_none_when_config_json_is_unreadable(
     agent_root: Path,
     defaults_dir: Path,
     raw_bytes: bytes,
@@ -804,19 +808,20 @@ def test_load_config_is_empty_when_config_json_is_unreadable(
     #   with a valid configuration and then overwritten with malformed JSON, a
     #   JSON array, or invalid UTF-8 bytes, while `defaults_dir` holds a valid
     #   configuration.
-    # Expectation: `load_config` clears `_config_cache` and returns an empty
-    #   dictionary rather than raising an exception or falling back to
-    #   `defaults_dir`.
+    # Expectation: `load_config` clears `_config_cache` and returns `None`
+    #   rather than raising an exception or falling back to `defaults_dir`.
     config_path = agent_root / "config.json"
     config_path.write_text('{"template_vars": {"name": "Initial"}}', "utf-8")
-    assert config.load_config() == {"template_vars": {"name": "Initial"}}
+    assert config.load_config() == AgentConfig(
+        template_vars={"name": "Initial"}
+    )
 
     config_path.write_bytes(raw_bytes)
     later = config_path.stat().st_mtime + 10
     os.utime(config_path, (later, later))
     _write_defaults(defaults_dir, {"template_vars": {"name": "Shipped"}}, {})
 
-    assert config.load_config() == {}
+    assert config.load_config() is None
     assert config._config_cache is None
 
 
@@ -827,9 +832,10 @@ def test_load_config_falls_back_to_the_defaults_dir(
     #   absent.
     # Situation: `CONFIG_URL` is unset, `agent_root/config.json` does not exist,
     #   and `defaults_dir` contains `agent-config.json` and `prompts/*.md`.
-    # Expectation: `load_config` returns a deep copy of the merged configuration
-    #   from `defaults_dir`, stripping HTML comments from prompt files and
-    #   keeping inline prompt overrides.
+    # Expectation: `load_config` returns the merged configuration from
+    #   `defaults_dir`, stripping HTML comments from prompt files and keeping
+    #   inline prompt overrides, and returns the same instance on the next
+    #   call.
     _write_defaults(
         defaults_dir,
         {
@@ -844,22 +850,14 @@ def test_load_config_falls_back_to_the_defaults_dir(
     )
 
     loaded = config.load_config()
-    assert loaded == {
-        "template_vars": {"name": "Shipped"},
-        "prompts": {
-            "mcp": "Shipped mcp.\n\nCite.",
-            "synthesis": "Inline synthesis.",
-        },
-    }
-    loaded["template_vars"]["name"] = "Mutated"
-    loaded["prompts"]["mcp"] = "Mutated"
-    assert config.load_config() == {
-        "template_vars": {"name": "Shipped"},
-        "prompts": {
-            "mcp": "Shipped mcp.\n\nCite.",
-            "synthesis": "Inline synthesis.",
-        },
-    }
+
+    assert loaded == AgentConfig(
+        template_vars={"name": "Shipped"},
+        prompts=Prompts(
+            mcp="Shipped mcp.\n\nCite.", synthesis="Inline synthesis."
+        ),
+    )
+    assert config.load_config() is loaded
 
 
 @pytest.mark.parametrize(
@@ -879,7 +877,7 @@ def test_load_config_reports_an_unusable_default_prompt_as_an_error(
     #   `synthesis`, and `follow_up` prompts are valid, while `prompts/mcp.md`
     #   contains invalid UTF-8 bytes or only an HTML comment.
     # Expectation: `load_config` returns the parsed `agent-config.json` with
-    #   the three valid slots and no `mcp` slot, logs a warning naming
+    #   the three valid slots and an empty `mcp` slot, logs a warning naming
     #   `mcp.md`, and logs one error naming exactly `['mcp']` and the default
     #   prompts directory.
     valid_prompts = {
@@ -893,10 +891,9 @@ def test_load_config_reports_an_unusable_default_prompt_as_an_error(
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
 
-    assert loaded == {
-        "template_vars": {"name": "Shipped"},
-        "prompts": valid_prompts,
-    }
+    assert loaded == AgentConfig(
+        template_vars={"name": "Shipped"}, prompts=Prompts(**valid_prompts)
+    )
     assert "mcp.md" in caplog.text
     errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
     assert len(errors) == 1
@@ -910,7 +907,7 @@ def test_load_config_reports_an_unusable_default_prompt_as_an_error(
     [None, b"{not json", b"[1, 2]", b"\xff"],
     ids=["missing", "malformed", "not an object", "not UTF-8"],
 )
-def test_load_config_is_empty_when_the_defaults_are_unreadable(
+def test_load_config_is_none_when_the_defaults_are_unreadable(
     agent_root: Path,
     defaults_dir: Path,
     caplog: pytest.LogCaptureFixture,
@@ -922,9 +919,9 @@ def test_load_config_is_empty_when_the_defaults_are_unreadable(
     #   `defaults_dir/prompts/mcp.md` is valid, and
     #   `defaults_dir/agent-config.json` is missing, invalid JSON, not a JSON
     #   object, or not valid UTF-8.
-    # Expectation: `load_config` returns an empty dictionary, without the
-    #   default prompts, and logs a warning or error referencing
-    #   `defaults_dir`.
+    # Expectation: `load_config` returns `None`, without the default prompts,
+    #   logs a warning or error referencing `defaults_dir` once, and does not
+    #   read the directory again on the next call.
     if config_bytes is not None:
         (defaults_dir / "agent-config.json").write_bytes(config_bytes)
     (defaults_dir / "prompts").mkdir()
@@ -932,87 +929,56 @@ def test_load_config_is_empty_when_the_defaults_are_unreadable(
 
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
+        again = config.load_config()
 
-    assert loaded == {}
-    assert str(defaults_dir) in caplog.text
+    assert loaded is None
+    assert again is None
+    assert [str(defaults_dir) in r.getMessage() for r in caplog.records] == [
+        True
+    ]
 
 
-# --- model selection --------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "document",
-    [
-        {},
-        {"gemini": None},
-        {"gemini": {}},
-        {"gemini": {"mcp_model": ""}},
-        {"gemini": {"mcp_model": "   "}},
-    ],
-    ids=[
-        "missing gemini section",
-        "null gemini section",
-        "empty gemini section",
-        "empty mcp_model string",
-        "whitespace mcp_model string",
-    ],
-)
-def test_get_gemini_model_defaults_when_unconfigured_or_null(
-    document: dict[str, object],
+def test_load_config_reports_a_value_of_the_wrong_type_once(
+    agent_root: Path,
+    defaults_dir: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Fallback to `DEFAULT_GEMINI_MODEL` in `get_gemini_model`.
-    # Situation: The configuration omits `gemini`, sets `gemini` to `None`, or
-    #   sets `gemini.mcp_model` to an empty or whitespace-only string.
-    # Expectation: `get_gemini_model` returns `config.DEFAULT_GEMINI_MODEL`.
-    assert config.get_gemini_model(document) == config.DEFAULT_GEMINI_MODEL
-
-
-def test_get_gemini_model_returns_configured_model() -> None:
-    # Test: Resolution of an explicit model name in `get_gemini_model`.
-    # Situation: `gemini.mcp_model` is set to `"gemini-3-pro"`.
-    # Expectation: `get_gemini_model` returns `"gemini-3-pro"`.
-    document = {"gemini": {"mcp_model": "gemini-3-pro"}}
-    assert config.get_gemini_model(document) == "gemini-3-pro"
-
-
-@pytest.mark.parametrize(
-    "document",
-    [
-        {},
-        {"gemini": None},
-        {"gemini": {}},
-        {"gemini": {"classify_model": ""}},
-        {"gemini": {"classify_model": "   "}},
-    ],
-    ids=[
-        "missing gemini section",
-        "null gemini section",
-        "empty gemini section",
-        "empty classify_model string",
-        "whitespace classify_model string",
-    ],
-)
-def test_get_gemini_classify_model_defaults_when_unconfigured_or_null(
-    document: dict[str, object],
-) -> None:
-    # Test: Fallback to `DEFAULT_GEMINI_CLASSIFY_MODEL` in
-    #   `get_gemini_classify_model`.
-    # Situation: The configuration omits `gemini`, sets `gemini` to `None`, or
-    #   sets `gemini.classify_model` to an empty or whitespace-only string.
-    # Expectation: `get_gemini_classify_model` returns
-    #   `config.DEFAULT_GEMINI_CLASSIFY_MODEL`.
-    assert (
-        config.get_gemini_classify_model(document)
-        == config.DEFAULT_GEMINI_CLASSIFY_MODEL
+    # Test: `load_config` when the document holds values of the wrong type.
+    # Situation: `CONFIG_URL` is unset, `agent_root/config.json` sets
+    #   `thinking` to the string `"high"` and `mcp.enabled` to the string
+    #   `"yes"` beside a valid `gemini.mcp_model`, and `defaults_dir` holds all
+    #   four default prompts.
+    # Expectation: `load_config` returns a configuration rather than `None`,
+    #   with the configured model, the default thinking levels, and `enabled`
+    #   left `True`; one warning names `thinking`, one names `mcp.enabled`,
+    #   and no error is logged.
+    (agent_root / "config.json").write_text(
+        json.dumps(
+            {
+                "gemini": {"mcp_model": "gemini-test"},
+                "thinking": "high",
+                "mcp": {"enabled": "yes"},
+            }
+        ),
+        "utf-8",
     )
+    _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
 
+    with caplog.at_level("WARNING"):
+        loaded = config.load_config()
 
-def test_get_gemini_classify_model_returns_configured_model() -> None:
-    # Test: Resolution of an explicit model name in `get_gemini_classify_model`.
-    # Situation: `gemini.classify_model` is set to `"gemini-3.8-flash"`.
-    # Expectation: `get_gemini_classify_model` returns `"gemini-3.8-flash"`.
-    document = {"gemini": {"classify_model": "gemini-3.8-flash"}}
-    assert config.get_gemini_classify_model(document) == "gemini-3.8-flash"
+    assert loaded == AgentConfig(
+        gemini=GeminiConfig(mcp_model="gemini-test"),
+        mcp=McpConfig(enabled=True),
+        thinking=ThinkingLevels(),
+        prompts=Prompts(**_DEFAULT_PROMPTS),
+    )
+    warning_messages = [
+        r.getMessage() for r in caplog.records if r.levelname == "WARNING"
+    ]
+    assert sum("'thinking'" in message for message in warning_messages) == 1
+    assert sum("'mcp.enabled'" in message for message in warning_messages) == 1
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
 # --- prompt datetime rendering ----------------------------------------------
