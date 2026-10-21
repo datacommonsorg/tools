@@ -15,11 +15,14 @@
 
 Verifies that:
 1. CORS echoes a configured origin, allows only the local development origins
-   when none is configured off Cloud Run, and allows none on Cloud Run.
+   when none is configured in local development, and allows none on Cloud Run
+   or Kubernetes.
 2. FastAPI's generated API documentation routes are absent.
 3. Every GET route also answers HEAD, and a trailing slash returns 404 rather
    than a redirect.
-4. Startup bootstraps the config before the first request.
+4. Startup initializes the transcript signing key and bootstraps the config
+   before the first request, and fails fast on Kubernetes when
+   `TRANSCRIPT_HMAC_SECRET` is unset.
 5. The lifespan writes buffered telemetry at shutdown.
 """
 
@@ -70,18 +73,27 @@ def test_cors_echoes_a_configured_origin(
     assert response.headers.get("access-control-allow-origin") == _ORIGIN
 
 
+@pytest.mark.parametrize(
+    ("env_var", "value"),
+    [
+        ("K_SERVICE", "narratives-app"),
+        ("KUBERNETES_SERVICE_HOST", "10.0.0.1"),
+    ],
+)
 @pytest.mark.parametrize("origin", ["http://localhost:3000", _ORIGIN])
 def test_cors_allows_no_origin_on_cloud_run_without_configuration(
+    env_var: str,
+    value: str,
     origin: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: CORS behavior in a deployed environment with no allow-list.
-    # Situation: `K_SERVICE` is set, as on Cloud Run, `ALLOWED_ORIGIN` is
-    #   unset, and a request arrives from a local development origin or from
-    #   a deployed one.
+    # Situation: `K_SERVICE` (Cloud Run) or `KUBERNETES_SERVICE_HOST` (GKE) is
+    #   set, `ALLOWED_ORIGIN` is unset, and a request arrives from a local
+    #   development origin or from a deployed one.
     # Expectation: The response carries no `Access-Control-Allow-Origin`, so
     #   CORS fails closed instead of falling back to the local origins.
-    monkeypatch.setenv("K_SERVICE", "narratives-app")
+    monkeypatch.setenv(env_var, value)
     monkeypatch.delenv("ALLOWED_ORIGIN", raising=False)
     client = TestClient(create_app())
 
@@ -166,20 +178,46 @@ def test_a_trailing_slash_returns_404(path: str) -> None:
 def test_startup_bootstraps_the_config_before_serving_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Startup config bootstrap in the application lifespan.
-    # Situation: `bootstrap_config_from_url` is stubbed to record calls, and
-    #   the application starts and serves a request.
-    # Expectation: `bootstrap_config_from_url` runs once at startup and is not
-    #   called again on subsequent requests.
-    calls: list[None] = []
+    # Test: Startup config and signing-key bootstrap in the application
+    #   lifespan.
+    # Situation: `bootstrap_config_from_url` and `init_signing_key` are stubbed
+    #   to record calls, and the application starts and serves a request.
+    # Expectation: Both run once at startup and are not called again on
+    #   subsequent requests.
+    calls: list[str] = []
     monkeypatch.setattr(
-        server_app, "bootstrap_config_from_url", lambda: calls.append(None)
+        server_app,
+        "bootstrap_config_from_url",
+        lambda: calls.append("config"),
+    )
+    monkeypatch.setattr(
+        server_app,
+        "init_signing_key",
+        lambda: calls.append("signing_key"),
     )
 
     with TestClient(create_app()) as client:
-        assert calls == [None]
+        assert calls == ["signing_key", "config"]
         assert client.get("/healthz").status_code == 200
-        assert calls == [None]
+        assert calls == ["signing_key", "config"]
+
+
+def test_startup_fails_on_kubernetes_without_a_signing_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Startup enforcement of `TRANSCRIPT_HMAC_SECRET` on Kubernetes.
+    # Situation: `KUBERNETES_SERVICE_HOST` is set, `TRANSCRIPT_HMAC_SECRET`
+    #   is unset, and the application lifespan starts.
+    # Expectation: Entering the `TestClient` context raises `RuntimeError`
+    #   before the server accepts requests.
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET", raising=False)
+
+    with (
+        pytest.raises(RuntimeError, match="TRANSCRIPT_HMAC_SECRET"),
+        TestClient(create_app()),
+    ):
+        pass
 
 
 def test_lifespan_flushes_telemetry_at_shutdown(

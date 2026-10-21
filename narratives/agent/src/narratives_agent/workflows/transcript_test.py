@@ -20,8 +20,8 @@ Verifies that:
    or through the structured fallback, and the re-signed window verifies.
 3. Altering any signed field, dropping, reordering, or splicing turns, or
    swapping the summary is rejected.
-4. The signing key comes from `TRANSCRIPT_HMAC_SECRET`, and a missing
-   secret on Cloud Run is reported.
+4. The signing key comes from `TRANSCRIPT_HMAC_SECRET`, a missing secret
+   on Cloud Run is reported, and a missing secret on Kubernetes is rejected.
 5. The wire models enforce their caps, patterns, and invariants, and a
    window outside its schema is a transcript error.
 6. The window becomes alternating Gemini contents, with the summary and
@@ -31,7 +31,7 @@ Verifies that:
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,13 +81,9 @@ class _Request:
 
 
 @pytest.fixture(autouse=True)
-def signing_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Signs with a fixed secret and resolves the key afresh per test."""
+def signing_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Signs with a fixed secret for each test."""
     monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET", _SECRET)
-    monkeypatch.delenv("K_SERVICE", raising=False)
-    transcript.reset_signing_key()
-    yield
-    transcript.reset_signing_key()
 
 
 def _reply(text: str) -> GeminiResponse:
@@ -495,7 +491,11 @@ async def test_an_oversized_answer_is_not_signed() -> None:
 
 
 @pytest.mark.parametrize(
-    ("k_service", "warned"), [("narratives-agent", True), ("", False)]
+    ("k_service", "warned"),
+    [
+        ("narratives-agent", True),
+        ("", False),
+    ],
 )
 def test_a_missing_secret_uses_a_generated_key(
     k_service: str,
@@ -503,12 +503,12 @@ def test_a_missing_secret_uses_a_generated_key(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: When `TRANSCRIPT_HMAC_SECRET` is unset, a process-local random key
-    #   is generated.
-    # Situation: The secret is unset, either on Cloud Run (`K_SERVICE` set) or
-    #   in local development.
+    # Test: When `TRANSCRIPT_HMAC_SECRET` is unset off Kubernetes, a
+    #   process-local random key is generated.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset, on Cloud Run (`K_SERVICE`
+    #   set) or in local development.
     # Expectation: A random 32-byte key is used for the life of the process,
-    #   and a warning is logged only when `K_SERVICE` is set.
+    #   and a warning is logged when `K_SERVICE` is set.
     monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
     monkeypatch.setenv("K_SERVICE", k_service)
     transcript.reset_signing_key()
@@ -527,6 +527,23 @@ def test_the_configured_secret_is_the_key() -> None:
     # Situation: The `signing_secret` fixture sets `TRANSCRIPT_HMAC_SECRET`.
     # Expectation: `_signing_key()` returns the secret's UTF-8 bytes.
     assert transcript._signing_key() == _SECRET.encode("utf-8")
+
+
+def test_a_missing_secret_on_kubernetes_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: On Kubernetes, a missing `TRANSCRIPT_HMAC_SECRET` raises
+    #   `RuntimeError` instead of generating an instance-local key.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset and
+    #   `KUBERNETES_SERVICE_HOST` is set.
+    # Expectation: `init_signing_key()` raises `RuntimeError` naming
+    #   `TRANSCRIPT_HMAC_SECRET`.
+    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    transcript.reset_signing_key()
+
+    with pytest.raises(RuntimeError, match="TRANSCRIPT_HMAC_SECRET"):
+        transcript.init_signing_key()
 
 
 @pytest.mark.parametrize(

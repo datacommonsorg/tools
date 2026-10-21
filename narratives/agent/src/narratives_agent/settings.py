@@ -135,6 +135,10 @@ class Settings(BaseSettings):
     # else, such as on a developer machine.
     k_service: str = ""
 
+    # Kubernetes sets this to the cluster API server host in every pod. It is
+    # empty outside Kubernetes.
+    kubernetes_service_host: str = ""
+
     # "off", compared case-insensitively, stops credentials from being attached
     # to MCP requests; any other value, like the default "auto", chooses them by
     # target host.
@@ -178,10 +182,10 @@ class Settings(BaseSettings):
     gemini_api_key_secret: str = ""
 
     # Transcript turns are signed with HMAC-SHA256 under this secret, so a
-    # turn signed by one instance verifies on any other. When it is unset,
-    # each process signs with a random key of its own, and a transcript then
-    # verifies only on the process that signed it. `SecretStr` keeps the value
-    # out of `repr()` output and logs.
+    # turn signed by one instance verifies on any other. It is required on
+    # Kubernetes; when it is unset elsewhere, each process signs with a random
+    # key of its own, and a transcript then verifies only on the process that
+    # signed it. `SecretStr` keeps the value out of `repr()` output and logs.
     transcript_hmac_secret: SecretStr = SecretStr("")
 
     @model_validator(mode="before")

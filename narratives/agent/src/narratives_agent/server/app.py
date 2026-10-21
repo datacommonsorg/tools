@@ -31,6 +31,7 @@ from narratives_agent.config import bootstrap_config_from_url
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.server.routes import chat, spa, system
 from narratives_agent.settings import get_settings
+from narratives_agent.workflows.transcript import init_signing_key
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,9 @@ def _allowed_origins() -> list[str]:
             origin.strip() for origin in configured.split(",") if origin.strip()
         ]
 
-    # K_SERVICE is set by Cloud Run; its presence means "not local dev".
-    if settings.k_service:
+    # K_SERVICE (Cloud Run) and KUBERNETES_SERVICE_HOST (GKE) indicate a
+    # deployed environment rather than local development.
+    if settings.k_service or settings.kubernetes_service_host:
         logger.error(
             "ALLOWED_ORIGIN is unset in a deployed environment; refusing to "
             "allow all origins. Set it to the service URL."
@@ -85,6 +87,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     importing the application in a test or a tool installs no global tracer
     provider. Spans that are still buffered are written at shutdown.
     """
+    init_signing_key()
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
     try:
