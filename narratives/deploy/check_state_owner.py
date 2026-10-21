@@ -26,13 +26,6 @@ the state belongs to: the "<instance>-app" Cloud Run service, plus the
 "-datacommons" and "-data-ingest" resources that older states may still hold.
 An empty state (a first deploy) passes.
 
-The same names answer a second question. The module builds "<instance>-app"
-today; a state that still calls the service "<instance>-datacommons" was
-written by an older generation of it. That state belongs to this deployment,
-so the ownership check above passes -- and an apply then destroys the service,
-and the URL it answers on, to create the new one. That is reported separately,
-because the operator may well want it, and only they can say so.
-
 Exit status
 -----------
 0  the state is this deployment's, under the names the module builds now.
@@ -52,9 +45,7 @@ _NAMED = {
     "google_cloud_run_v2_job": ("-data-ingest",),
 }
 
-# The suffix the module gives the Cloud Run service now. Any other suffix in
-# _NAMED for that type names the same service under an older generation of the
-# module, which an apply replaces rather than updates.
+# The suffix the module gives the service now; the others in _NAMED are older.
 _CURRENT_SERVICE_SUFFIX = "-app"
 _SERVICE = "google_cloud_run_v2_service"
 
@@ -78,12 +69,10 @@ def _managed(state: dict) -> list:
 
 
 def superseded(state: dict, instance: str) -> list:
-    """This deployment's services, named the way an older module named them.
+    """This deployment's services, under a name the module no longer builds.
 
-    Returned entries still belong to `instance`, so `offending` passes them.
-    What makes them worth stopping for is that the module no longer builds
-    that name: Terraform reconciles the difference by destroying the service
-    and creating one beside it, and a Cloud Run URL follows the service name.
+    `offending` passes them: they are this instance's. An apply replaces
+    them, and a Cloud Run URL follows the service name.
     """
     found = []
     for resource in _managed(state):

@@ -39,9 +39,8 @@ run_destroy() {
         -backend-config="prefix=custom-datacommons/${INSTANCE}" \
         -reconfigure
     # The same guard the apply path uses: never destroy resources belonging to
-    # another deployment. Status 3 -- a service under a name this module has
-    # since changed -- is this deployment's own, and a teardown removes it
-    # whatever it is called, so only a foreign state stops one.
+    # another deployment. Status 3 is this deployment's own service under an
+    # old name, which a teardown removes either way.
     local STATE_CHECK=0
     # `|| true` so the status comes from the check alone; see deploy.sh.
     (terraform show -json 2>/dev/null || true) \

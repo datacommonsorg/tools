@@ -59,9 +59,7 @@ for i in "${!args[@]}"; do
             BOOTSTRAP_SECRETS=true
             ;;
         --accept-service-rename)
-            # Say yes to replacing a service this module has since renamed.
-            # The state check stops the deploy otherwise, because the
-            # replacement takes the public URL with it.
+            # Replacing a renamed service takes its public URL with it.
             ACCEPT_SERVICE_RENAME=true
             ;;
         --code-only)
@@ -139,8 +137,6 @@ for cmd in gcloud terraform pnpm python3; do
     if ! command -v "$cmd" &>/dev/null; then
         log_error "Required tool '$cmd' is not installed or not in PATH!"
         if [ "$cmd" = "pnpm" ]; then
-            # Node ships corepack, which reads the version from package.json,
-            # so this is one command rather than a version to keep in step.
             echo "  Enable it with: corepack enable pnpm" >&2
         fi
         exit 1
@@ -388,10 +384,8 @@ IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
 AGENT_IMAGE=""
 
 if [ "$PLAN_ONLY" = true ]; then
-    # --plan promises to change nothing, and a container build pushes an image
-    # to Artifact Registry. Plan against the image the service runs today; when
-    # there is no service yet, name the image this commit would produce, so the
-    # plan still shows the value an apply would set.
+    # Plan against the image the service runs today, or the tag this commit
+    # would build when there is no service yet. Building one would push it.
     log_info "[--plan] Skipping container builds; nothing is pushed."
     AGENT_IMAGE=$(get_active_image "$APP_SERVICE")
     if [ -z "$AGENT_IMAGE" ]; then
@@ -441,11 +435,8 @@ if [ "$CODE_ONLY" = false ]; then
         log_info "GCS configuration bucket 'gs://${CONFIG_BUCKET}' already exists."
     fi
 
-    # rsync overwrites an object in place and reports nothing about what it
-    # replaced. A long-lived instance's bucket holds tuned prompts and the
-    # identity substituted into them, so print what is about to change first.
-    # The bucket itself is created above either way: the module reads it
-    # through a data source, so a plan cannot resolve without it.
+    # rsync overwrites in place and reports only success, so name the objects
+    # it will write before it writes them.
     log_info "Config objects this sync would write:"
     gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env" --dry-run
     if [ "$PLAN_ONLY" = true ]; then
@@ -559,18 +550,12 @@ terraform init \
 # for a different deployment, and applying would rename them -- which Terraform
 # does by destroying and recreating.
 STATE_CHECK=0
-# `|| true` so the status comes from the check alone. Under `pipefail` a
-# `terraform show` that fails -- no state yet, on a first deploy -- would
-# otherwise set STATE_CHECK to its own exit code, and a 1 reads here as
-# "another deployment owns this state", refusing a deploy that is fine.
+# `|| true` so the status is the check's own: under `pipefail` a failing
+# `terraform show` would set 1 here, which means "another deployment".
 (terraform show -json 2>/dev/null || true) \
     | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
 if [ "$STATE_CHECK" -eq 3 ]; then
-    # The state is this deployment's own, so the ownership test above passes.
-    # What it holds is the service under the name an older generation of this
-    # module gave it, and reconciling that name destroys the service -- and
-    # the URL it answers on. Worth doing sometimes; never worth doing by
-    # accident, which is what -auto-approve made of it.
+    # This deployment's own service, under a name the module has changed.
     if [ "$ACCEPT_SERVICE_RENAME" = false ]; then
         log_error "Refusing to apply: this replaces '${INSTANCE}'s service, and its URL changes."
         echo "  Re-run with --accept-service-rename once the new URL is acceptable," >&2
@@ -647,7 +632,7 @@ echo -e "\n=====================================================================
 if [ "$SMOKE_STATUS" -ne 0 ]; then
     log_warn "DEPLOYED, BUT THE SMOKE TESTS FAILED -- see the checks above."
 else
-    log_success "CONGRATULATIONS! CUSTOM DATA COMMONS UPDATED SUCCESSFULLY!"
+    log_success "CONGRATULATIONS! DEPLOYMENT UPDATED SUCCESSFULLY!"
 fi
 echo -e "==========================================================================="
 echo -e "Instance Display Name:  ${INSTANCE} Data Commons"

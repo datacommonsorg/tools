@@ -52,9 +52,7 @@ def test_service_under_the_previous_name_is_reported(
     # Test: A state written by an older generation of the module.
     # Situation: The state holds "base-dc-datacommons", the name the module
     #   gave the service before it became "base-dc-app".
-    # Expectation: Status 3, so deploy.sh can stop and say the apply would
-    #   replace the service and change its URL. The resource belongs to this
-    #   deployment, so the ownership check itself finds nothing.
+    # Expectation: Status 3, and the ownership check itself finds nothing.
     document = state(
         service("google_cloud_run_v2_service.dc_web", "base-dc-datacommons")
     )
@@ -86,8 +84,8 @@ def test_another_deployment_outranks_a_rename(
     # Test: Both failures present at once.
     # Situation: The state holds this deployment's old "base-dc-datacommons"
     #   and another deployment's "india-app".
-    # Expectation: Status 1. The wrong state is the graver fault and the one
-    #   with a different remedy, so it must not be masked by the rename.
+    # Expectation: Status 1 -- the wrong state has a different remedy, so the
+    #   rename must not mask it.
     document = state(
         service("google_cloud_run_v2_service.dc_web", "base-dc-datacommons"),
         service("google_cloud_run_v2_service.other", "india-app"),
@@ -122,6 +120,6 @@ def test_unusable_state_never_blocks_a_deploy(
     # Test: A first deploy, and a `terraform show` that produced nothing
     #   usable.
     # Situation: stdin is empty, whitespace, or not JSON.
-    # Expectation: Status 0 -- the guard does not block a deploy on its own
-    #   inability to read the state.
+    # Expectation: Status 0 -- the guard does not block on its own failure to
+    #   read the state.
     assert run(monkeypatch, raw) == 0
