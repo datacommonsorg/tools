@@ -5,7 +5,7 @@
   "gemini": {
     "api_key": "REPLACE_ME_OR_USE_SECRET_MANAGER",
     "api_base": "https://generativelanguage.googleapis.com/v1beta/models",
-    "mcp_model": "gemini-3.8-flash",
+    "discovery_model": "gemini-3.8-flash",
     "classify_model": "gemini-3.5-flash-lite"
   },
 
@@ -15,7 +15,7 @@
   },
 
   "thinking": {
-    "mcp_level": "medium",
+    "discovery_level": "medium",
     "synthesis_level": "medium"
   },
 

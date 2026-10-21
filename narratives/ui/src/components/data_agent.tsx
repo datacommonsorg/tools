@@ -254,7 +254,7 @@ function TurnView({
   const showSkeleton =
     !showAnswer &&
     !turn.stopped &&
-    (turn.status === "mcp" || turn.status === "synthesis");
+    (turn.status === "discovery" || turn.status === "synthesis");
   // Keep a shown skeleton under the answer until the crossfade ends.
   // Restored turns never had one, so they skip it.
   const [hadSkeleton, setHadSkeleton] = useState(false);
@@ -323,8 +323,8 @@ function TurnView({
           once and the skeleton hands over to the answer in place rather than
           the card leaving and coming back.
 
-          Loading: `mcp` through `synthesis`; not during `classify`, which
-          may still refuse.
+          Loading: `discovery` through `synthesis`; not during `classify`,
+          which may still refuse.
 
           Answer: AnswerPanel once the text is whole, crossfading over the
           skeleton in a shared grid cell. Hidden when stopped. */}

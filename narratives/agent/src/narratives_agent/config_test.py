@@ -440,7 +440,7 @@ def test_html_comments_are_stripped_from_prompt_bodies(
         _BodyFetch("Answer plainly.\n<!-- keep in sync with X -->\nCite."),
     )
     prompts = config._fetch_prompt_bodies("https://example.com/config.json")
-    assert prompts["mcp"] == "Answer plainly.\n\nCite."
+    assert prompts["discovery"] == "Answer plainly.\n\nCite."
 
 
 # --- config loading ---------------------------------------------------------
@@ -514,13 +514,13 @@ def test_bootstrap_holds_the_fetched_config_in_memory(
 ) -> None:
     # Test: In-memory caching of `CONFIG_URL` in `bootstrap_config_from_url`.
     # Situation: `CONFIG_URL` serves a document with an inline `synthesis`
-    #   prompt, `prompts/mcp.md` and `prompts/synthesis.md` are served in the
-    #   same directory, `prompts/follow_up.md` is absent, `defaults_dir` holds
-    #   no prompts, and `agent_root` contains a local `config.json`.
+    #   prompt, `prompts/discovery.md` and `prompts/synthesis.md` are served in
+    #   the same directory, `prompts/follow_up.md` is absent, `defaults_dir`
+    #   holds no prompts, and `agent_root` contains a local `config.json`.
     # Expectation: `load_config` returns the fetched configuration with the file
-    #   prompt in `mcp`, the inline prompt in `synthesis`, and no `follow_up`.
-    #   Each call returns the same instance, and `agent_root/config.json` is
-    #   not modified.
+    #   prompt in `discovery`, the inline prompt in `synthesis`, and no
+    #   `follow_up`. Each call returns the same instance, and
+    #   `agent_root/config.json` is not modified.
     monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
     monkeypatch.setattr(
         config,
@@ -533,7 +533,9 @@ def test_bootstrap_holds_the_fetched_config_in_memory(
                         "prompts": {"synthesis": "Inline synthesis."},
                     }
                 ),
-                f"{_PROMPTS_URL}/mcp.md": "Fetched mcp.\n<!-- note -->",
+                f"{_PROMPTS_URL}/discovery.md": (
+                    "Fetched discovery.\n<!-- note -->"
+                ),
                 f"{_PROMPTS_URL}/synthesis.md": "File synthesis.",
             }
         ),
@@ -546,7 +548,9 @@ def test_bootstrap_holds_the_fetched_config_in_memory(
 
     assert loaded == AgentConfig(
         template_vars={"name": "Fetched"},
-        prompts=Prompts(mcp="Fetched mcp.", synthesis="Inline synthesis."),
+        prompts=Prompts(
+            discovery="Fetched discovery.", synthesis="Inline synthesis."
+        ),
     )
     assert config.load_config() is loaded
     assert (agent_root / "config.json").read_text("utf-8") == disk_config
@@ -566,13 +570,14 @@ def test_bootstrap_layers_fetched_prompts_over_the_default_prompts(
     # Test: Prompt precedence in `bootstrap_config_from_url` when a configured
     #   prompt is unusable.
     # Situation: `defaults_dir` holds all four default prompts. `CONFIG_URL`
-    #   serves a document with an inline `synthesis` prompt; `prompts/mcp.md`
-    #   and `prompts/synthesis.md` are served, `prompts/classify.md` answers
-    #   404 or contains only an HTML comment, and `prompts/follow_up.md` is
-    #   unreachable.
-    # Expectation: `classify` and `follow_up` carry the default bodies, `mcp`
-    #   carries the fetched body, and `synthesis` carries the inline body. The
-    #   unusable fetches are logged as warnings and no error is logged.
+    #   serves a document with an inline `synthesis` prompt;
+    #   `prompts/discovery.md` and `prompts/synthesis.md` are served,
+    #   `prompts/classify.md` answers 404 or contains only an HTML comment, and
+    #   `prompts/follow_up.md` is unreachable.
+    # Expectation: `classify` and `follow_up` carry the default bodies,
+    #   `discovery` carries the fetched body, and `synthesis` carries the inline
+    #   body. The unusable fetches are logged as warnings and no error is
+    #   logged.
     monkeypatch.setenv("CONFIG_URL", _CONFIG_URL)
     _write_defaults(defaults_dir, {}, _DEFAULT_PROMPTS)
     monkeypatch.setattr(
@@ -584,7 +589,7 @@ def test_bootstrap_layers_fetched_prompts_over_the_default_prompts(
                     {"prompts": {"synthesis": "Inline synthesis."}}
                 ),
                 f"{_PROMPTS_URL}/classify.md": classify_body,
-                f"{_PROMPTS_URL}/mcp.md": "Fetched mcp.",
+                f"{_PROMPTS_URL}/discovery.md": "Fetched discovery.",
                 f"{_PROMPTS_URL}/synthesis.md": "Fetched synthesis.",
             }
         ),
@@ -596,7 +601,7 @@ def test_bootstrap_layers_fetched_prompts_over_the_default_prompts(
     assert config.load_config() == AgentConfig(
         prompts=Prompts(
             classify="Default classify.",
-            mcp="Fetched mcp.",
+            discovery="Fetched discovery.",
             synthesis="Inline synthesis.",
             follow_up="Default follow_up.",
         )
@@ -843,7 +848,7 @@ def test_load_config_falls_back_to_the_defaults_dir(
             "prompts": {"synthesis": "Inline synthesis."},
         },
         {
-            "mcp": "Shipped mcp.\n<!-- keep in sync -->\nCite.",
+            "discovery": "Shipped discovery.\n<!-- keep in sync -->\nCite.",
             "synthesis": "File synthesis.",
             "follow_up": "<!-- not written yet -->",
         },
@@ -854,14 +859,15 @@ def test_load_config_falls_back_to_the_defaults_dir(
     assert loaded == AgentConfig(
         template_vars={"name": "Shipped"},
         prompts=Prompts(
-            mcp="Shipped mcp.\n\nCite.", synthesis="Inline synthesis."
+            discovery="Shipped discovery.\n\nCite.",
+            synthesis="Inline synthesis.",
         ),
     )
     assert config.load_config() is loaded
 
 
 @pytest.mark.parametrize(
-    "mcp_bytes",
+    "discovery_bytes",
     [b"\xff", b"<!-- not written yet -->"],
     ids=["not UTF-8", "empty after comment stripping"],
 )
@@ -869,24 +875,27 @@ def test_load_config_reports_an_unusable_default_prompt_as_an_error(
     agent_root: Path,
     defaults_dir: Path,
     caplog: pytest.LogCaptureFixture,
-    mcp_bytes: bytes,
+    discovery_bytes: bytes,
 ) -> None:
     # Test: `load_config` when a default prompt file yields no body and no
     #   configured prompt covers that slot.
     # Situation: `defaults_dir/agent-config.json` and the default `classify`,
-    #   `synthesis`, and `follow_up` prompts are valid, while `prompts/mcp.md`
-    #   contains invalid UTF-8 bytes or only an HTML comment.
+    #   `synthesis`, and `follow_up` prompts are valid, while
+    #   `prompts/discovery.md` contains invalid UTF-8 bytes or only an HTML
+    #   comment.
     # Expectation: `load_config` returns the parsed `agent-config.json` with
-    #   the three valid slots and an empty `mcp` slot, logs a warning naming
-    #   `mcp.md`, and logs one error naming exactly `['mcp']` and the default
-    #   prompts directory.
+    #   the three valid slots and an empty `discovery` slot, logs a warning
+    #   naming `discovery.md`, and logs one error naming exactly `['discovery']`
+    #   and the default prompts directory.
     valid_prompts = {
-        slot: body for slot, body in _DEFAULT_PROMPTS.items() if slot != "mcp"
+        slot: body
+        for slot, body in _DEFAULT_PROMPTS.items()
+        if slot != "discovery"
     }
     _write_defaults(
         defaults_dir, {"template_vars": {"name": "Shipped"}}, valid_prompts
     )
-    (defaults_dir / "prompts" / "mcp.md").write_bytes(mcp_bytes)
+    (defaults_dir / "prompts" / "discovery.md").write_bytes(discovery_bytes)
 
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
@@ -894,10 +903,10 @@ def test_load_config_reports_an_unusable_default_prompt_as_an_error(
     assert loaded == AgentConfig(
         template_vars={"name": "Shipped"}, prompts=Prompts(**valid_prompts)
     )
-    assert "mcp.md" in caplog.text
+    assert "discovery.md" in caplog.text
     errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
     assert len(errors) == 1
-    assert "'mcp'" in errors[0]
+    assert "'discovery'" in errors[0]
     assert not any(f"'{slot}'" in errors[0] for slot in valid_prompts)
     assert str(defaults_dir / "prompts") in errors[0]
 
@@ -916,7 +925,7 @@ def test_load_config_is_none_when_the_defaults_are_unreadable(
     # Test: `load_config` when `defaults_dir` does not contain a readable
     #   configuration.
     # Situation: `CONFIG_URL` is unset, `agent_root/config.json` is absent,
-    #   `defaults_dir/prompts/mcp.md` is valid, and
+    #   `defaults_dir/prompts/discovery.md` is valid, and
     #   `defaults_dir/agent-config.json` is missing, invalid JSON, not a JSON
     #   object, or not valid UTF-8.
     # Expectation: `load_config` returns `None`, without the default prompts,
@@ -925,7 +934,9 @@ def test_load_config_is_none_when_the_defaults_are_unreadable(
     if config_bytes is not None:
         (defaults_dir / "agent-config.json").write_bytes(config_bytes)
     (defaults_dir / "prompts").mkdir()
-    (defaults_dir / "prompts" / "mcp.md").write_bytes(b"Shipped mcp.")
+    (defaults_dir / "prompts" / "discovery.md").write_bytes(
+        b"Shipped discovery."
+    )
 
     with caplog.at_level("WARNING"):
         loaded = config.load_config()
@@ -946,8 +957,8 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
     # Test: `load_config` when the document holds values of the wrong type.
     # Situation: `CONFIG_URL` is unset, `agent_root/config.json` sets
     #   `thinking` to the string `"high"` and `mcp.enabled` to the string
-    #   `"yes"` beside a valid `gemini.mcp_model`, and `defaults_dir` holds all
-    #   four default prompts.
+    #   `"yes"` beside a valid `gemini.discovery_model`, and `defaults_dir`
+    #   holds all four default prompts.
     # Expectation: `load_config` returns a configuration rather than `None`,
     #   with the configured model, the default thinking levels, and `enabled`
     #   left `True`; one warning names `thinking`, one names `mcp.enabled`,
@@ -955,7 +966,7 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
     (agent_root / "config.json").write_text(
         json.dumps(
             {
-                "gemini": {"mcp_model": "gemini-test"},
+                "gemini": {"discovery_model": "gemini-test"},
                 "thinking": "high",
                 "mcp": {"enabled": "yes"},
             }
@@ -968,7 +979,7 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
         loaded = config.load_config()
 
     assert loaded == AgentConfig(
-        gemini=GeminiConfig(mcp_model="gemini-test"),
+        gemini=GeminiConfig(discovery_model="gemini-test"),
         mcp=McpConfig(enabled=True),
         thinking=ThinkingLevels(),
         prompts=Prompts(**_DEFAULT_PROMPTS),

@@ -68,8 +68,8 @@ from narratives_agent.workflows.mcp_loop import (
 from narratives_agent.workflows.messages import (
     CHART_CONFIG_STATUS,
     CLASSIFY_STATUS,
+    DISCOVERY_STATUS,
     INTERNAL_ERROR,
-    MCP_STATUS,
     MCP_TOOLS_TIMEOUT,
     MCP_UNAVAILABLE,
     REFUSED_MESSAGE,
@@ -101,7 +101,7 @@ CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
 MCP_TOOLS_TIMEOUT_SECONDS = 20
 
 # This source is cited when observation tools ran but reported no
-# `sourceMetadata`; see `run_mcp_phase`.
+# `sourceMetadata`; see `run_discovery_phase`.
 _FALLBACK_SOURCE = {"name": "Data Commons", "url": "https://datacommons.org/"}
 
 _NO_CHARTS: dict[str, Any] = {"should_render": False}
@@ -144,11 +144,11 @@ class TurnContext:
 
 
 @dataclass
-class McpPhaseResult:
-    """Holds the MCP phase outputs passed to later phases.
+class DiscoveryPhaseResult:
+    """Holds the discovery phase outputs passed to later phases.
 
     `sources` is the single authority on citation numbering; see
-    `run_mcp_phase`.
+    `run_discovery_phase`.
     """
 
     results: str = ""
@@ -157,7 +157,7 @@ class McpPhaseResult:
     chart_task: asyncio.Task[dict[str, Any]] | None = None
 
 
-async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
+async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     """Gathers data through the MCP tool loop during the discovery phase.
 
     Streams the tool calls, the data status, and the provenance sources, and
@@ -172,7 +172,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
         GeminiBlockedError: If Gemini blocks the prompt or the candidate of a
             loop iteration.
     """
-    result = McpPhaseResult()
+    result = DiscoveryPhaseResult()
     if not ctx.config.mcp.enabled:
         return result
     # Readiness is "can we list tools?", not "do we hold a session id?".
@@ -194,7 +194,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
         logger.warning("MCP unavailable: not connected or no tools available")
         raise TurnAbortedError("mcp_unavailable", MCP_UNAVAILABLE)
 
-    ctx.emit("status", {"phase": "mcp", "message": MCP_STATUS})
+    ctx.emit("status", {"phase": "discovery", "message": DISCOVERY_STATUS})
     try:
         loop_result = await execute_mcp_tool_loop(
             ctx.transcript,
@@ -202,7 +202,7 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
             tools,
             ctx.telemetry,
             thought_callback=lambda text: ctx.emit(
-                "thought", {"thought": text, "phase": "mcp"}
+                "thought", {"thought": text, "phase": "discovery"}
             ),
             classification=ctx.classification,
         )
@@ -271,26 +271,28 @@ async def run_mcp_phase(ctx: TurnContext) -> McpPhaseResult:
     return result
 
 
-def _synthesis_message(user_message: str, mcp: McpPhaseResult) -> str:
+def _synthesis_message(
+    user_message: str, discovery: DiscoveryPhaseResult
+) -> str:
     """Builds the final user message that carries the gathered data."""
     context_parts = []
-    if mcp.results:
+    if discovery.results:
         # Number sources 1..N in the order streamed to the frontend as
         # `sources` so inline [n] citations resolve to the matching entry
         # in the rendered Sources list. Any additional source list must be
         # normalized to {name, url} and appended to the sources before
         # numbering, because the frontend provenance reducer drops entries
         # without a `url` field.
-        if mcp.sources:
+        if discovery.sources:
             numbered_sources = "\n".join(
                 f"[{n}] {src.get('name') or src.get('url')} - {src.get('url')}"
-                for n, src in enumerate(mcp.sources, start=1)
+                for n, src in enumerate(discovery.sources, start=1)
             )
             context_parts.append(
                 "**NUMBERED SOURCES - cite these numbers, exactly as given:**\n"
                 f"{numbered_sources}"
             )
-        context_parts.append(f"**DATA RESULTS:**\n{mcp.results}")
+        context_parts.append(f"**DATA RESULTS:**\n{discovery.results}")
     context = (
         "\n".join(context_parts)
         if context_parts
@@ -303,7 +305,9 @@ def _synthesis_message(user_message: str, mcp: McpPhaseResult) -> str:
     )
 
 
-async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
+async def run_synthesis_phase(
+    ctx: TurnContext, discovery: DiscoveryPhaseResult
+) -> str:
     """Streams the narrative answer during the synthesis phase.
 
     Returns:
@@ -325,7 +329,7 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
     # the current query with the MCP context.
     messages = transcript_contents(
         ctx.transcript,
-        _synthesis_message(ctx.transcript.current_query, mcp),
+        _synthesis_message(ctx.transcript.current_query, discovery),
     )
     try:
         stream = await async_gemini_stream(
@@ -379,7 +383,7 @@ async def run_synthesis_phase(ctx: TurnContext, mcp: McpPhaseResult) -> str:
 
 
 async def resolve_chart_config(
-    ctx: TurnContext, mcp: McpPhaseResult, full_text: str
+    ctx: TurnContext, discovery: DiscoveryPhaseResult, full_text: str
 ) -> dict[str, Any]:
     """Determines whether to display charts and returns their configuration.
 
@@ -389,7 +393,7 @@ async def resolve_chart_config(
     omitted when chart configuration fails or does not finish within
     `CHART_CONFIG_JOIN_TIMEOUT_SECONDS`.
     """
-    if mcp.chart_task is None:
+    if discovery.chart_task is None:
         return dict(_NO_CHARTS)
     ctx.emit(
         "status", {"phase": "chart_config", "message": CHART_CONFIG_STATUS}
@@ -415,7 +419,7 @@ async def resolve_chart_config(
     try:
         # `wait_for` cancels the task when the timeout expires.
         chart_config = await asyncio.wait_for(
-            mcp.chart_task, CHART_CONFIG_JOIN_TIMEOUT_SECONDS
+            discovery.chart_task, CHART_CONFIG_JOIN_TIMEOUT_SECONDS
         )
     except TimeoutError:
         logger.warning(
@@ -593,19 +597,19 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                 terminal_frame(state, idempotency_key, window=window),
             )
             return
-        with telemetry.phase("mcp"):
-            mcp = await run_mcp_phase(ctx)
-        chart_task = mcp.chart_task
+        with telemetry.phase("discovery"):
+            discovery = await run_discovery_phase(ctx)
+        chart_task = discovery.chart_task
         with telemetry.phase("synthesis"):
-            full_text = await run_synthesis_phase(ctx, mcp)
+            full_text = await run_synthesis_phase(ctx, discovery)
         with telemetry.phase("chart_config"):
-            chart_config = await resolve_chart_config(ctx, mcp, full_text)
+            chart_config = await resolve_chart_config(ctx, discovery, full_text)
         emit("content", {"chart_config": chart_config})
         with telemetry.phase("finalize"):
             window = await _sign_turn(
                 ctx,
                 full_text,
-                lambda: extract_state_slots(mcp.tool_calls, chart_config),
+                lambda: extract_state_slots(discovery.tool_calls, chart_config),
             )
         state = "complete"
         emit("terminal", terminal_frame(state, idempotency_key, window=window))
