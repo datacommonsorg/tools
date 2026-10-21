@@ -18,23 +18,16 @@ import {
 } from "./use_sse_chat";
 
 /**
- * The conversation lives in memory for as long as the page is open and is
- * never written to storage: a reload, a second tab, or a returning visitor
- * starts from an empty surface, and the device keeps no transcript.
+ * The conversation is held in memory and never written to storage.
  *
- * useSseChat is controlled: turns come from props. The provider owns them so
- * the chat survives a move to another tab of the app and back, and "New chat"
- * is simply an empty turns array.
+ * useSseChat is controlled: the provider owns the turns, so the chat survives
+ * a move to another tab of the app and back.
  */
 
 /** Keys earlier builds wrote the transcript to. */
 const LEGACY_STORAGE_KEYS = ["cdc:chat:v1", "cdc:chat:v2"];
 
-/**
- * Deletes a transcript an earlier build saved on this device. Chats are no
- * longer stored, so without this the old entry would sit in localStorage for
- * good with nothing left that reads it.
- */
+/** Deletes a transcript an earlier build saved; nothing reads it now. */
 function clearStoredChats(): void {
   if (typeof window === "undefined") return;
   try {
@@ -80,8 +73,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
   const { isStreaming, error, send, stop } = useSseChat({ turns, setTurns });
 
-  // Stop first: an answer still streaming belongs to the conversation being
-  // discarded, and `send` refuses to open a second stream until it ends.
+  // Stop first: `send` refuses to open a second stream until this one ends.
   const newChat = useCallback(() => {
     stop();
     setTurns([]);

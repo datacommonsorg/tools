@@ -28,11 +28,8 @@ import { NewChatIcon } from './icons';
 import { Tooltip } from './tooltip';
 
 /**
- * MenuDrawer is the navigation surface below the `lg` breakpoint, where the
- * header's hamburger replaces the icon rail: a panel sliding in from the
- * right (the hamburger lives at the header's right edge) holding the
- * new-chat control and the instance's sections. Above `lg` the rail and the
- * header links cover both, so nothing here renders.
+ * The navigation surface below the `lg` breakpoint, where the header's
+ * hamburger replaces the icon rail. Above `lg` nothing here renders.
  */
 
 const PANEL_WIDTH = 320;
@@ -66,10 +63,8 @@ export function MenuDrawer() {
 
   return (
     <>
-      {/* Click-outside backdrop, dimmed because the panel floats over
-          full-width content. A button rather than a div so the click target
-          is a real control, and hidden from assistive technology with no tab
-          stop, because the close button beside it does the same job. */}
+      {/* Click-outside backdrop. Hidden from assistive technology with no tab
+          stop: the close button beside it offers the same action. */}
       <button
         type="button"
         className="lg:hidden fixed inset-0 z-10 bg-scrim/30 cursor-default"

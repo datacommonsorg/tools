@@ -45,9 +45,8 @@ const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
  */
 export function DataAgent() {
   const [query, setQuery] = useState("");
-  // Pulled from the Context (ChatSessionProvider in app.tsx), which outlives
-  // this surface, so remounting it does not lose the chat. Nothing is stored
-  // on the device, so a browser refresh starts an empty one.
+  // From the Context (ChatSessionProvider in app.tsx), which outlives this
+  // surface. Nothing is stored, so a refresh starts an empty chat.
   const { turns, isStreaming, error, send, stop } = useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
@@ -61,9 +60,7 @@ export function DataAgent() {
   // Turns already here when the surface mounts (coming back from another tab)
   // are not news, so they do not animate in.
   const restoredTurns = useRef(turns.length);
-  // The surface stays mounted across "New chat", which empties the turns. What
-  // the refs remember belongs to the conversation just discarded, so they
-  // follow it down and the next question reads as news again.
+  // "New chat" empties the turns; the refs follow it down.
   if (turns.length < prevTurnsLength.current) {
     prevTurnsLength.current = turns.length;
     restoredTurns.current = turns.length;
