@@ -43,6 +43,7 @@ import pytest
 from mcp import MCPError, types
 
 from narratives_agent.config_model import AgentConfig, McpConfig
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client
 from narratives_agent.settings import Settings
 
@@ -450,7 +451,7 @@ async def test_concurrent_tool_calls_share_one_handshake(
         )
     )
 
-    assert all("error" not in result for result in results)
+    assert all("content" in result for result in results)
     assert server.count("initialize") == 1
     assert {r.session_id for r in server.received_for("tools/call")} == {
         "session-1"
@@ -479,7 +480,7 @@ async def test_concurrent_tool_calls_recover_a_lost_session_once(
         )
     )
 
-    assert all("error" not in result for result in results)
+    assert all("content" in result for result in results)
     assert server.count("initialize") == 2
     retried = [
         r.session_id
@@ -796,7 +797,7 @@ async def test_rewritten_arguments_are_logged_by_name_only(
     #   `date="range"`, so `fix_tool_arguments` rewrites `date`.
     # Expectation: The log names the rewritten `date` argument and the tool,
     #   and contains none of the argument values.
-    arguments = {"date": "2020", "date_range_start": "1999"}
+    arguments: JsonObject = {"date": "2020", "date_range_start": "1999"}
 
     with caplog.at_level(logging.INFO, logger=client.logger.name):
         await client.async_call_tool("get_observations", arguments)
@@ -816,15 +817,52 @@ async def test_rewritten_arguments_are_logged_by_name_only(
     ids=["tool reports an error", "server rejects the call"],
 )
 async def test_call_tool_reports_tool_and_protocol_errors(
-    server: _FakeMcpServer, tool: str, expected: str
+    server: _FakeMcpServer,
+    caplog: pytest.LogCaptureFixture,
+    tool: str,
+    expected: str,
 ) -> None:
-    # Test: A tool call returns an error dictionary when the tool reports
+    # Test: A tool call raises `McpToolError` when the tool reports
     #   `isError: true` or the server rejects the call as `INVALID_PARAMS`.
     # Situation: The call targets a tool that sets `isError` on its result, or
     #   a tool name the server rejects with JSON-RPC error -32602.
-    # Expectation: The call returns `{"error": <message>}` without retrying.
-    assert await client.async_call_tool(tool, {}) == {"error": expected}
+    # Expectation: The call raises `McpToolError` naming the tool and
+    #   carrying the tool's or the server's error text, without retrying,
+    #   and the failure is logged at WARNING.
+    with (
+        caplog.at_level(logging.WARNING, logger=client.logger.name),
+        pytest.raises(client.McpToolError) as raised,
+    ):
+        await client.async_call_tool(tool, {})
+
+    assert raised.value.tool == tool
+    assert raised.value.message == expected
     assert server.count("tools/call") == 1
+    assert any(
+        record.levelno == logging.WARNING
+        and record.getMessage() == f"MCP tool {tool} failed: {expected}"
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "down"),
+    [("failing_tool", False), ("get_observations", True)],
+    ids=["tool failure", "transport failure"],
+)
+async def test_every_call_failure_is_an_mcp_client_error(
+    server: _FakeMcpServer, tool: str, down: bool
+) -> None:
+    # Test: A caller that handles every MCP failure alike catches
+    #   `McpClientError`.
+    # Situation: The tool reports `isError: true`, or every connection to the
+    #   MCP server fails with `httpx2.ConnectError`.
+    # Expectation: Both failures are caught as `McpClientError`.
+    server.down = down
+
+    with pytest.raises(client.McpClientError):
+        await client.async_call_tool(tool, {})
 
 
 @pytest.mark.asyncio
