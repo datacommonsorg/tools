@@ -44,18 +44,23 @@ export interface StreamNode {
   children?: StreamNode[];
 }
 
+/** Returns the number of whitespace-separated words in `text`. */
+export function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
 /** Returns how long the reveal of `text` runs, in milliseconds. */
 export function calculateStreamDurationMs(text: string): number {
-  const words = text.split(/\s+/).filter(Boolean).length;
-  return Math.min(words * MS_PER_WORD, MAX_STREAM_MS);
+  return Math.min(countWords(text) * MS_PER_WORD, MAX_STREAM_MS);
 }
 
 /**
  * Wraps every word in a span and gives each an `animation-delay` that grows
- * in reading order, spread across `durationMs`. Whitespace stays as plain
- * text so wrapping and copy-paste are unchanged.
+ * in reading order, spread across `durationMs` and offset by `startMs`, so a
+ * body that follows another in one reveal starts where the previous one ends.
+ * Whitespace stays as plain text so wrapping and copy-paste are unchanged.
  */
-export function rehypeStreamWords(durationMs: number) {
+export function rehypeStreamWords(durationMs: number, startMs = 0) {
   return (tree: StreamNode): void => {
     // Each entry is a node and the index of the word it appears with.
     const timed: [StreamNode, number][] = [];
@@ -89,7 +94,7 @@ export function rehypeStreamWords(durationMs: number) {
     walk(tree);
     const step = durationMs / Math.max(words, 1);
     for (const [node, index] of timed) {
-      const delay = `animation-delay:${Math.round(index * step)}ms`;
+      const delay = `animation-delay:${Math.round(startMs + index * step)}ms`;
       const style = node.properties?.style;
       node.properties = {
         ...node.properties,

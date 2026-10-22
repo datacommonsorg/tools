@@ -75,6 +75,14 @@ describe('citationsIn', () => {
     expect(citationsIn('a [2] b [1][3]')).toEqual([2, 1, 3]);
     expect(citationsIn('no markers')).toEqual([]);
   });
+
+  it('reads every number of a composite marker', () => {
+    // Test: Composite marker extraction.
+    // Situation: A derived figure cites two sources as `[1, 2]`, followed by
+    //   a single marker.
+    // Expectation: Both numbers of the composite marker, then the single one.
+    expect(citationsIn('**64.25%** [1, 2] and [3]')).toEqual([1, 2, 3]);
+  });
 });
 
 describe('analyzeMarkdownTable', () => {
@@ -149,6 +157,21 @@ describe('analyzeMarkdownTable', () => {
       ]),
     );
     expect(hoistedCitations.get(1)).toEqual([1]);
+  });
+
+  it('hoists a shared composite marker and keeps the column numeric', () => {
+    // Test: Composite per-series citations in a value column.
+    // Situation: Every row of a derived value column cites `[1, 2]`.
+    // Expectation: Both source numbers hoist onto the header in order and
+    //   stripping the composite marker leaves the column numeric.
+    const analysis = analyzeMarkdownTable(
+      seriesTable([
+        ['2023', '64.25% [1, 2]'],
+        ['2022', '63.80% [1, 2]'],
+      ]),
+    );
+    expect(analysis.hoistedCitations.get(1)).toEqual([1, 2]);
+    expect(analysis.numericColumns.has(1)).toBe(true);
   });
 
   it('hoists past a placeholder row', () => {

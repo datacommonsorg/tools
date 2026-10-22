@@ -23,6 +23,7 @@ interface DataCommonsAttributes
   header?: string;
   date?: string;
   colors?: string;
+  unit?: string;
 
   // Plural (line / bar / pie / scatter / etc.)
   variables?: string;
@@ -36,6 +37,17 @@ interface DataCommonsAttributes
   parentPlace?: string;
   childPlaceType?: string;
 
+  // Per-capita normalization: a space-separated list of the variable DCIDs
+  // to divide by population (bar / line / map / ranking / highlight)
+  perCapita?: string;
+
+  // Source facet pinning: `facetId` on single-variable tiles such as
+  // highlight, `facetIds` as a space-separated list aligned with `variables`,
+  // and `facetMapping` as a JSON object from variable DCID to facet ID
+  facetId?: string;
+  facetIds?: string;
+  facetMapping?: string;
+
   // Bar
   sort?: 'ascending' | 'descending';
 
@@ -48,6 +60,7 @@ interface DataCommonsAttributes
   // Ranking
   rankingCount?: string | number;
   showHighestLowest?: boolean | '' | 'true' | 'false';
+  showLowest?: boolean | '' | 'true' | 'false';
 
   // Gauge
   min?: string | number;
@@ -55,6 +68,8 @@ interface DataCommonsAttributes
 
   // Scatter
   showPlaceLabels?: boolean | '' | 'true' | 'false';
+  // Scatter's name for the per-capita variable list
+  usePerCapita?: string;
 }
 
 declare module 'react' {

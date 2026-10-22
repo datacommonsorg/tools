@@ -76,6 +76,20 @@ describe('rehypeStreamWords', () => {
 
     expect(item.properties?.style).toBe('color:red;animation-delay:0ms');
   });
+
+  it('offsets every delay by the start time', () => {
+    // Test: Reveal offset.
+    // Situation: A two-word paragraph revealed over 100ms, starting at 300ms.
+    // Expectation: The words are delayed 300ms and 350ms.
+    const paragraph = element('p', [text('one two')]);
+
+    rehypeStreamWords(100, 300)(element('root', [paragraph]));
+
+    const delays = (paragraph.children ?? [])
+      .filter((node) => node.tagName === 'span')
+      .map((node) => node.properties?.style);
+    expect(delays).toEqual(['animation-delay:300ms', 'animation-delay:350ms']);
+  });
 });
 
 describe('calculateStreamDurationMs', () => {

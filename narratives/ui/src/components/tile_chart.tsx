@@ -18,15 +18,16 @@
  * @fileoverview Renders a Data Commons web-component chart (line/bar/map/ranking/…) from an agent chart config.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ChartConfig, ChartItem, ProvenanceItem } from "../hooks/use_sse_chat";
+import type { ChartConfig, ChartItem } from "@/src/hooks/use_sse_chat";
 import {
   API_ROOT,
   DataCommonsComponent,
+  type DataCommonsComponentAttributes,
   type DataCommonsComponentTagName,
   useDcChartEmptyNotice,
-} from "../utils/datacommons_component";
+} from "@/src/utils/datacommons_component";
 
 /**
  * Chart renderer for chat answers.
@@ -45,13 +46,18 @@ import {
  */
 interface ChartTileProps {
   config: ChartConfig;
-  provenance?: ProvenanceItem[];
+  /**
+   * Called once every rendered chart has settled (drawn, reported no data, or
+   * reached the watch budget of `useDcChartEmptyNotice`), and right after
+   * mount when the tile renders nothing.
+   */
+  onSettled?: () => void;
 }
 
 const MAX_CHARTS = 3;
 
 /** Renders the agent's chart directive as a responsive grid of DC charts. */
-export function ChartTile({ config }: ChartTileProps) {
+export function ChartTile({ config, onSettled }: ChartTileProps) {
   // Charts that reported no data of their own after mounting. The agent
   // already withholds chart configs when its tool calls returned no
   // observations, but each DC component runs its own fetch against the place
@@ -72,27 +78,29 @@ export function ChartTile({ config }: ChartTileProps) {
       return next;
     });
   }, []);
+  const [settledIndices, setSettledIndices] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
+  const markSettled = useCallback((index: number) => {
+    setSettledIndices((prev) => {
+      if (prev.has(index)) return prev;
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+  }, []);
 
-  if (!config || !config.shouldRender || config.hideCharts) return null;
+  const toRender = selectRenderableCharts(config);
+  // True at once for a tile with nothing to render.
+  const isSettled = toRender.every((_, index) => settledIndices.has(index));
+  // Held in a ref so an inline arrow from the caller does not re-fire the
+  // effect on every parent re-render.
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  useEffect(() => {
+    if (isSettled) onSettledRef.current?.();
+  }, [isSettled]);
 
-  // Legacy single-chart payloads are folded into `charts` upstream by
-  // mapRawChartConfig, so an empty list here means nothing to render.
-  const charts: ChartItem[] | undefined = config.charts;
-  if (!charts || !Array.isArray(charts) || charts.length === 0) {
-    return null;
-  }
-
-  const toRender = charts
-    .slice(0, MAX_CHARTS)
-    .filter((chart) => chart.variableDcids && chart.variableDcids.length > 0)
-    // Each DC component needs SOME place anchor — either explicit places
-    // or a parent + child type. Drop entries the agent under-specified
-    // rather than letting the component crash.
-    .filter(
-      (chart) =>
-        (chart.placeDcids && chart.placeDcids.length > 0) ||
-        (chart.parentPlace && chart.childPlaceType),
-    );
   if (toRender.length === 0) return null;
 
   const visibleCount = toRender.filter(
@@ -119,10 +127,35 @@ export function ChartTile({ config }: ChartTileProps) {
           chart={chart}
           hidden={emptyIndices.has(index)}
           onEmpty={() => markEmpty(index)}
+          onSettled={() => markSettled(index)}
         />
       ))}
     </div>
   );
+}
+
+/** Returns the charts of `config` the tile can render; empty when none. */
+function selectRenderableCharts(config: ChartConfig): ChartItem[] {
+  if (!config || !config.shouldRender || config.hideCharts) return [];
+
+  // The directive lists its charts in `charts`; an empty list means there is
+  // nothing to render.
+  const charts: ChartItem[] | undefined = config.charts;
+  if (!charts || !Array.isArray(charts) || charts.length === 0) {
+    return [];
+  }
+
+  return charts
+    .slice(0, MAX_CHARTS)
+    .filter((chart) => chart.variableDcids && chart.variableDcids.length > 0)
+    // Each DC component needs SOME place anchor: either explicit places
+    // or a parent + child type. Drop entries the agent under-specified
+    // rather than letting the component crash.
+    .filter(
+      (chart) =>
+        (chart.placeDcids && chart.placeDcids.length > 0) ||
+        (chart.parentPlace && chart.childPlaceType),
+    );
 }
 
 /**
@@ -137,15 +170,17 @@ function ChartCard({
   chart,
   hidden,
   onEmpty,
+  onSettled,
 }: {
   chart: ChartItem;
   hidden: boolean;
   onEmpty: () => void;
+  onSettled: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const tag = getDcComponentTag(chart.vizType);
   const attrs = getDcComponentAttributes(chart);
-  useDcChartEmptyNotice(cardRef, tag, onEmpty);
+  useDcChartEmptyNotice(cardRef, tag, onEmpty, onSettled);
   // The DC web component renders its own bordered card (Source caption,
   // chart, footer with "About this data" + "API code"). Wrapping it in
   // another bordered div produced a double-border look. We keep just a
@@ -167,7 +202,7 @@ function ChartCard({
  * explicit mapping falls back to line, which is the most forgiving
  * renderer (single variable + single place is always valid).
  */
-function getDcComponentTag(
+export function getDcComponentTag(
   viz: ChartItem["vizType"],
 ): DataCommonsComponentTagName {
   switch (viz) {
@@ -177,10 +212,6 @@ function getDcComponentTag(
       return "datacommons-map";
     case "ranking":
       return "datacommons-ranking";
-    case "pie":
-      return "datacommons-pie";
-    case "gauge":
-      return "datacommons-gauge";
     case "highlight":
       return "datacommons-highlight";
     case "scatter":
@@ -192,22 +223,37 @@ function getDcComponentTag(
 }
 
 /**
+ * The chart kinds whose web component reads the per-capita variable list from
+ * `perCapita`. Scatter reads it from `usePerCapita`.
+ */
+const PER_CAPITA_KINDS: ReadonlySet<ChartItem["vizType"]> = new Set([
+  "bar",
+  "line",
+  "map",
+  "ranking",
+  "highlight",
+]);
+
+/**
  * Builds the attribute set the DC component expects. Attribute names are
  * case-sensitive for some components (e.g. parentPlace, childPlaceType)
  * and the DC components accept space-separated strings for list-shaped
- * attributes (variables, places).
+ * attributes (variables, places, perCapita, facetIds). A boolean attribute is
+ * set as a bare attribute when true and left off when false, which is how the
+ * components' boolean converter reads it.
  */
-function getDcComponentAttributes(
+export function getDcComponentAttributes(
   chart: ChartItem,
-): Record<string, string | undefined> {
-  const attrs: Record<string, string | undefined> = {
+): DataCommonsComponentAttributes {
+  const variableDcids = chart.variableDcids;
+  const attrs: DataCommonsComponentAttributes = {
     header: chart.title ?? "",
-    variables: chart.variableDcids.join(" "),
+    variables: variableDcids.join(" "),
   };
   if (chart.placeDcids && chart.placeDcids.length > 0) {
     // Some DC components key on `places`, others on the singular `place`
-    // (highlight, gauge). Emit both so the component picks the one it
-    // wants and ignores the other.
+    // (highlight). Emit both so the component reads the one it uses and
+    // ignores the other.
     attrs.places = chart.placeDcids.join(" ");
     attrs.place = chart.placeDcids[0];
   }
@@ -215,9 +261,45 @@ function getDcComponentAttributes(
   if (chart.childPlaceType) attrs.childPlaceType = chart.childPlaceType;
   if (chart.date) attrs.date = chart.date;
   if (chart.unit) attrs.unit = chart.unit;
-  // Highlight/gauge require singular `variable` not `variables`.
-  if (chart.variableDcids.length === 1) {
-    attrs.variable = chart.variableDcids[0];
+  // Highlight requires singular `variable` rather than `variables`.
+  if (variableDcids.length === 1) {
+    attrs.variable = variableDcids[0];
+  }
+  if (chart.perCapita && variableDcids.length > 0) {
+    if (chart.vizType === "scatter") {
+      attrs.usePerCapita = variableDcids.join(" ");
+    } else if (PER_CAPITA_KINDS.has(chart.vizType)) {
+      attrs.perCapita = variableDcids.join(" ");
+    }
+  }
+  if (chart.facetIds && variableDcids.length > 0) {
+    const facets = chart.facetIds;
+    if (chart.vizType === "highlight") {
+      const facetId = facets[variableDcids[0]];
+      if (facetId) {
+        attrs.facetId = facetId;
+      }
+    } else if (
+      variableDcids.every((variable) => Boolean(facets[variable]))
+    ) {
+      attrs.facetIds = variableDcids
+        .map((variable) => facets[variable])
+        .join(" ");
+    } else if (variableDcids.some((variable) => Boolean(facets[variable]))) {
+      attrs.facetMapping = JSON.stringify(facets);
+    }
+  }
+  if (chart.rankingCount !== undefined) {
+    attrs.rankingCount = chart.rankingCount;
+  }
+  if (chart.showHighestLowest) {
+    attrs.showHighestLowest = true;
+  }
+  if (chart.showLowest) {
+    attrs.showLowest = true;
+  }
+  if (chart.sort) {
+    attrs.sort = chart.sort;
   }
   return attrs;
 }
