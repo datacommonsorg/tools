@@ -248,7 +248,7 @@ async def _run_tools(
 async def _iterate(
     transcript: Transcript,
     config: AgentConfig,
-    tools: list[mcp_client.McpTool],
+    tools: Sequence[mcp_client.McpTool],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None,
     classification: QueryClassification | None,
@@ -365,7 +365,7 @@ async def _iterate(
 async def execute_mcp_tool_loop(
     transcript: Transcript,
     config: AgentConfig,
-    tools: list[mcp_client.McpTool],
+    tools: Sequence[mcp_client.McpTool],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None = None,
     classification: QueryClassification | None = None,

@@ -111,7 +111,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         mcp_client, "ensure_session_scope", lambda: log.append("scope")
     )
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         log.append(f"tool:{name}")
         return {"content": [{"type": "text", "text": f"{name} result"}]}
 
@@ -183,7 +183,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     #   calls complete, and both results reach the gathered text.
     barrier = asyncio.Barrier(2)
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         calls.append(f"tool:{name}")
         async with asyncio.timeout(1):
             await barrier.wait()
@@ -376,7 +376,7 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     second_started = asyncio.Event()
     second_canceled = asyncio.Event()
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         if name == "second":
             second_started.set()
             try:
@@ -419,7 +419,7 @@ async def test_tool_calls_in_flight_are_bounded(
     in_flight = 0
     peak = 0
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         nonlocal in_flight, peak
         in_flight += 1
         peak = max(peak, in_flight)
