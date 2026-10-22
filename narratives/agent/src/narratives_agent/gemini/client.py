@@ -440,15 +440,12 @@ def _normalize_messages(messages: Sequence[Message]) -> list[types.Content]:
 
 
 def _normalize_tools(
-    tools: Sequence[dict[str, Any]] | None,
+    tools: Sequence[types.FunctionDeclaration] | None,
 ) -> types.ToolListUnion | None:
-    """Wraps function-declaration dicts in a single SDK `Tool`."""
+    """Wraps function declarations in a single SDK `Tool`."""
     if not tools:
         return None
-    declarations = [
-        types.FunctionDeclaration.model_validate(tool) for tool in tools
-    ]
-    return [types.Tool(function_declarations=declarations)]
+    return [types.Tool(function_declarations=list(tools))]
 
 
 def _thinking_config(
@@ -470,7 +467,7 @@ def _thinking_config(
 
 def _build_config(
     system_instruction: str,
-    tools: Sequence[dict[str, Any]] | None,
+    tools: Sequence[types.FunctionDeclaration] | None,
     temperature: float,
     thinking_level: types.ThinkingLevel | None,
     response_schema: ResponseSchema | None,
@@ -516,7 +513,7 @@ async def _prepare_call(
     messages: Sequence[Message],
     system_instruction: str,
     model: str,
-    tools: Sequence[dict[str, Any]] | None,
+    tools: Sequence[types.FunctionDeclaration] | None,
     temperature: float,
     thinking_level: types.ThinkingLevel | None,
     response_schema: ResponseSchema | None,
@@ -525,8 +522,8 @@ async def _prepare_call(
     """Resolves the client and builds the request.
 
     Raises:
-        GeminiError: If credentials are missing or the messages, tools, or
-            schema do not validate.
+        GeminiError: If credentials are missing or the messages or schema do
+            not validate.
     """
     client = await _get_client(model)
     try:
@@ -758,7 +755,7 @@ async def async_gemini_request(
     messages: Sequence[Message],
     system_instruction: str,
     model: str,
-    tools: Sequence[dict[str, Any]] | None = None,
+    tools: Sequence[types.FunctionDeclaration] | None = None,
     temperature: float = 0.3,
     thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,
@@ -771,8 +768,7 @@ async def async_gemini_request(
             earlier `GeminiResponse` values replayed as model turns.
         system_instruction: System prompt, rendered with `render_prompt`.
         model: Model name, such as "gemini-3.8-flash".
-        tools: Optional function declarations, each a dict with "name",
-            "description", and "parameters".
+        tools: Optional function declarations.
         temperature: Sampling temperature.
         thinking_level: Optional thinking level.
         response_schema: Optional Pydantic model or JSON schema for
@@ -821,7 +817,7 @@ async def async_gemini_stream(
     messages: Sequence[Message],
     system_instruction: str,
     model: str,
-    tools: Sequence[dict[str, Any]] | None = None,
+    tools: Sequence[types.FunctionDeclaration] | None = None,
     temperature: float = 0.3,
     thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,
@@ -908,7 +904,7 @@ async def async_gemini_request_with_thought_streaming(
     messages: Sequence[Message],
     system_instruction: str,
     model: str,
-    tools: Sequence[dict[str, Any]] | None = None,
+    tools: Sequence[types.FunctionDeclaration] | None = None,
     temperature: float = 0.3,
     thinking_level: types.ThinkingLevel | None = None,
     response_schema: ResponseSchema | None = None,

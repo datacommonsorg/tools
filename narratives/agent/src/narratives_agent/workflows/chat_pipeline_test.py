@@ -224,8 +224,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         stub.telemetry = recording
         return recording
 
-    async def get_tools() -> list[dict[str, Any]]:
-        return [{"name": "get_observations"}]
+    async def get_tools() -> list[mcp_client.McpTool]:
+        return [
+            mcp_client.McpTool(
+                name="get_observations",
+                description="",
+                input_schema={"type": "object", "properties": {}},
+            )
+        ]
 
     async def classify(*args: Any, **kwargs: Any) -> Admitted:
         return Admitted(_CLASSIFICATION)
@@ -710,7 +716,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     # Situation: MCP is enabled, but `async_get_tools` returns an empty list.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `mcp_unavailable` and a fixed message, without calling synthesis.
-    async def no_tools() -> list[dict[str, Any]]:
+    async def no_tools() -> list[mcp_client.McpTool]:
         return []
 
     monkeypatch.setattr(mcp_client, "async_get_tools", no_tools)
@@ -733,7 +739,7 @@ async def test_a_slow_tool_list_fails_the_turn(
     #   `async_get_tools` never returns.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `mcp_timeout`, without calling synthesis.
-    async def hung_tools() -> list[dict[str, Any]]:
+    async def hung_tools() -> list[mcp_client.McpTool]:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 

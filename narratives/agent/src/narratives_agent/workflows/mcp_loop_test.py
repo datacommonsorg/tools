@@ -35,15 +35,19 @@ Verifies that:
 8. A classification appends its pattern directive to the system instruction,
    and a prompt that Gemini blocks propagates out of the loop as the client's
    `GeminiBlockedError`.
+9. Each tool is declared to Gemini with its name, its description, and its
+   transformed input schema, and a schema that Gemini's `Schema` rejects ends
+   the loop as a model error before any request is sent.
 """
 
 import asyncio
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 import pytest
+from google.genai import types
 
 from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
@@ -69,7 +73,12 @@ _TRANSCRIPT = Transcript(
 )
 _CONFIG = AgentConfig()
 _TOOLS = [
-    {"name": name, "description": "A tool."} for name in ("first", "second")
+    mcp_client.McpTool(
+        name=name,
+        description="A tool.",
+        input_schema={"type": "object", "properties": {}},
+    )
+    for name in ("first", "second")
 ]
 _UPSTREAM_ERROR = "HTTP 500: internal detail that must not reach the user"
 
@@ -672,3 +681,106 @@ async def test_a_blocked_prompt_propagates_out_of_the_loop(
         )
 
     assert raised.value.block_reason == "PROHIBITED_CONTENT"
+
+
+@pytest.mark.asyncio
+async def test_each_tool_is_declared_with_its_transformed_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Conversion of `McpTool` values into the declarations sent to
+    #   Gemini.
+    # Situation: The loop runs once with one tool whose input schema holds a
+    #   `title`, a nullable `anyOf` property with a default, and a map-valued
+    #   object property.
+    # Expectation: The request declares the tool with its name, its
+    #   description, and the schema `transform_schema_for_gemini` produces:
+    #   `title` dropped, the union collapsed to its non-null type, and the map
+    #   described in prose.
+    declarations: list[Sequence[types.FunctionDeclaration]] = []
+
+    async def request(
+        *,
+        tools: Sequence[types.FunctionDeclaration],
+        **_: object,
+    ) -> GeminiResponse:
+        declarations.append(tools)
+        return _text_turn("Done.")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+    tool = mcp_client.McpTool(
+        name="get_observations",
+        description="Fetches observations.",
+        input_schema={
+            "type": "object",
+            "title": "GetObservations",
+            "properties": {
+                "place": {"type": "string", "title": "Place"},
+                "date": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": "latest",
+                },
+                "entities": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "required": ["place"],
+        },
+    )
+
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, _CONFIG, [tool], telemetry
+    )
+
+    ((declaration,),) = declarations
+    assert declaration.model_dump(mode="json", exclude_none=True) == {
+        "name": "get_observations",
+        "description": "Fetches observations.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "place": {"type": "STRING"},
+                "date": {"type": "STRING", "default": "latest"},
+                "entities": {
+                    "type": "OBJECT",
+                    "description": (
+                        "A JSON object whose keys are caller-defined and "
+                        "whose values are string values."
+                    ),
+                },
+            },
+            "required": ["place"],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_tool_schema_ends_the_loop_as_a_model_error(
+    calls: list[str],
+    model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: A tool schema that is not a valid Gemini schema.
+    # Situation: The tool's input schema gives `required` as a string, which
+    #   Gemini's `Schema` rejects.
+    # Expectation: The loop raises `McpLoopError` with type
+    #   `mcp_model_error`, as a failed model call does, and sends no model
+    #   request.
+    model_answers()
+    tool = mcp_client.McpTool(
+        name="first",
+        description="A tool.",
+        input_schema={"type": "object", "required": "place"},
+    )
+
+    with pytest.raises(mcp_loop.McpLoopError) as raised:
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, [tool], telemetry
+        )
+
+    assert raised.value.error_type == "mcp_model_error"
+    assert telemetry.mcp_iterations == 0
