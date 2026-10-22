@@ -55,8 +55,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       admission pre-filter, query classification, and pattern guidance
       (`prefilter.py`, `classify.py`, `pattern_guidance.py`), MCP tool loop
       (`mcp_loop.py`), chart configuration (`chart_config.py`), follow-up
-      generation (`follow_up.py`), user-visible messages (`messages.py`), and
-      signed transcripts (`transcript.py`).
+      generation (`follow_up.py`), user-visible messages (`messages.py`), the
+      typed SSE frames the agent loop sends (`sse_frames.py`), and signed
+      transcripts (`transcript.py`).
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser

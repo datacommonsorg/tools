@@ -42,7 +42,15 @@ from starlette.types import Message
 from narratives_agent.config_model import AgentConfig
 from narratives_agent.server.routes import chat
 from narratives_agent.workflows import transcript as transcript_module
-from narratives_agent.workflows.chat_pipeline import Emit, EventName
+from narratives_agent.workflows.chat_pipeline import Emit
+from narratives_agent.workflows.messages import DISCOVERY_STATUS
+from narratives_agent.workflows.sse_frames import (
+    SseFrame,
+    StatusFrame,
+    TerminalCompleteFrame,
+    TextFrame,
+    ThoughtFrame,
+)
 from narratives_agent.workflows.transcript import (
     MAX_IDEMPOTENCY_KEY_CHARS,
     MAX_QUERY_CHARS,
@@ -58,23 +66,27 @@ _IDEMPOTENCY_KEY = "test-idempotency-key"
 # turn spends in cleanup. Using more than one iteration verifies that a second
 # cancellation does not interrupt cleanup mid-way.
 _CLEANUP_STEPS = 3
-_EVENTS: list[tuple[EventName, dict[str, Any]]] = [
-    ("status", {"phase": "discovery"}),
-    ("content", {"text": "About 68 million."}),
-    ("terminal", {"state": "complete"}),
+_STATUS = StatusFrame(phase="discovery", message=DISCOVERY_STATUS)
+_UNSIGNED_COMPLETE = TerminalCompleteFrame(
+    idempotency_key=_IDEMPOTENCY_KEY, window=None
+)
+_FRAMES: list[SseFrame] = [
+    _STATUS,
+    TextFrame(text="About 68 million."),
+    _UNSIGNED_COMPLETE,
 ]
 
 
 class _Turn:
-    """Stubs `run_turn` by recording its inputs and emitting fixed events."""
+    """Stubs `run_turn` by recording its inputs and emitting fixed frames."""
 
     def __init__(self) -> None:
         self.calls: list[Transcript] = []
 
     async def __call__(self, transcript: Transcript, emit: Emit) -> None:
         self.calls.append(transcript)
-        for event, data in _EVENTS:
-            emit(event, data)
+        for frame in _FRAMES:
+            emit(frame)
 
 
 @pytest.fixture(autouse=True)
@@ -128,7 +140,7 @@ def test_stream_sends_each_event_as_a_typed_frame_byte_for_byte(
     client: TestClient,
 ) -> None:
     # Test: Wire format of `POST /agent/chat/stream`.
-    # Situation: The turn is stubbed to emit three fixed events, and a
+    # Situation: The turn is stubbed to emit three fixed frames, and a
     #   client posts a message.
     # Expectation: The body is one frame per event, in order, byte for byte,
     #   each with an `id:` counting up from 1, its `event:` name, and its
@@ -141,10 +153,14 @@ def test_stream_sends_each_event_as_a_typed_frame_byte_for_byte(
 
     assert response.status_code == 200
     assert response.content == (
-        b'id: 1\r\nevent: status\r\ndata: {"phase": "discovery"}\r\n\r\n'
+        b"id: 1\r\nevent: status\r\n"
+        b'data: {"phase": "discovery", "message": "Querying data tools..."}'
+        b"\r\n\r\n"
         b"id: 2\r\nevent: content\r\n"
         b'data: {"text": "About 68 million."}\r\n\r\n'
-        b'id: 3\r\nevent: terminal\r\ndata: {"state": "complete"}\r\n\r\n'
+        b"id: 3\r\nevent: terminal\r\n"
+        b'data: {"state": "complete", '
+        b'"idempotency_key": "test-idempotency-key"}\r\n\r\n'
     )
     assert (
         response.headers["content-type"] == "text/event-stream; charset=utf-8"
@@ -370,7 +386,7 @@ def test_client_disconnect_cancels_the_turn_before_the_response_ends(
     cleaned_up = asyncio.Event()
 
     async def blocked_turn(transcript: Transcript, emit: Emit) -> None:
-        emit("thought", {"thought": "..."})
+        emit(ThoughtFrame(thought="...", phase="discovery"))
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -459,10 +475,10 @@ def test_heartbeat_frames_are_sent_while_the_turn_is_idle(
         return original_heartbeat()
 
     async def slow_turn(transcript: Transcript, emit: Emit) -> None:
-        emit("status", {"phase": "discovery"})
+        emit(_STATUS)
         async with asyncio.timeout(1):
             await heartbeat_built.wait()
-        emit("terminal", {"state": "complete"})
+        emit(_UNSIGNED_COMPLETE)
 
     original_heartbeat = chat._heartbeat
     monkeypatch.setattr(chat, "_heartbeat", heartbeat)
