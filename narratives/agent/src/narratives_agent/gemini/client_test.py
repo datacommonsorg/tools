@@ -819,15 +819,15 @@ async def test_thought_streaming_forwards_thoughts_and_returns_the_response(
     )
     thoughts: list[str] = []
     usage = TokenUsage()
-    tool = {
-        "name": "get_observations",
-        "description": "Fetch observations.",
-        "parameters": {
-            "type": "object",
-            "properties": {"place": {"type": "string"}},
-            "required": ["place"],
-        },
-    }
+    tool = types.FunctionDeclaration(
+        name="get_observations",
+        description="Fetch observations.",
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={"place": types.Schema(type=types.Type.STRING)},
+            required=["place"],
+        ),
+    )
 
     result = await _call(
         "async_thought_streaming",

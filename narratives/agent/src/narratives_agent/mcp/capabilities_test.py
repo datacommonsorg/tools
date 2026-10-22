@@ -22,24 +22,34 @@ names from the tool definitions returned by either MCP server generation:
 """
 
 import logging
-from typing import Any
 
 import pytest
 
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import capabilities, client
 
-TOOLS_121 = [{"name": "search_indicators"}, {"name": "get_observations"}]
-TOOLS_130 = [
-    {"name": n}
-    for n in (
-        "search_indicators",
-        "search_child_indicators",
-        "get_variable_metadata",
-        "get_observations",
-        "get_child_observations",
-        "get_multi_entity_observations",
-    )
-]
+
+def _tools(*names: str) -> list[client.McpTool]:
+    """Returns one `McpTool` per name, with an empty object schema."""
+    return [
+        client.McpTool(
+            name=name,
+            description="",
+            input_schema={"type": "object", "properties": {}},
+        )
+        for name in names
+    ]
+
+
+TOOLS_121 = _tools("search_indicators", "get_observations")
+TOOLS_130 = _tools(
+    "search_indicators",
+    "search_child_indicators",
+    "get_variable_metadata",
+    "get_observations",
+    "get_child_observations",
+    "get_multi_entity_observations",
+)
 
 
 @pytest.mark.parametrize(
@@ -48,7 +58,7 @@ TOOLS_130 = [
     ids=["1.2.x -> no source attribution", "1.3.x -> source attribution"],
 )
 def test_source_attribution_follows_the_metadata_tool(
-    tools: list[dict[str, Any]], expected: bool
+    tools: list[client.McpTool], expected: bool
 ) -> None:
     # Test: Detection of source attribution support (`get_variable_metadata`).
     # Situation: `capabilities.from_tools` is called with an MCP 1.2.x tool
@@ -66,7 +76,7 @@ def test_source_attribution_follows_the_metadata_tool(
     ids=["1.2.x observation tools = 1", "1.3.x observation tools = 3"],
 )
 def test_observation_tool_count_matches_the_served_surface(
-    tools: list[dict[str, Any]], expected: int
+    tools: list[client.McpTool], expected: int
 ) -> None:
     # Test: Filtering of observation tools exposed to the model.
     # Situation: An MCP 1.2.x server provides one observation tool
@@ -96,16 +106,13 @@ def test_generation_labels_both_known_surfaces() -> None:
     assert capabilities.from_tools(TOOLS_121).generation == "1.2.x"
 
 
-def test_malformed_tool_entries_are_ignored() -> None:
-    # Test: Filtering of malformed entries in `capabilities.from_tools`.
-    # Situation: The `tools/list` payload contains a bare string, `None`, an
-    #   empty dictionary, a dictionary with an empty `name`, and one valid tool
-    #   dictionary.
-    # Expectation: `from_tools` retains only the valid non-empty tool name
+def test_a_tool_with_an_empty_name_is_ignored() -> None:
+    # Test: Filtering of nameless tools in `capabilities.from_tools`.
+    # Situation: The tool list holds a tool with an empty name and one tool
+    #   named `"valid_tool"`.
+    # Expectation: `from_tools` retains only the non-empty tool name
     #   (`"valid_tool"`).
-    caps = capabilities.from_tools(
-        ["bare_string", None, {}, {"name": ""}, {"name": "valid_tool"}]
-    )
+    caps = capabilities.from_tools(_tools("", "valid_tool"))
     assert caps.tool_names == frozenset({"valid_tool"})
 
 
@@ -148,7 +155,7 @@ def test_empty_tool_list_yields_empty_tool_names() -> None:
     ids=["1.2.x surface", "1.3.x surface"],
 )
 def test_describe_reports_discovered_tool_surface(
-    tools: list[dict[str, Any]], expected: dict[str, Any]
+    tools: list[client.McpTool], expected: JsonObject
 ) -> None:
     # Test: Summary dictionary returned by `Capabilities.describe`.
     # Situation: `describe()` is called on capabilities derived from MCP 1.2.x

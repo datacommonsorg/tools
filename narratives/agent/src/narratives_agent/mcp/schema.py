@@ -21,12 +21,13 @@ MCP server.
 """
 
 import logging
-from typing import Any
+
+from narratives_agent.json_value import JsonObject, JsonValue
 
 logger = logging.getLogger(__name__)
 
 
-def _describe_value_shape(schema: Any) -> str:
+def _describe_value_shape(schema: JsonValue) -> str:
     """Names the shape a sub-schema describes, for use in prose.
 
     Used only to explain map-valued objects, which Gemini's schema subset has no
@@ -40,31 +41,46 @@ def _describe_value_shape(schema: Any) -> str:
     return f"{value_type} values" if value_type else "values"
 
 
-def transform_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
+def _transform_subschema(schema: JsonValue) -> JsonValue:
+    """Transforms a nested sub-schema, passing a non-object value through.
+
+    A JSON Schema can hold a boolean schema or a list where an object schema
+    usually appears, and such a value is returned unchanged.
+    """
+    if isinstance(schema, dict):
+        return transform_schema_for_gemini(schema)
+    return schema
+
+
+def transform_schema_for_gemini(schema: JsonObject) -> JsonObject:
     """Transform MCP inputSchema to Gemini-compatible format.
 
     Gemini function calling only supports a subset of OpenAPI 3.0.3 schema.
     This removes unsupported constructs like 'anyOf' for nullable types.
 
+    A keyword whose value has the wrong JSON type (an `anyOf` that is not a
+    list, an `anyOf` option or `properties` that is not an object, or a
+    non-string description on a map-valued object) is invalid JSON Schema and
+    is dropped, so one malformed keyword does not fail every tool declaration.
+
     Args:
-        schema: The MCP inputSchema dictionary
+        schema: The MCP tool's input schema as a `JsonObject`.
 
     Returns:
-        dict: Gemini-compatible schema
+        The Gemini-compatible schema as a `JsonObject`.
     """
-    if not isinstance(schema, dict):
-        return schema
-
-    result: dict[str, Any] = {}
+    result: JsonObject = {}
 
     # Handle anyOf (union types) - common for nullable fields in MCP schemas
     # e.g., {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null}
     if "anyOf" in schema:
-        # Find the non-null type and use that
-        for option in schema["anyOf"]:
-            if option.get("type") != "null":
-                result = transform_schema_for_gemini(option)
-                break
+        options = schema["anyOf"]
+        if isinstance(options, list):
+            # Find the non-null type and use that
+            for option in options:
+                if isinstance(option, dict) and option.get("type") != "null":
+                    result = transform_schema_for_gemini(option)
+                    break
         # Preserve default if present at the anyOf level
         if "default" in schema:
             result["default"] = schema["default"]
@@ -80,10 +96,11 @@ def transform_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
 
     # Handle object properties recursively
     if "properties" in schema:
-        result["properties"] = {
-            k: transform_schema_for_gemini(v)
-            for k, v in schema["properties"].items()
-        }
+        properties = schema["properties"]
+        if isinstance(properties, dict):
+            result["properties"] = {
+                k: _transform_subschema(v) for k, v in properties.items()
+            }
     elif isinstance(schema.get("additionalProperties"), dict):
         # A map-valued object -- {"type": "object", "additionalProperties":
         # {"type": "array", "items": {"type": "string"}}} -- has no `properties`
@@ -97,7 +114,8 @@ def transform_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
             "A JSON object whose keys are caller-defined and whose values are "
             f"{_describe_value_shape(schema['additionalProperties'])}."
         )
-        existing = result.get("description", "").strip()
+        description = result.get("description", "")
+        existing = description.strip() if isinstance(description, str) else ""
         result["description"] = (
             f"{existing} {note}".strip() if existing else note
         )
@@ -108,7 +126,7 @@ def transform_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
 
     # Handle array items recursively
     if "items" in schema:
-        result["items"] = transform_schema_for_gemini(schema["items"])
+        result["items"] = _transform_subschema(schema["items"])
 
     return result
 
@@ -124,7 +142,7 @@ _OBSERVATION_TOOLS = (
 )
 
 
-def fix_tool_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def fix_tool_arguments(name: str, arguments: JsonObject) -> JsonObject:
     """Fix common parameter mistakes made by LLMs."""
     args = arguments.copy()
 

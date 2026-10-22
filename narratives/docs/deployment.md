@@ -206,7 +206,7 @@ config/
 ├── instance.env        Required: GCP project, region, instance, access mode
 ├── branding.json       Optional: UI identity, theme colors, nav, metrics
 ├── agent-config.json   Optional: Gemini model, thinking levels, template vars
-├── prompts/            Optional: Prompt overrides (classify, mcp, ...)
+├── prompts/            Optional: Prompt overrides (classify, discovery, ...)
 └── assets/             Optional: Custom logos, favicons, and static assets
 ```
 
@@ -253,8 +253,8 @@ The `navigation` key supports three distinct states:
 
 ### System prompts (`config/prompts/*.md`) and template variables
 
-System prompts for query classification (`classify.md`), the MCP tool loop
-(`mcp.md`), answer synthesis (`synthesis.md`), and follow-up generation
+System prompts for query classification (`classify.md`), the discovery tool loop
+(`discovery.md`), answer synthesis (`synthesis.md`), and follow-up generation
 (`follow_up.md`) can be overridden in `config/prompts/`. When customizing
 prompts, start from the baseline files in `defaults/prompts/` and add your
 domain or regional guidance.
@@ -269,11 +269,13 @@ bucket-side failure never leaves a phase without its system instruction.
 
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
-clarification question, and which analytical pattern it follows. The classify
-phase runs on the model configured in `gemini.classify_model` in
-`agent-config.json` (which defaults to `gemini-3.5-flash-lite`), while the tool
-loop, synthesis, chart selection, and follow-up generation use
-`gemini.mcp_model`.
+clarification question, and which analytical pattern it follows. Each LLM stage
+reads its own model key under `gemini` in `agent-config.json`:
+`gemini.classify_model` (default `gemini-3.5-flash-lite`), and
+`gemini.discovery_model`, `gemini.synthesis_model`,
+`gemini.chart_config_model`, `gemini.chart_validation_model`,
+`gemini.follow_up_model`, and `gemini.compaction_model` (each defaulting to
+`gemini-3.8-flash`).
 
 Prompts support runtime template placeholders:
 

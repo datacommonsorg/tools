@@ -58,7 +58,9 @@ def test_creates_env_local_from_example_when_missing(tmp_path: Path) -> None:
     #   MCP_SERVER_URL and GEMINI_API_KEY, and stage_local_environment runs.
     # Expectation: .env.local is copied from .env.local.example, its variables
     #   are loaded into os.environ, and agent/config.json gets GEMINI_API_KEY.
-    _write_baseline_checkout(tmp_path, {"thinking": {"mcp_level": "medium"}})
+    _write_baseline_checkout(
+        tmp_path, {"thinking": {"discovery_level": "medium"}}
+    )
     (tmp_path / ".env.local.example").write_text(
         "MCP_SERVER_URL=https://api.datacommons.org/mcp\n"
         "GEMINI_API_KEY=example-gemini-key\n",
@@ -83,7 +85,9 @@ def test_touches_empty_env_local_when_example_missing(
     # Expectation: An empty .env.local file is created, a warning is logged for
     #   the missing GEMINI_API_KEY, and config staging succeeds with the
     #   placeholder key.
-    _write_baseline_checkout(tmp_path, {"thinking": {"mcp_level": "medium"}})
+    _write_baseline_checkout(
+        tmp_path, {"thinking": {"discovery_level": "medium"}}
+    )
 
     config_path = dev.stage_local_environment(tmp_path)
 
@@ -155,14 +159,17 @@ def test_merges_nested_config_overrides_without_losing_sibling_defaults(
     # Situation: defaults/agent-config.json defines multiple keys under
     #   `template_vars` and `thinking`, and config/agent-config.json overrides
     #   only `template_vars.name` and `gemini: null`.
-    # Expectation: `template_vars.region` and `thinking.mcp_level` from defaults
-    #   are preserved alongside the overridden `template_vars.name`, and
-    #   `gemini: null` is safely normalized to a dict carrying `api_key`.
+    # Expectation: `template_vars.region` and `thinking.discovery_level` from
+    #   defaults are preserved alongside the overridden `template_vars.name`,
+    #   and `gemini: null` is safely normalized to a dict carrying `api_key`.
     monkeypatch.setenv("GEMINI_API_KEY", "merged-key")
     _write_baseline_checkout(
         tmp_path,
         {
-            "thinking": {"mcp_level": "medium", "synthesis_level": "medium"},
+            "thinking": {
+                "discovery_level": "medium",
+                "synthesis_level": "medium",
+            },
             "template_vars": {
                 "name": "Example Data Commons",
                 "region": "the world",
@@ -189,7 +196,7 @@ def test_merges_nested_config_overrides_without_losing_sibling_defaults(
         "region": "the world",
     }
     assert staged["thinking"] == {
-        "mcp_level": "medium",
+        "discovery_level": "medium",
         "synthesis_level": "medium",
     }
     assert staged["gemini"] == {"api_key": "merged-key"}
@@ -199,10 +206,10 @@ def test_inlines_prompt_slots_and_preserves_inline_overrides(
     tmp_path: Path,
 ) -> None:
     # Test: Prompt markdown inlining, HTML comment stripping, and precedence.
-    # Situation: defaults/prompts/ provides mcp.md (with HTML comments),
+    # Situation: defaults/prompts/ provides discovery.md (with HTML comments),
     #   synthesis.md, and an unrelated README.md; config/prompts/ overrides
     #   synthesis.md and has a comment-only follow_up.md;
-    #   config/agent-config.json defines an inline `prompts.mcp` override.
+    #   config/agent-config.json defines an inline `prompts.discovery` override.
     # Expectation: HTML comments are stripped, non-slot files (README.md) and
     #   comment-only files are omitted, config/prompts/ overrides
     #   defaults/prompts/, and inline `prompts` in agent-config.json win over
@@ -210,8 +217,8 @@ def test_inlines_prompt_slots_and_preserves_inline_overrides(
     _write_baseline_checkout(tmp_path, {})
     defaults_prompts = tmp_path / "defaults" / "prompts"
     defaults_prompts.mkdir()
-    (defaults_prompts / "mcp.md").write_text(
-        "<!-- header comment -->\nDefault MCP prompt", encoding="utf-8"
+    (defaults_prompts / "discovery.md").write_text(
+        "<!-- header comment -->\nDefault discovery prompt", encoding="utf-8"
     )
     (defaults_prompts / "synthesis.md").write_text(
         "Default synthesis prompt", encoding="utf-8"
@@ -230,7 +237,7 @@ def test_inlines_prompt_slots_and_preserves_inline_overrides(
     )
 
     (tmp_path / "config" / "agent-config.json").write_text(
-        json.dumps({"prompts": {"mcp": "Inline MCP override"}}),
+        json.dumps({"prompts": {"discovery": "Inline discovery override"}}),
         encoding="utf-8",
     )
 
@@ -238,7 +245,7 @@ def test_inlines_prompt_slots_and_preserves_inline_overrides(
 
     staged = json.loads(config_path.read_text(encoding="utf-8"))
     assert staged["prompts"] == {
-        "mcp": "Inline MCP override",
+        "discovery": "Inline discovery override",
         "synthesis": "Overridden synthesis  prompt",
     }
 

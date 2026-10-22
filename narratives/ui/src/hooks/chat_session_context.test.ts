@@ -38,7 +38,7 @@ describe('cleanTurns', () => {
   it.each([
     'idle',
     'classify',
-    'mcp',
+    'discovery',
     'synthesis',
   ] as const)('turns a %s turn into an interrupted error turn instead of dropping it', (status) => {
     // Test: Restoring a turn that was mid-stream when the page closed.
