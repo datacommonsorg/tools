@@ -24,8 +24,8 @@ This module answers which MCP tools exist and whether source attribution works.
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
 
+from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import client
 
 logger = logging.getLogger(__name__)
@@ -95,22 +95,26 @@ class Capabilities:
             return "unknown"
         return "1.3.x-or-later" if self.supports_source_attribution else "1.2.x"
 
-    def describe(self) -> dict[str, Any]:
+    def describe(self) -> JsonObject:
         """Returns a JSON-serializable summary of the server's capabilities."""
+        # `list` is invariant, so the sorted names are typed as JSON values
+        # to fit in a `JsonObject`.
+        tools: list[JsonValue] = [*sorted(self.tool_names)]
         return {
             "generation": self.generation,
             "tool_count": len(self.tool_names),
-            "tools": sorted(self.tool_names),
+            "tools": tools,
             "supports_source_attribution": self.supports_source_attribution,
         }
 
 
-def from_tools(tools: Sequence[Any] | None) -> Capabilities:
-    """Build a snapshot from whatever `tools/list` returned."""
+def from_tools(tools: Sequence[client.McpTool] | None) -> Capabilities:
+    """Builds a snapshot from the tools that `tools/list` returned.
+
+    A tool with an empty name is left out.
+    """
     names: frozenset[str] = frozenset(
-        t["name"]
-        for t in (tools or [])
-        if isinstance(t, dict) and t.get("name")
+        tool.name for tool in (tools or []) if tool.name
     )
     return Capabilities(tool_names=names)
 

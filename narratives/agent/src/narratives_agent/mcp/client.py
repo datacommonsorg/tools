@@ -44,11 +44,10 @@ calls run in an `asyncio.TaskGroup`) copy a reference to the same scope, so they
 share one handshake and see one another's re-initialization. Separate turns
 run in separate request contexts and keep separate sessions.
 
-Functions return plain dictionaries matching the MCP wire format expected by
-`workflows/` and `mcp/data_utils.py`: `async_get_tools` returns tool
-definitions with `"name"`, `"description"`, and `"inputSchema"`, and
-`async_call_tool` returns the tool result dictionary (`"content"` and optional
-`"structuredContent"`).
+`async_get_tools` and `cached_tools` return each tool definition as an
+`McpTool`. `async_call_tool` returns the tool result as a dictionary in the
+MCP wire format expected by `workflows/` and `mcp/data_utils.py`
+(`"content"` and optional `"structuredContent"`).
 
 Every failure the client raises derives from `McpClientError`. A tool call
 that fails at the tool layer raises `McpToolError`, whose message the model
@@ -67,7 +66,6 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib.metadata import version
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx2
@@ -151,11 +149,27 @@ class _SessionScope:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
+@dataclass(frozen=True)
+class McpTool:
+    """One tool from the MCP server's `tools/list` response.
+
+    Attributes:
+        name: The tool name the model calls.
+        description: The tool description, or `""` when the server omits it.
+        input_schema: The JSON Schema of the tool's arguments, as the server
+            sent it.
+    """
+
+    name: str
+    description: str
+    input_schema: JsonObject
+
+
 @dataclass
 class _ToolCache:
     """Holds the most recently fetched tool list and when it was fetched."""
 
-    tools: list[dict[str, Any]] | None = None
+    tools: list[McpTool] | None = None
     fetched_at: float = 0.0
 
 
@@ -269,7 +283,7 @@ _TOOLS_CACHE = _ToolCache()
 # `_REFRESH_TASKS` holds strong references to in-flight background tool
 # refreshes. The event loop holds only weak references to tasks, so an
 # unreferenced task can be garbage-collected before it finishes.
-_REFRESH_TASKS: set[asyncio.Task[list[dict[str, Any]]]] = set()
+_REFRESH_TASKS: set[asyncio.Task[list[McpTool]]] = set()
 
 
 def get_session_id() -> str | None:
@@ -655,17 +669,21 @@ async def _run_with_session[T](
     return await _run_once(session, operation)
 
 
-def _tool_dict(tool: types.Tool) -> dict[str, Any]:
-    """Converts an `mcp.types.Tool` model into a wire-format dictionary."""
-    definition = tool.model_dump(
-        mode="json", by_alias=True, exclude_unset=True, exclude_none=True
+def _tool_from_sdk(tool: types.Tool) -> McpTool:
+    """Builds an `McpTool` from the SDK's `mcp.types.Tool` model.
+
+    The SDK requires `inputSchema` on every tool and decodes it from the JSON
+    response, so the schema is kept as the SDK returns it.
+    """
+    return McpTool(
+        name=tool.name,
+        description=tool.description or "",
+        input_schema=tool.input_schema,
     )
-    definition.setdefault("description", "")
-    return definition
 
 
 async def _send_tool_call(
-    client_session: ClientSession, name: str, arguments: dict[str, Any]
+    client_session: ClientSession, name: str, arguments: JsonObject
 ) -> types.CallToolResult:
     """Sends a `tools/call` request on `client_session`.
 
@@ -696,7 +714,7 @@ def _tool_error_message(result: types.CallToolResult) -> str:
 
 async def async_get_tools(
     force_refresh: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[McpTool]:
     """Returns the server's tool definitions, cached for `_TOOLS_TTL_SECONDS`.
 
     Args:
@@ -704,10 +722,9 @@ async def async_get_tools(
             when the cached list has not expired.
 
     Returns:
-        A list of tool definition dictionaries containing `"name"`,
-        `"description"`, and `"inputSchema"`. A successful response is cached
-        even when it lists no tools. If the fetch fails, returns the most
-        recently cached tool list, or `[]` if no list has been fetched yet.
+        The server's tools. A successful response is cached even when it
+        lists no tools. If the fetch fails, returns the most recently cached
+        tool list, or `[]` if no list has been fetched yet.
     """
     now = time.monotonic()
     with _TOOLS_LOCK:
@@ -726,7 +743,7 @@ async def async_get_tools(
         with _TOOLS_LOCK:
             return _TOOLS_CACHE.tools or []
 
-    tools = [_tool_dict(tool) for tool in result.tools]
+    tools = [_tool_from_sdk(tool) for tool in result.tools]
     with _TOOLS_LOCK:
         _TOOLS_CACHE.tools = tools
         _TOOLS_CACHE.fetched_at = now
@@ -826,7 +843,7 @@ def _refresh_tools_in_background() -> None:
     task.add_done_callback(_REFRESH_TASKS.discard)
 
 
-def cached_tools() -> list[dict[str, Any]]:
+def cached_tools() -> list[McpTool]:
     """Returns the currently cached tool list without blocking on the network.
 
     This function is used by latency-sensitive endpoints such as `/agent/health`

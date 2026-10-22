@@ -49,12 +49,22 @@ from narratives_agent.settings import Settings
 
 _URL = "http://mcp.test/mcp"
 _PROTOCOL_VERSION = "2025-06-18"
-_TOOLS: list[dict[str, Any]] = [
+_TOOL_SCHEMA: JsonObject = {"type": "object", "properties": {}}
+# `_WIRE_TOOLS` is the `tools/list` result the fake server sends, and
+# `_TOOLS` is what the client returns for it.
+_WIRE_TOOLS: list[JsonObject] = [
     {
         "name": "get_observations",
         "description": "Fetches observations.",
-        "inputSchema": {"type": "object", "properties": {}},
+        "inputSchema": _TOOL_SCHEMA,
     }
+]
+_TOOLS = [
+    client.McpTool(
+        name="get_observations",
+        description="Fetches observations.",
+        input_schema=_TOOL_SCHEMA,
+    )
 ]
 # `_CONCURRENT_CALLS` is the number of tool calls a single model turn issues
 # concurrently in the session-sharing tests.
@@ -95,7 +105,7 @@ class _FakeMcpServer:
     fail_initialize: bool = False
     reject_ping: bool = False
     down: bool = False
-    tools: list[dict[str, Any]] = field(default_factory=lambda: list(_TOOLS))
+    tools: list[JsonObject] = field(default_factory=lambda: list(_WIRE_TOOLS))
     received: list[_Request] = field(default_factory=list)
     sessions: set[str] = field(default_factory=set)
     issued: int = 0
@@ -607,28 +617,27 @@ async def test_an_empty_tool_list_is_cached(server: _FakeMcpServer) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tool_definitions_keep_the_wire_key_names(
+async def test_tool_definitions_carry_the_server_fields(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: Tool definitions keep the MCP wire key names, and missing
-    #   descriptions default to an empty string.
+    # Test: Conversion of the `tools/list` entries into `McpTool` values.
     # Situation: The server returns one tool with a description and one tool
     #   that omits the `description` field.
-    # Expectation: Each returned dictionary contains `"name"`, `"inputSchema"`,
-    #   and `"description"`, with `"description"` set to `""` when omitted by
-    #   the server.
+    # Expectation: Each `McpTool` carries the server's name and input schema,
+    #   and the description is `""` when the server omits it.
     server.tools = [
-        *_TOOLS,
+        *_WIRE_TOOLS,
         {"name": "bare", "inputSchema": {"type": "object"}},
     ]
 
     tools = await client.async_get_tools(force_refresh=True)
 
-    assert tools[1] == {
-        "name": "bare",
-        "description": "",
-        "inputSchema": {"type": "object"},
-    }
+    assert tools == [
+        *_TOOLS,
+        client.McpTool(
+            name="bare", description="", input_schema={"type": "object"}
+        ),
+    ]
 
 
 @pytest.mark.asyncio
@@ -699,7 +708,7 @@ async def test_aclose_cancels_a_running_background_refresh(
 
     async def blocked_refresh(
         *, force_refresh: bool = False
-    ) -> list[dict[str, Any]]:
+    ) -> list[client.McpTool]:
         started.set()
         try:
             await asyncio.Event().wait()
