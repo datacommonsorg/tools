@@ -32,6 +32,7 @@ from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 
 __all__ = [
+    "AlignmentRefusalReason",
     "AnalysisDigest",
     "CoverageReport",
     "OkScriptResult",
@@ -39,18 +40,24 @@ __all__ = [
     "RefusedScriptResult",
     "ResultStatus",
     "ScriptResult",
+    "UnitMismatchReason",
+    "conjugate_have",
+    "format_percent",
     "format_scaling_factor",
 ]
 
 type ResultStatus = Literal["ok", "refused"]
-type RefusalReason = Literal[
-    "insufficient_coverage",
-    "unit_mismatch",
-    "scaling_mismatch",
-    "no_observations",
-    "invalid_parameters",
-    "components_exceed_total",
+# Why `align_cohort` could not align a table.
+type AlignmentRefusalReason = Literal[
+    "insufficient_coverage", "no_observations"
 ]
+# Why tables or cohorts cannot be combined or compared.
+type UnitMismatchReason = Literal["unit_mismatch", "scaling_mismatch"]
+type RefusalReason = (
+    AlignmentRefusalReason
+    | UnitMismatchReason
+    | Literal["invalid_parameters", "components_exceed_total"]
+)
 
 
 # In prompt text, floats with magnitude >= 1 are rounded to 2 decimal places,
@@ -100,6 +107,20 @@ def format_scaling_factor(value: float) -> str:
     ):
         return str(int(value))
     return f"{value:g}"
+
+
+def format_percent(share: float) -> str:
+    """Formats a share as a percentage, with decimals only when needed.
+
+    Up to two decimals are kept, so a threshold such as 0.9995 prints as
+    99.95% rather than 100%; a share with more decimals is rounded to two.
+    """
+    return f"{round(share * 100, 2):g}%"
+
+
+def conjugate_have(count: int) -> str:
+    """Returns the verb `have` in the number that matches `count` places."""
+    return "has" if count == 1 else "have"
 
 
 @dataclass(frozen=True)

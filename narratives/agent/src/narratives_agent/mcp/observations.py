@@ -236,46 +236,6 @@ def _read_observations(
     return observations
 
 
-def _truncate(
-    observations: list[_Observation], max_rows: int | None
-) -> tuple[list[_Observation], bool]:
-    """Keeps up to `max_rows` observations, the most recent of each place first.
-
-    Rows are ranked within their own place, newest first, and whole ranks are
-    retained while the next rank fits within `max_rows`. Every place's latest
-    value is therefore kept before any place's older values, even when places
-    report different latest dates. When places share dates, a rank is a date.
-    When the latest values alone exceed `max_rows`, the `max_rows` most recent
-    of them are kept, ties in place order.
-    """
-    if max_rows is None or len(observations) <= max_rows:
-        return observations, False
-
-    # Group each place's rows, newest first.
-    by_place: dict[str, list[_Observation]] = {}
-    for item in sorted(observations, key=lambda item: item.date, reverse=True):
-        by_place.setdefault(item.place_dcid, []).append(item)
-
-    # Rank 0 holds every place's latest row, rank 1 the next latest, and so on.
-    by_rank: dict[int, list[_Observation]] = {}
-    for place_rows in by_place.values():
-        for rank, item in enumerate(place_rows):
-            by_rank.setdefault(rank, []).append(item)
-
-    # Keep whole ranks while the next one fits within `max_rows`.
-    kept: list[_Observation] = []
-    for rank in sorted(by_rank):
-        tier = sorted(by_rank[rank], key=lambda item: item.place_dcid)
-        if len(kept) + len(tier) > max_rows:
-            if not kept:
-                # `sorted` is stable, so equal dates keep their place order.
-                newest = sorted(tier, key=lambda item: item.date, reverse=True)
-                kept = newest[:max_rows]
-            break
-        kept.extend(tier)
-    return kept, True
-
-
 def _normalize_alternative_sources(
     entries: Sequence[AlternativeSourceWire],
 ) -> tuple[AlternativeSource, ...]:
@@ -511,7 +471,6 @@ def _validate_parse_args(
     parent_place_dcid: str | None,
     child_place_type: str | None,
     date_range: tuple[str, str] | None,
-    max_rows: int | None,
 ) -> None:
     """Checks the arguments of `parse_observation_table`.
 
@@ -525,10 +484,6 @@ def _validate_parse_args(
         raise TypeError(
             f"requested_places for {variable_dcid} must be a sequence of "
             "DCIDs, not a string."
-        )
-    if max_rows is not None and max_rows < 1:
-        raise ValueError(
-            f"max_rows for {variable_dcid} must be at least 1, not {max_rows}."
         )
     for place in requested_places:
         if not is_valid_dcid(place):
@@ -569,7 +524,6 @@ def parse_observation_table(
     child_place_type: str | None = None,
     date_range: tuple[str, str] | None = None,
     enrichment: VariableMetadataEnrichment | None = None,
-    max_rows: int | None = None,
 ) -> ObservationTable:
     """Parses an MCP 1.3.x observation payload into an `ObservationTable`.
 
@@ -578,19 +532,17 @@ def parse_observation_table(
             `merge_observation_payloads`.
         variable_dcid: The variable whose observations the payload holds.
         requested_places: The places that were asked for. When given, rows
-            for other places are dropped. When empty, the universe is the
-            sorted distinct places that still have a row after `date_range`
-            and `max_rows` are applied, so it is empty when no row remains.
+            for other places are dropped. When empty, the target places are
+            the sorted distinct places that still have a row after
+            `date_range` is applied, so `requested_places` on the returned
+            table is empty when no row remains.
         parent_place_dcid: The parent place of a child-place cohort.
         child_place_type: The child place type of a child-place cohort.
-        date_range: Inclusive `(start, end)` bounds applied to the rows
-            before `max_rows`, as `is_within_date_range` compares them.
+        date_range: Inclusive `(start, end)` bounds applied to the rows, as
+            `is_within_date_range` compares them.
         enrichment: Metadata read by `get_variable_metadata_enrichment`,
             applied over the payload's inline fields by
             `apply_variable_metadata`.
-        max_rows: When set, at most this many rows are kept, each place's
-            most recent first (see `_truncate`), and the table is marked
-            truncated.
 
     Returns:
         The parsed `ObservationTable`. An empty `data` dict, a `data` dict
@@ -607,9 +559,8 @@ def parse_observation_table(
             `requested_places` is not a valid DCID, if `child_place_type` is
             not a valid identifier, if a `date_range` bound is not a `YYYY`,
             `YYYY-MM`, or `YYYY-MM-DD` date, if the `date_range` start falls
-            after its end, or if `max_rows` is below 1. The arguments are
-            checked before the payload, so an invalid argument is never
-            reported as a payload error.
+            after its end. The arguments are checked before the payload, so
+            an invalid argument is never reported as a payload error.
         TypeError: If `requested_places` is a single string.
     """
     _validate_parse_args(
@@ -618,7 +569,6 @@ def parse_observation_table(
         parent_place_dcid=parent_place_dcid,
         child_place_type=child_place_type,
         date_range=date_range,
-        max_rows=max_rows,
     )
 
     wire = _validate_payload(payload, variable_dcid)
@@ -652,24 +602,20 @@ def parse_observation_table(
             for observation in observations
             if is_within_date_range(observation.date, start, end)
         ]
-    rows_before_truncation = len(observations)
-    places_before_truncation = {
-        observation.place_dcid for observation in observations
-    }
-    observations, truncated = _truncate(observations, max_rows)
     observations.sort(key=lambda item: (item.place_dcid, item.date))
 
-    # Without requested places, the universe is the places whose rows were
-    # kept, so a cohort cut by `date_range` or `max_rows` is evaluated
-    # against the places it still contains. Every kept row's place is in the
-    # universe either way.
-    universe = (
+    # Without requested places, the target places are the places whose rows
+    # were kept, so a cohort cut by `date_range` is evaluated against the
+    # places it still contains. Every kept row's place is in `target_places`
+    # either way.
+    target_places = (
         tuple(dict.fromkeys(requested_places))
         if requested_places
         else tuple(sorted({item.place_dcid for item in observations}))
     )
     place_names = {
-        dcid: clean_display_name(names.get(dcid), dcid) for dcid in universe
+        dcid: clean_display_name(names.get(dcid), dcid)
+        for dcid in target_places
     }
     rows = tuple(
         ObservationRow(
@@ -696,7 +642,7 @@ def parse_observation_table(
             facet_ids=(facet_id,) if facet_id is not None else (),
         ),
         rows=rows,
-        requested_places=universe,
+        requested_places=target_places,
         place_names=place_names,
         measurement_method=wire.source_metadata.measurement_method,
         observation_period=wire.source_metadata.observation_period,
@@ -707,13 +653,6 @@ def parse_observation_table(
         ),
         parent_place_dcid=parent_place_dcid,
         child_place_type=child_place_type,
-        truncated=truncated,
-        total_rows_before_truncation=(
-            rows_before_truncation if truncated else None
-        ),
-        total_places_before_truncation=(
-            len(places_before_truncation) if truncated else None
-        ),
     )
     return apply_variable_metadata(table, enrichment)
 
