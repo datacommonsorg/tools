@@ -48,8 +48,11 @@ Functions return plain dictionaries matching the MCP wire format expected by
 `workflows/` and `mcp/data_utils.py`: `async_get_tools` returns tool
 definitions with `"name"`, `"description"`, and `"inputSchema"`, and
 `async_call_tool` returns the tool result dictionary (`"content"` and optional
-`"structuredContent"`) or `{"error": <message>}` when the tool itself reports
-an error. A transport or protocol failure is not a tool result: it raises
+`"structuredContent"`).
+
+Every failure the client raises derives from `McpClientError`. A tool call
+that fails at the tool layer raises `McpToolError`, whose message the model
+can act on in its next iteration. A transport or protocol failure raises
 `McpTransportError`, whose message carries no endpoint or upstream detail, so
 that callers abort the turn instead of passing a transport failure to the
 model as a tool result.
@@ -73,6 +76,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from narratives_agent.config import load_config
 from narratives_agent.gcp_auth import attach_auth
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp.schema import fix_tool_arguments
 from narratives_agent.settings import get_settings
 
@@ -159,7 +163,14 @@ class _SessionLostError(Exception):
     """Raised when the MCP server no longer recognizes the current session."""
 
 
-class McpTransportError(Exception):
+class McpClientError(Exception):
+    """Base class for every failure the MCP client raises.
+
+    A caller that handles all MCP failures alike catches this one type.
+    """
+
+
+class McpTransportError(McpClientError):
     """Raised when an MCP request fails below the tool layer.
 
     This exception covers connection, HTTP, and protocol failures, including
@@ -170,6 +181,25 @@ class McpTransportError(Exception):
 
     def __init__(self) -> None:
         super().__init__("The MCP server request failed.")
+
+
+class McpToolError(McpClientError):
+    """Raised when a tool call fails in a way the model can correct.
+
+    The tool reported `isError: true` on its result, or the server rejected
+    the call's arguments or tool name with JSON-RPC `INVALID_PARAMS`. The
+    message is the tool's or the server's error text, which is safe to hand
+    to the model and the UI.
+
+    Attributes:
+        tool: Name of the tool that was called.
+        message: The error text.
+    """
+
+    def __init__(self, tool: str, message: str) -> None:
+        super().__init__(message)
+        self.tool = tool
+        self.message = message
 
 
 @dataclass
@@ -703,17 +733,13 @@ async def async_get_tools(
     return tools
 
 
-def _tool_failure(
-    name: str, message: str, level: int = logging.ERROR
-) -> dict[str, Any]:
-    """Logs a failed tool call and returns its error result dictionary."""
-    logger.log(level, "MCP tool %s failed: %s", name, message)
-    return {"error": message}
+def _tool_error(name: str, message: str) -> McpToolError:
+    """Logs a tool-layer failure at warning level and returns its error."""
+    logger.warning("MCP tool %s failed: %s", name, message)
+    return McpToolError(name, message)
 
 
-async def async_call_tool(
-    name: str, arguments: dict[str, Any]
-) -> dict[str, Any]:
+async def async_call_tool(name: str, arguments: JsonObject) -> JsonObject:
     """Calls a tool on the MCP server.
 
     Args:
@@ -723,12 +749,13 @@ async def async_call_tool(
 
     Returns:
         The tool result dictionary in its MCP wire format (`"content"` and
-        optional `"structuredContent"`), or `{"error": <message>}` if the
-        tool returned `isError: true` or the server rejected the call's
-        arguments (`INVALID_PARAMS`, which also covers an unknown tool name).
-        Those are failures the model can correct on its next iteration.
+        optional `"structuredContent"`).
 
     Raises:
+        McpToolError: If the tool returned `isError: true` or the server
+            rejected the call's arguments (`INVALID_PARAMS`, which also
+            covers an unknown tool name). The model can correct these
+            failures on its next iteration.
         McpTransportError: If the request failed for any other reason:
             connection, HTTP, or protocol errors, or a failed handshake.
     """
@@ -758,9 +785,7 @@ async def async_call_tool(
             and leaf.error.code == types.INVALID_PARAMS
             for leaf in _leaf_errors(error)
         ):
-            return _tool_failure(
-                name, _describe_error(error), level=logging.WARNING
-            )
+            raise _tool_error(name, _describe_error(error)) from error
         logger.error("MCP tool %s failed: %s", name, _describe_error(error))
         raise McpTransportError() from error
 
@@ -768,9 +793,7 @@ async def async_call_tool(
         # When `is_error` is True, the MCP request succeeded at the transport
         # layer, but the tool itself reported an execution error that the model
         # can react to.
-        return _tool_failure(
-            name, _tool_error_message(result), level=logging.WARNING
-        )
+        raise _tool_error(name, _tool_error_message(result))
 
     # Pass `exclude_unset=True` and `exclude_none=True` so that Pydantic
     # serializes only the fields returned by the server without injecting

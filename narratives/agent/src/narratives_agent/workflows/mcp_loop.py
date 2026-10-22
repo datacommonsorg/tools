@@ -181,16 +181,23 @@ async def _run_tool(
     try:
         async with limit:
             result = await mcp_client.async_call_tool(name, arguments)
+    except mcp_client.McpToolError as error:
+        # The model, the UI, and the readers in `mcp/data_utils.py` receive a
+        # tool-layer failure as the JSON text of an `{"error": ...}` object.
+        result_text = json.dumps({"error": error.message})
+        status = "error"
     except mcp_client.McpTransportError as error:
         # The client has already logged the underlying failure.
         raise McpLoopError("mcp_transport_error", MCP_UNAVAILABLE) from error
+    else:
+        result_text = _result_text(result)
+        status = "success"
     telemetry.record_tool_call(name if name in declared else _UNDECLARED_TOOL)
-    result_text = _result_text(result)
     return {
         "name": name,
         "arguments": arguments,
         "result": result_text,
-        "status": "error" if "error" in result else "success",
+        "status": status,
     }
 
 

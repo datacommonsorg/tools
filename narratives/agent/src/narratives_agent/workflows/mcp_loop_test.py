@@ -25,7 +25,10 @@ Verifies that:
    completed returns the completed calls, flagged truncated.
 5. Tool calls in flight are bounded by `MAX_CONCURRENT_TOOL_CALLS`, and
    telemetry records only declared tool names.
-6. A tool call's status is derived from the shape of its result.
+6. A tool call that raises `McpToolError` is recorded with status `error`
+   and the JSON text of `{"error": <message>}` as its result, a successful
+   result is recorded as a success whatever its text says, and telemetry
+   counts both calls.
 7. The first request carries the verified window as alternating messages,
    with earlier answers shortened, then the scopes and the current query;
    the next request replays the model's response and the tool results.
@@ -35,6 +38,7 @@ Verifies that:
 """
 
 import asyncio
+import json
 import logging
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -45,6 +49,7 @@ from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import FunctionCall, GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import mcp_loop
@@ -448,32 +453,42 @@ async def test_telemetry_records_undeclared_tool_names_as_unknown(
 
 
 @pytest.mark.parametrize(
-    ("tool_result", "status"),
+    ("outcome", "status", "result_text"),
     [
-        pytest.param({"error": "Unknown place."}, "error", id="error-result"),
+        pytest.param(
+            mcp_client.McpToolError("first", "Unknown place."),
+            "error",
+            json.dumps({"error": "Unknown place."}),
+            id="tool-error",
+        ),
         pytest.param(
             {"content": [{"type": "text", "text": "Standard error: 0.4"}]},
             "success",
+            "Standard error: 0.4",
             id="data-mentioning-error",
         ),
     ],
 )
 @pytest.mark.asyncio
-async def test_tool_status_follows_the_result_shape(
+async def test_tool_status_follows_the_call_outcome(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
-    tool_result: dict[str, Any],
+    outcome: JsonObject | mcp_client.McpToolError,
     status: str,
+    result_text: str,
 ) -> None:
-    # Test: A tool call's status is derived from the shape of its result.
-    # Situation: The tool returns either the client's `{"error": ...}`
-    #   failure result or a successful result whose text contains the word
-    #   "error".
-    # Expectation: Only the failure result is recorded with status `error`.
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return tool_result
+    # Test: A tool call's record follows whether the call raised a tool error.
+    # Situation: The tool call raises `McpToolError`, or returns a successful
+    #   result whose text contains the word "error".
+    # Expectation: Only the tool error is recorded with status `error`, and
+    #   its result text is the JSON of `{"error": <message>}`. The success is
+    #   recorded with its text. Telemetry counts the call in both cases.
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
+        if isinstance(outcome, mcp_client.McpToolError):
+            raise outcome
+        return outcome
 
     monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
     model_answers(_tool_turn("first"), _text_turn("Done."))
@@ -484,6 +499,8 @@ async def test_tool_status_follows_the_result_shape(
 
     (record,) = result.tool_calls
     assert record["status"] == status
+    assert record["result"] == result_text
+    assert telemetry.tool_calls == {"first": 1}
 
 
 @pytest.mark.asyncio
