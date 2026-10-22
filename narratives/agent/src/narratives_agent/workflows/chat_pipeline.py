@@ -579,13 +579,12 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         )
     except GeminiBlockedError:
         # The Gemini client has already logged the block reason.
-        blocked = TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
-        state, error_type = "refused", blocked.reason
+        state, error_type = "refused", "safety_blocked"
         emit(
             TerminalRefusedFrame(
                 idempotency_key=idempotency_key,
-                reason=blocked.reason,
-                message=str(blocked),
+                reason="safety_blocked",
+                message=REFUSED_MESSAGE,
             )
         )
     except TurnAbortedError as error:
@@ -602,13 +601,12 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         raise
     except Exception:
         logger.exception("Chat turn failed")
-        internal = TurnAbortedError("internal_error", INTERNAL_ERROR)
-        state, error_type = "error", internal.error_type
+        state, error_type = "error", "internal_error"
         emit(
             TerminalErrorFrame(
                 idempotency_key=idempotency_key,
-                error=str(internal),
-                reason=internal.error_type,
+                error=INTERNAL_ERROR,
+                reason="internal_error",
             )
         )
     finally:

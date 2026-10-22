@@ -17,10 +17,9 @@ These types are the SSE contract the browser consumes. Each frame type names
 its SSE `event` and builds its JSON `data` payload in `payload`, which the
 chat route serializes with `json.dumps`. Frames are constructed with keyword
 arguments only, because several carry adjacent string fields whose swap would
-type-check and change the wire. The serialized form must match the SSE tables
-in `README.md` and `docs/architecture.md`, including which keys a payload
-carries: a key that is absent and a key that is `null` mean different things
-to the browser.
+type-check and change the wire. The serialized form must match the SSE table
+in `docs/architecture.md`, including which keys a payload carries: a key that
+is absent and a key that is `null` mean different things to the browser.
 """
 
 from collections.abc import Mapping, Sequence
