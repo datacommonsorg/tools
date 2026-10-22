@@ -19,11 +19,23 @@ deliberate change to regenerate and review in the JSON diff.
 """
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from narratives_agent.analytics.golden import regenerate_golden
+from narratives_agent.analytics.golden.regenerate_golden import (
+    _ALTERNATIVE_WDI,
+    _WDI_FACET_ID,
+    _build_table,
+    _merge_case_families,
+)
+from narratives_agent.analytics.tables import (
+    ObservationTable,
+    is_valid_dcid,
+    is_valid_observation_date,
+)
 
 _REQUIRED_CASES = (
     "timeseries_single_point",
@@ -41,16 +53,56 @@ _REQUIRED_CASES = (
     "ranking_with_ties_ascending",
     "refusal_insufficient_coverage",
     "refusal_ranking_insufficient_coverage",
+    "refusal_ranking_invalid_n",
     "summary_empty_table",
     "refusal_empty_table_alignment",
     "refusal_empty_table_timeseries",
     "refusal_unit_mismatch",
     "refusal_scaling_mismatch",
     "compatible_units",
-    "refusal_ranking_invalid_n",
     "digest",
     "digest_prompt",
+    "distribution_with_focal_places",
+    "distribution_with_population_weights",
+    "distribution_one_place",
+    "distribution_two_places",
+    "refusal_distribution_insufficient_coverage",
+    "composition_with_total",
+    "composition_implied_total",
+    "refusal_composition_components_exceed_total",
+    "composition_stages",
+    "refusal_composition_unit_mismatch",
+    "refusal_composition_scaling_mismatch",
+    "refusal_composition_insufficient_coverage",
+    "derived_per_capita",
+    "derived_per_capita_table",
+    "derived_difference",
+    "derived_pct_change",
+    "refusal_derived_unit_mismatch",
+    "refusal_derived_scaling_mismatch",
+    "refusal_derived_non_positive_denominator",
+    "derived_chained_ranking",
+    "derived_chained_distribution",
+    "derived_chained_timeseries",
+    "derived_digest",
+    "derived_digest_prompt",
+    "relation_two_cohorts",
+    "refusal_relation_insufficient_coverage",
 )
+
+
+def _wrap_table_constructor[**P](
+    constructor: Callable[P, ObservationTable],
+    recorded: list[ObservationTable],
+) -> Callable[P, ObservationTable]:
+    """Returns a wrapper that appends each constructed table to `recorded`."""
+
+    def record_table(*args: P.args, **kwargs: P.kwargs) -> ObservationTable:
+        table = constructor(*args, **kwargs)
+        recorded.append(table)
+        return table
+
+    return record_table
 
 
 def test_checked_in_fixture_matches_the_current_code() -> None:
@@ -59,15 +111,118 @@ def test_checked_in_fixture_matches_the_current_code() -> None:
     #   at the current commit.
     # Expectation: The file equals the current rendered output, so a
     #   failure shows a diff of the changed lines (in full with
-    #   `pytest -vv`), and it holds exactly the required golden cases, each
-    #   listed once.
+    #   `pytest -vv`), `_REQUIRED_CASES` matches `build_golden_cases()`
+    #   in order with no duplicate entries, and the parsed JSON keys match
+    #   `_REQUIRED_CASES`.
     expected = regenerate_golden.GOLDEN_PATH.read_text(encoding="utf-8")
-    actual = regenerate_golden.render_golden(
-        regenerate_golden.build_golden_cases()
-    )
+    cases = regenerate_golden.build_golden_cases()
+    actual = regenerate_golden.render_golden(cases)
     assert actual == expected
     assert len(_REQUIRED_CASES) == len(set(_REQUIRED_CASES))
+    assert tuple(cases) == _REQUIRED_CASES
     assert set(json.loads(expected)) == set(_REQUIRED_CASES)
+
+
+def test_fixture_tables_match_parser_invariants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Observation-parser structural invariants across fixture tables.
+    # Situation: `build_golden_cases()` constructs `ObservationTable` inputs
+    #   across WDI and Wikidata facets.
+    # Expectation: Every constructed table carries valid DCIDs and observation
+    #   dates, omits its selected `facet_id` from `alternative_sources`,
+    #   deduplicates `requested_places`, keys `place_names` strictly over
+    #   `requested_places`, and keeps unique sorted `(place_dcid, date)` rows
+    #   matching `place_names` and `facet_id`.
+    constructed: list[ObservationTable] = []
+    monkeypatch.setattr(
+        regenerate_golden,
+        "ObservationTable",
+        _wrap_table_constructor(ObservationTable, constructed),
+    )
+    regenerate_golden.build_golden_cases()
+    assert constructed
+    for table in constructed:
+        assert is_valid_dcid(table.variable_dcid)
+        if table.parent_place_dcid is not None:
+            assert is_valid_dcid(table.parent_place_dcid)
+        for place in table.requested_places:
+            assert is_valid_dcid(place)
+        assert (
+            tuple(dict.fromkeys(table.requested_places))
+            == table.requested_places
+        )
+        if table.facet_id is not None:
+            alternative_ids = {
+                source.facet_id for source in table.alternative_sources
+            }
+            assert table.facet_id not in alternative_ids
+        assert set(table.place_names) == set(table.requested_places)
+        pairs = [(row.place_dcid, row.date) for row in table.rows]
+        assert pairs == sorted(set(pairs))
+        assert {place for place, _ in pairs} <= set(table.requested_places)
+        for row in table.rows:
+            assert is_valid_observation_date(row.date)
+            assert row.place_name == table.place_names[row.place_dcid]
+            assert row.facet_id == table.facet_id
+
+
+def test_build_table_rejects_selected_facet_in_alternatives() -> None:
+    # Test: Self-referential `alternative_sources` rejection in `_build_table`.
+    # Situation: `_build_table` receives `alternative_sources` containing its
+    #   own selected `facet_id`.
+    # Expectation: `_build_table` raises `ValueError` naming `facet_id`.
+    with pytest.raises(ValueError, match=_WDI_FACET_ID):
+        _build_table(
+            [("country/FRA", "2022", 1.0)],
+            facet_id=_WDI_FACET_ID,
+            alternative_sources=(_ALTERNATIVE_WDI,),
+        )
+
+
+def test_build_table_rejects_duplicate_place_date_rows() -> None:
+    # Test: Duplicate `(place_dcid, date)` rejection in `_build_table`.
+    # Situation: `_build_table` receives two rows for `"country/FRA"` on
+    #   `"2022"`.
+    # Expectation: `_build_table` raises `ValueError`.
+    with pytest.raises(ValueError, match="duplicate"):
+        _build_table(
+            [("country/FRA", "2022", 1.0), ("country/FRA", "2022", 2.0)]
+        )
+
+
+def test_build_table_rejects_unrequested_row_places() -> None:
+    # Test: Unrequested row-place rejection in `_build_table`.
+    # Situation: `_build_table` receives a row for `"country/DEU"` while
+    #   `requested_places` lists only `"country/FRA"`.
+    # Expectation: `_build_table` raises `ValueError` naming `"country/DEU"`.
+    with pytest.raises(ValueError, match="country/DEU"):
+        _build_table(
+            [("country/DEU", "2022", 1.0)],
+            requested_places=["country/FRA"],
+        )
+
+
+def test_merge_case_families_rejects_duplicate_case_names() -> None:
+    # Test: Duplicate case-key detection across per-family case builders.
+    # Situation: Two case-family dictionaries define the same `"digest"` key.
+    # Expectation: `_merge_case_families` raises `ValueError` naming the
+    #   duplicate key instead of overwriting the earlier entry.
+    with pytest.raises(ValueError, match="digest"):
+        _merge_case_families(({"digest": "first"}, {"digest": "second"}))
+
+
+@pytest.mark.parametrize(
+    "non_finite",
+    [float("nan"), float("inf"), float("-inf")],
+)
+def test_render_golden_rejects_non_finite_values(non_finite: float) -> None:
+    # Test: Non-finite float rejection during golden rendering.
+    # Situation: `render_golden` receives a dictionary containing `NaN`,
+    #   positive infinity, or negative infinity.
+    # Expectation: `render_golden` raises `ValueError`.
+    with pytest.raises(ValueError, match="Out of range float values"):
+        regenerate_golden.render_golden({"bad": non_finite})
 
 
 def test_check_mode_reports_a_stale_fixture(
