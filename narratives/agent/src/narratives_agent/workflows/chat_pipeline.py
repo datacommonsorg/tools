@@ -17,14 +17,16 @@
 `run_turn` drives a turn through its phases in order: classification, the
 MCP tool loop, streamed synthesis, chart configuration, turn signing, and
 follow-up questions. Each phase reports progress by calling the turn's `emit`
-callback with one typed SSE event at a time (`EventName` and its JSON payload)
-and hands its results to the next phase as typed values rather than shared
-mutable state.
+callback with one typed SSE frame at a time (an `SseFrame` from
+`sse_frames`, which declares each frame's event name and payload) and hands
+its results to the next phase as typed values rather than shared mutable
+state.
 
-Every turn that is not canceled ends in one `terminal` event (`complete`,
-`refused`, or `error`) built by `terminal_frame`. Every phase reads the
-conversation through the verified `Transcript`, and completed turns are
-appended and signed by `finalize_turn` before the `complete` event is sent.
+Every turn that is not canceled ends in one `terminal` frame
+(`TerminalCompleteFrame`, `TerminalRefusedFrame`, or `TerminalErrorFrame`).
+Every phase reads the conversation through the verified `Transcript`, and
+completed turns are appended and signed by `finalize_turn` before the
+`complete` frame is sent.
 Chart configuration runs as an `asyncio.Task` concurrently with synthesis and
 is awaited, with a timeout, once synthesis has finished streaming.
 """
@@ -33,7 +35,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from narratives_agent.config import load_config
 from narratives_agent.config_model import AgentConfig, GeminiRole
@@ -77,6 +79,20 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_STATUS,
 )
 from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
+from narratives_agent.workflows.sse_frames import (
+    ChartConfigFrame,
+    DataStatusFrame,
+    FollowUpsFrame,
+    SourcesFrame,
+    SseFrame,
+    StatusFrame,
+    TerminalCompleteFrame,
+    TerminalErrorFrame,
+    TerminalRefusedFrame,
+    TextFrame,
+    ThoughtFrame,
+    ToolCallFrame,
+)
 from narratives_agent.workflows.state_slots import extract_state_slots
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
@@ -109,10 +125,7 @@ _NO_CHARTS: dict[str, Any] = {"should_render": False}
 # Default pattern recorded in telemetry when the classifier call failed.
 _UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
 
-type EventName = Literal[
-    "status", "thought", "content", "terminal", "follow_ups"
-]
-type Emit = Callable[[EventName, dict[str, Any]], None]
+type Emit = Callable[[SseFrame], None]
 
 
 class TurnAbortedError(Exception):
@@ -194,7 +207,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
         logger.warning("MCP unavailable: not connected or no tools available")
         raise TurnAbortedError("mcp_unavailable", MCP_UNAVAILABLE)
 
-    ctx.emit("status", {"phase": "discovery", "message": DISCOVERY_STATUS})
+    ctx.emit(StatusFrame(phase="discovery", message=DISCOVERY_STATUS))
     try:
         loop_result = await execute_mcp_tool_loop(
             ctx.transcript,
@@ -202,7 +215,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
             tools,
             ctx.telemetry,
             thought_callback=lambda text: ctx.emit(
-                "thought", {"thought": text, "phase": "discovery"}
+                ThoughtFrame(thought=text, phase="discovery")
             ),
             classification=ctx.classification,
         )
@@ -212,7 +225,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     result.results = loop_result.results_text
     result.tool_calls = loop_result.tool_calls
     for call in result.tool_calls:
-        ctx.emit("content", {"tool_call": call})
+        ctx.emit(ToolCallFrame(tool_call=call))
 
     # `truncated` rides along in data_status rather than in a frame of its
     # own: the frontend already consumes data_status, and truncation is a
@@ -222,7 +235,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     data_status = annotate_truncation(
         check_data_availability(result.tool_calls), loop_result.truncated
     )
-    ctx.emit("content", {"data_status": data_status})
+    ctx.emit(DataStatusFrame(data_status=data_status))
 
     # This list is the ONE authority on citation numbering. The frontend
     # numbers the Sources list by position in it, and synthesis is handed
@@ -242,7 +255,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
         # attributable.
         result.sources = [dict(_FALLBACK_SOURCE)]
     if result.sources:
-        ctx.emit("content", {"sources": result.sources})
+        ctx.emit(SourcesFrame(sources=result.sources))
 
     # Only generate charts when the tool results contain observations.
     # Without observations there is nothing to plot, so skipping chart
@@ -322,7 +335,7 @@ async def run_synthesis_phase(
         GeminiBlockedError: If Gemini blocks the prompt or the candidate
             before any text chunk is yielded.
     """
-    ctx.emit("status", {"phase": "synthesis", "message": SYNTHESIS_STATUS})
+    ctx.emit(StatusFrame(phase="synthesis", message=SYNTHESIS_STATUS))
     config = ctx.config
     role = config.resolve_role_config(GeminiRole.SYNTHESIS)
     # The verified window comes first, with earlier answers in full, then
@@ -355,13 +368,10 @@ async def run_synthesis_phase(
     try:
         async for chunk in stream:
             if chunk.kind == "thought":
-                ctx.emit(
-                    "thought",
-                    {"thought": chunk.text, "phase": "synthesis"},
-                )
+                ctx.emit(ThoughtFrame(thought=chunk.text, phase="synthesis"))
             else:
                 full_text += chunk.text
-                ctx.emit("content", {"text": chunk.text})
+                ctx.emit(TextFrame(text=chunk.text))
     except GeminiBlockedError as error:
         if not full_text.strip():
             raise
@@ -395,9 +405,7 @@ async def resolve_chart_config(
     """
     if discovery.chart_task is None:
         return dict(_NO_CHARTS)
-    ctx.emit(
-        "status", {"phase": "chart_config", "message": CHART_CONFIG_STATUS}
-    )
+    ctx.emit(StatusFrame(phase="chart_config", message=CHART_CONFIG_STATUS))
     show_charts = True
     if full_text:
         try:
@@ -470,7 +478,7 @@ async def run_followups(ctx: TurnContext, chart_config: dict[str, Any]) -> None:
             ctx.telemetry.tokens,
         )
         if follow_ups:
-            ctx.emit("follow_ups", {"follow_up_questions": follow_ups})
+            ctx.emit(FollowUpsFrame(follow_up_questions=follow_ups))
     except Exception:
         logger.exception("Follow-up generation failed")
 
@@ -488,68 +496,8 @@ def _load_turn_config() -> AgentConfig:
     return config
 
 
-def terminal_frame(
-    state: TerminalState,
-    idempotency_key: str,
-    *,
-    error: TurnAbortedError | None = None,
-    refusal: TurnRefusedError | None = None,
-    window: SignedWindow | None = None,
-) -> dict[str, Any]:
-    """Builds the payload of a `terminal` event.
-
-    An `error` frame adds the user-safe `error` message and the
-    machine-readable `reason`. A `refused` frame adds the machine-readable
-    `reason` and user-safe `message` without an `error` key. A frame with a
-    signed `window` adds the completed turn's `turn_index`, `hmac`, and
-    `state_slots`, the window's `compacted_summary`, and `window`: the
-    `turn_index`, `idempotency_key`, and `hmac` of every turn the browser
-    must send next, oldest first. Compaction re-signs the whole window, so
-    the browser replaces the signatures it holds with these and drops any
-    turn that `window` does not list. A `complete` frame without a window
-    marks a turn that was not signed, which the browser leaves out of later
-    requests.
-
-    Args:
-        state: The terminal state of the turn (`"complete"`, `"error"`,
-            `"refused"`, or `"canceled"`).
-        idempotency_key: The request's idempotency key echoed back to the
-            client.
-        error: The optional `TurnAbortedError` when `state == "error"`.
-        refusal: The optional `TurnRefusedError` when `state == "refused"`.
-        window: The optional `SignedWindow` when the completed turn was signed.
-
-    Returns:
-        The JSON-serializable payload dict for the `terminal` SSE frame.
-    """
-    frame: dict[str, Any] = {"state": state, "idempotency_key": idempotency_key}
-    if error is not None:
-        frame["error"] = str(error)
-        frame["reason"] = error.error_type
-    if refusal is not None:
-        frame["reason"] = refusal.reason
-        frame["message"] = str(refusal)
-    if window is not None:
-        turn = window.turn
-        frame.update(
-            turn_index=turn.turn_index,
-            hmac=turn.hmac,
-            state_slots=turn.state_slots.model_dump(mode="json"),
-            compacted_summary=window.compacted_summary,
-            window=[
-                {
-                    "turn_index": signed.turn_index,
-                    "idempotency_key": signed.idempotency_key,
-                    "hmac": signed.hmac,
-                }
-                for signed in window.turns
-            ],
-        )
-    return frame
-
-
 async def run_turn(transcript: Transcript, emit: Emit) -> None:
-    """Runs one chat turn and emits its typed SSE events through `emit`.
+    """Runs one chat turn and emits its typed SSE frames through `emit`.
 
     Runs classification first: refuses adversarial or off-domain queries,
     streams and signs a clarification question when disambiguation is
@@ -557,19 +505,19 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     configuration, and turn signing. A model call that Gemini blocks in any
     of those phases ends the turn as `refused` with reason `safety_blocked`;
     the phases let `GeminiBlockedError` propagate here rather than each
-    translating it. Every non-canceled turn ends in one `terminal` event
+    translating it. Every non-canceled turn ends in one `terminal` frame
     (`complete`, `refused`, or `error`) and records its outcome and
     classified pattern in telemetry. Only `asyncio.CancelledError` is
-    re-raised to the caller; cancellation emits no terminal event because the
+    re-raised to the caller; cancellation emits no terminal frame because the
     client has already disconnected, and it is recorded as `canceled` unless
     the turn has already completed. Follow-up questions are emitted after the
-    terminal event, and the background chart task is settled whenever the
+    terminal frame, and the background chart task is settled whenever the
     turn ends so no orphaned task outlives the request.
 
     Args:
         transcript: The verified transcript holding the current query,
             idempotency key, and prior turns.
-        emit: The callback invoked with each typed SSE event name and payload.
+        emit: The callback invoked with each SSE frame of the turn.
     """
     idempotency_key = transcript.current_idempotency_key
     telemetry = TurnTelemetry()
@@ -578,7 +526,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
         config = _load_turn_config()
-        emit("status", {"phase": "classify", "message": CLASSIFY_STATUS})
+        emit(StatusFrame(phase="classify", message=CLASSIFY_STATUS))
         with telemetry.phase("classify"):
             admission = await classify_query(transcript, config, telemetry)
         telemetry.pattern = (
@@ -593,8 +541,9 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             window = await run_clarification(ctx, admission.question)
             state = "complete"
             emit(
-                "terminal",
-                terminal_frame(state, idempotency_key, window=window),
+                TerminalCompleteFrame(
+                    idempotency_key=idempotency_key, window=window
+                )
             )
             return
         with telemetry.phase("discovery"):
@@ -604,7 +553,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             full_text = await run_synthesis_phase(ctx, discovery)
         with telemetry.phase("chart_config"):
             chart_config = await resolve_chart_config(ctx, discovery, full_text)
-        emit("content", {"chart_config": chart_config})
+        emit(ChartConfigFrame(chart_config=chart_config))
         with telemetry.phase("finalize"):
             window = await _sign_turn(
                 ctx,
@@ -612,24 +561,42 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                 lambda: extract_state_slots(discovery.tool_calls, chart_config),
             )
         state = "complete"
-        emit("terminal", terminal_frame(state, idempotency_key, window=window))
+        emit(
+            TerminalCompleteFrame(
+                idempotency_key=idempotency_key, window=window
+            )
+        )
         with telemetry.phase("follow_ups"):
             await run_followups(ctx, chart_config)
     except TurnRefusedError as refusal:
         state, error_type = "refused", refusal.reason
         emit(
-            "terminal", terminal_frame(state, idempotency_key, refusal=refusal)
+            TerminalRefusedFrame(
+                idempotency_key=idempotency_key,
+                reason=refusal.reason,
+                message=str(refusal),
+            )
         )
     except GeminiBlockedError:
         # The Gemini client has already logged the block reason.
         blocked = TurnRefusedError("safety_blocked", REFUSED_MESSAGE)
         state, error_type = "refused", blocked.reason
         emit(
-            "terminal", terminal_frame(state, idempotency_key, refusal=blocked)
+            TerminalRefusedFrame(
+                idempotency_key=idempotency_key,
+                reason=blocked.reason,
+                message=str(blocked),
+            )
         )
     except TurnAbortedError as error:
         state, error_type = "error", error.error_type
-        emit("terminal", terminal_frame(state, idempotency_key, error=error))
+        emit(
+            TerminalErrorFrame(
+                idempotency_key=idempotency_key,
+                error=str(error),
+                reason=error.error_type,
+            )
+        )
     except asyncio.CancelledError:
         state = state or "canceled"
         raise
@@ -637,7 +604,13 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         logger.exception("Chat turn failed")
         internal = TurnAbortedError("internal_error", INTERNAL_ERROR)
         state, error_type = "error", internal.error_type
-        emit("terminal", terminal_frame(state, idempotency_key, error=internal))
+        emit(
+            TerminalErrorFrame(
+                idempotency_key=idempotency_key,
+                error=str(internal),
+                reason=internal.error_type,
+            )
+        )
     finally:
         _settle_chart_task(chart_task)
         telemetry.finish(state or "error", error_type)
@@ -651,7 +624,7 @@ async def run_clarification(
     No `data_status`, `sources`, `chart_config`, or `follow_ups` events are
     emitted because no observations were retrieved.
     """
-    ctx.emit("content", {"text": question})
+    ctx.emit(TextFrame(text=question))
     with ctx.telemetry.phase("finalize"):
         return await _sign_turn(ctx, question, ConversationStateSlots)
 
