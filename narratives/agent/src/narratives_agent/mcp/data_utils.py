@@ -26,7 +26,16 @@ conversation state-slot extraction reads the same payloads.
 import json
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import urlparse
+
+from narratives_agent.analytics.provenance import Source
+
+# The legacy citation path shares these helpers until it is deleted with the
+# rest of this module.
+from narratives_agent.mcp.metadata import (
+    _facet_entries,
+    _get_first_present_value,
+    get_source_from_observation_metadata,
+)
 
 # Server 1.3.0 split the two fat tools into six. Both generations are recognized
 # here so this keeps working against a 1.2.1 endpoint and the public 1.3.0 one
@@ -189,80 +198,18 @@ def annotate_truncation(
     return status
 
 
-def _get_first_present_value(mapping: dict[str, Any], *keys: str) -> str:
-    """Returns the first non-empty value among `keys`, or an empty string.
-
-    The MCP server returns camelCase, while earlier revisions of this code and
-    some fixtures use snake_case. Accepting both keeps old captures readable
-    without pinning the parser to one spelling.
-    """
-    for key in keys:
-        value = mapping.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return ""
-
-
-def _looks_like_a_name(value: str) -> bool:
-    """True when a property value is something to print rather than an id.
-
-    `source` holds "World Bank" on one import and "dc/base/..." or a bare URL
-    on the next. A citation that prints the handle is worse than one that
-    leaves the publisher out, so locators are rejected and the caller omits
-    the field.
-
-    Args:
-        value: The property value to judge.
-
-    Returns:
-        bool: True when the value reads as a publisher's name.
-    """
-    if not value:
-        return False
-    if "://" in value or value.startswith("dc/"):
-        return False
-    # A dotted single token is `domain` wearing another hat; a name either has
-    # a space in it or has no dot.
-    return " " in value or "." not in value
-
-
-def _get_year_of(date: str) -> str:
-    """Returns the four-digit year at the head of a date, or "".
-
-    Args:
-        date: An ISO-ish date, e.g. "1960" or "2023-12".
-
-    Returns:
-        str: The leading four digits, or "" when they are not digits.
-    """
-    # Length as well as digits: a short date would yield a short "year".
-    head = date[:4]
-    return head if len(head) == 4 and head.isdigit() else ""
-
-
-def _get_date_range(facet: dict[str, Any]) -> str:
-    """Renders a facet's coverage as "1960 - 2023", one year, or nothing.
-
-    Reads the facet's own `dateRange`, the shape MCP 1.3.0 returns. Inferring
-    from the rows that happened to be fetched would describe this query rather
-    than the dataset.
-
-    Args:
-        facet: One facet description from a get_variable_metadata result.
-
-    Returns:
-        str: The rendered range, or "" when the server reported no dates.
-    """
-    date_range = facet.get("dateRange")
-    if not isinstance(date_range, dict):
-        return ""
-    start = _get_year_of(_get_first_present_value(date_range, "start"))
-    end = _get_year_of(_get_first_present_value(date_range, "end"))
-    if start and end:
-        if start == end:
-            return start
-        return f"{start} \u2013 {end}"
-    return start or end
+def _source_to_dict(source: Source) -> dict[str, str]:
+    """Converts a `Source` into the legacy citation dictionary shape."""
+    entry = {"name": source.name, "url": source.url}
+    if source.license is not None:
+        entry["license"] = source.license
+    if source.dataset is not None:
+        entry["dataset"] = source.dataset
+    if source.provider is not None:
+        entry["provider"] = source.provider
+    if source.date_range is not None:
+        entry["dateRange"] = source.date_range
+    return entry
 
 
 def _get_facet_index_from_variable_metadata(
@@ -295,63 +242,14 @@ def _get_facet_index_from_variable_metadata(
         dict: {facet_id: {"name", "url", and any of "license", "provider",
         "dataset", "dateRange" that were reported}}
     """
-    provenances = result_data.get("provenances")
-    variables = result_data.get("variables")
-    if not isinstance(provenances, dict) or not isinstance(variables, dict):
+    if not isinstance(result_data.get("provenances"), dict):
         return {}
-
     index: dict[str, dict[str, str]] = {}
-    for variable in variables.values():
-        if not isinstance(variable, dict):
-            continue
-        facets = variable.get("facets")
-        if not isinstance(facets, list):
-            continue
-
-        for facet in facets:
-            if not isinstance(facet, dict):
-                continue
-            facet_id = facet.get("id")
-            if facet_id is None:
-                continue
-            facet_id = str(facet_id)
-            # The same facet is offered for several variables in one call; the
-            # first description of it is as good as the last.
-            if not facet_id or facet_id in index:
-                continue
-
-            provenance = provenances.get(str(facet.get("provenanceId")))
-            if not isinstance(provenance, dict):
-                continue
-            properties = provenance.get("properties")
-            if not isinstance(properties, dict):
-                continue
-
-            url = _get_first_present_value(properties, "url", "descriptionUrl")
-            if not url:
-                continue
-
-            dataset = _get_first_present_value(properties, "isPartOf")
-            provider = _get_first_present_value(properties, "source")
-            entry = {
-                "name": dataset
-                or provider
-                or _get_first_present_value(properties, "domain")
-                or url,
-                "url": url,
-            }
-            license_type = _get_first_present_value(properties, "licenseType")
-            if license_type:
-                entry["license"] = license_type
-            if dataset:
-                entry["dataset"] = dataset
-            if _looks_like_a_name(provider):
-                entry["provider"] = provider
-            date_range = _get_date_range(facet)
-            if date_range:
-                entry["dateRange"] = date_range
-            index[facet_id] = entry
-
+    for _, facet_id, _, source in _facet_entries(result_data):
+        # The same facet is offered for several variables in one call; the
+        # first description of it is as good as the last.
+        if facet_id not in index and source is not None:
+            index[facet_id] = _source_to_dict(source)
     return index
 
 
@@ -446,22 +344,10 @@ def extract_provenance_from_mcp_results(
                 # or it served something the candidates did not cover. The
                 # observation result still knows where the numbers came from,
                 # it just has no dataset name to offer.
-                url = _get_first_present_value(
-                    metadata, "provenanceUrl", "provenance_url"
-                )
-                if not url:
+                fallback_source = get_source_from_observation_metadata(metadata)
+                if fallback_source is None:
                     continue
-                name = _get_first_present_value(
-                    metadata,
-                    "importName",
-                    "import_name",
-                    "sourceName",
-                    "source_name",
-                )
-                if not name:
-                    host = urlparse(url).netloc
-                    name = host[4:] if host.startswith("www.") else host
-                entry = {"name": name or "Data Source", "url": url}
+                entry = _source_to_dict(fallback_source)
 
             if entry["url"] in seen_urls:
                 continue
