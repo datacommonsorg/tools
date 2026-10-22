@@ -34,8 +34,6 @@ from narratives_agent.analytics.alignment import (
 from narratives_agent.analytics.digest import (
     PERCENT_SCALE,
     OkScriptResult,
-    RefusalReason,
-    RefusedScriptResult,
     ScriptResult,
     conjugate_have,
     format_percent,
@@ -52,11 +50,15 @@ from narratives_agent.analytics.metrics import (
     TimeseriesMetrics,
 )
 from narratives_agent.analytics.provenance import merge_provenance
+from narratives_agent.analytics.script_inputs import (
+    build_invalid_parameters_refusal,
+    build_refusal,
+    validate_place_dcids,
+)
 from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
     is_inverted_date_range,
-    is_valid_dcid,
     is_valid_observation_date,
     is_within_date_range,
 )
@@ -494,26 +496,6 @@ def _compare_places(
     return _build_comparison(rows, reference_date), caveats
 
 
-def _build_refusal(
-    table: ObservationTable,
-    step_id: str,
-    reason: RefusalReason,
-    caveat: str,
-) -> ScriptResult:
-    """Builds a refused result for `table` with one caveat."""
-    return RefusedScriptResult(
-        step_id=step_id,
-        script=_SCRIPT_NAME,
-        refusal_reason=reason,
-        variables=(table.variable_dcid,),
-        variable_names={table.variable_dcid: table.variable_name},
-        unit=table.unit,
-        scaling_factor=table.scaling_factor,
-        provenance=table.provenance,
-        caveats=(caveat,),
-    )
-
-
 def _describe_missing_places(
     table: ObservationTable, missing_places: Sequence[str], *, windowed: bool
 ) -> str:
@@ -540,25 +522,10 @@ def _validate_parameters(
     end_date: str | None,
 ) -> str | None:
     """Returns why the parameters are invalid, or None when they are valid."""
-    # A `str` is a `Sequence[str]`, so the type does not exclude it.
-    if isinstance(places, str):
-        return f"places must be a sequence of DCIDs, not the string {places!r}."
-    # The entry itself is not quoted, so a malformed string never reaches a
-    # caveat or the prompt.
-    entries = places or ()
-    invalid = next(
-        (
-            position
-            for position, place in enumerate(entries, start=1)
-            if not is_valid_dcid(place)
-        ),
-        None,
-    )
-    if invalid is not None:
-        return (
-            f"places must hold DCIDs, but entry {invalid} of {len(entries)} "
-            "is not a valid DCID."
-        )
+    if places is not None:
+        error = validate_place_dcids(places, parameter_name="places")
+        if error is not None:
+            return error
     for bound in (start_date, end_date):
         if bound is not None and not is_valid_observation_date(bound):
             return (
@@ -700,16 +667,20 @@ def analyze_timeseries(
     """
     error = _validate_parameters(places, start_date, end_date)
     if error is not None:
-        return _build_refusal(table, step_id, "invalid_parameters", error)
+        return build_invalid_parameters_refusal(
+            table, script=_SCRIPT_NAME, step_id=step_id, caveat=error
+        )
     requested = tuple(dict.fromkeys(places)) if places else ()
     grouped = _group_series_by_place(table, requested, start_date, end_date)
     if not grouped:
-        return _build_refusal(
+        return build_refusal(
             table,
-            step_id,
-            "no_observations",
-            "No observations match the requested places and date window "
-            f"for {table.variable_name}.",
+            script=_SCRIPT_NAME,
+            step_id=step_id,
+            reason="no_observations",
+            coverage=None,
+            caveat="No observations match the requested places and date "
+            f"window for {table.variable_name}.",
         )
 
     series, mixed = _keep_one_precision(grouped)
