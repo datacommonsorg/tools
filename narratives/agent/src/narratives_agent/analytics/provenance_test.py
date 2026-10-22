@@ -17,7 +17,12 @@ import dataclasses
 
 import pytest
 
-from narratives_agent.analytics.provenance import Source
+from narratives_agent.analytics.provenance import (
+    AlternativeSource,
+    Provenance,
+    Source,
+    merge_provenance,
+)
 
 
 def test_source_defaults_optional_citation_fields_to_none() -> None:
@@ -60,3 +65,63 @@ def test_source_is_frozen_and_hashable_by_value() -> None:
     field_name = "name"
     with pytest.raises(dataclasses.FrozenInstanceError):
         setattr(first, field_name, "Changed")
+
+
+def test_alternative_source_defaults_optional_fields_to_none() -> None:
+    # Test: `AlternativeSource` defaults and immutability.
+    # Situation: An `AlternativeSource` is constructed with only `facet_id`.
+    # Expectation: Optional metadata fields default to `None`.
+    alt = AlternativeSource(facet_id="12850099660527362240")
+    assert alt.facet_id == "12850099660527362240"
+    assert alt.provenance_url is None
+    assert alt.measurement_method is None
+    assert alt.observation_period is None
+    assert alt.unit is None
+    assert alt.places_found_count is None
+
+
+def test_merge_provenance_deduplicates_sources_and_joins_methodology() -> None:
+    # Test: `merge_provenance` across multiple inputs with methodology clauses.
+    # Situation: Two `Provenance` inputs share a source and a facet ID, and
+    #   are merged with a combining methodology; methodologies end in periods.
+    # Expectation: Sources and facet IDs deduplicate in first-seen order, and
+    #   methodologies join with `"; "` after stripping intermediate trailing
+    #   periods.
+    wdi = Source(name="World Bank", url="https://wdi.example")
+    census = Source(name="Census", url="https://census.example")
+    first = Provenance(
+        sources=(wdi,),
+        facet_ids=("f1",),
+        methodology="Aligned to 2020.",
+    )
+    second = Provenance(
+        sources=(wdi, census),
+        facet_ids=("f1", "f2"),
+    )
+    merged = merge_provenance(first, second, methodology="Ratio of A to B.")
+    assert merged == Provenance(
+        sources=(wdi, census),
+        facet_ids=("f1", "f2"),
+        methodology="Aligned to 2020; Ratio of A to B.",
+    )
+    assert merge_provenance() == Provenance()
+
+
+def test_merge_provenance_treats_a_final_period_as_insignificant() -> None:
+    # Test: Handling of trailing periods when deduplicating and joining
+    #   methodology clauses.
+    # Situation: First, two `Provenance` records with `"Aligned to 2020."` and
+    #   `"Aligned to 2020"` are merged. Second, a record ending in the
+    #   abbreviation `"U.S."` is merged with a combining `methodology`.
+    # Expectation: The first merge deduplicates the two strings and retains
+    #   the first-seen form (`"Aligned to 2020."`). The second merge strips
+    #   only the single trailing period from `"U.S."` before joining with
+    #   `"; "`.
+    assert merge_provenance(
+        Provenance(methodology="Aligned to 2020."),
+        Provenance(methodology="Aligned to 2020"),
+    ) == Provenance(methodology="Aligned to 2020.")
+    assert merge_provenance(
+        Provenance(methodology="Population of the U.S."),
+        methodology="Ratio.",
+    ) == Provenance(methodology="Population of the U.S; Ratio.")
