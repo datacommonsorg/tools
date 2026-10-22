@@ -61,9 +61,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       `analytics/`, `mcp/`, and `gemini/`.
     - `mcp/`: MCP transport (`client.py`), server capability discovery and the
       required-tool check (`capabilities.py`), schema helpers (`schema.py`),
-      observation data helpers (`data_utils.py`), and source and variable
-      metadata readers (`metadata.py`). Of the agent's subpackages, it may
-      import only `analytics/`; it never imports `workflows/` or `gemini/`.
+      observation data helpers (`data_utils.py`), Pydantic wire models and
+      validation of MCP observation payloads (`wire.py`), observation table
+      parsing (`observations.py`), and source and variable metadata readers
+      (`metadata.py`). Of the agent's subpackages, it may import only
+      `analytics/`; it never imports `workflows/` or `gemini/`.
     - `analytics/`: the deterministic analytics library, holding observation
       tables and provenance models (`tables.py`, `provenance.py`) and the
       digest and metric types (`digest.py`, `metrics.py`). It imports only the
