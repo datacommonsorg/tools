@@ -254,6 +254,46 @@ def test_observation_call_enriches_provenance_from_metadata_index() -> None:
     ]
 
 
+def test_list_valued_description_url_is_cited_from_metadata() -> None:
+    # Test: Source attribution from a provenance whose only URL is a list.
+    # Situation: The provenance omits `url` and reports `descriptionUrl` as a
+    #   list of strings, as MCP 1.3.x does, and `get_observations` serves that
+    #   facet with its own `provenanceUrl`.
+    # Expectation: The citation uses the dataset name and the first
+    #   `descriptionUrl`, not the observation's `provenanceUrl` hostname.
+    metadata = {
+        "variables": {
+            "Count_Person": {
+                "facets": [{"id": "facet1", "provenanceId": "prov1"}]
+            }
+        },
+        "provenances": {
+            "prov1": {
+                "properties": {
+                    "descriptionUrl": ["https://data.worldbank.org/indicator"],
+                    "isPartOf": "World Development Indicators",
+                }
+            }
+        },
+    }
+    calls = [
+        tool_call("get_variable_metadata", metadata),
+        tool_call(
+            "get_observations",
+            _observation(
+                "facet1", provenanceUrl="https://datacatalog.worldbank.org/"
+            ),
+        ),
+    ]
+    assert data_utils.extract_provenance_from_mcp_results(calls) == [
+        {
+            "name": "World Development Indicators",
+            "url": "https://data.worldbank.org/indicator",
+            "dataset": "World Development Indicators",
+        }
+    ]
+
+
 def test_unreferenced_metadata_candidate_is_not_included_as_source() -> None:
     # Test: Exclusion of metadata candidates that never served observations.
     # Situation: `get_variable_metadata` returns facet descriptions, but no

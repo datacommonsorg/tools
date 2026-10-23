@@ -13,12 +13,12 @@
 # limitations under the License.
 """Tests for MCP server capability discovery from `tools/list` responses.
 
-Verifies that `capabilities.from_tools` derives supported features and tool
-names from the tool definitions returned by either MCP server generation:
-- MCP 1.2.x: `search_indicators` and `get_observations`
-- MCP 1.3.x+ (public Data Commons): six tools including
-  `get_variable_metadata`, `get_child_observations`, and
-  `get_multi_entity_observations`
+Verifies that `capabilities.from_tools` derives the support status, tool
+names, and missing `REQUIRED_TOOLS` from the tool definitions returned by
+`tools/list`, and that `capabilities.warn_on_missing_tools` logs the missing
+tools. The fixtures cover two tool lists:
+- MCP 1.2.x: `search_indicators` and `get_observations` (`unsupported`)
+- MCP 1.3.x+ (public Data Commons): all six required tools
 """
 
 import logging
@@ -88,22 +88,64 @@ def test_observation_tool_count_matches_the_served_surface(
     assert len(caps.observation_tools) == expected
 
 
-def test_a_server_with_no_tools_reports_an_unknown_generation() -> None:
-    # Test: Generation label when the server returns an empty tool list.
+def test_a_server_with_no_tools_reports_unknown_support() -> None:
+    # Test: Support status when the server returns an empty tool list.
     # Situation: `capabilities.from_tools` is given an empty list `[]`.
-    # Expectation: `generation` is set to `"unknown"` rather than defaulting to
-    #   a specific MCP server version.
-    assert capabilities.from_tools([]).generation == "unknown"
+    # Expectation: `support` is `"unknown"` rather than `"unsupported"`.
+    assert capabilities.from_tools([]).support == "unknown"
 
 
-def test_generation_labels_both_known_surfaces() -> None:
-    # Test: Diagnostic generation label for known MCP tool surfaces.
-    # Situation: `capabilities.from_tools` is called with the MCP 1.3.x and
-    #   MCP 1.2.x tool lists.
-    # Expectation: `generation` returns `"1.3.x-or-later"` for the six-tool
-    #   surface and `"1.2.x"` for the two-tool surface.
-    assert capabilities.from_tools(TOOLS_130).generation == "1.3.x-or-later"
-    assert capabilities.from_tools(TOOLS_121).generation == "1.2.x"
+def test_support_labels_the_full_and_the_partial_surface() -> None:
+    # Test: Support status for full and partial tool lists.
+    # Situation: `capabilities.from_tools` is called with the MCP 1.3.x tool
+    #   list, the MCP 1.2.x tool list, and a list that contains only a tool
+    #   that is not required.
+    # Expectation: `support` is `"supported"` for the MCP 1.3.x list and
+    #   `"unsupported"` for the other two, because each lacks at least one
+    #   required tool.
+    assert capabilities.from_tools(TOOLS_130).support == "supported"
+    assert capabilities.from_tools(TOOLS_121).support == "unsupported"
+    assert (
+        capabilities.from_tools(_tools("unrelated_tool")).support
+        == "unsupported"
+    )
+
+
+def test_required_tools_are_checked_against_the_served_surface() -> None:
+    # Test: `required_tools_present` and `missing_tools`.
+    # Situation: Capabilities are built from the full six-tool list, a list
+    #   missing the two child-place tools, and an empty list.
+    # Expectation: The full list reports all required tools present and none
+    #   missing; the partial list reports the two missing tools in sorted
+    #   order; the empty list reports all six tools as missing.
+    full = capabilities.from_tools(TOOLS_130)
+    assert full.required_tools_present is True
+    assert full.missing_tools == ()
+
+    partial = capabilities.from_tools(
+        [
+            tool
+            for tool in TOOLS_130
+            if tool.name
+            not in ("get_child_observations", "search_child_indicators")
+        ]
+    )
+    assert partial.required_tools_present is False
+    assert partial.missing_tools == (
+        "get_child_observations",
+        "search_child_indicators",
+    )
+
+    empty = capabilities.from_tools([])
+    assert empty.required_tools_present is False
+    assert empty.missing_tools == (
+        "get_child_observations",
+        "get_multi_entity_observations",
+        "get_observations",
+        "get_variable_metadata",
+        "search_child_indicators",
+        "search_indicators",
+    )
 
 
 def test_a_tool_with_an_empty_name_is_ignored() -> None:
@@ -129,16 +171,22 @@ def test_empty_tool_list_yields_empty_tool_names() -> None:
         (
             TOOLS_121,
             {
-                "generation": "1.2.x",
+                "support": "unsupported",
                 "tool_count": 2,
                 "tools": ["get_observations", "search_indicators"],
                 "supports_source_attribution": False,
+                "missing_tools": [
+                    "get_child_observations",
+                    "get_multi_entity_observations",
+                    "get_variable_metadata",
+                    "search_child_indicators",
+                ],
             },
         ),
         (
             TOOLS_130,
             {
-                "generation": "1.3.x-or-later",
+                "support": "supported",
                 "tool_count": 6,
                 "tools": [
                     "get_child_observations",
@@ -149,6 +197,7 @@ def test_empty_tool_list_yields_empty_tool_names() -> None:
                     "search_indicators",
                 ],
                 "supports_source_attribution": True,
+                "missing_tools": [],
             },
         ),
     ],
@@ -160,10 +209,32 @@ def test_describe_reports_discovered_tool_surface(
     # Test: Summary dictionary returned by `Capabilities.describe`.
     # Situation: `describe()` is called on capabilities derived from MCP 1.2.x
     #   and MCP 1.3.x tool lists.
-    # Expectation: `describe()` returns the generation label, tool count,
-    #   alphabetically sorted tool names, and `supports_source_attribution` flag
-    #   for each surface.
+    # Expectation: `describe()` returns the support status, tool count,
+    #   alphabetically sorted tool names, `supports_source_attribution` flag,
+    #   and sorted `missing_tools` for each surface.
     assert capabilities.from_tools(tools).describe() == expected
+
+
+def test_warn_on_missing_tools_logs_missing_required_tools(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Warning logged by `warn_on_missing_tools` when tools are missing.
+    # Situation: `warn_on_missing_tools` is called with the MCP 1.3.x tool list
+    #   and then with the MCP 1.2.x tool list.
+    # Expectation: The MCP 1.3.x list logs no warning, and the MCP 1.2.x list
+    #   logs one warning naming each missing tool.
+    with caplog.at_level(logging.WARNING, logger=capabilities.logger.name):
+        capabilities.warn_on_missing_tools(TOOLS_130)
+        assert caplog.records == []
+        capabilities.warn_on_missing_tools(TOOLS_121)
+
+    (warning,) = caplog.records
+    assert warning.levelno == logging.WARNING
+    assert warning.getMessage().endswith(
+        "missing required tools: get_child_observations, "
+        "get_multi_entity_observations, get_variable_metadata, "
+        "search_child_indicators"
+    )
 
 
 def test_current_cached_reads_cached_tools_without_warning(
