@@ -19,15 +19,21 @@
  */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import type { PropsWithChildren } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
-import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
+import {
+  ChatSessionProvider,
+  useChatSession,
+} from '@/src/hooks/chat_session_context';
 import { MenuDrawer } from './drawer_menu';
 import { Header } from './header';
 
@@ -52,6 +58,7 @@ const renderOpenDrawer = (): void => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   document.getElementById('instance-config')?.remove();
   resetInstanceConfigForTests();
 });
@@ -99,6 +106,44 @@ describe('MenuDrawer', () => {
     expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
     expect(screen.queryByText('Chats')).toBeNull();
+  });
+
+  it('clears the conversation and closes when New chat is clicked', async () => {
+    // Test: The menu drawer's New chat control.
+    // Situation: One question has been asked and the menu drawer is open.
+    // Expectation: Clicking New chat leaves no turns and closes the drawer.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      }),
+    );
+    const { result } = renderHook(() => useChatSession(), {
+      wrapper: ({ children }: PropsWithChildren) => (
+        <ChatSessionProvider>
+          <Header />
+          <MenuDrawer />
+          {children}
+        </ChatSessionProvider>
+      ),
+    });
+    await act(async () => {
+      await result.current.send('What is the population of France?');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(result.current.turns).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+
+    expect(result.current.turns).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Close menu' })).toBeNull();
   });
 
   it('closes when Escape is pressed', () => {
