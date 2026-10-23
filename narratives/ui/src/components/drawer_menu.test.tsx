@@ -15,7 +15,7 @@
  */
 
 /**
- * @fileoverview Tests for MenuDrawer section navigation and its chat controls.
+ * @fileoverview Tests for MenuDrawer: section links, chat controls and dismissal.
  */
 
 import {
@@ -99,5 +99,42 @@ describe('MenuDrawer', () => {
     expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
     expect(screen.queryByText('Chats')).toBeNull();
+  });
+
+  it('closes when Escape is pressed', () => {
+    // Test: Keyboard dismissal of the menu drawer.
+    // Situation: The menu drawer is open and the user presses Escape.
+    // Expectation: The drawer closes and the menu button reports it collapsed.
+    renderOpenDrawer();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('complementary', { name: 'Menu' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Open menu' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  it('stays open for keys other than Escape', () => {
+    // Test: Only Escape dismisses the menu drawer.
+    // Situation: The menu drawer is open and the user presses Enter.
+    // Expectation: The drawer stays open.
+    renderOpenDrawer();
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(screen.getByRole('complementary', { name: 'Menu' })).toBeTruthy();
+  });
+
+  it('closes when the dimmed page behind it is clicked', () => {
+    // Test: Click-outside dismissal of the menu drawer.
+    // Situation: The menu drawer is open and the user clicks the scrim.
+    // Expectation: The scrim is not focusable, and clicking it closes the drawer.
+    renderOpenDrawer();
+    const scrim = screen.getByRole('complementary', {
+      name: 'Menu',
+    }).previousElementSibling;
+    if (!scrim) throw new Error('The open drawer renders no scrim.');
+    expect(scrim.matches('button, a[href], [tabindex]')).toBe(false);
+    fireEvent.click(scrim);
+    expect(screen.queryByRole('complementary', { name: 'Menu' })).toBeNull();
   });
 });
