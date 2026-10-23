@@ -14,7 +14,7 @@
 """Tests for the digest types in `analytics.digest`.
 
 Covers citation labels for single and composite provenance, the `has_data`
-invariant, `ScriptResult` metrics-to-script pairing validation, JSON
+invariant, `OkScriptResult` metrics-to-script pairing validation, JSON
 serialization without NaN or Infinity, assembly of the ordered sources list
 from per-result sources, and the prompt rendering.
 """
@@ -22,22 +22,19 @@ from per-result sources, and the prompt rendering.
 import json
 import math
 from dataclasses import dataclass, replace
+from typing import ClassVar
 
 import pytest
 
 from narratives_agent.analytics.digest import (
     AnalysisDigest,
     CoverageReport,
-    Provenance,
-    ScriptResult,
-    Source,
-    json_safe,
-    merge_provenance,
+    OkScriptResult,
+    RefusedScriptResult,
+    format_scaling_factor,
 )
-from narratives_agent.analytics.metrics import (
-    METRICS_BY_SCRIPT,
-    ScriptMetrics,
-)
+from narratives_agent.analytics.metrics import ScriptMetrics, ScriptName
+from narratives_agent.analytics.provenance import Provenance, Source
 
 _WDI = Source(
     name="World Development Indicators",
@@ -52,6 +49,8 @@ _CENSUS = Source(
 @dataclass(frozen=True)
 class _StubTimeseriesMetrics(ScriptMetrics):
     """Stub metrics record for `analyze_timeseries` in digest unit tests."""
+
+    script: ClassVar[ScriptName] = "analyze_timeseries"
 
     place_count: int = 1
     difference: float = 0.0
@@ -68,43 +67,40 @@ class _StubTimeseriesMetrics(ScriptMetrics):
 class _StubRankingMetrics(ScriptMetrics):
     """Stub metrics record for `rank_cohort` in digest unit tests."""
 
+    script: ClassVar[ScriptName] = "rank_cohort"
+
     top_n: tuple[dict[str, object], ...] = ()
     ratio: float = 0.0
     growth: float = 0.0
     pair: tuple[int, int] = (1, 2)
 
 
-@pytest.fixture(autouse=True)
-def _register_stub_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Registers stub metrics classes for the digest unit tests."""
-    monkeypatch.setitem(
-        METRICS_BY_SCRIPT, "analyze_timeseries", _StubTimeseriesMetrics
-    )
-    monkeypatch.setitem(METRICS_BY_SCRIPT, "rank_cohort", _StubRankingMetrics)
-
-
-def _result(
+def _ok(
     step_id: str,
     provenance: Provenance,
     *,
-    status: str = "ok",
     metrics: ScriptMetrics | None = None,
-) -> ScriptResult:
-    """Builds a minimal result for one step."""
-    resolved_metrics: ScriptMetrics | None = None
-    if status == "ok":
-        resolved_metrics = (
-            metrics if metrics is not None else _StubTimeseriesMetrics()
-        )
-    return ScriptResult(
+) -> OkScriptResult:
+    """Builds a minimal `analyze_timeseries` result for one step."""
+    return OkScriptResult(
         step_id=step_id,
         script="analyze_timeseries",
-        status="ok" if status == "ok" else "refused",
-        refusal_reason=None if status == "ok" else "no_observations",
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=provenance,
-        metrics=resolved_metrics,
+        metrics=metrics if metrics is not None else _StubTimeseriesMetrics(),
+    )
+
+
+def _refused(step_id: str, provenance: Provenance) -> RefusedScriptResult:
+    """Builds a minimal refused `analyze_timeseries` result for one step."""
+    return RefusedScriptResult(
+        step_id=step_id,
+        script="analyze_timeseries",
+        refusal_reason="no_observations",
+        variables=("Count_Person",),
+        variable_names={"Count_Person": "Total population"},
+        provenance=provenance,
     )
 
 
@@ -115,8 +111,8 @@ def test_citation_label_renders_single_and_composite_citations() -> None:
     #   `Provenance`, and again after copying the digest with `sources=()`.
     # Expectation: Returns `""`, `"[1]"`, `"[1, 2]"`, and still resolves
     #   `"[1, 2]"` by populating `sources` from `results`.
-    r1 = _result("s1", Provenance(sources=(_WDI,)))
-    r2 = _result("s2", Provenance(sources=(_CENSUS,)))
+    r1 = _ok("s1", Provenance(sources=(_WDI,)))
+    r2 = _ok("s2", Provenance(sources=(_CENSUS,)))
     digest = AnalysisDigest.from_results((r1, r2))
     composite = Provenance(
         sources=(_WDI, _CENSUS),
@@ -128,153 +124,60 @@ def test_citation_label_renders_single_and_composite_citations() -> None:
     assert replace(digest, sources=()).citation_label(composite) == "[1, 2]"
 
 
-def test_merge_provenance_combines_sources_and_facets_in_order() -> None:
-    # Test: `merge_provenance` across multiple table provenances.
-    # Situation: Three `Provenance` records (for a count table, a population
-    #   table, and a repeated source with a methodology) are merged with a
-    #   combining `methodology`.
-    # Expectation: The merged `Provenance` deduplicates `sources` and
-    #   `facet_ids` in first-appearance order and joins the input methodology
-    #   before the combining methodology.
-    count = Provenance(sources=(_WDI,), facet_ids=("f1",))
-    population = Provenance(sources=(_CENSUS,), facet_ids=("f2",))
-    repeated = Provenance(
-        sources=(_CENSUS,),
-        facet_ids=("f2",),
-        methodology="Aligned to 2020",
-    )
-    merged = merge_provenance(
-        count, population, repeated, methodology="Count per person"
-    )
-    assert merged == Provenance(
-        sources=(_WDI, _CENSUS),
-        facet_ids=("f1", "f2"),
-        methodology="Aligned to 2020; Count per person",
-    )
-    assert merge_provenance() == Provenance()
-
-
-def test_merge_provenance_keeps_the_methodology_of_a_derived_input() -> None:
-    # Test: Preservation and deduplication of `methodology` in
-    #   `merge_provenance`.
-    # Situation: A derived table's `Provenance` (whose `methodology` ends with
-    #   a period) is merged with a weight table's `Provenance` (which has no
-    #   `methodology`) in three ways: without a combining `methodology`, with a
-    #   new combining `methodology`, and with an identical `methodology`. Two
-    #   records with `methodology=None` are also merged.
-    # Expectation: The derived methodology is preserved on its own, joined
-    #   before a new combining methodology with `"; "`, deduplicated when
-    #   repeated, and `None` when no input or argument specifies a methodology.
-    derived = Provenance(
-        sources=(_WDI, _CENSUS),
-        methodology="Count_Case divided by Count_Person.",
-    )
-    weights = Provenance(sources=(_CENSUS,))
-
-    assert merge_provenance(derived, weights).methodology == (
-        "Count_Case divided by Count_Person."
-    )
-    assert merge_provenance(
-        derived, weights, methodology="Weighted by Count_Person."
-    ).methodology == (
-        "Count_Case divided by Count_Person; Weighted by Count_Person."
-    )
-    assert merge_provenance(
-        derived, methodology="Count_Case divided by Count_Person."
-    ).methodology == ("Count_Case divided by Count_Person.")
-    assert merge_provenance(weights, weights).methodology is None
-
-
-def test_script_result_enforces_status_and_metrics_pairing() -> None:
-    # Test: `ScriptResult.__post_init__` pairing invariants.
-    # Situation: Callers attempt to build (1) a refused result with metrics,
-    #   (2) an ok result with `metrics=None`, (3) an ok result for a script
-    #   with no registered metrics class (`align_cohort`), and (4) an ok
-    #   result whose metrics type belongs to a different script.
-    # Expectation: Every invalid combination raises `ValueError`.
+def test_ok_result_rejects_metrics_of_another_script() -> None:
+    # Test: `OkScriptResult.__post_init__` metrics-to-script pairing.
+    # Situation: Callers attempt to build an ok result for a script with no
+    #   metrics class (`align_cohort`), and an ok result whose metrics belong
+    #   to a different script.
+    # Expectation: Both raise `ValueError` naming the script and the metrics
+    #   class.
     provenance = Provenance(sources=(_WDI,))
-    with pytest.raises(ValueError, match=r"refused.*metrics=None"):
-        ScriptResult(
-            step_id="s1",
-            script="analyze_timeseries",
-            status="refused",
-            refusal_reason="no_observations",
-            variables=("Count_Person",),
-            variable_names={"Count_Person": "Total population"},
-            provenance=provenance,
-            metrics=_StubTimeseriesMetrics(),
-        )
-    with pytest.raises(ValueError, match=r"ok.*ScriptMetrics"):
-        ScriptResult(
-            step_id="s1",
-            script="analyze_timeseries",
-            status="ok",
-            variables=("Count_Person",),
-            variable_names={"Count_Person": "Total population"},
-            provenance=provenance,
-            metrics=None,
-        )
-    with pytest.raises(ValueError, match=r"align_cohort.*registered"):
-        ScriptResult(
+    with pytest.raises(
+        ValueError, match=r"align_cohort.*_StubTimeseriesMetrics"
+    ):
+        OkScriptResult(
             step_id="s1",
             script="align_cohort",
-            status="ok",
             variables=("Count_Person",),
             variable_names={"Count_Person": "Total population"},
             provenance=provenance,
             metrics=_StubTimeseriesMetrics(),
         )
     with pytest.raises(
-        ValueError,
-        match=r"analyze_timeseries.*_StubTimeseriesMetrics.*_StubRankingMetrics",
+        ValueError, match=r"analyze_timeseries.*_StubRankingMetrics"
     ):
-        ScriptResult(
-            step_id="s1",
-            script="analyze_timeseries",
-            status="ok",
-            variables=("Count_Person",),
-            variable_names={"Count_Person": "Total population"},
-            provenance=provenance,
-            metrics=_StubRankingMetrics(),
-        )
+        _ok("s1", provenance, metrics=_StubRankingMetrics())
 
 
-def test_has_data_requires_an_ok_result_with_metrics() -> None:
+def test_result_variants_fix_their_status_fields() -> None:
+    # Test: Discriminant fields of the two `ScriptResult` variants.
+    # Situation: One `OkScriptResult` and one `RefusedScriptResult` are built.
+    # Expectation: The ok result reports `status="ok"` and no refusal reason;
+    #   the refused result reports `status="refused"` and no metrics.
+    provenance = Provenance(sources=(_WDI,))
+    ok = _ok("s1", provenance)
+    refused = _refused("s2", provenance)
+    assert (ok.status, ok.refusal_reason) == ("ok", None)
+    assert (refused.status, refused.metrics) == ("refused", None)
+
+
+def test_has_data_requires_an_ok_result() -> None:
     # Test: `AnalysisDigest.has_data` property.
-    # Situation: One digest contains only a refused `ScriptResult`, and a
-    #   second digest contains an `"ok"` `ScriptResult` with metrics.
+    # Situation: One digest contains only a refused result, and a second
+    #   digest contains an ok result.
     # Expectation: `has_data` is `False` for the first digest and `True` for
     #   the second.
     provenance = Provenance(sources=(_WDI,))
     refused = AnalysisDigest(
-        results=(_result("s1", provenance, status="refused"),),
+        results=(_refused("s1", provenance),),
         sources=(_WDI,),
     )
     populated = AnalysisDigest(
-        results=(_result("s1", provenance),),
+        results=(_ok("s1", provenance),),
         sources=(_WDI,),
     )
     assert refused.has_data is False
     assert populated.has_data is True
-
-
-def test_script_result_enforces_status_and_refusal_reason_pairing() -> None:
-    # Test: `ScriptResult.__post_init__` refusal-reason invariants.
-    # Situation: Callers attempt to build (1) a refused result without a
-    #   `refusal_reason` and (2) an ok result with a `refusal_reason`.
-    # Expectation: Both combinations raise `ValueError`.
-    provenance = Provenance(sources=(_WDI,))
-    with pytest.raises(ValueError, match=r"refused.*refusal_reason"):
-        ScriptResult(
-            step_id="s1",
-            script="analyze_timeseries",
-            status="refused",
-            variables=("Count_Person",),
-            variable_names={"Count_Person": "Total population"},
-            provenance=provenance,
-        )
-    with pytest.raises(ValueError, match=r"ok.*refusal_reason=None"):
-        replace(_result("s1", provenance), refusal_reason="no_observations")
 
 
 def test_digest_sources_must_match_the_results() -> None:
@@ -284,10 +187,10 @@ def test_digest_sources_must_match_the_results() -> None:
     #   source that none of its results cite.
     # Expectation: The mismatched digest raises `ValueError` at construction,
     #   and `citation_label` raises `ValueError` for the unknown source.
-    result = _result("s1", Provenance(sources=(_WDI, _CENSUS)))
+    result = _ok("s1", Provenance(sources=(_WDI, _CENSUS)))
     with pytest.raises(ValueError, match=r"sources"):
         AnalysisDigest(results=(result,), sources=(_CENSUS,))
-    digest = AnalysisDigest.from_results((_result("s1", Provenance((_WDI,))),))
+    digest = AnalysisDigest.from_results((_ok("s1", Provenance((_WDI,))),))
     with pytest.raises(ValueError, match=r"Census"):
         digest.citation_label(Provenance(sources=(_CENSUS,)))
 
@@ -299,8 +202,8 @@ def test_from_results_orders_sources_by_first_appearance() -> None:
     # Expectation: `sources` lists `_CENSUS` first and `_WDI` second, in
     #   first-appearance order without duplicates, and `citation_label`
     #   numbers them `[1]` and `[2, 1]`.
-    first = _result("s1", Provenance(sources=(_CENSUS,)))
-    second = _result("s2", Provenance(sources=(_WDI, _CENSUS)))
+    first = _ok("s1", Provenance(sources=(_CENSUS,)))
+    second = _ok("s2", Provenance(sources=(_WDI, _CENSUS)))
     digest = AnalysisDigest.from_results((first, second))
     assert digest.sources == (_CENSUS, _WDI)
     assert digest.citation_label(first.provenance) == "[1]"
@@ -309,11 +212,13 @@ def test_from_results_orders_sources_by_first_appearance() -> None:
 
 def test_to_dict_serializes_without_nan_or_infinity() -> None:
     # Test: Strict JSON serialization of `AnalysisDigest.to_dict()`.
-    # Situation: `to_dict()` is called on a digest whose result contains `NaN`,
-    #   `Infinity`, a tuple, and a `CoverageReport` dataclass.
+    # Situation: `to_dict()` is called on a digest holding an ok result whose
+    #   metrics contain `NaN`, `Infinity`, and a tuple, with a
+    #   `CoverageReport`, plus a refused result.
     # Expectation: `json.dumps(..., allow_nan=False)` succeeds, non-finite
-    #   floats serialize as `null`, and the `CoverageReport` serializes as a
-    #   plain dictionary.
+    #   floats serialize as `null`, the `CoverageReport` serializes as a plain
+    #   dictionary, and each result reports its `status`, `refusal_reason`,
+    #   and `metrics`.
     coverage = CoverageReport(
         contributing_places=9,
         requested_places=10,
@@ -322,10 +227,9 @@ def test_to_dict_serializes_without_nan_or_infinity() -> None:
         missing_places=("country/X",),
         mixed_vintages=True,
     )
-    result = ScriptResult(
+    result = OkScriptResult(
         step_id="s1",
         script="rank_cohort",
-        status="ok",
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=Provenance(sources=(_WDI,)),
@@ -334,50 +238,25 @@ def test_to_dict_serializes_without_nan_or_infinity() -> None:
             ratio=math.nan, growth=math.inf, pair=(1, 2)
         ),
     )
-    digest = AnalysisDigest.from_results((result,))
+    refused = _refused("s2", Provenance(sources=(_WDI,)))
+    digest = AnalysisDigest.from_results((result, refused))
     payload = digest.to_dict()
     encoded = json.dumps(payload, allow_nan=False)
     decoded = json.loads(encoded)
     assert decoded["has_data"] is True
-    assert decoded["results"][0]["metrics"] == {
+    ok_json, refused_json = decoded["results"]
+    assert ok_json["status"] == "ok"
+    assert ok_json["refusal_reason"] is None
+    assert ok_json["metrics"] == {
         "top_n": [],
         "ratio": None,
         "growth": None,
         "pair": [1, 2],
     }
-    assert decoded["results"][0]["coverage"]["missing_places"] == ["country/X"]
-
-
-def test_json_safe_converts_sets_and_nested_dataclasses() -> None:
-    # Test: `json_safe` conversion of sets, dataclasses, and unsupported types.
-    # Situation: `json_safe` is called on a dictionary containing a `frozenset`
-    #   and a `CoverageReport` with `math.inf`, and then called on a plain
-    #   `object()` instance.
-    # Expectation: The `frozenset` converts to a sorted list, the dataclass
-    #   converts to a dictionary with `None` in place of `math.inf`, and the
-    #   unsupported `object()` raises `TypeError`.
-    coverage = CoverageReport(
-        contributing_places=1,
-        requested_places=0,
-        coverage_ratio=math.inf,
-        reference_date=None,
-    )
-    converted = json_safe(
-        {"places": frozenset({"b", "a"}), "coverage": coverage}
-    )
-    assert converted == {
-        "places": ["a", "b"],
-        "coverage": {
-            "contributing_places": 1,
-            "requested_places": 0,
-            "coverage_ratio": None,
-            "reference_date": None,
-            "missing_places": [],
-            "mixed_vintages": False,
-        },
-    }
-    with pytest.raises(TypeError, match=r"Cannot serialize"):
-        json_safe(object())
+    assert ok_json["coverage"]["missing_places"] == ["country/X"]
+    assert refused_json["status"] == "refused"
+    assert refused_json["refusal_reason"] == "no_observations"
+    assert refused_json["metrics"] is None
 
 
 def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
@@ -394,10 +273,9 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
         coverage_ratio=0.9,
         reference_date="2022",
     )
-    ranked = ScriptResult(
+    ranked = OkScriptResult(
         step_id="s1",
         script="rank_cohort",
-        status="ok",
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         unit="Person",
@@ -409,11 +287,7 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
         metrics=_StubRankingMetrics(top_n=({"place_dcid": "a", "value": 1.0},)),
         caveats=("9 of 10 places reported a value.",),
     )
-    refused = _result(
-        "s2",
-        Provenance(sources=(_CENSUS,)),
-        status="refused",
-    )
+    refused = _refused("s2", Provenance(sources=(_CENSUS,)))
     digest = AnalysisDigest.from_results(
         (ranked, refused),
         missing_notes=("No data for median income by county.",),
@@ -462,11 +336,7 @@ def test_format_for_prompt_rounds_figures_to_display_precision() -> None:
         flag=True,
         series=({"place_dcid": "a", "values": [0.5, 2.345678]},),
     )
-    result = _result(
-        "s1",
-        Provenance(sources=(_WDI,)),
-        metrics=metrics,
-    )
+    result = _ok("s1", Provenance(sources=(_WDI,)), metrics=metrics)
     digest = AnalysisDigest.from_results((result,))
 
     text = digest.format_for_prompt()
@@ -485,15 +355,65 @@ def test_format_for_prompt_rounds_figures_to_display_precision() -> None:
     assert isinstance(metrics_dict, dict)
     assert metrics_dict["difference"] == 1.6000000000000014
 
-    scaled = ScriptResult(
-        step_id="s1",
-        script="analyze_timeseries",
-        status="ok",
-        variables=("Count_Person",),
-        variable_names={"Count_Person": "Total population"},
-        scaling_factor=1_000_000.0,
-        provenance=Provenance(sources=(_WDI,)),
-        metrics=_StubTimeseriesMetrics(),
-    )
+    scaled = replace(_ok("s1", Provenance(sources=(_WDI,))), scaling_factor=1e6)
     scaled_digest = AnalysisDigest.from_results((scaled,))
     assert "scaling factor: 1000000;" in scaled_digest.format_for_prompt()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(1_000_000.0, "1000000"), (0.01, "0.01"), (1e21, "1e+21")],
+    ids=["whole-number", "fraction", "beyond-integer-range"],
+)
+def test_format_scaling_factor_renders_integers_and_fractions(
+    value: float, expected: str
+) -> None:
+    # Test: `format_scaling_factor` output for each kind of factor.
+    # Situation: The factor is a whole number below `1e15`, a fraction, or a
+    #   whole number above `1e15`.
+    # Expectation: Whole numbers below `1e15` render as plain integers, and
+    #   the others render in compact `g` notation.
+    assert format_scaling_factor(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("requested_places", "reference_date", "expected"),
+    [
+        (1, "2022", "1 of 1 place on 2022"),
+        (10, None, "1 of 10 places"),
+    ],
+    ids=["one-place", "no-reference-date"],
+)
+def test_coverage_describe_handles_one_place_and_no_reference_date(
+    requested_places: int, reference_date: str | None, expected: str
+) -> None:
+    # Test: `CoverageReport.describe()` wording.
+    # Situation: The cohort has a single place, or no reference date could be
+    #   selected.
+    # Expectation: A single place uses the singular `"place"`, and a missing
+    #   reference date omits the `" on <date>"` suffix.
+    coverage = CoverageReport(
+        contributing_places=1,
+        requested_places=requested_places,
+        coverage_ratio=1 / requested_places,
+        reference_date=reference_date,
+    )
+    assert coverage.describe() == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://wdi.example", ""],
+    ids=["url-equals-name", "empty-url"],
+)
+def test_format_for_prompt_lists_a_source_by_name_alone(url: str) -> None:
+    # Test: Source line rendering when the URL adds nothing.
+    # Situation: The only source's `url` equals its `name`, as `mcp/metadata`
+    #   produces when a provenance node carries only a URL, or is empty.
+    # Expectation: The `"Sources:"` entry lists the name without a
+    #   parenthesized URL.
+    source = Source(name=url or "Census", url=url)
+    digest = AnalysisDigest.from_results(
+        (_ok("s1", Provenance(sources=(source,))),)
+    )
+    assert digest.format_for_prompt().endswith(f"[1] {source.name}")

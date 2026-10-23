@@ -13,45 +13,33 @@
 # limitations under the License.
 """Result and digest types produced by the deterministic analytics scripts.
 
-Each analytical script returns a `ScriptResult` containing computed metrics,
-cohort coverage, source provenance, and caveats. `AnalysisDigest` aggregates
-the results for a turn, assigns 1-based citation numbers to all distinct
-sources, and renders the digest as either plain JSON (`to_dict`) or rounded
-text for the synthesis prompt (`format_for_prompt`).
+Each analytical script returns a `ScriptResult`: an `OkScriptResult` carrying
+computed metrics, or a `RefusedScriptResult` carrying the reason a
+precondition failed. Both carry cohort coverage, source provenance, and
+caveats. `AnalysisDigest` aggregates the results for a turn, assigns 1-based
+citation numbers to all distinct sources, and renders the digest as either
+plain JSON (`to_dict`) or rounded text for the synthesis prompt
+(`format_for_prompt`).
 """
 
-import dataclasses
 import json
 import math
-from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Self
 
-from narratives_agent.analytics.metrics import (
-    METRICS_BY_SCRIPT,
-    ScriptMetrics,
-    ScriptName,
-)
-from narratives_agent.analytics.provenance import (
-    AlternativeSource,
-    Provenance,
-    Source,
-    merge_provenance,
-)
-from narratives_agent.json_value import JsonObject, JsonValue
+from narratives_agent.analytics.metrics import ScriptMetrics, ScriptName
+from narratives_agent.analytics.provenance import Provenance, Source
+from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 
 __all__ = [
-    "AlternativeSource",
     "AnalysisDigest",
     "CoverageReport",
-    "Provenance",
+    "OkScriptResult",
     "RefusalReason",
+    "RefusedScriptResult",
     "ResultStatus",
     "ScriptResult",
-    "Source",
     "format_scaling_factor",
-    "json_safe",
-    "merge_provenance",
 ]
 
 type ResultStatus = Literal["ok", "refused"]
@@ -63,39 +51,6 @@ type RefusalReason = Literal[
     "invalid_parameters",
     "components_exceed_total",
 ]
-
-
-def json_safe(value: object) -> JsonValue:
-    """Recursively converts `value` into plain JSON-serializable Python types.
-
-    Converts dataclasses to dicts, tuples and sets to lists, and non-finite
-    floats (`NaN`, `Infinity`, `-Infinity`) to `None` so that strict JSON
-    encoders (`json.dumps(..., allow_nan=False)`) never reject the output.
-
-    Raises:
-        TypeError: If `value` or any nested element cannot be represented in
-            JSON.
-    """
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: json_safe(getattr(value, field.name))
-            for field in dataclasses.fields(value)
-        }
-    if isinstance(value, Mapping):
-        return {str(key): json_safe(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [json_safe(item) for item in value]
-    if isinstance(value, set | frozenset):
-        return sorted((json_safe(item) for item in value), key=str)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, str) or value is None:
-        return value
-    raise TypeError(
-        f"Cannot serialize value of type {type(value).__name__} to JSON."
-    )
 
 
 # In prompt text, floats with magnitude >= 1 are rounded to 2 decimal places,
@@ -130,13 +85,8 @@ def _display_value(value: JsonValue) -> JsonValue:
     if magnitude >= 1.0:
         rounded = round(value, _PROMPT_DECIMALS)
     else:
-        decimals = (
-            _PROMPT_SMALL_SIGNIFICANT_DIGITS
-            - 1
-            - math.floor(math.log10(magnitude))
-        )
-        rounded = round(value, decimals)
-    if rounded.is_integer() and magnitude < _MAX_INTEGER_FLOAT:
+        rounded = float(f"{value:.{_PROMPT_SMALL_SIGNIFICANT_DIGITS}g}")
+    if rounded.is_integer() and abs(rounded) < _MAX_INTEGER_FLOAT:
         return int(rounded)
     return rounded
 
@@ -185,24 +135,18 @@ class CoverageReport:
         return text
 
 
-@dataclass(frozen=True)
-class ScriptResult:
-    """Output of a single analytical script run on one or more tables.
+@dataclass(frozen=True, kw_only=True)
+class _ScriptResultBase:
+    """Fields shared by `OkScriptResult` and `RefusedScriptResult`.
 
     Attributes:
         step_id: Identifier of the analysis step (for example, `"s1"`).
         script: Name of the analytical script (for example,
             `"analyze_timeseries"`).
-        status: `"ok"` when the script produced `metrics`, or `"refused"` when
-            a precondition failed.
         variables: Statistical variable DCIDs analyzed by the script.
         variable_names: Mapping from variable DCID to display name.
         provenance: Source citations, facet IDs, and methodology for the
             result.
-        metrics: Computed metrics dataclass for `script` when `status` is
-            `"ok"`, or `None` when `status` is `"refused"`.
-        refusal_reason: Machine-readable reason the computation was refused
-            when `status` is `"refused"`, or `None` when `status` is `"ok"`.
         unit: Measurement unit shared by the input observations, if known.
         scaling_factor: Scaling factor shared by the input observations, if
             known.
@@ -213,63 +157,83 @@ class ScriptResult:
 
     step_id: str
     script: ScriptName
-    status: ResultStatus
     variables: tuple[str, ...]
     variable_names: dict[str, str]
     provenance: Provenance
-    metrics: ScriptMetrics | None = None
-    refusal_reason: RefusalReason | None = None
     unit: str | None = None
     scaling_factor: float | None = None
     coverage: CoverageReport | None = None
     caveats: tuple[str, ...] = ()
 
+
+@dataclass(frozen=True, kw_only=True)
+class OkScriptResult(_ScriptResultBase):
+    """Output of a script run that produced metrics.
+
+    Attributes:
+        metrics: Computed metrics record whose `script` matches `script`.
+        status: Always `"ok"`.
+        refusal_reason: Always `None`.
+
+    Raises:
+        ValueError: If `metrics` belongs to a different script.
+    """
+
+    metrics: ScriptMetrics
+    status: Literal["ok"] = field(default="ok", init=False)
+    refusal_reason: None = field(default=None, init=False)
+
     def __post_init__(self) -> None:
-        if self.status == "refused":
-            if self.metrics is not None:
-                raise ValueError(
-                    "A refused ScriptResult must have metrics=None."
-                )
-            if self.refusal_reason is None:
-                raise ValueError(
-                    "A refused ScriptResult must carry a refusal_reason."
-                )
-            return
-        if self.refusal_reason is not None:
+        if self.metrics.script != self.script:
             raise ValueError(
-                "An ok ScriptResult must have refusal_reason=None."
-            )
-        if self.metrics is None:
-            raise ValueError(
-                "An ok ScriptResult must carry a ScriptMetrics instance."
-            )
-        expected = METRICS_BY_SCRIPT.get(self.script)
-        if expected is None:
-            raise ValueError(
-                f"Script {self.script!r} has no registered metrics class."
-            )
-        if not isinstance(self.metrics, expected):
-            raise ValueError(
-                f"Script {self.script!r} requires {expected.__name__} "
-                f"metrics, got {type(self.metrics).__name__}."
+                f"Script {self.script!r} cannot carry "
+                f"{type(self.metrics).__name__}, which holds "
+                f"{self.metrics.script!r} metrics."
             )
 
     def to_dict(self) -> JsonObject:
         """Serializes the result to a JSON-compatible dictionary."""
-        return {
-            "step_id": self.step_id,
-            "script": self.script,
-            "status": self.status,
-            "refusal_reason": self.refusal_reason,
-            "variables": json_safe(self.variables),
-            "variable_names": json_safe(self.variable_names),
-            "unit": self.unit,
-            "scaling_factor": json_safe(self.scaling_factor),
-            "coverage": json_safe(self.coverage),
-            "provenance": json_safe(self.provenance),
-            "metrics": json_safe(self.metrics),
-            "caveats": json_safe(self.caveats),
-        }
+        return _result_to_dict(self)
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefusedScriptResult(_ScriptResultBase):
+    """Output of a script run refused because a precondition failed.
+
+    Attributes:
+        refusal_reason: Machine-readable reason the computation was refused.
+        status: Always `"refused"`.
+        metrics: Always `None`.
+    """
+
+    refusal_reason: RefusalReason
+    status: Literal["refused"] = field(default="refused", init=False)
+    metrics: None = field(default=None, init=False)
+
+    def to_dict(self) -> JsonObject:
+        """Serializes the result to a JSON-compatible dictionary."""
+        return _result_to_dict(self)
+
+
+type ScriptResult = OkScriptResult | RefusedScriptResult
+
+
+def _result_to_dict(result: ScriptResult) -> JsonObject:
+    """Serializes `result` to a JSON-compatible dictionary."""
+    return {
+        "step_id": result.step_id,
+        "script": result.script,
+        "status": result.status,
+        "refusal_reason": result.refusal_reason,
+        "variables": json_safe(result.variables),
+        "variable_names": json_safe(result.variable_names),
+        "unit": result.unit,
+        "scaling_factor": json_safe(result.scaling_factor),
+        "coverage": json_safe(result.coverage),
+        "provenance": json_safe(result.provenance),
+        "metrics": json_safe(result.metrics),
+        "caveats": json_safe(result.caveats),
+    }
 
 
 @dataclass(frozen=True)
@@ -427,7 +391,7 @@ def _format_result(result: ScriptResult, *, citation_label: str) -> list[str]:
         lines.append("  " + "; ".join(details))
     if result.provenance.methodology:
         lines.append(f"  method: {result.provenance.methodology}")
-    if result.metrics is not None:
+    if result.status == "ok":
         metrics = json.dumps(
             _display_value(json_safe(result.metrics)),
             separators=(",", ":"),

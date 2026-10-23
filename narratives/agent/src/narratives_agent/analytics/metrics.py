@@ -14,15 +14,15 @@
 """Script name and metrics type definitions for the analytics package.
 
 `ScriptName` enumerates the deterministic analytics scripts. Each script
-returns a `ScriptResult` whose `metrics` field is an instance of its paired
-dataclass in `METRICS_BY_SCRIPT`.
+returns an `OkScriptResult` whose `metrics` is an instance of the
+`ScriptMetrics` subclass that declares that script in its `script` class
+variable.
 """
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import ClassVar, Literal
 
 __all__ = [
-    "METRICS_BY_SCRIPT",
     "ScriptMetrics",
     "ScriptName",
 ]
@@ -39,7 +39,10 @@ type ScriptName = Literal[
 
 @dataclass(frozen=True)
 class ScriptMetrics:
-    """Common base of the metrics records registered in `METRICS_BY_SCRIPT`."""
+    """Common base of the per-script metrics records.
 
+    Attributes:
+        script: Name of the script that produces this metrics record.
+    """
 
-METRICS_BY_SCRIPT: dict[ScriptName, type[ScriptMetrics]] = {}
+    script: ClassVar[ScriptName]

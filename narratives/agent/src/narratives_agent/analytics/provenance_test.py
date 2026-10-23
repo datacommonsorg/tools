@@ -125,3 +125,36 @@ def test_merge_provenance_treats_a_final_period_as_insignificant() -> None:
         Provenance(methodology="Population of the U.S."),
         methodology="Ratio.",
     ) == Provenance(methodology="Population of the U.S; Ratio.")
+
+
+def test_merge_provenance_keeps_the_methodology_of_a_derived_input() -> None:
+    # Test: Preservation and deduplication of `methodology` in
+    #   `merge_provenance`.
+    # Situation: A derived table's `Provenance` (whose `methodology` ends with
+    #   a period) is merged with a weight table's `Provenance` (which has no
+    #   `methodology`) in three ways: without a combining `methodology`, with a
+    #   new combining `methodology`, and with an identical `methodology`. Two
+    #   records with `methodology=None` are also merged.
+    # Expectation: The derived methodology is preserved on its own, joined
+    #   before a new combining methodology with `"; "`, deduplicated when
+    #   repeated, and `None` when no input or argument specifies a methodology.
+    wdi = Source(name="World Bank", url="https://wdi.example")
+    census = Source(name="Census", url="https://census.example")
+    derived = Provenance(
+        sources=(wdi, census),
+        methodology="Count_Case divided by Count_Person.",
+    )
+    weights = Provenance(sources=(census,))
+
+    assert merge_provenance(derived, weights).methodology == (
+        "Count_Case divided by Count_Person."
+    )
+    assert merge_provenance(
+        derived, weights, methodology="Weighted by Count_Person."
+    ).methodology == (
+        "Count_Case divided by Count_Person; Weighted by Count_Person."
+    )
+    assert merge_provenance(
+        derived, methodology="Count_Case divided by Count_Person."
+    ).methodology == ("Count_Case divided by Count_Person.")
+    assert merge_provenance(weights, weights).methodology is None

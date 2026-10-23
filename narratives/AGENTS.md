@@ -78,7 +78,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `json_value.py`: the `JsonValue` and `JsonObject` aliases for data
-      that is JSON by nature, such as MCP tool arguments and results.
+      that is JSON by nature, such as MCP tool arguments and results, and
+      `json_safe`, which converts typed values back into a `JsonValue`.
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
