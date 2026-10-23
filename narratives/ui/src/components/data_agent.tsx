@@ -57,13 +57,10 @@ export function DataAgent() {
   // turn is added (e.g. follow-up question click) — not on every re-render
   // caused by streaming text chunks arriving.
   const prevTurnsLength = useRef(turns.length);
-  // Turns already here when the surface mounts (coming back from another tab)
-  // are not news, so they do not animate in.
-  const restoredTurns = useRef(turns.length);
-  // "New chat" empties the turns; the refs follow it down.
+  // New chat empties the turns, and the unsent draft goes with them.
   if (turns.length < prevTurnsLength.current) {
     prevTurnsLength.current = turns.length;
-    restoredTurns.current = turns.length;
+    setQuery("");
   }
 
   // `override` lets a caller (e.g. a suggestion chip in InitialView) submit
@@ -175,7 +172,6 @@ export function DataAgent() {
             index={i}
             citationNumbers={citationNumbers[i]}
             isLast={i === turns.length - 1}
-            animate={i >= restoredTurns.current}
             isStreaming={isStreaming && i === turns.length - 1}
             onAsk={(question) => send(question)}
           />
@@ -227,8 +223,6 @@ interface TurnViewProps {
   /** Thread-wide label for each of this turn's provenance rows. */
   citationNumbers?: number[];
   isLast: boolean;
-  /** Whether the pieces of the turn fade up into place as they arrive. */
-  animate: boolean;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
 }
@@ -239,7 +233,6 @@ function TurnView({
   index,
   citationNumbers,
   isLast,
-  animate,
   isStreaming,
   onAsk,
 }: TurnViewProps) {
@@ -252,7 +245,6 @@ function TurnView({
     !turn.stopped &&
     (turn.status === "discovery" || turn.status === "synthesis");
   // Keep a shown skeleton under the answer until the crossfade ends.
-  // Restored turns never had one, so they skip it.
   const [hadSkeleton, setHadSkeleton] = useState(false);
   if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
   const [handedOff, setHandedOff] = useState(false);
@@ -265,7 +257,7 @@ function TurnView({
   const className = [
     "shrink-0 flex flex-col gap-6",
     COLUMN,
-    animate && "motion-safe:*:animate-enter",
+    "motion-safe:*:animate-enter",
     // Viewport minus sticky chrome and the list's pb-6.
     isLast && "min-h-[calc(100dvh-var(--chrome-h,0px)-1.5rem)]",
   ]
