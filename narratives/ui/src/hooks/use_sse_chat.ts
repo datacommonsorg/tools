@@ -655,9 +655,8 @@ export interface UseSseChatResult {
 
 /**
  * Configures {@link useSseChat}. This is a controlled hook: turns live in the
- * parent (`ChatSessionProvider`), which outlives the chat surface and can
- * empty them for "New chat"; this hook reads and writes whichever turns array
- * it is given.
+ * parent (`ChatSessionProvider`), which empties them for "New chat"; this hook
+ * reads and writes whichever turns array it is given.
  */
 export interface UseSseChatProps {
   endpoint?: string;
