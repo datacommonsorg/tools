@@ -178,6 +178,7 @@ automatically reference the existing secrets.
 | Update configuration only (`branding.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
 | Rebuild and deploy committed code changes (`agent/` and `ui/`) | `./deploy.sh --agent-only` |
 | Apply Terraform infrastructure changes only | `./deploy.sh --infra-only` |
+| Deploy when the state holds the service under an old name (replaces it, and its URL changes) | `./deploy.sh --accept-service-rename` |
 | Tear down all Terraform-managed resources | `./deploy.sh --destroy` |
 
 ## Step 4: Verify the deployment

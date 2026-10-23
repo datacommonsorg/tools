@@ -136,7 +136,7 @@ done
 for cmd in gcloud terraform pnpm python3; do
     if ! command -v "$cmd" &>/dev/null; then
         log_error "Required tool '$cmd' is not installed or not in PATH!"
-        if [ "$cmd" = "pnpm" ]; then
+        if [[ "$cmd" == "pnpm" ]]; then
             echo "  Enable it with: corepack enable pnpm" >&2
         fi
         exit 1
@@ -267,6 +267,8 @@ STATE_BUCKET="${PROJECT_ID}-tfstate"
 CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
 DC_SECRET="${INSTANCE}-dc-api-key"
 GEMINI_SECRET="${INSTANCE}-gemini-api-key"
+# check_state_owner.py's EXIT_SERVICE_RENAMED.
+STATE_SERVICE_RENAMED=3
 
 
 if [ "$PREFLIGHT" = true ]; then
@@ -383,15 +385,15 @@ fi
 IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
 AGENT_IMAGE=""
 
-if [ "$PLAN_ONLY" = true ]; then
+if [[ "$PLAN_ONLY" == "true" ]]; then
     # Plan against the image the service runs today, or the tag this commit
     # would build when there is no service yet. Building one would push it.
     log_info "[--plan] Skipping container builds; nothing is pushed."
     AGENT_IMAGE=$(get_active_image "$APP_SERVICE")
-    if [ -z "$AGENT_IMAGE" ]; then
+    if [[ -z "$AGENT_IMAGE" ]]; then
         AGENT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/agent:${IMAGE_TAG}"
     fi
-elif [ "$INFRA_ONLY" = true ]; then
+elif [[ "$INFRA_ONLY" == "true" ]]; then
     log_info "[Surgical-Build] Skipping all container builds. Retrieving active images from Cloud Run..."
     AGENT_IMAGE=$(get_active_image "$APP_SERVICE")
     if [ -z "$AGENT_IMAGE" ]; then
@@ -435,12 +437,9 @@ if [ "$CODE_ONLY" = false ]; then
         log_info "GCS configuration bucket 'gs://${CONFIG_BUCKET}' already exists."
     fi
 
-    # rsync overwrites in place and reports only success, so name the objects
-    # it will write before it writes them.
-    log_info "Config objects this sync would write:"
-    gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env" --dry-run
-    if [ "$PLAN_ONLY" = true ]; then
-        log_info "[--plan] Config bucket left as it is."
+    if [[ "$PLAN_ONLY" == "true" ]]; then
+        log_info "[--plan] Config objects a deploy would write (none are written now):"
+        gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env" --dry-run
     else
         log_info "Synchronizing config/ assets to GCS config bucket..."
         gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env"
@@ -554,16 +553,20 @@ STATE_CHECK=0
 # `terraform show` would set 1 here, which means "another deployment".
 (terraform show -json 2>/dev/null || true) \
     | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
-if [ "$STATE_CHECK" -eq 3 ]; then
+if [[ "$STATE_CHECK" -eq "$STATE_SERVICE_RENAMED" ]]; then
     # This deployment's own service, under a name the module has changed.
-    if [ "$ACCEPT_SERVICE_RENAME" = false ]; then
-        log_error "Refusing to apply: this replaces '${INSTANCE}'s service, and its URL changes."
+    if [[ "$PLAN_ONLY" == "true" ]]; then
+        log_warn "[--plan] Applying this plan DESTROYS the service above and its URL, then creates '${APP_SERVICE}'."
+        echo "  A deploy stops here unless it is run with --accept-service-rename." >&2
+    elif [[ "$ACCEPT_SERVICE_RENAME" == "false" ]]; then
+        log_error "Refusing to apply: it DESTROYS the service above and its URL, then creates '${APP_SERVICE}'."
         echo "  Re-run with --accept-service-rename once the new URL is acceptable," >&2
         echo "  and update whatever points at the old one." >&2
         exit 1
+    else
+        log_warn "[--accept-service-rename] Replacing the service above; its URL changes."
     fi
-    log_warn "[--accept-service-rename] Replacing the service above; its URL changes."
-elif [ "$STATE_CHECK" -ne 0 ]; then
+elif [[ "$STATE_CHECK" -ne 0 ]]; then
     log_error "Refusing to apply: the state loaded describes a different deployment, not '${INSTANCE}'."
     echo "  Applying would rename -- that is, DESTROY AND RECREATE -- those resources." >&2
     echo "  Check the backend prefix (custom-datacommons/${INSTANCE}), and whether" >&2
@@ -629,7 +632,7 @@ else
 fi
 
 echo -e "\n==========================================================================="
-if [ "$SMOKE_STATUS" -ne 0 ]; then
+if [[ "$SMOKE_STATUS" -ne 0 ]]; then
     log_warn "DEPLOYED, BUT THE SMOKE TESTS FAILED -- see the checks above."
 else
     log_success "CONGRATULATIONS! DEPLOYMENT UPDATED SUCCESSFULLY!"

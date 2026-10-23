@@ -16,7 +16,7 @@
 # Sourced by deploy.sh, after config/instance.env is loaded.
 #
 # Globals:
-#   PROJECT_ID, INSTANCE, STATE_BUCKET, CONFIG_BUCKET
+#   PROJECT_ID, INSTANCE, STATE_BUCKET, CONFIG_BUCKET, STATE_SERVICE_RENAMED
 
 # ===========================================================================
 # --destroy : tear this deployment down
@@ -39,13 +39,13 @@ run_destroy() {
         -backend-config="prefix=custom-datacommons/${INSTANCE}" \
         -reconfigure
     # The same guard the apply path uses: never destroy resources belonging to
-    # another deployment. Status 3 is this deployment's own service under an
-    # old name, which a teardown removes either way.
+    # another deployment. A renamed service is this deployment's own, and a
+    # teardown removes it either way.
     local STATE_CHECK=0
     # `|| true` so the status comes from the check alone; see deploy.sh.
     (terraform show -json 2>/dev/null || true) \
         | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
-    if [[ "$STATE_CHECK" -ne 0 && "$STATE_CHECK" -ne 3 ]]; then
+    if [[ "$STATE_CHECK" -ne 0 && "$STATE_CHECK" -ne "$STATE_SERVICE_RENAMED" ]]; then
         log_error "Refusing to destroy: the loaded state describes a different deployment."
         return 1
     fi
