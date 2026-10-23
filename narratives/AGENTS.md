@@ -48,7 +48,7 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
     `config_model.py`, `gcp_auth.py`, `json_value.py`, `telemetry.py`,
-    `server/`, `workflows/`, `mcp/`, `gemini/`).
+    `server/`, `workflows/`, `mcp/`, `gemini/`, `analytics/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
@@ -57,7 +57,16 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`mcp_loop.py`), chart configuration (`chart_config.py`), follow-up
       generation (`follow_up.py`), user-visible messages (`messages.py`), the
       typed SSE frames the agent loop sends (`sse_frames.py`), and signed
-      transcripts (`transcript.py`).
+      transcripts (`transcript.py`). Of the agent's subpackages, it may import
+      `analytics/`, `mcp/`, and `gemini/`.
+    - `mcp/`: MCP transport (`client.py`), server capability discovery and
+      schema helpers (`capabilities.py`, `schema.py`), observation data
+      helpers (`data_utils.py`), and source and variable metadata readers
+      (`metadata.py`). Of the agent's subpackages, it may import only
+      `analytics/`; it never imports `workflows/` or `gemini/`.
+    - `analytics/`: the deterministic analytics library, holding provenance
+      models (`provenance.py`). It imports only the Python standard library,
+      other `analytics/` modules, and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
