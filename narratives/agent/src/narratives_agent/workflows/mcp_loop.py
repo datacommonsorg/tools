@@ -26,12 +26,13 @@ sets `truncated` to `True`, which tells synthesis and the UI that the data
 is incomplete. If the timeout expires before any tool call completes, the
 loop raises `McpLoopError`.
 
-A failed model call, an empty model reply, or an MCP transport failure ends
-the loop with `McpLoopError` rather than with what was gathered so far: the
-results it leaves behind have gaps that nothing flags, so synthesis would
-present missing data as an answer. A model call that Gemini blocks on a
-safety rule leaves the loop as the client's `GeminiBlockedError`, which the
-pipeline turns into a refused turn.
+A tool schema that Gemini's `Schema` rejects, a failed model call, an empty
+model reply, or an MCP transport failure ends the loop with `McpLoopError`
+rather than with what was gathered so far: the results it leaves behind have
+gaps that nothing flags, so synthesis would present missing data as an
+answer. A model call that Gemini blocks on a safety rule leaves the loop as
+the client's `GeminiBlockedError`, which the pipeline turns into a refused
+turn.
 """
 
 import asyncio
@@ -40,6 +41,9 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+from google.genai import types
+from pydantic import ValidationError
 
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
@@ -125,20 +129,26 @@ class McpLoopResult:
     truncated: bool = False
 
 
-def _gemini_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _gemini_tools(
+    tools: Sequence[mcp_client.McpTool],
+) -> list[types.FunctionDeclaration]:
     """Converts MCP tool definitions into Gemini function declarations.
 
     The input schemas are transformed to remove constructs Gemini does not
     support.
+
+    Raises:
+        pydantic.ValidationError: If a transformed schema is not a valid
+            Gemini `Schema`.
     """
     return [
-        {
-            "name": tool.get("name", ""),
-            "description": tool.get("description", ""),
-            "parameters": transform_schema_for_gemini(
-                tool.get("inputSchema", {"type": "object", "properties": {}})
+        types.FunctionDeclaration(
+            name=tool.name,
+            description=tool.description,
+            parameters=types.Schema.model_validate(
+                transform_schema_for_gemini(tool.input_schema)
             ),
-        }
+        )
         for tool in tools
     ]
 
@@ -181,16 +191,23 @@ async def _run_tool(
     try:
         async with limit:
             result = await mcp_client.async_call_tool(name, arguments)
+    except mcp_client.McpToolError as error:
+        # The model, the UI, and the readers in `mcp/data_utils.py` receive a
+        # tool-layer failure as the JSON text of an `{"error": ...}` object.
+        result_text = json.dumps({"error": error.message})
+        status = "error"
     except mcp_client.McpTransportError as error:
         # The client has already logged the underlying failure.
         raise McpLoopError("mcp_transport_error", MCP_UNAVAILABLE) from error
+    else:
+        result_text = _result_text(result)
+        status = "success"
     telemetry.record_tool_call(name if name in declared else _UNDECLARED_TOOL)
-    result_text = _result_text(result)
     return {
         "name": name,
         "arguments": arguments,
         "result": result_text,
-        "status": "error" if "error" in result else "success",
+        "status": status,
     }
 
 
@@ -231,7 +248,7 @@ async def _run_tools(
 async def _iterate(
     transcript: Transcript,
     config: AgentConfig,
-    tools: list[dict[str, Any]],
+    tools: Sequence[mcp_client.McpTool],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None,
     classification: QueryClassification | None,
@@ -243,10 +260,26 @@ async def _iterate(
     all of that turn's calls have completed, so that `result` holds the
     completed calls if the caller's timeout cancels this coroutine.
     """
-    mcp_prompt = with_pattern_guidance(config.prompts.mcp, classification)
-    role = config.resolve_role_config(GeminiRole.MCP)
-    gemini_tools = _gemini_tools(tools)
-    declared = frozenset(tool["name"] for tool in gemini_tools)
+    discovery_prompt = with_pattern_guidance(
+        config.prompts.discovery, classification
+    )
+    role = config.resolve_role_config(GeminiRole.DISCOVERY)
+    try:
+        gemini_tools = _gemini_tools(tools)
+    except ValidationError as error:
+        # A tool schema that is not a valid Gemini `Schema` makes every model
+        # request of the loop invalid, so the loop ends as a failed model call.
+        logger.error(
+            "MCP tool schemas are not valid Gemini declarations: "
+            "%d error(s) at %s",
+            error.error_count(),
+            [
+                ".".join(str(step) for step in detail["loc"])
+                for detail in error.errors()
+            ],
+        )
+        raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR) from error
+    declared = frozenset(tool.name for tool in tools)
     limit = asyncio.Semaphore(MAX_CONCURRENT_TOOL_CALLS)
 
     # The verified window comes first so that a follow-up such as "and for
@@ -269,7 +302,7 @@ async def _iterate(
         try:
             response = await async_gemini_request_with_thought_streaming(
                 messages=contents,
-                system_instruction=mcp_prompt,
+                system_instruction=discovery_prompt,
                 model=role.model,
                 tools=gemini_tools,
                 temperature=role.temperature,
@@ -332,7 +365,7 @@ async def _iterate(
 async def execute_mcp_tool_loop(
     transcript: Transcript,
     config: AgentConfig,
-    tools: list[dict[str, Any]],
+    tools: Sequence[mcp_client.McpTool],
     telemetry: TurnTelemetry,
     thought_callback: Callable[[str], None] | None = None,
     classification: QueryClassification | None = None,
@@ -342,9 +375,9 @@ async def execute_mcp_tool_loop(
     Args:
         transcript: The verified transcript, holding the user's query and
             the conversation context it is resolved against.
-        config: The agent configuration; `prompts.mcp` is the system
-            instruction, `gemini.mcp_model` the model, and
-            `thinking.mcp_level` the thinking level.
+        config: The agent configuration; `prompts.discovery` is the system
+            instruction, `gemini.discovery_model` the model, and
+            `thinking.discovery_level` the thinking level.
         tools: MCP tool definitions available to the model.
         telemetry: The turn's telemetry, which receives token counts, the
             iteration count, and tool names.
@@ -357,10 +390,11 @@ async def execute_mcp_tool_loop(
         The gathered tool results, tool-call records, and truncation flag.
 
     Raises:
-        McpLoopError: If a model call fails, the model returns a reply with
-            neither a tool call nor text, an MCP request fails below the
-            tool layer, or the loop exceeds `MCP_LOOP_TIMEOUT_SECONDS`
-            before any tool call completes.
+        McpLoopError: If a tool schema is not a valid Gemini schema, a model
+            call fails, the model returns a reply with neither a tool call
+            nor text, an MCP request fails below the tool layer, or the loop
+            exceeds `MCP_LOOP_TIMEOUT_SECONDS` before any tool call
+            completes.
         GeminiBlockedError: If Gemini blocks the prompt or the candidate of an
             iteration.
     """

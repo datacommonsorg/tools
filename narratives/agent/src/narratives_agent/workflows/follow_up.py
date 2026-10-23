@@ -54,7 +54,7 @@ async def generate_follow_up_questions(
         user_message: The user's query.
         topics: The chart titles that ground the questions.
         config: The agent configuration; `prompts.follow_up` is the system
-            instruction and `gemini.mcp_model` the model.
+            instruction and `gemini.follow_up_model` the model.
         token_usage: Optional turn totals that receive the call's token
             counts.
     """

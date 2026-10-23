@@ -41,13 +41,15 @@ Verifies that:
    directive. A model call that Gemini blocks in the classify phase, the
    tool loop, or synthesis ends the turn as `refused` with reason
    `safety_blocked`.
+8. The serialized frames of a complete turn match the recorded wire
+   sequence, byte for byte.
 """
 
 import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncGenerator, Iterator, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -65,7 +67,6 @@ from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import transcript as transcript_module
-from narratives_agent.workflows.chat_pipeline import EventName
 from narratives_agent.workflows.classify import (
     Admitted,
     Clarification,
@@ -81,6 +82,7 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_FAILED,
 )
 from narratives_agent.workflows.pattern_guidance import pattern_directive
+from narratives_agent.workflows.sse_frames import EventName, SseFrame
 from narratives_agent.workflows.transcript import (
     MAX_RESPONSE_CHARS,
     ConversationStateSlots,
@@ -96,7 +98,7 @@ _CHARTS = {"should_render": True, "charts": [{"title": "Population"}]}
 _FOLLOW_UPS = ["And Spain?"]
 _CONFIG = AgentConfig(
     mcp=McpConfig(enabled=True),
-    prompts=Prompts(mcp="Gather data.", synthesis="Write prose."),
+    prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
 )
 _TRANSCRIPT = Transcript(
     turns=[],
@@ -199,8 +201,9 @@ class _Turn:
     synthesis_release: asyncio.Event = field(default_factory=asyncio.Event)
     follow_ups_release: asyncio.Event = field(default_factory=asyncio.Event)
 
-    def emit(self, event: EventName, data: dict[str, Any]) -> None:
-        self.events.append((event, data))
+    def emit(self, frame: SseFrame) -> None:
+        """Records the frame as the event name and payload the route sends."""
+        self.events.append((frame.event, frame.payload()))
 
     def names(self) -> list[EventName]:
         """Returns the names of the events emitted so far, in order."""
@@ -221,8 +224,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         stub.telemetry = recording
         return recording
 
-    async def get_tools() -> list[dict[str, Any]]:
-        return [{"name": "get_observations"}]
+    async def get_tools() -> list[mcp_client.McpTool]:
+        return [
+            mcp_client.McpTool(
+                name="get_observations",
+                description="",
+                input_schema={"type": "object", "properties": {}},
+            )
+        ]
 
     async def classify(*args: Any, **kwargs: Any) -> Admitted:
         return Admitted(_CLASSIFICATION)
@@ -707,7 +716,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     # Situation: MCP is enabled, but `async_get_tools` returns an empty list.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `mcp_unavailable` and a fixed message, without calling synthesis.
-    async def no_tools() -> list[dict[str, Any]]:
+    async def no_tools() -> list[mcp_client.McpTool]:
         return []
 
     monkeypatch.setattr(mcp_client, "async_get_tools", no_tools)
@@ -730,7 +739,7 @@ async def test_a_slow_tool_list_fails_the_turn(
     #   `async_get_tools` never returns.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `mcp_timeout`, without calling synthesis.
-    async def hung_tools() -> list[dict[str, Any]]:
+    async def hung_tools() -> list[mcp_client.McpTool]:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
@@ -899,8 +908,8 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     # Situation: `classify_query` returns `Admitted(_CLASSIFICATION)` for a
     #   `single_point` lookup and all subsequent phases succeed.
     # Expectation: The stream opens with a `classify` status frame followed by
-    #   `mcp`, the classification is passed to `execute_mcp_tool_loop`, the
-    #   synthesis system instruction ends with the pattern directive, and
+    #   `discovery`, the classification is passed to `execute_mcp_tool_loop`,
+    #   the synthesis system instruction ends with the pattern directive, and
     #   telemetry records `pattern == "single_point"` and the `classify` phase
     #   duration.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -912,7 +921,7 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     statuses = [
         data["phase"] for event, data in turn.events if event == "status"
     ]
-    assert statuses[:2] == ["classify", "mcp"]
+    assert statuses[:2] == ["classify", "discovery"]
     assert turn.loop_classifications == [_CLASSIFICATION]
     (instruction,) = turn.synthesis_instructions
     assert instruction.startswith("Write prose.")
@@ -1169,3 +1178,90 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     assert terminal["reason"] == "synthesis_stream_error"
     assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [("error", "synthesis_stream_error")]
+
+
+# The serialized frames of a complete turn whose stubs also report a thought
+# from discovery and from synthesis. The HMAC is deterministic because the
+# `signing_secret` fixture fixes the signing key.
+_WIRE_HMAC = "a275b8e5cfa9bb31103d2d9ea35f13c189be6c2c348877c53ab9ff99f430f029"
+_WIRE_FRAMES: list[tuple[EventName, str]] = [
+    (
+        "status",
+        '{"phase": "classify", "message": "Understanding the question..."}',
+    ),
+    ("status", '{"phase": "discovery", "message": "Querying data tools..."}'),
+    ("thought", '{"thought": "Looking up France.", "phase": "discovery"}'),
+    (
+        "content",
+        '{"tool_call": {"name": "get_observations", "arguments": '
+        '{"variable_dcid": "Count_Person", "place_dcid": "country/FRA"}, '
+        '"result": "{\\"data\\": {\\"rows\\": [{\\"entity\\": '
+        '\\"country/FRA\\", \\"date\\": \\"2023\\", \\"value\\": '
+        '68000000.0}]}, \\"dcid_name_mappings\\": {\\"country/FRA\\": '
+        '\\"France\\", \\"Count_Person\\": \\"Total Population\\"}}", '
+        '"status": "success"}}',
+    ),
+    ("content", '{"data_status": {"has_data": true, "truncated": false}}'),
+    ("content", '{"sources": [{"name": "INSEE", "url": "https://insee.fr/"}]}'),
+    ("status", '{"phase": "synthesis", "message": "Generating response..."}'),
+    ("thought", '{"thought": "Writing the answer.", "phase": "synthesis"}'),
+    ("content", '{"text": "About 68 million."}'),
+    (
+        "status",
+        '{"phase": "chart_config", "message": "Preparing charts..."}',
+    ),
+    (
+        "content",
+        '{"chart_config": {"should_render": true, "charts": '
+        '[{"title": "Population"}]}}',
+    ),
+    (
+        "terminal",
+        '{"state": "complete", "idempotency_key": "test-idempotency-key", '
+        f'"turn_index": 0, "hmac": "{_WIRE_HMAC}", "state_slots": '
+        '{"scopes": [{"places": {"country/FRA": "France"}, '
+        '"parent_place": null, "child_place_type": null, "variables": '
+        '{"Count_Person": "Total Population"}, "date_range": '
+        '["2023", "2023"]}]}, "compacted_summary": null, "window": '
+        '[{"turn_index": 0, "idempotency_key": "test-idempotency-key", '
+        f'"hmac": "{_WIRE_HMAC}"}}]}}',
+    ),
+    ("follow_ups", '{"follow_up_questions": ["And Spain?"]}'),
+]
+
+
+@pytest.mark.asyncio
+async def test_a_complete_turn_serializes_to_the_recorded_frames(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Wire equivalence of a complete turn.
+    # Situation: Every phase succeeds, and the tool loop and synthesis each
+    #   report one thought, so the turn emits every frame type of a complete
+    #   turn.
+    # Expectation: The event names and the JSON `data` strings, serialized
+    #   as the chat route serializes them, equal the recorded sequence.
+    async def tool_loop(
+        *args: object,
+        thought_callback: Callable[[str], None],
+        **kwargs: object,
+    ) -> McpLoopResult:
+        thought_callback("Looking up France.")
+        return McpLoopResult(
+            results_text="Tool: get_observations\nResult: 68000000",
+            tool_calls=[dict(_TOOL_CALL)],
+        )
+
+    async def answer() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("thought", "Writing the answer.")
+        yield StreamChunk("text", _ANSWER)
+
+    async def synthesis(**kwargs: object) -> AsyncGenerator[StreamChunk]:
+        return answer()
+
+    monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", tool_loop)
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    serialized = [(event, json.dumps(data)) for event, data in turn.events]
+    assert serialized == _WIRE_FRAMES

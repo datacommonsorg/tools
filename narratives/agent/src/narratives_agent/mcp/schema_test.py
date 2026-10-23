@@ -21,12 +21,14 @@ Verifies two groups of behaviors in `mcp.schema`:
 2. `transform_schema_for_gemini` converts MCP JSON Schemas into the OpenAPI
    3.0.3 subset accepted by Gemini function calling by collapsing nullable
    `anyOf` unions, filtering unsupported keywords, recursing through nested
-   `properties` and `items`, and describing `additionalProperties` maps in
-   prose.
+   `properties` and `items`, describing `additionalProperties` maps in
+   prose, passing non-object sub-schemas through, and skipping keyword
+   values of the wrong JSON type.
 """
 
 import pytest
 
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import schema
 
 
@@ -122,7 +124,7 @@ def test_fix_tool_arguments_does_not_mutate_caller_dict() -> None:
     #   dictionary by adding `date="range"`.
     # Expectation: The returned dictionary reflects the normalized arguments
     #   while the caller's original dictionary remains unmodified.
-    original = {"date_range_start": "2000"}
+    original: JsonObject = {"date_range_start": "2000"}
     schema.fix_tool_arguments("get_observations", original)
     assert original == {"date_range_start": "2000"}
 
@@ -238,3 +240,70 @@ def test_map_description_is_appended_to_existing_description() -> None:
         "Entities to fetch. A JSON object whose keys are caller-defined and "
         "whose values are string values."
     )
+
+
+def test_non_object_sub_schemas_pass_through_unchanged() -> None:
+    # Test: Sub-schemas that are not JSON objects.
+    # Situation: A property schema and an array's `items` schema are the
+    #   boolean schema `true`.
+    # Expectation: `transform_schema_for_gemini` copies both values unchanged
+    #   rather than transforming them.
+    result = schema.transform_schema_for_gemini(
+        {
+            "type": "object",
+            "properties": {
+                "anything": True,
+                "list": {"type": "array", "items": True},
+            },
+        }
+    )
+    assert result == {
+        "type": "object",
+        "properties": {
+            "anything": True,
+            "list": {"type": "array", "items": True},
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            {"anyOf": [True, {"type": "string"}], "description": "A place."},
+            {"type": "string", "description": "A place."},
+        ),
+        ({"anyOf": "string", "default": "x"}, {"default": "x"}),
+        ({"type": "object", "properties": ["a"]}, {"type": "object"}),
+        (
+            {
+                "type": "object",
+                "description": 7,
+                "additionalProperties": {"type": "string"},
+            },
+            {
+                "type": "object",
+                "description": (
+                    "A JSON object whose keys are caller-defined and whose "
+                    "values are string values."
+                ),
+            },
+        ),
+    ],
+    ids=[
+        "anyOf option that is not an object",
+        "anyOf that is not a list",
+        "properties that is not an object",
+        "map description that is not a string",
+    ],
+)
+def test_malformed_schema_keywords_are_skipped(
+    source: JsonObject, expected: JsonObject
+) -> None:
+    # Test: Schema keywords whose values have the wrong JSON type.
+    # Situation: An `anyOf` option is a boolean, `anyOf` is a string,
+    #   `properties` is a list, or a map-valued object has a numeric
+    #   `description`.
+    # Expectation: `transform_schema_for_gemini` skips the malformed value
+    #   and transforms the rest of the schema.
+    assert schema.transform_schema_for_gemini(source) == expected

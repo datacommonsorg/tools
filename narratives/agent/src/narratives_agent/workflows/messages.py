@@ -15,7 +15,7 @@
 
 # Status messages carried on `status` SSE frames for each phase of a turn.
 CLASSIFY_STATUS = "Understanding the question..."
-MCP_STATUS = "Querying data tools..."
+DISCOVERY_STATUS = "Querying data tools..."
 SYNTHESIS_STATUS = "Generating response..."
 CHART_CONFIG_STATUS = "Preparing charts..."
 

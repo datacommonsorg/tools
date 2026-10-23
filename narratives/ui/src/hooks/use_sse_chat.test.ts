@@ -230,7 +230,11 @@ describe("parseSseStream", () => {
     //   between its CR and LF across two reads.
     // Expectation: Both events are decoded with their names and payloads,
     //   and the split does not produce a spurious empty frame.
-    const status = frame("status", { phase: "mcp", message: "Querying" }, 1);
+    const status = frame(
+      "status",
+      { phase: "discovery", message: "Querying" },
+      1,
+    );
     const text = frame("content", { text: "About 68 million." }, 2);
     const splitAt = status.length - 1;
 
@@ -240,7 +244,7 @@ describe("parseSseStream", () => {
     ]);
 
     expect(events).toEqual([
-      { event: "status", data: { phase: "mcp", message: "Querying" } },
+      { event: "status", data: { phase: "discovery", message: "Querying" } },
       { event: "content", data: { text: "About 68 million." } },
     ]);
   });
@@ -252,7 +256,7 @@ describe("parseSseStream", () => {
     //   separator straddles two reads.
     // Expectation: All three events are decoded with their names and
     //   payloads, and no spurious frames are produced.
-    const status = `event: status\rdata: ${JSON.stringify({ phase: "mcp" })}\r\r`;
+    const status = `event: status\rdata: ${JSON.stringify({ phase: "discovery" })}\r\r`;
     const text = frame("content", { text: "About 68 million." }, 2);
     const complete = { state: "complete", ...TERMINAL_FIELDS };
     const terminal = frame("terminal", complete, 3);
@@ -260,7 +264,7 @@ describe("parseSseStream", () => {
     const events = await parseAll([...(status + text + terminal)]);
 
     expect(events).toEqual([
-      { event: "status", data: { phase: "mcp" } },
+      { event: "status", data: { phase: "discovery" } },
       { event: "content", data: { text: "About 68 million." } },
       { event: "terminal", data: complete },
     ]);
@@ -299,7 +303,9 @@ describe("parseSseStream", () => {
     let canceled = false;
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(encoder.encode(frame("status", { phase: "mcp" })));
+        controller.enqueue(
+          encoder.encode(frame("status", { phase: "discovery" })),
+        );
         controller.enqueue(encoder.encode(frame("content", { text: "x" })));
       },
       cancel() {
@@ -345,7 +351,7 @@ describe("applyEvent", () => {
     //   and the chart config is mapped to camelCase.
     const events: ChatStreamEvent[] = [
       { event: "status", data: { phase: "synthesis" } },
-      { event: "thought", data: { thought: "Checking", phase: "mcp" } },
+      { event: "thought", data: { thought: "Checking", phase: "discovery" } },
       { event: "content", data: { text: "About " } },
       { event: "content", data: { text: "68 million." } },
       {
@@ -367,7 +373,7 @@ describe("applyEvent", () => {
     const turn = events.reduce(applyEvent, blankTurn());
 
     expect(turn.status).toBe("synthesis");
-    expect(turn.thoughts).toEqual([{ text: "Checking", phase: "mcp" }]);
+    expect(turn.thoughts).toEqual([{ text: "Checking", phase: "discovery" }]);
     expect(turn.text).toBe("About 68 million.");
     expect(turn.provenance).toEqual([{ name: "INSEE", url: "https://insee.fr/" }]);
     expect(turn.truncated).toBe(true);

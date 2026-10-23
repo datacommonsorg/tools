@@ -18,8 +18,8 @@ local `config.json`), layers the prompt bodies into it, and calls
 `parse_agent_config` once per load. The workflows read the resulting frozen
 `AgentConfig`, so the document's shape, the type of each value, and the
 default that applies when a value is absent are known in this one module.
-Field names follow the JSON keys, so `config.thinking.mcp_level` is
-`thinking.mcp_level` in the document.
+Field names follow the JSON keys, so `config.thinking.discovery_level` is
+`thinking.discovery_level` in the document.
 
 The module also holds the Gemini settings of every role in the agent loop.
 `GeminiRole` names the roles, `_ROLE_TEMPERATURES` and
@@ -49,7 +49,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 
 # Thinking level of the tool loop and synthesis when agent-config.json omits
-# `thinking.mcp_level` or `thinking.synthesis_level`. It matches the
+# `thinking.discovery_level` or `thinking.synthesis_level`. It matches the
 # `"default"` that `schemas/agent-config.schema.json` declares for both keys.
 DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
 
@@ -58,7 +58,7 @@ class GeminiRole(Enum):
     """Reasoning roles across the agent loop."""
 
     CLASSIFY = "classify"
-    MCP = "mcp"
+    DISCOVERY = "discovery"
     SYNTHESIS = "synthesis"
     CHART_CONFIG = "chart_config"
     CHART_VALIDATION = "chart_validation"
@@ -75,10 +75,15 @@ class RoleConfig:
     thinking_level: types.ThinkingLevel
 
 
+# `GeminiConfig` attribute that holds the model name for each role.
+_ROLE_MODEL_ATTRS: Mapping[GeminiRole, str] = {
+    role: f"{role.value}_model" for role in GeminiRole
+}
+
 # Sampling temperature of each role. agent-config.json cannot change these.
 _ROLE_TEMPERATURES: Mapping[GeminiRole, float] = {
     GeminiRole.CLASSIFY: 0.0,
-    GeminiRole.MCP: 0.2,
+    GeminiRole.DISCOVERY: 0.2,
     GeminiRole.SYNTHESIS: 0.3,
     GeminiRole.CHART_CONFIG: 0.2,
     GeminiRole.CHART_VALIDATION: 0.0,
@@ -87,12 +92,12 @@ _ROLE_TEMPERATURES: Mapping[GeminiRole, float] = {
     GeminiRole.COMPACTION: 0.1,
 }
 
-# Thinking level of the roles that agent-config.json cannot change. `MCP` and
-# `SYNTHESIS` are absent because they read `thinking.mcp_level` and
-# `thinking.synthesis_level`. `CLASSIFY` asks for the least reasoning
-# because it returns a short structured verdict on every turn;
-# `_clamp_thinking_level` raises it on a model that does not accept
-# `MINIMAL`.
+# Thinking level of the roles that agent-config.json cannot change.
+# `DISCOVERY` and `SYNTHESIS` are absent because they read
+# `thinking.discovery_level` and `thinking.synthesis_level`. `CLASSIFY` asks
+# for the least reasoning because it returns a short structured verdict on
+# every turn; `_clamp_thinking_level` raises it on a model that does not
+# accept `MINIMAL`.
 _FIXED_THINKING_LEVELS: Mapping[GeminiRole, types.ThinkingLevel] = {
     GeminiRole.CLASSIFY: types.ThinkingLevel.MINIMAL,
     GeminiRole.CHART_CONFIG: types.ThinkingLevel.LOW,
@@ -101,10 +106,10 @@ _FIXED_THINKING_LEVELS: Mapping[GeminiRole, types.ThinkingLevel] = {
     GeminiRole.COMPACTION: types.ThinkingLevel.LOW,
 }
 
-# The thinking levels that `thinking.mcp_level` and `thinking.synthesis_level`
-# accept, keyed by their configuration string. They match the `enum` that
-# `schemas/agent-config.schema.json` declares for both keys; `MINIMAL` is
-# excluded because the default `gemini.mcp_model` rejects it.
+# The thinking levels that `thinking.discovery_level` and
+# `thinking.synthesis_level` accept, keyed by their configuration string. They
+# match the `enum` that `schemas/agent-config.schema.json` declares for both
+# keys; `MINIMAL` is excluded because `DEFAULT_GEMINI_MODEL` rejects it.
 _CONFIGURABLE_THINKING_LEVELS: Mapping[str, types.ThinkingLevel] = {
     "low": types.ThinkingLevel.LOW,
     "medium": types.ThinkingLevel.MEDIUM,
@@ -162,18 +167,22 @@ def _clamp_thinking_level(
 
 @dataclass(frozen=True)
 class GeminiConfig:
-    """Holds the `gemini` section: the model each phase calls and the key.
+    """Holds the `gemini` section: the model each role calls and the key.
 
-    `mcp_model` runs the tool loop, synthesis, chart configuration, follow-up
-    generation, and transcript compaction; `classify_model` runs the classify
-    phase. `api_key` is the local-development key from `config.json`, which
-    `get_gemini_api_key` in `config.py` applies after Secret Manager; it is
-    excluded from `repr` so that a logged or printed configuration never
-    carries the key.
+    Each `<role>_model` field names the model for the matching `GeminiRole`
+    in `AgentConfig.resolve_role_config`. `api_key` is the local-development
+    key from `config.json`, which `get_gemini_api_key` in `config.py`
+    applies after Secret Manager; it is excluded from `repr` so that a
+    logged or printed configuration never carries the key.
     """
 
-    mcp_model: str = DEFAULT_GEMINI_MODEL
     classify_model: str = DEFAULT_GEMINI_CLASSIFY_MODEL
+    discovery_model: str = DEFAULT_GEMINI_MODEL
+    synthesis_model: str = DEFAULT_GEMINI_MODEL
+    chart_config_model: str = DEFAULT_GEMINI_MODEL
+    chart_validation_model: str = DEFAULT_GEMINI_MODEL
+    follow_up_model: str = DEFAULT_GEMINI_MODEL
+    compaction_model: str = DEFAULT_GEMINI_MODEL
     api_key: str = field(default="", repr=False)
 
 
@@ -194,13 +203,13 @@ class McpConfig:
 class ThinkingLevels:
     """Holds the `thinking` section: the configurable thinking levels.
 
-    `mcp_level` applies to the tool loop and `synthesis_level` to synthesis.
-    The parser accepts `"low"`, `"medium"`, and `"high"` and falls back to
-    `DEFAULT_THINKING_LEVEL` for any other value. The other roles run at the
-    levels in `_FIXED_THINKING_LEVELS`.
+    `discovery_level` applies to the tool loop and `synthesis_level` to
+    synthesis. The parser accepts `"low"`, `"medium"`, and `"high"` and
+    falls back to `DEFAULT_THINKING_LEVEL` for any other value. The other
+    roles run at the levels in `_FIXED_THINKING_LEVELS`.
     """
 
-    mcp_level: types.ThinkingLevel = DEFAULT_THINKING_LEVEL
+    discovery_level: types.ThinkingLevel = DEFAULT_THINKING_LEVEL
     synthesis_level: types.ThinkingLevel = DEFAULT_THINKING_LEVEL
 
 
@@ -214,7 +223,7 @@ class Prompts:
     """
 
     classify: str = ""
-    mcp: str = ""
+    discovery: str = ""
     synthesis: str = ""
     follow_up: str = ""
 
@@ -252,23 +261,18 @@ class AgentConfig:
     def resolve_role_config(self, role: GeminiRole) -> RoleConfig:
         """Returns the model, temperature, and thinking level of `role`.
 
-        `CLASSIFY` runs on `gemini.classify_model` and every other role on
-        `gemini.mcp_model`. `MCP` and `SYNTHESIS` think at
-        `thinking.mcp_level` and `thinking.synthesis_level`; the other roles
-        think at their level in `_FIXED_THINKING_LEVELS`. A level below the
-        lowest the role's model accepts is raised to that floor, so the
-        classifier runs at `LOW` on a model that rejects `MINIMAL` rather
-        than failing its call on every turn and leaving the turn
-        unclassified. Every role samples at its temperature in
-        `_ROLE_TEMPERATURES`.
+        Each role runs on its `gemini.<role>_model` field (`_ROLE_MODEL_ATTRS`).
+        `DISCOVERY` and `SYNTHESIS` think at `thinking.discovery_level` and
+        `thinking.synthesis_level`; the other roles think at their level in
+        `_FIXED_THINKING_LEVELS`. A level below the lowest the role's model
+        accepts is raised to that floor, so the classifier runs at `LOW` on
+        a model that rejects `MINIMAL` rather than failing its call on every
+        turn and leaving the turn unclassified. Every role samples at its
+        temperature in `_ROLE_TEMPERATURES`.
         """
-        model = (
-            self.gemini.classify_model
-            if role is GeminiRole.CLASSIFY
-            else self.gemini.mcp_model
-        )
-        if role is GeminiRole.MCP:
-            thinking_level = self.thinking.mcp_level
+        model: str = getattr(self.gemini, _ROLE_MODEL_ATTRS[role])
+        if role is GeminiRole.DISCOVERY:
+            thinking_level = self.thinking.discovery_level
         elif role is GeminiRole.SYNTHESIS:
             thinking_level = self.thinking.synthesis_level
         else:
@@ -432,11 +436,28 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
     prompts = _read_section(document, "prompts")
     return AgentConfig(
         gemini=GeminiConfig(
-            mcp_model=_read_model_name(
-                gemini, "mcp_model", GeminiConfig.mcp_model
-            ),
             classify_model=_read_model_name(
                 gemini, "classify_model", GeminiConfig.classify_model
+            ),
+            discovery_model=_read_model_name(
+                gemini, "discovery_model", GeminiConfig.discovery_model
+            ),
+            synthesis_model=_read_model_name(
+                gemini, "synthesis_model", GeminiConfig.synthesis_model
+            ),
+            chart_config_model=_read_model_name(
+                gemini, "chart_config_model", GeminiConfig.chart_config_model
+            ),
+            chart_validation_model=_read_model_name(
+                gemini,
+                "chart_validation_model",
+                GeminiConfig.chart_validation_model,
+            ),
+            follow_up_model=_read_model_name(
+                gemini, "follow_up_model", GeminiConfig.follow_up_model
+            ),
+            compaction_model=_read_model_name(
+                gemini, "compaction_model", GeminiConfig.compaction_model
             ),
             api_key=_read_string(
                 gemini, "gemini", "api_key", GeminiConfig.api_key
@@ -449,8 +470,8 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
             enabled=_read_bool(mcp, "mcp", "enabled", McpConfig.enabled),
         ),
         thinking=ThinkingLevels(
-            mcp_level=_read_thinking_level(
-                thinking, "mcp_level", ThinkingLevels.mcp_level
+            discovery_level=_read_thinking_level(
+                thinking, "discovery_level", ThinkingLevels.discovery_level
             ),
             synthesis_level=_read_thinking_level(
                 thinking, "synthesis_level", ThinkingLevels.synthesis_level
@@ -460,7 +481,9 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
             classify=_read_string(
                 prompts, "prompts", "classify", Prompts.classify
             ),
-            mcp=_read_string(prompts, "prompts", "mcp", Prompts.mcp),
+            discovery=_read_string(
+                prompts, "prompts", "discovery", Prompts.discovery
+            ),
             synthesis=_read_string(
                 prompts, "prompts", "synthesis", Prompts.synthesis
             ),
