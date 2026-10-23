@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
+import { withBaseUrl } from "@/src/config/base_url";
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = "\n\n";
@@ -36,7 +37,7 @@ export interface ToolCallEvent {
 /** A reasoning snippet emitted while the agent works, tagged by pipeline phase. */
 export interface ThoughtEvent {
   text: string;
-  phase: "mcp" | "synthesis";
+  phase: "discovery" | "synthesis";
 }
 
 /**
@@ -185,7 +186,7 @@ export interface ProvenanceItem {
 export type TurnStatus =
   | "idle"
   | "classify"
-  | "mcp"
+  | "discovery"
   | "synthesis"
   | "done"
   | "refused"
@@ -346,7 +347,7 @@ export type ChatStreamEvent =
   | {
       event: "status";
       data: {
-        phase: "classify" | "mcp" | "synthesis" | "chart_config";
+        phase: "classify" | "discovery" | "synthesis" | "chart_config";
         message?: string;
       };
     }
@@ -656,7 +657,11 @@ export interface UseSseChatProps {
  * controlled `turns` array as they arrive.
  */
 export function useSseChat(props: UseSseChatProps): UseSseChatResult {
-  const { endpoint = "/agent/chat/stream", turns, setTurns } = props;
+  const {
+    endpoint = withBaseUrl("/agent/chat/stream"),
+    turns,
+    setTurns,
+  } = props;
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -871,7 +876,7 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
     case "status":
       if (
         evt.data.phase === "classify" ||
-        evt.data.phase === "mcp" ||
+        evt.data.phase === "discovery" ||
         evt.data.phase === "synthesis"
       ) {
         return { ...turn, status: evt.data.phase };

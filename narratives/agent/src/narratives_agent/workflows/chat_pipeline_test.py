@@ -18,10 +18,11 @@ Verifies that:
    terminal event carrying the idempotency key and the signed window, then
    the follow-ups, and is recorded as `complete`. The signed turn verifies
    on the next request, and an answer too long to sign is left unsigned.
-2. A failed MCP loop, an empty or slow tool list, and a failed, broken, or
-   empty synthesis end the turn with one `error` terminal event carrying a
-   fixed message and the machine-readable `reason`, and are recorded as
-   `error` with that reason. MCP failures end the turn before synthesis.
+2. A missing configuration, a failed MCP loop, an empty or slow tool list,
+   and a failed, broken, or empty synthesis end the turn with one `error`
+   terminal event carrying a fixed message and the machine-readable `reason`,
+   and are recorded as `error` with that reason. Configuration and MCP
+   failures end the turn before synthesis.
 3. An unexpected exception ends the turn as `internal_error`; a follow-up
    failure after the terminal event leaves the turn `complete`.
 4. A chart config that misses its join timeout is canceled and the turn
@@ -40,29 +41,32 @@ Verifies that:
    directive. A model call that Gemini blocks in the classify phase, the
    tool loop, or synthesis ends the turn as `refused` with reason
    `safety_blocked`.
+8. The serialized frames of a complete turn match the recorded wire
+   sequence, byte for byte.
 """
 
 import asyncio
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
 
+from narratives_agent.config_model import AgentConfig, McpConfig, Prompts
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
     GeminiStreamError,
 )
+from narratives_agent.gemini.response import StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import transcript as transcript_module
-from narratives_agent.workflows.chat_pipeline import EventName
 from narratives_agent.workflows.classify import (
     Admitted,
     Clarification,
@@ -78,6 +82,7 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_FAILED,
 )
 from narratives_agent.workflows.pattern_guidance import pattern_directive
+from narratives_agent.workflows.sse_frames import EventName, SseFrame
 from narratives_agent.workflows.transcript import (
     MAX_RESPONSE_CHARS,
     ConversationStateSlots,
@@ -91,6 +96,10 @@ _IDEMPOTENCY_KEY = "test-idempotency-key"
 _ANSWER = "About 68 million."
 _CHARTS = {"should_render": True, "charts": [{"title": "Population"}]}
 _FOLLOW_UPS = ["And Spain?"]
+_CONFIG = AgentConfig(
+    mcp=McpConfig(enabled=True),
+    prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
+)
 _TRANSCRIPT = Transcript(
     turns=[],
     compacted_summary=None,
@@ -192,8 +201,9 @@ class _Turn:
     synthesis_release: asyncio.Event = field(default_factory=asyncio.Event)
     follow_ups_release: asyncio.Event = field(default_factory=asyncio.Event)
 
-    def emit(self, event: EventName, data: dict[str, Any]) -> None:
-        self.events.append((event, data))
+    def emit(self, frame: SseFrame) -> None:
+        """Records the frame as the event name and payload the route sends."""
+        self.events.append((frame.event, frame.payload()))
 
     def names(self) -> list[EventName]:
         """Returns the names of the events emitted so far, in order."""
@@ -214,8 +224,14 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         stub.telemetry = recording
         return recording
 
-    async def get_tools() -> list[dict[str, Any]]:
-        return [{"name": "get_observations"}]
+    async def get_tools() -> list[mcp_client.McpTool]:
+        return [
+            mcp_client.McpTool(
+                name="get_observations",
+                description="",
+                input_schema={"type": "object", "properties": {}},
+            )
+        ]
 
     async def classify(*args: Any, **kwargs: Any) -> Admitted:
         return Admitted(_CLASSIFICATION)
@@ -227,18 +243,18 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
             tool_calls=[dict(_TOOL_CALL)],
         )
 
-    async def answer() -> AsyncIterator[str]:
+    async def answer() -> AsyncGenerator[StreamChunk]:
         await stub.synthesis_release.wait()
-        yield _ANSWER
+        yield StreamChunk("text", _ANSWER)
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         stub.synthesis_calls += 1
         stub.synthesis_messages.append(list(kwargs["messages"]))
         stub.synthesis_instructions.append(kwargs["system_instruction"])
         return answer()
 
     async def chart_config(
-        results: str, question: str, usage: TokenUsage
+        results: str, question: str, config: AgentConfig, usage: TokenUsage
     ) -> dict[str, Any]:
         try:
             await stub.chart_release.wait()
@@ -247,24 +263,22 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
             raise
         return dict(_CHARTS)
 
-    async def validate(text: str, question: str, usage: TokenUsage) -> bool:
+    async def validate(
+        text: str, question: str, config: AgentConfig, usage: TokenUsage
+    ) -> bool:
         return True
 
     async def follow_ups(
-        question: str, topics: list[str], usage: TokenUsage
+        question: str,
+        topics: list[str],
+        config: AgentConfig,
+        usage: TokenUsage,
     ) -> list[str]:
         await stub.follow_ups_release.wait()
         return list(_FOLLOW_UPS)
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", telemetry)
-    monkeypatch.setattr(
-        chat_pipeline,
-        "load_config",
-        lambda: {
-            "mcp": {"enabled": True},
-            "prompts": {"mcp": "Gather data.", "synthesis": "Write prose."},
-        },
-    )
+    monkeypatch.setattr(chat_pipeline, "load_config", lambda: _CONFIG)
     monkeypatch.setattr(chat_pipeline, "classify_query", classify)
     monkeypatch.setattr(mcp_client, "ensure_session_scope", lambda: None)
     monkeypatch.setattr(mcp_client, "async_get_tools", get_tools)
@@ -438,10 +452,10 @@ async def test_an_answer_too_long_to_sign_completes_unsigned(
     # Situation: Synthesis streams more than `MAX_RESPONSE_CHARS` characters.
     # Expectation: The turn completes, and its terminal event carries no
     #   signing fields, so the browser leaves the turn out of later context.
-    async def long_answer() -> AsyncIterator[str]:
-        yield "x" * (MAX_RESPONSE_CHARS + 1)
+    async def long_answer() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", "x" * (MAX_RESPONSE_CHARS + 1))
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return long_answer()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
@@ -496,7 +510,7 @@ async def test_failed_synthesis_reports_a_fixed_message(
     #   recorded as `error` with `synthesis_error`.
     upstream = "HTTP 500: upstream detail"
 
-    async def failing_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def failing_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         raise GeminiError(upstream)
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", failing_synthesis)
@@ -601,7 +615,10 @@ async def test_malformed_chart_entries_do_not_fail_the_turn(
         return malformed
 
     async def follow_ups(
-        question: str, chart_topics: list[str], usage: TokenUsage
+        question: str,
+        chart_topics: list[str],
+        config: AgentConfig,
+        usage: TokenUsage,
     ) -> list[str]:
         topics.append(chart_topics)
         return list(_FOLLOW_UPS)
@@ -670,6 +687,28 @@ def _only_terminal(turn: _Turn) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
+async def test_a_missing_configuration_fails_the_turn_before_classify(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Fail-closed handling when no configuration is loaded.
+    # Situation: `load_config` returns `None`, as it does when `CONFIG_URL`
+    #   could not be fetched or no configuration file holds a JSON object.
+    # Expectation: The turn ends in a single `error` terminal event with
+    #   reason `config_missing` before the `classify` status frame, no phase
+    #   runs, and the turn is recorded as `error` with that reason.
+    monkeypatch.setattr(chat_pipeline, "load_config", lambda: None)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    terminal = _only_terminal(turn)
+    assert turn.names() == ["terminal"]
+    assert terminal["state"] == "error"
+    assert terminal["reason"] == "config_missing"
+    assert turn.synthesis_calls == 0
+    assert turn.finished == [("error", "config_missing")]
+
+
+@pytest.mark.asyncio
 async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
@@ -677,7 +716,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     # Situation: MCP is enabled, but `async_get_tools` returns an empty list.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `mcp_unavailable` and a fixed message, without calling synthesis.
-    async def no_tools() -> list[dict[str, Any]]:
+    async def no_tools() -> list[mcp_client.McpTool]:
         return []
 
     monkeypatch.setattr(mcp_client, "async_get_tools", no_tools)
@@ -700,7 +739,7 @@ async def test_a_slow_tool_list_fails_the_turn(
     #   `async_get_tools` never returns.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `mcp_timeout`, without calling synthesis.
-    async def hung_tools() -> list[dict[str, Any]]:
+    async def hung_tools() -> list[mcp_client.McpTool]:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
@@ -724,10 +763,10 @@ async def test_an_empty_synthesis_fails_the_turn(
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `synthesis_empty` and the fixed synthesis message, and no chart
     #   config is emitted.
-    async def blank() -> AsyncIterator[str]:
-        yield " \n"
+    async def blank() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", " \n")
 
-    async def blank_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def blank_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return blank()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blank_synthesis)
@@ -753,11 +792,11 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     #   fixed message rather than the upstream text.
     upstream = "HTTP 503: upstream detail"
 
-    async def broken() -> AsyncIterator[str]:
-        yield "About "
+    async def broken() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", "About ")
         raise GeminiStreamError(upstream)
 
-    async def broken_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def broken_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return broken()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", broken_synthesis)
@@ -805,7 +844,10 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
     # Expectation: The single terminal event is `complete`, no follow-ups are
     #   emitted, and the turn is recorded as `complete`.
     async def failing_follow_ups(
-        question: str, topics: list[str], usage: TokenUsage
+        question: str,
+        topics: list[str],
+        config: AgentConfig,
+        usage: TokenUsage,
     ) -> list[str]:
         raise RuntimeError("follow-up model failed")
 
@@ -834,12 +876,14 @@ async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
     chart_failed = asyncio.Event()
 
     async def failing_chart_config(
-        results: str, question: str, usage: TokenUsage
+        results: str, question: str, config: AgentConfig, usage: TokenUsage
     ) -> dict[str, Any]:
         chart_failed.set()
         raise ValueError("chart detail")
 
-    async def late_failing_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def late_failing_synthesis(
+        **kwargs: Any,
+    ) -> AsyncGenerator[StreamChunk]:
         await chart_failed.wait()
         await asyncio.sleep(0)
         raise GeminiError("upstream")
@@ -864,8 +908,8 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     # Situation: `classify_query` returns `Admitted(_CLASSIFICATION)` for a
     #   `single_point` lookup and all subsequent phases succeed.
     # Expectation: The stream opens with a `classify` status frame followed by
-    #   `mcp`, the classification is passed to `execute_mcp_tool_loop`, the
-    #   synthesis system instruction ends with the pattern directive, and
+    #   `discovery`, the classification is passed to `execute_mcp_tool_loop`,
+    #   the synthesis system instruction ends with the pattern directive, and
     #   telemetry records `pattern == "single_point"` and the `classify` phase
     #   duration.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -877,7 +921,7 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     statuses = [
         data["phase"] for event, data in turn.events if event == "status"
     ]
-    assert statuses[:2] == ["classify", "mcp"]
+    assert statuses[:2] == ["classify", "discovery"]
     assert turn.loop_classifications == [_CLASSIFICATION]
     (instruction,) = turn.synthesis_instructions
     assert instruction.startswith("Write prose.")
@@ -1058,7 +1102,7 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
     # Expectation: No answer text is emitted, the turn ends in a `refused`
     #   terminal frame with `reason="safety_blocked"`, and telemetry records
     #   `("refused", "safety_blocked")`.
-    async def blocked_synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def blocked_synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         raise GeminiBlockedError("SAFETY")
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", blocked_synthesis)
@@ -1082,11 +1126,11 @@ async def test_a_synthesis_stream_blocked_after_thoughts_refuses_the_turn(
     # Expectation: No answer text is emitted, the turn ends in a `refused`
     #   terminal frame with `reason="safety_blocked"`, and telemetry records
     #   `("refused", "safety_blocked")`.
-    async def blocked_after_thought() -> AsyncIterator[dict[str, str]]:
-        yield {"type": "thought", "content": "Reviewing data."}
+    async def blocked_after_thought() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("thought", "Reviewing data.")
         raise GeminiBlockedError("SAFETY")
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[dict[str, str]]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return blocked_after_thought()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
@@ -1117,11 +1161,11 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     # Expectation: The partial text is emitted, and the turn ends in an `error`
     #   terminal frame with `reason="synthesis_stream_error"` and
     #   `SYNTHESIS_FAILED` rather than `refused`.
-    async def blocked_after_text() -> AsyncIterator[str]:
-        yield "About "
+    async def blocked_after_text() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", "About ")
         raise GeminiBlockedError("SAFETY")
 
-    async def synthesis(**kwargs: Any) -> AsyncIterator[str]:
+    async def synthesis(**kwargs: Any) -> AsyncGenerator[StreamChunk]:
         return blocked_after_text()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
@@ -1134,3 +1178,90 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     assert terminal["reason"] == "synthesis_stream_error"
     assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [("error", "synthesis_stream_error")]
+
+
+# The serialized frames of a complete turn whose stubs also report a thought
+# from discovery and from synthesis. The HMAC is deterministic because the
+# `signing_secret` fixture fixes the signing key.
+_WIRE_HMAC = "a275b8e5cfa9bb31103d2d9ea35f13c189be6c2c348877c53ab9ff99f430f029"
+_WIRE_FRAMES: list[tuple[EventName, str]] = [
+    (
+        "status",
+        '{"phase": "classify", "message": "Understanding the question..."}',
+    ),
+    ("status", '{"phase": "discovery", "message": "Querying data tools..."}'),
+    ("thought", '{"thought": "Looking up France.", "phase": "discovery"}'),
+    (
+        "content",
+        '{"tool_call": {"name": "get_observations", "arguments": '
+        '{"variable_dcid": "Count_Person", "place_dcid": "country/FRA"}, '
+        '"result": "{\\"data\\": {\\"rows\\": [{\\"entity\\": '
+        '\\"country/FRA\\", \\"date\\": \\"2023\\", \\"value\\": '
+        '68000000.0}]}, \\"dcid_name_mappings\\": {\\"country/FRA\\": '
+        '\\"France\\", \\"Count_Person\\": \\"Total Population\\"}}", '
+        '"status": "success"}}',
+    ),
+    ("content", '{"data_status": {"has_data": true, "truncated": false}}'),
+    ("content", '{"sources": [{"name": "INSEE", "url": "https://insee.fr/"}]}'),
+    ("status", '{"phase": "synthesis", "message": "Generating response..."}'),
+    ("thought", '{"thought": "Writing the answer.", "phase": "synthesis"}'),
+    ("content", '{"text": "About 68 million."}'),
+    (
+        "status",
+        '{"phase": "chart_config", "message": "Preparing charts..."}',
+    ),
+    (
+        "content",
+        '{"chart_config": {"should_render": true, "charts": '
+        '[{"title": "Population"}]}}',
+    ),
+    (
+        "terminal",
+        '{"state": "complete", "idempotency_key": "test-idempotency-key", '
+        f'"turn_index": 0, "hmac": "{_WIRE_HMAC}", "state_slots": '
+        '{"scopes": [{"places": {"country/FRA": "France"}, '
+        '"parent_place": null, "child_place_type": null, "variables": '
+        '{"Count_Person": "Total Population"}, "date_range": '
+        '["2023", "2023"]}]}, "compacted_summary": null, "window": '
+        '[{"turn_index": 0, "idempotency_key": "test-idempotency-key", '
+        f'"hmac": "{_WIRE_HMAC}"}}]}}',
+    ),
+    ("follow_ups", '{"follow_up_questions": ["And Spain?"]}'),
+]
+
+
+@pytest.mark.asyncio
+async def test_a_complete_turn_serializes_to_the_recorded_frames(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Wire equivalence of a complete turn.
+    # Situation: Every phase succeeds, and the tool loop and synthesis each
+    #   report one thought, so the turn emits every frame type of a complete
+    #   turn.
+    # Expectation: The event names and the JSON `data` strings, serialized
+    #   as the chat route serializes them, equal the recorded sequence.
+    async def tool_loop(
+        *args: object,
+        thought_callback: Callable[[str], None],
+        **kwargs: object,
+    ) -> McpLoopResult:
+        thought_callback("Looking up France.")
+        return McpLoopResult(
+            results_text="Tool: get_observations\nResult: 68000000",
+            tool_calls=[dict(_TOOL_CALL)],
+        )
+
+    async def answer() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("thought", "Writing the answer.")
+        yield StreamChunk("text", _ANSWER)
+
+    async def synthesis(**kwargs: object) -> AsyncGenerator[StreamChunk]:
+        return answer()
+
+    monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", tool_loop)
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", synthesis)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    serialized = [(event, json.dumps(data)) for event, data in turn.events]
+    assert serialized == _WIRE_FRAMES

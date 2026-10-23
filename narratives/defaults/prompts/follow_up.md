@@ -16,9 +16,7 @@ CRUCIAL RULES:
 - Only suggest questions that can plausibly be answered from public statistical data for the same place.
 - Ensure correct grammar and casing.
 
-<!-- Note: this file is the canonical copy of the follow-up prompt. The agent
-     loads it into config["prompts"]["follow_up"] at startup and falls back to
-     the inline DEFAULT_FOLLOW_UP_PROMPT in
-     agent/src/narratives_agent/gemini/schemas.py only if the fetch fails. Keep
-     the two in sync so the fallback stays faithful.
+<!-- The agent loads this file into config["prompts"]["follow_up"] on every
+     configuration path; a config/prompts/follow_up.md or an inline
+     prompts.follow_up entry in agent-config.json replaces it for that slot.
      Ported from website/server/lib/nl/explore/gemini_prompts.py. -->

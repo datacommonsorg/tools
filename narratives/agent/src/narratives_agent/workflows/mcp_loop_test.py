@@ -17,30 +17,43 @@ Verifies that:
 1. The loop ends when the model answers without function calls.
 2. The session scope is opened before any tool call, and every call of one
    model turn runs concurrently.
-3. A model error, a response without candidates, an empty reply, an MCP
+3. A model error, a reply with neither a tool call nor text, an MCP
    transport failure, and a wall-clock timeout before any tool call
    completes end the loop with `McpLoopError` carrying a fixed, user-safe
-   message.
+   message; an empty reply is logged with its finish reason.
 4. Reaching `MAX_ITERATIONS` or the wall-clock timeout after a tool call has
    completed returns the completed calls, flagged truncated.
 5. Tool calls in flight are bounded by `MAX_CONCURRENT_TOOL_CALLS`, and
    telemetry records only declared tool names.
-6. A tool call's status is derived from the shape of its result.
+6. A tool call that raises `McpToolError` is recorded with status `error`
+   and the JSON text of `{"error": <message>}` as its result, a successful
+   result is recorded as a success whatever its text says, and telemetry
+   counts both calls.
 7. The first request carries the verified window as alternating messages,
-   with earlier answers shortened, then the scopes and the current query.
+   with earlier answers shortened, then the scopes and the current query;
+   the next request replays the model's response and the tool results.
 8. A classification appends its pattern directive to the system instruction,
    and a prompt that Gemini blocks propagates out of the loop as the client's
    `GeminiBlockedError`.
+9. Each tool is declared to Gemini with its name, its description, and its
+   transformed input schema, and a schema that Gemini's `Schema` rejects ends
+   the loop as a model error before any request is sent.
 """
 
 import asyncio
-from collections.abc import Callable, Iterator
+import json
+import logging
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 import pytest
+from google.genai import types
 
+from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
+from narratives_agent.gemini.response import FunctionCall, GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import mcp_loop
@@ -58,31 +71,28 @@ _TRANSCRIPT = Transcript(
     current_query="What is the population of France?",
     current_idempotency_key="key-1",
 )
+_CONFIG = AgentConfig()
 _TOOLS = [
-    {"name": name, "description": "A tool."} for name in ("first", "second")
+    mcp_client.McpTool(
+        name=name,
+        description="A tool.",
+        input_schema={"type": "object", "properties": {}},
+    )
+    for name in ("first", "second")
 ]
 _UPSTREAM_ERROR = "HTTP 500: internal detail that must not reach the user"
 
 
-def _text_turn(text: str) -> dict[str, Any]:
+def _text_turn(text: str) -> GeminiResponse:
     """Returns a model response that answers with text alone."""
-    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+    return GeminiResponse(text=text)
 
 
-def _tool_turn(*names: str) -> dict[str, Any]:
+def _tool_turn(*names: str) -> GeminiResponse:
     """Returns a model response that calls each named tool once."""
-    return {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {"functionCall": {"name": name, "args": {"q": name}}}
-                        for name in names
-                    ]
-                }
-            }
-        ]
-    }
+    return GeminiResponse(
+        function_calls=tuple(FunctionCall(name, {"q": name}) for name in names)
+    )
 
 
 @pytest.fixture
@@ -101,7 +111,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         mcp_client, "ensure_session_scope", lambda: log.append("scope")
     )
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         log.append(f"tool:{name}")
         return {"content": [{"type": "text", "text": f"{name} result"}]}
 
@@ -119,10 +129,10 @@ def model_answers(
     Gemini client raises on a failed or blocked request.
     """
 
-    def install(*responses: dict[str, Any] | Exception) -> None:
+    def install(*responses: GeminiResponse | Exception) -> None:
         remaining = list(responses)
 
-        async def request(**kwargs: Any) -> dict[str, Any]:
+        async def request(**kwargs: Any) -> GeminiResponse:
             response = remaining.pop(0)
             if isinstance(response, Exception):
                 raise response
@@ -149,7 +159,7 @@ async def test_text_answer_ends_the_loop(
     model_answers(_text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert result == mcp_loop.McpLoopResult()
@@ -173,7 +183,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     #   calls complete, and both results reach the gathered text.
     barrier = asyncio.Barrier(2)
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         calls.append(f"tool:{name}")
         async with asyncio.timeout(1):
             await barrier.wait()
@@ -183,7 +193,7 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     model_answers(_tool_turn("first", "second"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert calls == ["scope", "tool:first", "tool:second"]
@@ -205,39 +215,48 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
         pytest.param(
             GeminiError(_UPSTREAM_ERROR), "mcp_model_error", id="model-error"
         ),
-        pytest.param({"candidates": []}, "mcp_no_candidates", id="empty"),
-        pytest.param({}, "mcp_no_candidates", id="no-candidates-key"),
+        pytest.param(GeminiResponse(), "mcp_empty_response", id="empty"),
         pytest.param(
-            {"candidates": [{"content": {"parts": []}}]},
+            GeminiResponse(finish_reason="MALFORMED_FUNCTION_CALL"),
             "mcp_empty_response",
-            id="no-parts",
+            id="empty-with-finish-reason",
         ),
         pytest.param(_text_turn("  \n"), "mcp_empty_response", id="blank-text"),
     ],
 )
 @pytest.mark.asyncio
 async def test_unusable_model_response_fails_closed(
-    response: dict[str, Any] | Exception,
+    response: GeminiResponse | Exception,
     error_type: str,
     calls: list[str],
     model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Fail-closed handling of an unusable model response.
     # Situation: After one successful tool turn, the model call raises
-    #   `GeminiError`, or returns an empty candidate list, no candidates at
-    #   all, a candidate with no parts, or a candidate whose only text is
-    #   blank.
+    #   `GeminiError`, or returns a reply with neither a tool call nor text:
+    #   with no finish reason, with `MALFORMED_FUNCTION_CALL`, or with only
+    #   blank text.
     # Expectation: The loop raises `McpLoopError` with the matching type and
     #   a message that does not carry the upstream error text, instead of
-    #   returning the partial results.
+    #   returning the partial results. An empty reply is logged at WARNING
+    #   with its finish reason, so that the log says why the model produced
+    #   nothing.
     model_answers(_tool_turn("first"), response)
 
-    with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+    with (
+        caplog.at_level(logging.WARNING, logger=mcp_loop.logger.name),
+        pytest.raises(mcp_loop.McpLoopError) as raised,
+    ):
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.error_type == error_type
     assert _UPSTREAM_ERROR not in str(raised.value)
+    if isinstance(response, GeminiResponse):
+        assert f"finish reason: {response.finish_reason}" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -254,7 +273,7 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
     #   the hung model call is canceled.
     canceled = asyncio.Event()
 
-    async def hung_request(**kwargs: Any) -> dict[str, Any]:
+    async def hung_request(**kwargs: Any) -> GeminiResponse:
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -268,7 +287,9 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
     )
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.error_type == "mcp_timeout"
     assert canceled.is_set()
@@ -288,7 +309,7 @@ async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
     #   text, with `truncated` set, rather than raising an exception.
     responses = [_tool_turn("first")]
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         if responses:
             return responses.pop(0)
         await asyncio.Event().wait()
@@ -300,7 +321,7 @@ async def test_wall_clock_timeout_returns_completed_calls_flagged_truncated(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert result.truncated
@@ -326,7 +347,7 @@ async def test_iteration_cap_returns_partial_results_flagged_truncated(
     model_answers(_tool_turn("first"), _tool_turn("second"))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert result.truncated
@@ -355,7 +376,7 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     second_started = asyncio.Event()
     second_canceled = asyncio.Event()
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         if name == "second":
             second_started.set()
             try:
@@ -370,7 +391,9 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     model_answers(_tool_turn("first", "second"))
 
     with pytest.raises(mcp_loop.McpLoopError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.error_type == "mcp_transport_error"
     assert _UPSTREAM_ERROR not in str(raised.value)
@@ -396,7 +419,7 @@ async def test_tool_calls_in_flight_are_bounded(
     in_flight = 0
     peak = 0
 
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
         nonlocal in_flight, peak
         in_flight += 1
         peak = max(peak, in_flight)
@@ -410,7 +433,7 @@ async def test_tool_calls_in_flight_are_bounded(
     )
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     assert len(result.tool_calls) == 4
@@ -430,49 +453,63 @@ async def test_telemetry_records_undeclared_tool_names_as_unknown(
     #   and records the other as "unknown".
     model_answers(_tool_turn("first", "invented_tool"), _text_turn("Done."))
 
-    await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+    )
 
     assert calls == ["scope", "tool:first", "tool:invented_tool"]
     assert telemetry.tool_calls == {"first": 1, "unknown": 1}
 
 
 @pytest.mark.parametrize(
-    ("tool_result", "status"),
+    ("outcome", "status", "result_text"),
     [
-        pytest.param({"error": "Unknown place."}, "error", id="error-result"),
+        pytest.param(
+            mcp_client.McpToolError("first", "Unknown place."),
+            "error",
+            json.dumps({"error": "Unknown place."}),
+            id="tool-error",
+        ),
         pytest.param(
             {"content": [{"type": "text", "text": "Standard error: 0.4"}]},
             "success",
+            "Standard error: 0.4",
             id="data-mentioning-error",
         ),
     ],
 )
 @pytest.mark.asyncio
-async def test_tool_status_follows_the_result_shape(
+async def test_tool_status_follows_the_call_outcome(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
-    tool_result: dict[str, Any],
+    outcome: JsonObject | mcp_client.McpToolError,
     status: str,
+    result_text: str,
 ) -> None:
-    # Test: A tool call's status is derived from the shape of its result.
-    # Situation: The tool returns either the client's `{"error": ...}`
-    #   failure result or a successful result whose text contains the word
-    #   "error".
-    # Expectation: Only the failure result is recorded with status `error`.
-    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return tool_result
+    # Test: A tool call's record follows whether the call raised a tool error.
+    # Situation: The tool call raises `McpToolError`, or returns a successful
+    #   result whose text contains the word "error".
+    # Expectation: Only the tool error is recorded with status `error`, and
+    #   its result text is the JSON of `{"error": <message>}`. The success is
+    #   recorded with its text. Telemetry counts the call in both cases.
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
+        if isinstance(outcome, mcp_client.McpToolError):
+            raise outcome
+        return outcome
 
     monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
     model_answers(_tool_turn("first"), _text_turn("Done."))
 
     result = await mcp_loop.execute_mcp_tool_loop(
-        _TRANSCRIPT, {}, _TOOLS, telemetry
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
     )
 
     (record,) = result.tool_calls
     assert record["status"] == status
+    assert record["result"] == result_text
+    assert telemetry.tool_calls == {"first": 1}
 
 
 @pytest.mark.asyncio
@@ -489,7 +526,7 @@ async def test_the_first_request_carries_the_transcript(
     #   ends with a user message holding the scope and the current query.
     sent: list[list[dict[str, Any]]] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         sent.append(list(kwargs["messages"]))
         return _text_turn("Done.")
 
@@ -518,7 +555,7 @@ async def test_the_first_request_carries_the_transcript(
         current_idempotency_key="key-1",
     )
 
-    await mcp_loop.execute_mcp_tool_loop(transcript, {}, _TOOLS, telemetry)
+    await mcp_loop.execute_mcp_tool_loop(transcript, _CONFIG, _TOOLS, telemetry)
 
     (contents,) = sent
     assert [message["role"] for message in contents] == [
@@ -534,6 +571,50 @@ async def test_the_first_request_carries_the_transcript(
     assert final.endswith(
         "<current_request>\nAnd for Germany?\n</current_request>"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_next_request_replays_the_response_and_the_results(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: The conversation sent after a tool turn.
+    # Situation: The model calls one tool, then answers with text.
+    # Expectation: The second request carries the first request's messages,
+    #   then the model's `GeminiResponse` itself as the model turn, then a
+    #   user message holding the tool result as a functionResponse.
+    sent: list[list[Any]] = []
+    tool_turn = _tool_turn("first")
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        sent.append(list(kwargs["messages"]))
+        return tool_turn if len(sent) == 1 else _text_turn("Done.")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+    )
+
+    first, second = sent
+    assert second == [
+        *first,
+        tool_turn,
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "functionResponse": {
+                        "name": "first",
+                        "response": {"result": "first result"},
+                    }
+                }
+            ],
+        },
+    ]
 
 
 _CLASSIFICATION = QueryClassification.model_validate(
@@ -556,18 +637,18 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     # Situation: The loop runs once with a `top_n_ranking` classification of
     #   comparison shape, and once with `classification=None`.
     # Expectation: With the classification, the system instruction is the
-    #   `mcp` prompt followed by the pattern directive and comparison sentence;
-    #   without it, the system instruction is the base prompt alone.
+    #   `discovery` prompt followed by the pattern directive and comparison
+    #   sentence; without it, the system instruction is the base prompt alone.
     instructions: list[str] = []
 
-    async def request(**kwargs: Any) -> dict[str, Any]:
+    async def request(**kwargs: Any) -> GeminiResponse:
         instructions.append(kwargs["system_instruction"])
         return _text_turn("Done.")
 
     monkeypatch.setattr(
         mcp_loop, "async_gemini_request_with_thought_streaming", request
     )
-    config = {"prompts": {"mcp": "Be an analyst."}}
+    config = AgentConfig(prompts=Prompts(discovery="Be an analyst."))
 
     await mcp_loop.execute_mcp_tool_loop(
         _TRANSCRIPT, config, _TOOLS, telemetry, classification=_CLASSIFICATION
@@ -595,6 +676,111 @@ async def test_a_blocked_prompt_propagates_out_of_the_loop(
     model_answers(GeminiBlockedError("PROHIBITED_CONTENT"))
 
     with pytest.raises(GeminiBlockedError) as raised:
-        await mcp_loop.execute_mcp_tool_loop(_TRANSCRIPT, {}, _TOOLS, telemetry)
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
+        )
 
     assert raised.value.block_reason == "PROHIBITED_CONTENT"
+
+
+@pytest.mark.asyncio
+async def test_each_tool_is_declared_with_its_transformed_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Conversion of `McpTool` values into the declarations sent to
+    #   Gemini.
+    # Situation: The loop runs once with one tool whose input schema holds a
+    #   `title`, a nullable `anyOf` property with a default, and a map-valued
+    #   object property.
+    # Expectation: The request declares the tool with its name, its
+    #   description, and the schema `transform_schema_for_gemini` produces:
+    #   `title` dropped, the union collapsed to its non-null type, and the map
+    #   described in prose.
+    declarations: list[Sequence[types.FunctionDeclaration]] = []
+
+    async def request(
+        *,
+        tools: Sequence[types.FunctionDeclaration],
+        **_: object,
+    ) -> GeminiResponse:
+        declarations.append(tools)
+        return _text_turn("Done.")
+
+    monkeypatch.setattr(
+        mcp_loop, "async_gemini_request_with_thought_streaming", request
+    )
+    tool = mcp_client.McpTool(
+        name="get_observations",
+        description="Fetches observations.",
+        input_schema={
+            "type": "object",
+            "title": "GetObservations",
+            "properties": {
+                "place": {"type": "string", "title": "Place"},
+                "date": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": "latest",
+                },
+                "entities": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "required": ["place"],
+        },
+    )
+
+    await mcp_loop.execute_mcp_tool_loop(
+        _TRANSCRIPT, _CONFIG, [tool], telemetry
+    )
+
+    ((declaration,),) = declarations
+    assert declaration.model_dump(mode="json", exclude_none=True) == {
+        "name": "get_observations",
+        "description": "Fetches observations.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "place": {"type": "STRING"},
+                "date": {"type": "STRING", "default": "latest"},
+                "entities": {
+                    "type": "OBJECT",
+                    "description": (
+                        "A JSON object whose keys are caller-defined and "
+                        "whose values are string values."
+                    ),
+                },
+            },
+            "required": ["place"],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_tool_schema_ends_the_loop_as_a_model_error(
+    calls: list[str],
+    model_answers: Callable[..., None],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: A tool schema that is not a valid Gemini schema.
+    # Situation: The tool's input schema gives `required` as a string, which
+    #   Gemini's `Schema` rejects.
+    # Expectation: The loop raises `McpLoopError` with type
+    #   `mcp_model_error`, as a failed model call does, and sends no model
+    #   request.
+    model_answers()
+    tool = mcp_client.McpTool(
+        name="first",
+        description="A tool.",
+        input_schema={"type": "object", "required": "place"},
+    )
+
+    with pytest.raises(mcp_loop.McpLoopError) as raised:
+        await mcp_loop.execute_mcp_tool_loop(
+            _TRANSCRIPT, _CONFIG, [tool], telemetry
+        )
+
+    assert raised.value.error_type == "mcp_model_error"
+    assert telemetry.mcp_iterations == 0

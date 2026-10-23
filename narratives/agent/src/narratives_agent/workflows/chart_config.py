@@ -19,9 +19,8 @@ import json
 import logging
 from typing import Any
 
-from narratives_agent.config import get_gemini_model, load_config
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
-    LIGHTWEIGHT_THINKING_LEVEL,
     GeminiBlockedError,
     GeminiError,
     async_gemini_request,
@@ -37,25 +36,33 @@ logger = logging.getLogger(__name__)
 # Max characters of the synthesis text sent to the data-validation check.
 SYNTHESIS_PREVIEW_LENGTH = 2000
 
-# Max characters of a raw response or parsed payload quoted in error logs.
+# Max characters of a parsed payload quoted in error logs.
 _LOG_EXCERPT_LENGTH = 300
 
 
 async def get_chart_config(
     mcp_results: str,
     user_message: str,
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> dict[str, Any]:
     """Get chart configuration using structured output.
 
     Supports multiple charts for variables with different units/scales.
 
+    Args:
+        mcp_results: The gathered tool results to chart.
+        user_message: The user's query.
+        config: The agent configuration; the request runs on
+            `gemini.chart_config_model`.
+        token_usage: Optional turn totals that receive the call's token
+            counts.
+
     Returns:
         The parsed chart configuration, or `{"should_render": False}` if the
         request fails or its response cannot be parsed.
     """
-    config = load_config()
-    mcp_model = get_gemini_model(config)
+    role = config.resolve_role_config(GeminiRole.CHART_CONFIG)
 
     prompt = f"""Based on the data query and results, determine chart \
 configurations.
@@ -98,9 +105,9 @@ Set should_render to false if no meaningful data for visualization."""
                 "variables together and separating incompatible ones into "
                 "multiple charts."
             ),
-            model=mcp_model,
-            temperature=0.2,
-            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             response_schema=CHART_CONFIG_SCHEMA,
             token_usage=token_usage,
         )
@@ -116,11 +123,8 @@ Set should_render to false if no meaningful data for visualization."""
         return {"should_render": False}
 
     try:
-        if "candidates" in response:
-            text = response["candidates"][0]["content"]["parts"][0].get(
-                "text", "{}"
-            )
-            chart_config = json.loads(text)
+        if response.text.strip():
+            chart_config = json.loads(response.text)
             # The model can return valid JSON that is not an object, such as
             # `null` or `[]`. The caller expects a dict, so anything else is
             # treated as "no charts".
@@ -136,6 +140,11 @@ Set should_render to false if no meaningful data for visualization."""
                 "Chart config result: %s", json.dumps(chart_config, indent=2)
             )
             return chart_config
+        logger.warning(
+            "Chart config returned no text (finish reason: %s); rendering "
+            "without charts",
+            response.finish_reason,
+        )
     except Exception as error:
         logger.error("Chart config parse error: %s", error)
 
@@ -145,6 +154,7 @@ Set should_render to false if no meaningful data for visualization."""
 async def validate_data_response(
     synthesis_text: str,
     user_message: str,
+    config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> bool:
     """Validate via Gemini whether the synthesis text contains chartable data.
@@ -153,9 +163,16 @@ async def validate_data_response(
     with a warning if the validation request fails or is blocked (the client
     has already logged the upstream failure), and with an error if the
     response is malformed JSON or omits the boolean `data_found` field.
+
+    Args:
+        synthesis_text: The streamed answer to judge.
+        user_message: The user's query.
+        config: The agent configuration; the request runs on
+            `gemini.chart_validation_model`.
+        token_usage: Optional turn totals that receive the call's token
+            counts.
     """
-    config = load_config()
-    model = get_gemini_model(config)
+    role = config.resolve_role_config(GeminiRole.CHART_VALIDATION)
 
     prompt = f"""User asked: {user_message}
 
@@ -173,9 +190,9 @@ Return false if the response says data is "not available", "not found", \
             system_instruction=(
                 "You validate if a response contains actual data."
             ),
-            model=model,
-            temperature=0,
-            thinking_level=LIGHTWEIGHT_THINKING_LEVEL,
+            model=role.model,
+            temperature=role.temperature,
+            thinking_level=role.thinking_level,
             response_schema=DATA_VALIDATION_SCHEMA,
             token_usage=token_usage,
         )
@@ -183,29 +200,26 @@ Return false if the response says data is "not available", "not found", \
         logger.warning(
             "Data validation blocked (%s) on %s, hiding charts.",
             error.block_reason,
-            model,
+            role.model,
         )
         return False
     except GeminiError:
         # The client has already logged the redacted upstream error.
         logger.warning(
-            "Data validation request to %s failed, hiding charts.", model
+            "Data validation request to %s failed, hiding charts.", role.model
         )
         return False
-    if "candidates" not in response:
+    if not response.text.strip():
         logger.error(
-            "Data validation got no candidates from %s, hiding charts. "
-            "Response: %s",
-            model,
-            str(response)[:_LOG_EXCERPT_LENGTH],
+            "Data validation got no text from %s (finish reason: %s), hiding "
+            "charts.",
+            role.model,
+            response.finish_reason,
         )
         return False
 
     try:
-        text = response["candidates"][0]["content"]["parts"][0].get(
-            "text", "{}"
-        )
-        result = json.loads(text)
+        result = json.loads(response.text)
     except Exception as error:
         logger.error("Data validation parse error, hiding charts: %s", error)
         return False

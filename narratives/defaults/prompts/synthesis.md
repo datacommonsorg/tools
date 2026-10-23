@@ -5,7 +5,7 @@
 units are referred to as {{instance.states_term}}.
 
 <!--
-TEMPLATE PROMPT. Backend-neutral, alongside mcp.md. The previous version
+TEMPLATE PROMPT. Backend-neutral, alongside discovery.md. The previous version
 hardcoded one country's source labels and URLs, required all currency in that
 country's units, referenced its fiscal years, and carried an inventory of
 datasets that exist on no data plane.
@@ -15,8 +15,8 @@ The old grounding rule 5 -- "if alternative_sources:[] treat it as UNAVAILABLE"
 alternative_sources, so that rule made the agent fetch valid data and then tell
 the user it had none.
 
-Citation numbering is no longer the model's to invent. The MCP phase emits a
-NUMBERED SOURCES block built from the provenance that actually served the
+Citation numbering is no longer the model's to invent. The discovery phase emits
+a NUMBERED SOURCES block built from the provenance that actually served the
 figures, and the UI renders that same list. The old "close with a **Sources:**
 list" rule produced a second list, numbered by the model, sitting above the real
 one and disagreeing with it. Ported from the narratives branch.

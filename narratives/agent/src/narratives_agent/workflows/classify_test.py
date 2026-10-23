@@ -17,12 +17,20 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from typing import Any
 
 import pytest
+from google.genai import types
 
-from narratives_agent.config import DEFAULT_GEMINI_CLASSIFY_MODEL
+from narratives_agent.config_model import (
+    DEFAULT_GEMINI_CLASSIFY_MODEL,
+    AgentConfig,
+    GeminiConfig,
+    Prompts,
+)
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
+from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows import classify
@@ -36,10 +44,10 @@ from narratives_agent.workflows.transcript import (
 
 _QUESTION = "What is the population of France?"
 _PROMPT = "Classify the request."
-_CONFIG: dict[str, Any] = {
-    "prompts": {"classify": _PROMPT},
-    "gemini": {"classify_model": "gemini-classifier-test"},
-}
+_CONFIG = AgentConfig(
+    prompts=Prompts(classify=_PROMPT),
+    gemini=GeminiConfig(classify_model="gemini-3.5-flash-lite-test"),
+)
 _SERVICEABLE: dict[str, Any] = {
     "serviceable": True,
     "refusal_reason": None,
@@ -62,10 +70,9 @@ def _transcript(query: str = _QUESTION) -> Transcript:
     )
 
 
-def _verdict(**overrides: Any) -> dict[str, Any]:
+def _verdict(**overrides: Any) -> GeminiResponse:
     """Returns a model response whose text is a serviceable verdict."""
-    text = json.dumps({**_SERVICEABLE, **overrides})
-    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+    return GeminiResponse(text=json.dumps({**_SERVICEABLE, **overrides}))
 
 
 @pytest.fixture
@@ -85,8 +92,8 @@ def model(monkeypatch: pytest.MonkeyPatch) -> Callable[..., list[Any]]:
     """
     requests: list[dict[str, Any]] = []
 
-    def install(reply: dict[str, Any] | Exception) -> list[Any]:
-        async def request(**kwargs: Any) -> dict[str, Any]:
+    def install(reply: GeminiResponse | Exception) -> list[Any]:
+        async def request(**kwargs: Any) -> GeminiResponse:
             requests.append(kwargs)
             if isinstance(reply, Exception):
                 raise reply
@@ -247,7 +254,7 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     #   clarification.
     # Expectation: `Admitted` carries the classification, and the Gemini request
     #   uses the configured model, the classify prompt, temperature 0.0,
-    #   `thinking_level="minimal"`, `QueryClassification` schema, and no tools.
+    #   `ThinkingLevel.MINIMAL`, `QueryClassification` schema, and no tools.
     requests = model(
         _verdict(pattern="trend_delta", geographic_shape="comparison")
     )
@@ -259,10 +266,10 @@ async def test_a_serviceable_verdict_is_admitted_with_its_classification(
     assert outcome.classification.pattern == "trend_delta"
     assert outcome.classification.geographic_shape == "comparison"
     (request,) = requests
-    assert request["model"] == "gemini-classifier-test"
+    assert request["model"] == "gemini-3.5-flash-lite-test"
     assert request["system_instruction"] == _PROMPT
     assert request["temperature"] == 0.0
-    assert request["thinking_level"] == "minimal"
+    assert request["thinking_level"] is types.ThinkingLevel.MINIMAL
     assert request["response_schema"] is QueryClassification
     assert request.get("tools") is None
     assert request["token_usage"] is telemetry.tokens
@@ -296,7 +303,7 @@ async def test_classifier_receives_conversation_with_capped_answers(
     )
 
     await classify.classify_query(
-        transcript, {"prompts": {"classify": _PROMPT}}, telemetry
+        transcript, AgentConfig(prompts=Prompts(classify=_PROMPT)), telemetry
     )
 
     (request,) = requests
@@ -317,22 +324,14 @@ async def test_classifier_receives_conversation_with_capped_answers(
     "reply",
     [
         pytest.param(GeminiError("HTTP 500: upstream detail"), id="error"),
-        pytest.param({"candidates": []}, id="no-candidates"),
-        pytest.param(
-            {"candidates": [{"content": {"parts": [{"text": "{not json"}]}}]},
-            id="invalid-json",
-        ),
+        pytest.param(GeminiResponse(), id="empty"),
+        pytest.param(GeminiResponse(text="{not json"), id="invalid-json"),
         pytest.param(
             _verdict(serviceable=False, refusal_reason=None),
             id="does-not-validate",
         ),
         pytest.param(
-            {
-                "candidates": [
-                    {"content": {"parts": []}, "finishReason": "RECITATION"}
-                ]
-            },
-            id="recitation-stopped",
+            GeminiResponse(finish_reason="RECITATION"), id="recitation-stopped"
         ),
     ],
 )
@@ -341,12 +340,12 @@ async def test_a_classifier_failure_admits_the_query_unclassified(
     model: Callable[..., list[Any]],
     telemetry: TurnTelemetry,
     caplog: pytest.LogCaptureFixture,
-    reply: dict[str, Any] | Exception,
+    reply: GeminiResponse | Exception,
 ) -> None:
     # Test: Fall-through when the classifier request or validation fails.
-    # Situation: The classifier raises `GeminiError`, or returns no
-    #   candidates, malformed JSON, JSON that fails `QueryClassification`
-    #   validation, or a candidate stopped for recitation with no text.
+    # Situation: The classifier raises `GeminiError`, or returns an empty
+    #   reply, malformed JSON, JSON that fails `QueryClassification`
+    #   validation, or an empty reply stopped for recitation.
     # Expectation: `Admitted(None)` is returned and a warning is logged without
     #   leaking the raw model output.
     model(reply)
@@ -359,6 +358,8 @@ async def test_a_classifier_failure_admits_the_query_unclassified(
     assert outcome == classify.Admitted(None)
     assert len(caplog.records) == 1
     assert "not json" not in caplog.text
+    if isinstance(reply, GeminiResponse) and not reply.text:
+        assert f"finish reason: {reply.finish_reason}" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -374,7 +375,7 @@ async def test_a_slow_classifier_admits_the_query_unclassified(
     #   canceled, and a timeout warning is logged.
     canceled = asyncio.Event()
 
-    async def hung_request(**kwargs: Any) -> dict[str, Any]:
+    async def hung_request(**kwargs: Any) -> GeminiResponse:
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
@@ -408,7 +409,9 @@ async def test_a_missing_prompt_admits_the_query_without_a_call(
     requests = model(_verdict())
 
     with caplog.at_level(logging.WARNING, logger=classify.logger.name):
-        outcome = await classify.classify_query(_transcript(), {}, telemetry)
+        outcome = await classify.classify_query(
+            _transcript(), AgentConfig(), telemetry
+        )
 
     assert outcome == classify.Admitted(None)
     assert requests == []
@@ -443,12 +446,10 @@ async def test_a_normal_finish_reason_is_not_a_refusal(
     model: Callable[..., list[Any]], telemetry: TurnTelemetry
 ) -> None:
     # Test: Non-blocking candidate `finishReason` in `classify_query`.
-    # Situation: The classifier candidate has `finishReason: "STOP"` and valid
+    # Situation: The classifier response has `finish_reason` `"STOP"` and valid
     #   JSON.
     # Expectation: `Admitted` is returned with the parsed classification.
-    reply = _verdict()
-    reply["candidates"][0]["finishReason"] = "STOP"
-    model(reply)
+    model(replace(_verdict(), finish_reason="STOP"))
 
     outcome = await classify.classify_query(_transcript(), _CONFIG, telemetry)
 

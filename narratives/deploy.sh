@@ -246,7 +246,7 @@ fi
 # operations.
 if ! python3 deploy/validate_theme.py "${CONFIG_SRC}/theme.json"; then
     log_error "theme.json does not match schemas/theme.schema.json (see above)."
-    echo "  Color keys are under \"colors\": {\"primary\": \"#RRGGBB\", \"accent\": ...}." >&2
+    echo "  Color keys are under \"colors\": {\"primary\": \"#RRGGBB\", \"text\": ...}." >&2
     echo "  Compare against schemas/theme.neutral.example.json." >&2
     exit 1
 fi

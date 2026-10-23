@@ -44,12 +44,14 @@ calls run in an `asyncio.TaskGroup`) copy a reference to the same scope, so they
 share one handshake and see one another's re-initialization. Separate turns
 run in separate request contexts and keep separate sessions.
 
-Functions return plain dictionaries matching the MCP wire format expected by
-`workflows/` and `mcp/data_utils.py`: `async_get_tools` returns tool
-definitions with `"name"`, `"description"`, and `"inputSchema"`, and
-`async_call_tool` returns the tool result dictionary (`"content"` and optional
-`"structuredContent"`) or `{"error": <message>}` when the tool itself reports
-an error. A transport or protocol failure is not a tool result: it raises
+`async_get_tools` and `cached_tools` return each tool definition as an
+`McpTool`. `async_call_tool` returns the tool result as a dictionary in the
+MCP wire format expected by `workflows/` and `mcp/data_utils.py`
+(`"content"` and optional `"structuredContent"`).
+
+Every failure the client raises derives from `McpClientError`. A tool call
+that fails at the tool layer raises `McpToolError`, whose message the model
+can act on in its next iteration. A transport or protocol failure raises
 `McpTransportError`, whose message carries no endpoint or upstream detail, so
 that callers abort the turn instead of passing a transport failure to the
 model as a tool result.
@@ -63,7 +65,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any
+from importlib.metadata import version
 from urllib.parse import urlparse
 
 import httpx2
@@ -72,6 +74,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from narratives_agent.config import load_config
 from narratives_agent.gcp_auth import attach_auth
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp.schema import fix_tool_arguments
 from narratives_agent.settings import get_settings
 
@@ -91,8 +94,8 @@ _MAX_IDLE_CONNECTIONS = 64
 _SESSION_ID_HEADER = "Mcp-Session-Id"
 _HTTP_NOT_FOUND = 404
 
-_DEFAULT_CLIENT_NAME = "dc-mcp-proxy"
-_DEFAULT_CLIENT_VERSION = "1.0.0"
+_CLIENT_NAME = "narratives-agent"
+_CLIENT_VERSION = version(_CLIENT_NAME)
 
 # The endpoint URL is resolved on first use rather than at import time because
 # `load_config()` returns the configuration that `bootstrap_config_from_url()`
@@ -146,11 +149,27 @@ class _SessionScope:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
+@dataclass(frozen=True)
+class McpTool:
+    """One tool from the MCP server's `tools/list` response.
+
+    Attributes:
+        name: The tool name the model calls.
+        description: The tool description, or `""` when the server omits it.
+        input_schema: The JSON Schema of the tool's arguments, as the server
+            sent it.
+    """
+
+    name: str
+    description: str
+    input_schema: JsonObject
+
+
 @dataclass
 class _ToolCache:
     """Holds the most recently fetched tool list and when it was fetched."""
 
-    tools: list[dict[str, Any]] | None = None
+    tools: list[McpTool] | None = None
     fetched_at: float = 0.0
 
 
@@ -158,7 +177,14 @@ class _SessionLostError(Exception):
     """Raised when the MCP server no longer recognizes the current session."""
 
 
-class McpTransportError(Exception):
+class McpClientError(Exception):
+    """Base class for every failure the MCP client raises.
+
+    A caller that handles all MCP failures alike catches this one type.
+    """
+
+
+class McpTransportError(McpClientError):
     """Raised when an MCP request fails below the tool layer.
 
     This exception covers connection, HTTP, and protocol failures, including
@@ -169,6 +195,25 @@ class McpTransportError(Exception):
 
     def __init__(self) -> None:
         super().__init__("The MCP server request failed.")
+
+
+class McpToolError(McpClientError):
+    """Raised when a tool call fails in a way the model can correct.
+
+    The tool reported `isError: true` on its result, or the server rejected
+    the call's arguments or tool name with JSON-RPC `INVALID_PARAMS`. The
+    message is the tool's or the server's error text, which is safe to hand
+    to the model and the UI.
+
+    Attributes:
+        tool: Name of the tool that was called.
+        message: The error text.
+    """
+
+    def __init__(self, tool: str, message: str) -> None:
+        super().__init__(message)
+        self.tool = tool
+        self.message = message
 
 
 @dataclass
@@ -238,7 +283,7 @@ _TOOLS_CACHE = _ToolCache()
 # `_REFRESH_TASKS` holds strong references to in-flight background tool
 # refreshes. The event loop holds only weak references to tasks, so an
 # unreferenced task can be garbage-collected before it finishes.
-_REFRESH_TASKS: set[asyncio.Task[list[dict[str, Any]]]] = set()
+_REFRESH_TASKS: set[asyncio.Task[list[McpTool]]] = set()
 
 
 def get_session_id() -> str | None:
@@ -302,8 +347,8 @@ def mcp_url() -> str:
     settings = get_settings()
     configured = settings.mcp_server_url
     if not configured:
-        mcp_config = load_config().get("mcp", {})
-        configured = str(mcp_config.get("server_url") or "").strip()
+        config = load_config()
+        configured = config.mcp.server_url if config is not None else ""
 
     resolved = (
         _normalize_url(configured)
@@ -399,11 +444,7 @@ async def aclose() -> None:
 
 def _client_info() -> types.Implementation:
     """Returns the client name and version sent during the MCP handshake."""
-    mcp_config = load_config().get("mcp", {})
-    return types.Implementation(
-        name=mcp_config.get("client_name", _DEFAULT_CLIENT_NAME),
-        version=mcp_config.get("client_version", _DEFAULT_CLIENT_VERSION),
-    )
+    return types.Implementation(name=_CLIENT_NAME, version=_CLIENT_VERSION)
 
 
 @asynccontextmanager
@@ -628,17 +669,21 @@ async def _run_with_session[T](
     return await _run_once(session, operation)
 
 
-def _tool_dict(tool: types.Tool) -> dict[str, Any]:
-    """Converts an `mcp.types.Tool` model into a wire-format dictionary."""
-    definition = tool.model_dump(
-        mode="json", by_alias=True, exclude_unset=True, exclude_none=True
+def _tool_from_sdk(tool: types.Tool) -> McpTool:
+    """Builds an `McpTool` from the SDK's `mcp.types.Tool` model.
+
+    The SDK requires `inputSchema` on every tool and decodes it from the JSON
+    response, so the schema is kept as the SDK returns it.
+    """
+    return McpTool(
+        name=tool.name,
+        description=tool.description or "",
+        input_schema=tool.input_schema,
     )
-    definition.setdefault("description", "")
-    return definition
 
 
 async def _send_tool_call(
-    client_session: ClientSession, name: str, arguments: dict[str, Any]
+    client_session: ClientSession, name: str, arguments: JsonObject
 ) -> types.CallToolResult:
     """Sends a `tools/call` request on `client_session`.
 
@@ -669,7 +714,7 @@ def _tool_error_message(result: types.CallToolResult) -> str:
 
 async def async_get_tools(
     force_refresh: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[McpTool]:
     """Returns the server's tool definitions, cached for `_TOOLS_TTL_SECONDS`.
 
     Args:
@@ -677,10 +722,9 @@ async def async_get_tools(
             when the cached list has not expired.
 
     Returns:
-        A list of tool definition dictionaries containing `"name"`,
-        `"description"`, and `"inputSchema"`. A successful response is cached
-        even when it lists no tools. If the fetch fails, returns the most
-        recently cached tool list, or `[]` if no list has been fetched yet.
+        The server's tools. A successful response is cached even when it
+        lists no tools. If the fetch fails, returns the most recently cached
+        tool list, or `[]` if no list has been fetched yet.
     """
     now = time.monotonic()
     with _TOOLS_LOCK:
@@ -699,24 +743,20 @@ async def async_get_tools(
         with _TOOLS_LOCK:
             return _TOOLS_CACHE.tools or []
 
-    tools = [_tool_dict(tool) for tool in result.tools]
+    tools = [_tool_from_sdk(tool) for tool in result.tools]
     with _TOOLS_LOCK:
         _TOOLS_CACHE.tools = tools
         _TOOLS_CACHE.fetched_at = now
     return tools
 
 
-def _tool_failure(
-    name: str, message: str, level: int = logging.ERROR
-) -> dict[str, Any]:
-    """Logs a failed tool call and returns its error result dictionary."""
-    logger.log(level, "MCP tool %s failed: %s", name, message)
-    return {"error": message}
+def _tool_error(name: str, message: str) -> McpToolError:
+    """Logs a tool-layer failure at warning level and returns its error."""
+    logger.warning("MCP tool %s failed: %s", name, message)
+    return McpToolError(name, message)
 
 
-async def async_call_tool(
-    name: str, arguments: dict[str, Any]
-) -> dict[str, Any]:
+async def async_call_tool(name: str, arguments: JsonObject) -> JsonObject:
     """Calls a tool on the MCP server.
 
     Args:
@@ -726,12 +766,13 @@ async def async_call_tool(
 
     Returns:
         The tool result dictionary in its MCP wire format (`"content"` and
-        optional `"structuredContent"`), or `{"error": <message>}` if the
-        tool returned `isError: true` or the server rejected the call's
-        arguments (`INVALID_PARAMS`, which also covers an unknown tool name).
-        Those are failures the model can correct on its next iteration.
+        optional `"structuredContent"`).
 
     Raises:
+        McpToolError: If the tool returned `isError: true` or the server
+            rejected the call's arguments (`INVALID_PARAMS`, which also
+            covers an unknown tool name). The model can correct these
+            failures on its next iteration.
         McpTransportError: If the request failed for any other reason:
             connection, HTTP, or protocol errors, or a failed handshake.
     """
@@ -761,9 +802,7 @@ async def async_call_tool(
             and leaf.error.code == types.INVALID_PARAMS
             for leaf in _leaf_errors(error)
         ):
-            return _tool_failure(
-                name, _describe_error(error), level=logging.WARNING
-            )
+            raise _tool_error(name, _describe_error(error)) from error
         logger.error("MCP tool %s failed: %s", name, _describe_error(error))
         raise McpTransportError() from error
 
@@ -771,9 +810,7 @@ async def async_call_tool(
         # When `is_error` is True, the MCP request succeeded at the transport
         # layer, but the tool itself reported an execution error that the model
         # can react to.
-        return _tool_failure(
-            name, _tool_error_message(result), level=logging.WARNING
-        )
+        raise _tool_error(name, _tool_error_message(result))
 
     # Pass `exclude_unset=True` and `exclude_none=True` so that Pydantic
     # serializes only the fields returned by the server without injecting
@@ -806,7 +843,7 @@ def _refresh_tools_in_background() -> None:
     task.add_done_callback(_REFRESH_TASKS.discard)
 
 
-def cached_tools() -> list[dict[str, Any]]:
+def cached_tools() -> list[McpTool]:
     """Returns the currently cached tool list without blocking on the network.
 
     This function is used by latency-sensitive endpoints such as `/agent/health`

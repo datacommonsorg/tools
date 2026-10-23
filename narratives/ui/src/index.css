@@ -13,7 +13,6 @@
   --font-display: var(--theme-font, "Google Sans", "Roboto", system-ui, sans-serif);
 
   --color-theme-primary: var(--theme-primary, #0B57D0);
-  --color-theme-accent: var(--theme-accent, #0B57D0);
   /* Selected-item pills and active tabs tint the theme primary at 14% opacity
      when no explicit container color is set. */
   --color-theme-container: var(
@@ -23,6 +22,12 @@
   --color-on-theme-container: var(--theme-on-container, var(--color-theme-primary));
   --color-theme-gradient-start: var(--theme-gradient-start, #0B57D0);
   --color-theme-gradient-end: var(--theme-gradient-end, #0B57D0);
+
+  /* Prompt input glow ring gradient */
+  --color-theme-gradient-border-stop-1: var(--theme-gradient-border-stop-1, #0B57D0);
+  --color-theme-gradient-border-stop-2: var(--theme-gradient-border-stop-2, #0B84D0);
+  --color-theme-gradient-border-stop-3: var(--theme-gradient-border-stop-3, #0BACD0);
+  --color-theme-gradient-border-stop-4: var(--theme-gradient-border-stop-4, #8CB8FF);
 
   /* Surfaces */
   --color-surface: #ffffff;
@@ -43,6 +48,10 @@
   --radius-card: var(--theme-radius-card, 16px);
   --radius-input: var(--theme-radius-input, 36px);
   --radius-chip: var(--theme-radius-chip, 20px);
+  /* Data Commons chart surfaces. Fixed at the components' own corner radius
+     (`--border-radius-primary: 8px` inside their shadow roots): any other
+     value clips their content or leaves mismatched corners. */
+  --radius-chart: 8px;
   /* Collapsed prompt box radius is half its 56px height so it reads as a pill.
      Fixed rather than theme-driven because it follows from that height, and
      consumed as `rounded-pill`. */
@@ -223,11 +232,13 @@ select:not(:disabled) {
     aspect-ratio: 1;
     translate: -50% -50%;
     background: conic-gradient(
-      var(--color-theme-primary),
-      var(--color-theme-accent),
-      var(--color-theme-primary),
-      var(--color-theme-accent),
-      var(--color-theme-primary)
+      var(--color-theme-gradient-border-stop-1),
+      var(--color-theme-gradient-border-stop-2),
+      var(--color-theme-gradient-border-stop-3),
+      var(--color-theme-gradient-border-stop-4),
+      var(--color-theme-gradient-border-stop-3),
+      var(--color-theme-gradient-border-stop-2),
+      var(--color-theme-gradient-border-stop-1)
     );
     animation: glow-rotate 6s linear infinite;
     animation-play-state: inherit;
@@ -406,13 +417,8 @@ select:not(:disabled) {
 .dc-chart-card {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  /* Provide an opaque background so parent container tints do not show through
-     the transparent Data Commons web components (which are isolated in shadow
-     roots). */
-  background-color: var(--color-surface);
-  border-radius: var(--radius-card);
 }
+
 .dc-chart-card datacommons-line,
 .dc-chart-card datacommons-bar,
 .dc-chart-card datacommons-ranking,
@@ -427,6 +433,7 @@ select:not(:disabled) {
   max-width: 100%;
   box-sizing: border-box;
   background-color: var(--color-surface);
+  border-radius: var(--radius-chart);
 }
 
 /* ────────────────────────────────────────────────────────────────────

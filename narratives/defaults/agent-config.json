@@ -10,7 +10,7 @@
     "enabled": true
   },
   "thinking": {
-    "mcp_level": "medium",
+    "discovery_level": "medium",
     "synthesis_level": "medium"
   },
   "template_vars": {

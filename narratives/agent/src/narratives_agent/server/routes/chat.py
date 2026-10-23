@@ -35,7 +35,8 @@ from sse_starlette import ServerSentEvent
 from starlette.background import BackgroundTask
 
 from narratives_agent.server.responses import ClosingEventSourceResponse
-from narratives_agent.workflows.chat_pipeline import EventName, run_turn
+from narratives_agent.workflows.chat_pipeline import run_turn
+from narratives_agent.workflows.sse_frames import SseFrame
 from narratives_agent.workflows.transcript import (
     MAX_QUERY_CHARS,
     IdempotencyKey,
@@ -94,7 +95,7 @@ async def _turn_events(
 ) -> AsyncGenerator[ServerSentEvent]:
     """Runs the turn in a task and yields its events as they arrive.
 
-    The turn runs in its own task because the MCP phase reports model
+    The turn runs in its own task because the discovery phase reports model
     thoughts through a callback while it awaits the model, so its events
     cannot be yielded from the awaiting code itself. They pass through an
     `asyncio.Queue` that this generator drains. When the generator stops
@@ -103,12 +104,10 @@ async def _turn_events(
     `TURN_CANCEL_GRACE_SECONDS`, which cancels its in-flight model and tool
     calls and records the turn as canceled.
     """
-    queue: asyncio.Queue[tuple[EventName, dict[str, Any]] | None] = (
-        asyncio.Queue()
-    )
+    queue: asyncio.Queue[SseFrame | None] = asyncio.Queue()
 
-    def emit(event: EventName, data: dict[str, Any]) -> None:
-        queue.put_nowait((event, data))
+    def emit(frame: SseFrame) -> None:
+        queue.put_nowait(frame)
 
     async def produce() -> None:
         try:
@@ -119,11 +118,12 @@ async def _turn_events(
     task = asyncio.create_task(produce(), name="chat-turn")
     try:
         event_id = 0
-        while (item := await queue.get()) is not None:
+        while (frame := await queue.get()) is not None:
             event_id += 1
-            event, data = item
             yield ServerSentEvent(
-                data=json.dumps(data), event=event, id=str(event_id)
+                data=json.dumps(frame.payload()),
+                event=frame.event,
+                id=str(event_id),
             )
     finally:
         task.cancel()

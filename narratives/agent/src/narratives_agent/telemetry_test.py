@@ -287,19 +287,23 @@ def test_turn_summary_records_operations_without_content(
     turn_records: list[str],
 ) -> None:
     # Test: The turn summary carries operational fields only.
-    # Situation: A turn runs an MCP phase with two tool calls over three
+    # Situation: A turn runs a discovery phase with two tool calls over three
     #   iterations, adds token usage from two Gemini calls, and finishes
     #   `complete`; `finish` is then called again with `error`.
     # Expectation: Exactly one summary is emitted, with state `complete`, the
     #   phase duration, tool names and counts, and summed tokens, and it
     #   contains no tool arguments or other content.
     turn = telemetry.TurnTelemetry()
-    with turn.phase("mcp"):
+    with turn.phase("discovery"):
         turn.mcp_iterations = 3
         turn.record_tool_call("search_indicators")
         turn.record_tool_call("get_observations")
-    turn.tokens.add({"promptTokenCount": 10, "totalTokenCount": 15})
-    turn.tokens.add({"candidatesTokenCount": 4, "thoughtsTokenCount": 2})
+    turn.tokens.add(
+        telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
+    )
+    turn.tokens.add(
+        telemetry.TokenCounts(prompt=0, candidates=4, thoughts=2, total=0)
+    )
 
     turn.finish("complete")
     turn.finish("error", "late_error")
@@ -308,7 +312,7 @@ def test_turn_summary_records_operations_without_content(
     record = json.loads(message)
     assert record["terminal_state"] == "complete"
     assert record["turn_id"] == turn.turn_id
-    assert set(record["phase_durations_ms"]) == {"mcp"}
+    assert set(record["phase_durations_ms"]) == {"discovery"}
     assert record["mcp_iterations"] == 3
     assert record["tool_calls"] == {
         "search_indicators": 1,

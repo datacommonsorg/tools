@@ -35,23 +35,36 @@ import logging
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from typing import Any
 
 import httpx2
 import pytest
 from mcp import MCPError, types
 
+from narratives_agent.config_model import AgentConfig, McpConfig
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client
 from narratives_agent.settings import Settings
 
 _URL = "http://mcp.test/mcp"
 _PROTOCOL_VERSION = "2025-06-18"
-_TOOLS: list[dict[str, Any]] = [
+_TOOL_SCHEMA: JsonObject = {"type": "object", "properties": {}}
+# `_WIRE_TOOLS` is the `tools/list` result the fake server sends, and
+# `_TOOLS` is what the client returns for it.
+_WIRE_TOOLS: list[JsonObject] = [
     {
         "name": "get_observations",
         "description": "Fetches observations.",
-        "inputSchema": {"type": "object", "properties": {}},
+        "inputSchema": _TOOL_SCHEMA,
     }
+]
+_TOOLS = [
+    client.McpTool(
+        name="get_observations",
+        description="Fetches observations.",
+        input_schema=_TOOL_SCHEMA,
+    )
 ]
 # `_CONCURRENT_CALLS` is the number of tool calls a single model turn issues
 # concurrently in the session-sharing tests.
@@ -92,7 +105,7 @@ class _FakeMcpServer:
     fail_initialize: bool = False
     reject_ping: bool = False
     down: bool = False
-    tools: list[dict[str, Any]] = field(default_factory=lambda: list(_TOOLS))
+    tools: list[JsonObject] = field(default_factory=lambda: list(_WIRE_TOOLS))
     received: list[_Request] = field(default_factory=list)
     sessions: set[str] = field(default_factory=set)
     issued: int = 0
@@ -227,13 +240,13 @@ def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_FakeMcpServer]:
 
     Clears the cached URL, tool cache, session scope, shared HTTP client, and
     background refresh tasks before and after each test so that state does
-    not leak between test cases. Stubs `load_config` so the handshake uses the
-    default client name without reading from disk.
+    not leak between test cases. Stubs `load_config` so that no test reads a
+    configuration from disk.
     """
     fake = _FakeMcpServer()
     client.reset_client()
     monkeypatch.setitem(client._URL_CACHE, "url", _URL)
-    monkeypatch.setattr(client, "load_config", lambda: {})
+    monkeypatch.setattr(client, "load_config", lambda: None)
     monkeypatch.setattr(client, "_HTTP_CLIENT", client._HttpClientHolder())
     monkeypatch.setattr(client, "_REFRESH_TASKS", set())
     monkeypatch.setattr(
@@ -256,13 +269,17 @@ async def test_the_first_operation_stores_the_server_issued_session(
     #   "session-1" in the `mcp-session-id` response header and either answers
     #   or rejects the post-handshake `ping`.
     # Expectation: The tool list is returned, "session-1" is stored in the
-    #   caller's scope, and `notifications/initialized` is flushed before the
-    #   connection closes.
+    #   caller's scope, `initialize` carries the `narratives-agent` package
+    #   name and version, and `notifications/initialized` is flushed before
+    #   the connection closes.
     server.reject_ping = reject_ping
 
     assert await client.async_get_tools(force_refresh=True) == _TOOLS
 
     assert client.get_session_id() == "session-1"
+    assert [
+        r.params["clientInfo"] for r in server.received_for("initialize")
+    ] == [{"name": "narratives-agent", "version": version("narratives-agent")}]
     assert server.count("notifications/initialized") == 1
 
 
@@ -444,7 +461,7 @@ async def test_concurrent_tool_calls_share_one_handshake(
         )
     )
 
-    assert all("error" not in result for result in results)
+    assert all("content" in result for result in results)
     assert server.count("initialize") == 1
     assert {r.session_id for r in server.received_for("tools/call")} == {
         "session-1"
@@ -473,7 +490,7 @@ async def test_concurrent_tool_calls_recover_a_lost_session_once(
         )
     )
 
-    assert all("error" not in result for result in results)
+    assert all("content" in result for result in results)
     assert server.count("initialize") == 2
     retried = [
         r.session_id
@@ -600,28 +617,27 @@ async def test_an_empty_tool_list_is_cached(server: _FakeMcpServer) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tool_definitions_keep_the_wire_key_names(
+async def test_tool_definitions_carry_the_server_fields(
     server: _FakeMcpServer,
 ) -> None:
-    # Test: Tool definitions keep the MCP wire key names, and missing
-    #   descriptions default to an empty string.
+    # Test: Conversion of the `tools/list` entries into `McpTool` values.
     # Situation: The server returns one tool with a description and one tool
     #   that omits the `description` field.
-    # Expectation: Each returned dictionary contains `"name"`, `"inputSchema"`,
-    #   and `"description"`, with `"description"` set to `""` when omitted by
-    #   the server.
+    # Expectation: Each `McpTool` carries the server's name and input schema,
+    #   and the description is `""` when the server omits it.
     server.tools = [
-        *_TOOLS,
+        *_WIRE_TOOLS,
         {"name": "bare", "inputSchema": {"type": "object"}},
     ]
 
     tools = await client.async_get_tools(force_refresh=True)
 
-    assert tools[1] == {
-        "name": "bare",
-        "description": "",
-        "inputSchema": {"type": "object"},
-    }
+    assert tools == [
+        *_TOOLS,
+        client.McpTool(
+            name="bare", description="", input_schema={"type": "object"}
+        ),
+    ]
 
 
 @pytest.mark.asyncio
@@ -692,7 +708,7 @@ async def test_aclose_cancels_a_running_background_refresh(
 
     async def blocked_refresh(
         *, force_refresh: bool = False
-    ) -> list[dict[str, Any]]:
+    ) -> list[client.McpTool]:
         started.set()
         try:
             await asyncio.Event().wait()
@@ -790,7 +806,7 @@ async def test_rewritten_arguments_are_logged_by_name_only(
     #   `date="range"`, so `fix_tool_arguments` rewrites `date`.
     # Expectation: The log names the rewritten `date` argument and the tool,
     #   and contains none of the argument values.
-    arguments = {"date": "2020", "date_range_start": "1999"}
+    arguments: JsonObject = {"date": "2020", "date_range_start": "1999"}
 
     with caplog.at_level(logging.INFO, logger=client.logger.name):
         await client.async_call_tool("get_observations", arguments)
@@ -810,15 +826,52 @@ async def test_rewritten_arguments_are_logged_by_name_only(
     ids=["tool reports an error", "server rejects the call"],
 )
 async def test_call_tool_reports_tool_and_protocol_errors(
-    server: _FakeMcpServer, tool: str, expected: str
+    server: _FakeMcpServer,
+    caplog: pytest.LogCaptureFixture,
+    tool: str,
+    expected: str,
 ) -> None:
-    # Test: A tool call returns an error dictionary when the tool reports
+    # Test: A tool call raises `McpToolError` when the tool reports
     #   `isError: true` or the server rejects the call as `INVALID_PARAMS`.
     # Situation: The call targets a tool that sets `isError` on its result, or
     #   a tool name the server rejects with JSON-RPC error -32602.
-    # Expectation: The call returns `{"error": <message>}` without retrying.
-    assert await client.async_call_tool(tool, {}) == {"error": expected}
+    # Expectation: The call raises `McpToolError` naming the tool and
+    #   carrying the tool's or the server's error text, without retrying,
+    #   and the failure is logged at WARNING.
+    with (
+        caplog.at_level(logging.WARNING, logger=client.logger.name),
+        pytest.raises(client.McpToolError) as raised,
+    ):
+        await client.async_call_tool(tool, {})
+
+    assert raised.value.tool == tool
+    assert raised.value.message == expected
     assert server.count("tools/call") == 1
+    assert any(
+        record.levelno == logging.WARNING
+        and record.getMessage() == f"MCP tool {tool} failed: {expected}"
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "down"),
+    [("failing_tool", False), ("get_observations", True)],
+    ids=["tool failure", "transport failure"],
+)
+async def test_every_call_failure_is_an_mcp_client_error(
+    server: _FakeMcpServer, tool: str, down: bool
+) -> None:
+    # Test: A caller that handles every MCP failure alike catches
+    #   `McpClientError`.
+    # Situation: The tool reports `isError: true`, or every connection to the
+    #   MCP server fails with `httpx2.ConnectError`.
+    # Expectation: Both failures are caught as `McpClientError`.
+    server.down = down
+
+    with pytest.raises(client.McpClientError):
+        await client.async_call_tool(tool, {})
 
 
 @pytest.mark.asyncio
@@ -903,38 +956,53 @@ def test_normalize_url_appends_mcp_only_to_bare_origins(
 
 
 @pytest.mark.parametrize(
-    ("env_url", "config_url", "expected"),
+    ("env_url", "loaded", "expected"),
     [
         (
             "https://env.example",
-            "https://config.example",
+            AgentConfig(mcp=McpConfig(server_url="https://config.example")),
             "https://env.example/mcp",
         ),
-        ("", "https://config.example", "https://config.example/mcp"),
-        ("", "", "http://localhost:4321/mcp"),
+        (
+            "",
+            AgentConfig(mcp=McpConfig(server_url="https://config.example")),
+            "https://config.example/mcp",
+        ),
+        ("", AgentConfig(), "http://localhost:4321/mcp"),
+        ("", None, "http://localhost:4321/mcp"),
     ],
-    ids=["MCP_SERVER_URL wins", "config next", "localhost fallback"],
+    ids=[
+        "MCP_SERVER_URL wins",
+        "config next",
+        "localhost fallback",
+        "no configuration loaded",
+    ],
 )
 def test_mcp_url_resolution_order(
     monkeypatch: pytest.MonkeyPatch,
     env_url: str,
-    config_url: str,
+    loaded: AgentConfig | None,
     expected: str,
 ) -> None:
     # Test: `mcp_url` resolves the endpoint from `MCP_SERVER_URL`, then
-    #   `config.json`, and finally the localhost fallback, caching the result.
+    #   `mcp.server_url`, and finally the localhost fallback, caching the
+    #   result.
     # Situation: `mcp_url` is called with `MCP_SERVER_URL` and `mcp.server_url`
-    #   configured in each precedence combination.
+    #   configured in each precedence combination, and once with no
+    #   configuration loaded.
     # Expectation: `MCP_SERVER_URL` takes precedence over `mcp.server_url`,
-    #   which takes precedence over `http://localhost:<mcp_port>/mcp`, and
-    #   subsequent calls return the cached URL.
+    #   which takes precedence over `http://localhost:<mcp_port>/mcp`; a
+    #   missing configuration selects the fallback; and a later call returns
+    #   the cached URL even though the configuration has changed.
     monkeypatch.setattr(client, "_URL_CACHE", {})
     settings = Settings(mcp_server_url=env_url, mcp_port=4321)
     monkeypatch.setattr(client, "get_settings", lambda: settings)
-    monkeypatch.setattr(
-        client, "load_config", lambda: {"mcp": {"server_url": config_url}}
-    )
+    monkeypatch.setattr(client, "load_config", lambda: loaded)
 
     assert client.mcp_url() == expected
-    monkeypatch.setattr(client, "load_config", lambda: {})
+    monkeypatch.setattr(
+        client,
+        "load_config",
+        lambda: AgentConfig(mcp=McpConfig(server_url="https://other.example")),
+    )
     assert client.mcp_url() == expected

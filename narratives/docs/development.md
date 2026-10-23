@@ -199,12 +199,14 @@ narratives/
 │   └── src/narratives_agent/
 │       ├── dev.py             Local dev server entry point
 │       ├── config.py          Config, prompt rendering, and Secret Manager
+│       ├── config_model.py    Typed AgentConfig dataclasses and their parser
 │       ├── gcp_auth.py        Host-based authentication helpers
 │       ├── settings.py        Environment variable settings
 │       ├── telemetry.py       OpenTelemetry and structured logging
 │       ├── server/            FastAPI app and routes (spa, chat, system)
-│       ├── mcp/               MCP client, capability discovery, and schemas
+│       ├── mcp/               MCP client, capabilities, schemas, and metadata
 │       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
+│       ├── analytics/         Provenance models and deterministic analytics
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)
 │   └── src/

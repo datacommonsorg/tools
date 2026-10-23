@@ -206,7 +206,7 @@ config/
 ├── instance.env        Required: GCP project, region, instance, access mode
 ├── branding.json       Optional: UI identity, theme colors, nav, metrics
 ├── agent-config.json   Optional: Gemini model, thinking levels, template vars
-├── prompts/            Optional: Prompt overrides (classify, mcp, ...)
+├── prompts/            Optional: Prompt overrides (classify, discovery, ...)
 └── assets/             Optional: Custom logos, favicons, and static assets
 ```
 
@@ -231,7 +231,7 @@ You only need to include the keys you want to override in
 | Category | Configurable keys |
 | :--- | :--- |
 | **Identity** | `instance_name`, `headline`, `tagline`, `logo`, `logo_text`, `logo_height`, `logo_alt`, `favicon` |
-| **Theme** | `colors` (`primary`, `accent`, text, surfaces, borders), `radius` (`card`, `input`, `chip`), `fonts` |
+| **Theme** | `colors` (`primary`, text, surfaces, borders, `gradient_border_stop_1`–`_4` for the prompt glow ring), `radius` (`card`, `input`, `chip`), `fonts` |
 | **Content** | `suggestions` (landing page starter prompts), `footer` (text and links) |
 | **Structure** | `navigation` (header links), `metrics.tabs` (Key Metrics dashboard tiles), `analytics.ga_tag_id` |
 
@@ -253,19 +253,29 @@ The `navigation` key supports three distinct states:
 
 ### System prompts (`config/prompts/*.md`) and template variables
 
-System prompts for query classification (`classify.md`), the MCP tool loop
-(`mcp.md`), answer synthesis (`synthesis.md`), and follow-up generation
+System prompts for query classification (`classify.md`), the discovery tool loop
+(`discovery.md`), answer synthesis (`synthesis.md`), and follow-up generation
 (`follow_up.md`) can be overridden in `config/prompts/`. When customizing
 prompts, start from the baseline files in `defaults/prompts/` and add your
 domain or regional guidance.
 
+The default prompts in `defaults/prompts/*.md` are always loaded first. A file
+in `config/prompts/` (uploaded to the config bucket by `./deploy.sh`) replaces
+the default prompt for that slot, and a non-empty `prompts.<slot>` entry in
+`agent-config.json` replaces both. If a prompt object in the bucket is missing,
+fails to download, or is empty once its HTML comments are stripped, the default
+prompt applies to that slot and the agent logs a warning naming it, so a
+bucket-side failure never leaves a phase without its system instruction.
+
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
-clarification question, and which analytical pattern it follows. The classify
-phase runs on the model configured in `gemini.classify_model` in
-`agent-config.json` (which defaults to `gemini-3.5-flash-lite`), while the tool
-loop, synthesis, chart selection, and follow-up generation use
-`gemini.mcp_model`.
+clarification question, and which analytical pattern it follows. Each LLM stage
+reads its own model key under `gemini` in `agent-config.json`:
+`gemini.classify_model` (default `gemini-3.5-flash-lite`), and
+`gemini.discovery_model`, `gemini.synthesis_model`,
+`gemini.chart_config_model`, `gemini.chart_validation_model`,
+`gemini.follow_up_model`, and `gemini.compaction_model` (each defaulting to
+`gemini-3.8-flash`).
 
 Prompts support runtime template placeholders:
 

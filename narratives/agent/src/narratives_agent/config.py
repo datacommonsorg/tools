@@ -15,13 +15,19 @@
 
 """Loads the agent configuration and renders prompts from it.
 
-The configuration is held in process memory. It is loaded from `CONFIG_URL` once
-at startup, from `agent_root/config.json` in local development (reloaded when
-the file's modification time changes), or from the `defaults/` directory shipped
-with the image.
+`load_config` returns the active configuration as a frozen `AgentConfig`
+(see `config_model.py`), parsed once per load and held in process memory, or
+`None` when no configuration could be loaded. The document is read from
+`CONFIG_URL` once at startup, from `agent_root/config.json` in local
+development (reloaded when the file's modification time changes), or from the
+`defaults/` directory shipped with the image.
+
+On every path the default prompt bodies in `defaults/prompts/` are read first,
+and the configured prompts (`prompts/<slot>.md` beside `CONFIG_URL`, then
+inline `prompts` entries) are layered over them slot by slot. A configured
+prompt that is absent or fails to load leaves the default prompt in place.
 """
 
-import copy
 import json
 import logging
 import posixpath
@@ -36,6 +42,11 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from narratives_agent.config_model import (
+    PROMPT_SLOTS,
+    AgentConfig,
+    parse_agent_config,
+)
 from narratives_agent.settings import get_settings
 
 # Setup logging
@@ -43,36 +54,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Default models used when agent-config.json omits a model override. Every
-# caller reads the configured model through get_gemini_model() or
-# get_gemini_classify_model() rather than spelling its own default.
-DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
-DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
-
-
-def get_gemini_model(config: dict[str, Any]) -> str:
-    """Returns the model `gemini.mcp_model` names, or the shared default."""
-    gemini_cfg = config.get("gemini")
-    model = (
-        gemini_cfg.get("mcp_model") if isinstance(gemini_cfg, dict) else None
-    )
-    if isinstance(model, str) and model.strip():
-        return model.strip()
-    return DEFAULT_GEMINI_MODEL
-
-
-def get_gemini_classify_model(config: dict[str, Any]) -> str:
-    """Returns `gemini.classify_model`, or `DEFAULT_GEMINI_CLASSIFY_MODEL`."""
-    gemini_cfg = config.get("gemini")
-    model = (
-        gemini_cfg.get("classify_model")
-        if isinstance(gemini_cfg, dict)
-        else None
-    )
-    if isinstance(model, str) and model.strip():
-        return model.strip()
-    return DEFAULT_GEMINI_CLASSIFY_MODEL
 
 
 # Secret Manager client for runtime key loading (optional import).
@@ -88,11 +69,17 @@ except ImportError:
     )
 
 
-_bootstrapped_config: dict[str, Any] | None = None
-_config_cache: dict[str, Any] | None = None
+# `_bootstrapped` records that `bootstrap_config_from_url` ran with
+# `CONFIG_URL` set. While it is `True`, `load_config` returns
+# `_bootstrapped_config` even when that is `None`, so a deployment whose
+# configuration failed to load does not silently run on the local file or the
+# defaults.
+_bootstrapped = False
+_bootstrapped_config: AgentConfig | None = None
+_config_cache: AgentConfig | None = None
 _config_mtime = 0.0
 _config_path: Path | None = None
-_defaults_config: dict[str, Any] | None = None
+_defaults_config: AgentConfig | None = None
 _defaults_dir: Path | None = None
 
 # Secret Manager lookup cache and TTL (seconds)
@@ -106,13 +93,6 @@ _secret_manager_cache: dict[str, tuple[float, str]] = {}
 # (`asyncio.to_thread`), so concurrent turns can miss the cache together. The
 # lock makes them share one Secret Manager request.
 _secret_manager_lock = threading.Lock()
-
-# Prompt slots the workflows read out of config["prompts"]. Bodies are authored
-# as `prompts/<slot>.md` and land beside agent-config.json in the config bucket.
-# `follow_up` is the only slot with an in-code default
-# (DEFAULT_FOLLOW_UP_PROMPT), so a failed fetch there degrades to that rather
-# than to no system instruction.
-PROMPT_SLOTS = ("classify", "mcp", "synthesis", "follow_up")
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -175,9 +155,10 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
     The prompt URLs are derived from `config_url`, so the prompts always come
     from the same bucket as the configuration they belong to.
 
-    A slot that fails to fetch is skipped with a warning instead of failing
-    startup: an absent prompt leaves that phase with no system instruction, so
-    a partial fetch degrades the agent rather than taking it down.
+    A slot that fails to fetch, or is empty once its comments are stripped, is
+    left out of the result with a warning instead of failing startup. The
+    caller layers the result over the default prompts, so that slot keeps the
+    default body.
     """
     # Prompt bodies live in a `prompts/` directory beside the config object, so
     # the URL is the config's own with its last path segment swapped out. Query
@@ -204,23 +185,37 @@ def _fetch_prompt_bodies(config_url: str) -> dict[str, str]:
             body = strip_prompt_comments(r.text)
         except Exception as e:
             logger.warning(
-                "Prompt %r fetch failed (%s): %s", slot, prompt_url, e
+                "Prompt %r fetch failed (%s): %s; the default or inline "
+                "prompt applies",
+                slot,
+                prompt_url,
+                e,
             )
             continue
         if not body:
             logger.warning(
-                "Prompt %r at %s is empty; leaving slot unset", slot, prompt_url
+                "Prompt %r at %s is empty; the default or inline prompt "
+                "applies",
+                slot,
+                prompt_url,
             )
             continue
         prompts[slot] = body
         logger.info(
-            "Prompt %r loaded: %d bytes from %s", slot, len(body), prompt_url
+            "Prompt %r loaded: %d characters from %s",
+            slot,
+            len(body),
+            prompt_url,
         )
     return prompts
 
 
 def _read_prompt_files(prompts_dir: Path) -> dict[str, str]:
-    """Reads `<slot>.md` files from `prompts_dir` and strips HTML comments."""
+    """Reads `<slot>.md` files from `prompts_dir` and strips HTML comments.
+
+    A file that is unreadable, or empty once its comments are stripped, is
+    left out of the result with a warning.
+    """
     prompts: dict[str, str] = {}
     for slot in PROMPT_SLOTS:
         prompt_path = prompts_dir / f"{slot}.md"
@@ -235,52 +230,118 @@ def _read_prompt_files(prompts_dir: Path) -> dict[str, str]:
                 "Prompt %r read failed (%s): %s", slot, prompt_path, e
             )
             continue
-        if body:
-            prompts[slot] = body
+        if not body:
+            logger.warning("Prompt %r at %s is empty", slot, prompt_path)
+            continue
+        prompts[slot] = body
+        logger.info(
+            "Prompt %r read: %d characters from %s",
+            slot,
+            len(body),
+            prompt_path,
+        )
     return prompts
 
 
-def _apply_prompts(config: dict[str, Any], prompts: dict[str, str]) -> None:
-    """Merges `prompts` into `config["prompts"]`, keeping inline overrides."""
+def _layer_prompts(
+    config: dict[str, Any],
+    fetched_prompts: dict[str, str],
+    prompts_dir: Path,
+) -> None:
+    """Sets `config["prompts"]` to the default prompts with overrides applied.
+
+    Precedence per slot, lowest first: the default `<slot>.md` in
+    `prompts_dir`, then `fetched_prompts`, then a non-empty string already in
+    `config["prompts"]`. The default prompts are read first so that a
+    configured prompt that is absent or fails to load degrades to the default
+    body, never to an empty slot. A `prompts` value that is not an object, an
+    inline key that is not in `PROMPT_SLOTS`, or an inline body that is blank
+    or not a string is dropped with a warning, so an unusable override is
+    reported rather than silently replaced by the default prompt.
+
+    A slot that is still empty after layering means the default file itself is
+    missing, unreadable, or empty. That is a packaging defect, so it is logged
+    as an error and loading continues with the slots that have a body.
+
+    Args:
+        config: The configuration document, updated in place.
+        fetched_prompts: Prompt bodies fetched from beside `CONFIG_URL`, keyed
+            by slot; empty when there is no `CONFIG_URL`. Every value must be
+            a non-empty string, which `_fetch_prompt_bodies` guarantees.
+        prompts_dir: The directory holding the default `<slot>.md` files.
+    """
+    prompts = _read_prompt_files(prompts_dir)
+    sources = dict.fromkeys(prompts, "default")
+    prompts.update(fetched_prompts)
+    sources.update(dict.fromkeys(fetched_prompts, "fetched"))
     inline = config.get("prompts")
     if isinstance(inline, dict):
         for slot, body in inline.items():
-            if isinstance(body, str) and body.strip():
-                logger.info(
-                    "Prompt %r overridden inline by agent-config.json", slot
+            if slot not in PROMPT_SLOTS:
+                logger.warning(
+                    "Inline prompt slot %r is not one of %s; ignoring it",
+                    slot,
+                    PROMPT_SLOTS,
                 )
-                prompts[slot] = body
+                continue
+            if not isinstance(body, str):
+                logger.warning(
+                    "Agent configuration key %r is not a string; the default "
+                    "or fetched prompt applies",
+                    f"prompts.{slot}",
+                )
+                continue
+            if not body.strip():
+                logger.warning(
+                    "Agent configuration key %r is blank; the default or "
+                    "fetched prompt applies",
+                    f"prompts.{slot}",
+                )
+                continue
+            prompts[slot] = body
+            sources[slot] = "inline"
+    elif "prompts" in config:
+        logger.warning(
+            "Agent configuration key 'prompts' is not an object; the default "
+            "or fetched prompts apply"
+        )
     if prompts:
         config["prompts"] = prompts
     else:
         config.pop("prompts", None)
+    logger.info("Prompt sources after layering: %s", sources)
     missing = [slot for slot in PROMPT_SLOTS if slot not in prompts]
     if missing:
-        logger.warning(
-            "Missing prompt bodies for %s. 'classify' skips classification, "
-            "'follow_up' falls back to its in-code default, and any other "
-            "missing slot runs without a system instruction.",
+        logger.error(
+            "No prompt body for %s: the default prompt files under %s are "
+            "missing, unreadable, or empty, and no configured prompt covers "
+            "these slots",
             missing,
+            prompts_dir,
         )
 
 
 def bootstrap_config_from_url() -> None:
-    """Fetches `CONFIG_URL` at startup and caches the merged configuration.
+    """Fetches `CONFIG_URL` at startup and caches the parsed configuration.
 
-    Merges prompt bodies from `<bucket>/prompts/<slot>.md` into
-    `config["prompts"]`, while allowing non-empty inline `prompts` entries in
-    `agent-config.json` to take precedence.
+    Prompt bodies are layered per slot: `defaults/prompts/<slot>.md` first,
+    then `<bucket>/prompts/<slot>.md`, then any non-empty inline `prompts`
+    entry in `agent-config.json`.
 
-    If the fetch fails or the response is not a JSON object, an empty
-    configuration is cached so that `load_config()` does not fall back to the
-    shipped defaults when `CONFIG_URL` is explicitly configured.
+    If the fetch fails or the response is not a JSON object, `None` is cached
+    and `load_config()` returns it rather than falling back to the local file
+    or the shipped defaults, because `CONFIG_URL` was explicitly configured.
     """
-    global _bootstrapped_config
+    global _bootstrapped, _bootstrapped_config
 
-    url = get_settings().config_url
+    settings = get_settings()
+    url = settings.config_url
     if not url:
+        _bootstrapped = False
         _bootstrapped_config = None
         return
+    _bootstrapped = True
+    _bootstrapped_config = None
     try:
         r = _fetch_gcs_url(url)
         r.raise_for_status()
@@ -292,7 +353,6 @@ def bootstrap_config_from_url() -> None:
             url,
             e,
         )
-        _bootstrapped_config = {}
         return
 
     try:
@@ -302,7 +362,6 @@ def bootstrap_config_from_url() -> None:
             "CONFIG_URL is not valid JSON (%s); running without configuration",
             e,
         )
-        _bootstrapped_config = {}
         return
 
     if not isinstance(config, dict):
@@ -310,15 +369,25 @@ def bootstrap_config_from_url() -> None:
             "CONFIG_URL did not contain a JSON object; running without "
             "configuration"
         )
-        _bootstrapped_config = {}
         return
 
-    _apply_prompts(config, _fetch_prompt_bodies(url))
-    _bootstrapped_config = config
+    _layer_prompts(
+        config, _fetch_prompt_bodies(url), settings.defaults_dir / "prompts"
+    )
+    _bootstrapped_config = parse_agent_config(config)
 
 
-def _load_config_file(config_path: Path) -> dict[str, Any]:
-    """Loads `config_path` and caches it by path and modification time."""
+def _load_config_file(
+    config_path: Path, prompts_dir: Path
+) -> AgentConfig | None:
+    """Loads `config_path` and caches it by path and modification time.
+
+    The default prompts in `prompts_dir` are layered into the document each
+    time it is read, so an edit to `config_path` also picks up the current
+    default prompt files. Returns `None`, and clears the cache so the next
+    call reads the file again, when the file is unreadable or does not hold
+    a JSON object.
+    """
     global _config_cache, _config_mtime, _config_path
 
     try:
@@ -336,35 +405,40 @@ def _load_config_file(config_path: Path) -> dict[str, Any]:
             _config_cache = None
             _config_mtime = 0.0
             _config_path = None
-            return {}
-        _config_cache = document
+            return None
+        _layer_prompts(document, {}, prompts_dir)
+        _config_cache = parse_agent_config(document)
         _config_mtime = current_mtime
         _config_path = config_path
         logger.info("Config loaded/reloaded from config.json")
-        return document
+        return _config_cache
     except (OSError, ValueError) as e:
         logger.error("Failed to load config from %s: %s", config_path, e)
         _config_cache = None
         _config_mtime = 0.0
         _config_path = None
-        return {}
+        return None
 
 
-def _load_defaults_config(defaults_dir: Path) -> dict[str, Any]:
-    """Loads `agent-config.json` and `prompts/` from `defaults_dir` once."""
+def _load_defaults_config(defaults_dir: Path) -> AgentConfig | None:
+    """Loads `agent-config.json` and `prompts/` from `defaults_dir` once.
+
+    The outcome is cached for `defaults_dir` whether or not the file loaded,
+    so a missing or unreadable defaults file is reported once rather than on
+    every call.
+    """
     global _defaults_config, _defaults_dir
 
-    if _defaults_config is not None and _defaults_dir == defaults_dir:
+    if _defaults_dir == defaults_dir:
         return _defaults_config
 
     config_path = defaults_dir / "agent-config.json"
-    config: dict[str, Any] = {}
+    config: AgentConfig | None = None
     try:
         document = json.loads(config_path.read_text(encoding="utf-8"))
         if isinstance(document, dict):
-            prompts = _read_prompt_files(defaults_dir / "prompts")
-            _apply_prompts(document, prompts)
-            config = document
+            _layer_prompts(document, {}, defaults_dir / "prompts")
+            config = parse_agent_config(document)
             logger.info("Config loaded from %s", defaults_dir)
         else:
             logger.error("%s does not contain a JSON object", config_path)
@@ -380,21 +454,24 @@ def _load_defaults_config(defaults_dir: Path) -> dict[str, Any]:
     return config
 
 
-def load_config() -> dict[str, Any]:
-    """Returns a deep copy of the active agent configuration.
+def load_config() -> AgentConfig | None:
+    """Returns the active agent configuration, or `None` if none is loaded.
 
     Reads from `CONFIG_URL` (startup bootstrap), `agent_root/config.json`
     (local development), or `defaults_dir` (`agent-config.json` and
-    `prompts/`), in that order.
+    `prompts/`), in that order. When `CONFIG_URL` is set, the result of the
+    startup fetch is returned even if that fetch failed, and the other
+    sources are not consulted. The returned instance is frozen and shared by
+    every caller.
     """
-    if _bootstrapped_config is not None:
-        return copy.deepcopy(_bootstrapped_config)
+    if _bootstrapped:
+        return _bootstrapped_config
 
     settings = get_settings()
     config_path = settings.agent_root / "config.json"
     if config_path.exists():
-        return copy.deepcopy(_load_config_file(config_path))
-    return copy.deepcopy(_load_defaults_config(settings.defaults_dir))
+        return _load_config_file(config_path, settings.defaults_dir / "prompts")
+    return _load_defaults_config(settings.defaults_dir)
 
 
 def get_current_datetime() -> str:
@@ -415,31 +492,18 @@ def get_current_datetime() -> str:
     return now.strftime("%A, %B %d, %Y at %I:%M %p ") + now.strftime("%Z")
 
 
-def _instance_template_vars() -> dict[str, str]:
-    """agent-config's template_vars, coerced to strings.
-
-    Keys beginning with "_" are dropped so the "_comment" convention used
-    throughout the config files cannot be substituted into a prompt.
-    """
-    raw = load_config().get("template_vars")
-    if not isinstance(raw, dict):
-        return {}
-    return {
-        key: str(value)
-        for key, value in raw.items()
-        if not key.startswith("_") and isinstance(value, (str, int, float))
-    }
-
-
 def render_prompt(prompt: str) -> str:
     """Substitute {{CURRENT_DATETIME}} and {{instance.<key>}} into a prompt.
 
     An {{instance.<key>}} with no matching template_vars entry is left in place
     rather than blanked: a visible placeholder in an answer is a far louder
-    failure than a sentence that has silently lost its subject.
+    failure than a sentence that has silently lost its subject. When no
+    configuration is loaded, every {{instance.<key>}} is left in place.
     """
     rendered = prompt.replace("{{CURRENT_DATETIME}}", get_current_datetime())
-    for key, value in _instance_template_vars().items():
+    config = load_config()
+    template_vars = config.template_vars if config is not None else {}
+    for key, value in template_vars.items():
         rendered = rendered.replace(f"{{{{instance.{key}}}}}", value)
     return rendered
 
@@ -523,11 +587,8 @@ def get_gemini_api_key() -> str:
             "to config"
         )
 
-    gemini_cfg = load_config().get("gemini")
-    raw_key = (
-        gemini_cfg.get("api_key", "") if isinstance(gemini_cfg, dict) else ""
-    )
-    config_key = raw_key.strip() if isinstance(raw_key, str) else ""
+    config = load_config()
+    config_key = config.gemini.api_key if config is not None else ""
     if not config_key or config_key.startswith(("DEPRECATED", "REPLACE_ME")):
         return ""
     return config_key

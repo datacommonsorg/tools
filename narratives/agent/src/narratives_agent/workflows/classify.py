@@ -24,11 +24,11 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import ValidationError
 
-from narratives_agent.config import get_gemini_classify_model
+from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
     GeminiError,
@@ -54,12 +54,6 @@ type RefusedReason = Literal["adversarial", "off_domain", "safety_blocked"]
 # Upper bound in seconds for the classification model call before the turn
 # proceeds unclassified.
 CLASSIFY_TIMEOUT_SECONDS = 10
-
-_CLASSIFY_TEMPERATURE = 0.0
-# Sent on every classifier call; the configured `gemini.classify_model`
-# must support `ThinkingLevel.MINIMAL` (see `_THINKING_LEVELS` in
-# `gemini/client.py`).
-_CLASSIFY_THINKING_LEVEL = "minimal"
 
 # Maximum character length for the sanitized premise quoted in an off-domain
 # refusal message.
@@ -116,22 +110,14 @@ def off_domain_message(premise: str) -> str:
     return OFF_DOMAIN_TEMPLATE.format(premise=f" ({plain})" if plain else "")
 
 
-def _candidate_text(candidate: dict[str, Any]) -> str:
-    """Returns the non-thought text content of `candidate`."""
-    parts = candidate.get("content", {}).get("parts", [])
-    return "".join(
-        str(part.get("text", "")) for part in parts if not part.get("thought")
-    )
-
-
 async def _request_classification(
-    transcript: Transcript, config: dict[str, Any], telemetry: TurnTelemetry
+    transcript: Transcript, config: AgentConfig, telemetry: TurnTelemetry
 ) -> QueryClassification | None:
     """Requests a `QueryClassification` from the configured classifier model.
 
     Returns:
         The validated classification, or `None` when the prompt is unconfigured,
-        the request fails or times out, no candidates are returned, or the
+        the request fails or times out, the reply carries no text, or the
         output fails schema validation.
 
     Raises:
@@ -139,7 +125,7 @@ async def _request_classification(
             with a safety finish reason. The error propagates so that the
             turn ends as `refused`.
     """
-    prompt = config.get("prompts", {}).get("classify", "")
+    prompt = config.prompts.classify
     if not prompt:
         logger.warning(
             "The classify prompt is not configured; proceeding unclassified"
@@ -150,14 +136,15 @@ async def _request_classification(
         transcript.current_query,
         max_response_chars=MCP_HISTORY_RESPONSE_CHARS,
     )
+    role = config.resolve_role_config(GeminiRole.CLASSIFY)
     try:
         async with asyncio.timeout(CLASSIFY_TIMEOUT_SECONDS):
             response = await async_gemini_request(
                 messages=messages,
                 system_instruction=prompt,
-                model=get_gemini_classify_model(config),
-                temperature=_CLASSIFY_TEMPERATURE,
-                thinking_level=_CLASSIFY_THINKING_LEVEL,
+                model=role.model,
+                temperature=role.temperature,
+                thinking_level=role.thinking_level,
                 response_schema=QueryClassification,
                 token_usage=telemetry.tokens,
             )
@@ -175,16 +162,15 @@ async def _request_classification(
         # The Gemini client has already logged the redacted upstream error.
         logger.warning("Classifier request failed; proceeding unclassified")
         return None
-    candidates = response.get("candidates") or []
-    if not candidates:
+    if not response.text.strip():
         logger.warning(
-            "Classifier returned no candidates; proceeding unclassified"
+            "Classifier returned no text (finish reason: %s); proceeding "
+            "unclassified",
+            response.finish_reason,
         )
         return None
     try:
-        return QueryClassification.model_validate_json(
-            _candidate_text(candidates[0])
-        )
+        return QueryClassification.model_validate_json(response.text)
     except ValidationError as error:
         # Raw output is omitted from logs because it may contain query text.
         logger.warning(
@@ -196,14 +182,15 @@ async def _request_classification(
 
 
 async def classify_query(
-    transcript: Transcript, config: dict[str, Any], telemetry: TurnTelemetry
+    transcript: Transcript, config: AgentConfig, telemetry: TurnTelemetry
 ) -> Clarification | Admitted:
     """Runs the classify phase for one turn.
 
     Args:
         transcript: Verified transcript holding the current query and prior
             conversation context.
-        config: Agent configuration supplying the classify prompt and model.
+        config: The agent configuration; `prompts.classify` is the system
+            instruction and `gemini.classify_model` the model.
         telemetry: Turn telemetry accumulator receiving token counts.
 
     Returns:
