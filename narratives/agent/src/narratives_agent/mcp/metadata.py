@@ -186,7 +186,12 @@ def _facet_entries(
                 continue
 
             provenance_source: Source | None = None
-            provenance = provenances.get(str(facet.get("provenanceId")))
+            provenance_id = facet.get("provenanceId")
+            provenance = (
+                provenances.get(provenance_id)
+                if isinstance(provenance_id, str)
+                else None
+            )
             if isinstance(provenance, dict):
                 properties = provenance.get("properties")
                 if isinstance(properties, dict):

@@ -322,3 +322,20 @@ def test_numeric_scaling_factor_is_read_as_float() -> None:
         "Count_Person", "facet1"
     )
     assert facet is not None and facet.scaling_factor == 100.0
+
+
+def test_facet_without_provenance_id_has_no_provenance() -> None:
+    # Test: A facet that carries no `provenanceId`.
+    # Situation: The facet omits `provenanceId`, and `provenances` holds an
+    #   entry keyed `"None"` with a URL.
+    # Expectation: No provenance is attached to the facet.
+    payload: JsonObject = {
+        "variables": {
+            "Count_Person": {"facets": [{"id": "facet1"}]},
+        },
+        "provenances": {"None": {"properties": {"url": _WDI_URL}}},
+    }
+    facet = get_variable_metadata_enrichment([payload]).facet(
+        "Count_Person", "facet1"
+    )
+    assert facet is not None and facet.provenance is None
