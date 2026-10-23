@@ -22,6 +22,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatSessionProvider, useChatSession } from './chat_session_context';
+import { INTERRUPTED_TURN_ERROR } from './use_sse_chat';
 
 /** The keys earlier builds wrote the transcript to. */
 const LEGACY_KEYS = ['cdc:chat:v1', 'cdc:chat:v2'];
@@ -80,27 +81,6 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <ChatSessionProvider>{children}</ChatSessionProvider>
 );
 
-/** Answers the agent request with `body`. */
-const stubFetch = (body: ReadableStream<Uint8Array>): void => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      body,
-    }),
-  );
-};
-
-/** A stream that ends straight away, with no terminal event. */
-const closedStream = (): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.close();
-    },
-  });
-
 /** A stream the test feeds and ends by hand, standing in for a live answer. */
 const openStream = () => {
   let stream!: ReadableStreamDefaultController<Uint8Array>;
@@ -121,8 +101,40 @@ const openStream = () => {
       );
     },
     end: (): void => stream.close(),
+    // Fails the body the way fetch does when its request is aborted.
+    abort: (): void =>
+      stream.error(
+        new DOMException('The operation was aborted.', 'AbortError'),
+      ),
   };
 };
+
+type TestStream = ReturnType<typeof openStream>;
+
+/** A stream that ends straight away, with no terminal event. */
+const closedStream = (): TestStream => {
+  const stream = openStream();
+  stream.end();
+  return stream;
+};
+
+/** Answers each agent request with the next stream, failing it on abort. */
+const stubFetch = (...streams: TestStream[]) => {
+  let next = 0;
+  const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+    const stream = streams[next++];
+    init.signal?.addEventListener('abort', stream.abort);
+    return { ok: true, status: 200, statusText: 'OK', body: stream.body };
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+};
+
+/** Returns the abort signal the request at `index` was sent with. */
+const signalOf = (
+  fetchMock: ReturnType<typeof stubFetch>,
+  index: number,
+): AbortSignal | null | undefined => fetchMock.mock.calls[index][1].signal;
 
 let storage: Storage;
 
@@ -169,53 +181,83 @@ describe('ChatSessionProvider', () => {
     }
   });
 
-  it('empties the chat on New chat', async () => {
-    // Test: The New chat control.
-    // Situation: One message has been sent, so the surface holds a turn.
-    // Expectation: New chat leaves no turns behind, because there is no saved
-    //   thread to come back to.
-    stubFetch(closedStream());
+  it('clears a failed answer and its error on New chat', async () => {
+    // Test: New chat after an answer failed.
+    // Situation: The first answer's stream ends without a terminal event, so
+    //   the chat holds an errored turn and the interrupted-connection error.
+    // Expectation: New chat leaves no turns and no error, and the next
+    //   question is answered in the new chat.
+    const next = openStream();
+    stubFetch(closedStream(), next);
     const { result } = renderHook(() => useChatSession(), { wrapper });
-
     await act(async () => {
       await result.current.send('What is the population of France?');
     });
-    act(() => {
-      result.current.newChat();
-    });
-
-    expect(result.current.turns).toEqual([]);
-  });
-
-  it('keeps a discarded answer out of the chat that replaces it', async () => {
-    // Test: New chat while an answer is still streaming.
-    // Situation: A question is in flight when the user starts a new chat, and
-    //   the agent goes on to send the rest of that answer.
-    //   `stop()` aborts the request, so the late text only reaches the reducer
-    //   at all because this stub keeps delivering it.
-    // Expectation: The chat is empty from the moment New chat is pressed, and
-    //   the abandoned answer never lands in it.
-    const stream = openStream();
-    stubFetch(stream.body);
-    const { result } = renderHook(() => useChatSession(), { wrapper });
-
-    let answered!: Promise<void>;
-    await act(async () => {
-      answered = result.current.send('What is the population of France?');
-    });
-    expect(result.current.turns).toHaveLength(1);
+    expect(result.current.error).toBe(INTERRUPTED_TURN_ERROR);
 
     act(() => {
       result.current.newChat();
     });
     expect(result.current.turns).toEqual([]);
+    expect(result.current.error).toBeNull();
 
     await act(async () => {
-      stream.push('content', { text: 'About 68 million.' });
-      stream.end();
+      const answered = result.current.send('What is the population of Spain?');
+      next.push('content', { text: 'About 48 million.' });
+      next.push('terminal', { state: 'complete', idempotency_key: 'key-2' });
+      next.end();
       await answered;
     });
 
+    expect(result.current.turns).toMatchObject([
+      {
+        userMessage: 'What is the population of Spain?',
+        status: 'done',
+        text: 'About 48 million.',
+      },
+    ]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('ends a streaming answer on New chat and answers the next question', async () => {
+    // Test: New chat while an answer is still streaming.
+    // Situation: A question is in flight when the user starts a new chat, and
+    //   then asks another question.
+    // Expectation: New chat aborts the request and leaves an idle, empty chat
+    //   at once; the next question gets its own answer and nothing else.
+    const first = openStream();
+    const second = openStream();
+    const fetchMock = stubFetch(first, second);
+    const { result } = renderHook(() => useChatSession(), { wrapper });
+    await act(async () => {
+      void result.current.send('What is the population of France?');
+    });
+    expect(result.current.isStreaming).toBe(true);
+
+    act(() => {
+      result.current.newChat();
+    });
+    expect(signalOf(fetchMock, 0)?.aborted).toBe(true);
     expect(result.current.turns).toEqual([]);
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      const answered = result.current.send('What is the population of Spain?');
+      second.push('content', { text: 'About 48 million.' });
+      second.push('terminal', { state: 'complete', idempotency_key: 'key-2' });
+      second.end();
+      await answered;
+    });
+
+    expect(result.current.turns).toMatchObject([
+      {
+        userMessage: 'What is the population of Spain?',
+        status: 'done',
+        text: 'About 48 million.',
+      },
+    ]);
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });

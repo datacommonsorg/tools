@@ -83,7 +83,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
   const { isStreaming, error, send, stop } = useSseChat({ turns, setTurns });
 
-  // Stop first: `send` refuses to open a second stream until this one ends.
   const newChat = useCallback(() => {
     stop();
     setTurns([]);
