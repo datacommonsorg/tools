@@ -64,9 +64,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       observation data helpers (`data_utils.py`), and source and variable
       metadata readers (`metadata.py`). Of the agent's subpackages, it may
       import only `analytics/`; it never imports `workflows/` or `gemini/`.
-    - `analytics/`: the deterministic analytics library, holding provenance
-      models (`provenance.py`). It imports only the Python standard library,
-      other `analytics/` modules, and `json_value.py`.
+    - `analytics/`: the deterministic analytics library, holding observation
+      tables and provenance models (`tables.py`, `provenance.py`) and the
+      digest and metric types (`digest.py`, `metrics.py`). It imports only the
+      Python standard library, other `analytics/` modules, and
+      `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
@@ -76,7 +78,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
     - `json_value.py`: the `JsonValue` and `JsonObject` aliases for data
-      that is JSON by nature, such as MCP tool arguments and results.
+      that is JSON by nature, such as MCP tool arguments and results, and
+      `json_safe`, which converts typed values back into a `JsonValue`.
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
