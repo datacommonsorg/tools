@@ -204,7 +204,7 @@ narratives/
 │       ├── settings.py        Environment variable settings
 │       ├── telemetry.py       OpenTelemetry and structured logging
 │       ├── server/            FastAPI app and routes (spa, chat, system)
-│       ├── mcp/               MCP client, capability discovery, schemas, and metadata
+│       ├── mcp/               MCP client, capabilities, schemas, and metadata
 │       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
 │       ├── analytics/         Provenance models and deterministic analytics
 │       └── gemini/            Gemini SDK client and Pydantic schemas

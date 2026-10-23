@@ -32,9 +32,9 @@ from narratives_agent.analytics.provenance import Source
 # The legacy citation path shares these helpers until it is deleted with the
 # rest of this module.
 from narratives_agent.mcp.metadata import (
-    _facet_entries,
-    _get_first_present_value,
+    get_first_present_value,
     get_source_from_observation_metadata,
+    get_variable_metadata_enrichment,
 )
 
 # Server 1.3.0 split the two fat tools into six. Both generations are recognized
@@ -245,11 +245,12 @@ def _get_facet_index_from_variable_metadata(
     if not isinstance(result_data.get("provenances"), dict):
         return {}
     index: dict[str, dict[str, str]] = {}
-    for _, facet_id, _, source in _facet_entries(result_data):
+    enrichment = get_variable_metadata_enrichment([result_data])
+    for (_, facet_id), facet in enrichment.facets.items():
         # The same facet is offered for several variables in one call; the
         # first description of it is as good as the last.
-        if facet_id not in index and source is not None:
-            index[facet_id] = _source_to_dict(source)
+        if facet_id not in index and facet.provenance is not None:
+            index[facet_id] = _source_to_dict(facet.provenance)
     return index
 
 
@@ -325,7 +326,7 @@ def extract_provenance_from_mcp_results(
             if not isinstance(metadata, dict):
                 continue
 
-            facet_id = _get_first_present_value(
+            facet_id = get_first_present_value(
                 metadata, "sourceId", "source_id"
             )
             # Server 1.2.1 wrote the literal "unknown" for a result that

@@ -30,7 +30,8 @@ class Source:
         license: License identifier or name when reported by metadata.
         provider: Publishing organization name when distinct from a handle.
         dataset: Dataset name (`isPartOf`) when reported by metadata.
-        date_range: Year coverage string (for example `"1960 - 2023"`).
+        date_range: Year coverage: one year, or start and end years joined by
+            a spaced en dash.
     """
 
     name: str

@@ -311,6 +311,18 @@ def test_fallback_after_merge_returns_first_seen_variable_entry() -> None:
     assert fallback is not None and fallback.unit == "Person"
 
 
+def test_merge_keeps_variables_in_first_seen_order() -> None:
+    # Test: Key order of `variables` after successive merges.
+    # Situation: Three payloads each name a different variable, merged in
+    #   call order.
+    # Expectation: `variables` lists the variables in call order.
+    dcids = ["Count_Person", "Count_Household", "Count_Female"]
+    combined = get_variable_metadata_enrichment(
+        [{"variables": {dcid: {"name": dcid}}} for dcid in dcids]
+    )
+    assert list(combined.variables) == dcids
+
+
 def test_numeric_scaling_factor_is_read_as_float() -> None:
     # Test: `scalingFactor` sent as a JSON number.
     # Situation: `facet.properties.scalingFactor` is the integer 100.

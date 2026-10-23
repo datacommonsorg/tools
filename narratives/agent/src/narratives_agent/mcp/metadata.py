@@ -27,7 +27,7 @@ from narratives_agent.analytics.provenance import Source
 from narratives_agent.json_value import JsonObject, JsonValue
 
 
-def _get_first_present_value(
+def get_first_present_value(
     mapping: Mapping[str, JsonValue], *keys: str
 ) -> str:
     """Returns the first non-empty string value among `keys`, or "".
@@ -47,7 +47,7 @@ def _get_provenance_url(properties: Mapping[str, JsonValue]) -> str:
 
     MCP 1.3.x sends `descriptionUrl` as a string or a list of strings.
     """
-    url = _get_first_present_value(properties, "url", "descriptionUrl")
+    url = get_first_present_value(properties, "url", "descriptionUrl")
     if url:
         return url
     description_urls = properties.get("descriptionUrl")
@@ -76,7 +76,8 @@ def _looks_like_a_name(value: str) -> bool:
 
 def _get_year_of(date: str) -> str:
     """Returns the four-digit year at the head of `date`, or ""."""
-    # Length as well as digits: a short date would yield a short "year".
+    # Require four leading digits so empty or two-digit dates (like "90") are
+    # rejected.
     head = date[:4]
     return head if len(head) == 4 and head.isdigit() else ""
 
@@ -93,8 +94,8 @@ def _get_date_range(facet: Mapping[str, JsonValue]) -> str:
     date_range = facet.get("dateRange")
     if not isinstance(date_range, dict):
         return ""
-    start = _get_year_of(_get_first_present_value(date_range, "start"))
-    end = _get_year_of(_get_first_present_value(date_range, "end"))
+    start = _get_year_of(get_first_present_value(date_range, "start"))
+    end = _get_year_of(get_first_present_value(date_range, "end"))
     if start and end:
         if start == end:
             return start
@@ -131,15 +132,15 @@ def _provenance_entry_from_properties(
     if not url:
         return None
 
-    dataset = _get_first_present_value(properties, "isPartOf")
-    provider = _get_first_present_value(properties, "source")
+    dataset = get_first_present_value(properties, "isPartOf")
+    provider = get_first_present_value(properties, "source")
     name = (
         dataset
         or provider
-        or _get_first_present_value(properties, "domain")
+        or get_first_present_value(properties, "domain")
         or url
     )
-    license_type = _get_first_present_value(properties, "licenseType")
+    license_type = get_first_present_value(properties, "licenseType")
     date_range = _get_date_range(facet)
     return Source(
         name=name,
@@ -211,10 +212,10 @@ def get_source_from_observation_metadata(
     the URL's hostname with any leading `www.` stripped, and then to
     `"Data Source"`. Returns `None` when `metadata` carries no `provenanceUrl`.
     """
-    url = _get_first_present_value(metadata, "provenanceUrl", "provenance_url")
+    url = get_first_present_value(metadata, "provenanceUrl", "provenance_url")
     if not url:
         return None
-    name = _get_first_present_value(
+    name = get_first_present_value(
         metadata,
         "importName",
         "import_name",
@@ -222,8 +223,7 @@ def get_source_from_observation_metadata(
         "source_name",
     )
     if not name:
-        host = urlparse(url).netloc
-        name = host[4:] if host.startswith("www.") else host
+        name = urlparse(url).netloc.removeprefix("www.")
     return Source(name=name or "Data Source", url=url)
 
 
@@ -305,11 +305,11 @@ class VariableMetadataEnrichment:
         facets = dict(self.facets)
         for key, facet in other.facets.items():
             facets.setdefault(key, facet)
-        variables = dict(other.variables)
-        for variable_dcid, entry in self.variables.items():
-            other_entry = other.variables.get(variable_dcid)
-            if other_entry is None:
-                variables[variable_dcid] = entry
+        variables = dict(self.variables)
+        for variable_dcid, other_entry in other.variables.items():
+            entry = variables.get(variable_dcid)
+            if entry is None:
+                variables[variable_dcid] = other_entry
             else:
                 variables[variable_dcid] = VariableEnrichment(
                     variable_name=entry.variable_name
@@ -335,10 +335,10 @@ def _single_payload_enrichment(
             var_props_map: Mapping[str, JsonValue] = (
                 var_props if isinstance(var_props, dict) else {}
             )
-            variable_name = _get_first_present_value(variable, "name") or None
+            variable_name = get_first_present_value(variable, "name") or None
             variable_unit = (
-                _get_first_present_value(variable, "unit")
-                or _get_first_present_value(var_props_map, "unit")
+                get_first_present_value(variable, "unit")
+                or get_first_present_value(var_props_map, "unit")
                 or None
             )
             if variable_name is not None or variable_unit is not None:
@@ -357,13 +357,13 @@ def _single_payload_enrichment(
         )
         facets[key] = FacetEnrichment(
             provenance=provenance,
-            unit=_get_first_present_value(props, "unit") or None,
+            unit=get_first_present_value(props, "unit") or None,
             scaling_factor=_parse_scaling_factor(props.get("scalingFactor")),
             measurement_method=(
-                _get_first_present_value(props, "measurementMethod") or None
+                get_first_present_value(props, "measurementMethod") or None
             ),
             observation_period=(
-                _get_first_present_value(props, "observationPeriod") or None
+                get_first_present_value(props, "observationPeriod") or None
             ),
         )
 
