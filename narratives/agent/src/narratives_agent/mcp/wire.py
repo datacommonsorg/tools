@@ -77,11 +77,11 @@ class VariableWire(BaseModel):
     dcid: str
     name: str | None = None
 
-    @field_validator("dcid", mode="before")
+    # Runs after type conversion, so every input Pydantic accepts as a string
+    # is checked.
+    @field_validator("dcid", mode="after")
     @classmethod
-    def _strip_dcid(cls, value: object) -> object:
-        if not isinstance(value, str):
-            return value
+    def _strip_dcid(cls, value: str) -> str:
         dcid = value.strip()
         if not is_valid_dcid(dcid):
             # The value is upstream data, so the message does not repeat it.
@@ -123,21 +123,28 @@ class SourceMetadataWire(BaseModel):
 
     @field_validator("source_id", mode="before")
     @classmethod
-    def _facet_id(cls, value: object) -> object:
+    def _numeric_facet_id(cls, value: object) -> object:
         # A numeric facet ID is read as its decimal string, as `mcp.metadata`
         # reads facet IDs, so both readers agree on the facet's identity.
         if isinstance(value, int) and not isinstance(value, bool):
-            value = str(value)
-        if isinstance(value, str):
-            facet_id = value.strip()
-            if not facet_id:
-                return None
-            if not is_valid_dcid(facet_id):
-                # The value is upstream data, so the message does not repeat
-                # it. A facet ID is logged and sent back as `source_override`.
-                raise ValueError("The facet ID is not a valid identifier.")
-            return facet_id
+            return str(value)
         return value
+
+    # Runs after type conversion, so every input Pydantic accepts as a string
+    # is checked.
+    @field_validator("source_id", mode="after")
+    @classmethod
+    def _facet_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        facet_id = value.strip()
+        if not facet_id:
+            return None
+        if not is_valid_dcid(facet_id):
+            # The value is upstream data, so the message does not repeat it.
+            # A facet ID is logged and sent back as `source_override`.
+            raise ValueError("The facet ID is not a valid identifier.")
+        return facet_id
 
     @field_validator(
         "provenance_url",

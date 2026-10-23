@@ -646,6 +646,33 @@ def test_malformed_structural_key_raises(
         )
 
 
+def test_identifiers_are_checked_after_string_conversion() -> None:
+    # Test: Identifier checks on values that Pydantic converts to strings.
+    # Situation: The variable DCID and the served facet ID arrive as bytes
+    #   containing a newline, and a valid numeric facet ID arrives as an
+    #   integer.
+    # Expectation: The bytes are rejected by the identifier check rather than
+    #   converted and accepted, and the integer facet ID is read as its
+    #   decimal string.
+    with pytest.raises(ValidationError, match=re.escape("variable.dcid")):
+        ObservationPayloadWire.model_validate(
+            {"variable": {"dcid": b"Count\nPerson"}}
+        )
+    with pytest.raises(
+        ValidationError, match=re.escape("sourceMetadata.sourceId")
+    ):
+        ObservationPayloadWire.model_validate(
+            {"variable": _VARIABLE, "sourceMetadata": {"sourceId": b"f1\nX"}}
+        )
+    wire = ObservationPayloadWire.model_validate(
+        {
+            "variable": _VARIABLE,
+            "sourceMetadata": {"sourceId": 9674656028615575584},
+        }
+    )
+    assert wire.source_metadata.source_id == "9674656028615575584"
+
+
 def test_malformed_alternative_sources_are_dropped(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -1309,6 +1336,37 @@ def test_merged_payloads_parse_as_one_multi_place_table() -> None:
         "12850099660527362240"
     ]
     assert table.variable_name == "Total population"
+
+
+def test_merged_entity_metadata_lists_each_entity_once() -> None:
+    # Test: Entities listed by more than one per-place payload.
+    # Situation: France and Germany both list `Earth`; France gives it no
+    #   name and Germany names it.
+    # Expectation: The merged `entityMetadata` lists each entity once, in
+    #   first-seen order, and `Earth` takes the name Germany gives it, "World".
+    def payload(place: str, name: str, earth_name: str | None) -> JsonObject:
+        return {
+            "data": _data([[place, "2023", 1.0]]),
+            "entityMetadata": {
+                "columns": ["dcid", "name"],
+                "rows": [[place, name], ["Earth", earth_name]],
+            },
+            "sourceMetadata": {"sourceId": "f1"},
+            "variable": _VARIABLE,
+        }
+
+    merged = merge_observation_payloads(
+        [
+            ("country/FRA", payload("country/FRA", "France", None)),
+            ("country/DEU", payload("country/DEU", "Germany", "World")),
+        ]
+    )
+
+    assert merged.entity_metadata.rows == (
+        ["country/FRA", "France"],
+        ["Earth", "World"],
+        ["country/DEU", "Germany"],
+    )
 
 
 def _served(place: str, facet: str | None) -> JsonObject:

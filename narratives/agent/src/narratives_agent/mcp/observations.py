@@ -374,6 +374,8 @@ def merge_observation_payloads(
     for a place other than the one its payload was fetched for. When more than
     one payload is merged, the alternatives carry no `placesFoundCount`,
     because each payload counts coverage for its own place only.
+    `entityMetadata` lists each entity once, under the first name any payload
+    gives it.
 
     Args:
         payloads: `(place_dcid, payload)` pairs in request order, each payload
@@ -400,7 +402,7 @@ def merge_observation_payloads(
             )
 
     items: list[_PlacePayload] = []
-    entity_rows: list[JsonValue] = []
+    entity_names: dict[str, str | None] = {}
     for place_dcid, raw_payload in payloads:
         item = _read_place_payload(place_dcid, raw_payload)
         if items and item.wire.variable.dcid != items[0].wire.variable.dcid:
@@ -412,9 +414,14 @@ def merge_observation_payloads(
             )
         items.append(item)
         names, dcids = _read_entity_metadata(item.wire.entity_metadata)
+        # An entity listed by several payloads, such as a shared parent, is
+        # listed once, under the first name any payload gives it.
         for dcid in dcids:
-            entity_row: JsonValue = [dcid, names.get(dcid)]
-            entity_rows.append(entity_row)
+            if entity_names.get(dcid) is None:
+                entity_names[dcid] = names.get(dcid)
+    entity_rows: list[JsonValue] = [
+        [dcid, name] for dcid, name in entity_names.items()
+    ]
 
     header = _select_header(items)
     header_facet = header.wire.source_metadata.source_id
