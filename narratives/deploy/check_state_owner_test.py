@@ -18,8 +18,9 @@ import io
 import json
 from typing import Any
 
-import check_state_owner
 import pytest
+
+import check_state_owner
 
 INSTANCE = "base-dc"
 
@@ -29,6 +30,15 @@ def service(address: str, name: str) -> dict[str, Any]:
     return {
         "address": address,
         "type": "google_cloud_run_v2_service",
+        "values": {"name": name},
+    }
+
+
+def job(address: str, name: str) -> dict[str, Any]:
+    """Returns one Cloud Run job as `terraform show -json` reports it."""
+    return {
+        "address": address,
+        "type": "google_cloud_run_v2_job",
         "values": {"name": name},
     }
 
@@ -52,13 +62,14 @@ def test_service_under_the_previous_name_is_reported(
     # Test: A state written by an older generation of the module.
     # Situation: The state holds "base-dc-datacommons", the name the module
     #   gave the service before it became "base-dc-app".
-    # Expectation: Status 3, and the ownership check itself finds nothing.
+    # Expectation: The renamed status, and the ownership check itself finds
+    #   nothing.
     document = state(
         service("google_cloud_run_v2_service.dc_web", "base-dc-datacommons")
     )
 
-    assert check_state_owner.offending(document, INSTANCE) == []
-    assert run(monkeypatch, document) == 3
+    assert check_state_owner.find_foreign_resources(document, INSTANCE) == []
+    assert run(monkeypatch, document) == check_state_owner.EXIT_SERVICE_RENAMED
 
 
 def test_service_under_the_current_name_passes(
@@ -67,14 +78,14 @@ def test_service_under_the_current_name_passes(
     """Passes a state whose names already match what the module builds."""
     # Test: A state written by the current module.
     # Situation: The state holds "base-dc-app".
-    # Expectation: Status 0 -- nothing is renamed, so an apply updates the
+    # Expectation: Status OK -- nothing is renamed, so an apply updates the
     #   service in place.
     document = state(
         service("google_cloud_run_v2_service.dc_app", "base-dc-app")
     )
 
-    assert check_state_owner.superseded(document, INSTANCE) == []
-    assert run(monkeypatch, document) == 0
+    assert check_state_owner.find_superseded_services(document, INSTANCE) == []
+    assert run(monkeypatch, document) == check_state_owner.EXIT_OK
 
 
 def test_another_deployment_outranks_a_rename(
@@ -84,14 +95,65 @@ def test_another_deployment_outranks_a_rename(
     # Test: Both failures present at once.
     # Situation: The state holds this deployment's old "base-dc-datacommons"
     #   and another deployment's "india-app".
-    # Expectation: Status 1 -- the wrong state has a different remedy, so the
-    #   rename must not mask it.
+    # Expectation: The foreign-state status -- the wrong state has a different
+    #   remedy, so the rename must not mask it.
     document = state(
         service("google_cloud_run_v2_service.dc_web", "base-dc-datacommons"),
         service("google_cloud_run_v2_service.other", "india-app"),
     )
 
-    assert run(monkeypatch, document) == 1
+    assert run(monkeypatch, document) == check_state_owner.EXIT_FOREIGN_STATE
+
+
+def test_rename_report_names_the_service_and_no_mode(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Reports a renamed service in words that suit a deploy and a destroy."""
+    # Test: The message printed for a renamed service.
+    # Situation: The state holds "base-dc-datacommons".
+    # Expectation: stderr names the old service and the name the module builds
+    #   now, and says nothing about applying, since --destroy prints it too.
+    document = state(
+        service("google_cloud_run_v2_service.dc_web", "base-dc-datacommons")
+    )
+
+    run(monkeypatch, document)
+
+    report = capsys.readouterr().err
+    assert "google_cloud_run_v2_service.dc_web  (base-dc-datacommons)" in report
+    assert "'base-dc-app'" in report
+    assert "apply" not in report.lower()
+
+
+def test_job_owned_by_this_deployment_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Passes a state whose ingest job is named for this deployment."""
+    # Test: Ownership read from a Cloud Run job.
+    # Situation: The only named resource is the "base-dc-data-ingest" job.
+    # Expectation: Status OK.
+    document = state(
+        job("google_cloud_run_v2_job.data_ingest", "base-dc-data-ingest")
+    )
+
+    assert run(monkeypatch, document) == check_state_owner.EXIT_OK
+
+
+def test_job_owned_by_another_deployment_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reports a state whose ingest job is named for another deployment."""
+    # Test: A foreign state found through a Cloud Run job.
+    # Situation: The only named resource is the "india-data-ingest" job.
+    # Expectation: The foreign-state status, with the job's owner recovered.
+    document = state(
+        job("google_cloud_run_v2_job.data_ingest", "india-data-ingest")
+    )
+
+    assert check_state_owner.find_foreign_resources(document, INSTANCE) == [
+        ("google_cloud_run_v2_job.data_ingest", "india", "india-data-ingest")
+    ]
+    assert run(monkeypatch, document) == check_state_owner.EXIT_FOREIGN_STATE
 
 
 def test_data_sources_are_not_ownership(
@@ -101,15 +163,15 @@ def test_data_sources_are_not_ownership(
     # Test: A data source carrying a previous-generation name.
     # Situation: The only matching resource is addressed "data.*", which the
     #   tfvars rewrite on every run.
-    # Expectation: Status 0, matching how the ownership check reads them.
+    # Expectation: Status OK, matching how the ownership check reads them.
     document = state(
         service(
             "data.google_cloud_run_v2_service.existing", "base-dc-datacommons"
         )
     )
 
-    assert check_state_owner.superseded(document, INSTANCE) == []
-    assert run(monkeypatch, document) == 0
+    assert check_state_owner.find_superseded_services(document, INSTANCE) == []
+    assert run(monkeypatch, document) == check_state_owner.EXIT_OK
 
 
 @pytest.mark.parametrize("raw", ["", "   ", "not json"])
@@ -120,6 +182,20 @@ def test_unusable_state_never_blocks_a_deploy(
     # Test: A first deploy, and a `terraform show` that produced nothing
     #   usable.
     # Situation: stdin is empty, whitespace, or not JSON.
-    # Expectation: Status 0 -- the guard does not block on its own failure to
+    # Expectation: Status OK -- the guard does not block on its own failure to
     #   read the state.
-    assert run(monkeypatch, raw) == 0
+    assert run(monkeypatch, raw) == check_state_owner.EXIT_OK
+
+
+def test_missing_instance_is_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rejects a call that names no instance, before reading any state."""
+    # Test: The command run without its argument.
+    # Situation: argv holds only the script name.
+    # Expectation: The usage status, whatever stdin holds.
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(state())))
+
+    status = check_state_owner.main(["check_state_owner.py"])
+
+    assert status == check_state_owner.EXIT_USAGE
