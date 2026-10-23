@@ -1042,21 +1042,6 @@ describe("assignCitationNumbers", () => {
     ]);
   });
 
-  it("survives a turn built without provenance", () => {
-    // Test: A turn that arrives without the array its type promises.
-    // Situation: `provenance` is required on the type, so only a turn built
-    //   by hand -- in a test, or by a caller added later -- can lack it.
-    // Expectation: An empty row, not a TypeError that blanks the chat.
-    const handBuilt = {
-      ...citedTurn([]),
-      provenance: undefined,
-    } as unknown as ChatTurn;
-    expect(assignCitationNumbers([handBuilt, citedTurn([WDI])])).toEqual([
-      [],
-      [1],
-    ]);
-  });
-
   it("copes with an answer that cited nothing", () => {
     // Test: Empty inputs.
     // Situation: An answer with no provenance, and an empty thread.

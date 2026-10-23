@@ -418,16 +418,13 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
  * takes no numbers, matching the condition `TurnView` renders `AnswerPanel`
  * on. Numbering one would retire `[1]` and `[2]` to a turn with no Citations
  * list, and the next answer would open at `[3]`.
- *
- * `provenance` is typed as required and still read defensively: the fallback
- * keeps a turn built without one -- in a test, say -- from throwing here.
  */
 export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   const assigned = new Map<string, number>();
   let next = 1;
   return turns.map((turn) => {
     if (!turn.text || turn.stopped) return [];
-    return (turn.provenance ?? []).map((source) => {
+    return turn.provenance.map((source) => {
       const key = source.url || source.name;
       const existing = assigned.get(key);
       if (existing !== undefined) return existing;
