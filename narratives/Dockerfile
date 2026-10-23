@@ -38,11 +38,14 @@ ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN pnpm -C ui build
 
-# Force linux/amd64 architecture for the Python runtime stage.
+# Force linux/amd64 architecture — Cloud Run rejects arm64 silently with a
+# "failed to find supported architecture" startup error.
 # hadolint ignore=DL3029
 FROM --platform=linux/amd64 python:3.14-slim
 
-# Pin uv so dependency resolution matches the version that generated uv.lock.
+# uv resolves and installs from uv.lock, so the image gets exactly the versions
+# committed to the repository. Pinned to a uv release rather than :latest, so
+# rebuilding an old commit still uses the uv that produced its lockfile.
 COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
 
 # ALLOWED_ORIGIN is intentionally left unset here so `app._allowed_origins()`
@@ -60,8 +63,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install tzdata for ZoneInfo on slim images and ca-certificates for HTTPS.
-# Package versions are unpinned because Debian slim drops superseded versions.
+# System deps: tzdata is needed for ZoneInfo on slim images, and
+# ca-certificates for HTTPS. Package versions are left unpinned because Debian
+# slim repositories drop superseded versions across point releases.
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tzdata ca-certificates \
@@ -71,23 +75,37 @@ RUN apt-get update \
 RUN groupadd -g 10001 appuser \
     && useradd -u 10001 -g appuser -m -s /sbin/nologin appuser
 
-# Install dependencies before copying source so code edits keep this layer cached.
+# Dependencies first, without the project itself, so editing application code
+# does not invalidate this layer.
 COPY agent/pyproject.toml agent/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY agent/src/ ./src/
 RUN uv sync --frozen --no-dev
 
-# Copy the compiled SPA from Stage 1 and fallback configuration from defaults/.
+# Copy the compiled SPA from Stage 1 (`static/`) and fallback configuration (`defaults/`).
 COPY --from=ui-builder /build/ui/dist ./static/
 COPY defaults/ ./defaults/
 
 USER appuser
 
+# 8080 when this container is the Cloud Run ingress (the split deployment);
+# AGENT_PORT still applies when it runs as a sidecar behind nginx.
 EXPOSE 8080
 
-# Shell form is required so ${PORT} and ${AGENT_PORT} expand at container
-# startup while `exec` keeps Uvicorn as PID 1 to receive SIGTERM.
+# Served by Uvicorn in a single process: on 1 vCPU extra worker processes only
+# contend. Scale out with Cloud Run instances, not in with workers.
+#
+# --timeout-graceful-shutdown 120: on SIGTERM, Uvicorn stops accepting
+# connections and waits up to 120 s for in-flight requests, such as a chat
+# stream, to finish before it closes them. On Cloud Run the drain is bounded
+# at about 10 s instead, because Cloud Run sends SIGKILL 10 s after SIGTERM.
+#
+# Shell form is required here (rather than the JSON array exec form enforced by
+# hadolint DL3025) so ${PORT} and ${AGENT_PORT} expand at startup: Cloud Run
+# injects PORT when the container is the ingress, and falls back to AGENT_PORT
+# when it runs as a sidecar behind nginx. `exec` keeps Uvicorn as PID 1 so it
+# receives SIGTERM.
 # hadolint ignore=DL3025
 CMD exec uvicorn narratives_agent.server.app:app \
       --host 0.0.0.0 \

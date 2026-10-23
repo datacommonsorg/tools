@@ -16,9 +16,10 @@ Options:
   --help    Show this help and exit.
 
 Environment overrides (with defaults):
-  AR_REGION   Artifact Registry region   (us-central1)
-  AR_REPO     Artifact Registry repo     (custom-dc)
-  PROJECT     GCP project                (defaults to the active gcloud project)
+  AR_REGION       Artifact Registry region   (us-central1)
+  AR_REPO         Artifact Registry repo     (custom-dc)
+  PROJECT         GCP project                (defaults to the active gcloud project)
+  VITE_BASE_PATH  SPA base path              (/)
 USAGE
 }
 
