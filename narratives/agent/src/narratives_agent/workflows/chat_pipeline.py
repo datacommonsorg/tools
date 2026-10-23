@@ -528,7 +528,15 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
         if not get_settings().enable_chat:
-            raise TurnAbortedError("chat_disabled", CHAT_DISABLED)
+            state, error_type = "refused", "chat_disabled"
+            emit(
+                TerminalErrorFrame(
+                    idempotency_key=idempotency_key,
+                    error=CHAT_DISABLED,
+                    reason="chat_disabled",
+                )
+            )
+            return
         config = _load_turn_config()
         emit(StatusFrame(phase="classify", message=CLASSIFY_STATUS))
         with telemetry.phase("classify"):

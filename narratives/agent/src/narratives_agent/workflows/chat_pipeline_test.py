@@ -1189,14 +1189,14 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
     # Situation: `ENABLE_CHAT` is set to `"false"`.
     # Expectation: `run_turn` emits only a single `error` terminal frame with
     #   `reason="chat_disabled"` and `CHAT_DISABLED`, makes no classifier, MCP,
-    #   or synthesis calls, and records `("error", "chat_disabled")` in
-    #   telemetry.
+    #   or synthesis calls, and records `("refused", "chat_disabled")` in
+    #   telemetry so disabled turns are logged at INFO rather than ERROR.
     monkeypatch.setenv("ENABLE_CHAT", "false")
 
     async def fail_classify(*args: Any, **kwargs: Any) -> Admitted:
         pytest.fail("classify_query should not run when chat is disabled")
 
-    async def fail_tools() -> list[dict[str, Any]]:
+    async def fail_tools() -> list[mcp_client.McpTool]:
         pytest.fail("async_get_tools should not run when chat is disabled")
 
     monkeypatch.setattr(chat_pipeline, "classify_query", fail_classify)
@@ -1216,7 +1216,7 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
         )
     ]
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("error", "chat_disabled")]
+    assert turn.finished == [("refused", "chat_disabled")]
 
 
 # The serialized frames of a complete turn whose stubs also report a thought
