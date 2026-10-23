@@ -23,8 +23,10 @@ Run all commands from the `narratives/` directory unless noted otherwise.
 
 ### Required tools
 
-- **Node.js 24** (pinned in `.nvmrc`) and **pnpm** (pinned via `packageManager`
-  in `package.json`).
+- **Node.js 24.22.1 or later 24.x** (pinned in `.nvmrc`) and **pnpm** (pinned
+  via `packageManager` in `package.json`). `.npmrc` sets `engine-strict=true`,
+  so `pnpm install` fails on a Node.js release outside the `engines` range in
+  `package.json` rather than only warning.
 - **Python 3.14** and **[`uv`](https://docs.astral.sh/uv/)**. Python
   dependencies are declared in `agent/pyproject.toml` and locked in
   `agent/uv.lock`.

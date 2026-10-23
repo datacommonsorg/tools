@@ -49,7 +49,7 @@ Run all deployment commands from the `narratives/` directory.
 | Google Cloud project | Billing must be enabled |
 | `gcloud` CLI | Authenticate both user credentials (`gcloud auth login`) and Application Default Credentials (`gcloud auth application-default login`) for Terraform |
 | `terraform`, `pnpm`, `python3`, `uv` | Required on `PATH` (container images build remotely in Cloud Build; local Docker is not required) |
-| Node.js 24 | Compiles the React UI (`nvm use`) |
+| Node.js 24.22.1 or later 24.x | Compiles the React UI (`nvm use`) |
 | [Data Commons API key](https://apikeys.datacommons.org) | Stored in Secret Manager during bootstrap |
 | [Gemini API key](https://aistudio.google.com) | Stored in Secret Manager during bootstrap |
 
