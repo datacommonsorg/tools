@@ -57,7 +57,7 @@ REQUIRED_TOOLS: frozenset[str] = (
     _SEARCH_TOOLS | _OBSERVATION_TOOLS | {TOOL_GET_VARIABLE_METADATA}
 )
 
-McpSupport = Literal["supported", "unsupported", "unknown"]
+type McpSupport = Literal["supported", "unsupported", "unknown"]
 
 
 @dataclass(frozen=True)
