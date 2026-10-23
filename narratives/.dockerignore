@@ -25,9 +25,16 @@ agent/*_test.py
 agent/**/*_test.py
 agent/tests/
 deploy/*_test.py
+ui/src/**/*.test.ts
+ui/src/**/*.test.tsx
 
-# Deployment state, Terraform working directories, and local env files.
+# Non-container documentation, schemas, scripts, and deployment state.
+.git/
 .build/
+config/instance.env
+docs/
+schemas/
+scripts/
 deploy/terraform-custom-datacommons/**/.terraform*/
 deploy/terraform-custom-datacommons/*.tfvars
 .env

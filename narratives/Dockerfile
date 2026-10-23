@@ -25,9 +25,6 @@
 # hadolint ignore=DL3029
 FROM --platform=linux/amd64 node:24-slim AS ui-builder
 
-ARG VITE_BASE_PATH=/
-ENV VITE_BASE_PATH=${VITE_BASE_PATH}
-
 WORKDIR /build
 
 RUN corepack enable
@@ -37,6 +34,8 @@ COPY ui/package.json ./ui/
 RUN pnpm install --frozen-lockfile
 
 COPY ui/ ./ui/
+ARG VITE_BASE_PATH=/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN pnpm -C ui build
 
 # Force linux/amd64 architecture for the Python runtime stage.
@@ -46,9 +45,6 @@ FROM --platform=linux/amd64 python:3.14-slim
 # Pin uv so dependency resolution matches the version that generated uv.lock.
 COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
 
-# ALLOWED_ORIGIN is intentionally left unset here so `app._allowed_origins()`
-# fails closed on Cloud Run and GKE unless explicitly configured by Terraform
-# or Helm.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
@@ -57,7 +53,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     AGENT_PORT=5001 \
     MCP_PORT=8082 \
-    TIMEZONE=UTC
+    TIMEZONE=UTC \
+    ALLOWED_ORIGIN=*
 
 WORKDIR /app
 

@@ -1,7 +1,8 @@
 # Cloud Build pipeline — validation on every pull request.
 #
 # Trigger: pull_request opened|synchronize against the main branch.
-# Filtered to paths: config/**, deploy/**, agent/**, cloudbuild/**.
+# Filtered to paths: config/**, defaults/**, deploy/**, agent/**, ui/**,
+#                    Dockerfile, cloudbuild/**.
 #
 # Validates without pushing or deploying.
 
@@ -65,7 +66,7 @@ steps:
       - '-c'
       - |
         set -e
-        docker buildx build --platform linux/amd64 -t agent-pr:$SHORT_SHA .
+        docker build -t agent-pr:$SHORT_SHA .
         ARCH=$$(docker inspect --format '{{.Architecture}}' agent-pr:$SHORT_SHA)
         if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi
 

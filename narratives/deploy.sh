@@ -394,7 +394,7 @@ fi
 log_success "Resolved Container Images:"
 echo "  Agent:    $AGENT_IMAGE"
 
-# 7. Create & Seed Configuration Bucket (Skipped in --code-only mode)
+# 6. Create & Seed Configuration Bucket (Skipped in --code-only mode)
 if [ "$CODE_ONLY" = false ]; then
     if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
         log_info "Creating GCS configuration bucket 'gs://${CONFIG_BUCKET}'..."
@@ -415,7 +415,7 @@ else
     log_info "[Fast-Track] Skipping config bucket synchronization."
 fi
 
-# 8. Generate tfvars configuration
+# 7. Generate tfvars configuration
 TFVARS_FILE="deploy/terraform-custom-datacommons/${INSTANCE}.tfvars"
 log_info "Generating Terraform variable overrides file: $TFVARS_FILE"
 
@@ -474,7 +474,7 @@ PY
 
 log_success "tfvars file generated cleanly."
 
-# 9. Run Terraform Pipeline
+# 8. Run Terraform Pipeline
 cd deploy/terraform-custom-datacommons/modules
 
 # Every instance shares this one module directory, and each deploy points it at
@@ -547,7 +547,7 @@ terraform apply -auto-approve -var-file="../${INSTANCE}.tfvars"
 SERVICE_URL=$(terraform output -raw service_url)
 cd ../../..
 
-# 10. Run Verification Smoke Tests
+# 9. Run Verification Smoke Tests
 if [ "$CODE_ONLY" = false ]; then
     SMOKE_WARMUP=60
 
