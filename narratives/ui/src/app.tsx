@@ -61,9 +61,8 @@ export function App() {
 
 /**
  * Switching tabs (Data Agent ↔ Metrics) should land the user on a
- * fresh Data Agent surface, not the previous conversation, so the turns are
- * dropped on the way out. Skip when streaming so a tab-bounce mid answer
- * doesn't orphan the in-flight turn.
+ * fresh Data Agent surface, not the previous conversation, so the chat and
+ * any answer still streaming are dropped on the way out.
  */
 function ChatResetOnTabChange({ route }: { route: string }) {
   const { turns, isStreaming, newChat } = useChatSession();
@@ -73,7 +72,7 @@ function ChatResetOnTabChange({ route }: { route: string }) {
     prevRoute.current = route;
     // Scrolling is managed on the page level, so each view starts at its top.
     window.scrollTo(0, 0);
-    if (turns.length > 0 && !isStreaming) {
+    if (turns.length > 0 || isStreaming) {
       newChat();
     }
   }, [route, turns.length, isStreaming, newChat]);
