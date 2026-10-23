@@ -178,7 +178,7 @@ automatically reference the existing secrets.
 | Update configuration only (`branding.json`, `agent-config.json`, `prompts/`) | `./deploy.sh --config-only --restart` |
 | Rebuild and deploy committed code changes (`agent/` and `ui/`) | `./deploy.sh --agent-only` |
 | Apply Terraform infrastructure changes only | `./deploy.sh --infra-only` |
-| Deploy when the state holds the service under an old name (replaces it, and its URL changes) | `./deploy.sh --accept-service-rename` |
+| Deploy over a renamed service (its URL changes) | `./deploy.sh --accept-service-rename` |
 | Tear down all Terraform-managed resources | `./deploy.sh --destroy` |
 
 ## Step 4: Verify the deployment
@@ -373,11 +373,19 @@ API keys have not been initialized for this instance yet. Run
 `DC_API_KEY="..." GEMINI_API_KEY="..." ./deploy.sh --bootstrap-secrets` (see
 [Step 2: Bootstrap secrets](#step-2-bootstrap-secrets)).
 
-**`Refusing to apply: the state loaded for 'x' describes another instance`**
+**`Refusing to apply: the state loaded describes a different deployment`**
 
 The remote Terraform state prefix belongs to a different deployment. Verify that
 `INSTANCE` in `config/instance.env` matches the intended environment before
 re-running `./deploy.sh`.
+
+**`Refusing to apply: it DESTROYS the service above and its URL`**
+
+The state holds this deployment's service under the name the module used
+before, `<instance>-datacommons`. Applying replaces it with `<instance>-app`,
+and the service URL changes. Run `./deploy.sh --plan` to see the plan, then
+re-run with `./deploy.sh --accept-service-rename` once the new URL is
+acceptable.
 
 **Changes to `branding.json`, `agent-config.json`, or `prompts/` do not appear**
 

@@ -50,7 +50,7 @@ c1() {
     local code
     code=$(curl_cmd -sS -o "$TMP/home.html" -w '%{http_code}' "$URL/")
     [ "$code" = "200" ] || { echo "homepage HTTP $code"; return 1; }
-    # Unclosed: the page ships `<title id="theme-title">`.
+    # No closing `>`: the page ships `<title id="theme-title">`.
     grep -q '<title' "$TMP/home.html" || { echo "no <title>"; return 1; }
     echo "homepage 200"
 }

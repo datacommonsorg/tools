@@ -41,11 +41,14 @@ run_destroy() {
     # The same guard the apply path uses: never destroy resources belonging to
     # another deployment. A renamed service is this deployment's own, and a
     # teardown removes it either way.
-    local STATE_CHECK=0
-    # `|| true` so the status comes from the check alone; see deploy.sh.
-    (terraform show -json 2>/dev/null || true) \
-        | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
-    if [[ "$STATE_CHECK" -ne 0 && "$STATE_CHECK" -ne "$STATE_SERVICE_RENAMED" ]]; then
+    local state_json
+    if ! state_json=$(terraform show -json); then
+        log_error "Could not read the Terraform state for '${INSTANCE}'; nothing was destroyed."
+        return 1
+    fi
+    local state_check=0
+    python3 ../../../deploy/check_state_owner.py "$INSTANCE" <<<"$state_json" || state_check=$?
+    if [[ "$state_check" -ne 0 && "$state_check" -ne "$STATE_SERVICE_RENAMED" ]]; then
         log_error "Refusing to destroy: the loaded state describes a different deployment."
         return 1
     fi

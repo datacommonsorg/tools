@@ -548,11 +548,12 @@ terraform init \
 # INSTANCE renamed after a deploy. Either loads state describing resources named
 # for a different deployment, and applying would rename them -- which Terraform
 # does by destroying and recreating.
+if ! STATE_JSON=$(terraform show -json); then
+    log_error "Could not read the Terraform state for '${INSTANCE}'; nothing was applied."
+    exit 1
+fi
 STATE_CHECK=0
-# `|| true` so the status is the check's own: under `pipefail` a failing
-# `terraform show` would set 1 here, which means "another deployment".
-(terraform show -json 2>/dev/null || true) \
-    | python3 ../../../deploy/check_state_owner.py "$INSTANCE" || STATE_CHECK=$?
+python3 ../../../deploy/check_state_owner.py "$INSTANCE" <<<"$STATE_JSON" || STATE_CHECK=$?
 if [[ "$STATE_CHECK" -eq "$STATE_SERVICE_RENAMED" ]]; then
     # This deployment's own service, under a name the module has changed.
     if [[ "$PLAN_ONLY" == "true" ]]; then

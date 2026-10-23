@@ -13,7 +13,7 @@
 # implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-"""Refuses to apply when the loaded Terraform state belongs to another instance.
+"""Checks that the loaded Terraform state belongs to this deployment.
 
     terraform show -json | python3 deploy/check_state_owner.py <instance>
 
@@ -41,8 +41,8 @@ EXIT_OK = 0
 EXIT_FOREIGN_STATE = 1
 # The command was called without an instance.
 EXIT_USAGE = 2
-# The state is this deployment's, but holds a service under a name the module
-# has since changed. Applying replaces that service, and its URL.
+# The state holds this deployment's service under an old name; applying
+# replaces it and its URL. deploy.sh calls it STATE_SERVICE_RENAMED.
 EXIT_SERVICE_RENAMED = 3
 
 # Resources whose name is always "<instance>-<suffix>". These are what the
@@ -81,9 +81,16 @@ def find_superseded_services(
 ) -> list[tuple[str, str]]:
     """Returns this deployment's services under a name no longer built.
 
-    Each is an (address, name) pair. `find_foreign_resources` passes them,
-    since they are this instance's. An apply replaces them, and a Cloud Run
-    URL follows the service name.
+    `find_foreign_resources` does not report them, since they are this
+    instance's. An apply replaces them, and a Cloud Run URL follows the
+    service name.
+
+    Args:
+        state: The parsed `terraform show -json` output.
+        instance: The name of the deployment being applied.
+
+    Returns:
+        An (address, name) pair for each such service.
     """
     found: list[tuple[str, str]] = []
     for resource in _list_managed_resources(state):
@@ -104,7 +111,12 @@ def find_foreign_resources(
 ) -> list[tuple[str, str, str]]:
     """Returns the resources named for a different deployment.
 
-    Each is an (address, owner, name) triple.
+    Args:
+        state: The parsed `terraform show -json` output.
+        instance: The name of the deployment being applied.
+
+    Returns:
+        An (address, owner, name) triple for each such resource.
     """
     found: list[tuple[str, str, str]] = []
     for resource in _list_managed_resources(state):
@@ -126,17 +138,20 @@ def find_foreign_resources(
 def main(argv: Sequence[str]) -> int:
     """Checks the state on stdin against `argv[1]` and returns the status.
 
-    Problems are reported on stderr. The status is one of the `EXIT_*`
-    constants.
+    Args:
+        argv: The script name and the deployment name.
+
+    Returns:
+        One of the `EXIT_*` constants. Problems are reported on stderr.
     """
-    if len(argv) < 2:
+    if len(argv) != 2:
         print(f"usage: {argv[0]} <instance>", file=sys.stderr)
         return EXIT_USAGE
 
     instance = argv[1]
     state_json = sys.stdin.read().strip()
     if not state_json:
-        return EXIT_OK  # no state yet: a first deploy, nothing to protect
+        return EXIT_OK  # empty input: nothing to check
     try:
         state = json.loads(state_json)
     except ValueError:
