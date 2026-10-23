@@ -45,23 +45,22 @@ const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
  */
 export function DataAgent() {
   const [query, setQuery] = useState("");
-  // From the Context (ChatSessionProvider in app.tsx), which outlives this
-  // surface. Nothing is stored, so a refresh starts an empty chat.
-  const { turns, isStreaming, error, send, stop } = useChatSession();
+  const { turns, isStreaming, send, stop } = useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
   const promptRef = useRef<HTMLDivElement>(null);
-  const showConversation = turns.length > 0 || isStreaming;
+  const showConversation = turns.length > 0;
+  // New chat leaves the conversation, and the unsent draft goes with it.
+  const [hadConversation, setHadConversation] = useState(showConversation);
+  if (showConversation !== hadConversation) {
+    setHadConversation(showConversation);
+    if (!showConversation) setQuery("");
+  }
   // Track the turn count we last reacted to so we only scroll when a NEW
   // turn is added (e.g. follow-up question click) — not on every re-render
   // caused by streaming text chunks arriving.
   const prevTurnsLength = useRef(turns.length);
-  // New chat empties the turns, and the unsent draft goes with them.
-  if (turns.length < prevTurnsLength.current) {
-    prevTurnsLength.current = turns.length;
-    setQuery("");
-  }
 
   // `override` lets a caller (e.g. a suggestion chip in InitialView) submit
   // a message directly without first round-tripping through the `query`
@@ -176,13 +175,6 @@ export function DataAgent() {
             onAsk={(question) => send(question)}
           />
         ))}
-        {error && turns.length === 0 && (
-          <div className={COLUMN}>
-            <div className="w-fit px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large">
-              {error}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Sticky follow-up input; full-width background hides content behind it. */}
