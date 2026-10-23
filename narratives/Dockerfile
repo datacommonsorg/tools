@@ -46,6 +46,9 @@ FROM --platform=linux/amd64 python:3.14-slim
 # Pin uv so dependency resolution matches the version that generated uv.lock.
 COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
 
+# ALLOWED_ORIGIN is intentionally left unset here so `app._allowed_origins()`
+# fails closed on Cloud Run and GKE unless explicitly configured by Terraform
+# or Helm.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
