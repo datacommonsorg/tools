@@ -47,16 +47,17 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
-    `config_model.py`, `gcp_auth.py`, `telemetry.py`, `server/`,
-    `workflows/`, `mcp/`, `gemini/`).
+    `config_model.py`, `gcp_auth.py`, `json_value.py`, `telemetry.py`,
+    `server/`, `workflows/`, `mcp/`, `gemini/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
       admission pre-filter, query classification, and pattern guidance
       (`prefilter.py`, `classify.py`, `pattern_guidance.py`), MCP tool loop
       (`mcp_loop.py`), chart configuration (`chart_config.py`), follow-up
-      generation (`follow_up.py`), user-visible messages (`messages.py`), and
-      signed transcripts (`transcript.py`).
+      generation (`follow_up.py`), user-visible messages (`messages.py`), the
+      typed SSE frames the agent loop sends (`sse_frames.py`), and signed
+      transcripts (`transcript.py`).
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
@@ -65,13 +66,17 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       `AgentConfig.resolve_role_config`); the workflows read configuration
       from it.
     - `dev.py` — local development server (`uv run narratives-agent-dev`).
+    - `json_value.py`: the `JsonValue` and `JsonObject` aliases for data
+      that is JSON by nature, such as MCP tool arguments and results.
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
-- `scripts/` — build-time staging of `ui/dist/` into `agent/static/` and
-  `defaults/` into `agent/defaults/` (`stage_static.mjs`).
+- `Dockerfile` — multi-stage container build (React UI builder + Python
+  runtime).
+- `scripts/` — local non-container staging of `ui/dist/` into `agent/static/`
+  and `defaults/` into `agent/defaults/` (`stage_static.mjs`).
 - `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh` and its modes
   (`deploy/modes/`), `deploy/smoke.sh`, and Cloud Build pipelines.

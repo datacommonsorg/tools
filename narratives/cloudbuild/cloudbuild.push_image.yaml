@@ -23,30 +23,17 @@ substitutions:
   _BASE_PATH: /narratives/
 
 steps:
-  # 1. Compile the React SPA with VITE_BASE_PATH=/narratives/ and stage
-  #    ui/dist/ into agent/static/ and defaults/ into agent/defaults/.
-  - id: build-ui-and-stage
-    name: node:24
+  # 1. Build and push the multi-stage container image to datcom-ci.
+  - id: push-narratives-image
+    name: gcr.io/cloud-builders/docker
     dir: narratives
     entrypoint: bash
     args:
       - -c
       - |
         set -euo pipefail
-        corepack enable
-        pnpm install --frozen-lockfile
-        VITE_BASE_PATH="${_BASE_PATH}" pnpm build
-
-  # 2. Build and push the container image to datcom-ci.
-  - id: push-narratives-image
-    name: gcr.io/cloud-builders/docker
-    dir: narratives/agent
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        set -euo pipefail
         docker build \
+          --build-arg "VITE_BASE_PATH=${_BASE_PATH}" \
           -t "gcr.io/$PROJECT_ID/datacommons-narratives:$SHORT_SHA" \
           -t "gcr.io/$PROJECT_ID/datacommons-narratives:latest" \
           -t "gcr.io/$PROJECT_ID/datacommons-narratives:cicd" \
@@ -54,9 +41,8 @@ steps:
         docker push "gcr.io/$PROJECT_ID/datacommons-narratives:$SHORT_SHA"
         docker push "gcr.io/$PROJECT_ID/datacommons-narratives:latest"
         docker push "gcr.io/$PROJECT_ID/datacommons-narratives:cicd"
-    waitFor: ["build-ui-and-stage"]
 
-  # 3. Publish a Pub/Sub message to notify datacommons-website Cloud Deploy
+  # 2. Publish a Pub/Sub message to notify datacommons-website Cloud Deploy
   #    that a new narratives image has been pushed.
   - id: publish-image-pushed
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim

@@ -33,7 +33,6 @@ produce the document are tested in `config_test.py`.
 """
 
 import logging
-from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -52,6 +51,8 @@ from narratives_agent.config_model import (
     ThinkingLevels,
     parse_agent_config,
 )
+
+_ABSENT = object()
 
 
 def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
@@ -72,8 +73,15 @@ def test_an_empty_document_gives_every_default() -> None:
     parsed = parse_agent_config({})
 
     assert parsed == AgentConfig()
-    assert parsed.gemini.discovery_model == DEFAULT_GEMINI_MODEL
-    assert parsed.gemini.classify_model == DEFAULT_GEMINI_CLASSIFY_MODEL
+    assert parsed.gemini == GeminiConfig(
+        classify_model=DEFAULT_GEMINI_CLASSIFY_MODEL,
+        discovery_model=DEFAULT_GEMINI_MODEL,
+        synthesis_model=DEFAULT_GEMINI_MODEL,
+        chart_config_model=DEFAULT_GEMINI_MODEL,
+        chart_validation_model=DEFAULT_GEMINI_MODEL,
+        follow_up_model=DEFAULT_GEMINI_MODEL,
+        compaction_model=DEFAULT_GEMINI_MODEL,
+    )
     assert parsed.mcp == McpConfig(server_url="", enabled=True)
     assert parsed.thinking == ThinkingLevels(
         discovery_level=types.ThinkingLevel.MEDIUM,
@@ -93,8 +101,13 @@ def test_configured_values_are_carried_through() -> None:
     parsed = parse_agent_config(
         {
             "gemini": {
-                "discovery_model": " gemini-3-pro ",
                 "classify_model": " gemini-3.8-flash ",
+                "discovery_model": " gemini-3-pro ",
+                "synthesis_model": " gemini-3-pro-synthesis ",
+                "chart_config_model": " gemini-3-flash-charts ",
+                "chart_validation_model": " gemini-3-flash-val ",
+                "follow_up_model": " gemini-3-flash-followup ",
+                "compaction_model": " gemini-3-flash-compact ",
                 "api_key": " test-key ",
             },
             "mcp": {"server_url": " https://mcp.example ", "enabled": False},
@@ -114,8 +127,13 @@ def test_configured_values_are_carried_through() -> None:
 
     assert parsed == AgentConfig(
         gemini=GeminiConfig(
-            discovery_model="gemini-3-pro",
             classify_model="gemini-3.8-flash",
+            discovery_model="gemini-3-pro",
+            synthesis_model="gemini-3-pro-synthesis",
+            chart_config_model="gemini-3-flash-charts",
+            chart_validation_model="gemini-3-flash-val",
+            follow_up_model="gemini-3-flash-followup",
+            compaction_model="gemini-3-flash-compact",
             api_key="test-key",
         ),
         mcp=McpConfig(server_url="https://mcp.example", enabled=False),
@@ -133,39 +151,42 @@ def test_configured_values_are_carried_through() -> None:
     )
 
 
+@pytest.mark.parametrize("role", list(GeminiRole), ids=lambda role: role.value)
 @pytest.mark.parametrize(
-    ("gemini", "warned"),
+    ("value", "warned"),
     [
-        ({}, False),
-        ({"discovery_model": None, "classify_model": None}, True),
-        ({"discovery_model": "", "classify_model": ""}, True),
-        ({"discovery_model": "   ", "classify_model": "   "}, True),
-        ({"discovery_model": 7, "classify_model": ["gemini"]}, True),
+        (_ABSENT, False),
+        (None, True),
+        ("", True),
+        ("   ", True),
+        (123, True),
     ],
     ids=["absent", "null", "empty", "whitespace", "wrong type"],
 )
 def test_an_unusable_model_name_gives_the_default(
     caplog: pytest.LogCaptureFixture,
-    gemini: dict[str, Any],
+    role: GeminiRole,
+    value: object,
     warned: bool,
 ) -> None:
     # Test: Model-name fallback in `parse_agent_config`.
-    # Situation: `gemini.discovery_model` and `gemini.classify_model` are
-    #   absent, null, empty, whitespace-only, or not strings.
-    # Expectation: Both models are the defaults. An absent name is not
-    #   reported; every other case logs one warning per model naming its key.
+    # Situation: `gemini.<role>_model` is absent, null, empty, whitespace-only,
+    #   or not a string.
+    # Expectation: The role's model falls back to its default on `GeminiConfig`.
+    #   An absent key is not reported; every other case logs one warning naming
+    #   `gemini.<role>_model`.
+    key = f"{role.value}_model"
+    gemini: dict[str, Any] = {} if value is _ABSENT else {key: value}
     with caplog.at_level(logging.WARNING):
         parsed = parse_agent_config({"gemini": gemini})
 
-    assert parsed.gemini.discovery_model == DEFAULT_GEMINI_MODEL
-    assert parsed.gemini.classify_model == DEFAULT_GEMINI_CLASSIFY_MODEL
+    default_model = getattr(GeminiConfig, key)
+    assert getattr(parsed.gemini, key) == default_model
+    assert parsed.resolve_role_config(role).model == default_model
     warnings = _warnings(caplog)
     if warned:
-        assert len(warnings) == 2
-        assert any(
-            "'gemini.discovery_model'" in message for message in warnings
-        )
-        assert any("'gemini.classify_model'" in message for message in warnings)
+        assert len(warnings) == 1
+        assert f"'gemini.{key}'" in warnings[0]
     else:
         assert warnings == []
 
@@ -301,8 +322,8 @@ def test_an_unrecognized_thinking_level_gives_the_default(
     # Test: Rejection of thinking levels outside the schema's enum in
     #   `parse_agent_config`.
     # Situation: `thinking.discovery_level` and `thinking.synthesis_level` are
-    #   empty, whitespace, `"minimal"` (which the default
-    #   `gemini.discovery_model` rejects), or an unknown string.
+    #   empty, whitespace, `"minimal"` (which `DEFAULT_GEMINI_MODEL` rejects),
+    #   or an unknown string.
     # Expectation: Both fields fall back to `types.ThinkingLevel.MEDIUM`, and
     #   one warning per field names its dotted key.
     with caplog.at_level(logging.WARNING):
@@ -368,10 +389,12 @@ def test_a_default_configuration_resolves_each_role_to_its_defaults(
     # Test: `AgentConfig.resolve_role_config` without configured overrides.
     # Situation: The configuration is `AgentConfig()`, and every `GeminiRole`
     #   is resolved.
-    # Expectation: Each role resolves to its default model, temperature, and
-    #   thinking level; the classifier is the only role on the classify model
-    #   and the only role at `MINIMAL`.
-    assert AgentConfig().resolve_role_config(role) == expected
+    # Expectation: Each role resolves to its default model on `GeminiConfig`,
+    #   temperature, and thinking level; the classifier is the only role on
+    #   the classify model and the only role at `MINIMAL`.
+    resolved = AgentConfig().resolve_role_config(role)
+    assert resolved == expected
+    assert resolved.model == getattr(GeminiConfig, f"{role.value}_model")
 
 
 @pytest.mark.parametrize("role", list(GeminiRole), ids=lambda role: role.value)
@@ -387,45 +410,76 @@ def test_every_role_has_a_temperature_and_a_thinking_level(
     assert isinstance(AgentConfig().resolve_role_config(role), RoleConfig)
 
 
+@pytest.mark.parametrize("role", list(GeminiRole), ids=lambda role: role.value)
+def test_each_role_model_is_configured_independently(
+    role: GeminiRole,
+) -> None:
+    # Test: Independent per-role model selection in `parse_agent_config` and
+    #   `AgentConfig.resolve_role_config`.
+    # Situation: Only `gemini.<role>_model` is set in the configuration
+    #   document.
+    # Expectation: `role` resolves to `"custom-model-v1"`, and every other
+    #   `GeminiRole` resolves to its default model on `GeminiConfig`.
+    config = parse_agent_config(
+        {"gemini": {f"{role.value}_model": "custom-model-v1"}}
+    )
+
+    assert config.resolve_role_config(role).model == "custom-model-v1"
+    for other in GeminiRole:
+        if other is not role:
+            assert config.resolve_role_config(other).model == getattr(
+                GeminiConfig, f"{other.value}_model"
+            )
+
+
 def test_configured_values_apply_to_the_roles_they_govern() -> None:
     # Test: `AgentConfig.resolve_role_config` with configured models and levels.
-    # Situation: `gemini.classify_model`, `gemini.discovery_model`,
-    #   `thinking.discovery_level`, and `thinking.synthesis_level` are all set.
-    # Expectation: The classify model reaches `CLASSIFY` alone and the
-    #   discovery model every other role; `discovery_level` reaches `DISCOVERY`
-    #   and `synthesis_level` reaches `SYNTHESIS`, while the fixed thinking
-    #   levels of the other roles and every temperature are unchanged. The
-    #   classify model accepts `MINIMAL`, so the clamp leaves that level in
-    #   place.
+    # Situation: Every `gemini.<role>_model` field, `thinking.discovery_level`,
+    #   and `thinking.synthesis_level` are set to distinct values.
+    # Expectation: Each role receives its own configured model;
+    #   `discovery_level` reaches `DISCOVERY` and `synthesis_level` reaches
+    #   `SYNTHESIS`, while the fixed thinking levels of the other roles and
+    #   every temperature are unchanged. The classify model accepts `MINIMAL`,
+    #   so the clamp leaves that level in place.
     config = AgentConfig(
         gemini=GeminiConfig(
-            discovery_model="gemini-custom", classify_model="gemini-3.6-flash"
+            classify_model="gemini-3.6-flash",
+            discovery_model="gemini-discovery-custom",
+            synthesis_model="gemini-synthesis-custom",
+            chart_config_model="gemini-chart-config-custom",
+            chart_validation_model="gemini-chart-validation-custom",
+            follow_up_model="gemini-follow-up-custom",
+            compaction_model="gemini-compaction-custom",
         ),
         thinking=ThinkingLevels(
             discovery_level=types.ThinkingLevel.HIGH,
             synthesis_level=types.ThinkingLevel.LOW,
         ),
     )
-    defaults = AgentConfig()
 
     assert config.resolve_role_config(GeminiRole.CLASSIFY) == RoleConfig(
         "gemini-3.6-flash", 0.0, types.ThinkingLevel.MINIMAL
     )
     assert config.resolve_role_config(GeminiRole.DISCOVERY) == RoleConfig(
-        "gemini-custom", 0.2, types.ThinkingLevel.HIGH
+        "gemini-discovery-custom", 0.2, types.ThinkingLevel.HIGH
     )
     assert config.resolve_role_config(GeminiRole.SYNTHESIS) == RoleConfig(
-        "gemini-custom", 0.3, types.ThinkingLevel.LOW
+        "gemini-synthesis-custom", 0.3, types.ThinkingLevel.LOW
     )
-    for role in (
-        GeminiRole.CHART_CONFIG,
-        GeminiRole.CHART_VALIDATION,
-        GeminiRole.FOLLOW_UP,
-        GeminiRole.COMPACTION,
-    ):
-        assert config.resolve_role_config(role) == replace(
-            defaults.resolve_role_config(role), model="gemini-custom"
-        )
+    assert config.resolve_role_config(GeminiRole.CHART_CONFIG) == RoleConfig(
+        "gemini-chart-config-custom", 0.2, types.ThinkingLevel.LOW
+    )
+    assert config.resolve_role_config(
+        GeminiRole.CHART_VALIDATION
+    ) == RoleConfig(
+        "gemini-chart-validation-custom", 0.0, types.ThinkingLevel.LOW
+    )
+    assert config.resolve_role_config(GeminiRole.FOLLOW_UP) == RoleConfig(
+        "gemini-follow-up-custom", 0.8, types.ThinkingLevel.LOW
+    )
+    assert config.resolve_role_config(GeminiRole.COMPACTION) == RoleConfig(
+        "gemini-compaction-custom", 0.1, types.ThinkingLevel.LOW
+    )
 
 
 @pytest.mark.parametrize(
@@ -476,14 +530,18 @@ def test_the_classify_level_is_raised_to_what_the_model_accepts(
 
 def test_the_clamp_never_lowers_a_level() -> None:
     # Test: The thinking-level clamp on roles already at or above the floor.
-    # Situation: `gemini.discovery_model` accepts `MINIMAL`,
-    #   `thinking.discovery_level` is `HIGH`, and `thinking.synthesis_level` is
-    #   `LOW`.
+    # Situation: `gemini.discovery_model`, `gemini.synthesis_model`, and
+    #   `gemini.compaction_model` accept `MINIMAL`, `thinking.discovery_level`
+    #   is `HIGH`, and `thinking.synthesis_level` is `LOW`.
     # Expectation: The configured levels and the fixed `LOW` of the
     #   lightweight roles are unchanged; the clamp only raises a level that
     #   is below the model's floor.
     config = AgentConfig(
-        gemini=GeminiConfig(discovery_model="gemini-3.6-flash"),
+        gemini=GeminiConfig(
+            discovery_model="gemini-3.6-flash",
+            synthesis_model="gemini-3.6-flash",
+            compaction_model="gemini-3.6-flash",
+        ),
         thinking=ThinkingLevels(
             discovery_level=types.ThinkingLevel.HIGH,
             synthesis_level=types.ThinkingLevel.LOW,
