@@ -18,10 +18,10 @@
  * @fileoverview Renders the desktop left rail: the new-chat control.
  */
 
-import { useHashRoute } from "../hooks/use_hash_route";
-import { useChatSession } from "../hooks/chat_session_context";
-import { NewChatIcon } from "./icons";
-import { Tooltip } from "./tooltip";
+import { useChatSession } from '@/src/hooks/chat_session_context';
+import { useHashRoute } from '@/src/hooks/use_hash_route';
+import { NewChatIcon } from './icons';
+import { Tooltip } from './tooltip';
 
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)
@@ -32,7 +32,7 @@ import { Tooltip } from "./tooltip";
 export function Sidebar() {
   const [route] = useHashRoute();
   const { newChat } = useChatSession();
-  const isAgent = route === "" || route === "agent";
+  const isAgent = route === '' || route === 'agent';
 
   return (
     <aside className="hidden lg:flex sticky top-0 w-[72px] h-dvh bg-surface-blue flex-col items-center py-4 gap-4 shrink-0">

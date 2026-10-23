@@ -20,18 +20,18 @@
 
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
-} from "react";
+} from 'react';
 import {
-  useSseChat,
   type ChatTurn,
   type UseSseChatResult,
-} from "./use_sse_chat";
+  useSseChat,
+} from './use_sse_chat';
 
 /**
  * The conversation is held in memory and never written to storage.
@@ -41,11 +41,11 @@ import {
  */
 
 /** Keys earlier builds wrote the transcript to. */
-const LEGACY_STORAGE_KEYS = ["cdc:chat:v1", "cdc:chat:v2"];
+const LEGACY_STORAGE_KEYS = ['cdc:chat:v1', 'cdc:chat:v2'];
 
 /** Deletes a transcript an earlier build saved; nothing reads it now. */
 function clearStoredChats(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === 'undefined') return;
   try {
     for (const key of LEGACY_STORAGE_KEYS) {
       window.localStorage.removeItem(key);
@@ -72,8 +72,9 @@ export interface ChatSessionContextValue extends UseSseChatResult {
  * Exported so a test can render a consumer against a fixed chat state. The
  * application always reaches it through ChatSessionProvider.
  */
-export const ChatSessionContext =
-  createContext<ChatSessionContextValue | null>(null);
+export const ChatSessionContext = createContext<ChatSessionContextValue | null>(
+  null,
+);
 
 /**
  * Owns the chat turns and the single streaming machine, exposing both to the
@@ -135,9 +136,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 export function useChatSession(): ChatSessionContextValue {
   const ctx = useContext(ChatSessionContext);
   if (!ctx) {
-    throw new Error(
-      "useChatSession must be used inside a ChatSessionProvider",
-    );
+    throw new Error('useChatSession must be used inside a ChatSessionProvider');
   }
   return ctx;
 }
