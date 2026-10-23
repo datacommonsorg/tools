@@ -32,7 +32,22 @@ steps:
           exit 1
         fi
 
-  # 1. Build + push multi-stage application image (React UI + FastAPI agent).
+  # 1. Build and stage React UI.
+  - id: build-ui
+    name: node:24
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        # Stage React UI build (ui is expected at repo root).
+        if [ -d ui ]; then
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+        fi
+
+  # 2. Build + push agent image.
   - id: build-agent
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
@@ -40,6 +55,7 @@ steps:
       - '-c'
       - |
         set -e
+        cd agent
         TAG="$SHORT_SHA"
         IMG="${_AR_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/agent:$$TAG"
         docker buildx build --platform linux/amd64 -t "$$IMG" --push .
