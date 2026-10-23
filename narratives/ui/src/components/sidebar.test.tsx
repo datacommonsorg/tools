@@ -15,29 +15,70 @@
  */
 
 /**
- * @fileoverview Tests for the desktop rail's chat controls.
+ * @fileoverview Tests for the desktop rail's new-chat control.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  renderHook,
+  screen,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  ChatSessionProvider,
+  useChatSession,
+} from '@/src/hooks/chat_session_context';
 import { Sidebar } from './sidebar';
 
-afterEach(cleanup);
+/** Renders the rail inside the same chat session as the hook under test. */
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <ChatSessionProvider>
+    <Sidebar />
+    {children}
+  </ChatSessionProvider>
+);
+
+/** Answers the agent request with a stream that ends straight away. */
+const stubFetch = (): void => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    }),
+  );
+};
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('Sidebar', () => {
-  it('offers a new chat and no chats list', () => {
-    // Test: The controls on the desktop rail.
-    // Situation: The rail renders on the Data Agent route.
-    // Expectation: Only the new-chat control is offered; there is no control
-    //              for a list of saved chats, because chats are not saved.
-    render(
-      <ChatSessionProvider>
-        <Sidebar />
-      </ChatSessionProvider>,
-    );
+  it('clears the conversation when New chat is clicked', async () => {
+    // Test: The new-chat control on the desktop rail.
+    // Situation: One question has been asked, so the chat holds a turn.
+    // Expectation: Clicking the control leaves no turns, and the rail offers
+    //   no list of saved chats to bring the old one back from.
+    stubFetch();
+    const { result } = renderHook(() => useChatSession(), { wrapper });
+    await act(async () => {
+      await result.current.send('What is the population of France?');
+    });
+    expect(result.current.turns).toHaveLength(1);
 
-    expect(screen.getByRole('button', { name: 'Start new chat' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+
+    expect(result.current.turns).toEqual([]);
     expect(
       screen.queryByRole('button', { name: 'Toggle chats list' }),
     ).toBeNull();

@@ -25,9 +25,8 @@ import { Tooltip } from './tooltip';
 
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)
- * so the page layout doesn't jump as the user navigates. Only the "start new
- * chat" pencil is tied to the Agent tab; on every other tab the rail renders
- * empty.
+ * so the page layout doesn't jump as the user navigates. Only the "New chat"
+ * pencil is tied to the Agent tab; on every other tab the rail renders empty.
  */
 export function Sidebar() {
   const [route] = useHashRoute();
@@ -39,10 +38,10 @@ export function Sidebar() {
       {isAgent && (
         /* Clears the conversation on screen and starts an empty one. Chats
            are not saved, so there is nothing to come back to. */
-        <Tooltip label="New Chat" placement="right">
+        <Tooltip label="New chat" placement="right">
           <button
             type="button"
-            aria-label="Start new chat"
+            aria-label="New chat"
             onClick={newChat}
             className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant"
           >
