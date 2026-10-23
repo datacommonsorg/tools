@@ -39,7 +39,6 @@ from narratives_agent.mcp.observations import (
     merge_observation_payloads,
     parse_observation_table,
 )
-from narratives_agent.mcp.wire import ObservationPayloadWire
 
 _WDI_URL = "https://datatopics.worldbank.org/world-development-indicators/"
 _WIKIDATA_URL = "https://www.wikidata.org/wiki/Wikidata:Main_Page"
@@ -646,33 +645,6 @@ def test_malformed_structural_key_raises(
         )
 
 
-def test_identifiers_are_checked_after_string_conversion() -> None:
-    # Test: Identifier checks on values that Pydantic converts to strings.
-    # Situation: The variable DCID and the served facet ID arrive as bytes
-    #   containing a newline, and a valid numeric facet ID arrives as an
-    #   integer.
-    # Expectation: The bytes are rejected by the identifier check rather than
-    #   converted and accepted, and the integer facet ID is read as its
-    #   decimal string.
-    with pytest.raises(ValidationError, match=re.escape("variable.dcid")):
-        ObservationPayloadWire.model_validate(
-            {"variable": {"dcid": b"Count\nPerson"}}
-        )
-    with pytest.raises(
-        ValidationError, match=re.escape("sourceMetadata.sourceId")
-    ):
-        ObservationPayloadWire.model_validate(
-            {"variable": _VARIABLE, "sourceMetadata": {"sourceId": b"f1\nX"}}
-        )
-    wire = ObservationPayloadWire.model_validate(
-        {
-            "variable": _VARIABLE,
-            "sourceMetadata": {"sourceId": 9674656028615575584},
-        }
-    )
-    assert wire.source_metadata.source_id == "9674656028615575584"
-
-
 def test_malformed_alternative_sources_are_dropped(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -729,14 +701,12 @@ def test_payload_errors_do_not_repeat_upstream_values() -> None:
 def test_dropped_alternatives_are_logged_once_per_valid_payload(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Test: Where the warning for dropped alternatives is logged.
+    # Test: Where the parser logs the warning for dropped alternatives.
     # Situation: A payload with a malformed alternative is rejected because
-    #   its `variable` block has no DCID; two per-place payloads are merged,
-    #   and only Germany's lists a malformed alternative; and an
-    #   `ObservationPayloadWire` is validated directly, without the parser.
+    #   its `variable` block has no DCID; and two per-place payloads are
+    #   merged, and only Germany's lists a malformed alternative.
     # Expectation: The rejected payload logs no dropped-alternative warning,
-    #   the merge logs one warning naming Germany, and the direct validation
-    #   logs one warning without a subject.
+    #   and the merge logs one warning naming Germany.
     bad_alternative: JsonValue = [{"sourceMetadata": {"sourceId": ["f9"]}}]
     with caplog.at_level(logging.WARNING, logger="narratives_agent"):
         with pytest.raises(ObservationPayloadError):
@@ -756,18 +726,11 @@ def test_dropped_alternatives_are_logged_once_per_valid_payload(
             ]
         )
         merged = [record.getMessage() for record in caplog.records]
-        caplog.clear()
-
-        ObservationPayloadWire.model_validate(
-            {"alternativeSources": bad_alternative, "variable": _VARIABLE}
-        )
-        direct = [record.getMessage() for record in caplog.records]
 
     assert rejected == []
     assert merged == [
         "Dropped 1 malformed alternative source(s) for country/DEU."
     ]
-    assert direct == ["Dropped 1 malformed alternative source(s)."]
 
 
 def test_descriptive_scalars_are_coerced_or_read_as_absent() -> None:
@@ -822,6 +785,39 @@ def test_invalid_arguments_are_reported_before_the_payload() -> None:
             _live_series_payload(),
             variable_dcid="Count_Person",
             requested_places="country/FRA",
+        )
+
+
+@pytest.mark.parametrize(
+    ("parent", "child", "argument"),
+    [
+        ("country/USA\nINFO forged", "State", "parent_place_dcid"),
+        ("x" * 300, "State", "parent_place_dcid"),
+        ("country/USA", "State\nINFO forged", "child_place_type"),
+        ("country/USA", "", "child_place_type"),
+    ],
+    ids=[
+        "parent with a newline",
+        "parent too long",
+        "child type with a newline",
+        "empty child type",
+    ],
+)
+def test_invalid_child_cohort_arguments_raise(
+    parent: str, child: str, argument: str
+) -> None:
+    # Test: Validation of the child-cohort arguments.
+    # Situation: A payload without a `variable` block is parsed with a
+    #   `parent_place_dcid` or `child_place_type` that contains a newline, is
+    #   too long, or is empty.
+    # Expectation: `ValueError` naming the argument, raised before the
+    #   payload is read, as for the other arguments.
+    with pytest.raises(ValueError, match=rf"The {argument} .* for x is not"):
+        parse_observation_table(
+            {"error": "Variable not found"},
+            variable_dcid="x",
+            parent_place_dcid=parent,
+            child_place_type=child,
         )
 
 

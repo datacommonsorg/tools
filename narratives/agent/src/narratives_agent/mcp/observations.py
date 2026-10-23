@@ -164,10 +164,13 @@ def _columnar_records(
 
 def _read_entity_metadata(
     table: ColumnarTableWire,
-) -> tuple[dict[str, str], list[str]]:
-    """Extracts `(names_by_dcid, ordered_valid_dcids)` from `entityMetadata`."""
-    names: dict[str, str] = {}
-    dcids: list[str] = []
+) -> dict[str, str | None]:
+    """Reads `entityMetadata` into names keyed by DCID, in first-seen order.
+
+    Each valid DCID maps to the first non-empty name given for it, or `None`
+    when no row names it.
+    """
+    names: dict[str, str | None] = {}
     for record in _columnar_records(table):
         raw_dcid = record.get("dcid")
         if not isinstance(raw_dcid, str):
@@ -175,11 +178,11 @@ def _read_entity_metadata(
         dcid = raw_dcid.strip()
         if not is_valid_dcid(dcid):
             continue
-        dcids.append(dcid)
         raw_name = record.get("name")
-        if isinstance(raw_name, str) and raw_name.strip():
-            names.setdefault(dcid, raw_name.strip())
-    return names, dcids
+        name = (raw_name.strip() or None) if isinstance(raw_name, str) else None
+        if names.get(dcid) is None:
+            names[dcid] = name
+    return names
 
 
 def _read_observations(
@@ -247,13 +250,19 @@ def _truncate(
     """
     if max_rows is None or len(observations) <= max_rows:
         return observations, False
+
+    # Group each place's rows, newest first.
     by_place: dict[str, list[_Observation]] = {}
     for item in sorted(observations, key=lambda item: item.date, reverse=True):
         by_place.setdefault(item.place_dcid, []).append(item)
+
+    # Rank 0 holds every place's latest row, rank 1 the next latest, and so on.
     by_rank: dict[int, list[_Observation]] = {}
     for place_rows in by_place.values():
         for rank, item in enumerate(place_rows):
             by_rank.setdefault(rank, []).append(item)
+
+    # Keep whole ranks while the next one fits within `max_rows`.
     kept: list[_Observation] = []
     for rank in sorted(by_rank):
         tier = sorted(by_rank[rank], key=lambda item: item.place_dcid)
@@ -356,24 +365,49 @@ def _select_header(items: Sequence[_PlacePayload]) -> _PlacePayload:
     return with_rows[0] if with_rows else items[0]
 
 
+def _merge_alternative_sources(
+    items: Sequence[_PlacePayload],
+    header: _PlacePayload,
+    other_facets: Sequence[AlternativeSourceWire],
+) -> tuple[AlternativeSourceWire, ...]:
+    """Collects the merged payload's alternatives, one per facet.
+
+    The header's alternatives come first, then the other payloads' in request
+    order, then the facets whose rows were dropped. The header's own facet is
+    excluded. When more than one payload is merged, `placesFoundCount` is
+    removed, because each payload counts coverage for its own place only.
+    """
+    header_facet = header.wire.source_metadata.source_id
+    ordered: list[AlternativeSourceWire] = [*header.wire.alternative_sources]
+    for item in items:
+        if item is not header:
+            ordered.extend(item.wire.alternative_sources)
+    ordered.extend(other_facets)
+
+    keep_counts = len(items) == 1
+    by_facet: dict[str, AlternativeSourceWire] = {}
+    for entry in ordered:
+        facet = entry.source_metadata.source_id
+        if facet and facet != header_facet and facet not in by_facet:
+            by_facet[facet] = (
+                entry
+                if keep_counts
+                else AlternativeSourceWire(
+                    source_metadata=entry.source_metadata
+                )
+            )
+    return tuple(by_facet.values())
+
+
 def merge_observation_payloads(
     payloads: Sequence[tuple[str, Mapping[str, JsonValue]]],
 ) -> ObservationPayloadWire:
     """Combines per-place observation payloads into one columnar payload.
 
-    Takes `sourceMetadata` and `variable` from a header payload: the first
-    payload with rows from the facet that serves the most distinct places,
-    ties going to request order. When no payload with rows names a facet, the
-    header is the first payload with rows, and when none has rows, the first
-    payload. Only rows served by the header's facet are kept, so a multi-place
-    table never blends facets; when the header names no facet, only the
-    header payload's own rows are kept, so two unidentified facets are never
-    blended either. `alternativeSources` are collected across all
-    payloads, together with the facets whose rows were dropped. A `(place,
-    date)` row already kept from an earlier payload is dropped, as is any row
-    for a place other than the one its payload was fetched for. When more than
-    one payload is merged, the alternatives carry no `placesFoundCount`,
-    because each payload counts coverage for its own place only.
+    The merged table keeps the rows of a single facet, the one serving the
+    most places (see `_select_header`), so it never blends sources. The other
+    facets become alternatives. Rows for a place other than the one their
+    payload was fetched for, and repeated `(place, date)` rows, are dropped.
     `entityMetadata` lists each entity once, under the first name any payload
     gives it.
 
@@ -413,12 +447,13 @@ def merge_observation_payloads(
                 f"{item.wire.variable.dcid!r}."
             )
         items.append(item)
-        names, dcids = _read_entity_metadata(item.wire.entity_metadata)
         # An entity listed by several payloads, such as a shared parent, is
         # listed once, under the first name any payload gives it.
-        for dcid in dcids:
+        for dcid, name in _read_entity_metadata(
+            item.wire.entity_metadata
+        ).items():
             if entity_names.get(dcid) is None:
-                entity_names[dcid] = names.get(dcid)
+                entity_names[dcid] = name
     entity_rows: list[JsonValue] = [
         [dcid, name] for dcid, name in entity_names.items()
     ]
@@ -456,27 +491,6 @@ def merge_observation_payloads(
                 AlternativeSourceWire(source_metadata=item.wire.source_metadata)
             )
 
-    ordered_alternatives: list[AlternativeSourceWire] = [
-        *header.wire.alternative_sources
-    ]
-    for item in items:
-        if item is not header:
-            ordered_alternatives.extend(item.wire.alternative_sources)
-    ordered_alternatives.extend(other_facets)
-
-    keep_counts = len(items) == 1
-    by_facet: dict[str, AlternativeSourceWire] = {}
-    for entry in ordered_alternatives:
-        facet = entry.source_metadata.source_id
-        if facet and facet != header_facet and facet not in by_facet:
-            by_facet[facet] = (
-                entry
-                if keep_counts
-                else AlternativeSourceWire(
-                    source_metadata=entry.source_metadata
-                )
-            )
-
     return ObservationPayloadWire(
         variable=header.wire.variable,
         data=ColumnarTableWire(columns=_DATA_COLUMNS, rows=tuple(kept_rows)),
@@ -484,8 +498,66 @@ def merge_observation_payloads(
             columns=_ENTITY_COLUMNS, rows=tuple(entity_rows)
         ),
         source_metadata=header.wire.source_metadata,
-        alternative_sources=tuple(by_facet.values()),
+        alternative_sources=_merge_alternative_sources(
+            items, header, other_facets
+        ),
     )
+
+
+def _validate_parse_args(
+    *,
+    variable_dcid: str,
+    requested_places: Sequence[str],
+    parent_place_dcid: str | None,
+    child_place_type: str | None,
+    date_range: tuple[str, str] | None,
+    max_rows: int | None,
+) -> None:
+    """Checks the arguments of `parse_observation_table`.
+
+    Raises:
+        ValueError: As `parse_observation_table` documents.
+        TypeError: If `requested_places` is a single string.
+    """
+    if not is_valid_dcid(variable_dcid):
+        raise ValueError(f"The variable {variable_dcid!r} is not a valid DCID.")
+    if isinstance(requested_places, str):
+        raise TypeError(
+            f"requested_places for {variable_dcid} must be a sequence of "
+            "DCIDs, not a string."
+        )
+    if max_rows is not None and max_rows < 1:
+        raise ValueError(
+            f"max_rows for {variable_dcid} must be at least 1, not {max_rows}."
+        )
+    for place in requested_places:
+        if not is_valid_dcid(place):
+            raise ValueError(
+                f"The requested place {place!r} for {variable_dcid} is not "
+                "a valid DCID."
+            )
+    if parent_place_dcid is not None and not is_valid_dcid(parent_place_dcid):
+        raise ValueError(
+            f"The parent_place_dcid {parent_place_dcid!r} for {variable_dcid} "
+            "is not a valid DCID."
+        )
+    if child_place_type is not None and not is_valid_dcid(child_place_type):
+        raise ValueError(
+            f"The child_place_type {child_place_type!r} for {variable_dcid} "
+            "is not a valid identifier."
+        )
+    if date_range is not None:
+        for bound in date_range:
+            if not is_valid_observation_date(bound):
+                raise ValueError(
+                    f"The date_range bound {bound!r} for {variable_dcid} is "
+                    "not a year, a year and month, or a full date."
+                )
+        if is_inverted_date_range(*date_range):
+            raise ValueError(
+                f"The date_range {date_range!r} for {variable_dcid} starts "
+                "after it ends."
+            )
 
 
 def parse_observation_table(
@@ -531,43 +603,23 @@ def parse_observation_table(
             facet ID that is not a valid identifier, has a `data` table with
             rows but without the `observationAbout`, `date`, or `value`
             column, or names a variable other than `variable_dcid`.
-        ValueError: If `variable_dcid` or any entry in `requested_places` is
-            not a valid DCID, if a `date_range` bound is not a `YYYY`,
+        ValueError: If `variable_dcid`, `parent_place_dcid`, or any entry in
+            `requested_places` is not a valid DCID, if `child_place_type` is
+            not a valid identifier, if a `date_range` bound is not a `YYYY`,
             `YYYY-MM`, or `YYYY-MM-DD` date, if the `date_range` start falls
             after its end, or if `max_rows` is below 1. The arguments are
             checked before the payload, so an invalid argument is never
             reported as a payload error.
         TypeError: If `requested_places` is a single string.
     """
-    if not is_valid_dcid(variable_dcid):
-        raise ValueError(f"The variable {variable_dcid!r} is not a valid DCID.")
-    if isinstance(requested_places, str):
-        raise TypeError(
-            f"requested_places for {variable_dcid} must be a sequence of "
-            "DCIDs, not a string."
-        )
-    if max_rows is not None and max_rows < 1:
-        raise ValueError(
-            f"max_rows for {variable_dcid} must be at least 1, not {max_rows}."
-        )
-    for place in requested_places:
-        if not is_valid_dcid(place):
-            raise ValueError(
-                f"The requested place {place!r} for {variable_dcid} is not "
-                "a valid DCID."
-            )
-    if date_range is not None:
-        for bound in date_range:
-            if not is_valid_observation_date(bound):
-                raise ValueError(
-                    f"The date_range bound {bound!r} for {variable_dcid} is "
-                    "not a year, a year and month, or a full date."
-                )
-        if is_inverted_date_range(*date_range):
-            raise ValueError(
-                f"The date_range {date_range!r} for {variable_dcid} starts "
-                "after it ends."
-            )
+    _validate_parse_args(
+        variable_dcid=variable_dcid,
+        requested_places=requested_places,
+        parent_place_dcid=parent_place_dcid,
+        child_place_type=child_place_type,
+        date_range=date_range,
+        max_rows=max_rows,
+    )
 
     wire = _validate_payload(payload, variable_dcid)
     if wire.variable.dcid != variable_dcid:
@@ -575,7 +627,7 @@ def parse_observation_table(
             f"The observation payload for {variable_dcid} describes a "
             f"different variable, {wire.variable.dcid!r}."
         )
-    names, _ = _read_entity_metadata(wire.entity_metadata)
+    names = _read_entity_metadata(wire.entity_metadata)
     observations = _read_observations(wire.data, variable_dcid)
     if requested_places:
         requested = set(requested_places)
@@ -687,44 +739,40 @@ def apply_variable_metadata(
     if enrichment is None:
         return table
 
-    unit = table.unit
-    scaling_factor = table.scaling_factor
-    measurement_method = table.measurement_method
-    observation_period = table.observation_period
-    source = table.source
-    variable_name = table.variable_name
-    facet_updated_unit = False
-
     facet_meta = (
         enrichment.facet(table.variable_dcid, table.facet_id)
         if table.facet_id is not None
         else None
     )
-    if facet_meta is not None:
-        if facet_meta.unit is not None:
-            unit = facet_meta.unit
-            facet_updated_unit = True
-        if facet_meta.scaling_factor is not None:
-            scaling_factor = facet_meta.scaling_factor
-        if facet_meta.measurement_method is not None:
-            measurement_method = facet_meta.measurement_method
-        if facet_meta.observation_period is not None:
-            observation_period = facet_meta.observation_period
-        if facet_meta.provenance is not None:
-            source = facet_meta.provenance
-
     variable_meta = enrichment.variables.get(table.variable_dcid)
-    if variable_meta is not None:
-        if variable_meta.variable_name is not None:
-            variable_name = clean_display_name(
-                variable_meta.variable_name, table.variable_dcid
-            )
-        if (
-            not facet_updated_unit
-            and table.unit is None
-            and variable_meta.unit is not None
-        ):
-            unit = variable_meta.unit
+
+    # Each field takes the first value that is set, in precedence order.
+    unit = _first_present(
+        facet_meta.unit if facet_meta is not None else None,
+        table.unit,
+        variable_meta.unit if variable_meta is not None else None,
+    )
+    scaling_factor = _first_present(
+        facet_meta.scaling_factor if facet_meta is not None else None,
+        table.scaling_factor,
+    )
+    measurement_method = _first_present(
+        facet_meta.measurement_method if facet_meta is not None else None,
+        table.measurement_method,
+    )
+    observation_period = _first_present(
+        facet_meta.observation_period if facet_meta is not None else None,
+        table.observation_period,
+    )
+    source = _first_present(
+        facet_meta.provenance if facet_meta is not None else None,
+        table.source,
+    )
+    variable_name = (
+        clean_display_name(variable_meta.variable_name, table.variable_dcid)
+        if variable_meta is not None and variable_meta.variable_name is not None
+        else table.variable_name
+    )
 
     provenance = replace(
         table.provenance,
@@ -757,3 +805,11 @@ def _replace_source(
     else:
         replaced = (new, *sources)
     return tuple(dict.fromkeys(replaced))
+
+
+def _first_present[T](*values: T | None) -> T | None:
+    """Returns the first value that is not `None`, or `None`.
+
+    Only `None` counts as absent, so an empty string or a zero is kept.
+    """
+    return next((value for value in values if value is not None), None)
