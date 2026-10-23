@@ -33,13 +33,6 @@ import {
   useSseChat,
 } from './use_sse_chat';
 
-/**
- * The conversation is held in memory and never written to storage.
- *
- * useSseChat is controlled: the provider owns the turns, so the chat survives
- * a move to another tab of the app and back.
- */
-
 /** Keys earlier builds wrote the transcript to. */
 const LEGACY_STORAGE_KEYS = ['cdc:chat:v1', 'cdc:chat:v2'];
 
@@ -77,8 +70,8 @@ export const ChatSessionContext = createContext<ChatSessionContextValue | null>(
 );
 
 /**
- * Owns the chat turns and the single streaming machine, exposing both to the
- * tree via context.
+ * Owns the chat turns, held in memory and never stored, and the single
+ * streaming machine, exposing both to the tree via context.
  */
 export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
