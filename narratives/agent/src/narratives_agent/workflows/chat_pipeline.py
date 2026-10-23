@@ -47,6 +47,7 @@ from narratives_agent.gemini.client import (
 )
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 from narratives_agent.mcp import client as mcp_client
+from narratives_agent.mcp.capabilities import warn_on_missing_tools
 from narratives_agent.mcp.data_utils import (
     annotate_truncation,
     check_data_availability,
@@ -206,6 +207,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     if not tools:
         logger.warning("MCP unavailable: not connected or no tools available")
         raise TurnAbortedError("mcp_unavailable", MCP_UNAVAILABLE)
+    warn_on_missing_tools(tools)
 
     ctx.emit(StatusFrame(phase="discovery", message=DISCOVERY_STATUS))
     try:

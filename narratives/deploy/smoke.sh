@@ -72,14 +72,15 @@ c2() {
 }
 check 2 c2
 
-# 3. The capability probe reached the data plane. This is the check that
-#    replaces "is the backend up" -- /agent/health reports the tool surface it
-#    discovered at startup, so a non-empty tool list proves the app plane
-#    completed an MCP handshake with whatever backend it was pointed at.
+# 3. The capability probe reached the MCP server. This is the check that
+#    replaces "is the backend up" -- /agent/health reports the tool surface
+#    from its cached `tools/list` response, so a non-empty tool list proves the
+#    app completed an MCP handshake with the server it was pointed at.
 #
-#    The tool COUNT is deliberately not asserted. 1.2.x serves 2 and 1.3.x
-#    serves 6, and both are correct; pinning a number here would make the
-#    script fail on exactly the backend difference it exists to tolerate.
+#    The agent requires the six tools of the MCP 1.3.x surface, so once the
+#    tool list is loaded the check fails if /agent/health reports any of them
+#    missing (`support` is not `supported`) and names the missing tools.
+#
 #    Retried on a deadline, deliberately. /agent/health never blocks on the data
 #    plane; when its cache is cold it serves the empty snapshot and kicks off the
 #    probe in the background. So the FIRST call after a deploy legitimately
@@ -94,7 +95,7 @@ check 2 c2
 WARMUP_SECS="${SMOKE_WARMUP_SECS:-120}"
 
 c3() {
-    local health n gen start elapsed attempt=0
+    local health n support missing start elapsed attempt=0
     start=$(date +%s)
     while :; do
         attempt=$((attempt+1))
@@ -102,13 +103,22 @@ c3() {
         echo "$health" | jq -e '.status == "ok"' >/dev/null \
             || { echo "health not ok: $(echo "$health" | head -c 200)"; return 1; }
         n=$(echo "$health" | jq -r '.mcp.tool_count // 0')
-        gen=$(echo "$health" | jq -r '.mcp.generation // "unknown"')
+        support=$(echo "$health" | jq -r '.mcp.support // "unknown"')
         if [ "$n" -ge 1 ] 2>/dev/null; then
+            if [ "$support" != "supported" ]; then
+                if echo "$health" | jq -e '.mcp | has("support")' >/dev/null; then
+                    missing=$(echo "$health" | jq -r '.mcp.missing_tools // [] | join(", ")')
+                    echo "$n tools, support $support, missing required tools: $missing"
+                else
+                    echo "$n tools; /agent/health has no support field"
+                fi
+                return 1
+            fi
             elapsed=$(( $(date +%s) - start ))
             if [ "$attempt" -eq 1 ]; then
-                echo "$n tools, generation $gen"
+                echo "$n tools, support $support"
             else
-                echo "$n tools, generation $gen (ready after ${elapsed}s, $attempt reads)"
+                echo "$n tools, support $support (ready after ${elapsed}s, $attempt reads)"
             fi
             return 0
         fi

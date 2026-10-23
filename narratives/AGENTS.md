@@ -59,11 +59,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       typed SSE frames the agent loop sends (`sse_frames.py`), and signed
       transcripts (`transcript.py`). Of the agent's subpackages, it may import
       `analytics/`, `mcp/`, and `gemini/`.
-    - `mcp/`: MCP transport (`client.py`), server capability discovery and
-      schema helpers (`capabilities.py`, `schema.py`), observation data
-      helpers (`data_utils.py`), and source and variable metadata readers
-      (`metadata.py`). Of the agent's subpackages, it may import only
-      `analytics/`; it never imports `workflows/` or `gemini/`.
+    - `mcp/`: MCP transport (`client.py`), server capability discovery and the
+      required-tool check (`capabilities.py`), schema helpers (`schema.py`),
+      observation data helpers (`data_utils.py`), and source and variable
+      metadata readers (`metadata.py`). Of the agent's subpackages, it may
+      import only `analytics/`; it never imports `workflows/` or `gemini/`.
     - `analytics/`: the deterministic analytics library, holding provenance
       models (`provenance.py`). It imports only the Python standard library,
       other `analytics/` modules, and `json_value.py`.
