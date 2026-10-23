@@ -95,4 +95,38 @@ describe('App', () => {
     expect(screen.getByRole('textbox', { name: LANDING_PROMPT })).toBeTruthy();
     expect(screen.queryByText('What is the population of France?')).toBeNull();
   });
+
+  it('keeps a streaming answer when the route changes but the view does not', async () => {
+    // Test: A route change that stays on the Data Agent.
+    // Situation: A question is streaming at '#/' when the hash becomes
+    //   '#/agent', which shows the same Data Agent view.
+    // Expectation: The request is not aborted and the question stays on
+    //   screen.
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          init.signal?.addEventListener('abort', () =>
+            controller.error(
+              new DOMException('The operation was aborted.', 'AbortError'),
+            ),
+          );
+        },
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+    fireEvent.change(screen.getByRole('textbox', { name: LANDING_PROMPT }), {
+      target: { value: 'What is the population of France?' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    });
+
+    goTo('#/agent');
+    expect(fetchMock.mock.calls[0][1].signal?.aborted).toBe(false);
+    expect(screen.getByText('What is the population of France?')).toBeTruthy();
+  });
 });

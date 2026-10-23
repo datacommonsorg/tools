@@ -30,9 +30,17 @@ import {
 } from './hooks/chat_session_context';
 import { useHashRoute } from './hooks/use_hash_route';
 
-/** Picks the main view for the current hash route; unknown routes fall back to the Data Agent. */
-function renderContent(route: string) {
-  switch (route) {
+/** The main views; every route other than `metrics` shows the Data Agent. */
+type View = 'agent' | 'metrics';
+
+/** Gets the view a hash route shows. */
+function getView(route: string): View {
+  return route === 'metrics' ? 'metrics' : 'agent';
+}
+
+/** Renders the main view for the current hash route. */
+function renderContent(view: View) {
+  switch (view) {
     case 'metrics':
       return <MetricsPage />;
     default:
@@ -43,16 +51,17 @@ function renderContent(route: string) {
 /** Root component: providers + sidebar/header layout around the routed view. */
 export function App() {
   const [route] = useHashRoute();
+  const view = getView(route);
 
   return (
     <ChatSessionProvider>
-      <ChatResetOnTabChange route={route} />
+      <ChatResetOnTabChange view={view} />
       <div className="flex min-h-dvh w-full bg-surface relative">
         <Sidebar />
         <MenuDrawer />
         <main className="flex-1 flex flex-col relative min-w-0">
           <Header />
-          {renderContent(route)}
+          {renderContent(view)}
         </main>
       </div>
     </ChatSessionProvider>
@@ -64,17 +73,17 @@ export function App() {
  * fresh Data Agent surface, not the previous conversation, so the chat and
  * any answer still streaming are dropped on the way out.
  */
-function ChatResetOnTabChange({ route }: { route: string }) {
+function ChatResetOnTabChange({ view }: { view: View }) {
   const { turns, isStreaming, newChat } = useChatSession();
-  const prevRoute = useRef<string>(route);
+  const prevView = useRef<View>(view);
   useEffect(() => {
-    if (prevRoute.current === route) return;
-    prevRoute.current = route;
+    if (prevView.current === view) return;
+    prevView.current = view;
     // Scrolling is managed on the page level, so each view starts at its top.
     window.scrollTo(0, 0);
     if (turns.length > 0 || isStreaming) {
       newChat();
     }
-  }, [route, turns.length, isStreaming, newChat]);
+  }, [view, turns.length, isStreaming, newChat]);
   return null;
 }
