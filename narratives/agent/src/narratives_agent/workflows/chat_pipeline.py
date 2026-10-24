@@ -53,6 +53,7 @@ from narratives_agent.mcp.data_utils import (
     check_data_availability,
     extract_provenance_from_mcp_results,
 )
+from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import TerminalState, TurnTelemetry
 from narratives_agent.workflows.chart_config import (
     get_chart_config,
@@ -70,6 +71,7 @@ from narratives_agent.workflows.mcp_loop import (
 )
 from narratives_agent.workflows.messages import (
     CHART_CONFIG_STATUS,
+    CHAT_DISABLED,
     CLASSIFY_STATUS,
     DISCOVERY_STATUS,
     INTERNAL_ERROR,
@@ -527,6 +529,16 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     error_type: str | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
+        if not get_settings().enable_chat:
+            state, error_type = "refused", "chat_disabled"
+            emit(
+                TerminalErrorFrame(
+                    idempotency_key=idempotency_key,
+                    error=CHAT_DISABLED,
+                    reason="chat_disabled",
+                )
+            )
+            return
         config = _load_turn_config()
         emit(StatusFrame(phase="classify", message=CLASSIFY_STATUS))
         with telemetry.phase("classify"):

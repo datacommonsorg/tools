@@ -358,6 +358,51 @@ git pull upstream main
 ./deploy.sh
 ```
 
+### Disabling chat (emergency off switch)
+
+You can temporarily disable new chat turns while keeping the static React UI,
+Key Metrics dashboard, and shared stories online — for example, during:
+
+- **Unexpected traffic spikes or runaway model spend:** Automated scraping or
+  burst traffic driving up Gemini token usage or exhausting project quota.
+- **Upstream service outages:** Sustained errors or latency in Vertex AI /
+  Gemini or the Data Commons MCP server where failing fast is preferable to
+  hanging requests.
+- **Safety or quality incidents:** Investigating a prompt-injection vector or a
+  regression in generated answers without taking down the entire site.
+
+To turn off chat, set the `ENABLE_CHAT` environment variable to `false` (default
+`true`). When `ENABLE_CHAT=false`, `POST /agent/chat/stream` immediately returns
+a terminal error event (`reason: "chat_disabled"`, `"Chat is temporarily
+unavailable. Please try again later."`) before invoking the classifier, MCP tool
+loop, or synthesis models.
+
+- **Cloud Run:**
+
+  ```sh
+  # Disable chat immediately
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=ENABLE_CHAT=false
+
+  # Re-enable chat
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=ENABLE_CHAT=true
+  ```
+
+- **GKE (`datacommons-website`):**
+
+  ```sh
+  # Disable chat immediately (<30s rollout, no PR required)
+  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=false
+
+  # Re-enable chat
+  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=true
+  ```
+
+  To persist the setting across subsequent Cloud Deploy releases on GKE, also
+  set `narratives.enableChat: false` in `deploy/helm_charts/envs/<env>.yaml` in
+  the `datacommons-website` repository.
+
 ### Tearing down a deployment
 
 To destroy all Terraform-managed resources for the instance:
