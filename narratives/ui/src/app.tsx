@@ -20,7 +20,7 @@
 
 import { useEffect, useRef } from 'react';
 import { DataAgent } from './components/data_agent';
-import { SessionDrawer } from './components/drawer_session';
+import { MenuDrawer } from './components/drawer_menu';
 import { Header } from './components/header';
 import { MetricsPage } from './components/metrics_page';
 import { Sidebar } from './components/sidebar';
@@ -30,9 +30,17 @@ import {
 } from './hooks/chat_session_context';
 import { useHashRoute } from './hooks/use_hash_route';
 
-/** Picks the main view for the current hash route; unknown routes fall back to the Data Agent. */
-function renderContent(route: string) {
-  switch (route) {
+/** The main views; every route other than `metrics` shows the Data Agent. */
+type View = 'agent' | 'metrics';
+
+/** Gets the view a hash route shows. */
+function getView(route: string): View {
+  return route === 'metrics' ? 'metrics' : 'agent';
+}
+
+/** Renders the main view for the current hash route. */
+function renderContent(view: View) {
+  switch (view) {
     case 'metrics':
       return <MetricsPage />;
     default:
@@ -43,16 +51,17 @@ function renderContent(route: string) {
 /** Root component: providers + sidebar/header layout around the routed view. */
 export function App() {
   const [route] = useHashRoute();
+  const view = getView(route);
 
   return (
     <ChatSessionProvider>
-      <ChatResetOnTabChange route={route} />
+      <ChatResetOnTabChange view={view} />
       <div className="flex min-h-dvh w-full bg-surface relative">
         <Sidebar />
-        <SessionDrawer />
+        <MenuDrawer />
         <main className="flex-1 flex flex-col relative min-w-0">
           <Header />
-          {renderContent(route)}
+          {renderContent(view)}
         </main>
       </div>
     </ChatSessionProvider>
@@ -61,22 +70,20 @@ export function App() {
 
 /**
  * Switching tabs (Data Agent ↔ Metrics) should land the user on a
- * fresh Data Agent surface, not the previous conversation. The old chat is
- * preserved in the session drawer; we just rotate to a new empty session so
- * the next return to / starts clean. Skip when streaming so a tab-bounce mid
- * answer doesn't orphan the in-flight turn.
+ * fresh Data Agent surface, not the previous conversation, so the chat and
+ * any answer still streaming are dropped on the way out.
  */
-function ChatResetOnTabChange({ route }: { route: string }) {
-  const { turns, isStreaming, newSession } = useChatSession();
-  const prevRoute = useRef<string>(route);
+function ChatResetOnTabChange({ view }: { view: View }) {
+  const { turns, isStreaming, newChat } = useChatSession();
+  const prevView = useRef<View>(view);
   useEffect(() => {
-    if (prevRoute.current === route) return;
-    prevRoute.current = route;
+    if (prevView.current === view) return;
+    prevView.current = view;
     // Scrolling is managed on the page level, so each view starts at its top.
     window.scrollTo(0, 0);
-    if (turns.length > 0 && !isStreaming) {
-      newSession();
+    if (turns.length > 0 || isStreaming) {
+      newChat();
     }
-  }, [route, turns.length, isStreaming, newSession]);
+  }, [view, turns.length, isStreaming, newChat]);
   return null;
 }

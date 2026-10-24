@@ -113,15 +113,6 @@ export function NewChatIcon({ size = "lg", ...props }: IconProps) {
   );
 }
 
-/** `notes_spark` — Chats. */
-export function ChatsIcon({ size = "lg", ...props }: IconProps) {
-  return (
-    <svg viewBox="0 -960 960 960" {...getSvgProps(size, props)}>
-      <path d="M740-40q-6 0-8-6-16-61-60.5-105.5T566-212q-6-2-6-8 0-7 6-8 61-16 105.5-60.5T732-394q2-6 8-6 7 0 8 6 17 61 61 105.5T914-228q6 1 6 8 0 6-6 8-61 16-105.5 60.5T748-46q-1 6-8 6ZM120-280v-80h360v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z" />
-    </svg>
-  );
-}
-
 /** `menu` — hamburger / accordion toggle. */
 export function MenuIcon({ size = "lg", ...props }: IconProps) {
   return (

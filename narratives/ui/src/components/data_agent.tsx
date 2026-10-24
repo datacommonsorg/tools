@@ -45,30 +45,22 @@ const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
  */
 export function DataAgent() {
   const [query, setQuery] = useState("");
-  // Pulled from the Context (ChatSessionProvider in app.tsx) so turns
-  // survive when the user navigates to another SPA tab and back, and across
-  // browser refreshes (persisted to localStorage).
-  const { turns, isStreaming, error, send, stop, currentSessionId } = useChatSession();
+  const { turns, isStreaming, send, stop } = useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
   const promptRef = useRef<HTMLDivElement>(null);
-  const showConversation = turns.length > 0 || isStreaming;
+  const showConversation = turns.length > 0;
+  // New chat leaves the conversation, and the unsent draft goes with it.
+  const [hadConversation, setHadConversation] = useState(showConversation);
+  if (showConversation !== hadConversation) {
+    setHadConversation(showConversation);
+    if (!showConversation) setQuery("");
+  }
   // Track the turn count we last reacted to so we only scroll when a NEW
   // turn is added (e.g. follow-up question click) — not on every re-render
   // caused by streaming text chunks arriving.
   const prevTurnsLength = useRef(turns.length);
-  // Turns already here when the surface mounts (a restored session, or coming
-  // back from another tab) are not news, so they do not animate in.
-  const restoredTurns = useRef(turns.length);
-  // The surface stays mounted across session switches and "New chat", so a
-  // different session counts as a fresh mount: its turns are not news either.
-  const prevSessionId = useRef(currentSessionId);
-  if (prevSessionId.current !== currentSessionId) {
-    prevSessionId.current = currentSessionId;
-    prevTurnsLength.current = turns.length;
-    restoredTurns.current = turns.length;
-  }
 
   // `override` lets a caller (e.g. a suggestion chip in InitialView) submit
   // a message directly without first round-tripping through the `query`
@@ -172,25 +164,17 @@ export function DataAgent() {
       <div className="flex-1 flex flex-col gap-6 pt-8 sm:pt-10 pb-6">
         {turns.map((t, i) => (
           <TurnView
-            // Keyed by turn identity so a new turn or session at the same
-            // index gets fresh state; older saved turns fall back to index.
+            // Keyed by turn identity so a new turn at the same index gets
+            // fresh state; a turn with no key falls back to its index.
             key={t.idempotencyKey ?? i}
             turn={t}
             index={i}
             citationNumbers={citationNumbers[i]}
             isLast={i === turns.length - 1}
-            animate={i >= restoredTurns.current}
             isStreaming={isStreaming && i === turns.length - 1}
             onAsk={(question) => send(question)}
           />
         ))}
-        {error && turns.length === 0 && (
-          <div className={COLUMN}>
-            <div className="w-fit px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large">
-              {error}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Sticky follow-up input; full-width background hides content behind it. */}
@@ -231,8 +215,6 @@ interface TurnViewProps {
   /** Thread-wide label for each of this turn's provenance rows. */
   citationNumbers?: number[];
   isLast: boolean;
-  /** Whether the pieces of the turn fade up into place as they arrive. */
-  animate: boolean;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
 }
@@ -243,7 +225,6 @@ function TurnView({
   index,
   citationNumbers,
   isLast,
-  animate,
   isStreaming,
   onAsk,
 }: TurnViewProps) {
@@ -256,7 +237,6 @@ function TurnView({
     !turn.stopped &&
     (turn.status === "discovery" || turn.status === "synthesis");
   // Keep a shown skeleton under the answer until the crossfade ends.
-  // Restored turns never had one, so they skip it.
   const [hadSkeleton, setHadSkeleton] = useState(false);
   if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
   const [handedOff, setHandedOff] = useState(false);
@@ -269,7 +249,7 @@ function TurnView({
   const className = [
     "shrink-0 flex flex-col gap-6",
     COLUMN,
-    animate && "motion-safe:*:animate-enter",
+    "motion-safe:*:animate-enter",
     // Viewport minus sticky chrome and the list's pb-6.
     isLast && "min-h-[calc(100dvh-var(--chrome-h,0px)-1.5rem)]",
   ]

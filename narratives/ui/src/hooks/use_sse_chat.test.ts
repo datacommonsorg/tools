@@ -4,7 +4,7 @@
  * signed transcript the hook stores and sends back.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -89,6 +89,22 @@ function failingStreamOf(
       }
     },
   });
+}
+
+/** Returns a byte stream the test feeds and ends by hand. */
+function controlledStream() {
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const body = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      controller = streamController;
+    },
+  });
+  const encoder = new TextEncoder();
+  return {
+    body,
+    push: (chunk: string): void => controller.enqueue(encoder.encode(chunk)),
+    end: (): void => controller.close(),
+  };
 }
 
 /** Collects every event the parser yields for the given chunks. */
@@ -181,9 +197,13 @@ describe("applySignedWindow", () => {
     // Expectation: Turn 0 loses its signature, turn 1 takes the new one and
     //   drops its stored summary, and the in-flight turn receives its index,
     //   signature, slots, and the summary.
-    const turns = [signedTurn(0), signedTurn(1), blankTurn()];
+    const turns = [
+      signedTurn(0),
+      signedTurn(1),
+      { ...blankTurn(), idempotencyKey: "key-2" },
+    ];
 
-    const next = applySignedWindow(turns, 2, {
+    const next = applySignedWindow(turns, "key-2", {
       state: "complete",
       idempotency_key: "key-2",
       turn_index: 2,
@@ -215,10 +235,13 @@ describe("applySignedWindow", () => {
     // Situation: The agent did not sign the turn because its answer was too
     //   long.
     // Expectation: No turn changes, so earlier signed turns remain context.
-    const turns = [signedTurn(0), blankTurn()];
+    const turns = [signedTurn(0), { ...blankTurn(), idempotencyKey: "key-1" }];
 
     expect(
-      applySignedWindow(turns, 1, { state: "complete", idempotency_key: "k" }),
+      applySignedWindow(turns, "key-1", {
+        state: "complete",
+        idempotency_key: "key-1",
+      }),
     ).toBe(turns);
   });
 });
@@ -497,6 +520,14 @@ describe("useSseChat", () => {
     return { ...view, fetchMock };
   }
 
+  /** Returns the abort signal of the fetch call at `index`. */
+  function requestSignal(
+    fetchMock: ReturnType<typeof vi.fn>,
+    index: number,
+  ): AbortSignal | null | undefined {
+    return (fetchMock.mock.calls[index][1] as RequestInit).signal;
+  }
+
   /** Returns the parsed JSON body of the fetch call at `index`. */
   function requestBody(
     fetchMock: ReturnType<typeof vi.fn>,
@@ -743,27 +774,173 @@ describe("useSseChat", () => {
   });
 
   it("keeps a completed turn complete when Stop lands during follow-ups", async () => {
-    // Test: An abort after the terminal event.
-    // Situation: The stream delivers the answer and a complete terminal
-    //   event, and then fails with an `AbortError` as when the user clicks
-    //   Stop while follow-ups are streaming.
-    // Expectation: The turn stays done, is not flagged stopped, and carries
-    //   no error.
-    const { result } = renderChat(
-      failingStreamOf(
-        [
-          frame("content", { text: "About 68 million." }, 1),
-          frame("terminal", { state: "complete", ...TERMINAL_FIELDS }, 2),
-        ],
-        new DOMException("The operation was aborted.", "AbortError"),
-      ),
-    );
+    // Test: Stop after the terminal event.
+    // Situation: The answer and a complete terminal event have arrived, and
+    //   the user presses Stop while follow-ups are still streaming.
+    // Expectation: The turn stays done, is not flagged stopped, carries no
+    //   error, and the chat is no longer streaming.
+    const stream = controlledStream();
+    const { result } = renderChat(stream.body);
+    await act(async () => {
+      void result.current.chat.send("What is the population of France?");
+      stream.push(frame("content", { text: "About 68 million." }, 1));
+      stream.push(
+        frame("terminal", { state: "complete", ...TERMINAL_FIELDS }, 2),
+      );
+    });
+    await waitFor(() => expect(result.current.turns[0].status).toBe("done"));
 
-    await act(() => result.current.chat.send("What is the population of France?"));
+    act(() => {
+      result.current.chat.stop();
+    });
 
     const [turn] = result.current.turns;
-    expect(turn.status).toBe("done");
     expect(turn.stopped).toBeUndefined();
+    expect(turn.error).toBeUndefined();
+    expect(result.current.chat.isStreaming).toBe(false);
+    expect(result.current.chat.error).toBeNull();
+  });
+
+  it("settles the turn as soon as Stop is pressed", async () => {
+    // Test: Stop while the answer is streaming.
+    // Situation: The user presses Stop mid-answer, and the response body
+    //   still delivers text and a signed terminal event after it.
+    // Expectation: The request is aborted and the turn is stopped at once,
+    //   and nothing the body sends after Stop reaches the turn.
+    const stream = controlledStream();
+    const { result, fetchMock } = renderChat(stream.body);
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.chat.send("What is the population of France?");
+    });
+
+    act(() => {
+      result.current.chat.stop();
+    });
+    expect(requestSignal(fetchMock, 0)?.aborted).toBe(true);
+    expect(result.current.chat.isStreaming).toBe(false);
+    expect(result.current.turns[0]).toMatchObject({
+      status: "done",
+      stopped: true,
+    });
+
+    await act(async () => {
+      stream.push(frame("content", { text: "About 68 million." }, 1));
+      stream.push(
+        frame(
+          "terminal",
+          {
+            state: "complete",
+            ...TERMINAL_FIELDS,
+            turn_index: 0,
+            hmac: sig("0"),
+            state_slots: SLOTS,
+            window: [
+              { turn_index: 0, idempotency_key: "key-1", hmac: sig("0") },
+            ],
+          },
+          2,
+        ),
+      );
+      stream.end();
+      await sent;
+    });
+
+    const [turn] = result.current.turns;
+    expect(turn).toMatchObject({ status: "done", stopped: true, text: "" });
+    expect(turn.hmac).toBeUndefined();
+    expect(result.current.chat.error).toBeNull();
+  });
+
+  it("keeps the next question streaming when a stopped response ends late", async () => {
+    // Test: A stopped request that ends after the next one has started.
+    // Situation: The user stops the first answer and asks again, and only
+    //   then does the first response body end, with no terminal event.
+    // Expectation: The first turn stays stopped with no error, the second
+    //   keeps streaming, and Stop still aborts the second request.
+    const first = controlledStream();
+    const second = controlledStream();
+    const { result, fetchMock } = renderChat(first.body);
+    let firstSent!: Promise<void>;
+    await act(async () => {
+      firstSent = result.current.chat.send("What is the population of France?");
+    });
+    act(() => {
+      result.current.chat.stop();
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      body: second.body,
+    });
+    await act(async () => {
+      void result.current.chat.send("What is the population of Spain?");
+    });
+
+    await act(async () => {
+      first.end();
+      await firstSent;
+    });
+
+    expect(result.current.turns[0]).toMatchObject({
+      status: "done",
+      stopped: true,
+    });
+    expect(result.current.turns[0].error).toBeUndefined();
+    expect(result.current.chat.error).toBeNull();
+    expect(result.current.chat.isStreaming).toBe(true);
+    act(() => {
+      result.current.chat.stop();
+    });
+    expect(requestSignal(fetchMock, 1)?.aborted).toBe(true);
+    expect(result.current.turns[1]).toMatchObject({
+      status: "done",
+      stopped: true,
+    });
+  });
+
+  it("reports nothing when Stop lands while an error response is read", async () => {
+    // Test: Stop before an error response has been read.
+    // Situation: The agent answers HTTP 400, and the user presses Stop while
+    //   its body is being read; the read then fails, as an aborted fetch does.
+    // Expectation: The turn shows only that it was stopped, with no error.
+    let markReading!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      markReading = resolve;
+    });
+    const { result, fetchMock } = renderChat([]);
+    fetchMock.mockImplementationOnce(
+      async (_url: string, init: RequestInit) => ({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        body: null,
+        json: () => {
+          markReading();
+          return new Promise((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () =>
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              ),
+            );
+          });
+        },
+      }),
+    );
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.chat.send("And Germany?");
+      await reading;
+    });
+
+    await act(async () => {
+      result.current.chat.stop();
+      await sent;
+    });
+
+    const [turn] = result.current.turns;
+    expect(turn).toMatchObject({ status: "done", stopped: true });
     expect(turn.error).toBeUndefined();
     expect(result.current.chat.error).toBeNull();
   });
@@ -860,22 +1037,6 @@ describe("assignCitationNumbers", () => {
       [1],
     ]);
     expect(assignCitationNumbers([errored, citedTurn([WDI])])).toEqual([
-      [],
-      [1],
-    ]);
-  });
-
-  it("survives a turn rehydrated without provenance", () => {
-    // Test: A turn restored from storage by an older build.
-    // Situation: chat_session_context parses persisted turns and filters them
-    //   by status alone, so one can arrive without the array its type
-    //   promises.
-    // Expectation: An empty row, not a TypeError that blanks the chat.
-    const legacy = {
-      ...citedTurn([]),
-      provenance: undefined,
-    } as unknown as ChatTurn;
-    expect(assignCitationNumbers([legacy, citedTurn([WDI])])).toEqual([
       [],
       [1],
     ]);
