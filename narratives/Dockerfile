@@ -1,10 +1,43 @@
-# Builds the Narratives application image, packaging the Python agent API and
-# the compiled React UI in a single container.
+# Copyright 2026 Google LLC
 #
-# Before building this image, stage `ui/dist` into `./static` and `../defaults`
-# into `./defaults` using `pnpm build` (which runs `scripts/stage_static.mjs`)
-# or `./build.sh`.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multi-stage build for the Narratives application image, compiling the React
+# SPA in Stage 1 and packaging it alongside the FastAPI backend in Stage 2.
+#
+# Build from the `narratives/` directory:
+#   docker buildx build --platform linux/amd64 .
+# To serve under a URL subpath (such as `/narratives/`), pass VITE_BASE_PATH:
+#   docker buildx build --platform linux/amd64 --build-arg VITE_BASE_PATH=/narratives/ .
+
+# Force linux/amd64 architecture so images built on Apple Silicon run on Cloud
+# Run and GKE amd64 node pools.
+# hadolint ignore=DL3029
+FROM --platform=linux/amd64 node:24-slim AS ui-builder
+
+WORKDIR /build
+
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY ui/package.json ./ui/
+RUN pnpm install --frozen-lockfile
+
+COPY ui/ ./ui/
+ARG VITE_BASE_PATH=/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+RUN pnpm -C ui build
+
 # Force linux/amd64 architecture — Cloud Run rejects arm64 silently with a
 # "failed to find supported architecture" startup error.
 # hadolint ignore=DL3029
@@ -15,6 +48,9 @@ FROM --platform=linux/amd64 python:3.14-slim
 # rebuilding an old commit still uses the uv that produced its lockfile.
 COPY --from=ghcr.io/astral-sh/uv:0.10.2 /uv /usr/local/bin/uv
 
+# ALLOWED_ORIGIN is intentionally left unset here so `app._allowed_origins()`
+# fails closed on Cloud Run and GKE unless explicitly configured by Terraform
+# or Helm.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
@@ -23,8 +59,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     AGENT_PORT=5001 \
     MCP_PORT=8082 \
-    TIMEZONE=UTC \
-    ALLOWED_ORIGIN=*
+    TIMEZONE=UTC
 
 WORKDIR /app
 
@@ -42,14 +77,14 @@ RUN groupadd -g 10001 appuser \
 
 # Dependencies first, without the project itself, so editing application code
 # does not invalidate this layer.
-COPY pyproject.toml uv.lock ./
+COPY agent/pyproject.toml agent/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY src/ ./src/
+COPY agent/src/ ./src/
 RUN uv sync --frozen --no-dev
 
-# Stage the compiled SPA (`static/`) and fallback configuration (`defaults/`).
-COPY static/ ./static/
+# Copy the compiled SPA from Stage 1 (`static/`) and fallback configuration (`defaults/`).
+COPY --from=ui-builder /build/ui/dist ./static/
 COPY defaults/ ./defaults/
 
 USER appuser
