@@ -52,16 +52,22 @@ def test_health_reports_status_mcp_endpoint_and_tool_surface(
     # Situation: The MCP endpoint resolves to a test URL, and the cached tool
     #   list holds `get_observations` and `get_variable_metadata`.
     # Expectation: The route answers 200 with status `ok`, the endpoint, and
-    #   the capabilities of that tool list, serialized byte for byte with the
-    #   keys in this order.
+    #   the capabilities of that tool list, including `support` and
+    #   `missing_tools`, serialized byte for byte with the keys in this order.
     response = client.get("/agent/health")
 
     assert response.status_code == 200
     assert response.content == (
         b'{"status":"ok","mcp_url":"http://mcp.test/mcp","mcp":{'
-        b'"generation":"1.3.x-or-later","tool_count":2,'
+        b'"support":"unsupported","tool_count":2,'
         b'"tools":["get_observations","get_variable_metadata"],'
-        b'"supports_source_attribution":true}}'
+        b'"supports_source_attribution":true,'
+        b'"missing_tools":['
+        b'"get_child_observations",'
+        b'"get_multi_entity_observations",'
+        b'"search_child_indicators",'
+        b'"search_indicators"'
+        b"]}}"
     )
 
 

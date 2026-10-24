@@ -13,7 +13,9 @@
 # limitations under the License.
 """Deterministic analytics library for the Narratives agent loop.
 
-Holds the provenance models (`Source`) that record which dataset each figure
-comes from. The package may import only the Python standard library, other
-`analytics/` modules, and `narratives_agent.json_value`.
+Holds the provenance models (`Source`, `Provenance`), the observation table
+types, the per-script metrics base, and the `ScriptResult` and
+`AnalysisDigest` types the analytics scripts produce. The package may import
+only the Python standard library, other `analytics/` modules, and
+`narratives_agent.json_value`.
 """

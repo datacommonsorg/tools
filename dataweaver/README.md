@@ -18,6 +18,7 @@ All commands run from the root of the `/dataweaver` directory.
 
 ### Node.js version
 
+Dataweaver requires **Node.js 22.23.4 or later 22.x** (pinned in `.nvmrc`).
 Install [nvm](https://github.com/nvm-sh/nvm) and run:
 
 ```bash
