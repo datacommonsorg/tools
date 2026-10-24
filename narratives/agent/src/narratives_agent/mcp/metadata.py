@@ -103,8 +103,12 @@ def _get_date_range(facet: Mapping[str, JsonValue]) -> str:
     return start or end
 
 
-def _parse_scaling_factor(value: JsonValue) -> float | None:
-    """Parses `scalingFactor` as a finite float, rejecting booleans."""
+def parse_scaling_factor(value: JsonValue) -> float | None:
+    """Parses a `scalingFactor` as a finite float, or returns `None`.
+
+    Data Commons declares the scaling factor as a string, so numeric strings
+    are accepted alongside numbers; booleans and other values are rejected.
+    """
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int | float):
@@ -358,7 +362,7 @@ def _single_payload_enrichment(
         facets[key] = FacetEnrichment(
             provenance=provenance,
             unit=get_first_present_value(props, "unit") or None,
-            scaling_factor=_parse_scaling_factor(props.get("scalingFactor")),
+            scaling_factor=parse_scaling_factor(props.get("scalingFactor")),
             measurement_method=(
                 get_first_present_value(props, "measurementMethod") or None
             ),

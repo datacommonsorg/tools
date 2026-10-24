@@ -49,7 +49,7 @@ Run all deployment commands from the `narratives/` directory.
 | Google Cloud project | Billing must be enabled |
 | `gcloud` CLI | Authenticate both user credentials (`gcloud auth login`) and Application Default Credentials (`gcloud auth application-default login`) for Terraform |
 | `terraform`, `pnpm`, `python3`, `uv` | Required on `PATH` (container images build remotely in Cloud Build; local Docker is not required) |
-| Node.js 24 | Compiles the React UI (`nvm use`) |
+| Node.js 24.22.1 or later 24.x | Compiles the React UI (`nvm use`) |
 | [Data Commons API key](https://apikeys.datacommons.org) | Stored in Secret Manager during bootstrap |
 | [Gemini API key](https://aistudio.google.com) | Stored in Secret Manager during bootstrap |
 
@@ -193,9 +193,25 @@ curl -s "$URL/agent/health" | jq
 BEARER_TOKEN="$(gcloud auth print-identity-token)" bash deploy/smoke.sh "$URL"
 ```
 
-In the `/agent/health` response, `mcp.generation` and
-`mcp.supports_source_attribution` report the discovered upstream MCP tool
-surface.
+In the `/agent/health` response, `mcp.support`,
+`mcp.supports_source_attribution`, and `mcp.missing_tools` report the upstream
+MCP tool surface. The agent requires six tools (`search_indicators`,
+`search_child_indicators`, `get_variable_metadata`, `get_observations`,
+`get_child_observations`, and `get_multi_entity_observations`), and
+`mcp.missing_tools` lists any that are missing. `mcp.support` is one of three
+values:
+
+- `supported`: all six required tools are available.
+- `unsupported`: the server lists tools, but at least one required tool is
+  missing.
+- `unknown`: the tool list is empty, either because it has not been loaded yet
+  (for example, on a fresh instance before the first fetch finishes) or because
+  the server listed no tools. In both cases, `mcp.missing_tools` lists all six
+  tools.
+
+When required tools are missing, the agent logs a warning on every chat turn
+and continues the turn with the tools the server provides, and
+`deploy/smoke.sh` fails its capability check.
 
 ## Customizing your instance
 
