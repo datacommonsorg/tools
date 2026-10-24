@@ -1,0 +1,43 @@
+# Node dependencies and frontend build outputs.
+node_modules/
+ui/node_modules/
+ui/dist/
+ui/.vite/
+ui/coverage/
+
+# Python virtual environments, caches, and staged local artifacts.
+.ruff_cache/
+agent/.venv/
+agent/venv/
+agent/.mypy_cache/
+agent/.pytest_cache/
+agent/.ruff_cache/
+agent/static/
+agent/defaults/
+agent/config.json
+agent/logs/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Colocated test modules (not needed in the production container).
+agent/*_test.py
+agent/**/*_test.py
+agent/tests/
+deploy/*_test.py
+ui/src/**/*.test.ts
+ui/src/**/*.test.tsx
+
+# Non-container documentation, schemas, scripts, and deployment state.
+.git/
+.build/
+config/instance.env
+docs/
+schemas/
+scripts/
+deploy/terraform-custom-datacommons/**/.terraform*/
+deploy/terraform-custom-datacommons/*.tfvars
+.env
+.env.*
+*.log
+.DS_Store

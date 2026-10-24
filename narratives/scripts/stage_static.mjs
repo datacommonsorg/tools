@@ -13,13 +13,12 @@
 // limitations under the License.
 
 /**
- * Stages the agent's build context: the compiled React SPA from ui/dist into
- * agent/static, and the shipped configuration from defaults/ into
- * agent/defaults.
+ * Stages the compiled React SPA from ui/dist into agent/static and the shipped
+ * configuration from defaults/ into agent/defaults for local non-container runs
+ * of the Python server (`pnpm build && pnpm dev:agent`).
  *
- * Both directories live outside agent/, so the Dockerfile cannot COPY them
- * directly. This mirrors the staging in narratives/agent/build.sh, so the
- * local Python server and container builds see the same files.
+ * Container builds (`narratives/Dockerfile`) compile the UI and copy defaults/
+ * directly in a multi-stage Docker build without relying on this script.
  */
 
 import fs from 'node:fs';
