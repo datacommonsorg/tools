@@ -21,21 +21,28 @@ from per-result sources, and the prompt rendering.
 
 import json
 import math
-from dataclasses import dataclass, replace
-from typing import ClassVar
+from dataclasses import replace
 
 import pytest
 
 from narratives_agent.analytics.digest import (
+    PLACE_NAME_CAP,
     AnalysisDigest,
     CoverageReport,
     OkScriptResult,
     RefusedScriptResult,
     conjugate_have,
     format_percent,
+    format_place_names,
     format_scaling_factor,
 )
-from narratives_agent.analytics.metrics import ScriptMetrics, ScriptName
+from narratives_agent.analytics.metrics import (
+    PlaceSeriesSummary,
+    RankEntry,
+    RankingMetrics,
+    ScriptMetrics,
+    TimeseriesMetrics,
+)
 from narratives_agent.analytics.provenance import Provenance, Source
 
 _WDI = Source(
@@ -48,33 +55,40 @@ _CENSUS = Source(
 )
 
 
-@dataclass(frozen=True)
-class _StubTimeseriesMetrics(ScriptMetrics):
-    """Stub metrics record for `analyze_timeseries` in digest unit tests."""
-
-    script: ClassVar[ScriptName] = "analyze_timeseries"
-
-    place_count: int = 1
-    difference: float = 0.0
-    near_int: float = 0.0
-    pct_change: float = 0.0
-    rate: float = 0.0
-    count: float = 0.0
-    huge: float = 0.0
-    flag: bool = False
-    series: tuple[dict[str, object], ...] = ()
+def _default_timeseries_metrics() -> TimeseriesMetrics:
+    """Returns a minimal `TimeseriesMetrics` instance for digest tests."""
+    return TimeseriesMetrics(
+        place_count=0,
+        series=(),
+        missing_places=(),
+        cross_place_comparison=None,
+    )
 
 
-@dataclass(frozen=True)
-class _StubRankingMetrics(ScriptMetrics):
-    """Stub metrics record for `rank_cohort` in digest unit tests."""
+def _rank_entry(value: float, percentile: float) -> RankEntry:
+    """Returns a single top-ranked entry for place `a`."""
+    return RankEntry(
+        rank=1,
+        is_tied=False,
+        place_dcid="a",
+        place_name="A",
+        value=value,
+        percentile=percentile,
+    )
 
-    script: ClassVar[ScriptName] = "rank_cohort"
 
-    top_n: tuple[dict[str, object], ...] = ()
-    ratio: float = 0.0
-    growth: float = 0.0
-    pair: tuple[int, int] = (1, 2)
+def _ranking_metrics(top: RankEntry) -> RankingMetrics:
+    """Returns a one-place `RankingMetrics` instance with `top` ranked first."""
+    return RankingMetrics(
+        reference_date="2022",
+        direction="desc",
+        n=1,
+        cohort_size=1,
+        top_n=(top,),
+        bottom_n=(),
+        focal_entries=(),
+        missing_focal_places=(),
+    )
 
 
 def _ok(
@@ -90,7 +104,9 @@ def _ok(
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=provenance,
-        metrics=metrics if metrics is not None else _StubTimeseriesMetrics(),
+        metrics=(
+            metrics if metrics is not None else _default_timeseries_metrics()
+        ),
     )
 
 
@@ -134,21 +150,17 @@ def test_ok_result_rejects_metrics_of_another_script() -> None:
     # Expectation: Both raise `ValueError` naming the script and the metrics
     #   class.
     provenance = Provenance(sources=(_WDI,))
-    with pytest.raises(
-        ValueError, match=r"align_cohort.*_StubTimeseriesMetrics"
-    ):
+    with pytest.raises(ValueError, match=r"align_cohort.*TimeseriesMetrics"):
         OkScriptResult(
             step_id="s1",
             script="align_cohort",
             variables=("Count_Person",),
             variable_names={"Count_Person": "Total population"},
             provenance=provenance,
-            metrics=_StubTimeseriesMetrics(),
+            metrics=_default_timeseries_metrics(),
         )
-    with pytest.raises(
-        ValueError, match=r"analyze_timeseries.*_StubRankingMetrics"
-    ):
-        _ok("s1", provenance, metrics=_StubRankingMetrics())
+    with pytest.raises(ValueError, match=r"analyze_timeseries.*RankingMetrics"):
+        _ok("s1", provenance, metrics=_ranking_metrics(_rank_entry(1.0, 100.0)))
 
 
 def test_result_variants_fix_their_status_fields() -> None:
@@ -236,9 +248,7 @@ def test_to_dict_serializes_without_nan_or_infinity() -> None:
         variable_names={"Count_Person": "Total population"},
         provenance=Provenance(sources=(_WDI,)),
         coverage=coverage,
-        metrics=_StubRankingMetrics(
-            ratio=math.nan, growth=math.inf, pair=(1, 2)
-        ),
+        metrics=_ranking_metrics(_rank_entry(math.nan, math.inf)),
     )
     refused = _refused("s2", Provenance(sources=(_WDI,)))
     digest = AnalysisDigest.from_results((result, refused))
@@ -249,12 +259,16 @@ def test_to_dict_serializes_without_nan_or_infinity() -> None:
     ok_json, refused_json = decoded["results"]
     assert ok_json["status"] == "ok"
     assert ok_json["refusal_reason"] is None
-    assert ok_json["metrics"] == {
-        "top_n": [],
-        "ratio": None,
-        "growth": None,
-        "pair": [1, 2],
-    }
+    assert ok_json["metrics"]["top_n"] == [
+        {
+            "rank": 1,
+            "is_tied": False,
+            "place_dcid": "a",
+            "place_name": "A",
+            "value": None,
+            "percentile": None,
+        }
+    ]
     assert ok_json["coverage"]["missing_places"] == ["country/X"]
     assert refused_json["status"] == "refused"
     assert refused_json["refusal_reason"] == "no_observations"
@@ -286,7 +300,7 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
             methodology="Ranked 9 places on 2022",
         ),
         coverage=coverage,
-        metrics=_StubRankingMetrics(top_n=({"place_dcid": "a", "value": 1.0},)),
+        metrics=_ranking_metrics(_rank_entry(1.0, 100.0)),
         caveats=("9 of 10 places reported a value.",),
     )
     refused = _refused("s2", Provenance(sources=(_CENSUS,)))
@@ -299,8 +313,10 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
         "Step s1: rank_cohort on Total population (Count_Person)\n"
         "  unit: Person; coverage: 9 of 10 places on 2022; cite: [1]\n"
         "  method: Ranked 9 places on 2022\n"
-        '  metrics: {"top_n":[{"place_dcid":"a","value":1}],'
-        '"ratio":0,"growth":0,"pair":[1,2]}\n'
+        '  metrics: {"reference_date":"2022","direction":"desc","n":1,'
+        '"cohort_size":1,"top_n":[{"rank":1,"is_tied":false,"place_dcid":"a",'
+        '"place_name":"A","value":1,"percentile":100}],"bottom_n":[],'
+        '"focal_entries":[],"missing_focal_places":[]}\n'
         "  caveat: 9 of 10 places reported a value.\n"
         "\n"
         "Step s2: analyze_timeseries on Total population (Count_Person) "
@@ -319,34 +335,69 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
 def test_format_for_prompt_rounds_figures_to_display_precision() -> None:
     # Test: Float rounding in `format_for_prompt()` versus full precision in
     #   `to_dict()`.
-    # Situation: A digest is built from a result whose metrics include a float
-    #   with a binary rounding artifact, a multi-decimal percentage, a rate
-    #   between 0 and 1, a whole-number float below `1e15`, a float above
-    #   `1e15`, a boolean, and nested containers.
+    # Situation: A digest is built from a time-series result whose metrics
+    #   include a float with a binary rounding artifact, a multi-decimal
+    #   percentage, a rate between 0 and 1, a whole-number float below
+    #   `1e15`, a float above `1e15`, and nested containers, and from a
+    #   ranking result whose entry carries a boolean and a nested float.
     # Expectation: `format_for_prompt()` rounds floats >= 1 to 2 decimals,
     #   floats in `(0, 1)` to 3 significant digits, and whole-number floats
     #   below `1e15` to integers while preserving `1e+21`, booleans, and
     #   strings, whereas `to_dict()` preserves exact floating-point values.
-    metrics = _StubTimeseriesMetrics(
+    # The field values exercise rounding and are not mutually consistent.
+    summary = PlaceSeriesSummary(
+        place_dcid="a",
+        place_name="Alpha",
+        point_count=2,
+        start_date="2020",
+        start_value=0.02818185351838144,
+        end_date="2021",
+        end_value=30188424.0,
+        min_date="2020",
+        min_value=-25.000000000000007,
+        max_date="2021",
+        max_value=1e21,
+        local_extrema=(),
+        absolute_change=1.6000000000000014,
+        percent_change=45.68175136297,
+        cagr=0.5,
+        max_period_increase=None,
+        max_period_decrease=None,
+    )
+    metrics = TimeseriesMetrics(
         place_count=1,
-        difference=1.6000000000000014,
-        near_int=-25.000000000000007,
-        pct_change=45.68175136297,
-        rate=0.02818185351838144,
-        count=30188424.0,
-        huge=1e21,
-        flag=True,
-        series=({"place_dcid": "a", "values": [0.5, 2.345678]},),
+        series=(summary,),
+        missing_places=(),
+        cross_place_comparison=None,
     )
     result = _ok("s1", Provenance(sources=(_WDI,)), metrics=metrics)
-    digest = AnalysisDigest.from_results((result,))
+    ranking = OkScriptResult(
+        step_id="s2",
+        script="rank_cohort",
+        variables=("Count_Person",),
+        variable_names={"Count_Person": "Total population"},
+        provenance=Provenance(sources=(_WDI,)),
+        metrics=_ranking_metrics(
+            replace(_rank_entry(2.345678, 0.5), is_tied=True)
+        ),
+    )
+    digest = AnalysisDigest.from_results((result, ranking))
 
     text = digest.format_for_prompt()
 
     assert (
-        '  metrics: {"place_count":1,"difference":1.6,"near_int":-25,'
-        '"pct_change":45.68,"rate":0.0282,"count":30188424,"huge":1e+21,'
-        '"flag":true,"series":[{"place_dcid":"a","values":[0.5,2.35]}]}'
+        '  metrics: {"place_count":1,"series":[{"place_dcid":"a",'
+        '"place_name":"Alpha","point_count":2,"start_date":"2020",'
+        '"start_value":0.0282,"end_date":"2021","end_value":30188424,'
+        '"min_date":"2020","min_value":-25,"max_date":"2021",'
+        '"max_value":1e+21,"local_extrema":[],"absolute_change":1.6,'
+        '"percent_change":45.68,"cagr":0.5,"max_period_increase":null,'
+        '"max_period_decrease":null}],"missing_places":[],'
+        '"cross_place_comparison":null}'
+    ) in text
+    assert (
+        '"top_n":[{"rank":1,"is_tied":true,"place_dcid":"a","place_name":"A",'
+        '"value":2.35,"percentile":0.5}]'
     ) in text
     serialized = digest.to_dict()
     results_list = serialized["results"]
@@ -355,7 +406,11 @@ def test_format_for_prompt_rounds_figures_to_display_precision() -> None:
     assert isinstance(first_result, dict)
     metrics_dict = first_result["metrics"]
     assert isinstance(metrics_dict, dict)
-    assert metrics_dict["difference"] == 1.6000000000000014
+    series_list = metrics_dict["series"]
+    assert isinstance(series_list, list)
+    first_series = series_list[0]
+    assert isinstance(first_series, dict)
+    assert first_series["absolute_change"] == 1.6000000000000014
 
     scaled = replace(_ok("s1", Provenance(sources=(_WDI,))), scaling_factor=1e6)
     scaled_digest = AnalysisDigest.from_results((scaled,))
@@ -446,3 +501,21 @@ def test_format_for_prompt_lists_a_source_by_name_alone(url: str) -> None:
         (_ok("s1", Provenance(sources=(source,))),)
     )
     assert digest.format_for_prompt().endswith(f"[1] {source.name}")
+
+
+def test_format_place_names_joins_a_few_names_and_counts_the_rest() -> None:
+    # Test: `format_place_names` for short and long lists.
+    # Situation: Lists of one, two, three, and `PLACE_NAME_CAP + 2` names.
+    # Expectation: One name stands alone, two are joined with "and", three
+    #   take a serial comma, and a long list names the first
+    #   `PLACE_NAME_CAP` and counts the rest.
+    assert format_place_names(["A"]) == "A"
+    assert format_place_names(["A", "B"]) == "A and B"
+    assert format_place_names(["A", "B", "C"]) == "A, B, and C"
+    names = [f"P{index}" for index in range(PLACE_NAME_CAP + 2)]
+    assert format_place_names(names) == (
+        "P0, P1, P2, P3, P4, and 2 other places"
+    )
+    assert format_place_names(names[: PLACE_NAME_CAP + 1]).endswith(
+        "and 1 other place"
+    )

@@ -44,6 +44,7 @@ __all__ = [
     "UnitMismatch",
     "align_cohort",
     "find_unit_mismatch",
+    "has_adequate_coverage",
     "select_reference_date",
     "validate_alignment_parameters",
 ]
@@ -67,10 +68,14 @@ class AlignedCohort:
         scaling_factor: The scaling factor of the values, when known.
         provenance: The table's provenance.
         rows: One row per contributing place, sorted by place DCID; never
-            empty, because a table with no contributing place is refused.
+            empty, because a table with no contributing place is refused
+            and construction raises for empty rows.
         place_names: Display names for the table's places.
         coverage: How many of the cohort's places contributed.
         caveats: Qualifications of the alignment to state with its values.
+
+    Raises:
+        ValueError: If `rows` is empty.
     """
 
     variable_dcid: str
@@ -83,6 +88,11 @@ class AlignedCohort:
     place_names: dict[str, str]
     coverage: CoverageReport
     caveats: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Rejects a cohort without rows."""
+        if not self.rows:
+            raise ValueError("An aligned cohort must have at least one row.")
 
 
 @dataclass(frozen=True)
@@ -146,6 +156,27 @@ def _has_mixed_vintages(
     return len(set(latest.values())) > 1
 
 
+def has_adequate_coverage(
+    count: int, cohort_size: int, min_coverage: float = DEFAULT_MIN_COVERAGE
+) -> bool:
+    """Returns whether `count` of `cohort_size` places meets `min_coverage`.
+
+    `select_reference_date` and `align_cohort` apply the threshold through
+    this function, so a caller that reports whether a date met the threshold
+    agrees with the date `select_reference_date` chose.
+
+    Args:
+        count: Number of places with a value.
+        cohort_size: Total number of places in the cohort; must be at
+            least 1.
+        min_coverage: Minimum share of `cohort_size` required, from 0 to 1.
+
+    Returns:
+        True when `count / cohort_size` is at least `min_coverage`.
+    """
+    return count / cohort_size >= min_coverage
+
+
 def select_reference_date(
     counts_by_date: Mapping[str, int],
     cohort_size: int,
@@ -179,7 +210,7 @@ def select_reference_date(
     qualifying = [
         date
         for date, count in counts_by_date.items()
-        if count / cohort_size >= min_coverage
+        if has_adequate_coverage(count, cohort_size, min_coverage)
     ]
     if qualifying:
         return max(qualifying)
@@ -342,7 +373,9 @@ def align_cohort(
         mixed_vintages=mixed_vintages,
     )
 
-    if contributing == 0 or coverage.coverage_ratio < min_coverage:
+    if contributing == 0 or not has_adequate_coverage(
+        contributing, cohort_size, min_coverage
+    ):
         return AlignmentRefusal(
             variable_dcid=table.variable_dcid,
             reason="insufficient_coverage",
