@@ -95,7 +95,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["narratives_agent", "validate_theme"]
+known-first-party = ["narratives_agent", "check_state_owner", "validate_theme"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -107,7 +107,7 @@ docstring-code-format = true
 [tool.mypy]
 python_version = "3.14"
 strict = true
-files = ["src", "../deploy/validate_theme.py", "../deploy/validate_theme_test.py"]
+files = ["src", "../deploy"]
 mypy_path = "src:../deploy"
 explicit_package_bases = true
 
