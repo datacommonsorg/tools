@@ -180,6 +180,7 @@ narratives/
 ├── AGENTS.md                  Coding conventions and commands for contributors
 ├── FRONTEND.md                Tailwind v4, theme tokens, and React conventions
 ├── deploy.sh                  Deployment CLI for Google Cloud Run and Terraform
+├── Dockerfile                 Multi-stage container build (React UI + FastAPI)
 ├── .env.local.example         Template for local development environment vars
 ├── docs/
 │   ├── development.md         Local development, testing, and repo layout
@@ -208,7 +209,7 @@ narratives/
 │       ├── server/            FastAPI app and routes (spa, chat, system)
 │       ├── mcp/               MCP client, capabilities, schemas, and parsers
 │       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
-│       ├── analytics/         Tables, provenance, alignment, summaries, digest
+│       ├── analytics/         Tables, alignment, summaries, digest, scripts
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)
 │   └── src/

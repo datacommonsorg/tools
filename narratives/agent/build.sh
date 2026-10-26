@@ -16,15 +16,17 @@ Options:
   --help    Show this help and exit.
 
 Environment overrides (with defaults):
-  AR_REGION   Artifact Registry region   (us-central1)
-  AR_REPO     Artifact Registry repo     (custom-dc)
-  PROJECT     GCP project                (defaults to the active gcloud project)
+  AR_REGION       Artifact Registry region   (us-central1)
+  AR_REPO         Artifact Registry repo     (custom-dc)
+  PROJECT         GCP project                (defaults to the active gcloud project)
+  VITE_BASE_PATH  SPA base path              (/)
 USAGE
 }
 
-# Resolve the script's own directory so docker build works regardless of the
-# caller's current working directory.
+# Resolve the narratives/ root directory so the multi-stage docker build has
+# access to ui/, defaults/, and agent/ regardless of the caller's working directory.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+NARRATIVES_DIR="$(cd "${DIR}/.." >/dev/null 2>&1 && pwd)"
 
 PUSH=false
 for arg in "$@"; do
@@ -53,40 +55,16 @@ IMAGE_BASE="${AR_REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}"
 FULL_IMAGE="${IMAGE_BASE}:${TAG}"
 LATEST_IMAGE="${IMAGE_BASE}:latest"
 
-# Stage the compiled SPA into the build context. ui/dist lives outside this
-# directory, so the Dockerfile cannot COPY it directly.
-#
-# Fail loudly rather than producing an image with no UI: a missing static/ used
-# to be a silent 404 on / that only showed up after a deploy.
-UI_DIST="${DIR}/../ui/dist"
-if [[ ! -f "${UI_DIST}/index.html" ]]; then
-    echo "FATAL: ${UI_DIST}/index.html not found — build the UI first:" >&2
-    echo "  (pnpm build)" >&2
-    exit 1
-fi
-rm -rf "${DIR}/static"
-cp -R "${UI_DIST}" "${DIR}/static"
-echo "  staged UI build: $(find "${DIR}/static" -type f | wc -l | tr -d ' ') files"
-
-# Stage the fallback defaults/ directory into the Docker build context.
-DEFAULTS_SRC="${DIR}/../defaults"
-if [[ ! -f "${DEFAULTS_SRC}/agent-config.json" ]]; then
-    echo "FATAL: ${DEFAULTS_SRC}/agent-config.json not found" >&2
-    exit 1
-fi
-rm -rf "${DIR}/defaults"
-cp -R "${DEFAULTS_SRC}" "${DIR}/defaults"
-echo "  staged defaults: $(find "${DIR}/defaults" -type f | wc -l | tr -d ' ') files"
-
 echo "Building ${FULL_IMAGE}"
 echo "  PROJECT=${PROJECT} AR_REGION=${AR_REGION} AR_REPO=${AR_REPO}"
 
 docker buildx build \
     --platform linux/amd64 \
+    --build-arg "VITE_BASE_PATH=${VITE_BASE_PATH:-/}" \
     -t "${FULL_IMAGE}" \
     -t "${LATEST_IMAGE}" \
     --load \
-    "${DIR}"
+    "${NARRATIVES_DIR}"
 
 # Verify amd64 — Cloud Run rejects arm64 silently.
 ARCH="$(docker inspect --format '{{.Architecture}}' "${FULL_IMAGE}")"

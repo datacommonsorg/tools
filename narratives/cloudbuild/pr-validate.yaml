@@ -1,7 +1,8 @@
 # Cloud Build pipeline — validation on every pull request.
 #
 # Trigger: pull_request opened|synchronize against the main branch.
-# Filtered to paths: config/**, deploy/**, agent/**, cloudbuild/**.
+# Filtered to paths: config/**, defaults/**, deploy/**, agent/**, ui/**,
+#                    Dockerfile, cloudbuild/**.
 #
 # Validates without pushing or deploying.
 
@@ -56,19 +57,16 @@ steps:
           ajv-cli validate --spec=draft2020 -c ajv-formats -s schemas/theme.schema.json -d "$$t"
         done
 
-  # 4. Build the agent image (no push). Confirms Dockerfile + linux/amd64
-  #    still work.
+  # 4. Build the multi-stage application image (no push). Confirms Dockerfile +
+  #    linux/amd64 still work.
   - id: build-agent
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
     args:
       - '-c'
       - |
-        cd agent
-        # Stage a stub static/ and ../defaults so the Dockerfile COPY steps succeed.
-        mkdir -p ./static
-        rm -rf ./defaults && cp -R ../defaults ./defaults
-        docker buildx build --platform linux/amd64 -t agent-pr:$SHORT_SHA .
+        set -e
+        docker build -t agent-pr:$SHORT_SHA .
         ARCH=$$(docker inspect --format '{{.Architecture}}' agent-pr:$SHORT_SHA)
         if [ "$$ARCH" != "amd64" ]; then echo "FATAL: wrong arch $$ARCH"; exit 1; fi
 
