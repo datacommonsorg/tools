@@ -21,6 +21,7 @@ validation of the threshold and the target date, and unit and scaling
 compatibility across tables and cohorts.
 """
 
+import dataclasses
 import re
 from collections.abc import Sequence
 
@@ -32,6 +33,7 @@ from narratives_agent.analytics.alignment import (
     UnitMismatch,
     align_cohort,
     find_unit_mismatch,
+    has_adequate_coverage,
     select_reference_date,
     validate_alignment_parameters,
 )
@@ -148,6 +150,39 @@ def test_select_reference_date_rejects_empty_counts_and_cohorts() -> None:
             ),
         ):
             select_reference_date({"2022": 1}, cohort_size)
+
+
+def test_an_aligned_cohort_without_rows_is_rejected() -> None:
+    # Test: The non-empty invariant of `AlignedCohort`.
+    # Situation: An aligned cohort copied with no rows, which `align_cohort`
+    #   never produces.
+    # Expectation: Construction raises `ValueError`.
+    aligned = align_cohort(_table([("a", "2022", 1.0)]))
+    assert isinstance(aligned, AlignedCohort)
+    with pytest.raises(
+        ValueError,
+        match=re.escape("An aligned cohort must have at least one row."),
+    ):
+        dataclasses.replace(aligned, rows=())
+
+
+def test_has_adequate_coverage_includes_the_threshold() -> None:
+    # Test: The coverage predicate shared by the date rule and its callers.
+    # Situation: 5, 4, and 0 of 10 places at the default 50% threshold, and
+    #   0 of 10 at a threshold of 0.
+    # Expectation: 5 of 10 meets the threshold exactly, 4 of 10 does not,
+    #   and a threshold of 0 accepts any count.
+    assert has_adequate_coverage(5, 10)
+    assert not has_adequate_coverage(4, 10)
+    assert has_adequate_coverage(0, 10, min_coverage=0.0)
+
+
+def test_has_adequate_coverage_rejects_an_empty_cohort() -> None:
+    # Test: The cohort size precondition of the coverage predicate.
+    # Situation: A cohort size of 0.
+    # Expectation: `ValueError` instead of a division by zero.
+    with pytest.raises(ValueError, match="at least 1, not 0"):
+        has_adequate_coverage(0, 0)
 
 
 def test_target_date_is_used_as_given_and_duplicates_keep_the_last_row() -> (
