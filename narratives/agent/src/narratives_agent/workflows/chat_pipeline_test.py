@@ -22,7 +22,8 @@ Verifies that:
    and a failed, broken, or empty synthesis end the turn with one `error`
    terminal event carrying a fixed message and the machine-readable `reason`,
    and are recorded as `error` with that reason. Configuration and MCP
-   failures end the turn before synthesis.
+   failures end the turn before synthesis. When the MCP server is missing
+   required tools, the discovery phase logs a warning and continues the turn.
 3. An unexpected exception ends the turn as `internal_error`; a follow-up
    failure after the terminal event leaves the turn `complete`.
 4. A chart config that misses its join timeout is canceled and the turn
@@ -63,6 +64,7 @@ from narratives_agent.gemini.client import (
 )
 from narratives_agent.gemini.response import StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification
+from narratives_agent.mcp import capabilities
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
 from narratives_agent.workflows import chat_pipeline
@@ -227,10 +229,11 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     async def get_tools() -> list[mcp_client.McpTool]:
         return [
             mcp_client.McpTool(
-                name="get_observations",
+                name=name,
                 description="",
                 input_schema={"type": "object", "properties": {}},
             )
+            for name in sorted(capabilities.REQUIRED_TOOLS)
         ]
 
     async def classify(*args: Any, **kwargs: Any) -> Admitted:
@@ -751,6 +754,46 @@ async def test_a_slow_tool_list_fails_the_turn(
     assert _only_terminal(turn)["reason"] == "mcp_timeout"
     assert turn.synthesis_calls == 0
     assert turn.finished == [("error", "mcp_timeout")]
+
+
+@pytest.mark.asyncio
+async def test_a_tool_list_missing_required_tools_logs_one_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Missing required tools log a warning during discovery.
+    # Situation: `async_get_tools` returns only `get_observations` and
+    #   `search_indicators`, leaving four required tools missing.
+    # Expectation: The discovery phase logs one warning naming the four
+    #   missing tools, and the turn still completes.
+    async def partial_tools() -> list[mcp_client.McpTool]:
+        return [
+            mcp_client.McpTool(
+                name=name,
+                description="",
+                input_schema={"type": "object", "properties": {}},
+            )
+            for name in ("get_observations", "search_indicators")
+        ]
+
+    monkeypatch.setattr(mcp_client, "async_get_tools", partial_tools)
+
+    with caplog.at_level(logging.WARNING, logger=capabilities.logger.name):
+        await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (warning,) = [
+        record
+        for record in caplog.records
+        if record.name == capabilities.logger.name
+    ]
+    assert warning.levelno == logging.WARNING
+    assert warning.getMessage().endswith(
+        "missing required tools: get_child_observations, "
+        "get_multi_entity_observations, get_variable_metadata, "
+        "search_child_indicators"
+    )
+    assert turn.finished == [("complete", None)]
 
 
 @pytest.mark.asyncio

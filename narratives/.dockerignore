@@ -1,17 +1,15 @@
 # Node dependencies and frontend build outputs.
-node_modules/
-ui/node_modules/
+**/node_modules/
 ui/dist/
 ui/.vite/
 ui/coverage/
 
 # Python virtual environments, caches, and staged local artifacts.
-.ruff_cache/
-agent/.venv/
-agent/venv/
-agent/.mypy_cache/
-agent/.pytest_cache/
-agent/.ruff_cache/
+**/.venv/
+**/venv/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
 agent/static/
 agent/defaults/
 agent/config.json

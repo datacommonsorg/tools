@@ -42,7 +42,8 @@ Run all commands from the `narratives/` directory.
 
 ### Prerequisites
 
-- **Node.js 24** (via [`nvm`](https://github.com/nvm-sh/nvm)) and **pnpm**
+- **Node.js 24.22.1 or later 24.x** (via
+  [`nvm`](https://github.com/nvm-sh/nvm)) and **pnpm**
 - **Python 3.14** and **[`uv`](https://docs.astral.sh/uv/)**
 - A **[Gemini API key](https://aistudio.google.com)**
 

@@ -23,8 +23,10 @@ Run all commands from the `narratives/` directory unless noted otherwise.
 
 ### Required tools
 
-- **Node.js 24** (pinned in `.nvmrc`) and **pnpm** (pinned via `packageManager`
-  in `package.json`).
+- **Node.js 24.22.1 or later 24.x** (pinned in `.nvmrc`) and **pnpm** (pinned
+  via `packageManager` in `package.json`). `.npmrc` sets `engine-strict=true`,
+  so `pnpm install` fails on a Node.js release outside the `engines` range in
+  `package.json` rather than only warning.
 - **Python 3.14** and **[`uv`](https://docs.astral.sh/uv/)**. Python
   dependencies are declared in `agent/pyproject.toml` and locked in
   `agent/uv.lock`.
@@ -205,8 +207,9 @@ narratives/
 │       ├── settings.py        Environment variable settings
 │       ├── telemetry.py       OpenTelemetry and structured logging
 │       ├── server/            FastAPI app and routes (spa, chat, system)
-│       ├── mcp/               MCP client, capability discovery, and schemas
+│       ├── mcp/               MCP client, capabilities, schemas, and parsers
 │       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
+│       ├── analytics/         Tables, alignment, summaries, digest, scripts
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)
 │   └── src/

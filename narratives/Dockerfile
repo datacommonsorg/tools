@@ -23,13 +23,13 @@
 # Force linux/amd64 architecture so images built on Apple Silicon run on Cloud
 # Run and GKE amd64 node pools.
 # hadolint ignore=DL3029
-FROM --platform=linux/amd64 node:24-slim AS ui-builder
+FROM --platform=linux/amd64 node:24.22.1-slim AS ui-builder
 
 WORKDIR /build
 
 RUN corepack enable
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY ui/package.json ./ui/
 RUN pnpm install --frozen-lockfile
 
