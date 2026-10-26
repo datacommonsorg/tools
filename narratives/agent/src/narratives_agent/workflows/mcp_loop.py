@@ -56,7 +56,7 @@ from narratives_agent.gemini.response import FunctionCall
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.schema import transform_schema_for_gemini
-from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.telemetry import ErrorType, TurnTelemetry
 from narratives_agent.workflows.messages import (
     MCP_LOOP_TIMEOUT,
     MCP_MODEL_ERROR,
@@ -108,7 +108,7 @@ class McpLoopError(Exception):
     text.
     """
 
-    def __init__(self, error_type: str, message: str) -> None:
+    def __init__(self, error_type: ErrorType, message: str) -> None:
         super().__init__(message)
         self.error_type = error_type
 
@@ -198,7 +198,9 @@ async def _run_tool(
         status = "error"
     except mcp_client.McpTransportError as error:
         # The client has already logged the underlying failure.
-        raise McpLoopError("mcp_transport_error", MCP_UNAVAILABLE) from error
+        raise McpLoopError(
+            ErrorType.MCP_TRANSPORT_ERROR, MCP_UNAVAILABLE
+        ) from error
     else:
         result_text = _result_text(result)
         status = "success"
@@ -278,7 +280,9 @@ async def _iterate(
                 for detail in error.errors()
             ],
         )
-        raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR) from error
+        raise McpLoopError(
+            ErrorType.MCP_MODEL_ERROR, MCP_MODEL_ERROR
+        ) from error
     declared = frozenset(tool.name for tool in tools)
     limit = asyncio.Semaphore(MAX_CONCURRENT_TOOL_CALLS)
 
@@ -315,7 +319,9 @@ async def _iterate(
             raise
         except GeminiError as error:
             # The client has already logged the redacted upstream error.
-            raise McpLoopError("mcp_model_error", MCP_MODEL_ERROR) from error
+            raise McpLoopError(
+                ErrorType.MCP_MODEL_ERROR, MCP_MODEL_ERROR
+            ) from error
         function_calls = response.function_calls
         if not function_calls:
             if not response.text.strip():
@@ -329,7 +335,9 @@ async def _iterate(
                     "(finish reason: %s)",
                     response.finish_reason,
                 )
-                raise McpLoopError("mcp_empty_response", MCP_NO_RESPONSE)
+                raise McpLoopError(
+                    ErrorType.MCP_EMPTY_RESPONSE, MCP_NO_RESPONSE
+                )
             return
 
         contents.append(response)
@@ -419,7 +427,9 @@ async def execute_mcp_tool_loop(
                 "MCP loop exceeded %.0f seconds before any tool call completed",
                 MCP_LOOP_TIMEOUT_SECONDS,
             )
-            raise McpLoopError("mcp_timeout", MCP_LOOP_TIMEOUT) from error
+            raise McpLoopError(
+                ErrorType.MCP_TIMEOUT, MCP_LOOP_TIMEOUT
+            ) from error
         logger.warning(
             "MCP loop exceeded %.0f seconds after %d iterations and %d tool "
             "calls; the answer will be built on partial data",

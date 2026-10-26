@@ -55,7 +55,7 @@ from narratives_agent.gemini.response import FunctionCall, GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
-from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.telemetry import ErrorType, TurnTelemetry
 from narratives_agent.workflows import mcp_loop
 from narratives_agent.workflows.pattern_guidance import pattern_directive
 from narratives_agent.workflows.transcript import (
@@ -213,21 +213,27 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
     ("response", "error_type"),
     [
         pytest.param(
-            GeminiError(_UPSTREAM_ERROR), "mcp_model_error", id="model-error"
+            GeminiError(_UPSTREAM_ERROR),
+            ErrorType.MCP_MODEL_ERROR,
+            id="model-error",
         ),
-        pytest.param(GeminiResponse(), "mcp_empty_response", id="empty"),
+        pytest.param(
+            GeminiResponse(), ErrorType.MCP_EMPTY_RESPONSE, id="empty"
+        ),
         pytest.param(
             GeminiResponse(finish_reason="MALFORMED_FUNCTION_CALL"),
-            "mcp_empty_response",
+            ErrorType.MCP_EMPTY_RESPONSE,
             id="empty-with-finish-reason",
         ),
-        pytest.param(_text_turn("  \n"), "mcp_empty_response", id="blank-text"),
+        pytest.param(
+            _text_turn("  \n"), ErrorType.MCP_EMPTY_RESPONSE, id="blank-text"
+        ),
     ],
 )
 @pytest.mark.asyncio
 async def test_unusable_model_response_fails_closed(
     response: GeminiResponse | Exception,
-    error_type: str,
+    error_type: ErrorType,
     calls: list[str],
     model_answers: Callable[..., None],
     telemetry: TurnTelemetry,
@@ -291,7 +297,7 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
             _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
         )
 
-    assert raised.value.error_type == "mcp_timeout"
+    assert raised.value.error_type == ErrorType.MCP_TIMEOUT
     assert canceled.is_set()
 
 
@@ -395,7 +401,7 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
             _TRANSCRIPT, _CONFIG, _TOOLS, telemetry
         )
 
-    assert raised.value.error_type == "mcp_transport_error"
+    assert raised.value.error_type == ErrorType.MCP_TRANSPORT_ERROR
     assert _UPSTREAM_ERROR not in str(raised.value)
     assert second_canceled.is_set()
     assert telemetry.tool_calls == {}
@@ -782,5 +788,5 @@ async def test_an_invalid_tool_schema_ends_the_loop_as_a_model_error(
             _TRANSCRIPT, _CONFIG, [tool], telemetry
         )
 
-    assert raised.value.error_type == "mcp_model_error"
+    assert raised.value.error_type == ErrorType.MCP_MODEL_ERROR
     assert telemetry.mcp_iterations == 0

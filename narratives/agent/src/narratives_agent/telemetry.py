@@ -43,6 +43,7 @@ from collections import Counter
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from typing import Any, Literal
 
 from fastapi import FastAPI
@@ -71,6 +72,23 @@ from narratives_agent.gemini.schemas import QueryPattern
 SERVICE_NAME = "narratives-agent"
 
 type TerminalState = Literal["complete", "error", "refused", "canceled"]
+
+
+class ErrorType(StrEnum):
+    """Machine-readable reason codes for turns that end in an error frame."""
+
+    CHAT_DISABLED = "chat_disabled"
+    CONFIG_MISSING = "config_missing"
+    INTERNAL_ERROR = "internal_error"
+    MCP_EMPTY_RESPONSE = "mcp_empty_response"
+    MCP_MODEL_ERROR = "mcp_model_error"
+    MCP_TIMEOUT = "mcp_timeout"
+    MCP_TRANSPORT_ERROR = "mcp_transport_error"
+    MCP_UNAVAILABLE = "mcp_unavailable"
+    SYNTHESIS_EMPTY = "synthesis_empty"
+    SYNTHESIS_ERROR = "synthesis_error"
+    SYNTHESIS_STREAM_ERROR = "synthesis_stream_error"
+
 
 # `_ALLOWED_SPAN_ATTRIBUTES` lists the span attributes permitted to leave the
 # process. `format_span` drops all other attributes, including URLs, query

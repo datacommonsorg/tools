@@ -54,13 +54,14 @@ from narratives_agent.mcp.data_utils import (
     extract_provenance_from_mcp_results,
 )
 from narratives_agent.settings import get_settings
-from narratives_agent.telemetry import TerminalState, TurnTelemetry
+from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
 from narratives_agent.workflows.chart_config import (
     get_chart_config,
     validate_data_response,
 )
 from narratives_agent.workflows.classify import (
     Clarification,
+    RefusedReason,
     TurnRefusedError,
     classify_query,
 )
@@ -139,7 +140,7 @@ class TurnAbortedError(Exception):
     that has not been redacted.
     """
 
-    def __init__(self, error_type: str, message: str) -> None:
+    def __init__(self, error_type: ErrorType, message: str) -> None:
         super().__init__(message)
         self.error_type = error_type
 
@@ -205,10 +206,12 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
             "MCP tool list did not arrive within %d seconds",
             MCP_TOOLS_TIMEOUT_SECONDS,
         )
-        raise TurnAbortedError("mcp_timeout", MCP_TOOLS_TIMEOUT) from error
+        raise TurnAbortedError(
+            ErrorType.MCP_TIMEOUT, MCP_TOOLS_TIMEOUT
+        ) from error
     if not tools:
         logger.warning("MCP unavailable: not connected or no tools available")
-        raise TurnAbortedError("mcp_unavailable", MCP_UNAVAILABLE)
+        raise TurnAbortedError(ErrorType.MCP_UNAVAILABLE, MCP_UNAVAILABLE)
     warn_on_missing_tools(tools)
 
     ctx.emit(StatusFrame(phase="discovery", message=DISCOVERY_STATUS))
@@ -366,7 +369,9 @@ async def run_synthesis_phase(
     except GeminiError as error:
         # The client has already logged the redacted upstream error, so the
         # user receives a fixed message.
-        raise TurnAbortedError("synthesis_error", SYNTHESIS_FAILED) from error
+        raise TurnAbortedError(
+            ErrorType.SYNTHESIS_ERROR, SYNTHESIS_FAILED
+        ) from error
 
     full_text = ""
     try:
@@ -382,17 +387,17 @@ async def run_synthesis_phase(
         # Once answer text has streamed to the client, a mid-stream block
         # leaves the response truncated and is reported as a stream error.
         raise TurnAbortedError(
-            "synthesis_stream_error", SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
         ) from error
     except GeminiStreamError as error:
         raise TurnAbortedError(
-            "synthesis_stream_error", SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
         ) from error
     finally:
         await stream.aclose()
     if not full_text.strip():
         logger.warning("Synthesis returned no answer text")
-        raise TurnAbortedError("synthesis_empty", SYNTHESIS_FAILED)
+        raise TurnAbortedError(ErrorType.SYNTHESIS_EMPTY, SYNTHESIS_FAILED)
     return full_text
 
 
@@ -496,7 +501,9 @@ def _load_turn_config() -> AgentConfig:
     """
     config = load_config()
     if config is None:
-        raise TurnAbortedError("config_missing", "Backend config not loaded")
+        raise TurnAbortedError(
+            ErrorType.CONFIG_MISSING, "Backend config not loaded"
+        )
     return config
 
 
@@ -526,16 +533,16 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     idempotency_key = transcript.current_idempotency_key
     telemetry = TurnTelemetry()
     state: TerminalState | None = None
-    error_type: str | None = None
+    error_type: ErrorType | RefusedReason | None = None
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
         if not get_settings().enable_chat:
-            state, error_type = "refused", "chat_disabled"
+            state, error_type = "refused", ErrorType.CHAT_DISABLED
             emit(
                 TerminalErrorFrame(
                     idempotency_key=idempotency_key,
                     error=CHAT_DISABLED,
-                    reason="chat_disabled",
+                    reason=ErrorType.CHAT_DISABLED,
                 )
             )
             return
@@ -593,11 +600,11 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         )
     except GeminiBlockedError:
         # The Gemini client has already logged the block reason.
-        state, error_type = "refused", "safety_blocked"
+        state, error_type = "refused", RefusedReason.SAFETY_BLOCKED
         emit(
             TerminalRefusedFrame(
                 idempotency_key=idempotency_key,
-                reason="safety_blocked",
+                reason=RefusedReason.SAFETY_BLOCKED,
                 message=REFUSED_MESSAGE,
             )
         )
@@ -615,12 +622,12 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         raise
     except Exception:
         logger.exception("Chat turn failed")
-        state, error_type = "error", "internal_error"
+        state, error_type = "error", ErrorType.INTERNAL_ERROR
         emit(
             TerminalErrorFrame(
                 idempotency_key=idempotency_key,
                 error=INTERNAL_ERROR,
-                reason="internal_error",
+                reason=ErrorType.INTERNAL_ERROR,
             )
         )
     finally:

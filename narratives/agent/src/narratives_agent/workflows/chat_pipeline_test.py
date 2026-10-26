@@ -66,7 +66,12 @@ from narratives_agent.gemini.response import StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.mcp import capabilities
 from narratives_agent.mcp import client as mcp_client
-from narratives_agent.telemetry import TerminalState, TokenUsage, TurnTelemetry
+from narratives_agent.telemetry import (
+    ErrorType,
+    TerminalState,
+    TokenUsage,
+    TurnTelemetry,
+)
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import transcript as transcript_module
 from narratives_agent.workflows.classify import (
@@ -483,7 +488,9 @@ async def test_failed_tool_loop_ends_the_turn_before_synthesis(
     #   loop's message, never calls synthesis, and is recorded as `error`
     #   with `mcp_timeout`.
     async def failing_loop(*args: Any, **kwargs: Any) -> McpLoopResult:
-        raise McpLoopError("mcp_timeout", "The data request took too long.")
+        raise McpLoopError(
+            ErrorType.MCP_TIMEOUT, "The data request took too long."
+        )
 
     monkeypatch.setattr(chat_pipeline, "execute_mcp_tool_loop", failing_loop)
 
@@ -493,13 +500,13 @@ async def test_failed_tool_loop_ends_the_turn_before_synthesis(
     assert event == "terminal"
     assert terminal["state"] == "error"
     assert terminal["error"] == "The data request took too long."
-    assert terminal["reason"] == "mcp_timeout"
+    assert terminal["reason"] == ErrorType.MCP_TIMEOUT
     assert terminal["idempotency_key"] == _IDEMPOTENCY_KEY
     assert "hmac" not in terminal
     assert "window" not in terminal
     assert turn.names().count("terminal") == 1
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("error", "mcp_timeout")]
+    assert turn.finished == [("error", ErrorType.MCP_TIMEOUT)]
 
 
 @pytest.mark.asyncio
@@ -524,9 +531,9 @@ async def test_failed_synthesis_reports_a_fixed_message(
     event, terminal = turn.events[-1]
     assert event == "terminal"
     assert terminal["error"] == SYNTHESIS_FAILED
-    assert terminal["reason"] == "synthesis_error"
+    assert terminal["reason"] == ErrorType.SYNTHESIS_ERROR
     assert upstream not in terminal["error"]
-    assert turn.finished == [("error", "synthesis_error")]
+    assert turn.finished == [("error", ErrorType.SYNTHESIS_ERROR)]
 
 
 @pytest.mark.asyncio
@@ -707,9 +714,9 @@ async def test_a_missing_configuration_fails_the_turn_before_classify(
     terminal = _only_terminal(turn)
     assert turn.names() == ["terminal"]
     assert terminal["state"] == "error"
-    assert terminal["reason"] == "config_missing"
+    assert terminal["reason"] == ErrorType.CONFIG_MISSING
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("error", "config_missing")]
+    assert turn.finished == [("error", ErrorType.CONFIG_MISSING)]
 
 
 @pytest.mark.asyncio
@@ -728,10 +735,10 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     terminal = _only_terminal(turn)
-    assert terminal["reason"] == "mcp_unavailable"
+    assert terminal["reason"] == ErrorType.MCP_UNAVAILABLE
     assert terminal["error"] == MCP_UNAVAILABLE
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("error", "mcp_unavailable")]
+    assert turn.finished == [("error", ErrorType.MCP_UNAVAILABLE)]
 
 
 @pytest.mark.asyncio
@@ -752,9 +759,9 @@ async def test_a_slow_tool_list_fails_the_turn(
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert _only_terminal(turn)["reason"] == "mcp_timeout"
+    assert _only_terminal(turn)["reason"] == ErrorType.MCP_TIMEOUT
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("error", "mcp_timeout")]
+    assert turn.finished == [("error", ErrorType.MCP_TIMEOUT)]
 
 
 @pytest.mark.asyncio
@@ -818,10 +825,10 @@ async def test_an_empty_synthesis_fails_the_turn(
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     terminal = _only_terminal(turn)
-    assert terminal["reason"] == "synthesis_empty"
+    assert terminal["reason"] == ErrorType.SYNTHESIS_EMPTY
     assert terminal["error"] == SYNTHESIS_FAILED
     assert not any("chart_config" in data for _, data in turn.events)
-    assert turn.finished == [("error", "synthesis_empty")]
+    assert turn.finished == [("error", ErrorType.SYNTHESIS_EMPTY)]
 
 
 @pytest.mark.asyncio
@@ -849,9 +856,9 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
 
     assert ("content", {"text": "About "}) in turn.events
     terminal = _only_terminal(turn)
-    assert terminal["reason"] == "synthesis_stream_error"
+    assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
     assert terminal["error"] == SYNTHESIS_FAILED
-    assert turn.finished == [("error", "synthesis_stream_error")]
+    assert turn.finished == [("error", ErrorType.SYNTHESIS_STREAM_ERROR)]
 
 
 @pytest.mark.asyncio
@@ -873,9 +880,9 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     terminal = _only_terminal(turn)
-    assert terminal["reason"] == "internal_error"
+    assert terminal["reason"] == ErrorType.INTERNAL_ERROR
     assert terminal["error"] == INTERNAL_ERROR
-    assert turn.finished == [("error", "internal_error")]
+    assert turn.finished == [("error", ErrorType.INTERNAL_ERROR)]
 
 
 @pytest.mark.asyncio
@@ -979,9 +986,9 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
 @pytest.mark.parametrize(
     ("reason", "message"),
     [
-        ("adversarial", REFUSED_MESSAGE),
+        (RefusedReason.ADVERSARIAL, REFUSED_MESSAGE),
         (
-            "off_domain",
+            RefusedReason.OFF_DOMAIN,
             "That request is outside the public statistical data this "
             "service covers (brand-specific coffee prices). Ask about a "
             "demographic, economic, health, climate, or social indicator "
@@ -1129,11 +1136,11 @@ async def test_a_blocked_call_before_synthesis_refuses_the_turn(
 
     terminal = _only_terminal(turn)
     assert terminal["state"] == "refused"
-    assert terminal["reason"] == "safety_blocked"
+    assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
     assert terminal["message"] == REFUSED_MESSAGE
     assert "error" not in terminal
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("refused", "safety_blocked")]
+    assert turn.finished == [("refused", RefusedReason.SAFETY_BLOCKED)]
 
 
 @pytest.mark.asyncio
@@ -1156,8 +1163,8 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
     assert not any("text" in data for event, data in turn.events)
     terminal = _only_terminal(turn)
     assert terminal["state"] == "refused"
-    assert terminal["reason"] == "safety_blocked"
-    assert turn.finished == [("refused", "safety_blocked")]
+    assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
+    assert turn.finished == [("refused", RefusedReason.SAFETY_BLOCKED)]
 
 
 @pytest.mark.asyncio
@@ -1190,9 +1197,9 @@ async def test_a_synthesis_stream_blocked_after_thoughts_refuses_the_turn(
     )
     terminal = _only_terminal(turn)
     assert terminal["state"] == "refused"
-    assert terminal["reason"] == "safety_blocked"
+    assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
     assert terminal["message"] == REFUSED_MESSAGE
-    assert turn.finished == [("refused", "safety_blocked")]
+    assert turn.finished == [("refused", RefusedReason.SAFETY_BLOCKED)]
 
 
 @pytest.mark.asyncio
@@ -1219,9 +1226,9 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     assert ("content", {"text": "About "}) in turn.events
     terminal = _only_terminal(turn)
     assert terminal["state"] == "error"
-    assert terminal["reason"] == "synthesis_stream_error"
+    assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
     assert terminal["error"] == SYNTHESIS_FAILED
-    assert turn.finished == [("error", "synthesis_stream_error")]
+    assert turn.finished == [("error", ErrorType.SYNTHESIS_STREAM_ERROR)]
 
 
 @pytest.mark.asyncio
@@ -1254,12 +1261,12 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
                 "state": "error",
                 "idempotency_key": _IDEMPOTENCY_KEY,
                 "error": CHAT_DISABLED,
-                "reason": "chat_disabled",
+                "reason": ErrorType.CHAT_DISABLED,
             },
         )
     ]
     assert turn.synthesis_calls == 0
-    assert turn.finished == [("refused", "chat_disabled")]
+    assert turn.finished == [("refused", ErrorType.CHAT_DISABLED)]
 
 
 # The serialized frames of a complete turn whose stubs also report a thought

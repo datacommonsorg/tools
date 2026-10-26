@@ -166,7 +166,7 @@ async def test_a_prefilter_match_refuses_without_a_model_call(
     ):
         await classify.classify_query(_transcript(query), _CONFIG, telemetry)
 
-    assert raised.value.reason == "adversarial"
+    assert raised.value.reason == classify.RefusedReason.ADVERSARIAL
     assert str(raised.value) == REFUSED_MESSAGE
     assert requests == []
     (record,) = caplog.records
@@ -194,7 +194,7 @@ async def test_an_adversarial_verdict_refuses_with_the_fixed_message(
     with pytest.raises(classify.TurnRefusedError) as raised:
         await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
-    assert raised.value.reason == "adversarial"
+    assert raised.value.reason == classify.RefusedReason.ADVERSARIAL
     assert str(raised.value) == REFUSED_MESSAGE
 
 
@@ -218,7 +218,7 @@ async def test_an_off_domain_verdict_refuses_with_the_premise(
     with pytest.raises(classify.TurnRefusedError) as raised:
         await classify.classify_query(_transcript(), _CONFIG, telemetry)
 
-    assert raised.value.reason == "off_domain"
+    assert raised.value.reason == classify.RefusedReason.OFF_DOMAIN
     assert str(raised.value) == classify.off_domain_message(
         "brand-specific coffee prices"
     )
