@@ -192,6 +192,13 @@ export type TurnStatus =
   | "refused"
   | "error";
 
+/** Statuses a turn keeps once it has ended; Stop leaves such a turn alone. */
+const SETTLED_STATUSES: ReadonlySet<TurnStatus> = new Set([
+  "done",
+  "refused",
+  "error",
+]);
+
 /**
  * Defines the error message shown when a turn's stream ends without a
  * terminal event because the connection dropped or the page closed mid-stream.
@@ -411,18 +418,13 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
  * takes no numbers, matching the condition `TurnView` renders `AnswerPanel`
  * on. Numbering one would retire `[1]` and `[2]` to a turn with no Citations
  * list, and the next answer would open at `[3]`.
- *
- * `provenance` is typed as required and still read defensively: turns are
- * rehydrated from localStorage, which `chat_session_context` parses and
- * filters by `status` alone, so one persisted by an older build arrives
- * without the array the type promises.
  */
 export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   const assigned = new Map<string, number>();
   let next = 1;
   return turns.map((turn) => {
     if (!turn.text || turn.stopped) return [];
-    return (turn.provenance ?? []).map((source) => {
+    return turn.provenance.map((source) => {
       const key = source.url || source.name;
       const existing = assigned.get(key);
       if (existing !== undefined) return existing;
@@ -466,7 +468,7 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
 /**
  * Applies the signed window of a `complete` terminal event to every turn.
  *
- * The turn at `position` receives its signature, state slots, and the
+ * The turn with `idempotencyKey` receives its signature, state slots, and the
  * window's summary, which every other turn drops so that it is stored once.
  * Compaction re-signs the whole window, so each other signed turn takes the
  * signature the window lists for its idempotency key, and a turn the window
@@ -475,7 +477,7 @@ function withoutSignature(turn: ChatTurn): ChatTurn {
  */
 export function applySignedWindow(
   turns: ChatTurn[],
-  position: number,
+  idempotencyKey: string,
   terminal: TerminalPayload,
 ): ChatTurn[] {
   const { window, hmac, turn_index, state_slots } = terminal;
@@ -485,8 +487,8 @@ export function applySignedWindow(
   const signatures = new Map(
     window.map((entry) => [entry.idempotency_key, entry]),
   );
-  return turns.map((turn, index) => {
-    if (index === position) {
+  return turns.map((turn) => {
+    if (turn.idempotencyKey === idempotencyKey) {
       return {
         ...turn,
         turnIndex: turn_index,
@@ -634,6 +636,12 @@ export async function* parseSseStream(
   }
 }
 
+/** Identifies the open request: its abort handle and its turn's key. */
+interface InFlightRequest {
+  controller: AbortController;
+  idempotencyKey: string;
+}
+
 /** Public surface of {@link useSseChat}. */
 export interface UseSseChatResult {
   isStreaming: boolean;
@@ -644,9 +652,8 @@ export interface UseSseChatResult {
 
 /**
  * Configures {@link useSseChat}. This is a controlled hook: turns live in the
- * parent (`ChatSessionProvider`) so multiple chat threads can share one
- * streaming machine. Switching the current session is a parent-level decision;
- * this hook reads and writes whichever turns array it is given.
+ * parent (`ChatSessionProvider`), which empties them for "New chat"; this hook
+ * reads and writes whichever turns array it is given.
  */
 export interface UseSseChatProps {
   endpoint?: string;
@@ -666,12 +673,25 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
   } = props;
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef<InFlightRequest | null>(null);
 
+  // Settles the open request now; once aborted, it writes nothing more.
   const stop = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-  }, []);
+    const inFlight = inFlightRef.current;
+    inFlightRef.current = null;
+    setIsStreaming(false);
+    setError(null);
+    if (!inFlight) return;
+    inFlight.controller.abort();
+    setTurns((prev) =>
+      prev.map((turn) =>
+        turn.idempotencyKey === inFlight.idempotencyKey &&
+        !SETTLED_STATUSES.has(turn.status)
+          ? { ...turn, status: "done", stopped: true }
+          : turn,
+      ),
+    );
+  }, [setTurns]);
 
   const send = useCallback(
     async (message: string) => {
@@ -682,14 +702,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // re-validate the message text here.
       if (isStreaming) return;
       const idempotencyKey = newIdempotencyKey();
-      const baseTurn = newTurn(message, idempotencyKey);
-      // Holds the in-flight turn's position in the turns array, which differs
-      // from its signed `turnIndex` once any earlier turn went unsigned.
-      let position = -1;
-      setTurns((prev) => {
-        position = prev.length;
-        return [...prev, baseTurn];
-      });
+      setTurns((prev) => [...prev, newTurn(message, idempotencyKey)]);
       setIsStreaming(true);
       setError(null);
 
@@ -698,14 +711,16 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // left out, and the agent rejects any change to a signed one.
       const transcript = transcriptRequestFields(turns);
 
-      // Applies a mutation to the in-flight turn, leaving other turns intact.
+      const controller = new AbortController();
+      inFlightRef.current = { controller, idempotencyKey };
+
+      // Applies a mutation to this request's turn, found by its key.
       const patch = (mutate: (turn: ChatTurn) => ChatTurn) =>
-        setTurns((prev) => {
-          if (position < 0 || position >= prev.length) return prev;
-          const next = prev.slice();
-          next[position] = mutate(next[position]);
-          return next;
-        });
+        setTurns((prev) =>
+          prev.map((turn) =>
+            turn.idempotencyKey === idempotencyKey ? mutate(turn) : turn,
+          ),
+        );
 
       // Holds the terminal event payload once it arrives. If an error or abort
       // occurs after that point while follow-up questions are streaming, the
@@ -715,8 +730,6 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // error after this point is reported as an interrupted stream.
       let streamStarted = false;
       try {
-        const controller = new AbortController();
-        abortRef.current = controller;
         const resp = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -727,13 +740,15 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           }),
           signal: controller.signal,
         });
-        if (await isTranscriptRejection(resp)) {
+        const rejected = await isTranscriptRejection(resp);
+        if (controller.signal.aborted) return;
+        if (rejected) {
           // The signatures no longer verify, as after a key rotation or an
           // agent restart without a shared key. Clearing them lets the user
           // continue without earlier context instead of failing every turn.
           setTurns((prev) =>
-            prev.map((turn, index) =>
-              index === position
+            prev.map((turn) =>
+              turn.idempotencyKey === idempotencyKey
                 ? { ...turn, status: "error", error: TRANSCRIPT_REJECTED_ERROR }
                 : withoutSignature(turn),
             ),
@@ -751,6 +766,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         streamStarted = true;
         const reader = resp.body.getReader();
         for await (const evt of parseSseStream(reader)) {
+          if (controller.signal.aborted) return;
           // Heartbeat frames carry no state changes, so skipping them avoids
           // an unnecessary re-render.
           if (evt.event === "heartbeat") continue;
@@ -759,7 +775,9 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
             const payload = evt.data;
             terminal = payload;
             if (payload.state === "complete") {
-              setTurns((prev) => applySignedWindow(prev, position, payload));
+              setTurns((prev) =>
+                applySignedWindow(prev, idempotencyKey, payload),
+              );
             } else if (payload.state !== "refused") {
               setError(terminalError(payload));
             }
@@ -767,7 +785,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         }
         // A turn is finished only once its terminal event arrives. A stream
         // that ends without one was cut off, however much text it delivered.
-        if (!terminal) {
+        if (!terminal && !controller.signal.aborted) {
           patch((turn) => ({
             ...turn,
             status: "error",
@@ -776,31 +794,23 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           setError(INTERRUPTED_TURN_ERROR);
         }
       } catch (e) {
-        if (terminal) {
-          // The turn already ended; only the follow-ups were cut off, and
-          // the turn keeps the state its terminal event gave it.
-          return;
-        }
-        if (e instanceof DOMException && e.name === "AbortError") {
-          // User clicked Stop — mark the turn done and flag it stopped so the
-          // UI shows a clear "Stopped per your request" note instead of the
-          // half-finished reasoning/answer.
-          patch((turn) => ({ ...turn, status: "done", stopped: true }));
-        } else {
-          // Before the response starts, report the browser's fetch error; once
-          // the stream has started, report the fixed interrupted-stream error
-          // because browser stream error messages vary across engines.
-          const msg = streamStarted
-            ? INTERRUPTED_TURN_ERROR
-            : e instanceof Error
-              ? e.message
-              : String(e);
-          patch((turn) => ({ ...turn, status: "error", error: msg }));
-          setError(msg);
-        }
+        // Its terminal event, or Stop, has already settled the turn.
+        if (terminal || controller.signal.aborted) return;
+        // Before the response starts, report the browser's fetch error; once
+        // the stream has started, report the fixed interrupted-stream error
+        // because browser stream error messages vary across engines.
+        const msg = streamStarted
+          ? INTERRUPTED_TURN_ERROR
+          : e instanceof Error
+            ? e.message
+            : String(e);
+        patch((turn) => ({ ...turn, status: "error", error: msg }));
+        setError(msg);
       } finally {
-        abortRef.current = null;
-        setIsStreaming(false);
+        if (!controller.signal.aborted) {
+          inFlightRef.current = null;
+          setIsStreaming(false);
+        }
       }
     },
     [endpoint, turns, setTurns, isStreaming],

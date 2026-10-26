@@ -19,9 +19,12 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
+import {
+  ChatSessionContext,
+  type ChatSessionContextValue,
+} from '@/src/hooks/chat_session_context';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 import { DataAgent, HANDOFF_MS } from './data_agent';
 
@@ -33,43 +36,44 @@ class NoopResizeObserver {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', NoopResizeObserver);
-  window.localStorage.clear();
 });
 
 afterEach(() => {
   cleanup();
-  window.localStorage.clear();
   vi.unstubAllGlobals();
 });
 
-const seedTurns = (turns: ChatTurn[]): void => {
-  window.localStorage.setItem(
-    'cdc:chat:v2',
-    JSON.stringify({
-      version: 2,
-      currentId: 's1',
-      sessions: [
-        {
-          id: 's1',
-          title: 'Test',
-          createdAt: 1,
-          updatedAt: 1,
-          turns,
-        },
-      ],
-    }),
+/** Returns the surface over a settled chat state holding `turns`. */
+const chatSurface = (turns: ChatTurn[]) => {
+  const chat: ChatSessionContextValue = {
+    turns,
+    isStreaming: false,
+    error: null,
+    send: vi.fn(),
+    stop: vi.fn(),
+    newChat: vi.fn(),
+    isDrawerOpen: false,
+    toggleDrawer: vi.fn(),
+    closeDrawer: vi.fn(),
+  };
+  return (
+    <ChatSessionContext.Provider value={chat}>
+      <DataAgent />
+    </ChatSessionContext.Provider>
   );
 };
+
+/** Renders the surface over a settled chat state holding `turns`. */
+const renderTurns = (turns: ChatTurn[]) => render(chatSurface(turns));
 
 describe('DataAgent refused and clarification turns', () => {
   it('renders a refused turn as a neutral notice card, not an error card', () => {
     // Test: Rendering a refused turn in DataAgent.
-    // Situation: The active session contains a refused turn with a refusal
-    //            notice message.
+    // Situation: The chat holds a refused turn with a refusal notice message.
     // Expectation: The notice message is rendered in a note region using the
     //              theme surface token, without error styling and without a
     //              ReasoningBlock.
-    seedTurns([
+    const { container } = renderTurns([
       {
         userMessage: 'How much does a latte cost in Seattle?',
         status: 'refused',
@@ -81,12 +85,6 @@ describe('DataAgent refused and clarification turns', () => {
         provenance: [],
       },
     ]);
-
-    const { container } = render(
-      <ChatSessionProvider>
-        <DataAgent />
-      </ChatSessionProvider>,
-    );
 
     const notice = screen.getByRole('note');
     expect(notice.textContent).toContain('retail coffee prices');
@@ -102,7 +100,7 @@ describe('DataAgent refused and clarification turns', () => {
     //            while `thoughts`, `toolCalls`, and `provenance` are all empty.
     // Expectation: The clarification text is rendered and the completed
     //              ReasoningBlock placeholder is omitted.
-    seedTurns([
+    renderTurns([
       {
         userMessage: 'What is the population of Georgia?',
         status: 'done',
@@ -112,12 +110,6 @@ describe('DataAgent refused and clarification turns', () => {
         provenance: [],
       },
     ]);
-
-    render(
-      <ChatSessionProvider>
-        <DataAgent />
-      </ChatSessionProvider>,
-    );
 
     expect(
       screen.getByText(
@@ -130,6 +122,37 @@ describe('DataAgent refused and clarification turns', () => {
         'Analyzed the query and retrieved relevant data from Data Commons.',
       ),
     ).toBeNull();
+  });
+});
+
+describe('DataAgent New chat', () => {
+  it('drops an unsent follow-up when the chat is emptied', () => {
+    // Test: New chat with a follow-up typed but not sent.
+    // Situation: The chat holds an answered turn, the user types a follow-up
+    //            into the prompt, and New chat then empties the chat.
+    // Expectation: The landing view's prompt is empty, so the draft does not
+    //              carry over into the new chat.
+    const { rerender } = renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'done',
+        toolCalls: [],
+        thoughts: [],
+        text: 'About 68 million.',
+        provenance: [],
+      },
+    ]);
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Ask a follow-up question' }),
+      { target: { value: 'And Germany?' } },
+    );
+
+    rerender(chatSurface([]));
+
+    const prompt = screen.getByRole('textbox', {
+      name: 'Ask a question to explore relevant statistical data',
+    });
+    expect((prompt as HTMLTextAreaElement).value).toBe('');
   });
 });
 

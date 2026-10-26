@@ -47,7 +47,6 @@ afterEach(() => {
   cleanup();
   document.getElementById('instance-config')?.remove();
   resetInstanceConfigForTests();
-  window.localStorage.clear();
 });
 
 describe('Header', () => {

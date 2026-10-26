@@ -26,6 +26,7 @@ RESTART=false
 BOOTSTRAP_SECRETS=false
 PREFLIGHT=false
 DESTROY=false
+ACCEPT_SERVICE_RENAME=false
 
 # One repository is one deployment. There is no --instance: the configuration
 # is always config/instance.env, and a second deployment is a second clone.
@@ -57,6 +58,10 @@ for i in "${!args[@]}"; do
             # a key.
             BOOTSTRAP_SECRETS=true
             ;;
+        --accept-service-rename)
+            # Replacing a renamed service takes its public URL with it.
+            ACCEPT_SERVICE_RENAME=true
+            ;;
         --code-only)
             CODE_ONLY=true
             ;;
@@ -67,7 +72,6 @@ for i in "${!args[@]}"; do
             # every line says "will be created" and no existing instance's
             # resources appear, which would mean the state prefix did not take.
             PLAN_ONLY=true
-            shift
             ;;
         --infra-only)
             INFRA_ONLY=true
@@ -132,6 +136,9 @@ done
 for cmd in gcloud terraform pnpm python3; do
     if ! command -v "$cmd" &>/dev/null; then
         log_error "Required tool '$cmd' is not installed or not in PATH!"
+        if [[ "$cmd" == "pnpm" ]]; then
+            echo "  Enable it with: corepack enable pnpm" >&2
+        fi
         exit 1
     fi
 done
@@ -260,6 +267,8 @@ STATE_BUCKET="${PROJECT_ID}-tfstate"
 CONFIG_BUCKET="${CONFIG_BUCKET:-${PROJECT_ID}-${INSTANCE}-config}"
 DC_SECRET="${INSTANCE}-dc-api-key"
 GEMINI_SECRET="${INSTANCE}-gemini-api-key"
+# check_state_owner.py's EXIT_SERVICE_RENAMED.
+STATE_SERVICE_RENAMED=3
 
 
 if [ "$PREFLIGHT" = true ]; then
@@ -366,7 +375,15 @@ fi
 IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
 AGENT_IMAGE=""
 
-if [ "$INFRA_ONLY" = true ]; then
+if [[ "$PLAN_ONLY" == "true" ]]; then
+    # Plan against the image the service runs today, or the tag this commit
+    # would build when there is no service yet. Building one would push it.
+    log_info "[--plan] Skipping container builds; nothing is pushed."
+    AGENT_IMAGE=$(get_active_image "$APP_SERVICE")
+    if [[ -z "$AGENT_IMAGE" ]]; then
+        AGENT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/agent:${IMAGE_TAG}"
+    fi
+elif [[ "$INFRA_ONLY" == "true" ]]; then
     log_info "[Surgical-Build] Skipping all container builds. Retrieving active images from Cloud Run..."
     AGENT_IMAGE=$(get_active_image "$APP_SERVICE")
     if [ -z "$AGENT_IMAGE" ]; then
@@ -408,9 +425,14 @@ if [ "$CODE_ONLY" = false ]; then
         log_info "GCS configuration bucket 'gs://${CONFIG_BUCKET}' already exists."
     fi
 
-    log_info "Synchronizing config/ assets to GCS config bucket..."
-    gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env"
-    log_success "Configuration assets seeded successfully."
+    if [[ "$PLAN_ONLY" == "true" ]]; then
+        log_info "[--plan] Config objects a deploy would write (none are written now):"
+        gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env" --dry-run
+    else
+        log_info "Synchronizing config/ assets to GCS config bucket..."
+        gcloud storage rsync "$CONFIG_SRC" "gs://${CONFIG_BUCKET}" --recursive --project="$PROJECT_ID" --exclude="instance\.env"
+        log_success "Configuration assets seeded successfully."
+    fi
 else
     log_info "[Fast-Track] Skipping config bucket synchronization."
 fi
@@ -514,8 +536,26 @@ terraform init \
 # INSTANCE renamed after a deploy. Either loads state describing resources named
 # for a different deployment, and applying would rename them -- which Terraform
 # does by destroying and recreating.
-if ! terraform show -json 2>/dev/null \
-    | python3 ../../../deploy/check-state-owner.py "$INSTANCE"; then
+if ! STATE_JSON=$(terraform show -json); then
+    log_error "Could not read the Terraform state for '${INSTANCE}'; nothing was applied."
+    exit 1
+fi
+STATE_CHECK=0
+python3 ../../../deploy/check_state_owner.py "$INSTANCE" <<<"$STATE_JSON" || STATE_CHECK=$?
+if [[ "$STATE_CHECK" -eq "$STATE_SERVICE_RENAMED" ]]; then
+    # This deployment's own service, under a name the module has changed.
+    if [[ "$PLAN_ONLY" == "true" ]]; then
+        log_warn "[--plan] Applying this plan DESTROYS the service above and its URL, then creates '${APP_SERVICE}'."
+        echo "  A deploy stops here unless it is run with --accept-service-rename." >&2
+    elif [[ "$ACCEPT_SERVICE_RENAME" == "false" ]]; then
+        log_error "Refusing to apply: it DESTROYS the service above and its URL, then creates '${APP_SERVICE}'."
+        echo "  Re-run with --accept-service-rename once the new URL is acceptable," >&2
+        echo "  and update whatever points at the old one." >&2
+        exit 1
+    else
+        log_warn "[--accept-service-rename] Replacing the service above; its URL changes."
+    fi
+elif [[ "$STATE_CHECK" -ne 0 ]]; then
     log_error "Refusing to apply: the state loaded describes a different deployment, not '${INSTANCE}'."
     echo "  Applying would rename -- that is, DESTROY AND RECREATE -- those resources." >&2
     echo "  Check the backend prefix (custom-datacommons/${INSTANCE}), and whether" >&2
@@ -548,6 +588,7 @@ SERVICE_URL=$(terraform output -raw service_url)
 cd ../../..
 
 # 9. Run Verification Smoke Tests
+SMOKE_STATUS=0
 if [ "$CODE_ONLY" = false ]; then
     SMOKE_WARMUP=60
 
@@ -562,14 +603,14 @@ if [ "$CODE_ONLY" = false ]; then
     # dance is worth retiring once smoke.sh can present a token.
     if [ "$ACCESS_MODE" = "public" ]; then
         log_info "Running post-deployment smoke tests (public access; no IAP toggle needed)..."
-        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || { SMOKE_STATUS=$?; log_warn "Smoke tests encountered failures."; }
     else
         log_info "Temporarily disabling Identity-Aware Proxy (IAP) for validation..."
         gcloud beta run services update "${APP_SERVICE}" \
             --no-iap --region="$REGION" --project="$PROJECT_ID"
 
         log_info "Running automated post-deployment smoke tests..."
-        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || log_warn "Smoke tests encountered failures."
+        SMOKE_WARMUP_SECS="$SMOKE_WARMUP" bash deploy/smoke.sh "$SERVICE_URL" || { SMOKE_STATUS=$?; log_warn "Smoke tests encountered failures."; }
 
         log_info "Re-enabling Identity-Aware Proxy (IAP) on Cloud Run service..."
         gcloud beta run services update "${APP_SERVICE}" \
@@ -580,7 +621,11 @@ else
 fi
 
 echo -e "\n==========================================================================="
-log_success "CONGRATULATIONS! CUSTOM DATA COMMONS UPDATED SUCCESSFULLY!"
+if [[ "$SMOKE_STATUS" -ne 0 ]]; then
+    log_warn "DEPLOYED, BUT THE SMOKE TESTS FAILED -- see the checks above."
+else
+    log_success "CONGRATULATIONS! DEPLOYMENT UPDATED SUCCESSFULLY!"
+fi
 echo -e "==========================================================================="
 echo -e "Instance Display Name:  ${INSTANCE} Data Commons"
 echo -e "Service Web Endpoint:   ${GREEN}${SERVICE_URL}${NC}"

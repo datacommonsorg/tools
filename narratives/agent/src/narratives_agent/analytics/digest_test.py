@@ -31,6 +31,8 @@ from narratives_agent.analytics.digest import (
     CoverageReport,
     OkScriptResult,
     RefusedScriptResult,
+    conjugate_have,
+    format_percent,
     format_scaling_factor,
 )
 from narratives_agent.analytics.metrics import ScriptMetrics, ScriptName
@@ -374,6 +376,33 @@ def test_format_scaling_factor_renders_integers_and_fractions(
     # Expectation: Whole numbers below `1e15` render as plain integers, and
     #   the others render in compact `g` notation.
     assert format_scaling_factor(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("share", "expected"),
+    [(0.5, "50%"), (0.125, "12.5%"), (0.334, "33.4%"), (0.9995, "99.95%")],
+    ids=["whole", "one-decimal", "rounded-share", "near-whole"],
+)
+def test_format_percent_keeps_decimals_only_when_needed(
+    share: float, expected: str
+) -> None:
+    # Test: `format_percent` output for coverage thresholds.
+    # Situation: A whole percentage, a percentage with one decimal, a share
+    #   with a long float form, and a share just below a whole percentage.
+    # Expectation: Decimals appear only when the value is not whole, up to
+    #   two, so 0.9995 is not printed as 100%.
+    assert format_percent(share) == expected
+
+
+def test_conjugate_have_matches_the_place_count() -> None:
+    # Test: `conjugate_have` agreement.
+    # Situation: Counts of 0, 1, and 2 places.
+    # Expectation: Only a count of 1 takes "has".
+    assert [conjugate_have(count) for count in (0, 1, 2)] == [
+        "have",
+        "has",
+        "have",
+    ]
 
 
 @pytest.mark.parametrize(
