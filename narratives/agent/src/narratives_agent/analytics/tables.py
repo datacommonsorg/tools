@@ -100,13 +100,6 @@ class ObservationTable:
             child-place cohort (for example, all counties in a state).
         child_place_type: Child place type when the table was fetched for a
             child-place cohort (for example, `"County"`).
-        truncated: Whether rows were dropped to stay within a row cap.
-        total_rows_before_truncation: Total row count after date filtering and
-            before row truncation, set only when `truncated` is `True`.
-        total_places_before_truncation: Number of distinct places with data
-            (restricted to `requested_places` when non-empty) after date
-            filtering and before row truncation, set only when `truncated` is
-            `True`.
     """
 
     variable_dcid: str
@@ -124,9 +117,6 @@ class ObservationTable:
     alternative_sources: tuple[AlternativeSource, ...] = ()
     parent_place_dcid: str | None = None
     child_place_type: str | None = None
-    truncated: bool = False
-    total_rows_before_truncation: int | None = None
-    total_places_before_truncation: int | None = None
 
     @property
     def places_with_data(self) -> tuple[str, ...]:
