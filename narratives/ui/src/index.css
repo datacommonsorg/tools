@@ -38,6 +38,8 @@
      main answer body. */
   --color-surface-narrative: var(--theme-surface-narrative, #F5FAFF);
   --color-skeleton-bar: var(--theme-skeleton-bar, #EFEDED);
+  /* Inline-code chip behind `code` in the reasoning aside. */
+  --color-code-surface: #F2F2F2;
   --color-user-msg: var(--theme-user-msg, #EAEEF5);
   /* Active navigation indicator and label color, defaulting to the primary
      text color when unconfigured. */
@@ -126,6 +128,17 @@
     from {
       opacity: 0;
       transform: scaleX(0);
+    }
+  }
+
+  /* Reasoning bar's end dot while the turn streams: grows to 120% and back,
+     fully opaque. Animates `scale`, so the dot's `translate` is untouched.
+     Consumed as `animate-dot-pulse`, gated with `motion-safe:`. */
+  --animate-dot-pulse: dot-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes dot-pulse {
+    50% {
+      scale: 1.2;
     }
   }
 }
@@ -661,11 +674,6 @@ body[data-print-preflight] .dc-chart-card datacommons-scatter {
   .markdown-stream :is(.stream-word, li, table, hr, blockquote) {
     animation: var(--animate-stream-in);
   }
-}
-
-@keyframes reasoning-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 

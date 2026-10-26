@@ -182,11 +182,7 @@ export function DataAgent() {
         {/* Fade above the bar so content softens into it. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute left-0 right-0 bottom-full h-4"
-          style={{
-            background:
-              "linear-gradient(to top, #FFFFFF 0%, rgba(255,255,255,0) 100%)",
-          }}
+          className="pointer-events-none absolute left-0 right-0 bottom-full h-4 bg-linear-to-t from-surface to-transparent"
         />
         {/* Relative so the prompt's shadow paints over the fade. */}
         <div className={`${COLUMN} relative flex flex-col items-center gap-3 pb-4 sm:pb-6`}>
@@ -262,15 +258,14 @@ function TurnView({
     <div className={className}>
       {/* User bubble — Figma uses Type scale Body L (16/28/400). The
           .text-body-large utility gives the right family + size + weight,
-          but its line-height is 24px (GM3 body/large); override inline
-          because the utility's rule sets line-height with a CSS variable
-          and out-classes the Tailwind `leading-*` helper in source order. */}
+          but its line-height is 24px (GM3 body/large). That rule is unlayered,
+          so it beats a plain `leading-*` utility; `leading-7!` wins with
+          !important. */}
       <div
         data-turn-index={index}
-        className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-6 py-3 sm:py-4 rounded-card text-body-large shadow-sm bg-user-msg text-on-surface break-words${
+        className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-5 py-3 sm:py-2.5 rounded-card text-body-large shadow-sm bg-user-msg text-on-surface leading-7! break-words${
           index > 0 ? " mt-3" : ""
         }`}
-        style={{ lineHeight: "28px" }}
       >
         {turn.userMessage}
       </div>
