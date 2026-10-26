@@ -236,7 +236,7 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
  * response of tens of kilobytes — so inline it buried the answer it was meant to
  * explain. Out of flow, it can also scroll independently and be dismissed.
  *
- * Follows drawer_session.tsx: a scrim over the page, the panel above it, closed
+ * Follows drawer_menu.tsx: a scrim over the page, the panel above it, closed
  * by the button, the scrim, or Escape.
  */
 export function ProvenanceInspector({ turn }: { turn: ChatTurn }) {

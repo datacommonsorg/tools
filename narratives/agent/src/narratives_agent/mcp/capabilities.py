@@ -12,45 +12,52 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""What the MCP server we are actually talking to can do.
+"""Inspects the MCP server's tool list and summarizes it for `/agent/health`.
 
-MCP server generations need not serve the same tool surface. Server 1.2.1
-exposes two fat tools; 1.3.0 splits them into six and adds
-get_variable_metadata.
-
-This module answers which MCP tools exist and whether source attribution works.
+Checks the tools returned by `tools/list` against `REQUIRED_TOOLS`, logs a
+warning when required tools are missing, and formats the capability summary
+reported by `/agent/health`.
 """
 
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Literal
 
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import client
 
 logger = logging.getLogger(__name__)
 
-# The tool whose presence decides whether we can attribute a number to a named
-# source with a license. Only 1.3.0 serves it; without it the best available
-# provenance is a bare domain scraped from the observation payload.
-_METADATA_TOOL = "get_variable_metadata"
+TOOL_SEARCH_INDICATORS = "search_indicators"
+TOOL_SEARCH_CHILD_INDICATORS = "search_child_indicators"
+TOOL_GET_VARIABLE_METADATA = "get_variable_metadata"
+TOOL_GET_OBSERVATIONS = "get_observations"
+TOOL_GET_CHILD_OBSERVATIONS = "get_child_observations"
+TOOL_GET_MULTI_ENTITY_OBSERVATIONS = "get_multi_entity_observations"
 
-# Tools that return observations. Used to decide whether a turn actually
-# fetched any numbers.
+# Tools that return observations.
 _OBSERVATION_TOOLS = frozenset(
     {
-        "get_observations",
-        "get_child_observations",
-        "get_multi_entity_observations",
+        TOOL_GET_OBSERVATIONS,
+        TOOL_GET_CHILD_OBSERVATIONS,
+        TOOL_GET_MULTI_ENTITY_OBSERVATIONS,
     }
 )
 
 _SEARCH_TOOLS = frozenset(
     {
-        "search_indicators",
-        "search_child_indicators",
+        TOOL_SEARCH_INDICATORS,
+        TOOL_SEARCH_CHILD_INDICATORS,
     }
 )
+
+# The six tools of the MCP 1.3.x surface, all of which the agent requires.
+REQUIRED_TOOLS: frozenset[str] = (
+    _SEARCH_TOOLS | _OBSERVATION_TOOLS | {TOOL_GET_VARIABLE_METADATA}
+)
+
+type McpSupport = Literal["supported", "unsupported", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -65,13 +72,13 @@ class Capabilities:
 
     @property
     def supports_source_attribution(self) -> bool:
-        """Can we name the source behind a number, with its license?
+        """Returns whether the server provides `get_variable_metadata`.
 
-        When false, `_sources_from_variable_metadata` has nothing to work with
-        and provenance degrades to whatever the observation payload carries.
-        Worth surfacing rather than discovering from an unattributed answer.
+        Without `get_variable_metadata`, the agent cannot look up facet
+        metadata and must fall back to the source fields embedded in
+        observation responses.
         """
-        return self.has(_METADATA_TOOL)
+        return self.has(TOOL_GET_VARIABLE_METADATA)
 
     @property
     def observation_tools(self) -> frozenset[str]:
@@ -84,27 +91,40 @@ class Capabilities:
         return _SEARCH_TOOLS & self.tool_names
 
     @property
-    def generation(self) -> str:
-        """A human label for logs and /agent/health. Not used for branching.
+    def missing_tools(self) -> tuple[str, ...]:
+        """Returns the sorted names of any missing required tools."""
+        return tuple(sorted(REQUIRED_TOOLS - self.tool_names))
 
-        Behavior is driven by which tools are present, never by this string --
-        a version label invites `if generation == "1.3.0"` and that is exactly
-        the assumption that breaks when Google ships 1.4.
+    @property
+    def required_tools_present(self) -> bool:
+        """Returns whether every tool in `REQUIRED_TOOLS` is available."""
+        return REQUIRED_TOOLS.issubset(self.tool_names)
+
+    @property
+    def support(self) -> McpSupport:
+        """Returns the agent's support status for this MCP server.
+
+        Returns `"supported"` when every tool in `REQUIRED_TOOLS` is
+        available, `"unsupported"` when the server lists tools but at least
+        one required tool is missing, and `"unknown"` when the tool list is
+        empty.
         """
         if not self.tool_names:
             return "unknown"
-        return "1.3.x-or-later" if self.supports_source_attribution else "1.2.x"
+        return "supported" if self.required_tools_present else "unsupported"
 
     def describe(self) -> JsonObject:
         """Returns a JSON-serializable summary of the server's capabilities."""
         # `list` is invariant, so the sorted names are typed as JSON values
         # to fit in a `JsonObject`.
         tools: list[JsonValue] = [*sorted(self.tool_names)]
+        missing: list[JsonValue] = [*self.missing_tools]
         return {
-            "generation": self.generation,
+            "support": self.support,
             "tool_count": len(self.tool_names),
             "tools": tools,
             "supports_source_attribution": self.supports_source_attribution,
+            "missing_tools": missing,
         }
 
 
@@ -119,9 +139,25 @@ def from_tools(tools: Sequence[client.McpTool] | None) -> Capabilities:
     return Capabilities(tool_names=names)
 
 
-def current_cached() -> Capabilities:
-    """Capabilities from the cache only -- never triggers a fetch.
+def warn_on_missing_tools(tools: Sequence[client.McpTool]) -> None:
+    """Logs a single warning that names every missing tool in `REQUIRED_TOOLS`.
 
-    Use where blocking is unacceptable, e.g. a health endpoint.
+    Args:
+        tools: The tool definitions returned by `tools/list`.
+    """
+    caps = from_tools(tools)
+    if not caps.required_tools_present:
+        logger.warning(
+            "The MCP server is missing required tools: %s",
+            ", ".join(caps.missing_tools),
+        )
+
+
+def current_cached() -> Capabilities:
+    """Returns capabilities from the cached tool list without blocking.
+
+    Used by `/agent/health`. Does not log a warning when tools are missing,
+    because the cache is empty before the first fetch completes and health
+    checks should not log a warning on every poll.
     """
     return from_tools(client.cached_tools())

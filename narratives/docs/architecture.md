@@ -69,11 +69,12 @@ their own chart data and place names directly from Data Commons
 
 ### Automatic tool discovery
 
-Different versions of the Data Commons MCP server expose slightly different
-tools (for example, newer versions add `get_variable_metadata` and source
-attribution). Instead of hardcoding a fixed list of tools, the agent asks the
-MCP server which tools are available (`tools/list` in `mcp/capabilities.py`) on
-the first chat request and caches the result.
+The agent requires the six tools served by MCP 1.3.x (`REQUIRED_TOOLS`). It
+queries the MCP server for its available tools (`tools/list` in
+`mcp/client.py`) and caches the result. `mcp/capabilities.py` checks that list
+against `REQUIRED_TOOLS`, logs a warning if any are missing, and summarizes the
+tool surface for `/agent/health` (see
+[deployment.md](deployment.md#step-4-verify-the-deployment)).
 
 The server does not connect to the MCP server during container startup, so
 `/agent/health` responds immediately even if the upstream Data Commons server is
