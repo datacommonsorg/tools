@@ -202,7 +202,6 @@ def test_live_columnar_payload_parses_rows_names_and_metadata() -> None:
     assert table.provenance.sources == (table.source,)
     assert table.provenance.facet_ids == ("18369491376878146239",)
     assert table.place_names == {"country/FRA": "France"}
-    assert table.truncated is False
 
 
 def test_metadata_enrichment_supplies_source_and_facet_fields() -> None:
@@ -542,8 +541,8 @@ def test_empty_data_shapes_parse_as_an_empty_table(data: JsonValue) -> None:
     #   `rows`, with `entityMetadata` likewise holding `columns` and no
     #   `rows`; parsed once with a requested place and once without.
     # Expectation: A table with no rows and no error; the requested place
-    #   is preserved when given, and the universe is empty when not, with
-    #   no phantom place read from the `columns` key.
+    #   is preserved when given, and `requested_places` is empty when not,
+    #   with no phantom place read from the `columns` key.
     payload: JsonObject = {
         "data": data,
         "entityMetadata": {"columns": ["dcid", "name", "typeOf"]},
@@ -765,16 +764,18 @@ def test_descriptive_scalars_are_coerced_or_read_as_absent() -> None:
 
 def test_invalid_arguments_are_reported_before_the_payload() -> None:
     # Test: The order of argument and payload validation.
-    # Situation: A payload without a `variable` block is parsed with
-    #   `max_rows=0`; a valid payload is parsed with a variable DCID that has
-    #   a leading space; and a valid payload is parsed with a single string
-    #   as `requested_places`.
-    # Expectation: `ValueError` naming the variable for `max_rows` (not
+    # Situation: A payload without a `variable` block is parsed with an
+    #   invalid requested place; a valid payload is parsed with a variable
+    #   DCID that has a leading space; and a valid payload is parsed with a
+    #   single string as `requested_places`.
+    # Expectation: `ValueError` naming the requested place (not
     #   `ObservationPayloadError`), `ValueError` for the variable DCID, and
     #   `TypeError` for the string.
-    with pytest.raises(ValueError, match="max_rows for x"):
+    with pytest.raises(ValueError, match="requested place"):
         parse_observation_table(
-            {"error": "Variable not found"}, variable_dcid="x", max_rows=0
+            {"error": "Variable not found"},
+            variable_dcid="x",
+            requested_places=["bad place"],
         )
     with pytest.raises(ValueError, match="not a valid DCID"):
         parse_observation_table(
@@ -941,10 +942,10 @@ def test_malformed_or_inverted_date_range_raises() -> None:
 
 def test_rows_for_unrequested_places_are_dropped() -> None:
     # Test: Rows outside a given `requested_places`.
-    # Situation: Two places are requested, the payload also holds rows for
-    #   a third place, and `max_rows` is 2.
-    # Expectation: The third place's rows are dropped before truncation, so
-    #   both requested places keep their latest row.
+    # Situation: Two places are requested, and the payload also holds rows
+    #   for a third place.
+    # Expectation: The third place's rows are dropped, and both requested
+    #   places keep their row.
     table = parse_observation_table(
         {
             "data": _data(
@@ -959,10 +960,8 @@ def test_rows_for_unrequested_places_are_dropped() -> None:
         },
         variable_dcid="Count_Person",
         requested_places=["geoId/01", "geoId/02"],
-        max_rows=2,
     )
     assert [row.place_dcid for row in table.rows] == ["geoId/01", "geoId/02"]
-    assert table.truncated is False
     assert set(table.place_names) == {"geoId/01", "geoId/02"}
 
 
@@ -1052,7 +1051,7 @@ def test_display_names_and_place_dcids_are_sanitized_and_validated() -> None:
 
 
 def test_requested_places_are_deduplicated_in_request_order() -> None:
-    # Test: An explicit place universe.
+    # Test: Explicit target places.
     # Situation: The caller requests places with a repeat, and the payload
     #   has rows and `entityMetadata` for only one of them.
     # Expectation: `requested_places` keeps the request order without the
@@ -1074,24 +1073,21 @@ def test_requested_places_are_deduplicated_in_request_order() -> None:
     assert table.place_names == {"b": "Bee", "a": "a", "c": "c"}
 
 
-def test_date_range_filters_before_truncation_and_sizes_the_universe() -> None:
-    # Test: `date_range` and `max_rows` on a cohort payload.
+def test_date_range_filters_rows_and_sets_target_places() -> None:
+    # Test: `date_range` on a cohort payload.
     # Situation: A child-place payload with six rows across three places,
-    #   a fourth place listed only in `entityMetadata`, a `date_range` of
+    #   a fourth place listed only in `entityMetadata`, and a `date_range` of
     #   2015 to 2023 that excludes Albania's 2010 row and admits
-    #   Afghanistan's `2023-07-31` row, and `max_rows=3`.
-    # Expectation: The five rows inside the range are cut to each place's
-    #   latest row, in place order; the universe is the three places those
-    #   rows belong to; the truncation count is the pre-truncation,
-    #   post-filter count; and `place_names` names exactly those places,
-    #   without Andorra.
+    #   Afghanistan's `2023-07-31` row.
+    # Expectation: The five rows inside the range are kept, in place and
+    #   date order; `requested_places` is the three places those rows belong
+    #   to; and `place_names` names exactly those places, without Andorra.
     table = parse_observation_table(
         _cohort_payload(),
         variable_dcid="Count_Person",
         parent_place_dcid="Earth",
         child_place_type="Country",
         date_range=("2015", "2023"),
-        max_rows=3,
     )
     assert table.requested_places == (
         "country/ABW",
@@ -1099,13 +1095,12 @@ def test_date_range_filters_before_truncation_and_sizes_the_universe() -> None:
         "country/ALB",
     )
     assert [(row.place_dcid, row.date) for row in table.rows] == [
+        ("country/ABW", "2019"),
         ("country/ABW", "2021"),
+        ("country/AFG", "2017"),
         ("country/AFG", "2023-07-31"),
         ("country/ALB", "2017"),
     ]
-    assert table.truncated is True
-    assert table.total_rows_before_truncation == 5
-    assert table.total_places_before_truncation == 3
     assert table.parent_place_dcid == "Earth"
     assert table.child_place_type == "Country"
     assert table.place_names == {
@@ -1123,81 +1118,6 @@ def test_date_range_filters_before_truncation_and_sizes_the_universe() -> None:
     )
 
 
-def test_a_truncated_cohort_sizes_the_universe_from_the_kept_places() -> None:
-    # Test: Universe sizing of a large cohort cut by `max_rows`.
-    # Situation: A child-place payload with one 2023 row for each of ten
-    #   cities and no requested places, parsed with `max_rows=3`.
-    # Expectation: `requested_places` is the three cities whose rows survive
-    #   and `total_places_before_truncation` records the ten pre-truncation
-    #   cities.
-    cities = [f"geoId/{number:07d}" for number in range(10)]
-    table = parse_observation_table(
-        {
-            "data": _data(
-                [
-                    [city, "2023", 1000.0 + index]
-                    for index, city in enumerate(cities)
-                ]
-            ),
-            "entityMetadata": {
-                "columns": ["dcid", "name"],
-                "rows": [
-                    [city, f"City {index}"] for index, city in enumerate(cities)
-                ],
-            },
-            "sourceMetadata": {"provenanceUrl": _WDI_URL, "sourceId": "f1"},
-            "variable": _VARIABLE,
-        },
-        variable_dcid="Count_Person",
-        parent_place_dcid="country/USA",
-        child_place_type="City",
-        max_rows=3,
-    )
-
-    assert table.truncated is True
-    assert table.total_places_before_truncation == 10
-    assert table.requested_places == tuple(cities[:3])
-    assert [row.place_dcid for row in table.rows] == cities[:3]
-
-
-@pytest.mark.parametrize(
-    ("straggler_date", "cohort_date", "cohort_size"),
-    [("2024", "2023", 50), ("2023-07-31", "2023", 10)],
-    ids=["newer year", "finer date precision"],
-)
-def test_truncation_keeps_every_latest_value_of_a_mixed_date_cohort(
-    straggler_date: str, cohort_date: str, cohort_size: int
-) -> None:
-    # Test: `max_rows` on a cohort whose places report different latest dates.
-    # Situation: One place reports on a newer date (a newer year, or a full
-    #   date beside years) than the rest of the cohort; every place also has
-    #   an older row; `max_rows` equals the cohort size.
-    # Expectation: The latest value of `max_rows` places is kept, rather
-    #   than only the straggler's row: the straggler's newer value first,
-    #   then the cohort in place order, so the last cohort place is the one
-    #   cut. The older rows are dropped.
-    places = [f"geoId/{number:02d}" for number in range(cohort_size)]
-    rows: list[JsonValue] = [["geoId/zz", straggler_date, 1.0]]
-    rows += [[place, cohort_date, 2.0] for place in places]
-    rows += [[place, "2010", 3.0] for place in [*places, "geoId/zz"]]
-    table = parse_observation_table(
-        {
-            "data": _data(rows),
-            "sourceMetadata": {"provenanceUrl": _WDI_URL, "sourceId": "f1"},
-            "variable": _VARIABLE,
-        },
-        variable_dcid="Count_Person",
-        max_rows=cohort_size,
-    )
-    assert table.truncated is True
-    assert table.requested_places == (*places[:-1], "geoId/zz")
-    assert [(row.place_dcid, row.date) for row in table.rows] == [
-        *((place, cohort_date) for place in places[:-1]),
-        ("geoId/zz", straggler_date),
-    ]
-    assert table.total_places_before_truncation == cohort_size + 1
-
-
 @pytest.mark.parametrize(
     ("date_range", "expected_places"),
     [
@@ -1206,15 +1126,15 @@ def test_truncation_keeps_every_latest_value_of_a_mixed_date_cohort(
     ],
     ids=["no row in range", "some rows in range"],
 )
-def test_universe_without_requested_places_is_the_places_with_rows(
+def test_target_places_without_requested_places_are_the_places_with_rows(
     date_range: tuple[str, str], expected_places: tuple[str, ...]
 ) -> None:
-    # Test: The place universe when no places are requested.
+    # Test: The target places when no places are requested.
     # Situation: A cohort payload lists four places in `entityMetadata`
     #   (Andorra without any rows), parsed with a `date_range` that excludes
     #   every row, and with one that keeps rows for two places.
-    # Expectation: The universe is the places that still have rows in both
-    #   cases: empty when no row is in range, rather than every place in
+    # Expectation: `requested_places` is the places that still have rows in
+    #   both cases: empty when no row is in range, rather than every place in
     #   `entityMetadata`.
     table = parse_observation_table(
         _cohort_payload(),
@@ -1225,39 +1145,6 @@ def test_universe_without_requested_places_is_the_places_with_rows(
     )
     assert table.requested_places == expected_places
     assert tuple(table.place_names) == expected_places
-
-
-def test_truncation_keeps_whole_dates_for_a_multi_place_cohort() -> None:
-    # Test: Whole-date retention when `max_rows` cuts a multi-place cohort.
-    # Situation: Three places each report values on `2022` and `2023` (six
-    #   rows in total), and `max_rows` is set to 4.
-    # Expectation: All three rows on `2023` are kept and `2022` is dropped
-    #   entirely rather than keeping one of the three `2022` rows.
-    table = parse_observation_table(
-        {
-            "data": _data(
-                [
-                    ["a", "2022", 1.0],
-                    ["b", "2022", 2.0],
-                    ["c", "2022", 3.0],
-                    ["a", "2023", 4.0],
-                    ["b", "2023", 5.0],
-                    ["c", "2023", 6.0],
-                ]
-            ),
-            "sourceMetadata": {"provenanceUrl": _WDI_URL, "sourceId": "f1"},
-            "variable": _VARIABLE,
-        },
-        variable_dcid="Count_Person",
-        max_rows=4,
-    )
-    assert table.truncated is True
-    assert table.total_rows_before_truncation == 6
-    assert [(row.place_dcid, row.date) for row in table.rows] == [
-        ("a", "2023"),
-        ("b", "2023"),
-        ("c", "2023"),
-    ]
 
 
 def test_merged_payloads_parse_as_one_multi_place_table() -> None:
