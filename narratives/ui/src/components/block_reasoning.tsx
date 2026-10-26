@@ -260,9 +260,9 @@ export function ReasoningBlock({
   );
 }
 
-/** Streamed thought: word reveal plus a left bar ending in a dot. */
-const STREAMED_THOUGHT_CLASS = [
-  "markdown-stream relative flex flex-col gap-1.5 pt-2 pb-3 pl-5.5",
+/** Thought layout: a left bar ending in a dot. */
+const THOUGHT_CLASS = [
+  "relative flex flex-col gap-1.5 pt-2 pb-3 pl-5.5",
   "border-l-2 border-border",
   // Dot centered on the 2px bar at its bottom end.
   "after:absolute after:bottom-0 after:-left-px after:-translate-x-1/2",
@@ -286,10 +286,10 @@ function Thought({ text, animate, isLatest }: ThoughtProps) {
   const [streamMs] = useState(() =>
     animate ? calculateStreamDurationMs(text) : undefined,
   );
+  const streamClass = streamMs === undefined ? "" : " markdown-stream";
   const dotClass =
-    animate && isLatest ? "motion-safe:after:animate-dot-pulse" : "";
-  const className =
-    streamMs === undefined ? undefined : `${STREAMED_THOUGHT_CLASS} ${dotClass}`;
+    animate && isLatest ? " motion-safe:after:animate-dot-pulse" : "";
+  const className = `${THOUGHT_CLASS}${streamClass}${dotClass}`;
   return (
     <div className={className}>
       <ReactMarkdown
