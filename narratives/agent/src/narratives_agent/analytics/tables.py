@@ -62,7 +62,11 @@ _KEPT_FORMAT_CHARACTERS = frozenset({"\u200c", "\u200d"})
 
 @dataclass(frozen=True)
 class ObservationRow:
-    """A single observation recording a numeric value for a place on a date."""
+    """A single observation recording a numeric value for a place on a date.
+
+    `value` is always finite: `parse_observation_table` drops values that are
+    not, so the analytical scripts do not check for `NaN` or infinity.
+    """
 
     place_dcid: str
     place_name: str

@@ -18,6 +18,7 @@ local extrema, largest period-over-period changes, and compound annual growth
 rates per place, and compares multiple places on a date they share.
 """
 
+import calendar
 from collections import Counter
 from collections.abc import Sequence
 from itertools import pairwise
@@ -66,8 +67,10 @@ _SCRIPT_NAME: Literal["analyze_timeseries"] = "analyze_timeseries"
 LOCAL_EXTREMA_CAP = 10
 # A growth rate over a shorter span would extrapolate a short-term change.
 _MIN_GROWTH_SPAN_YEARS = 1.0
-_MONTHS_PER_YEAR = 12.0
-_DAYS_PER_YEAR = 365.25
+_MONTHS_PER_YEAR = 12
+# Observation dates are checked only for their digit pattern, so a month
+# outside 1 to 12 is given the longest month length rather than raising.
+_LONGEST_MONTH_DAYS = 31
 # Places are compared only on a date that at least this many share.
 _MIN_PLACES_SHARING_DATE = 2
 
@@ -104,13 +107,23 @@ _PLACE_ISSUE_CAVEATS: dict[_PlaceIssue, str] = {
 }
 
 
+def _count_days_in_month(year: int, month: int) -> int:
+    """Returns the length of `month` in `year`, accounting for leap years."""
+    if not 1 <= month <= _MONTHS_PER_YEAR:
+        return _LONGEST_MONTH_DAYS
+    return calendar.monthrange(year, month)[1]
+
+
 def _compute_fractional_year(date: str) -> float:
     """Converts a `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` date to a decimal year.
 
-    A year counts from its start, a month adds its offset as twelfths of a
-    year, and a day adds its offset within the month as a fraction of an
-    average year, so annual, monthly, and daily series all yield the elapsed
-    years that a growth rate needs.
+    A year counts from its start, and a month adds its offset as twelfths of
+    a year. A day adds its offset as a fraction of its own month's length, so
+    the first day of a month equals the month, the same calendar date in two
+    years is a whole number of years apart, and consecutive days differ by
+    one twelfth of a year divided by the month's length, including across
+    month boundaries and February 29. Annual, monthly, and daily series thus
+    all yield the elapsed years that a growth rate needs.
 
     Args:
         date: A date that `is_valid_observation_date` accepts.
@@ -121,12 +134,13 @@ def _compute_fractional_year(date: str) -> float:
     Raises:
         ValueError: If a date component is not numeric.
     """
-    parts = date.split("-")
+    parts = [int(part) for part in date.split("-")]
     year = float(parts[0])
     if len(parts) > 1:
-        year += (float(parts[1]) - 1.0) / _MONTHS_PER_YEAR
+        year += (parts[1] - 1) / _MONTHS_PER_YEAR
     if len(parts) > 2:
-        year += (float(parts[2]) - 1.0) / _DAYS_PER_YEAR
+        month_days = _count_days_in_month(parts[0], parts[1])
+        year += (parts[2] - 1) / month_days / _MONTHS_PER_YEAR
     return year
 
 

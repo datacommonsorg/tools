@@ -18,6 +18,7 @@ caveats, fractional-year arithmetic across date granularities, local extrema
 caps, window and place filtering, and multi-place comparisons.
 """
 
+import datetime
 import random
 from collections import Counter
 from collections.abc import Sequence
@@ -340,6 +341,52 @@ def test_growth_rate_measures_elapsed_years_at_every_granularity(
     #   over one year, whatever the granularity.
     metrics = _metrics(_table([("a", start, 1.0), ("a", end, 4.0)]))
     assert metrics.series[0].cagr == pytest.approx(expected_cagr)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "start_month_days"),
+    [
+        ("2020-01-31", "2021-02-01", 31),
+        ("2021-02-28", "2022-03-01", 28),
+        ("2020-02-29", "2021-03-01", 29),
+        ("2020-06-15", "2021-06-16", 30),
+    ],
+    ids=["month end", "february", "leap day", "mid month"],
+)
+def test_daily_growth_span_adds_one_day_across_month_boundaries(
+    start: str, end: str, start_month_days: int
+) -> None:
+    # Test: Elapsed years between daily dates one day past an anniversary.
+    # Situation: A value that quadruples between a daily date and the next
+    #   day a year later, where that day crosses a month boundary, follows
+    #   February 29, or stays within a month.
+    # Expectation: The span is one year plus one day, measured as one
+    #   twelfth of a year divided by the starting month's length, so a day
+    #   step across a month boundary is the same size as one within it.
+    metrics = _metrics(_table([("a", start, 1.0), ("a", end, 4.0)]))
+    years = 1.0 + 1.0 / (12.0 * start_month_days)
+    assert metrics.series[0].cagr == pytest.approx(
+        (4.0 ** (1.0 / years) - 1.0) * 100.0
+    )
+
+
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        ("2021-04-31", "2022-04-31"),
+        ("2020-00-15", "2021-00-15"),
+        ("2020-13-01", "2021-13-01"),
+    ],
+    ids=["day past month end", "month zero", "month thirteen"],
+)
+def test_impossible_daily_dates_do_not_raise(start: str, end: str) -> None:
+    # Test: Daily dates that match the date pattern but not the calendar.
+    # Situation: The same impossible month and day in two consecutive
+    #   years; `is_valid_observation_date` checks only the digit pattern.
+    # Expectation: The analysis completes and measures the span as one
+    #   year, so the growth rate is 300% for a value that quadruples.
+    metrics = _metrics(_table([("a", start, 1.0), ("a", end, 4.0)]))
+    assert metrics.series[0].cagr == pytest.approx(300.0)
 
 
 def test_monthly_series_uses_elapsed_years_for_growth() -> None:
@@ -782,15 +829,21 @@ def test_disjoint_series_are_not_compared() -> None:
 
 
 def _elapsed_years(start: str, end: str) -> float:
-    """Years between two dates, counting months and days as fractions."""
+    """Years between two dates, counting months and days as fractions.
+
+    A day is a fraction of its own month's length, measured here with
+    `datetime.date` as the gap to the first day of the next month.
+    """
 
     def as_year(date: str) -> float:
-        parts = [float(part) for part in date.split("-")]
-        year = parts[0]
+        parts = [int(part) for part in date.split("-")]
+        year = float(parts[0])
         if len(parts) > 1:
-            year += (parts[1] - 1.0) / 12.0
+            year += (parts[1] - 1) / 12.0
         if len(parts) > 2:
-            year += (parts[2] - 1.0) / 365.25
+            first = datetime.date(parts[0], parts[1], 1)
+            following = (first + datetime.timedelta(days=31)).replace(day=1)
+            year += (parts[2] - 1) / (following - first).days / 12.0
         return year
 
     return as_year(end) - as_year(start)
@@ -800,7 +853,15 @@ def _elapsed_years(start: str, end: str) -> float:
 _DATE_POOLS: tuple[tuple[str, ...], ...] = (
     ("2016", "2017", "2018", "2019", "2020", "2021", "2022"),
     ("2020-01", "2020-04", "2020-07", "2020-12", "2021-01", "2021-06"),
-    ("2020-03-01", "2020-03-02", "2020-09-01", "2021-03-01", "2021-03-02"),
+    (
+        "2020-01-31",
+        "2020-03-01",
+        "2020-03-02",
+        "2020-09-01",
+        "2021-02-01",
+        "2021-03-01",
+        "2021-03-02",
+    ),
 )
 
 
