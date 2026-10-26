@@ -89,8 +89,10 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
-- `scripts/` — build-time staging of `ui/dist/` into `agent/static/` and
-  `defaults/` into `agent/defaults/` (`stage_static.mjs`).
+- `Dockerfile` — multi-stage container build (React UI builder + Python
+  runtime).
+- `scripts/` — local non-container staging of `ui/dist/` into `agent/static/`
+  and `defaults/` into `agent/defaults/` (`stage_static.mjs`).
 - `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh` and its modes
   (`deploy/modes/`), `deploy/smoke.sh`, and Cloud Build pipelines.

@@ -371,17 +371,7 @@ else
     log_info "[Fast-Track] Skipping Secret Manager checks."
 fi
 
-# 5. Build and Stage React UI Frontend
-if [[ "$INFRA_ONLY" == "false" && "$AGENT_ONLY" == "false" && "$PLAN_ONLY" == "false" ]]; then
-    log_info "Compiling React UI production bundle and staging assets..."
-    pnpm install --frozen-lockfile
-    pnpm build
-    log_success "Frontend assets staged into agent/static."
-else
-    log_info "[Surgical-Build] Skipping React UI compilation."
-fi
-
-# 6. Build and Push Container Images via Cloud Build
+# 5. Build and Push Container Image via Cloud Build
 IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
 AGENT_IMAGE=""
 
@@ -405,15 +395,13 @@ elif [ "$FRONTEND_ONLY" = true ] || [ "$AGENT_ONLY" = true ]; then
     # agent change rebuild the same thing. --frontend-only is kept as an alias
     # rather than removed, so existing runbooks and muscle memory keep working.
     log_info "[Surgical-Build] App-plane only. Building the agent + UI image..."
-    # `--agent-only` skips `pnpm build`, so stage `defaults/` into the `agent/` build context.
-    rm -rf agent/defaults && cp -R defaults agent/defaults
     AGENT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/agent:${IMAGE_TAG}"
-    gcloud builds submit --tag="$AGENT_IMAGE" --project="$PROJECT_ID" agent || { log_error "App-plane container build failed!"; exit 1; }
+    gcloud builds submit --tag="$AGENT_IMAGE" --project="$PROJECT_ID" . || { log_error "App-plane container build failed!"; exit 1; }
 else
-    log_info "Submitting container builds to Google Cloud Build (Tag: $IMAGE_TAG)..."
+    log_info "Submitting container build to Google Cloud Build (Tag: $IMAGE_TAG)..."
     AGENT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/agent:${IMAGE_TAG}"
     log_info "Starting background build for the app plane (agent + UI)..."
-    gcloud builds submit --tag="$AGENT_IMAGE" --project="$PROJECT_ID" agent &
+    gcloud builds submit --tag="$AGENT_IMAGE" --project="$PROJECT_ID" . &
     AGENT_PID=$!
 
     log_info "Waiting for container builds to complete..."
@@ -423,7 +411,7 @@ fi
 log_success "Resolved Container Images:"
 echo "  Agent:    $AGENT_IMAGE"
 
-# 7. Create & Seed Configuration Bucket (Skipped in --code-only mode)
+# 6. Create & Seed Configuration Bucket (Skipped in --code-only mode)
 if [ "$CODE_ONLY" = false ]; then
     if ! gcloud storage buckets describe "gs://${CONFIG_BUCKET}" --project="$PROJECT_ID" &>/dev/null; then
         log_info "Creating GCS configuration bucket 'gs://${CONFIG_BUCKET}'..."
@@ -449,7 +437,7 @@ else
     log_info "[Fast-Track] Skipping config bucket synchronization."
 fi
 
-# 8. Generate tfvars configuration
+# 7. Generate tfvars configuration
 TFVARS_FILE="deploy/terraform-custom-datacommons/${INSTANCE}.tfvars"
 log_info "Generating Terraform variable overrides file: $TFVARS_FILE"
 
@@ -508,7 +496,7 @@ PY
 
 log_success "tfvars file generated cleanly."
 
-# 9. Run Terraform Pipeline
+# 8. Run Terraform Pipeline
 cd deploy/terraform-custom-datacommons/modules
 
 # Every instance shares this one module directory, and each deploy points it at
@@ -599,7 +587,7 @@ terraform apply -auto-approve -var-file="../${INSTANCE}.tfvars"
 SERVICE_URL=$(terraform output -raw service_url)
 cd ../../..
 
-# 10. Run Verification Smoke Tests
+# 9. Run Verification Smoke Tests
 SMOKE_STATUS=0
 if [ "$CODE_ONLY" = false ]; then
     SMOKE_WARMUP=60

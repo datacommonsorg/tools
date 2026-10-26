@@ -180,6 +180,7 @@ narratives/
 ├── AGENTS.md                  Coding conventions and commands for contributors
 ├── FRONTEND.md                Tailwind v4, theme tokens, and React conventions
 ├── deploy.sh                  Deployment CLI for Google Cloud Run and Terraform
+├── Dockerfile                 Multi-stage container build (React UI + FastAPI)
 ├── .env.local.example         Template for local development environment vars
 ├── docs/
 │   ├── development.md         Local development, testing, and repo layout
