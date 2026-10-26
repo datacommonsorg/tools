@@ -209,7 +209,7 @@ narratives/
 │       ├── server/            FastAPI app and routes (spa, chat, system)
 │       ├── mcp/               MCP client, capabilities, schemas, and parsers
 │       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
-│       ├── analytics/         Tables, provenance, alignment, summaries, digest
+│       ├── analytics/         Tables, alignment, summaries, digest, scripts
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)
 │   └── src/

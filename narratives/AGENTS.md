@@ -69,8 +69,9 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `analytics/`: the deterministic analytics library, holding observation
       tables and provenance models (`tables.py`, `provenance.py`), cohort
       alignment and unit checks (`alignment.py`), the table summary
-      (`summarize.py`), and the digest and metric types (`digest.py`,
-      `metrics.py`). It imports only the Python standard library, other
+      (`summarize.py`), the digest and metric types (`digest.py`,
+      `metrics.py`), and the analytical scripts (`timeseries.py`,
+      `ranking.py`). It imports only the Python standard library, other
       `analytics/` modules, and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
