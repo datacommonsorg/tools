@@ -22,7 +22,7 @@ variable "instance" {
 }
 
 variable "dc_agent_image" {
-  description = "Artifact Registry path to the sidecar agent image (agent/Dockerfile output)."
+  description = "Artifact Registry path to the sidecar agent image (Dockerfile output)."
   type        = string
 }
 

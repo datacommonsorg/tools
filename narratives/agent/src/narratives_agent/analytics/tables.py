@@ -19,6 +19,8 @@ DCID, observation-date, and date-range validators shared across the domain and
 MCP adapter layers.
 """
 
+import calendar
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -49,6 +51,7 @@ MAX_NAME_CHARS = 200
 _DCID_PATTERN = re.compile(r"^[!-~]+$")
 # Observation dates must be formatted as YYYY, YYYY-MM, or YYYY-MM-DD.
 _DATE_PATTERN = re.compile(r"^[0-9]{4}(-[0-9]{2}){0,2}$")
+_MONTHS_PER_YEAR = 12
 # Display-name sanitization strips Unicode control (`Cc`) and format (`Cf`)
 # characters such as C1 controls, bidirectional overrides, and zero-width
 # spaces. Whitespace characters (such as newlines and tabs) are preserved
@@ -62,13 +65,26 @@ _KEPT_FORMAT_CHARACTERS = frozenset({"\u200c", "\u200d"})
 
 @dataclass(frozen=True)
 class ObservationRow:
-    """A single observation recording a numeric value for a place on a date."""
+    """A single observation recording a numeric value for a place on a date.
+
+    `value` is always finite, so the analytical scripts do not check for
+    `NaN` or infinity: `parse_observation_table` drops values that are not,
+    and constructing a row with one raises `ValueError`.
+    """
 
     place_dcid: str
     place_name: str
     date: str
     value: float
     facet_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Rejects a value that is `NaN` or infinite."""
+        if not math.isfinite(self.value):
+            raise ValueError(
+                f"An observation value must be finite, not {self.value} for "
+                f"{self.place_dcid} on {self.date}."
+            )
 
 
 @dataclass(frozen=True)
@@ -161,12 +177,24 @@ def is_valid_dcid(dcid: str) -> bool:
 
 
 def is_valid_observation_date(date: str) -> bool:
-    """Returns whether `date` has the format `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`.
+    """Returns whether `date` is a real `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` date.
 
-    Checks only the digit pattern; month and day numbers are not validated as
-    calendar dates.
+    The year must be at least 1, the month 01 to 12, and the day must exist
+    in that month, so `2020-02-29` is valid while `0000`, `2021-02-29`, and
+    `2021-13` are not.
     """
-    return _DATE_PATTERN.fullmatch(date) is not None
+    if _DATE_PATTERN.fullmatch(date) is None:
+        return False
+    parts = [int(part) for part in date.split("-")]
+    if parts[0] < 1:
+        return False
+    if len(parts) > 1 and not 1 <= parts[1] <= _MONTHS_PER_YEAR:
+        return False
+    if len(parts) > 2:
+        month_days = calendar.monthrange(parts[0], parts[1])[1]
+        if not 1 <= parts[2] <= month_days:
+            return False
+    return True
 
 
 def is_inverted_date_range(start: str, end: str) -> bool:
