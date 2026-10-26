@@ -134,11 +134,22 @@
   /* Reasoning bar's end dot while the turn streams: grows to 120% and back,
      fully opaque. Animates `scale`, so the dot's `translate` is untouched.
      Consumed as `animate-dot-pulse`, gated with `motion-safe:`. */
+  /* Streamed thought entering: its grid row grows from 0fr, so the height
+     eases open instead of jumping. Consumed as `animate-thought-expand`,
+     gated with `motion-safe:`. */
+  --animate-thought-expand: thought-expand 400ms cubic-bezier(0, 0, 0, 1);
+
+  @keyframes thought-expand {
+    from {
+      grid-template-rows: 0fr;
+    }
+  }
+
   --animate-dot-pulse: dot-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
   @keyframes dot-pulse {
     50% {
-      scale: 1.2;
+      scale: 1.4;
     }
   }
 }

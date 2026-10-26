@@ -57,8 +57,8 @@ interface HastNode {
 /**
  * Reports whether a paragraph node is really a standalone bold line the model
  * wrote as a heading — e.g. `**Plan**` arrives as `<p><strong>…</strong></p>`,
- * not a real heading. We style those as headings (models rarely emit `##`
- * here).
+ * not a real heading. These are styled as headings, since models rarely emit
+ * `##` here.
  */
 function isBoldOnlyParagraph(node?: HastNode): boolean {
   const kids = (node?.children ?? []).filter(
@@ -232,8 +232,8 @@ export function ReasoningBlock({
         }`}
       >
         <div className="overflow-hidden min-h-0">
-        {/* Softer than the response body + italic + indented, so the
-            reasoning reads as an aside distinct from the actual answer. */}
+        {/* Indented so the reasoning reads as an aside to the answer; the
+            paragraphs add the muted italic. */}
         <div className="mt-2 ml-2.25 reasoning-markdown">
           {thoughts.length > 0 ? (
             thoughts.map((thought, i) => (
@@ -260,13 +260,17 @@ export function ReasoningBlock({
   );
 }
 
-/** Thought layout: a left bar ending in a dot. */
+/**
+ * Thought layout: a left bar ending in a dot. A one-row grid so a streamed
+ * thought can grow its height from 0fr; the bar and dot live here, outside the
+ * clipping inner wrapper, so the dot is not cut off.
+ */
 const THOUGHT_CLASS = [
-  "relative flex flex-col gap-1.5 pt-2 pb-3 pl-5.5",
+  "relative grid grid-rows-[1fr] pt-2 pb-3 pl-5.5",
   "border-l-2 border-border",
   // Dot centered on the 2px bar at its bottom end.
   "after:absolute after:bottom-0 after:-left-px after:-translate-x-1/2",
-  "after:size-2 after:rounded-full after:bg-border",
+  "after:size-2 after:rounded-full",
 ].join(" ");
 
 interface ThoughtProps {
@@ -286,21 +290,29 @@ function Thought({ text, animate, isLatest }: ThoughtProps) {
   const [streamMs] = useState(() =>
     animate ? calculateStreamDurationMs(text) : undefined,
   );
-  const streamClass = streamMs === undefined ? "" : " markdown-stream";
+  const streamClass =
+    streamMs === undefined
+      ? ""
+      : " markdown-stream motion-safe:animate-thought-expand";
+  // The latest thought's dot pulses in the theme tint while the turn streams.
   const dotClass =
-    animate && isLatest ? " motion-safe:after:animate-dot-pulse" : "";
+    animate && isLatest
+      ? " after:bg-theme-container motion-safe:after:animate-dot-pulse"
+      : " after:bg-border";
   const className = `${THOUGHT_CLASS}${streamClass}${dotClass}`;
   return (
     <div className={className}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={
-          streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
-        }
-        components={REASONING_COMPONENTS}
-      >
-        {text}
-      </ReactMarkdown>
+      <div className="flex flex-col gap-1.5 min-h-0 overflow-clip">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={
+            streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
+          }
+          components={REASONING_COMPONENTS}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }
