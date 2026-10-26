@@ -26,6 +26,10 @@ import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
 import { SendIcon } from './icons';
 import { Tooltip } from './tooltip';
 
+/** Streaming placeholder: a raised `⋅` walks across the last two dots. */
+const THINKING_FRAMES = ['Thinking...', 'Thinking.⋅.', 'Thinking..⋅'];
+const THINKING_FRAME_MS = 400;
+
 interface PromptInputProps {
   value: string;
   /** Also the textarea's accessible name; replaced on screen while streaming. */
@@ -53,8 +57,8 @@ export function PromptInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isExpanded, isScrolling } = useTextareaAutosize(textareaRef, value);
   // The placeholder is a pseudo-element CSS cannot animate per character, so
-  // a timer walks a `⋅` across the last two dots of "..." (frame 0 is the
-  // plain "..."); under reduced motion it holds at "...".
+  // a timer steps through the frames; under reduced motion it holds at the
+  // first. Stopping resets to the first so the next stream starts there.
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (
@@ -62,8 +66,14 @@ export function PromptInput({
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
     )
       return;
-    const id = setInterval(() => setFrame((f) => (f + 1) % 3), 400);
-    return () => clearInterval(id);
+    const id = setInterval(
+      () => setFrame((f) => (f + 1) % THINKING_FRAMES.length),
+      THINKING_FRAME_MS,
+    );
+    return () => {
+      clearInterval(id);
+      setFrame(0);
+    };
   }, [isStreaming]);
   const actionLabel = isStreaming ? 'Stop Response' : 'Submit';
   // The one gate for every submit path: the button, the form and Enter.
@@ -103,11 +113,7 @@ export function PromptInput({
           onChange={(e) => onValueChange(e.target.value)}
           // The accessible name stays the prompt's own placeholder while the
           // visible one reports the stream.
-          placeholder={
-            isStreaming
-              ? `Thinking.${[0, 1].map((i) => (i === frame - 1 ? '⋅' : '.')).join('')}`
-              : placeholder
-          }
+          placeholder={isStreaming ? THINKING_FRAMES[frame] : placeholder}
           aria-label={placeholder}
           disabled={isStreaming}
           rows={1}

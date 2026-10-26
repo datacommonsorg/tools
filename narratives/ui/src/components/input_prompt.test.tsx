@@ -130,18 +130,20 @@ describe('PromptInput', () => {
     // Test: Streaming placeholder animation.
     // Situation: A response streams for several 400ms ticks.
     // Expectation: A `⋅` steps across the last two dots, then the plain
-    // ellipsis returns and the cycle repeats.
+    // ellipsis returns and the cycle repeats; a stream stopped mid-cycle
+    // leaves the next one starting from the plain ellipsis.
     vi.useFakeTimers();
     try {
-      render(
+      const prompt = (isStreaming: boolean) => (
         <PromptInput
           value=""
           placeholder="Ask"
           onValueChange={vi.fn()}
           onSubmit={vi.fn()}
-          isStreaming
-        />,
+          isStreaming={isStreaming}
+        />
       );
+      const { rerender } = render(prompt(true));
       const textbox = screen.getByRole('textbox', { name: 'Ask' });
       const frames = [];
       for (let i = 0; i < 4; i++) {
@@ -154,6 +156,10 @@ describe('PromptInput', () => {
         'Thinking..⋅',
         'Thinking...',
       ]);
+      act(() => vi.advanceTimersByTime(400));
+      rerender(prompt(false));
+      rerender(prompt(true));
+      expect(textbox.getAttribute('placeholder')).toBe('Thinking...');
     } finally {
       vi.useRealTimers();
     }
