@@ -268,9 +268,10 @@ def align_cohort(
     which for ISO dates is chronological by the start of each period. Rows
     at different precisions (`2023` and `2023-07-31`) or on different days
     are therefore different reference dates: a place counts only on the
-    date it reports, and is missing on every other. A `target_date` at a
-    precision that no row uses is refused with a message that names the
-    mismatch.
+    date it reports, and is missing on every other. A `target_date` that no
+    place reports is refused with a message that names the precision
+    mismatch when rows of another precision overlap the target period, or
+    when no row uses the target's precision.
 
     Args:
         table: The table to align.
