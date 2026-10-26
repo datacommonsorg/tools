@@ -63,6 +63,8 @@ type RefusalReason = (
 # In prompt text, floats with magnitude >= 1 are rounded to 2 decimal places,
 # and smaller non-zero floats are rounded to 3 significant digits.
 _PROMPT_DECIMALS = 2
+# Percentages in caveats keep up to this many decimals.
+_PERCENT_DECIMALS = 2
 _PROMPT_SMALL_SIGNIFICANT_DIGITS = 3
 # Whole-number floats below 10^15 are converted to `int` in prompt text;
 # larger floats stay in scientific notation because IEEE-754 double precision
@@ -115,7 +117,7 @@ def format_percent(share: float) -> str:
     Up to two decimals are kept, so a threshold such as 0.9995 prints as
     99.95% rather than 100%; a share with more decimals is rounded to two.
     """
-    return f"{round(share * 100, 2):g}%"
+    return f"{round(share * 100, _PERCENT_DECIMALS):g}%"
 
 
 def conjugate_have(count: int) -> str:

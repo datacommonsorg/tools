@@ -118,9 +118,10 @@ def summarize_table(table: ObservationTable) -> TableSummary:
         The summary, with place lists capped at `SUMMARY_PLACE_LIST_CAP` and
         samples capped at `SAMPLE_ROW_CAP`.
     """
-    with_data = set(table.places_with_data)
+    observed = table.places_with_data
+    with_data = set(observed)
     requested = list(dict.fromkeys(table.requested_places))
-    ordered_places = list(dict.fromkeys([*requested, *table.places_with_data]))
+    ordered_places = list(dict.fromkeys([*requested, *observed]))
     places_with_data = [place for place in ordered_places if place in with_data]
     places_without_data = [
         place for place in requested if place not in with_data

@@ -14,10 +14,11 @@
 """Tests for cohort alignment and unit checks in `analytics.alignment`.
 
 Covers reference-date selection against the coverage threshold and at its
-boundary, mixed vintage detection, the two refusal reasons with their
-coverage figures, explicit target dates and their date precision, rows at
-mixed date precisions, message wording, validation of the threshold and the
-target date, and unit and scaling compatibility across tables and cohorts.
+boundary, its input guards, mixed vintage detection, the two refusal reasons
+with their coverage figures, explicit target dates and their date precision,
+rows at mixed date precisions, duplicate requested places, message wording,
+validation of the threshold and the target date, and unit and scaling
+compatibility across tables and cohorts.
 """
 
 import re
@@ -128,6 +129,25 @@ def test_select_reference_date_prefers_recent_coverage_then_counts() -> None:
         select_reference_date({"2021": 9, "2022": 6}, 10, min_coverage=0.8)
         == "2021"
     )
+
+
+def test_select_reference_date_rejects_empty_counts_and_cohorts() -> None:
+    # Test: The input guards of `select_reference_date`.
+    # Situation: An empty count mapping, and cohort sizes of 0 and -1.
+    # Expectation: Each raises `ValueError` with a message naming the
+    #   problem, rather than failing inside `max` or dividing by zero.
+    with pytest.raises(
+        ValueError, match=re.escape("counts_by_date must not be empty.")
+    ):
+        select_reference_date({}, 10)
+    for cohort_size in (0, -1):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"The cohort size must be at least 1, not {cohort_size}."
+            ),
+        ):
+            select_reference_date({"2022": 1}, cohort_size)
 
 
 def test_target_date_is_used_as_given_and_duplicates_keep_the_last_row() -> (
@@ -254,6 +274,46 @@ def test_target_date_of_another_precision_names_the_mismatch() -> None:
         "population (Count_Person) dates, such as 2022-06, so no place can "
         "be aligned to it."
     )
+
+
+def test_target_date_overlapping_rows_of_another_precision_is_named() -> None:
+    # Test: A `target_date` that shares its precision with some rows but
+    #   overlaps others at a finer precision.
+    # Situation: Two places report `2022-06`, one place reports `2023`, and
+    #   `target_date` is `2022`.
+    # Expectation: The refusal names the precision mismatch and quotes the
+    #   overlapping `2022-06` rather than `2023`, even though `2023` has the
+    #   precision of the target date.
+    table = _table(
+        [("a", "2022-06", 1.0), ("b", "2022-06", 2.0), ("c", "2023", 3.0)],
+        requested_places=["a", "b", "c"],
+    )
+    refused = align_cohort(table, target_date="2022")
+    assert isinstance(refused, AlignmentRefusal)
+    assert refused.reason == "insufficient_coverage"
+    assert refused.message == (
+        "The target date 2022 does not match the precision of the Total "
+        "population (Count_Person) dates, such as 2022-06, so no place can "
+        "be aligned to it."
+    )
+
+
+def test_a_place_requested_twice_counts_once() -> None:
+    # Test: Duplicate entries in `requested_places`.
+    # Situation: The request lists `c`, `a`, `b`, `d`, `c`, `a`, and only
+    #   `a` and `b` report 2022.
+    # Expectation: The cohort has 4 places, so 2 of 4 meets the default
+    #   threshold, and the missing places keep request order without
+    #   repeats.
+    table = _table(
+        [("a", "2022", 1.0), ("b", "2022", 2.0)],
+        requested_places=["c", "a", "b", "d", "c", "a"],
+    )
+    aligned = align_cohort(table)
+    assert isinstance(aligned, AlignedCohort)
+    assert aligned.coverage.requested_places == 4
+    assert aligned.coverage.contributing_places == 2
+    assert aligned.coverage.missing_places == ("c", "d")
 
 
 def test_a_table_without_rows_or_places_names_no_place_count() -> None:
@@ -426,7 +486,7 @@ def test_units_are_compared_after_folding_and_an_unset_unit_conflicts() -> None:
     # Test: Unit comparison in `find_unit_mismatch`.
     # Situation: Two tables whose units differ only in case and whitespace,
     #   and a third with no unit and a different scaling factor.
-    # Expectation: A single table and the first two together are
+    # Expectation: No table, a single table, and the first two together are
     #   compatible; adding the third is a `unit_mismatch`, reported before
     #   its scaling conflict, whose message names each table's variable and
     #   unit.
@@ -439,6 +499,7 @@ def test_units_are_compared_after_folding_and_an_unset_unit_conflicts() -> None:
         variable_dcid="Count_Household",
         variable_name="Total households",
     )
+    assert find_unit_mismatch() is None
     assert find_unit_mismatch(dollars) is None
     assert find_unit_mismatch(dollars, folded) is None
     assert find_unit_mismatch(dollars, unset) == UnitMismatch(

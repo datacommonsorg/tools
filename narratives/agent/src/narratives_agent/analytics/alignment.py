@@ -128,7 +128,7 @@ def _resolve_target_places(table: ObservationTable) -> tuple[str, ...]:
     return table.places_with_data
 
 
-def _variable_label(table: ObservationTable) -> str:
+def _format_variable_label(table: ObservationTable) -> str:
     """Returns the variable as `name (dcid)` for refusal messages."""
     return f"{table.variable_name} ({table.variable_dcid})"
 
@@ -166,7 +166,16 @@ def select_reference_date(
 
     Returns:
         The selected observation date string.
+
+    Raises:
+        ValueError: If `counts_by_date` is empty or `cohort_size` is below 1.
     """
+    if not counts_by_date:
+        raise ValueError("counts_by_date must not be empty.")
+    if cohort_size < 1:
+        raise ValueError(
+            f"The cohort size must be at least 1, not {cohort_size}."
+        )
     qualifying = [
         date
         for date, count in counts_by_date.items()
@@ -205,7 +214,7 @@ def validate_alignment_parameters(
     return None
 
 
-def _shortfall_message(
+def _build_insufficient_coverage_message(
     table: ObservationTable,
     coverage: CoverageReport,
     reference_date: str,
@@ -213,16 +222,25 @@ def _shortfall_message(
     min_coverage: float,
 ) -> str:
     """Returns the message of an `insufficient_coverage` refusal."""
-    label = _variable_label(table)
+    label = _format_variable_label(table)
     if coverage.contributing_places == 0:
+        # Dates match as exact strings, so a `target_date` of another
+        # precision matches no row even when the period has values. A date
+        # that overlaps the target period at another precision is the best
+        # example; otherwise any date, when no row shares the precision.
+        overlapping = [
+            date
+            for date in observed_dates
+            if date.startswith(reference_date)
+            or reference_date.startswith(date)
+        ]
         precisions = {len(date) for date in observed_dates}
-        if len(reference_date) not in precisions:
-            # Dates match as exact strings, so a `target_date` of another
-            # precision matches no row even when the period has values.
+        if overlapping or len(reference_date) not in precisions:
+            example = max(overlapping or observed_dates)
             return (
                 f"The target date {reference_date} does not match the "
-                f"precision of the {label} dates, such as "
-                f"{max(observed_dates)}, so no place can be aligned to it."
+                f"precision of the {label} dates, such as {example}, so no "
+                "place can be aligned to it."
             )
         # No threshold is cited, because no value exists to compare.
         return f"No place has a value for {label} ({coverage.describe()})."
@@ -287,7 +305,7 @@ def align_cohort(
             reference_date=target_date,
             missing_places=target_places,
         )
-        message = f"{_variable_label(table)} has no observations"
+        message = f"{_format_variable_label(table)} has no observations"
         if target_places:
             message += (
                 f" for any of the requested places ({coverage.describe()})"
@@ -328,7 +346,7 @@ def align_cohort(
             variable_dcid=table.variable_dcid,
             reason="insufficient_coverage",
             coverage=coverage,
-            message=_shortfall_message(
+            message=_build_insufficient_coverage_message(
                 table, coverage, reference_date, list(by_date), min_coverage
             ),
         )
@@ -383,7 +401,7 @@ def _alignment_caveats(
     return tuple(caveats)
 
 
-def _normalized_unit(unit: str | None) -> str | None:
+def _normalize_unit(unit: str | None) -> str | None:
     """Returns the unit folded for comparison, or None when unset."""
     if unit is None:
         return None
@@ -391,7 +409,7 @@ def _normalized_unit(unit: str | None) -> str | None:
     return folded or None
 
 
-def _normalized_scaling(scaling_factor: float | None) -> float:
+def _normalize_scaling(scaling_factor: float | None) -> float:
     """Returns the scaling factor with "absent" read as unscaled."""
     return _UNSCALED if scaling_factor is None else scaling_factor
 
@@ -414,7 +432,7 @@ def find_unit_mismatch(
         unit conflict reported before a scaling conflict. With fewer than
         two items, returns None.
     """
-    units = {_normalized_unit(item.unit) for item in items}
+    units = {_normalize_unit(item.unit) for item in items}
     if len(units) > 1:
         reported = "; ".join(
             f"{item.variable_name} ({item.variable_dcid}) reports "
@@ -422,12 +440,12 @@ def find_unit_mismatch(
             for item in items
         )
         return UnitMismatch("unit_mismatch", f"Units differ: {reported}.")
-    scalings = {_normalized_scaling(item.scaling_factor) for item in items}
+    scalings = {_normalize_scaling(item.scaling_factor) for item in items}
     if len(scalings) > 1:
         reported = "; ".join(
             f"{item.variable_name} ({item.variable_dcid}) reports a scaling "
             f"factor of "
-            f"{format_scaling_factor(_normalized_scaling(item.scaling_factor))}"
+            f"{format_scaling_factor(_normalize_scaling(item.scaling_factor))}"
             for item in items
         )
         return UnitMismatch(
