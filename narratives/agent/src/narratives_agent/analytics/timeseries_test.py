@@ -272,19 +272,17 @@ def test_duplicate_dates_collapse_to_the_last_row() -> None:
 @pytest.mark.parametrize(
     ("start_date", "end_date"),
     [
-        ("2020", "2020-01"),
         ("2020-03-01", "2020-03-03"),
         ("2026-06", "2026-07"),
         ("2020-01", "2020-07"),
     ],
-    ids=["no time", "two days", "one month", "six months"],
+    ids=["two days", "one month", "six months"],
 )
 def test_growth_rate_is_undefined_over_less_than_a_year(
     start_date: str, end_date: str
 ) -> None:
     # Test: The minimum span of the growth rate.
-    # Situation: Two-point series spanning no time (`2020` and `2020-01`
-    #   both resolve to the start of 2020), two days, one month, and six
+    # Situation: Two-point series spanning two days, one month, and six
     #   months, each with positive endpoints and a rise.
     # Expectation: Both points are kept and the percentage change is
     #   reported, but `cagr` is None and the caveat says the series spans
@@ -301,6 +299,54 @@ def test_growth_rate_is_undefined_over_less_than_a_year(
     assert result.caveats == (
         "The compound annual growth rate is undefined for A because the "
         "series spans less than a year.",
+    )
+
+
+def test_a_series_mixing_precisions_keeps_its_most_common_one() -> None:
+    # Test: Series whose dates mix precisions.
+    # Situation: Place `a` reports 2019, 2020, and 2021 plus one monthly
+    #   value in 2020-06; place `b` reports one annual and one monthly value.
+    # Expectation: `a` keeps its three annual values, `b` keeps its monthly
+    #   value (the finer precision on a tie), and one caveat names both.
+    result = analyze_timeseries(
+        _table(
+            [
+                ("a", "2019", 1.0),
+                ("a", "2020", 2.0),
+                ("a", "2020-06", 9.0),
+                ("a", "2021", 3.0),
+                ("b", "2020", 5.0),
+                ("b", "2020-06", 6.0),
+            ]
+        )
+    )
+    assert isinstance(result.metrics, TimeseriesMetrics)
+    first, second = result.metrics.series
+    assert (first.point_count, first.start_date, first.end_date) == (
+        3,
+        "2019",
+        "2021",
+    )
+    assert first.local_extrema == ()
+    assert (second.point_count, second.start_date) == (1, "2020-06")
+    assert result.caveats[0] == (
+        "A and B have dates at more than one precision, such as years and "
+        "months, so only the most common precision is analyzed for each."
+    )
+
+
+def test_places_with_invalid_dcids_are_refused() -> None:
+    # Test: DCID validation of the requested places.
+    # Situation: `places` holds a DCID and then a string with a space and a
+    #   newline.
+    # Expectation: A refusal with `invalid_parameters` that names the
+    #   entry's position rather than quoting it.
+    result = analyze_timeseries(
+        _table([("a", "2020", 1.0)]), places=["a", "geoId 06\nnote"]
+    )
+    assert result.refusal_reason == "invalid_parameters"
+    assert result.caveats == (
+        "places must hold DCIDs, but entry 2 of 2 is not a valid DCID.",
     )
 
 
@@ -814,6 +860,48 @@ def test_a_stale_place_does_not_pull_the_comparison_back() -> None:
     ) in result.caveats
 
 
+def test_changes_that_overflow_a_float_are_undefined() -> None:
+    # Test: Growth rates and percentage changes too large for a float.
+    # Situation: A place rises from 1e-300 in 2000 to 1e300 in 2020, so the
+    #   ratio of its endpoints is 1e600.
+    # Expectation: The absolute change is reported, but the percentage
+    #   change, the step's percentage change, and the growth rate are None,
+    #   and two caveats say why rather than reporting infinity.
+    result = analyze_timeseries(
+        _table([("a", "2000", 1e-300), ("a", "2020", 1e300)])
+    )
+    assert isinstance(result.metrics, TimeseriesMetrics)
+    series = result.metrics.series[0]
+    assert series.absolute_change == 1e300 - 1e-300
+    assert series.percent_change is None
+    assert series.cagr is None
+    assert series.max_period_increase is not None
+    assert series.max_period_increase.percent_change is None
+    assert result.caveats == (
+        "The percentage change is undefined for A because it is too large "
+        "to represent.",
+        "The compound annual growth rate is undefined for A because it is "
+        "too large to represent.",
+    )
+
+
+def test_a_leader_delta_that_overflows_a_float_is_undefined() -> None:
+    # Test: A difference from the leader too large for a percentage.
+    # Situation: Two places compared on 2020 at -1e-300 (the leader) and
+    #   -1e300.
+    # Expectation: The absolute difference is reported and the percentage
+    #   difference is None rather than negative infinity.
+    result = analyze_timeseries(
+        _table([("a", "2020", -1e-300), ("b", "2020", -1e300)])
+    )
+    assert isinstance(result.metrics, TimeseriesMetrics)
+    comparison = result.metrics.cross_place_comparison
+    assert comparison is not None
+    (delta,) = comparison.deltas_from_leader
+    assert delta.absolute_delta == -1e300 + 1e-300
+    assert delta.percent_delta is None
+
+
 def test_zero_and_negative_bases_follow_the_percentage_convention() -> None:
     # Test: Percentages measured from a zero or negative base.
     # Situation: Place `a` rises from -10 to 0 to 5 and is compared with
@@ -904,6 +992,7 @@ _DATE_POOLS: tuple[tuple[str, ...], ...] = (
         "2021-03-01",
         "2021-03-02",
     ),
+    ("2019", "2020", "2021", "2020-01", "2020-06", "2021-01", "2021-06"),
 )
 
 
@@ -917,11 +1006,26 @@ class _SeriesCase:
 
     @property
     def by_place(self) -> dict[str, dict[str, float]]:
-        """Maps each observed place to its values by date."""
+        """Maps each observed place to its analyzed values by date.
+
+        A place whose dates mix precisions keeps only the dates of its most
+        common precision, the longer date format on a tie.
+        """
         grouped: dict[str, dict[str, float]] = {}
         for place, date, value in self.observations:
             grouped.setdefault(place, {})[date] = value
-        return grouped
+        analyzed: dict[str, dict[str, float]] = {}
+        for place, values in grouped.items():
+            widths = [len(date) for date in values]
+            kept = max(
+                set(widths), key=lambda width: (widths.count(width), width)
+            )
+            analyzed[place] = {
+                date: value
+                for date, value in values.items()
+                if len(date) == kept
+            }
+        return analyzed
 
 
 @functools.cache
@@ -929,8 +1033,9 @@ def _generate_series_cases() -> tuple[_SeriesCase, ...]:
     """Builds the generated time-series cases once for the invariant tests.
 
     400 seeded random tables of one to six places drawn from annual,
-    monthly, or daily dates, with partial and stale overlaps, zero and
-    negative endpoints, and a requested place that has no rows.
+    monthly, daily, or mixed annual and monthly dates, with partial and
+    stale overlaps, zero and negative endpoints, and a requested place that
+    has no rows.
     """
     generator = random.Random(17)
     cases: list[_SeriesCase] = []

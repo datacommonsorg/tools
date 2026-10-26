@@ -48,6 +48,7 @@ from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
+    is_valid_dcid,
 )
 
 __all__ = [
@@ -101,7 +102,12 @@ def compute_cohort_percentiles(values: Sequence[float]) -> dict[float, float]:
 
     Returns:
         A map from each distinct value to its percentile (0 to 100 scale).
+
+    Raises:
+        ValueError: If `values` is empty.
     """
+    if not values:
+        raise ValueError("Cohort percentiles need at least one value.")
     counts = Counter(values)
     total = len(values)
     percentiles: dict[float, float] = {}
@@ -160,7 +166,16 @@ def _build_refusal(
     coverage: CoverageReport | None,
     caveat: str,
 ) -> ScriptResult:
-    """Builds a refused result, carrying the cohort coverage when known."""
+    """Builds a refused result, carrying the cohort coverage when known.
+
+    A refused aligned cohort keeps its own caveats, which qualify its
+    coverage, ahead of `caveat`.
+    """
+    caveats = (
+        (*cohort_or_table.caveats, caveat)
+        if isinstance(cohort_or_table, AlignedCohort)
+        else (caveat,)
+    )
     return RefusedScriptResult(
         step_id=step_id,
         script=_SCRIPT_NAME,
@@ -173,7 +188,7 @@ def _build_refusal(
         scaling_factor=cohort_or_table.scaling_factor,
         coverage=coverage,
         provenance=cohort_or_table.provenance,
-        caveats=(caveat,),
+        caveats=caveats,
     )
 
 
@@ -216,6 +231,25 @@ def _resolve_aligned_cohort(
             known_coverage,
             f"focal_places must be a sequence of DCIDs, not the string "
             f"{focal_places!r}.",
+        )
+    # The entry itself is not quoted, so a malformed string never reaches a
+    # caveat or the prompt.
+    invalid = next(
+        (
+            position
+            for position, place in enumerate(focal_places, start=1)
+            if not is_valid_dcid(place)
+        ),
+        None,
+    )
+    if invalid is not None:
+        return _build_refusal(
+            cohort_or_table,
+            step_id,
+            "invalid_parameters",
+            known_coverage,
+            f"focal_places must hold DCIDs, but entry {invalid} of "
+            f"{len(focal_places)} is not a valid DCID.",
         )
     if isinstance(cohort_or_table, AlignedCohort):
         # `min_coverage` applies only to alignment, which already happened.
@@ -330,9 +364,10 @@ def rank_cohort(
         with `invalid_parameters` when `max_entries_per_end` is below 1,
         `target_date` is not a valid date or differs from an aligned
         cohort's reference date, `min_coverage` is outside `[0.0, 1.0]` for
-        a table, or `focal_places` is a string, carrying the cohort's
-        coverage when an aligned cohort was passed; and with the alignment's
-        reason when the cohort cannot be aligned.
+        a table, or `focal_places` is a string or holds an invalid DCID,
+        carrying the cohort's coverage and caveats when an aligned cohort
+        was passed; and with the alignment's reason when the cohort cannot
+        be aligned.
     """
     aligned = _resolve_aligned_cohort(
         cohort_or_table,

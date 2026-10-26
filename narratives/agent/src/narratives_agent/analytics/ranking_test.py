@@ -33,7 +33,10 @@ from narratives_agent.analytics.metrics import (
     RankingMetrics,
 )
 from narratives_agent.analytics.provenance import Provenance, Source
-from narratives_agent.analytics.ranking import rank_cohort
+from narratives_agent.analytics.ranking import (
+    compute_cohort_percentiles,
+    rank_cohort,
+)
 from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
@@ -262,10 +265,13 @@ def test_bad_parameters_are_refused_as_invalid_parameters() -> None:
     # Test: Parameter validation.
     # Situation: `max_entries_per_end=0`; separately a `target_date` of
     #   `latest`, which is not a year, a year and month, or a full date; a
-    #   bare string `e` as `focal_places`; and a `min_coverage` of 1.5.
+    #   bare string `e` as `focal_places`; a focal place with whitespace and
+    #   a newline, which is not a DCID; and a `min_coverage` of 1.5.
     # Expectation: Each is a refusal with `invalid_parameters`, `metrics=None`,
-    #   no coverage, and a caveat naming the bad value, rather than a
-    #   coverage refusal for a date no row carries or a raised `ValueError`.
+    #   no coverage, and a caveat naming the bad value (or, for the invalid
+    #   DCID, its position, so the string never reaches a caveat), rather
+    #   than a coverage refusal for a date no row carries or a raised
+    #   `ValueError`.
     by_size = rank_cohort(_tied_cohort(), max_entries_per_end=0)
     assert by_size.status == "refused"
     assert by_size.refusal_reason == "invalid_parameters"
@@ -287,6 +293,11 @@ def test_bad_parameters_are_refused_as_invalid_parameters() -> None:
     assert by_string.refusal_reason == "invalid_parameters"
     assert by_string.caveats == (
         "focal_places must be a sequence of DCIDs, not the string 'e'.",
+    )
+    by_dcid = rank_cohort(_tied_cohort(), focal_places=["e", "geoId 06\nnote"])
+    assert by_dcid.refusal_reason == "invalid_parameters"
+    assert by_dcid.caveats == (
+        "focal_places must hold DCIDs, but entry 2 of 2 is not a valid DCID.",
     )
     by_coverage = rank_cohort(_tied_cohort(), min_coverage=1.5)
     assert by_coverage.status == "refused"
@@ -333,8 +344,9 @@ def test_an_aligned_cohort_is_ranked_without_realignment() -> None:
     #   that date, with a different `target_date`, and with a malformed one.
     # Expectation: The matching date ranks the aligned rows on 2022 and
     #   carries the alignment caveats and coverage; the different date is
-    #   refused with `invalid_parameters` rather than silently ignored; and
-    #   the malformed date is refused.
+    #   refused with `invalid_parameters` rather than silently ignored,
+    #   keeping the alignment caveats ahead of the reason; and the malformed
+    #   date is refused.
     table = _table(
         [("a", "2022", 1.0), ("b", "2022", 2.0), ("c", "2021", 3.0)],
         requested_places=["a", "b", "c"],
@@ -350,6 +362,7 @@ def test_an_aligned_cohort_is_ranked_without_realignment() -> None:
     conflicting = rank_cohort(aligned, target_date="2021")
     assert conflicting.refusal_reason == "invalid_parameters"
     assert conflicting.caveats == (
+        *aligned.caveats,
         "The cohort is aligned to 2022, so it cannot be ranked on the target "
         "date 2021.",
     )
@@ -365,8 +378,9 @@ def test_an_aligned_cohort_keeps_its_coverage_and_ignores_min_coverage() -> (
     #   `max_entries_per_end=0`, and then with `min_coverage=1.5`, which only
     #   alignment would use.
     # Expectation: `max_entries_per_end=0` is refused with `invalid_parameters`
-    #   and carries the cohort's coverage; `min_coverage=1.5` is ignored,
-    #   because the cohort is already aligned, and the ranking succeeds.
+    #   and carries the cohort's coverage and caveats; `min_coverage=1.5` is
+    #   ignored, because the cohort is already aligned, and the ranking
+    #   succeeds.
     table = _table(
         [("a", "2022", 1.0), ("b", "2022", 2.0), ("c", "2021", 3.0)],
         requested_places=["a", "b", "c"],
@@ -377,6 +391,7 @@ def test_an_aligned_cohort_keeps_its_coverage_and_ignores_min_coverage() -> (
     assert by_size.refusal_reason == "invalid_parameters"
     assert by_size.coverage == aligned.coverage
     assert by_size.caveats == (
+        *aligned.caveats,
         "max_entries_per_end must be at least 1, not 0.",
     )
     by_coverage = rank_cohort(aligned, min_coverage=1.5)
@@ -613,3 +628,11 @@ def test_rank_cohort_on_a_target_date_equals_ranking_the_aligned_cohort() -> (
     )
     assert isinstance(direct.metrics, RankingMetrics)
     assert direct.metrics.reference_date == "2020"
+
+
+def test_cohort_percentiles_of_no_values_are_rejected() -> None:
+    # Test: The non-empty precondition of `compute_cohort_percentiles`.
+    # Situation: An empty sequence of values.
+    # Expectation: `ValueError` rather than an empty mapping.
+    with pytest.raises(ValueError, match="at least one value"):
+        compute_cohort_percentiles([])

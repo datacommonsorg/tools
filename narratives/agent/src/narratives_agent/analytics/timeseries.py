@@ -19,6 +19,7 @@ rates per place, and compares multiple places on a date they share.
 """
 
 import calendar
+import math
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ from narratives_agent.analytics.digest import (
     RefusalReason,
     RefusedScriptResult,
     ScriptResult,
+    conjugate_have,
     format_percent,
     format_place_names,
 )
@@ -54,6 +56,7 @@ from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
     is_inverted_date_range,
+    is_valid_dcid,
     is_valid_observation_date,
     is_within_date_range,
 )
@@ -79,6 +82,8 @@ type _PlaceIssue = Literal[
     "cagr_start_not_positive",
     "cagr_end_not_positive",
     "cagr_short_span",
+    "percent_not_finite",
+    "cagr_not_finite",
 ]
 # One caveat per issue names every place it affects.
 _PLACE_ISSUE_CAVEATS: dict[_PlaceIssue, str] = {
@@ -101,6 +106,14 @@ _PLACE_ISSUE_CAVEATS: dict[_PlaceIssue, str] = {
     "cagr_short_span": (
         "The compound annual growth rate is undefined for {places} because "
         "the series spans less than a year."
+    ),
+    "percent_not_finite": (
+        "The percentage change is undefined for {places} because it is too "
+        "large to represent."
+    ),
+    "cagr_not_finite": (
+        "The compound annual growth rate is undefined for {places} because "
+        "it is too large to represent."
     ),
 }
 
@@ -148,10 +161,15 @@ def _compute_fractional_year(date: str) -> float:
 
 
 def _compute_percent_change(start: float, end: float) -> float | None:
-    """Returns the percentage change from `start` to `end`, or None at zero."""
+    """Returns the percentage change from `start` to `end`, or None.
+
+    The change is None when `start` is zero, and when it overflows a float,
+    which only values near the float limit or a tiny `start` can cause.
+    """
     if start == 0.0:
         return None
-    return (end - start) / abs(start) * PERCENT_SCALE
+    percent = (end - start) / abs(start) * PERCENT_SCALE
+    return percent if math.isfinite(percent) else None
 
 
 def _compute_period_changes(
@@ -241,8 +259,8 @@ def _compute_compound_annual_growth_rate(
     The rate is defined only for positive endpoints at least
     `_MIN_GROWTH_SPAN_YEARS` apart, because annualizing a shorter change
     extrapolates it, and a growth rate that is not defined must not be
-    estimated. Over at least a year the annualized ratio lies between 1 and
-    the ratio itself, so the result is finite whenever the ratio is.
+    estimated. A rate that overflows a float, which only a ratio near the
+    float limit can cause, is not defined either.
     """
     if start.value <= 0.0:
         return None, "cagr_start_not_positive"
@@ -252,17 +270,20 @@ def _compute_compound_annual_growth_rate(
     years = _compute_fractional_year(end.date) - start_year
     if years < _MIN_GROWTH_SPAN_YEARS:
         return None, "cagr_short_span"
-    growth = (end.value / start.value) ** (1.0 / years) - 1.0
-    return growth * PERCENT_SCALE, None
+    ratio = end.value / start.value
+    growth = (ratio ** (1.0 / years) - 1.0) * PERCENT_SCALE
+    if not math.isfinite(growth):
+        return None, "cagr_not_finite"
+    return growth, None
 
 
 def _compute_overall_change(points: Sequence[ObservationRow]) -> _OverallChange:
     """Returns the absolute, percentage, and annualized start-to-end change.
 
-    A single observation has no change, a zero start has no percentage
-    change, and the growth rate follows the rules of
-    `_compute_compound_annual_growth_rate`; each missing figure is recorded
-    as an issue.
+    A single observation has no change, a zero start or an overflowing
+    percentage has no percentage change, and the growth rate follows the
+    rules of `_compute_compound_annual_growth_rate`; each missing figure is
+    recorded as an issue.
     """
     start, end = points[0], points[-1]
     if len(points) == 1:
@@ -270,7 +291,9 @@ def _compute_overall_change(points: Sequence[ObservationRow]) -> _OverallChange:
     issues: list[_PlaceIssue] = []
     percent_change = _compute_percent_change(start.value, end.value)
     if percent_change is None:
-        issues.append("zero_start")
+        issues.append(
+            "zero_start" if start.value == 0.0 else "percent_not_finite"
+        )
     cagr, cagr_issue = _compute_compound_annual_growth_rate(start, end)
     if cagr_issue is not None:
         issues.append(cagr_issue)
@@ -520,6 +543,22 @@ def _validate_parameters(
     # A `str` is a `Sequence[str]`, so the type does not exclude it.
     if isinstance(places, str):
         return f"places must be a sequence of DCIDs, not the string {places!r}."
+    # The entry itself is not quoted, so a malformed string never reaches a
+    # caveat or the prompt.
+    entries = places or ()
+    invalid = next(
+        (
+            position
+            for position, place in enumerate(entries, start=1)
+            if not is_valid_dcid(place)
+        ),
+        None,
+    )
+    if invalid is not None:
+        return (
+            f"places must hold DCIDs, but entry {invalid} of {len(entries)} "
+            "is not a valid DCID."
+        )
     for bound in (start_date, end_date):
         if bound is not None and not is_valid_observation_date(bound):
             return (
@@ -560,6 +599,44 @@ def _group_series_by_place(
     return series
 
 
+def _keep_one_precision(
+    series: Mapping[str, Mapping[str, ObservationRow]],
+) -> tuple[dict[str, dict[str, ObservationRow]], list[str]]:
+    """Keeps one date precision per place, and lists the places filtered.
+
+    A place whose dates mix precisions (`2020` and `2020-01`) keeps only
+    its most common precision, the finer one on a tie, because changes and
+    turning points across precisions compare values for different periods.
+    """
+    kept: dict[str, dict[str, ObservationRow]] = {}
+    mixed: list[str] = []
+    for place, rows_by_date in series.items():
+        counts = Counter(len(date) for date in rows_by_date)
+        precision = max(counts, key=lambda width: (counts[width], width))
+        kept[place] = {
+            date: row
+            for date, row in rows_by_date.items()
+            if len(date) == precision
+        }
+        if len(counts) > 1:
+            mixed.append(place)
+    return kept, mixed
+
+
+def _describe_mixed_precision(
+    table: ObservationTable, mixed: Sequence[str]
+) -> str:
+    """States which places report dates at more than one precision."""
+    names = format_place_names(
+        [table.place_names.get(place, place) for place in mixed]
+    )
+    return (
+        f"{names} {conjugate_have(len(mixed))} dates at more than one "
+        "precision, such as years and months, so only the most common "
+        "precision is analyzed for each."
+    )
+
+
 def _order_places(
     observed: Iterable[str], preferred: Sequence[str]
 ) -> list[str]:
@@ -594,7 +671,8 @@ def analyze_timeseries(
     """Summarizes each place's series in `table` and compares the places.
 
     When a place has two rows on the same date, the last row in table order
-    is used.
+    is used. When a place's dates mix precisions, only its most common
+    precision is analyzed, and a caveat names the place.
 
     Args:
         table: The table to analyze.
@@ -616,15 +694,16 @@ def analyze_timeseries(
         else the date most places share; None for a single place or when no
         two places share a date). The result is refused with
         `invalid_parameters` when a bound is not a valid date, the start
-        falls after the end, or `places` is a string, and with
+        falls after the end, or `places` is a string or holds an invalid
+        DCID, and with
         `no_observations` when no row matches the places and the window.
     """
     error = _validate_parameters(places, start_date, end_date)
     if error is not None:
         return _build_refusal(table, step_id, "invalid_parameters", error)
     requested = tuple(dict.fromkeys(places)) if places else ()
-    series = _group_series_by_place(table, requested, start_date, end_date)
-    if not series:
+    grouped = _group_series_by_place(table, requested, start_date, end_date)
+    if not grouped:
         return _build_refusal(
             table,
             step_id,
@@ -633,6 +712,7 @@ def analyze_timeseries(
             f"for {table.variable_name}.",
         )
 
+    series, mixed = _keep_one_precision(grouped)
     preferred = tuple(dict.fromkeys(requested or table.requested_places))
     ordered_places = _order_places(series, preferred)
     windowed = start_date is not None or end_date is not None
@@ -641,6 +721,10 @@ def analyze_timeseries(
     if missing_places:
         caveats.append(
             _describe_missing_places(table, missing_places, windowed=windowed)
+        )
+    if mixed:
+        caveats.append(
+            _describe_mixed_precision(table, _order_places(mixed, preferred))
         )
     summaries, summary_caveats = _summarize_places(series, ordered_places)
     caveats.extend(summary_caveats)

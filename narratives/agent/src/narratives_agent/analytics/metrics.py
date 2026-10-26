@@ -65,7 +65,8 @@ class PeriodChange:
         to_value: Value of the later observation.
         absolute_change: `to_value - from_value`.
         percent_change: `absolute_change` as a percentage (0 to 100 scale) of
-            `abs(from_value)`, or None when `from_value` is zero.
+            `abs(from_value)`, or None when `from_value` is zero or the
+            percentage is too large to represent as a float.
     """
 
     from_date: str
@@ -116,11 +117,14 @@ class PlaceSeriesSummary:
             order.
         absolute_change: `end_value - start_value`; None for a single point.
         percent_change: `absolute_change` as a percentage (0 to 100 scale) of
-            `abs(start_value)`; None for a single point or a zero start.
+            `abs(start_value)`; None for a single point, and None with a
+            caveat on the result for a zero start or a percentage too large
+            to represent as a float.
         cagr: Compound annual growth rate as a percentage (0 to 100 scale);
             None for a single point, and None with a growth-rate caveat on
-            the result when an endpoint is not positive or the series spans
-            less than a year.
+            the result when an endpoint is not positive, the series spans
+            less than a year, or the rate is too large to represent as a
+            float.
         max_period_increase: Largest positive step, the earliest on a tie;
             None when the series never rises.
         max_period_decrease: Largest negative step, the earliest on a tie;
@@ -170,7 +174,8 @@ class LeaderDelta:
         place_name: Display name of the place.
         absolute_delta: `value - leader value`, so never positive.
         percent_delta: `absolute_delta` as a percentage (0 to 100 scale) of the
-            leader's absolute value, or None when the leader's value is zero.
+            leader's absolute value, or None when the leader's value is zero
+            or the percentage is too large to represent as a float.
     """
 
     place_dcid: str
