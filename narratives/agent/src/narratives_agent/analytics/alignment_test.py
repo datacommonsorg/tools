@@ -177,6 +177,14 @@ def test_has_adequate_coverage_includes_the_threshold() -> None:
     assert has_adequate_coverage(0, 10, min_coverage=0.0)
 
 
+def test_has_adequate_coverage_rejects_an_empty_cohort() -> None:
+    # Test: The cohort size precondition of the coverage predicate.
+    # Situation: A cohort size of 0.
+    # Expectation: `ValueError` instead of a division by zero.
+    with pytest.raises(ValueError, match="at least 1, not 0"):
+        has_adequate_coverage(0, 0)
+
+
 def test_target_date_is_used_as_given_and_duplicates_keep_the_last_row() -> (
     None
 ):

@@ -82,7 +82,7 @@ def _ranking_metrics(top: RankEntry) -> RankingMetrics:
     return RankingMetrics(
         reference_date="2022",
         direction="desc",
-        n=1,
+        max_entries_per_end=1,
         cohort_size=1,
         top_n=(top,),
         bottom_n=(),
@@ -313,8 +313,9 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
         "Step s1: rank_cohort on Total population (Count_Person)\n"
         "  unit: Person; coverage: 9 of 10 places on 2022; cite: [1]\n"
         "  method: Ranked 9 places on 2022\n"
-        '  metrics: {"reference_date":"2022","direction":"desc","n":1,'
-        '"cohort_size":1,"top_n":[{"rank":1,"is_tied":false,"place_dcid":"a",'
+        '  metrics: {"reference_date":"2022","direction":"desc",'
+        '"max_entries_per_end":1,"cohort_size":1,"top_n":[{"rank":1,'
+        '"is_tied":false,"place_dcid":"a",'
         '"place_name":"A","value":1,"percentile":100}],"bottom_n":[],'
         '"focal_entries":[],"missing_focal_places":[]}\n'
         "  caveat: 9 of 10 places reported a value.\n"

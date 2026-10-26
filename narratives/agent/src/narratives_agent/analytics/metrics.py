@@ -254,15 +254,16 @@ class RankingMetrics:
     Attributes:
         reference_date: The date the cohort is aligned to.
         direction: `desc` ranks the largest value first, `asc` the smallest.
-        n: Requested size of each tail; a tail is shorter when the cohort
-            is smaller than `n`.
+        max_entries_per_end: The most entries requested at each end of the
+            ranking; `top_n` and `bottom_n` are shorter when the cohort has
+            fewer places.
         cohort_size: Number of places ranked.
-        top_n: The leading entries in `direction`. When a tail stops inside
-            a group of tied places, the result carries a caveat saying how
-            many share the rank.
+        top_n: The leading entries in `direction`. When an end leaves out
+            places tied with its last entry, the result carries a caveat
+            saying how many share the rank.
         bottom_n: The trailing entries, ordered from the far end inward;
-            disjoint from `top_n` when `cohort_size` is at least `2 * n`,
-            and overlapping it otherwise.
+            disjoint from `top_n` when `cohort_size` is at least
+            `2 * max_entries_per_end`, and overlapping it otherwise.
         focal_entries: Entries of the requested focal places, in request
             order.
         missing_focal_places: DCIDs of focal places with no value on
@@ -273,7 +274,7 @@ class RankingMetrics:
 
     reference_date: str
     direction: RankingDirection
-    n: int
+    max_entries_per_end: int
     cohort_size: int
     top_n: tuple[RankEntry, ...]
     bottom_n: tuple[RankEntry, ...]

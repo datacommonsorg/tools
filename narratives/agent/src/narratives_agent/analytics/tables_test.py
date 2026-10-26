@@ -140,22 +140,30 @@ def test_is_valid_dcid_checks_printable_ascii_and_length_cap() -> None:
         ("2020", True),
         ("2020-07", True),
         ("2020-07-31", True),
+        ("2020-02-29", True),
         ("2020\n", False),
         ("2020-7", False),
         ("latest", False),
         ("", False),
+        ("2021-00", False),
+        ("2021-13", False),
+        ("2021-02-29", False),
+        ("2021-04-31", False),
+        ("2021-04-00", False),
     ],
 )
 def test_observation_date_validation_matches_the_whole_string(
     date: str, expected: bool
 ) -> None:
-    # Test: `is_valid_observation_date` format validation.
+    # Test: `is_valid_observation_date` format and calendar validation.
     # Situation: `is_valid_observation_date` is called with `"YYYY"`,
-    #   `"YYYY-MM"`, and `"YYYY-MM-DD"` dates, as well as a year with a
-    #   trailing newline, a single-digit month (`"2020-7"`), `"latest"`, and
-    #   an empty string.
-    # Expectation: Returns `True` only for `"YYYY"`, `"YYYY-MM"`, and
-    #   `"YYYY-MM-DD"`, rejecting partial matches and trailing newlines.
+    #   `"YYYY-MM"`, and `"YYYY-MM-DD"` dates including a leap day, as well
+    #   as a year with a trailing newline, a single-digit month (`"2020-7"`),
+    #   `"latest"`, an empty string, months 00 and 13, February 29 in a
+    #   non-leap year, April 31, and day 00.
+    # Expectation: Returns `True` only for real `"YYYY"`, `"YYYY-MM"`, and
+    #   `"YYYY-MM-DD"` dates, rejecting partial matches, trailing newlines,
+    #   and months or days that do not exist.
     assert is_valid_observation_date(date) is expected
 
 

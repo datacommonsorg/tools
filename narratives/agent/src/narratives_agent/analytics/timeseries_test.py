@@ -19,9 +19,11 @@ caps, window and place filtering, and multi-place comparisons.
 """
 
 import datetime
+import functools
 import random
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from itertools import pairwise
 
 import pytest
@@ -32,6 +34,7 @@ from narratives_agent.analytics.metrics import (
     LeaderDelta,
     LocalExtremum,
     PeriodChange,
+    PlaceSeriesSummary,
     PlaceValue,
     TimeseriesMetrics,
 )
@@ -39,6 +42,7 @@ from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 from narratives_agent.analytics.timeseries import (
     LOCAL_EXTREMA_CAP,
+    _find_extreme_period_changes,
     analyze_timeseries,
 )
 
@@ -370,23 +374,61 @@ def test_daily_growth_span_adds_one_day_across_month_boundaries(
     )
 
 
+def _change(to_date: str, absolute_change: float) -> PeriodChange:
+    """Builds a period change into `to_date` of the given size."""
+    return PeriodChange(
+        from_date="2000",
+        to_date=to_date,
+        from_value=10.0,
+        to_value=10.0 + absolute_change,
+        absolute_change=absolute_change,
+        percent_change=absolute_change * 10.0,
+    )
+
+
+def test_extreme_period_changes_pick_the_largest_rise_and_fall() -> None:
+    # Test: The largest increase and decrease among period changes.
+    # Situation: Steps of +2, -3, +5, 0, -3, and +5, in date order.
+    # Expectation: The largest increase is the first +5 and the largest
+    #   decrease is the first -3, the earliest step of each size; the flat
+    #   step is neither.
+    changes = [
+        _change("2001", 2.0),
+        _change("2002", -3.0),
+        _change("2003", 5.0),
+        _change("2004", 0.0),
+        _change("2005", -3.0),
+        _change("2006", 5.0),
+    ]
+    increase, decrease = _find_extreme_period_changes(changes)
+    assert increase == changes[2]
+    assert decrease == changes[1]
+
+
 @pytest.mark.parametrize(
-    ("start", "end"),
+    ("sizes", "expect_increase", "expect_decrease"),
     [
-        ("2021-04-31", "2022-04-31"),
-        ("2020-00-15", "2021-00-15"),
-        ("2020-13-01", "2021-13-01"),
+        ((1.0, 2.0), True, False),
+        ((-1.0, -2.0), False, True),
+        ((0.0, 0.0), False, False),
+        ((), False, False),
     ],
-    ids=["day past month end", "month zero", "month thirteen"],
+    ids=["only rises", "only falls", "flat", "no steps"],
 )
-def test_impossible_daily_dates_do_not_raise(start: str, end: str) -> None:
-    # Test: Daily dates that match the date pattern but not the calendar.
-    # Situation: The same impossible month and day in two consecutive
-    #   years; `is_valid_observation_date` checks only the digit pattern.
-    # Expectation: The analysis completes and measures the span as one
-    #   year, so the growth rate is 300% for a value that quadruples.
-    metrics = _metrics(_table([("a", start, 1.0), ("a", end, 4.0)]))
-    assert metrics.series[0].cagr == pytest.approx(300.0)
+def test_extreme_period_changes_are_none_without_a_rise_or_fall(
+    sizes: tuple[float, ...], expect_increase: bool, expect_decrease: bool
+) -> None:
+    # Test: Missing extremes among period changes.
+    # Situation: Series that only rise, only fall, stay flat, or have a
+    #   single point and so no steps.
+    # Expectation: The increase is None when nothing rises and the decrease
+    #   is None when nothing falls.
+    changes = [
+        _change(f"{2001 + index}", size) for index, size in enumerate(sizes)
+    ]
+    increase, decrease = _find_extreme_period_changes(changes)
+    assert (increase is not None) is expect_increase
+    assert (decrease is not None) is expect_decrease
 
 
 def test_monthly_series_uses_elapsed_years_for_growth() -> None:
@@ -865,169 +907,276 @@ _DATE_POOLS: tuple[tuple[str, ...], ...] = (
 )
 
 
-def test_analyze_timeseries_invariants_hold_across_generated_series() -> None:
-    # Test: The time-series invariants checked by brute force.
-    # Situation: 400 seeded random tables of one to six places drawn from
-    #   annual, monthly, or daily dates, with partial and stale overlaps,
-    #   zero and negative endpoints, and requested places that have no rows.
-    # Expectation: Each summary's endpoints, minimum and maximum (earliest
-    #   on a tie), local extrema, absolute and percentage change, and largest
-    #   period increase and decrease (earliest on a tie) match a direct
-    #   computation over the place's points; `cagr` is None exactly when a
-    #   series has one point, an endpoint is not positive, or the span is
-    #   under a year, and matches the closed form otherwise; the comparison
-    #   date is the latest date shared by at least half of the observed
-    #   places, or else the date the most places share (the latest on a
-    #   tie), counting only dates two or more places share; the entries are
-    #   exactly the places with a value on that date, ordered by value and
-    #   then DCID, with the spread, the leader, and each other entry's
-    #   absolute and percentage difference from the leader; and every
-    #   requested place is in `series` or `missing_places`, never both.
-    generator = random.Random(20261025)
+@dataclass(frozen=True)
+class _SeriesCase:
+    """One generated table, the places it requests, and its metrics."""
+
+    observations: tuple[tuple[str, str, float], ...]
+    requested: tuple[str, ...]
+    metrics: TimeseriesMetrics
+
+    @property
+    def by_place(self) -> dict[str, dict[str, float]]:
+        """Maps each observed place to its values by date."""
+        grouped: dict[str, dict[str, float]] = {}
+        for place, date, value in self.observations:
+            grouped.setdefault(place, {})[date] = value
+        return grouped
+
+
+@functools.cache
+def _generate_series_cases() -> tuple[_SeriesCase, ...]:
+    """Builds the generated time-series cases once for the invariant tests.
+
+    400 seeded random tables of one to six places drawn from annual,
+    monthly, or daily dates, with partial and stale overlaps, zero and
+    negative endpoints, and a requested place that has no rows.
+    """
+    generator = random.Random(17)
+    cases: list[_SeriesCase] = []
     for _ in range(400):
         pool = generator.choice(_DATE_POOLS)
-        place_count = generator.randint(1, 6)
-        places = [f"p{index}" for index in range(place_count)]
+        places = [f"p{index}" for index in range(generator.randint(1, 6))]
         observations: list[tuple[str, str, float]] = []
         for place in places:
             dates = generator.sample(pool, generator.randint(1, len(pool)))
             for date in dates:
                 value = generator.choice([-2.0, 0.0, 1.0, 2.5, 4.0, 10.0])
                 observations.append((place, date, value))
-        requested = [*places, "absent"]
-        table = _table(observations, requested_places=requested)
-        result = analyze_timeseries(table)
+        requested = (*places, "absent")
+        result = analyze_timeseries(
+            _table(observations, requested_places=requested)
+        )
         assert isinstance(result.metrics, TimeseriesMetrics)
-        metrics = result.metrics
-        by_place: dict[str, dict[str, float]] = {}
-        for place, date, value in observations:
-            by_place.setdefault(place, {})[date] = value
-        reported = {summary.place_dcid for summary in metrics.series}
-        for place in requested:
-            assert (place in reported) != (place in metrics.missing_places)
-        for summary in metrics.series:
-            points = sorted(by_place[summary.place_dcid].items())
-            (start, first), (end, last) = points[0], points[-1]
-            assert (summary.start_date, summary.start_value) == (start, first)
-            assert (summary.end_date, summary.end_value) == (end, last)
-            lowest = min(points, key=lambda point: (point[1], point[0]))
-            highest = min(points, key=lambda point: (-point[1], point[0]))
-            assert (summary.min_date, summary.min_value) == lowest
-            assert (summary.max_date, summary.max_value) == highest
-            if len(points) == 1:
-                assert summary.absolute_change is None
-                assert summary.percent_change is None
-            else:
-                assert summary.absolute_change == last - first
-                if first == 0.0:
-                    assert summary.percent_change is None
-                else:
-                    assert summary.percent_change == pytest.approx(
-                        (last - first) / abs(first) * 100.0
-                    )
+        cases.append(
+            _SeriesCase(tuple(observations), requested, result.metrics)
+        )
+    return tuple(cases)
+
+
+def _summaries_with_points(
+    case: _SeriesCase,
+) -> list[tuple[PlaceSeriesSummary, list[tuple[str, float]]]]:
+    """Pairs each summary with its place's `(date, value)` points by date."""
+    by_place = case.by_place
+    return [
+        (summary, sorted(by_place[summary.place_dcid].items()))
+        for summary in case.metrics.series
+    ]
+
+
+def _assert_endpoints_and_change(
+    summary: PlaceSeriesSummary, points: Sequence[tuple[str, float]]
+) -> None:
+    """Checks the endpoints, extrema, and overall change against `points`."""
+    (start, first), (end, last) = points[0], points[-1]
+    assert (summary.start_date, summary.start_value) == (start, first)
+    assert (summary.end_date, summary.end_value) == (end, last)
+    lowest = min(points, key=lambda point: (point[1], point[0]))
+    highest = min(points, key=lambda point: (-point[1], point[0]))
+    assert (summary.min_date, summary.min_value) == lowest
+    assert (summary.max_date, summary.max_value) == highest
+    if len(points) == 1:
+        assert summary.absolute_change is None
+        assert summary.percent_change is None
+        return
+    assert summary.absolute_change == last - first
+    if first == 0.0:
+        assert summary.percent_change is None
+    else:
+        assert summary.percent_change == pytest.approx(
+            (last - first) / abs(first) * 100.0
+        )
+
+
+def _assert_largest_step(
+    change: PeriodChange | None, steps: Sequence[tuple[str, float]]
+) -> None:
+    """Checks a reported step against the largest of `steps`, earliest first.
+
+    `steps` holds `(to_date, size)` pairs that all rise or all fall, with
+    the largest sorting first by size.
+    """
+    if not steps:
+        assert change is None
+        return
+    largest = steps[0][1]
+    expected = min(date for date, size in steps if size == largest)
+    assert change is not None
+    assert (change.to_date, change.absolute_change) == (expected, largest)
+
+
+def _assert_local_extrema(
+    summary: PlaceSeriesSummary, points: Sequence[tuple[str, float]]
+) -> None:
+    """Checks every turning point, in date order, against `points`.
+
+    Series hold at most seven points, below `LOCAL_EXTREMA_CAP`, so every
+    turning point is reported.
+    """
+    turning = [
+        (date, value, "peak" if value > before else "trough")
+        for (_, before), (date, value), (_, after) in zip(
+            points, points[1:], points[2:], strict=False
+        )
+        if (value - before) * (after - value) < 0.0
+    ]
+    assert [
+        (extremum.date, extremum.value, extremum.kind)
+        for extremum in summary.local_extrema
+    ] == turning
+
+
+def _expected_comparison_date(
+    by_place: Mapping[str, Mapping[str, float]],
+) -> str | None:
+    """Computes the comparison date directly, or None when none is due.
+
+    Counting only dates two or more places share, it is the latest date
+    shared by at least half of the observed places, or else the date the
+    most places share, the latest on a tie.
+    """
+    counts = Counter(date for values in by_place.values() for date in values)
+    shared = {date: count for date, count in counts.items() if count >= 2}
+    if len(by_place) < 2 or not shared:
+        return None
+    half_covered = [
+        date for date, count in shared.items() if count * 2 >= len(by_place)
+    ]
+    if half_covered:
+        return max(half_covered)
+    return max(shared, key=lambda date: (shared[date], date))
+
+
+def _assert_comparison_entries(
+    comparison: CrossPlaceComparison,
+    by_place: Mapping[str, Mapping[str, float]],
+) -> None:
+    """Checks the entries, spread, leader, and deltas against `by_place`."""
+    expected_entries = sorted(
+        (
+            (place, values[comparison.reference_date])
+            for place, values in by_place.items()
+            if comparison.reference_date in values
+        ),
+        key=lambda entry: (-entry[1], entry[0]),
+    )
+    assert [
+        (entry.place_dcid, entry.value) for entry in comparison.entries
+    ] == expected_entries
+    assert comparison.spread == expected_entries[0][1] - expected_entries[-1][1]
+    assert comparison.leader == comparison.entries[0]
+    leader_value = comparison.leader.value
+    assert len(comparison.deltas_from_leader) == len(comparison.entries) - 1
+    for entry, delta in zip(
+        comparison.entries[1:], comparison.deltas_from_leader, strict=True
+    ):
+        assert delta.place_dcid == entry.place_dcid
+        assert delta.absolute_delta == entry.value - leader_value
+        if leader_value == 0.0:
+            assert delta.percent_delta is None
+        else:
+            assert delta.percent_delta == pytest.approx(
+                (entry.value - leader_value) / abs(leader_value) * 100.0
+            )
+
+
+def test_generated_series_account_for_every_requested_place() -> None:
+    # Test: Reported and missing places, checked by brute force.
+    # Situation: Every generated case (see `_generate_series_cases`).
+    # Expectation: Every requested place is in `series` or
+    #   `missing_places`, never both.
+    for case in _generate_series_cases():
+        reported = {summary.place_dcid for summary in case.metrics.series}
+        for place in case.requested:
+            assert (place in reported) != (place in case.metrics.missing_places)
+
+
+def test_generated_series_report_endpoints_extrema_and_change() -> None:
+    # Test: Each summary's endpoints, extrema, and overall change.
+    # Situation: Every generated case (see `_generate_series_cases`).
+    # Expectation: The endpoints, minimum and maximum (earliest on a tie),
+    #   and absolute and percentage change match a direct computation over
+    #   the place's points.
+    for case in _generate_series_cases():
+        for summary, points in _summaries_with_points(case):
+            _assert_endpoints_and_change(summary, points)
+
+
+def test_generated_series_report_the_largest_period_changes() -> None:
+    # Test: Each summary's largest period increase and decrease.
+    # Situation: Every generated case (see `_generate_series_cases`).
+    # Expectation: Both match the largest rise and fall between consecutive
+    #   points, the earliest on a tie, and are None when there is none.
+    for case in _generate_series_cases():
+        for summary, points in _summaries_with_points(case):
             steps = [
                 (later_date, later - earlier)
                 for (_, earlier), (later_date, later) in pairwise(points)
             ]
-            rises = [step for step in steps if step[1] > 0.0]
-            falls = [step for step in steps if step[1] < 0.0]
-            increase = summary.max_period_increase
-            decrease = summary.max_period_decrease
-            if rises:
-                largest = max(step[1] for step in rises)
-                expected = min(date for date, size in rises if size == largest)
-                assert increase is not None
-                assert (increase.to_date, increase.absolute_change) == (
-                    expected,
-                    largest,
-                )
-            else:
-                assert increase is None
-            if falls:
-                largest = min(step[1] for step in falls)
-                expected = min(date for date, size in falls if size == largest)
-                assert decrease is not None
-                assert (decrease.to_date, decrease.absolute_change) == (
-                    expected,
-                    largest,
-                )
-            else:
-                assert decrease is None
-            # Series hold at most seven points, below `LOCAL_EXTREMA_CAP`, so
-            # every turning point is reported, in date order.
-            turning = [
-                (date, value, "peak" if value > before else "trough")
-                for (_, before), (date, value), (_, after) in zip(
-                    points, points[1:], points[2:], strict=False
-                )
-                if (value - before) * (after - value) < 0.0
-            ]
-            assert [
-                (extremum.date, extremum.value, extremum.kind)
-                for extremum in summary.local_extrema
-            ] == turning
-            years = _elapsed_years(start, end)
-            undefined = (
-                len(points) == 1 or first <= 0.0 or last <= 0.0 or years < 1.0
+            rises = sorted(
+                (step for step in steps if step[1] > 0.0),
+                key=lambda step: -step[1],
             )
-            if undefined:
+            falls = sorted(
+                (step for step in steps if step[1] < 0.0),
+                key=lambda step: step[1],
+            )
+            _assert_largest_step(summary.max_period_increase, rises)
+            _assert_largest_step(summary.max_period_decrease, falls)
+
+
+def test_generated_series_report_local_extrema() -> None:
+    # Test: Each summary's interior turning points.
+    # Situation: Every generated case (see `_generate_series_cases`).
+    # Expectation: The local extrema are exactly the points where the series
+    #   reverses direction, in date order.
+    for case in _generate_series_cases():
+        for summary, points in _summaries_with_points(case):
+            _assert_local_extrema(summary, points)
+
+
+def test_generated_series_report_growth_rates() -> None:
+    # Test: Each summary's compound annual growth rate.
+    # Situation: Every generated case (see `_generate_series_cases`).
+    # Expectation: `cagr` is None exactly when a series has one point, an
+    #   endpoint is not positive, or the span is under a year, and matches
+    #   the closed form otherwise.
+    for case in _generate_series_cases():
+        for summary, points in _summaries_with_points(case):
+            (start, first), (end, last) = points[0], points[-1]
+            years = _elapsed_years(start, end)
+            if len(points) == 1 or first <= 0.0 or last <= 0.0 or years < 1.0:
                 assert summary.cagr is None
             else:
                 assert summary.cagr == pytest.approx(
                     ((last / first) ** (1.0 / years) - 1.0) * 100.0
                 )
-        comparison = metrics.cross_place_comparison
-        counts = Counter(
-            date for values in by_place.values() for date in values
-        )
-        shared = {date: count for date, count in counts.items() if count >= 2}
-        if len(by_place) < 2 or not shared:
+
+
+def test_generated_series_compare_places_on_the_expected_date() -> None:
+    # Test: The cross-place comparison date.
+    # Situation: Every generated case (see `_generate_series_cases`).
+    # Expectation: There is a comparison exactly when two or more places
+    #   share a date, on the date `_expected_comparison_date` computes.
+    for case in _generate_series_cases():
+        expected_date = _expected_comparison_date(case.by_place)
+        comparison = case.metrics.cross_place_comparison
+        if expected_date is None:
             assert comparison is None
-            continue
-        assert comparison is not None
-        half_covered = [
-            date for date, count in shared.items() if count * 2 >= len(by_place)
-        ]
-        expected_date = (
-            max(half_covered)
-            if half_covered
-            else max(shared, key=lambda date: (shared[date], date))
-        )
-        assert comparison.reference_date == expected_date
-        participants = {
-            place
-            for place, values in by_place.items()
-            if comparison.reference_date in values
-        }
-        assert {entry.place_dcid for entry in comparison.entries} == (
-            participants
-        )
-        expected_entries = sorted(
-            (
-                (place, values[comparison.reference_date])
-                for place, values in by_place.items()
-                if comparison.reference_date in values
-            ),
-            key=lambda entry: (-entry[1], entry[0]),
-        )
-        assert [
-            (entry.place_dcid, entry.value) for entry in comparison.entries
-        ] == expected_entries
-        assert comparison.spread == (
-            expected_entries[0][1] - expected_entries[-1][1]
-        )
-        assert comparison.leader == comparison.entries[0]
-        assert len(comparison.deltas_from_leader) == len(comparison.entries) - 1
-        for entry, delta in zip(
-            comparison.entries[1:], comparison.deltas_from_leader, strict=True
-        ):
-            assert delta.place_dcid == entry.place_dcid
-            assert delta.absolute_delta == entry.value - comparison.leader.value
-            assert delta.absolute_delta <= 0.0
-            leader_value = comparison.leader.value
-            if leader_value == 0.0:
-                assert delta.percent_delta is None
-            else:
-                assert delta.percent_delta == pytest.approx(
-                    (entry.value - leader_value) / abs(leader_value) * 100.0
-                )
+        else:
+            assert comparison is not None
+            assert comparison.reference_date == expected_date
+
+
+def test_generated_series_comparisons_order_entries_and_deltas() -> None:
+    # Test: The entries and differences of each comparison.
+    # Situation: Every generated case with a comparison.
+    # Expectation: The entries are exactly the places with a value on the
+    #   comparison date, ordered by value and then DCID, with the spread,
+    #   the leader, and each other entry's absolute and percentage
+    #   difference from the leader.
+    for case in _generate_series_cases():
+        comparison = case.metrics.cross_place_comparison
+        if comparison is not None:
+            _assert_comparison_entries(comparison, case.by_place)

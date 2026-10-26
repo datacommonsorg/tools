@@ -173,7 +173,14 @@ def has_adequate_coverage(
 
     Returns:
         True when `count / cohort_size` is at least `min_coverage`.
+
+    Raises:
+        ValueError: If `cohort_size` is below 1.
     """
+    if cohort_size < 1:
+        raise ValueError(
+            f"The cohort size must be at least 1, not {cohort_size}."
+        )
     return count / cohort_size >= min_coverage
 
 
