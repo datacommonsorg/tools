@@ -14,7 +14,13 @@
  * permissions and limitations under the License.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PromptInput } from './input_prompt';
 
@@ -98,7 +104,7 @@ describe('PromptInput', () => {
   it('turns the button into a stop control while streaming', () => {
     // Test: Streaming state.
     // Situation: A response is streaming and the user presses the button.
-    // Expectation: The textarea locks and shows "Streaming…" but keeps its
+    // Expectation: The textarea locks and shows "Thinking..." but keeps its
     // name; the button is named Stop and stops rather than submits.
     const onSubmit = vi.fn();
     const onStop = vi.fn();
@@ -114,9 +120,42 @@ describe('PromptInput', () => {
     );
     const textbox = screen.getByRole('textbox', { name: 'Ask' });
     expect(textbox).toHaveProperty('disabled', true);
-    expect(textbox).toHaveProperty('placeholder', 'Streaming…');
+    expect(textbox).toHaveProperty('placeholder', 'Thinking...');
     fireEvent.click(screen.getByRole('button', { name: 'Stop Response' }));
     expect(onStop).toHaveBeenCalledOnce();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('walks a raised dot across the placeholder while streaming', () => {
+    // Test: Streaming placeholder animation.
+    // Situation: A response streams for several 400ms ticks.
+    // Expectation: A `⋅` steps across the last two dots, then the plain
+    // ellipsis returns and the cycle repeats.
+    vi.useFakeTimers();
+    try {
+      render(
+        <PromptInput
+          value=""
+          placeholder="Ask"
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+          isStreaming
+        />,
+      );
+      const textbox = screen.getByRole('textbox', { name: 'Ask' });
+      const frames = [];
+      for (let i = 0; i < 4; i++) {
+        frames.push(textbox.getAttribute('placeholder'));
+        act(() => vi.advanceTimersByTime(400));
+      }
+      expect(frames).toEqual([
+        'Thinking...',
+        'Thinking.⋅.',
+        'Thinking..⋅',
+        'Thinking...',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
