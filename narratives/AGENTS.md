@@ -70,9 +70,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       tables and provenance models (`tables.py`, `provenance.py`), cohort
       alignment and unit checks (`alignment.py`), the table summary
       (`summarize.py`), the digest and metric types (`digest.py`,
-      `metrics.py`), and the analytical scripts (`timeseries.py`,
-      `ranking.py`). It imports only the Python standard library, other
-      `analytics/` modules, and `json_value.py`.
+      `metrics.py`), the analytical scripts (`timeseries.py`, `ranking.py`,
+      `distribution.py`, `composition.py`), the input checks and refusals
+      they share (`script_inputs.py`), and the golden fixture under
+      `golden/` with its regeneration script. It imports only the Python
+      standard library, other `analytics/` modules, and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
@@ -149,6 +151,11 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 - `uv run ruff format . ../deploy` — format Python files.
 - `uv run ruff check . ../deploy` — lint Python files.
 - `uv run mypy` — run strict static type-checking.
+- `uv run python -m narratives_agent.analytics.golden.regenerate_golden`:
+  rewrite the analytics golden fixture, `core_golden.json`, after a
+  deliberate change to analytics output, and review its diff (never edit
+  the fixture by hand); `--check` exits non-zero when the fixture is stale,
+  without writing it.
 - `uv lock` — regenerate `uv.lock` after editing `pyproject.toml` (never edit
   `uv.lock` by hand).
 
