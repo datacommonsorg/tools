@@ -19,6 +19,7 @@ builds a default specification over the fetched tables, and generates the
 `submit_specification` and `report_unavailable` Gemini declarations.
 """
 
+import math
 from collections.abc import Sequence
 from typing import Annotated, Literal
 
@@ -26,16 +27,19 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 
 from narratives_agent.analytics.alignment import DEFAULT_MIN_COVERAGE
+from narratives_agent.analytics.derived import SCALED_OPERATIONS
 from narratives_agent.analytics.metrics import (
     CompositionMode,
     DerivedOperation,
     RankingDirection,
 )
 from narratives_agent.analytics.ranking import DEFAULT_MAX_ENTRIES_PER_END
+from narratives_agent.analytics.relations import MIN_SHARED_PLACES
 from narratives_agent.analytics.script_inputs import validate_place_dcids
 from narratives_agent.analytics.tables import (
     ObservationTable,
     is_inverted_date_range,
+    is_valid_dcid,
     is_valid_observation_date,
 )
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
@@ -493,16 +497,6 @@ class RelateCohortsStep(_Step):
     )
 
 
-_STEP_MODELS: tuple[type[_Step], ...] = (
-    AlignCohortStep,
-    AnalyzeTimeseriesStep,
-    RankCohortStep,
-    SummarizeDistributionStep,
-    ComputeCompositionStep,
-    ComputeDerivedMetricStep,
-    RelateCohortsStep,
-)
-
 SpecificationStep = Annotated[
     AlignCohortStep
     | AnalyzeTimeseriesStep
@@ -732,12 +726,15 @@ def validate_specification(
     table and every `s<n>` a strictly earlier step whose output the
     consuming step accepts; every `align_cohort` step is consumed by a later
     step, because an alignment produces no result of its own; no
-    `relate_cohorts` step relates one table, or two fetched tables of one
-    variable, to itself, directly or through an alignment; every place is a
+    `relate_cohorts`, `compute_derived_metric`, or `compute_composition`
+    step reads one table twice, or two fetched tables of one variable,
+    directly or through an alignment; every `compute_derived_metric` scale
+    and derived variable id is one the script accepts; every place is a
     valid DCID; and every date is a valid observation date, with no
     inverted window. A problem names the step field and repeats only
-    references and step ids, which Pydantic has already matched to their
-    patterns, never a place or date the model sent.
+    references, step ids, and `Literal` values, which Pydantic has already
+    matched, and variable DCIDs from the cache, never a value the model
+    wrote freely, such as a place, a date, a scale, or an id.
 
     Args:
         specification: The specification to check.
@@ -751,7 +748,8 @@ def validate_specification(
         *_validate_step_ids(specification.steps),
         *_validate_references(specification.steps, cache),
         *_validate_alignments_are_used(specification.steps),
-        *_validate_relations(specification.steps, cache),
+        *_validate_distinct_inputs(specification.steps, cache),
+        *_validate_derived_parameters(specification.steps),
         *_validate_places(specification),
         *_validate_dates(specification.steps),
     ]
@@ -861,19 +859,28 @@ def _validate_alignments_are_used(
     ]
 
 
-def _validate_relations(
+def _validate_distinct_inputs(
     steps: Sequence[SpecificationStep], cache: TurnCache
 ) -> list[str]:
-    """Reports every `relate_cohorts` step that relates a variable to itself.
+    """Reports every multi-input step that reads one table or variable twice.
 
-    Each side is followed through the `align_cohort` step that produced it,
-    so a relation of an alignment of `t1` with `t1` is caught.
+    `relate_cohorts`, `compute_derived_metric`, and `compute_composition`
+    each refuse two inputs of one variable. Each input is followed through
+    the `align_cohort` step that produced it, so an alignment of `t1` read
+    beside `t1` is caught.
     """
     problems: list[str] = []
     aligned_tables: dict[str, str] = {}
     for step in steps:
-        if isinstance(step, RelateCohortsStep):
-            problem = _validate_relation(step, aligned_tables, cache)
+        if isinstance(
+            step,
+            RelateCohortsStep
+            | ComputeDerivedMetricStep
+            | ComputeCompositionStep,
+        ):
+            problem = _validate_distinct_step_inputs(
+                step, aligned_tables, cache
+            )
             if problem is not None:
                 problems.append(problem)
         if isinstance(step, AlignCohortStep):
@@ -881,45 +888,89 @@ def _validate_relations(
     return problems
 
 
-def _validate_relation(
-    step: RelateCohortsStep,
+def _validate_distinct_step_inputs(
+    step: SpecificationStep,
     aligned_tables: dict[str, str],
     cache: TurnCache,
 ) -> str | None:
-    """Returns the problem with the two sides of a relation, or `None`.
+    """Returns the first repeated table or variable among a step's inputs.
 
     Args:
-        step: The relation step.
+        step: The multi-input step.
         aligned_tables: The table each earlier alignment step aligned, by
             step id.
         cache: The turn's cache.
     """
-    target = aligned_tables.get(step.target, step.target)
-    by = aligned_tables.get(step.by, step.by)
-    if target == by:
-        return (
-            f"{step.step_id} (relate_cohorts) uses one table as both "
-            f"target and by ({step.target} and {step.by}); name two "
-            "different tables."
+    inputs = [
+        (field_name, reference, aligned_tables.get(reference, reference))
+        for field_name, reference in list_step_inputs(step)
+    ]
+    label = f"{step.step_id} ({step.script})"
+    for index, (field_name, reference, table_id) in enumerate(inputs):
+        for other_field, other_reference, other_id in inputs[index + 1 :]:
+            if table_id != other_id:
+                continue
+            if field_name == other_field:
+                return (
+                    f"{label} lists one table twice in {field_name} "
+                    f"({reference} and {other_reference}); name different "
+                    "tables."
+                )
+            return (
+                f"{label} uses one table as both {field_name} and "
+                f"{other_field} ({reference} and {other_reference}); name "
+                "two different tables."
+            )
+    tables_by_variable: dict[str, str] = {}
+    for _, _, table_id in inputs:
+        # A derived or missing input has no fetched variable to compare; a
+        # missing table is reported by `_validate_references`.
+        entry = (
+            cache.get(table_id)
+            if table_id.startswith(FETCHED_TABLE_PREFIX)
+            else None
         )
-    target_entry = cache.get(target)
-    by_entry = cache.get(by)
-    # A derived or missing side has no fetched variable to compare; a
-    # missing table is reported by `_validate_references`.
-    if (
-        not target.startswith(FETCHED_TABLE_PREFIX)
-        or not by.startswith(FETCHED_TABLE_PREFIX)
-        or target_entry is None
-        or by_entry is None
-    ):
-        return None
-    variable = target_entry.table.variable_dcid
-    if variable != by_entry.table.variable_dcid:
-        return None
-    return (
-        f"{step.step_id} (relate_cohorts) relates {variable} to itself "
-        f"({target} and {by}); name tables of two different variables."
-    )
+        if entry is None:
+            continue
+        variable = entry.table.variable_dcid
+        earlier = tables_by_variable.setdefault(variable, table_id)
+        if earlier != table_id:
+            return (
+                f"{label} reads {variable} from both {earlier} and "
+                f"{table_id}; name tables of different variables."
+            )
+    return None
+
+
+def _validate_derived_parameters(
+    steps: Sequence[SpecificationStep],
+) -> list[str]:
+    """Reports every derived-metric scale or variable id the script refuses.
+
+    A problem names the step field, never the value the model sent.
+    """
+    scaled_operations = " and ".join(sorted(SCALED_OPERATIONS))
+    problems: list[str] = []
+    for step in steps:
+        if not isinstance(step, ComputeDerivedMetricStep):
+            continue
+        if step.scale is not None:
+            if step.operation not in SCALED_OPERATIONS:
+                problems.append(
+                    f"{step.step_id}.scale applies only to {scaled_operations},"
+                    f" not {step.operation}."
+                )
+            elif not math.isfinite(step.scale) or step.scale <= 0.0:
+                problems.append(
+                    f"{step.step_id}.scale must be a finite number above zero."
+                )
+        if step.derived_variable_dcid is not None and not is_valid_dcid(
+            step.derived_variable_dcid
+        ):
+            problems.append(
+                f"{step.step_id}.derived_variable_dcid must be a valid DCID."
+            )
+    return problems
 
 
 def _list_place_fields(
@@ -1096,10 +1147,26 @@ def _build_table_step(
 def _build_cohort_key(
     table: ObservationTable,
 ) -> tuple[str | None, str | None, frozenset[str]]:
-    """Identifies a table's cohort: its parent and child type, or its places."""
+    """Identifies a table's cohort: its parent and child type, or its places.
+
+    Named places are identified by the places requested, as
+    `resolve_target_places` does, so two variables fetched for one list of
+    places share a cohort even when one has no data for some of them.
+    """
     if table.parent_place_dcid and table.child_place_type:
         return (table.parent_place_dcid, table.child_place_type, frozenset())
-    return (None, None, frozenset(table.places_with_data))
+    return (
+        None,
+        None,
+        frozenset(table.requested_places or table.places_with_data),
+    )
+
+
+def _count_shared_places(
+    first: ObservationTable, second: ObservationTable
+) -> int:
+    """Returns how many places have data in both tables."""
+    return len(set(first.places_with_data) & set(second.places_with_data))
 
 
 def _find_related_pair(
@@ -1110,11 +1177,14 @@ def _find_related_pair(
     `tables` is in fetch order, so the pair is the earliest by fetch. A
     refetch of one variable from another facet shares the first fetch's
     cohort, and relating the two would summarize a variable over its own
-    ranking, so tables of the same variable never pair.
+    ranking, so tables of the same variable never pair. Two tables with
+    data for fewer than `MIN_SHARED_PLACES` common places never pair either,
+    because `relate_cohorts` always refuses them.
 
     Returns:
         The earlier-fetched table, then the later one, or `None` when no two
-        rankable tables share a cohort and differ in variable.
+        rankable tables share a cohort and enough places with data, and
+        differ in variable.
     """
     rankable = [entry for entry in tables if _is_rankable_table(entry.table)]
     for index, first in enumerate(rankable):
@@ -1123,6 +1193,8 @@ def _find_related_pair(
             if (
                 _build_cohort_key(second.table) == key
                 and second.table.variable_dcid != first.table.variable_dcid
+                and _count_shared_places(first.table, second.table)
+                >= MIN_SHARED_PLACES
             ):
                 return first, second
     return None
@@ -1186,8 +1258,9 @@ def build_default_specification(
     needs, and from the table's shape otherwise (`_select_table_script`).
 
     For a correlation question, when two non-empty rankable tables of
-    different variables share a cohort, the earliest two are related first
-    with `relate_cohorts`. The per-table steps follow, including those for
+    different variables share a cohort and at least `MIN_SHARED_PLACES`
+    places with data, the earliest two are related first with
+    `relate_cohorts`. The per-table steps follow, including those for
     the two related tables, so each variable's own ranking is reported.
     Processing stops at the first refused step, so a caller whose relation
     refused builds the default again with `should_relate=False`, and a

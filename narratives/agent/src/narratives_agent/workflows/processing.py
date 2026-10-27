@@ -466,20 +466,21 @@ def _run_step(
 
 def _run_specification(
     specification: AnalysisSpecification,
-    cache: TurnCache,
+    tables: dict[str, ObservationTable],
     cancel: threading.Event,
     timeout_seconds: float,
 ) -> tuple[AnalysisDigest | ProcessingDiagnostic, tuple[CachedTable, ...]]:
     """Runs every step in order on the calling thread.
 
-    The cache is only read here. The derived tables are returned beside the
-    outcome for the caller to store, and the run stops at the next step
+    The run never touches the cache, which is not synchronized: it reads
+    the fetched tables the caller resolved, and returns the derived tables
+    beside the outcome for the caller to store. It stops at the next step
     boundary once `cancel` is set, which the caller does when the budget
     expires.
 
     Args:
         specification: A specification `validate_specification` accepted.
-        cache: The turn's cache, read for the referenced fetched tables.
+        tables: The fetched tables the steps reference, by table id.
         cancel: Set by the caller when the run's budget has expired.
         timeout_seconds: The budget, stated in a timeout diagnostic.
 
@@ -488,11 +489,7 @@ def _run_specification(
         step order.
     """
     state = _RunState(
-        tables={
-            table_id: entry.table
-            for table_id in specification.list_referenced_table_ids()
-            if (entry := cache.get(table_id)) is not None
-        },
+        tables=dict(tables),
         default_focal_places=specification.focal_places,
     )
     for step in specification.steps:
@@ -503,6 +500,8 @@ def _run_specification(
         diagnostic = _run_step(step, state)
         if diagnostic is not None:
             return diagnostic, tuple(state.derived)
+    if cancel.is_set():
+        return _build_timeout_diagnostic(timeout_seconds), tuple(state.derived)
     digest = AnalysisDigest.from_results(
         tuple(state.results), missing_notes=tuple(specification.missing)
     )
@@ -559,6 +558,11 @@ async def execute_specification(
             or `validate_specification` reports a problem.
     """
     _validate_run_preconditions(specification, cache, timeout_seconds)
+    tables = {
+        table_id: entry.table
+        for table_id in specification.list_referenced_table_ids()
+        if (entry := cache.get(table_id)) is not None
+    }
     cache.clear_derived()
     cancel = threading.Event()
     loop = asyncio.get_running_loop()
@@ -566,7 +570,7 @@ async def execute_specification(
         _EXECUTOR,
         _run_specification,
         specification,
-        cache,
+        tables,
         cancel,
         timeout_seconds,
     )

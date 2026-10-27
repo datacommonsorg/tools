@@ -140,6 +140,13 @@ _REQUEST_CONFIG = ConfigDict(extra="ignore", frozen=True)
 def is_named_place_cohort(place_count: int) -> bool:
     """Returns whether a set of named places is a cohort rather than series.
 
+    A few named places are each analyzed as a series over time, which reads
+    their full history, so their fetch defaults to all dates. More than
+    `NAMED_PLACE_SERIES_LIMIT` places are analyzed as a cohort: the cohort
+    scripts align the places to one reference date, the most recent with
+    adequate coverage, so the fetch defaults to the last
+    `COHORT_WINDOW_YEARS` calendar years, enough to find that date.
+
     Args:
         place_count: The number of named places.
 

@@ -575,18 +575,26 @@ async def test_a_refused_derived_metric_reports_both_tables_sources() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_derived_metric_of_one_variable_is_refused() -> None:
-    # Test: Two inputs that measure one variable.
-    # Situation: `t1` and `t2` are two fetches of `Count_Person`, divided one
-    #   by the other.
-    # Expectation: The script's `invalid_parameters` refusal becomes the
+async def test_a_derived_metric_of_mismatched_units_is_refused() -> None:
+    # Test: A refusal the script reports before measuring coverage.
+    # Situation: `t1` counts people and `t2` reports dollars, and the step
+    #   takes their difference, which needs one unit.
+    # Expectation: The script's `unit_mismatch` refusal becomes the
     #   diagnostic, which has no coverage, so its retry message states none.
     cache = _build_cache(
         _build_table(
-            "t1", {"a": 4.0}, variable_dcid="Count_Person", source=_WDI
+            "t1",
+            {"a": 4.0},
+            variable_dcid="Count_Person",
+            source=_WDI,
+            unit="Person",
         ),
         _build_table(
-            "t2", {"a": 8.0}, variable_dcid="Count_Person", source=_CENSUS
+            "t2",
+            {"a": 8.0},
+            variable_dcid="Amount_Income",
+            source=_CENSUS,
+            unit="USDollar",
         ),
     )
     specification = _build_specification(
@@ -595,13 +603,14 @@ async def test_a_derived_metric_of_one_variable_is_refused() -> None:
             "script": "compute_derived_metric",
             "left": "t1",
             "right": "t2",
+            "operation": "difference",
         }
     )
 
     diagnostic = await execute_specification(specification, cache)
 
     assert isinstance(diagnostic, StepRefusalDiagnostic)
-    assert diagnostic.refusal_reason == "invalid_parameters"
+    assert diagnostic.refusal_reason == "unit_mismatch"
     assert diagnostic.coverage is None
     assert "Coverage:" not in diagnostic.format_for_retry()
 
@@ -679,7 +688,7 @@ async def test_a_run_over_budget_ends_with_a_timeout_diagnostic(
 
     def run_blocked(
         specification: AnalysisSpecification,
-        cache: TurnCache,
+        tables: dict[str, ObservationTable],
         cancel: threading.Event,
         timeout_seconds: float,
     ) -> tuple[TimeoutDiagnostic, tuple[CachedTable, ...]]:

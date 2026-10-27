@@ -32,13 +32,13 @@ from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.workflows.fetch_requests import NAMED_PLACE_SERIES_LIMIT
 from narratives_agent.workflows.specification import (
     _MAX_SPECIFICATION_STEPS,
-    _STEP_MODELS,
     REPORT_UNAVAILABLE,
     SUBMIT_SPECIFICATION,
     AnalysisSpecification,
     ComputeDerivedMetricStep,
     RankCohortStep,
     RelateCohortsStep,
+    SpecificationStep,
     UnavailableReport,
     _Step,
     build_default_specification,
@@ -49,6 +49,9 @@ from narratives_agent.workflows.specification import (
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
 
+# The step models, in the order the `SpecificationStep` union lists them.
+_STEP_MODELS: tuple[type[_Step], ...] = get_args(get_args(SpecificationStep)[0])
+
 
 def _build_table(
     table_id: str,
@@ -57,8 +60,13 @@ def _build_table(
     variable_dcid: str = "Count_Person",
     unit: str | None = "Person",
     child_place_type: str | None = None,
+    places_with_data: tuple[str, ...] | None = None,
 ) -> CachedTable:
-    """Builds a cached table with one 2023 row per place."""
+    """Builds a cached table requesting `places`, with one 2023 row each.
+
+    `places_with_data`, when given, limits the rows to those places.
+    """
+    with_data = places if places_with_data is None else places_with_data
     table = ObservationTable(
         variable_dcid=variable_dcid,
         variable_name=variable_dcid,
@@ -67,7 +75,7 @@ def _build_table(
         provenance=Provenance(),
         rows=tuple(
             ObservationRow(place, place.upper(), "2023", float(index + 1))
-            for index, place in enumerate(places)
+            for index, place in enumerate(with_data)
         ),
         requested_places=places,
         place_names={place: place.upper() for place in places},
@@ -441,10 +449,12 @@ def test_malformed_specifications_are_rejected(
 def test_a_consistent_chain_passes_validation() -> None:
     # Test: `validate_specification` on a valid chain.
     # Situation: An alignment of `t1` feeds a ranking and a distribution; a
-    #   derived metric of `t1` and `t2` feeds a series summary and a
-    #   composition whose total is the aligned cohort.
+    #   derived metric of `t1` and `t2`, two variables, feeds a series
+    #   summary and a composition of `t2` whose total is the aligned cohort.
     # Expectation: No problem is reported.
-    cache = _build_cache(_build_table("t1"), _build_table("t2"))
+    cache = _build_cache(
+        _build_table("t1"), _build_table("t2", variable_dcid="Count_Household")
+    )
     specification = _build_specification(
         {"step_id": "s1", "script": "align_cohort", "table": "t1"},
         {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
@@ -459,7 +469,7 @@ def test_a_consistent_chain_passes_validation() -> None:
         {
             "step_id": "s6",
             "script": "compute_composition",
-            "components": ["t1", "s4"],
+            "components": ["t2", "s4"],
             "total": "s1",
         },
     )
@@ -578,7 +588,9 @@ def test_inconsistent_references_are_reported(
     # Expectation: Every problem is reported, one per line, naming the step
     #   field and the reference, with the cached table ids listed for a
     #   dangling table.
-    cache = _build_cache(_build_table("t1"), _build_table("t2"))
+    cache = _build_cache(
+        _build_table("t1"), _build_table("t2", variable_dcid="Count_Household")
+    )
     problems = validate_specification(_build_specification(*steps), cache)
     assert problems is not None
     for fragment in fragments:
@@ -624,8 +636,8 @@ def test_inconsistent_references_are_reported(
                     "by": "t2",
                 },
             ],
-            "s2 (relate_cohorts) relates Count_Person to itself (t1 and t2); "
-            "name tables of two different variables.",
+            "s2 (relate_cohorts) reads Count_Person from both t1 and t2; "
+            "name tables of different variables.",
         ),
         (
             [
@@ -636,8 +648,8 @@ def test_inconsistent_references_are_reported(
                     "by": "t2",
                 },
             ],
-            "s1 (relate_cohorts) relates Count_Person to itself (t1 and t2); "
-            "name tables of two different variables.",
+            "s1 (relate_cohorts) reads Count_Person from both t1 and t2; "
+            "name tables of different variables.",
         ),
     ],
     ids=[
@@ -658,6 +670,168 @@ def test_a_relation_of_a_variable_to_itself_is_reported(
     #   step, its two references, and the correction.
     cache = _build_cache(_build_table("t1"), _build_table("t2"))
     problems = validate_specification(_build_specification(*steps), cache)
+    assert problems == problem
+
+
+@pytest.mark.parametrize(
+    ("steps", "problem"),
+    [
+        (
+            [
+                {
+                    "step_id": "s1",
+                    "script": "compute_derived_metric",
+                    "left": "t1",
+                    "right": "t1",
+                },
+            ],
+            "s1 (compute_derived_metric) uses one table as both left and "
+            "right (t1 and t1); name two different tables.",
+        ),
+        (
+            [
+                {
+                    "step_id": "s1",
+                    "script": "compute_derived_metric",
+                    "left": "t1",
+                    "right": "t3",
+                },
+            ],
+            "s1 (compute_derived_metric) reads Count_Person from both t1 and "
+            "t3; name tables of different variables.",
+        ),
+        (
+            [
+                {
+                    "step_id": "s1",
+                    "script": "compute_composition",
+                    "components": ["t1", "t2", "t1"],
+                },
+            ],
+            "s1 (compute_composition) lists one table twice in components "
+            "(t1 and t1); name different tables.",
+        ),
+        (
+            [
+                {
+                    "step_id": "s1",
+                    "script": "compute_composition",
+                    "components": ["t1", "t2"],
+                    "total": "t2",
+                },
+            ],
+            "s1 (compute_composition) uses one table as both components and "
+            "total (t2 and t2); name two different tables.",
+        ),
+        (
+            [
+                {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+                {
+                    "step_id": "s2",
+                    "script": "compute_composition",
+                    "components": ["s1", "t1"],
+                },
+            ],
+            "s2 (compute_composition) lists one table twice in components "
+            "(s1 and t1); name different tables.",
+        ),
+        (
+            [
+                {
+                    "step_id": "s1",
+                    "script": "compute_composition",
+                    "components": ["t1", "t2"],
+                    "total": "t3",
+                },
+            ],
+            "s1 (compute_composition) reads Count_Person from both t1 and "
+            "t3; name tables of different variables.",
+        ),
+    ],
+    ids=[
+        "derived from one table",
+        "derived from one variable",
+        "a repeated component",
+        "the total among the components",
+        "a component and its alignment",
+        "a total of a component's variable",
+    ],
+)
+def test_derived_and_composition_steps_need_distinct_inputs(
+    steps: list[JsonObject], problem: str
+) -> None:
+    # Test: The distinct-inputs check of `compute_derived_metric` and
+    #   `compute_composition`.
+    # Situation: `t1` and `t3` measure `Count_Person` and `t2`
+    #   `Count_Household`. Each step repeats a table, directly or through an
+    #   alignment, or reads `Count_Person` twice.
+    # Expectation: Exactly one problem is reported for each, naming the
+    #   step, the repeated references, and the correction.
+    cache = _build_cache(
+        _build_table("t1"),
+        _build_table("t2", variable_dcid="Count_Household"),
+        _build_table("t3"),
+    )
+    problems = validate_specification(_build_specification(*steps), cache)
+    assert problems == problem
+
+
+@pytest.mark.parametrize(
+    ("parameters", "problem"),
+    [
+        (
+            {"operation": "difference", "scale": 100},
+            "s1.scale applies only to per_capita and ratio, not difference.",
+        ),
+        (
+            {"operation": "ratio", "scale": 0},
+            "s1.scale must be a finite number above zero.",
+        ),
+        (
+            {"operation": "per_capita", "scale": -1000},
+            "s1.scale must be a finite number above zero.",
+        ),
+        (
+            {"derived_variable_dcid": "bad id"},
+            "s1.derived_variable_dcid must be a valid DCID.",
+        ),
+        (
+            {
+                "operation": "ratio",
+                "scale": 100,
+                "derived_variable_dcid": "Ratio_Person_Household",
+            },
+            None,
+        ),
+    ],
+    ids=[
+        "scale of an unscaled operation",
+        "zero scale",
+        "negative scale",
+        "invalid derived variable id",
+        "valid scale and id",
+    ],
+)
+def test_derived_metric_parameters_are_checked_before_the_run(
+    parameters: JsonObject, problem: str | None
+) -> None:
+    # Test: The `compute_derived_metric` parameter check.
+    # Situation: A derived step over two variables sets a scale on an
+    #   operation without one, a scale of zero, a negative scale, an id that
+    #   is not a DCID, and a valid scale and id.
+    # Expectation: Each invalid parameter is reported by field, without the
+    #   value the model sent; the valid step passes.
+    cache = _build_cache(
+        _build_table("t1"), _build_table("t2", variable_dcid="Count_Household")
+    )
+    step: JsonObject = {
+        "step_id": "s1",
+        "script": "compute_derived_metric",
+        "left": "t1",
+        "right": "t2",
+        **parameters,
+    }
+    problems = validate_specification(_build_specification(step), cache)
     assert problems == problem
 
 
@@ -1039,6 +1213,66 @@ def test_a_correlation_default_never_relates_a_variable_to_itself() -> None:
     relation = specification.steps[0]
     assert isinstance(relation, RelateCohortsStep)
     assert (relation.target, relation.by) == ("t3", "t1")
+
+
+def test_a_correlation_default_relates_named_places_with_partial_data() -> None:
+    # Test: The cohort identity of named places.
+    # Situation: Under `correlation`, diabetes (`t1`) and income (`t2`) are
+    #   fetched for the same four named places; income has no data for one.
+    # Expectation: The two share a cohort by their requested places, so they
+    #   are related, leaving the gap to the relation's coverage check.
+    places = ("a", "b", "c", "d")
+    cache = _build_cache(
+        _build_table("t1", places, variable_dcid="Diabetes"),
+        _build_table(
+            "t2",
+            places,
+            variable_dcid="Income",
+            places_with_data=("a", "b", "c"),
+        ),
+    )
+    specification = build_default_specification(
+        _build_classification("correlation"), cache
+    )
+    assert specification is not None
+    relation = specification.steps[0]
+    assert isinstance(relation, RelateCohortsStep)
+    assert (relation.target, relation.by) == ("t2", "t1")
+
+
+@pytest.mark.parametrize(
+    ("first_places", "second_places", "is_related"),
+    [
+        (("a", "b"), ("b", "c"), False),
+        (("a", "b", "c"), ("b", "c", "d"), True),
+    ],
+    ids=["one shared place", "two shared places"],
+)
+def test_a_correlation_default_needs_two_shared_places(
+    first_places: tuple[str, ...],
+    second_places: tuple[str, ...],
+    is_related: bool,
+) -> None:
+    # Test: The shared-place minimum of the default relation.
+    # Situation: Under `correlation`, two state cohort tables of different
+    #   variables have data for one common place, and for two.
+    # Expectation: One shared place, which `relate_cohorts` always refuses,
+    #   gets no relation step; two shared places are related.
+    cache = _build_cache(
+        _build_table("t1", first_places, child_place_type="State"),
+        _build_table(
+            "t2",
+            second_places,
+            variable_dcid="Count_Household",
+            child_place_type="State",
+        ),
+    )
+    specification = build_default_specification(
+        _build_classification("correlation"), cache
+    )
+    assert specification is not None
+    has_relation = specification.list_script_names()[0] == "relate_cohorts"
+    assert has_relation is is_related
 
 
 def test_the_default_without_a_relation_ranks_each_table() -> None:
