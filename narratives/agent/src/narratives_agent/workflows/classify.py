@@ -24,7 +24,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import Literal
+from enum import StrEnum
 
 from pydantic import ValidationError
 
@@ -49,7 +49,14 @@ from narratives_agent.workflows.transcript import (
 
 logger = logging.getLogger(__name__)
 
-type RefusedReason = Literal["adversarial", "off_domain", "safety_blocked"]
+
+class RefusedReason(StrEnum):
+    """Machine-readable reasons a turn ends in the `refused` terminal state."""
+
+    ADVERSARIAL = "adversarial"
+    OFF_DOMAIN = "off_domain"
+    SAFETY_BLOCKED = "safety_blocked"
+
 
 # Upper bound in seconds for the classification model call before the turn
 # proceeds unclassified.
@@ -205,7 +212,7 @@ async def classify_query(
     family = prefilter_match(transcript.current_query)
     if family is not None:
         logger.warning("Pre-filter matched %s; refusing turn", family)
-        raise TurnRefusedError("adversarial", REFUSED_MESSAGE)
+        raise TurnRefusedError(RefusedReason.ADVERSARIAL, REFUSED_MESSAGE)
     classification = await _request_classification(
         transcript, config, telemetry
     )
@@ -214,10 +221,10 @@ async def classify_query(
     if not classification.serviceable:
         if classification.refusal_reason == "off_domain":
             raise TurnRefusedError(
-                "off_domain",
+                RefusedReason.OFF_DOMAIN,
                 off_domain_message(classification.off_topic_premise),
             )
-        raise TurnRefusedError("adversarial", REFUSED_MESSAGE)
+        raise TurnRefusedError(RefusedReason.ADVERSARIAL, REFUSED_MESSAGE)
     question = (classification.clarification or "").strip()
     if question:
         return Clarification(question, classification)

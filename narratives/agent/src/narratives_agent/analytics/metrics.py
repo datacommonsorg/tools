@@ -15,13 +15,14 @@
 
 Defines `ScriptName`, the per-script metric dataclasses (`TimeseriesMetrics`,
 `RankingMetrics`, `DistributionMetrics`, `CompositionMetrics`,
-`DerivedMetrics`) and their shared value records (`PeriodChange`,
-`LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`, `LeaderDelta`,
-`CrossPlaceComparison`, `RankEntry`, `DistributionFocalEntry`,
+`DerivedMetrics`, `RelationMetrics`) and their shared value records
+(`PeriodChange`, `LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`,
+`LeaderDelta`, `CrossPlaceComparison`, `RankEntry`, `DistributionFocalEntry`,
 `CompositionComponent`, `CompositionPlace`, `StageShare`, `StageTransition`,
-`StagesPlace`), and the `ScriptMetrics` union. Each metrics record names its
-script in a `script` class variable so `OkScriptResult` can enforce at
-construction time that it carries the metric record matching its `script`.
+`StagesPlace`, `RelationEntry`, `GroupSummary`), and the `ScriptMetrics` union.
+Each metrics record names its script in a `script` class variable so
+`OkScriptResult` can enforce at construction time that it carries the metric
+record matching its `script`.
 """
 
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ __all__ = [
     "DistributionFocalEntry",
     "DistributionMetrics",
     "ExtremumKind",
+    "GroupSummary",
     "LeaderDelta",
     "LocalExtremum",
     "PeriodChange",
@@ -48,6 +50,8 @@ __all__ = [
     "RankEntry",
     "RankingDirection",
     "RankingMetrics",
+    "RelationEntry",
+    "RelationMetrics",
     "ScriptMetrics",
     "ScriptName",
     "StageShare",
@@ -63,6 +67,7 @@ type ScriptName = Literal[
     "summarize_distribution",
     "compute_composition",
     "compute_derived_metric",
+    "relate_cohorts",
 ]
 
 type ExtremumKind = Literal["peak", "trough"]
@@ -610,10 +615,136 @@ class DerivedMetrics:
     missing_places: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class RelationEntry:
+    """One shared place in a `relate_cohorts` group, with both values.
+
+    `rank` and `is_tied` describe the place's position by its `by` value among
+    every shared place, with the competition ranks `rank_cohort` assigns in
+    descending order.
+
+    Attributes:
+        rank: Competition rank (`1`-based) of the place by `by_value` across
+            all shared places in descending order.
+        is_tied: True when at least one other shared place has the same
+            `by_value`.
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        by_value: Value of the `by` variable on `by_reference_date`.
+        target_value: Value of the `target` variable on
+            `target_reference_date`.
+    """
+
+    rank: int
+    is_tied: bool
+    place_dcid: str
+    place_name: str
+    by_value: float
+    target_value: float
+
+
+@dataclass(frozen=True)
+class GroupSummary:
+    """The target variable summarized over the entries of a group.
+
+    Attributes:
+        count: Number of places in the group, equal to `group_size`.
+        target_mean: Arithmetic mean of `target_value` across the group's
+            entries; None when the mean exceeds the finite floating-point
+            range.
+        target_median: Median of `target_value` across the group's entries;
+            None when the median exceeds the finite floating-point range.
+    """
+
+    count: int
+    target_mean: float | None
+    target_median: float | None
+
+
+@dataclass(frozen=True)
+class RelationMetrics:
+    """Metrics produced by `relate_cohorts`.
+
+    The groups are named by the `by` variable: `highest_by` lists the shared
+    places with the largest `by` values, largest first, and `lowest_by` the
+    smallest, smallest first. `target_mean_difference` is the highest
+    group's target mean minus the lowest group's, in the target's unit.
+    Each side's `contributing_places` of `requested_places` is that side's
+    alignment coverage on its own reference date, before the intersection.
+
+    Attributes:
+        target_variable_dcid: DCID of the `target` variable.
+        target_reference_date: Reference date on which `target` was aligned.
+        target_unit: Unit of the `target` variable; None when `target`
+            carries no unit.
+        target_scaling_factor: Scaling factor of the `target` variable; None
+            when `target` carries no scaling factor.
+        target_contributing_places: Number of places with a `target` value on
+            `target_reference_date` before the intersection.
+        target_requested_places: Total number of target places for the
+            `target` cohort before the intersection.
+        by_variable_dcid: DCID of the `by` variable.
+        by_reference_date: Reference date on which `by` was aligned.
+        by_unit: Unit of the `by` variable; None when `by` carries no unit.
+        by_scaling_factor: Scaling factor of the `by` variable; None when
+            `by` carries no scaling factor.
+        by_contributing_places: Number of places with a `by` value on
+            `by_reference_date` before the intersection.
+        by_requested_places: Total number of target places for the `by`
+            cohort before the intersection.
+        shared_place_count: Number of places with a value in both aligned
+            cohorts.
+        target_only_place_count: Number of aligned `target` places with no
+            `by` value on `by_reference_date`.
+        by_only_place_count: Number of aligned `by` places with no `target`
+            value on `target_reference_date`.
+        n: Requested number of places per group.
+        group_size: Actual number of places in each group, equal to
+            `min(n, shared_place_count // 2)`.
+        highest_by: The `group_size` shared places with the largest `by`
+            values, ordered from largest `by_value` to smallest.
+        lowest_by: The `group_size` shared places with the smallest `by`
+            values, ordered from smallest `by_value` to largest.
+        highest_by_summary: Count, mean, and median of `target_value` over
+            `highest_by`.
+        lowest_by_summary: Count, mean, and median of `target_value` over
+            `lowest_by`.
+        target_mean_difference: `highest_by_summary.target_mean` minus
+            `lowest_by_summary.target_mean`; None when either group mean is
+            None or their difference exceeds the finite floating-point range.
+    """
+
+    script: ClassVar[ScriptName] = "relate_cohorts"
+
+    target_variable_dcid: str
+    target_reference_date: str
+    target_unit: str | None
+    target_scaling_factor: float | None
+    target_contributing_places: int
+    target_requested_places: int
+    by_variable_dcid: str
+    by_reference_date: str
+    by_unit: str | None
+    by_scaling_factor: float | None
+    by_contributing_places: int
+    by_requested_places: int
+    shared_place_count: int
+    target_only_place_count: int
+    by_only_place_count: int
+    n: int
+    group_size: int
+    highest_by: tuple[RelationEntry, ...]
+    lowest_by: tuple[RelationEntry, ...]
+    highest_by_summary: GroupSummary
+    lowest_by_summary: GroupSummary
+    target_mean_difference: float | None
+
+
 type ScriptMetrics = (
     TimeseriesMetrics
     | RankingMetrics
     | DistributionMetrics
     | CompositionMetrics
     | DerivedMetrics
+    | RelationMetrics
 )
