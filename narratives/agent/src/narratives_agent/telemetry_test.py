@@ -305,12 +305,12 @@ def test_turn_summary_records_operations_without_content(
         telemetry.TokenCounts(prompt=0, candidates=4, thoughts=2, total=0)
     )
 
-    turn.finish("complete")
-    turn.finish("error", "late_error")
+    turn.finish(telemetry.TerminalState.COMPLETE)
+    turn.finish(telemetry.TerminalState.ERROR, "late_error")
 
     (message,) = turn_records
     record = json.loads(message)
-    assert record["terminal_state"] == "complete"
+    assert record["terminal_state"] == telemetry.TerminalState.COMPLETE
     assert record["turn_id"] == turn.turn_id
     assert set(record["phase_durations_ms"]) == {"discovery"}
     assert record["mcp_iterations"] == 3
@@ -342,7 +342,14 @@ def test_turn_summary_records_operations_without_content(
 
 @pytest.mark.parametrize(
     ("state", "error_type", "severity"),
-    [("error", "mcp_timeout", "ERROR"), ("complete", None, "INFO")],
+    [
+        (
+            telemetry.TerminalState.ERROR,
+            telemetry.ErrorType.MCP_TIMEOUT,
+            "ERROR",
+        ),
+        (telemetry.TerminalState.COMPLETE, None, "INFO"),
+    ],
 )
 def test_turn_span_severity_matches_the_terminal_state(
     monkeypatch: pytest.MonkeyPatch,
@@ -389,11 +396,13 @@ def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
     classified = telemetry.TurnTelemetry()
     with classified.phase("classify"):
         classified.pattern = "trend_delta"
-    classified.finish("complete")
-    telemetry.TurnTelemetry().finish("refused", "off_domain")
+    classified.finish(telemetry.TerminalState.COMPLETE)
+    telemetry.TurnTelemetry().finish(
+        telemetry.TerminalState.REFUSED, "off_domain"
+    )
     later_refused = telemetry.TurnTelemetry()
     later_refused.pattern = "single_point"
-    later_refused.finish("refused", "safety_blocked")
+    later_refused.finish(telemetry.TerminalState.REFUSED, "safety_blocked")
 
     first, second, third = (json.loads(message) for message in turn_records)
     assert first["pattern"] == "trend_delta"

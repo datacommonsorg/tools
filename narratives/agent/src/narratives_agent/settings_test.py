@@ -265,6 +265,31 @@ def test_google_genai_use_vertexai_parses_truthy_values(
     assert settings.google_genai_use_vertexai is expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, True, id="unset"),
+        pytest.param(" TRUE ", True, id="padded-true"),
+        pytest.param("yes", True, id="yes"),
+        pytest.param("1", True, id="one"),
+        pytest.param(" 0 ", False, id="padded-zero"),
+        pytest.param("false", False, id="false"),
+        pytest.param("no", False, id="no"),
+    ],
+)
+def test_enable_chat_defaults_to_true_and_parses_env_values(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: bool
+) -> None:
+    # Test: Default and parsing of `ENABLE_CHAT`.
+    # Situation: `ENABLE_CHAT` is unset, or set to a truthy or non-truthy
+    #   string, with or without surrounding whitespace.
+    # Expectation: When unset or set to "1", "true", or "yes" (in any case),
+    #   chat is enabled; any other non-blank value disables it.
+    env = {} if raw is None else {"ENABLE_CHAT": raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.enable_chat is expected
+
+
 @pytest.mark.parametrize("name", ["AGENT_PORT", "MCP_PORT"])
 def test_non_numeric_port_is_rejected(
     monkeypatch: pytest.MonkeyPatch, name: str
