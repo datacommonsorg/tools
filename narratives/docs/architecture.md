@@ -92,8 +92,11 @@ agent automatically starts a fresh MCP session and retries the tool call.
 
 ### What happens during a chat turn
 
-Each `POST /agent/chat/stream` request runs through the agent loop in five
-steps:
+Each `POST /agent/chat/stream` request first checks whether chat is enabled
+(`ENABLE_CHAT`, default `true`); when `ENABLE_CHAT=false`, the turn aborts
+immediately with a single `terminal` error frame (`reason: "chat_disabled"`)
+before making any Gemini or MCP calls. Otherwise, the request runs through the
+agent loop in five steps:
 
 1. **Query classification (`classify`):** Before any tool is called, a
    deterministic pre-filter screens out prompt injection, persona overrides,

@@ -43,7 +43,8 @@ from collections import Counter
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any, Literal
+from enum import StrEnum
+from typing import Any
 
 from fastapi import FastAPI
 from opentelemetry import trace
@@ -70,7 +71,31 @@ from narratives_agent.gemini.schemas import QueryPattern
 
 SERVICE_NAME = "narratives-agent"
 
-type TerminalState = Literal["complete", "error", "refused", "canceled"]
+
+class TerminalState(StrEnum):
+    """Terminal states a chat turn can reach."""
+
+    COMPLETE = "complete"
+    ERROR = "error"
+    REFUSED = "refused"
+    CANCELED = "canceled"
+
+
+class ErrorType(StrEnum):
+    """Machine-readable reason codes for turns that end in an error frame."""
+
+    CHAT_DISABLED = "chat_disabled"
+    CONFIG_MISSING = "config_missing"
+    INTERNAL_ERROR = "internal_error"
+    MCP_EMPTY_RESPONSE = "mcp_empty_response"
+    MCP_MODEL_ERROR = "mcp_model_error"
+    MCP_TIMEOUT = "mcp_timeout"
+    MCP_TRANSPORT_ERROR = "mcp_transport_error"
+    MCP_UNAVAILABLE = "mcp_unavailable"
+    SYNTHESIS_EMPTY = "synthesis_empty"
+    SYNTHESIS_ERROR = "synthesis_error"
+    SYNTHESIS_STREAM_ERROR = "synthesis_stream_error"
+
 
 # `_ALLOWED_SPAN_ATTRIBUTES` lists the span attributes permitted to leave the
 # process. `format_span` drops all other attributes, including URLs, query
@@ -369,7 +394,7 @@ class TurnTelemetry:
         self._finished = True
         duration_ms = _elapsed_ms(self._start)
         record: dict[str, Any] = {
-            "severity": "ERROR" if state == "error" else "INFO",
+            "severity": "ERROR" if state == TerminalState.ERROR else "INFO",
             "message": f"chat turn {state}",
             "event": "chat_turn",
             "turn_id": self.turn_id,
@@ -382,7 +407,7 @@ class TurnTelemetry:
             "tool_calls": dict(self.tool_calls),
             "tokens": asdict(self.tokens),
         }
-        if self.pattern is not None and state != "refused":
+        if self.pattern is not None and state != TerminalState.REFUSED:
             record["pattern"] = self.pattern
         self._span.set_attributes(
             {
@@ -397,14 +422,14 @@ class TurnTelemetry:
                 },
             }
         )
-        if self.pattern is not None and state != "refused":
+        if self.pattern is not None and state != TerminalState.REFUSED:
             self._span.set_attribute("narratives.pattern", self.pattern)
         if error_type:
             self._span.set_attribute("error.type", error_type)
         # `format_span` derives severity from the span status, so an error
         # turn needs an ERROR status to be exported at the same severity as
         # its `chat_turn` record.
-        if state == "error":
+        if state == TerminalState.ERROR:
             self._span.set_status(StatusCode.ERROR)
         self._span.end()
         _turn_logger.info(json.dumps(record))

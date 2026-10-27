@@ -28,6 +28,8 @@ import json
 
 import pytest
 
+from narratives_agent.telemetry import ErrorType
+from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.sse_frames import (
     ChartConfigFrame,
     DataStatusFrame,
@@ -200,7 +202,7 @@ def test_an_error_frame_carries_the_error_and_the_reason() -> None:
     frame = TerminalErrorFrame(
         idempotency_key=_IDEMPOTENCY_KEY,
         error="The data request took too long.",
-        reason="mcp_timeout",
+        reason=ErrorType.MCP_TIMEOUT,
     )
 
     assert _serialize(frame) == (
@@ -217,7 +219,7 @@ def test_a_refused_frame_carries_no_error_key() -> None:
     #   and `message`, and no `error` key, so the browser renders a notice.
     frame = TerminalRefusedFrame(
         idempotency_key=_IDEMPOTENCY_KEY,
-        reason="adversarial",
+        reason=RefusedReason.ADVERSARIAL,
         message="We cannot service that request.",
     )
 
