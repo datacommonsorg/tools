@@ -590,6 +590,7 @@ def _select_group_entries(
         )
     highest_entries = ranking.top_n[:group_size]
     highest_places = {entry.place_dcid for entry in highest_entries}
+    # `ranking.bottom_n` is already ordered ascending from smallest `by` value.
     lowest_entries = tuple(
         entry
         for entry in ranking.bottom_n
