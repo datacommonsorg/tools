@@ -1006,3 +1006,34 @@ def test_mcp_url_resolution_order(
         lambda: AgentConfig(mcp=McpConfig(server_url="https://other.example")),
     )
     assert client.mcp_url() == expected
+
+
+def test_decode_tool_payload_unwraps_envelopes() -> None:
+    # Test: `decode_tool_payload` unwraps MCP `content` envelopes, JSON strings,
+    #   and plain mappings, and returns `None` for non-object payloads.
+    # Situation: `decode_tool_payload` is called with an MCP `content[0].text`
+    #   envelope, a JSON-encoded envelope string, a plain dict, an envelope
+    #   whose text is a JSON array, is not JSON, or is not a string, an
+    #   envelope whose first item is not an object, an envelope whose
+    #   `content` is empty or not a list, an error string, and None.
+    # Expectation: The envelope and plain dict decode to their `JsonObject`
+    #   payload, while non-object and unparseable values return `None`.
+    inner: JsonObject = {"data": {"columns": ["date"], "rows": [["2023"]]}}
+    envelope: JsonObject = {
+        "content": [{"type": "text", "text": json.dumps(inner)}]
+    }
+    assert client.decode_tool_payload(envelope) == inner
+    assert client.decode_tool_payload(json.dumps(envelope)) == inner
+    assert client.decode_tool_payload(inner) == inner
+    malformed: list[JsonObject] = [
+        {"content": [{"type": "text", "text": "[]"}]},
+        {"content": [{"type": "text", "text": "{not json"}]},
+        {"content": [{"type": "text", "text": 7}]},
+        {"content": ["text"]},
+        {"content": []},
+        {"content": "text"},
+    ]
+    for item in malformed:
+        assert client.decode_tool_payload(item) is None
+    assert client.decode_tool_payload("Error: upstream timed out") is None
+    assert client.decode_tool_payload(None) is None
