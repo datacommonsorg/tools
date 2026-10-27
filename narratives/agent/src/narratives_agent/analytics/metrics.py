@@ -14,12 +14,12 @@
 """Script name literals and typed metric records for analytical scripts.
 
 Defines `ScriptName`, the per-script metric dataclasses (`TimeseriesMetrics`,
-`RankingMetrics`) and their shared value records (`PeriodChange`,
-`LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`, `LeaderDelta`,
-`CrossPlaceComparison`, `RankEntry`), and the `ScriptMetrics` union. Each
-metrics record names its script in a `script` class variable so
-`OkScriptResult` can enforce at construction time that it carries the metric
-record matching its `script`.
+`RankingMetrics`, `DistributionMetrics`) and their shared value records
+(`PeriodChange`, `LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`,
+`LeaderDelta`, `CrossPlaceComparison`, `RankEntry`, `DistributionFocalEntry`),
+and the `ScriptMetrics` union. Each metrics record names its script in a
+`script` class variable so `OkScriptResult` can enforce at construction time
+that it carries the metric record matching its `script`.
 """
 
 from dataclasses import dataclass
@@ -27,6 +27,8 @@ from typing import ClassVar, Literal
 
 __all__ = [
     "CrossPlaceComparison",
+    "DistributionFocalEntry",
+    "DistributionMetrics",
     "ExtremumKind",
     "LeaderDelta",
     "LocalExtremum",
@@ -287,4 +289,101 @@ class RankingMetrics:
     missing_focal_places: tuple[str, ...]
 
 
-type ScriptMetrics = TimeseriesMetrics | RankingMetrics
+@dataclass(frozen=True)
+class DistributionFocalEntry:
+    """One focal place benchmarked against a cohort's distribution.
+
+    Attributes:
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        value: Value on the reference date.
+        diff_from_median: `value - median`, positive above the median.
+        pct_of_median: `value` as a percentage (0 to 100 scale) of the
+            cohort median, so 100 is at the median; None when the median is
+            zero or negative, where a ratio to the median does not order
+            places by value, or when the percentage is too large to
+            represent as a float.
+        diff_from_mean: `value - mean`, positive above the mean.
+        z_score: `diff_from_mean` divided by the sample standard deviation;
+            None when the cohort has one place or every place reports the
+            same value.
+        percentile: Percentage (0 to 100 scale) of cohort places whose value
+            is less than or equal to `value`, as `compute_cohort_percentiles`
+            defines it, so the largest value is at 100.
+    """
+
+    place_dcid: str
+    place_name: str
+    value: float
+    diff_from_median: float
+    pct_of_median: float | None
+    diff_from_mean: float
+    z_score: float | None
+    percentile: float
+
+
+@dataclass(frozen=True)
+class DistributionMetrics:
+    """Metrics produced by `summarize_distribution`.
+
+    Attributes:
+        reference_date: The date the cohort is aligned to.
+        cohort_size: Number of places in the cohort.
+        mean: Arithmetic mean of the cohort's values.
+        median: Median of the cohort's values.
+        min: The place with the smallest value, ties by DCID.
+        max: The place with the largest value, ties by DCID.
+        max_minus_min: `max.value - min.value`, in the variable's unit.
+        stdev: Sample standard deviation (divisor `cohort_size - 1`); None
+            when `cohort_size` is below 2.
+        q25: First quartile by inclusive linear interpolation; None when
+            `cohort_size` is below 2.
+        q50: Second quartile, equal to `median`; None when `cohort_size` is
+            below 2.
+        q75: Third quartile by inclusive linear interpolation; None when
+            `cohort_size` is below 2.
+        iqr: `q75 - q25`; None when `cohort_size` is below 2.
+        deciles: The nine decile cut points keyed `p10` through `p90`, by
+            inclusive linear interpolation; None when `cohort_size` is below
+            2.
+        skewness: Adjusted Fisher-Pearson sample skewness, positive for a
+            long upper tail; None when `cohort_size` is below 3 or every
+            place reports the same value.
+        weighted_mean: Mean of the cohort's values weighted by the weights
+            variable over the places with a positive weight; None when no
+            weights are given or the weighted mean is omitted with a caveat.
+        weight_variable_dcid: DCID of the weights variable; None when no
+            weights are given. Set even when `weighted_mean` is omitted.
+        weighted_place_count: Number of cohort places with a positive
+            weight on `reference_date`, or 0 when a negative weight omits
+            the weighted mean; None when no weights are given.
+        focal_entries: Entries of the requested focal places with a value
+            on `reference_date`, in request order with duplicates removed.
+        missing_focal_places: DCIDs of focal places with no value on
+            `reference_date`.
+    """
+
+    script: ClassVar[ScriptName] = "summarize_distribution"
+
+    reference_date: str
+    cohort_size: int
+    mean: float
+    median: float
+    min: PlaceValue
+    max: PlaceValue
+    max_minus_min: float
+    stdev: float | None
+    q25: float | None
+    q50: float | None
+    q75: float | None
+    iqr: float | None
+    deciles: dict[str, float] | None
+    skewness: float | None
+    weighted_mean: float | None
+    weight_variable_dcid: str | None
+    weighted_place_count: int | None
+    focal_entries: tuple[DistributionFocalEntry, ...]
+    missing_focal_places: tuple[str, ...]
+
+
+type ScriptMetrics = TimeseriesMetrics | RankingMetrics | DistributionMetrics
