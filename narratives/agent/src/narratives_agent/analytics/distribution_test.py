@@ -491,6 +491,22 @@ def test_population_weights_produce_a_weighted_mean_with_merged_sources() -> (
     assert result.caveats == ()
 
 
+def test_weights_of_the_cohort_variable_are_reported_once() -> None:
+    # Test: Weights that measure the cohort's own variable.
+    # Situation: The five-place cohort weighted by a second table of the
+    #   same variable (`Count_Person`) and source.
+    # Expectation: The weighted mean is reported, and the result lists the
+    #   variable, its name, and its source once each.
+    weights = _build_table([(place, "2022", 2.0) for place in "abcde"])
+    result = summarize_distribution(_build_five_place_cohort(), weights=weights)
+    assert isinstance(result.metrics, DistributionMetrics)
+    assert result.metrics.weighted_mean == 4.0
+    assert result.variables == ("Count_Person",)
+    assert result.variable_names == {"Count_Person": "Total population"}
+    assert result.provenance.sources == (_SOURCE,)
+    assert result.provenance.facet_ids == ("f1",)
+
+
 def test_zero_weights_are_excluded_from_the_weighted_mean() -> None:
     # Test: Places with a zero weight, and a duplicate weights row.
     # Situation: The five-place cohort with two zero weights and three

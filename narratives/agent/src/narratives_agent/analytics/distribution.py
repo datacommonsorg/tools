@@ -488,14 +488,19 @@ def _list_reported_variables(
 ) -> tuple[tuple[str, ...], dict[str, str], tuple[Provenance, ...]]:
     """Returns the variables, their names, and their provenance to report.
 
-    The weights variable is reported only when the weighted mean is.
+    The weights variable is reported only when the weighted mean is, and
+    only once (under the cohort's name) when it is the cohort's own
+    variable.
     """
     sources = (
         (aligned,) if reported_weights is None else (aligned, reported_weights)
     )
+    variable_names: dict[str, str] = {}
+    for source in sources:
+        variable_names.setdefault(source.variable_dcid, source.variable_name)
     return (
-        tuple(source.variable_dcid for source in sources),
-        {source.variable_dcid: source.variable_name for source in sources},
+        tuple(variable_names),
+        variable_names,
         tuple(source.provenance for source in sources),
     )
 
