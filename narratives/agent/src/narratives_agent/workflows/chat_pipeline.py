@@ -537,7 +537,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     chart_task: asyncio.Task[dict[str, Any]] | None = None
     try:
         if not get_settings().enable_chat:
-            state, error_type = "refused", ErrorType.CHAT_DISABLED
+            state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
             emit(
                 TerminalErrorFrame(
                     idempotency_key=idempotency_key,
@@ -560,7 +560,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         )
         if isinstance(admission, Clarification):
             window = await run_clarification(ctx, admission.question)
-            state = "complete"
+            state = TerminalState.COMPLETE
             emit(
                 TerminalCompleteFrame(
                     idempotency_key=idempotency_key, window=window
@@ -581,7 +581,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                 full_text,
                 lambda: extract_state_slots(discovery.tool_calls, chart_config),
             )
-        state = "complete"
+        state = TerminalState.COMPLETE
         emit(
             TerminalCompleteFrame(
                 idempotency_key=idempotency_key, window=window
@@ -590,7 +590,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         with telemetry.phase("follow_ups"):
             await run_followups(ctx, chart_config)
     except TurnRefusedError as refusal:
-        state, error_type = "refused", refusal.reason
+        state, error_type = TerminalState.REFUSED, refusal.reason
         emit(
             TerminalRefusedFrame(
                 idempotency_key=idempotency_key,
@@ -600,7 +600,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         )
     except GeminiBlockedError:
         # The Gemini client has already logged the block reason.
-        state, error_type = "refused", RefusedReason.SAFETY_BLOCKED
+        state, error_type = TerminalState.REFUSED, RefusedReason.SAFETY_BLOCKED
         emit(
             TerminalRefusedFrame(
                 idempotency_key=idempotency_key,
@@ -609,7 +609,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             )
         )
     except TurnAbortedError as error:
-        state, error_type = "error", error.error_type
+        state, error_type = TerminalState.ERROR, error.error_type
         emit(
             TerminalErrorFrame(
                 idempotency_key=idempotency_key,
@@ -618,11 +618,11 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             )
         )
     except asyncio.CancelledError:
-        state = state or "canceled"
+        state = state or TerminalState.CANCELED
         raise
     except Exception:
         logger.exception("Chat turn failed")
-        state, error_type = "error", ErrorType.INTERNAL_ERROR
+        state, error_type = TerminalState.ERROR, ErrorType.INTERNAL_ERROR
         emit(
             TerminalErrorFrame(
                 idempotency_key=idempotency_key,
@@ -632,7 +632,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         )
     finally:
         _settle_chart_task(chart_task)
-        telemetry.finish(state or "error", error_type)
+        telemetry.finish(state or TerminalState.ERROR, error_type)
 
 
 async def run_clarification(

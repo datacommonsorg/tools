@@ -32,7 +32,7 @@ from narratives_agent.config_model import (
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
 from narratives_agent.gemini.schemas import QueryClassification
-from narratives_agent.telemetry import TurnTelemetry
+from narratives_agent.telemetry import TerminalState, TurnTelemetry
 from narratives_agent.workflows import classify
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
 from narratives_agent.workflows.messages import REFUSED_MESSAGE
@@ -80,7 +80,7 @@ def telemetry() -> Iterator[TurnTelemetry]:
     """Yields a `TurnTelemetry` and finishes its span after the test."""
     turn_telemetry = TurnTelemetry()
     yield turn_telemetry
-    turn_telemetry.finish("complete")
+    turn_telemetry.finish(TerminalState.COMPLETE)
 
 
 @pytest.fixture
