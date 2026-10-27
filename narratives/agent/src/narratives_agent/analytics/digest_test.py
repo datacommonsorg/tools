@@ -505,11 +505,14 @@ def test_format_for_prompt_lists_a_source_by_name_alone(url: str) -> None:
 
 
 def test_format_place_names_joins_a_few_names_and_counts_the_rest() -> None:
-    # Test: `format_place_names` for short and long lists.
-    # Situation: Lists of one, two, three, and `PLACE_NAME_CAP + 2` names.
+    # Test: `format_place_names` for short and long lists, with default and
+    #   custom remainder nouns.
+    # Situation: Lists of one, two, three, `PLACE_NAME_CAP + 1`, and
+    #   `PLACE_NAME_CAP + 2` names, formatted both as places and as pairs.
     # Expectation: One name stands alone, two are joined with "and", three
     #   take a serial comma, and a long list names the first
-    #   `PLACE_NAME_CAP` and counts the rest.
+    #   `PLACE_NAME_CAP` and counts the rest using the requested singular or
+    #   plural noun.
     assert format_place_names(["A"]) == "A"
     assert format_place_names(["A", "B"]) == "A and B"
     assert format_place_names(["A", "B", "C"]) == "A, B, and C"
@@ -520,3 +523,11 @@ def test_format_place_names_joins_a_few_names_and_counts_the_rest() -> None:
     assert format_place_names(names[: PLACE_NAME_CAP + 1]).endswith(
         "and 1 other place"
     )
+    assert format_place_names(
+        names, singular_noun="pair", plural_noun="pairs"
+    ).endswith("and 2 other pairs")
+    assert format_place_names(
+        names[: PLACE_NAME_CAP + 1],
+        singular_noun="pair",
+        plural_noun="pairs",
+    ).endswith("and 1 other pair")
