@@ -16,6 +16,8 @@
 Validates decoded MCP observation payloads through `mcp.wire` models, applies
 identifier, date, and value checks and `get_variable_metadata` enrichment, and
 constructs immutable `ObservationTable` domain objects for `analytics/`.
+`read_payload_outline` reads any payload's columns, rows, served facet, and
+sources without the row checks.
 """
 
 import logging
@@ -54,14 +56,18 @@ from narratives_agent.mcp.wire import (
 
 __all__ = [
     "ObservationPayloadError",
+    "ObservationPayloadOutline",
     "apply_variable_metadata",
     "merge_observation_payloads",
     "parse_observation_table",
+    "read_payload_outline",
 ]
 
 logger = logging.getLogger(__name__)
 
 _DATA_COLUMNS = ("observationAbout", "date", "value")
+# The data column that names the place each row describes.
+_PLACE_COLUMN = _DATA_COLUMNS[0]
 _ENTITY_COLUMNS = ("dcid", "name")
 # Maximum number of invalid field locations quoted in an
 # `ObservationPayloadError` message.
@@ -655,6 +661,76 @@ def parse_observation_table(
         child_place_type=child_place_type,
     )
     return apply_variable_metadata(table, enrichment)
+
+
+@dataclass(frozen=True)
+class ObservationPayloadOutline:
+    """The columns, rows, and sources of an observation payload.
+
+    Read from any observation payload without the row checks of
+    `parse_observation_table`, so it also describes a response whose rows
+    are keyed by entity role, such as the donor and recipient of a
+    relationship variable, rather than by place.
+
+    Attributes:
+        columns: The column names of the `data` table, in payload order.
+        rows: The rows of the `data` table that are lists, as sent. Other
+            rows are dropped and logged.
+        has_place_column: Whether `columns` holds `observationAbout`, the
+            column `parse_observation_table` reads each row's place from.
+        facet_id: The facet the payload was served from, or `None` when the
+            payload names no facet.
+        source: The source read from `sourceMetadata`, or `None` when it
+            carries no provenance URL.
+        alternative_sources: The other facets the server offered, without
+            entries that lack a facet ID.
+    """
+
+    columns: tuple[str, ...]
+    rows: tuple[tuple[JsonValue, ...], ...]
+    has_place_column: bool
+    facet_id: str | None
+    source: Source | None
+    alternative_sources: tuple[AlternativeSource, ...]
+
+
+def read_payload_outline(
+    payload: Mapping[str, JsonValue], subject: str
+) -> ObservationPayloadOutline:
+    """Reads the outline of a decoded observation payload.
+
+    Args:
+        payload: The decoded JSON object an observation tool returned.
+        subject: The variable named in the error message.
+
+    Returns:
+        The payload's columns, list rows, served facet, and sources.
+
+    Raises:
+        ObservationPayloadError: If the payload lacks the `variable` block,
+            has a structural key of the wrong type, or has a variable DCID or
+            served facet ID that is not a valid identifier.
+    """
+    wire = _validate_payload(payload, subject)
+    rows = tuple(tuple(row) for row in wire.data.rows if isinstance(row, list))
+    if len(rows) < len(wire.data.rows):
+        logger.warning(
+            "Dropped %d malformed row(s) from the outline for %s.",
+            len(wire.data.rows) - len(rows),
+            subject,
+        )
+    return ObservationPayloadOutline(
+        columns=wire.data.columns,
+        rows=rows,
+        has_place_column=_PLACE_COLUMN in wire.data.columns,
+        facet_id=wire.source_metadata.source_id,
+        source=get_source_from_observation_metadata(
+            wire.source_metadata.model_dump(by_alias=True, exclude_none=True)
+        ),
+        alternative_sources=_normalize_alternative_sources(
+            wire.alternative_sources
+        ),
+    )
 
 
 def apply_variable_metadata(
