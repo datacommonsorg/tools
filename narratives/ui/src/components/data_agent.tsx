@@ -36,7 +36,7 @@ const PIN_HOLD_MS = 600;
 const PIN_TOP_OFFSET_PX = 8;
 /** Must match the duration in `--animate-stream-in` (ui/src/index.css). */
 export const HANDOFF_MS = 400;
-/** Centered content column; the page scrolls at full width. */
+/** Centered content column; <main> scrolls at full width. */
 const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
 
 /**
@@ -86,7 +86,10 @@ export function DataAgent() {
     if (turns.length > prevTurnsLength.current) {
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
-      const from = window.scrollY;
+      // <main> is the scroll container (see App).
+      const scroller = document.querySelector("main");
+      if (!scroller) return;
+      const from = scroller.scrollTop;
       const glideMs = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PIN_GLIDE_MS;
       const scrollToLatest = (elapsed: number) => {
         const target = document.querySelector<HTMLElement>(
@@ -96,7 +99,7 @@ export function DataAgent() {
         // offsetTop ignores the enter animation's translate.
         let top = 0;
         let node: HTMLElement | null = target;
-        while (node) {
+        while (node && node !== scroller) {
           top += node.offsetTop;
           node = node.offsetParent as HTMLElement | null;
         }
@@ -104,7 +107,7 @@ export function DataAgent() {
         // Ease-out cubic. The target is re-read every frame, so the glide
         // lands on the bubble even if the layout above it is still settling.
         const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
-        window.scrollTo(0, from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress);
+        scroller.scrollTo(0, from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress);
       };
       // Glide there, then hold on every animation frame for PIN_HOLD_MS so late
       // layout shifts from the previous turn's AnswerPanel (e.g. Data Commons

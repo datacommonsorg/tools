@@ -15,7 +15,8 @@
  */
 
 /**
- * @fileoverview Tests that moving between the app's tabs drops the chat.
+ * @fileoverview Tests that moving between the app's tabs drops the chat and
+ * returns the scroll container to its top.
  */
 
 import {
@@ -128,5 +129,23 @@ describe('App', () => {
     goTo('#/agent');
     expect(fetchMock.mock.calls[0][1].signal?.aborted).toBe(false);
     expect(screen.getByText('What is the population of France?')).toBeTruthy();
+  });
+
+  it('scrolls <main> back to its top when the user switches tabs', () => {
+    // Test: Switching from the Data Agent tab to Key Metrics.
+    // Situation: <main> is the app's scroll container; the page itself does
+    //   not scroll.
+    // Expectation: <main> is scrolled to its top and the window is not.
+    const mainScrollTo = vi.fn();
+    const windowScrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', windowScrollTo);
+    render(<App />);
+    const main = screen.getByRole('main');
+    main.scrollTo = mainScrollTo;
+
+    goTo('#/metrics');
+
+    expect(mainScrollTo).toHaveBeenCalledWith(0, 0);
+    expect(windowScrollTo).not.toHaveBeenCalled();
   });
 });
