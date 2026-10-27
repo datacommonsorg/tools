@@ -30,6 +30,7 @@ def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     or import called them first rather than the variables it sets itself.
     """
     for var in (
+        "ENABLE_CHAT",
         "K_SERVICE",
         "KUBERNETES_SERVICE_HOST",
         "TRANSCRIPT_HMAC_SECRET",

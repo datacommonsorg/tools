@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal
 
 from narratives_agent.json_value import JsonObject, JsonValue
+from narratives_agent.telemetry import ErrorType, TerminalState
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.transcript import SignedWindow
 
@@ -164,7 +165,7 @@ class TerminalCompleteFrame:
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame."""
         frame: JsonObject = {
-            "state": "complete",
+            "state": TerminalState.COMPLETE,
             "idempotency_key": self.idempotency_key,
         }
         if self.window is None:
@@ -201,7 +202,7 @@ class TerminalRefusedFrame:
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame."""
         return {
-            "state": "refused",
+            "state": TerminalState.REFUSED,
             "idempotency_key": self.idempotency_key,
             "reason": self.reason,
             "message": self.message,
@@ -215,12 +216,12 @@ class TerminalErrorFrame:
     event: ClassVar[EventName] = "terminal"
     idempotency_key: str
     error: str
-    reason: str
+    reason: ErrorType
 
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame."""
         return {
-            "state": "error",
+            "state": TerminalState.ERROR,
             "idempotency_key": self.idempotency_key,
             "error": self.error,
             "reason": self.reason,

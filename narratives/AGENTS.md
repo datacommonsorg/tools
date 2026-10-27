@@ -71,11 +71,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       alignment and unit checks (`alignment.py`), the table summary
       (`summarize.py`), the digest and metric types (`digest.py`,
       `metrics.py`), the analytical scripts (`timeseries.py`, `ranking.py`,
-      `distribution.py`, `composition.py`, `derived.py`), the input checks
-      and refusals they share (`script_inputs.py`), and the golden fixture
-      under `golden/` with its regeneration script. It imports only the
-      Python standard library, other `analytics/` modules, and
-      `json_value.py`.
+      `distribution.py`, `composition.py`, `derived.py`, `relations.py`),
+      the input checks and refusals they share (`script_inputs.py`), and the
+      golden fixture under `golden/` with its regeneration script. It
+      imports only the Python standard library, other `analytics/` modules,
+      and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
