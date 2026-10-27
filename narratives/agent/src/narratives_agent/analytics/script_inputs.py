@@ -19,6 +19,7 @@ places missing from a cohort, so every script applies them identically.
 """
 
 from collections.abc import Sequence
+from enum import Enum
 
 from narratives_agent.analytics.alignment import (
     AlignedCohort,
@@ -48,6 +49,13 @@ __all__ = [
 ]
 
 type CohortInput = AlignedCohort | ObservationTable
+
+
+class _Default(Enum):
+    FROM_FIRST_INPUT = "from_first_input"
+
+
+_FROM_FIRST_INPUT = _Default.FROM_FIRST_INPUT
 
 
 def _normalize_inputs(
@@ -130,18 +138,27 @@ def build_refusal(
     reason: RefusalReason,
     coverage: CoverageReport | None,
     caveat: str,
+    extra_caveats: Sequence[str] = (),
+    unit: str | _Default | None = _FROM_FIRST_INPUT,
+    scaling_factor: float | _Default | None = _FROM_FIRST_INPUT,
 ) -> RefusedScriptResult:
     """Builds a refused result for one or more inputs with `caveat`.
 
     Args:
         cohort_or_table: The cohort, table, or sequence of cohorts and
-            tables the script was given; supplies the variables, unit,
-            scaling factor, and provenance.
+            tables the script was given; supplies the variables, default
+            unit, default scaling factor, and provenance.
         script: Name of the refusing script.
         step_id: Identifier of the analysis step.
         reason: Why the script refused.
         coverage: The cohort coverage when known, otherwise None.
         caveat: The reason for the refusal, stated for the prompt.
+        extra_caveats: Additional caveats (such as skipped pairs) appended
+            after `caveat`.
+        unit: Resolved unit of the output, or `_FROM_FIRST_INPUT` to use
+            the first input's unit.
+        scaling_factor: Resolved scaling factor of the output, or
+            `_FROM_FIRST_INPUT` to use the first input's scaling factor.
 
     Returns:
         A `RefusedScriptResult`. Any refused aligned cohort keeps its own
@@ -164,17 +181,27 @@ def build_refusal(
     variable_names: dict[str, str] = {}
     for item in inputs:
         variable_names.setdefault(item.variable_dcid, item.variable_name)
+    resolved_unit = (
+        (inputs[0].unit if inputs else None)
+        if isinstance(unit, _Default)
+        else unit
+    )
+    resolved_scaling_factor = (
+        (inputs[0].scaling_factor if inputs else None)
+        if isinstance(scaling_factor, _Default)
+        else scaling_factor
+    )
     return RefusedScriptResult(
         step_id=step_id,
         script=script,
         refusal_reason=reason,
         variables=tuple(variable_names),
         variable_names=variable_names,
-        unit=inputs[0].unit if inputs else None,
-        scaling_factor=inputs[0].scaling_factor if inputs else None,
+        unit=resolved_unit,
+        scaling_factor=resolved_scaling_factor,
         coverage=coverage,
         provenance=provenance,
-        caveats=(*cohort_caveats, caveat),
+        caveats=(*cohort_caveats, caveat, *extra_caveats),
     )
 
 
@@ -184,6 +211,8 @@ def build_invalid_parameters_refusal(
     script: ScriptName,
     step_id: str,
     caveat: str,
+    unit: str | _Default | None = _FROM_FIRST_INPUT,
+    scaling_factor: float | _Default | None = _FROM_FIRST_INPUT,
 ) -> RefusedScriptResult:
     """Builds an `invalid_parameters` refusal for a script's arguments.
 
@@ -193,6 +222,10 @@ def build_invalid_parameters_refusal(
         script: Name of the refusing script.
         step_id: Identifier of the analysis step.
         caveat: Why the arguments are invalid, stated for the prompt.
+        unit: Resolved unit of the output, or `_FROM_FIRST_INPUT` to use
+            the first input's unit.
+        scaling_factor: Resolved scaling factor of the output, or
+            `_FROM_FIRST_INPUT` to use the first input's scaling factor.
 
     Returns:
         A `RefusedScriptResult` with reason `invalid_parameters`, carrying
@@ -215,6 +248,8 @@ def build_invalid_parameters_refusal(
             else None
         ),
         caveat=caveat,
+        unit=unit,
+        scaling_factor=scaling_factor,
     )
 
 

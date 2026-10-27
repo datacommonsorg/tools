@@ -14,18 +14,20 @@
 """Script name literals and typed metric records for analytical scripts.
 
 Defines `ScriptName`, the per-script metric dataclasses (`TimeseriesMetrics`,
-`RankingMetrics`, `DistributionMetrics`, `CompositionMetrics`) and their
-shared value records (`PeriodChange`, `LocalExtremum`, `PlaceSeriesSummary`,
-`PlaceValue`, `LeaderDelta`, `CrossPlaceComparison`, `RankEntry`,
-`DistributionFocalEntry`, `CompositionComponent`, `CompositionPlace`,
-`StageShare`, `StageTransition`, `StagesPlace`), and the `ScriptMetrics`
-union. Each metrics record names its script in a `script` class variable so
-`OkScriptResult` can enforce at construction time that it carries the metric
-record matching its `script`.
+`RankingMetrics`, `DistributionMetrics`, `CompositionMetrics`,
+`DerivedMetrics`) and their shared value records (`PeriodChange`,
+`LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`, `LeaderDelta`,
+`CrossPlaceComparison`, `RankEntry`, `DistributionFocalEntry`,
+`CompositionComponent`, `CompositionPlace`, `StageShare`, `StageTransition`,
+`StagesPlace`), and the `ScriptMetrics` union. Each metrics record names its
+script in a `script` class variable so `OkScriptResult` can enforce at
+construction time that it carries the metric record matching its `script`.
 """
 
 from dataclasses import dataclass
 from typing import ClassVar, Literal
+
+from narratives_agent.analytics.tables import ObservationRow
 
 __all__ = [
     "CompositionComponent",
@@ -33,6 +35,8 @@ __all__ = [
     "CompositionMode",
     "CompositionPlace",
     "CrossPlaceComparison",
+    "DerivedMetrics",
+    "DerivedOperation",
     "DistributionFocalEntry",
     "DistributionMetrics",
     "ExtremumKind",
@@ -64,6 +68,9 @@ type ScriptName = Literal[
 type ExtremumKind = Literal["peak", "trough"]
 type RankingDirection = Literal["desc", "asc"]
 type CompositionMode = Literal["composition", "stages"]
+type DerivedOperation = Literal[
+    "per_capita", "ratio", "difference", "sum", "pct_change"
+]
 
 
 @dataclass(frozen=True)
@@ -565,9 +572,48 @@ class CompositionMetrics:
     missing_places: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class DerivedMetrics:
+    """Metrics produced by `compute_derived_metric`.
+
+    Attributes:
+        derived_variable_dcid: DCID of the derived variable.
+        derived_variable_name: Display name of the derived variable.
+        operation: Arithmetic operation applied to each paired observation.
+        scale: Multiplier applied to quotient operations (`1.0` for
+            `difference`, `sum`, and `pct_change`).
+        observation_count: Total number of derived `(place, date)`
+            observations.
+        place_count: Number of distinct places with at least one derived
+            observation.
+        date_range: `(earliest_date, latest_date)` across derived
+            observations; None when `observation_count` is zero.
+        value_range: `(min_value, max_value)` across derived observations;
+            None when `observation_count` is zero.
+        sample_rows: Up to five derived `ObservationRow` entries spread
+            evenly across the table in `(place_dcid, date)` order.
+        missing_places: DCIDs of target places without any derived
+            observation, in target-place order.
+    """
+
+    script: ClassVar[ScriptName] = "compute_derived_metric"
+
+    derived_variable_dcid: str
+    derived_variable_name: str
+    operation: DerivedOperation
+    scale: float
+    observation_count: int
+    place_count: int
+    date_range: tuple[str, str] | None
+    value_range: tuple[float, float] | None
+    sample_rows: tuple[ObservationRow, ...]
+    missing_places: tuple[str, ...]
+
+
 type ScriptMetrics = (
     TimeseriesMetrics
     | RankingMetrics
     | DistributionMetrics
     | CompositionMetrics
+    | DerivedMetrics
 )
