@@ -933,6 +933,16 @@ def test_pre_aligned_refusals_keep_caveats_and_coverage() -> None:
     assert overridden.coverage == aligned_total.coverage
     assert overridden.caveats == (
         *aligned_total.caveats,
+        "The aligned input is on 2022, not on the requested target date 2023.",
+    )
+    aligned_component = align_cohort(component)
+    assert isinstance(aligned_component, AlignedCohort)
+    both_overridden = compute_composition(
+        [aligned_component], total=aligned_total, target_date="2023"
+    )
+    assert both_overridden.refusal_reason == "invalid_parameters"
+    assert both_overridden.caveats == (
+        *aligned_total.caveats,
         "The aligned inputs are on 2022, not on the requested target date "
         "2023.",
     )

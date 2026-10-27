@@ -36,6 +36,7 @@ from narratives_agent.analytics.digest import (
     PERCENT_SCALE,
     CoverageReport,
     OkScriptResult,
+    RefusalReason,
     RefusedScriptResult,
     ScriptResult,
     conjugate_have,
@@ -63,10 +64,10 @@ from narratives_agent.analytics.script_inputs import (
 __all__ = ["compute_composition"]
 
 _SCRIPT_NAME: Literal["compute_composition"] = "compute_composition"
-# Relative tolerance by which a component sum may exceed the total. It absorbs
+# Maximum ratio of a place's component sum to its total (1 + 1e-6). It absorbs
 # binary floating-point error in the sum; parts and a whole published
 # separately and rounded at a coarser precision can exceed it and are refused.
-_SUM_TOLERANCE = 1e-6
+_SUM_TOLERANCE_RATIO = 1 + Fraction(1, 1_000_000)
 # Floats represent every integer below this magnitude exactly.
 _MAX_EXACT_INTEGER = 2.0**53
 # Stage transitions need a stage to move from and a stage to move to.
@@ -152,13 +153,16 @@ def _has_mixed_vintages(
     indexes: Sequence[_ValuesByDate],
     target_places: frozenset[str],
 ) -> bool:
-    """Returns whether the places' latest dates differ within or across inputs.
+    """Returns whether the target places have different latest dates.
 
-    An aligned cohort keeps only its reference date, so its own coverage
-    report states whether its table had mixed vintages. That flag is
-    carried only when every place of the cohort is a target place, because
-    the cohort does not record which of its places had other vintages.
+    For raw tables, each target place's latest observation date is checked
+    directly. For pre-aligned cohorts, earlier dates have already been
+    filtered out, so we fall back to the cohort's `coverage.mixed_vintages`
+    flag when all of that cohort's places are included in `target_places`
+    (on a subset of places, the place that had a different date may have
+    been excluded).
     """
+    # Check whether any pre-aligned cohort already flagged mixed vintages.
     if any(
         isinstance(item, AlignedCohort)
         and item.coverage.mixed_vintages
@@ -166,6 +170,7 @@ def _has_mixed_vintages(
         for item in inputs
     ):
         return True
+    # Otherwise, check whether latest dates differ within or across inputs.
     latest_dates: set[str] = set()
     for index in indexes:
         latest_by_place: dict[str, str] = {}
@@ -332,6 +337,58 @@ def _build_stages_place(
     )
 
 
+def _validate_distinct_variables(
+    all_inputs: Sequence[CohortInput],
+) -> str | None:
+    """Returns an error if any variable DCID appears more than once."""
+    repeated_dcids = [
+        dcid
+        for dcid, occurrence_count in Counter(
+            item.variable_dcid for item in all_inputs
+        ).items()
+        if occurrence_count > 1
+    ]
+    if not repeated_dcids:
+        return None
+    verb = "is" if len(repeated_dcids) == 1 else "are"
+    return (
+        "Each input must be a different variable, but "
+        f"{', '.join(repeated_dcids)} {verb} given more than once."
+    )
+
+
+def _validate_aligned_reference_dates(
+    all_inputs: Sequence[CohortInput], *, target_date: str | None
+) -> str | None:
+    """Returns an error if pre-aligned inputs disagree on the date."""
+    aligned_dates = [
+        item.reference_date
+        for item in all_inputs
+        if isinstance(item, AlignedCohort)
+    ]
+    fixed_dates = sorted(set(aligned_dates))
+    if len(fixed_dates) > 1:
+        return (
+            "The aligned inputs are on different reference dates "
+            f"({', '.join(fixed_dates)}), so they cannot be combined."
+        )
+    if (
+        fixed_dates
+        and target_date is not None
+        and target_date != fixed_dates[0]
+    ):
+        subject = (
+            "The aligned input is"
+            if len(aligned_dates) == 1
+            else "The aligned inputs are"
+        )
+        return (
+            f"{subject} on {fixed_dates[0]}, not on the requested target "
+            f"date {target_date}."
+        )
+    return None
+
+
 def _validate_composition_parameters(
     all_inputs: tuple[CohortInput, ...],
     components: Sequence[CohortInput],
@@ -343,41 +400,35 @@ def _validate_composition_parameters(
     step_id: str,
 ) -> RefusedScriptResult | None:
     """Checks parameters, unit compatibility, and aligned reference dates."""
-    if not components:
-        return build_invalid_parameters_refusal(
-            all_inputs,
-            script=_SCRIPT_NAME,
-            step_id=step_id,
-            caveat="At least one component variable is required.",
+    scalar_error = (
+        (
+            "At least one component variable is required."
+            if not components
+            else None
         )
-    if mode == "stages" and len(components) < _MIN_STAGES:
-        return build_invalid_parameters_refusal(
-            all_inputs,
-            script=_SCRIPT_NAME,
-            step_id=step_id,
-            caveat=(
+        or (
+            (
                 f"Stage transitions require at least {_MIN_STAGES} ordered "
                 f"stages, not {len(components)}."
-            ),
-        )
-    if places is not None:
-        places_error = validate_place_dcids(places, parameter_name="places")
-        if places_error is not None:
-            return build_invalid_parameters_refusal(
-                all_inputs,
-                script=_SCRIPT_NAME,
-                step_id=step_id,
-                caveat=places_error,
             )
-    alignment_error = validate_alignment_parameters(
-        target_date=target_date, min_coverage=min_coverage
+            if mode == "stages" and len(components) < _MIN_STAGES
+            else None
+        )
+        or (
+            validate_place_dcids(places, parameter_name="places")
+            if places is not None
+            else None
+        )
+        or validate_alignment_parameters(
+            target_date=target_date, min_coverage=min_coverage
+        )
     )
-    if alignment_error is not None:
+    if scalar_error is not None:
         return build_invalid_parameters_refusal(
             all_inputs,
             script=_SCRIPT_NAME,
             step_id=step_id,
-            caveat=alignment_error,
+            caveat=scalar_error,
         )
     mismatch = find_unit_mismatch(*all_inputs)
     if mismatch is not None:
@@ -389,54 +440,15 @@ def _validate_composition_parameters(
             coverage=None,
             caveat=mismatch.message,
         )
-    repeated_dcids = [
-        dcid
-        for dcid, occurrence_count in Counter(
-            item.variable_dcid for item in all_inputs
-        ).items()
-        if occurrence_count > 1
-    ]
-    if repeated_dcids:
-        verb = "is" if len(repeated_dcids) == 1 else "are"
+    input_error = _validate_distinct_variables(
+        all_inputs
+    ) or _validate_aligned_reference_dates(all_inputs, target_date=target_date)
+    if input_error is not None:
         return build_invalid_parameters_refusal(
             all_inputs,
             script=_SCRIPT_NAME,
             step_id=step_id,
-            caveat=(
-                "Each input must be a different variable, but "
-                f"{', '.join(repeated_dcids)} {verb} given more than once."
-            ),
-        )
-    fixed_dates = sorted(
-        {
-            item.reference_date
-            for item in all_inputs
-            if isinstance(item, AlignedCohort)
-        }
-    )
-    if len(fixed_dates) > 1:
-        return build_invalid_parameters_refusal(
-            all_inputs,
-            script=_SCRIPT_NAME,
-            step_id=step_id,
-            caveat=(
-                "The aligned inputs are on different reference dates "
-                f"({', '.join(fixed_dates)}), so they cannot be combined."
-            ),
-        )
-    if (
-        fixed_dates
-        and target_date is not None
-        and target_date != fixed_dates[0]
-    ):
-        return build_invalid_parameters_refusal(
-            all_inputs,
-            script=_SCRIPT_NAME,
-            step_id=step_id,
-            caveat=(
-                f"The aligned inputs are on {fixed_dates[0]}, not on the "
-                f"requested target date {target_date}."
-            ),
+            caveat=input_error,
         )
     return None
 
@@ -460,6 +472,56 @@ def _resolve_composition_places(
             for place in resolve_target_places(item)
         )
     )
+
+
+def _resolve_reference_date(
+    indexes: Sequence[_ValuesByDate],
+    target_places: Sequence[str],
+    *,
+    target_date: str | None,
+    fixed_date: str | None,
+    min_coverage: float,
+) -> str | None:
+    """Returns the requested, pre-aligned, or selected reference date."""
+    if target_date is not None:
+        return target_date
+    if fixed_date is not None:
+        return fixed_date
+    return _select_shared_reference_date(indexes, target_places, min_coverage)
+
+
+def _build_coverage_report(
+    all_inputs: Sequence[CohortInput],
+    indexes: Sequence[_ValuesByDate],
+    target_places: tuple[str, ...],
+    complete_places: tuple[str, ...],
+    *,
+    reference_date: str,
+) -> CoverageReport:
+    """Builds the `CoverageReport` for `complete_places` on `reference_date`."""
+    target_place_set = frozenset(target_places)
+    complete_place_set = frozenset(complete_places)
+    return CoverageReport(
+        contributing_places=len(complete_places),
+        requested_places=len(target_places),
+        coverage_ratio=len(complete_places) / len(target_places),
+        reference_date=reference_date,
+        missing_places=tuple(
+            place for place in target_places if place not in complete_place_set
+        ),
+        mixed_vintages=_has_mixed_vintages(
+            all_inputs, indexes, target_place_set
+        ),
+    )
+
+
+def _merge_place_names(all_inputs: Sequence[CohortInput]) -> dict[str, str]:
+    """Merges place display names across `all_inputs` in input order."""
+    place_names: dict[str, str] = {}
+    for item in all_inputs:
+        for place, name in item.place_names.items():
+            place_names.setdefault(place, name)
+    return place_names
 
 
 def _build_insufficient_coverage_message(
@@ -511,12 +573,13 @@ def _align_composition_inputs(
     step_id: str,
 ) -> _AlignedInputs | RefusedScriptResult:
     """Aligns `all_inputs` to one shared reference date across target places."""
-    fixed_dates = sorted(
-        {
+    fixed_date = next(
+        (
             item.reference_date
             for item in all_inputs
             if isinstance(item, AlignedCohort)
-        }
+        ),
+        None,
     )
     target_places = _resolve_composition_places(
         all_inputs, total=total, places=places
@@ -532,9 +595,7 @@ def _align_composition_inputs(
                 requested_places=0,
                 coverage_ratio=0.0,
                 reference_date=(
-                    target_date
-                    if target_date is not None
-                    else (fixed_dates[0] if fixed_dates else None)
+                    target_date if target_date is not None else fixed_date
                 ),
             ),
             caveat=(
@@ -545,14 +606,13 @@ def _align_composition_inputs(
     indexes = tuple(
         _index_values_by_date(item, target_place_set) for item in all_inputs
     )
-    if target_date is not None:
-        reference_date: str | None = target_date
-    elif fixed_dates:
-        reference_date = fixed_dates[0]
-    else:
-        reference_date = _select_shared_reference_date(
-            indexes, target_places, min_coverage
-        )
+    reference_date = _resolve_reference_date(
+        indexes,
+        target_places,
+        target_date=target_date,
+        fixed_date=fixed_date,
+        min_coverage=min_coverage,
+    )
     if reference_date is None or not any(indexes):
         empty_coverage = CoverageReport(
             contributing_places=0,
@@ -575,18 +635,12 @@ def _align_composition_inputs(
     complete_places = _list_complete_places(
         indexes, target_places, reference_date
     )
-    complete_place_set = frozenset(complete_places)
-    coverage = CoverageReport(
-        contributing_places=len(complete_places),
-        requested_places=len(target_places),
-        coverage_ratio=len(complete_places) / len(target_places),
+    coverage = _build_coverage_report(
+        all_inputs,
+        indexes,
+        target_places,
+        complete_places,
         reference_date=reference_date,
-        missing_places=tuple(
-            place for place in target_places if place not in complete_place_set
-        ),
-        mixed_vintages=_has_mixed_vintages(
-            all_inputs, indexes, target_place_set
-        ),
     )
     if not complete_places or not has_adequate_coverage(
         len(complete_places), len(target_places), min_coverage
@@ -605,17 +659,68 @@ def _align_composition_inputs(
                 min_coverage=min_coverage,
             ),
         )
-    place_names: dict[str, str] = {}
-    for item in all_inputs:
-        for place, name in item.place_names.items():
-            place_names.setdefault(place, name)
     return _AlignedInputs(
         reference_date=reference_date,
         complete_places=complete_places,
         total_values=indexes[0][reference_date] if total is not None else {},
         component_indexes=indexes[1:] if total is not None else indexes,
-        place_names=place_names,
+        place_names=_merge_place_names(all_inputs),
         coverage=coverage,
+    )
+
+
+def _evaluate_composition_place(
+    place: str,
+    place_name: str,
+    reference_date: str,
+    components: Sequence[CohortInput],
+    values: Sequence[float],
+    *,
+    total: CohortInput | None,
+    total_value: float | None,
+) -> CompositionPlace | tuple[RefusalReason, str]:
+    """Builds a `CompositionPlace`, or returns `(reason, caveat)` to refuse."""
+    named_values = list(zip(components, values, strict=True))
+    if total is not None and total_value is not None:
+        named_values.insert(0, (total, total_value))
+    negative_names = [
+        item.variable_name for item, value in named_values if value < 0.0
+    ]
+    if negative_names:
+        verb = "is" if len(negative_names) == 1 else "are"
+        return (
+            "invalid_parameters",
+            (
+                f"{', '.join(negative_names)} {verb} negative for "
+                f"{place_name} on {reference_date}; shares of a total "
+                "require non-negative values."
+            ),
+        )
+    component_sum = _compute_exact_sum(values)
+    if component_sum is None:
+        return (
+            "invalid_parameters",
+            (
+                f"The components of {place_name} on {reference_date} sum "
+                "to a value too large to represent as a float."
+            ),
+        )
+    if (
+        total_value is not None
+        and Fraction(component_sum)
+        > Fraction(total_value) * _SUM_TOLERANCE_RATIO
+    ):
+        return (
+            "components_exceed_total",
+            (
+                f"The components of {place_name} sum to "
+                f"{_format_exact_value(component_sum)} on {reference_date}, "
+                f"more than the total of {_format_exact_value(total_value)}, "
+                "so they are not disjoint parts of it."
+            ),
+        )
+    return _build_composition_place(
+        place, place_name, components, values, component_sum, total_value
     )
 
 
@@ -634,69 +739,28 @@ def _evaluate_composition_places(
             index[aligned.reference_date][place]
             for index in aligned.component_indexes
         ]
-        total_value = aligned.total_values[place] if total is not None else None
-        place_name = aligned.place_names.get(place, place)
-        named_values = list(zip(components, values, strict=True))
-        if total is not None and total_value is not None:
-            named_values.insert(0, (total, total_value))
-        negative_names = [
-            item.variable_name for item, value in named_values if value < 0.0
-        ]
-        if negative_names:
-            verb = "is" if len(negative_names) == 1 else "are"
-            return build_refusal(
-                all_inputs,
-                script=_SCRIPT_NAME,
-                step_id=step_id,
-                reason="invalid_parameters",
-                coverage=aligned.coverage,
-                caveat=(
-                    f"{', '.join(negative_names)} {verb} negative for "
-                    f"{place_name} on {aligned.reference_date}; shares of a "
-                    "total require non-negative values."
-                ),
-            )
-        component_sum = _compute_exact_sum(values)
-        if component_sum is None:
-            return build_refusal(
-                all_inputs,
-                script=_SCRIPT_NAME,
-                step_id=step_id,
-                reason="invalid_parameters",
-                coverage=aligned.coverage,
-                caveat=(
-                    f"The components of {place_name} on "
-                    f"{aligned.reference_date} sum to a value too large to "
-                    "represent as a float."
-                ),
-            )
-        if total_value is not None and Fraction(component_sum) > Fraction(
-            total_value
-        ) * (1 + Fraction(_SUM_TOLERANCE)):
-            return build_refusal(
-                all_inputs,
-                script=_SCRIPT_NAME,
-                step_id=step_id,
-                reason="components_exceed_total",
-                coverage=aligned.coverage,
-                caveat=(
-                    f"The components of {place_name} sum to "
-                    f"{_format_exact_value(component_sum)} on "
-                    f"{aligned.reference_date}, more than the total of "
-                    f"{_format_exact_value(total_value)}, so they are not "
-                    "disjoint parts of it."
-                ),
-            )
-        entries.append(
-            _build_composition_place(
-                place,
-                place_name,
-                components,
-                values,
-                component_sum,
-                total_value,
-            )
+        entry = _evaluate_composition_place(
+            place,
+            aligned.place_names.get(place, place),
+            aligned.reference_date,
+            components,
+            values,
+            total=total,
+            total_value=(
+                aligned.total_values[place] if total is not None else None
+            ),
         )
+        if not isinstance(entry, CompositionPlace):
+            reason, caveat = entry
+            return build_refusal(
+                all_inputs,
+                script=_SCRIPT_NAME,
+                step_id=step_id,
+                reason=reason,
+                coverage=aligned.coverage,
+                caveat=caveat,
+            )
+        entries.append(entry)
     return tuple(entries)
 
 
