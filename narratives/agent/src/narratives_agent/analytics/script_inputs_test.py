@@ -211,6 +211,44 @@ def test_multi_input_refusals_merge_provenance_and_keep_aligned_caveats() -> (
     assert conflicting.caveats == (*aligned.caveats, "Different dates.")
 
 
+def test_refusals_can_override_unit_scaling_and_append_caveats() -> None:
+    # Test: Resolved `unit`, `scaling_factor`, and `extra_caveats` overrides
+    #   on `build_refusal` and `build_invalid_parameters_refusal`.
+    # Situation: A table with unit `"Person"` refused with `unit=None`,
+    #   `scaling_factor=None`, and extra skip caveats, and an
+    #   `invalid_parameters` refusal overriding `unit="Percent"` and
+    #   `scaling_factor=100.0`.
+    # Expectation: Explicit `None` overrides the first input's unit and
+    #   scaling factor; `extra_caveats` follow `caveat` in order; and
+    #   `build_invalid_parameters_refusal` forwards the overrides.
+    table = _build_table([("a", "2022", 1.0)])
+    cleared = build_refusal(
+        table,
+        script="compute_derived_metric",
+        step_id="s1",
+        reason="no_observations",
+        coverage=None,
+        caveat="No shared observations.",
+        extra_caveats=("1 pair skipped.",),
+        unit=None,
+        scaling_factor=None,
+    )
+    assert cleared.unit is None
+    assert cleared.scaling_factor is None
+    assert cleared.caveats == ("No shared observations.", "1 pair skipped.")
+
+    overridden = build_invalid_parameters_refusal(
+        table,
+        script="compute_derived_metric",
+        step_id="s2",
+        caveat="Bad scale.",
+        unit="Percent",
+        scaling_factor=100.0,
+    )
+    assert overridden.unit == "Percent"
+    assert overridden.scaling_factor == 100.0
+
+
 def test_resolve_aligned_cohort_aligns_tables_and_checks_cohorts() -> None:
     # Test: Resolution of a cohort-or-table argument.
     # Situation: A table aligned with defaults; a table with `min_coverage`

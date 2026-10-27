@@ -136,14 +136,23 @@ def conjugate_have(count: int) -> str:
     return "has" if count == 1 else "have"
 
 
-def format_place_names(names: Sequence[str]) -> str:
-    """Lists up to `PLACE_NAME_CAP` place names and counts the rest.
+def format_place_names(
+    names: Sequence[str],
+    *,
+    singular_noun: str = "place",
+    plural_noun: str = "places",
+) -> str:
+    """Lists up to `PLACE_NAME_CAP` names and counts the rest.
 
     The cap keeps a caveat one readable sentence when it lists most of a
     large cohort.
 
     Args:
         names: Display names in the order to list them.
+        singular_noun: Singular noun used when one item is omitted after
+            `PLACE_NAME_CAP` (for example, `"place"` or `"pair"`).
+        plural_noun: Plural noun used when two or more items are omitted
+            after `PLACE_NAME_CAP` (for example, `"places"` or `"pairs"`).
 
     Returns:
         The names joined for a sentence: `"A"`, `"A and B"`, `"A, B, and
@@ -152,7 +161,11 @@ def format_place_names(names: Sequence[str]) -> str:
     listed = ", ".join(names[:PLACE_NAME_CAP])
     remainder = len(names) - PLACE_NAME_CAP
     if remainder > 0:
-        noun = "other place" if remainder == 1 else "other places"
+        noun = (
+            f"other {singular_noun}"
+            if remainder == 1
+            else f"other {plural_noun}"
+        )
         return f"{listed}, and {remainder} {noun}"
     if len(names) == 2:
         return f"{names[0]} and {names[1]}"
