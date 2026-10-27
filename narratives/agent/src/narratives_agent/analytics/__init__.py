@@ -14,8 +14,10 @@
 """Deterministic analytics library for the Narratives agent loop.
 
 Holds the provenance models (`Source`, `Provenance`), the observation table
-types, cohort alignment and unit checks, the table summary, the per-script
-metrics base, and the `ScriptResult` and `AnalysisDigest` types the analytics
+types, cohort alignment and unit checks, the table summary, the time-series,
+cohort ranking, distribution, composition, derived-metric, and two-cohort
+relation scripts with the input checks they share and their per-script metric
+records, and the `ScriptResult` and `AnalysisDigest` types the analytics
 scripts produce. The package may import only the Python standard library,
 other `analytics/` modules, and `narratives_agent.json_value`.
 """

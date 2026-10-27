@@ -19,11 +19,14 @@ precondition failed. Both carry cohort coverage, source provenance, and
 caveats. `AnalysisDigest` aggregates the results for a turn, assigns 1-based
 citation numbers to all distinct sources, and renders the digest as either
 plain JSON (`to_dict`) or rounded text for the synthesis prompt
-(`format_for_prompt`).
+(`format_for_prompt`). The module also holds the small formatters the
+scripts share when they build caveats (`format_percent`, `conjugate_have`,
+and `format_place_names`).
 """
 
 import json
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Self
 
@@ -32,6 +35,8 @@ from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 
 __all__ = [
+    "PERCENT_SCALE",
+    "PLACE_NAME_CAP",
     "AlignmentRefusalReason",
     "AnalysisDigest",
     "CoverageReport",
@@ -43,8 +48,14 @@ __all__ = [
     "UnitMismatchReason",
     "conjugate_have",
     "format_percent",
+    "format_place_names",
     "format_scaling_factor",
 ]
+
+# Converts a share (0 to 1) to a percentage (0 to 100 scale).
+PERCENT_SCALE = 100.0
+# A caveat lists place names up to this many and counts the rest.
+PLACE_NAME_CAP = 5
 
 type ResultStatus = Literal["ok", "refused"]
 # Why `align_cohort` could not align a table.
@@ -117,12 +128,50 @@ def format_percent(share: float) -> str:
     Up to two decimals are kept, so a threshold such as 0.9995 prints as
     99.95% rather than 100%; a share with more decimals is rounded to two.
     """
-    return f"{round(share * 100, _PERCENT_DECIMALS):g}%"
+    return f"{round(share * PERCENT_SCALE, _PERCENT_DECIMALS):g}%"
 
 
 def conjugate_have(count: int) -> str:
     """Returns the verb `have` in the number that matches `count` places."""
     return "has" if count == 1 else "have"
+
+
+def format_place_names(
+    names: Sequence[str],
+    *,
+    singular_noun: str = "place",
+    plural_noun: str = "places",
+) -> str:
+    """Lists up to `PLACE_NAME_CAP` names and counts the rest.
+
+    The cap keeps a caveat one readable sentence when it lists most of a
+    large cohort.
+
+    Args:
+        names: Display names in the order to list them.
+        singular_noun: Singular noun used when one item is omitted after
+            `PLACE_NAME_CAP` (for example, `"place"` or `"pair"`).
+        plural_noun: Plural noun used when two or more items are omitted
+            after `PLACE_NAME_CAP` (for example, `"places"` or `"pairs"`).
+
+    Returns:
+        The names joined for a sentence: `"A"`, `"A and B"`, `"A, B, and
+        C"`, or `"A, B, C, D, E, and 3 other places"`.
+    """
+    listed = ", ".join(names[:PLACE_NAME_CAP])
+    remainder = len(names) - PLACE_NAME_CAP
+    if remainder > 0:
+        noun = (
+            f"other {singular_noun}"
+            if remainder == 1
+            else f"other {plural_noun}"
+        )
+        return f"{listed}, and {remainder} {noun}"
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    if len(names) > 2:
+        return f"{', '.join(names[:-1])}, and {names[-1]}"
+    return listed
 
 
 @dataclass(frozen=True)

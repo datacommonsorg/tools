@@ -69,9 +69,13 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `analytics/`: the deterministic analytics library, holding observation
       tables and provenance models (`tables.py`, `provenance.py`), cohort
       alignment and unit checks (`alignment.py`), the table summary
-      (`summarize.py`), and the digest and metric types (`digest.py`,
-      `metrics.py`). It imports only the Python standard library, other
-      `analytics/` modules, and `json_value.py`.
+      (`summarize.py`), the digest and metric types (`digest.py`,
+      `metrics.py`), the analytical scripts (`timeseries.py`, `ranking.py`,
+      `distribution.py`, `composition.py`, `derived.py`, `relations.py`),
+      the input checks and refusals they share (`script_inputs.py`), and the
+      golden fixture under `golden/` with its regeneration script. It
+      imports only the Python standard library, other `analytics/` modules,
+      and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
@@ -88,8 +92,10 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
   time.
 - `schemas/` — JSON Schemas and example configuration files.
-- `scripts/` — build-time staging of `ui/dist/` into `agent/static/` and
-  `defaults/` into `agent/defaults/` (`stage_static.mjs`).
+- `Dockerfile` — multi-stage container build (React UI builder + Python
+  runtime).
+- `scripts/` — local non-container staging of `ui/dist/` into `agent/static/`
+  and `defaults/` into `agent/defaults/` (`stage_static.mjs`).
 - `.env.local.example` — template for local `.env.local` development settings.
 - `deploy/`, `cloudbuild/` — Terraform modules, `deploy.sh` and its modes
   (`deploy/modes/`), `deploy/smoke.sh`, and Cloud Build pipelines.
@@ -146,6 +152,11 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 - `uv run ruff format . ../deploy` — format Python files.
 - `uv run ruff check . ../deploy` — lint Python files.
 - `uv run mypy` — run strict static type-checking.
+- `uv run python -m narratives_agent.analytics.golden.regenerate_golden`:
+  rewrite the analytics golden fixture, `core_golden.json`, after a
+  deliberate change to analytics output, and review its diff (never edit
+  the fixture by hand); `--check` exits non-zero when the fixture is stale,
+  without writing it.
 - `uv lock` — regenerate `uv.lock` after editing `pyproject.toml` (never edit
   `uv.lock` by hand).
 
