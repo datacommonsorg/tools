@@ -462,9 +462,7 @@ def _select_raised_failure(errors: ExceptionGroup[Exception]) -> Exception:
     A transport failure is chosen when there is one, because it aborts the
     turn; otherwise the first failure. The other failures are logged.
     """
-    failures = [
-        error for error in errors.exceptions if isinstance(error, Exception)
-    ]
+    failures = list(errors.exceptions)
     selected = next(
         (
             failure
