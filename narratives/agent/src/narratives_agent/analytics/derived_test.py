@@ -385,7 +385,8 @@ def test_long_skipped_pair_and_missing_place_lists_use_format_place_names() -> (
     #   on 2020, only `p7` succeeds on 2020, and all seven are requested.
     # Expectation: Both the skipped-pairs caveat and the missing-places
     #   caveat name the first five items and summarize the remainder with
-    #   `"and 1 more"`, matching `digest.format_place_names`.
+    #   `"and 1 other pair"` and `"and 1 other place"`, matching
+    #   `digest.format_place_names`.
     places = [f"p{index}" for index in range(1, 8)]
     left = _build_table(
         "Count_Case",
@@ -409,7 +410,7 @@ def test_long_skipped_pair_and_missing_place_lists_use_format_place_names() -> (
     assert result.status == "ok"
     assert result.caveats == (
         "6 place and date pairs (P1 (2020), P2 (2020), P3 (2020), P4 (2020), "
-        "P5 (2020), and 1 other place) were skipped because the denominator "
+        "P5 (2020), and 1 other pair) were skipped because the denominator "
         "Count Person is zero or negative.",
         "No joined observations are available for P1, P2, P3, P4, P5, and 1 "
         "other place, so they are left out of the derived table.",
@@ -582,7 +583,7 @@ def test_difference_sum_and_pct_change_keep_or_set_the_unit() -> None:
     # Expectation: The difference is 50 and the sum 250, each keeping the
     #   unit and scaling factor of the inputs with a default name; the
     #   percentage change is 50 in `Percent` with no scaling factor and
-    #   `scale == 100.0`; and each result carries the formula as its
+    #   `scale == 1.0`; and each result carries the formula as its
     #   methodology.
     left = _build_table(
         "Revenue",
@@ -919,15 +920,22 @@ def test_unit_rules_depend_on_the_operation() -> None:
 def test_the_target_places_window_and_duplicates_follow_the_join_rules() -> (
     None
 ):
-    # Test: The target places, the date window, and duplicate rows.
+    # Test: The target places, cohort metadata fallbacks, the date window,
+    #   and duplicate rows.
     # Situation: The count and population tables joined with `places`
     #   naming `b` and an unknown `z`; with a window of 2021 only; with no
-    #   requested places on the count table so the union of observed
-    #   places applies; and with a duplicate population row for `a` on
-    #   2020 whose last value is retained.
+    #   requested places on either table so the union of observed places
+    #   applies; with `left` lacking `requested_places` and cohort metadata
+    #   while `right` provides both; with `left` specifying a subset of
+    #   `right.requested_places` without cohort metadata; and with a
+    #   duplicate population row for `a` on 2020 whose last value is
+    #   retained.
     # Expectation: The `places` join covers 1 of 2 with `z` missing; the
     #   window keeps only the 2021 rows; the union target places are `a`,
-    #   `b`, and `c`; and the duplicate yields the later denominator.
+    #   `b`, and `c`; `right.requested_places` and `right`'s cohort metadata
+    #   apply when `left.requested_places` is empty, whereas a proper subset
+    #   on `left` leaves cohort metadata as `None`; and the duplicate yields
+    #   the later denominator.
     restricted = derive_observation_table(
         _build_count_table(), _build_population_table(), places=["b", "z", "b"]
     )
@@ -958,6 +966,34 @@ def test_the_target_places_window_and_duplicates_follow_the_join_rules() -> (
     assert union.coverage.requested_places == 3
     assert isinstance(union.metrics, DerivedMetrics)
     assert union.metrics.missing_places == ("c", "b")
+    right_with_cohort = _build_table(
+        "Count_Person",
+        [("a", "2020", 1000.0), ("b", "2020", 1250.0)],
+        facet_id="f2",
+        source=_CENSUS,
+        requested_places=["a", "b", "d"],
+        parent_place_dcid="country/USA",
+        child_place_type="State",
+    )
+    right_fallback = derive_observation_table(unrequested, right_with_cohort)
+    assert right_fallback.table is not None
+    assert right_fallback.table.requested_places == ("a", "b", "d")
+    assert right_fallback.table.parent_place_dcid == "country/USA"
+    assert right_fallback.table.child_place_type == "State"
+    assert isinstance(right_fallback.result.metrics, DerivedMetrics)
+    assert right_fallback.result.metrics.missing_places == ("b", "d")
+    left_subset = _build_table(
+        "Count_Case",
+        [("a", "2020", 1.0), ("b", "2020", 2.0)],
+        facet_id="f1",
+        source=_WDI,
+        requested_places=["a", "b"],
+    )
+    subset_outcome = derive_observation_table(left_subset, right_with_cohort)
+    assert subset_outcome.table is not None
+    assert subset_outcome.table.requested_places == ("a", "b")
+    assert subset_outcome.table.parent_place_dcid is None
+    assert subset_outcome.table.child_place_type is None
     duplicated = _build_table(
         "Count_Person",
         [("a", "2020", 1.0), ("a", "2020", 4.0)],
@@ -1100,6 +1136,8 @@ def _build_oracle_expectation(
         target_places = tuple(dict.fromkeys(places))
     elif left.requested_places:
         target_places = tuple(dict.fromkeys(left.requested_places))
+    elif right.requested_places:
+        target_places = tuple(dict.fromkeys(right.requested_places))
     else:
         left_places = sorted({row.place_dcid for row in left.rows})
         right_places = sorted({row.place_dcid for row in right.rows})

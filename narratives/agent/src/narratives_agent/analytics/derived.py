@@ -87,8 +87,14 @@ _SCALED_OPERATIONS: frozenset[DerivedOperation] = frozenset(
 _UNIT_MATCHED_OPERATIONS: frozenset[DerivedOperation] = frozenset(
     {"difference", "sum", "pct_change"}
 )
+type _SkipReason = Literal[
+    "non_positive_denominator",
+    "zero_denominator",
+    "zero_baseline",
+    "not_finite",
+]
 # Maps each join skip reason to a prose template parameterized by `{right}`.
-_SKIP_DESCRIPTIONS = {
+_SKIP_DESCRIPTIONS: dict[_SkipReason, str] = {
     "non_positive_denominator": "the denominator {right} is zero or negative",
     "zero_denominator": "the denominator {right} is zero",
     "zero_baseline": "the baseline {right} is zero",
@@ -353,7 +359,7 @@ def _apply_operation(
     left_value: float,
     right_value: float,
     scale: float,
-) -> float | str:
+) -> float | _SkipReason:
     """Applies the operation to one pair, or returns the skip reason.
 
     A quotient multiplies by the scale before dividing: `300 * 100000 /
@@ -392,7 +398,7 @@ def _apply_operation(
 
 
 def _build_skip_caveats(
-    skipped: dict[str, list[str]], right: ObservationTable
+    skipped: dict[_SkipReason, list[str]], right: ObservationTable
 ) -> list[str]:
     """States how many pairs each skip reason removed, naming examples."""
     caveats: list[str] = []
@@ -402,10 +408,12 @@ def _build_skip_caveats(
         )
         noun = "pair" if len(labels) == 1 else "pairs"
         verb = "was" if len(labels) == 1 else "were"
+        formatted_pairs = format_place_names(
+            labels, singular_noun="pair", plural_noun="pairs"
+        )
         caveats.append(
             f"{len(labels)} place and date {noun} "
-            f"({format_place_names(labels)}) {verb} skipped because "
-            f"{description}."
+            f"({formatted_pairs}) {verb} skipped because {description}."
         )
     return caveats
 
@@ -498,6 +506,8 @@ def _resolve_target_places_and_names(
         target_places = tuple(dict.fromkeys(places))
     elif left.requested_places:
         target_places = resolve_target_places(left)
+    elif right.requested_places:
+        target_places = resolve_target_places(right)
     else:
         target_places = tuple(
             dict.fromkeys([*left.places_with_data, *right.places_with_data])
@@ -506,6 +516,19 @@ def _resolve_target_places_and_names(
     place_names.update(right.place_names)
     place_names.update(left.place_names)
     return target_places, place_names
+
+
+def _resolve_cohort_metadata(
+    left: ObservationTable, right: ObservationTable
+) -> tuple[str | None, str | None]:
+    """Resolves `(parent_place_dcid, child_place_type)` for the table."""
+    if left.parent_place_dcid is not None or left.child_place_type is not None:
+        return left.parent_place_dcid, left.child_place_type
+    if not left.requested_places or set(left.requested_places) == set(
+        right.requested_places
+    ):
+        return right.parent_place_dcid, right.child_place_type
+    return None, None
 
 
 def _join_paired_rows(
@@ -543,7 +566,7 @@ def _join_paired_rows(
         resolved_scale = scale
 
     rows: list[ObservationRow] = []
-    skipped: dict[str, list[str]] = {}
+    skipped: dict[_SkipReason, list[str]] = {}
     for place, date in joined:
         outcome = _apply_operation(
             operation,
@@ -631,6 +654,7 @@ def _build_derived_outcome(
         right.provenance,
         methodology=_describe_methodology(left, right, operation, scale),
     )
+    parent_place_dcid, child_place_type = _resolve_cohort_metadata(left, right)
     table = ObservationTable(
         variable_dcid=variable_dcid,
         variable_name=variable_name,
@@ -640,8 +664,8 @@ def _build_derived_outcome(
         rows=rows,
         requested_places=target_places,
         place_names=place_names,
-        parent_place_dcid=left.parent_place_dcid,
-        child_place_type=left.child_place_type,
+        parent_place_dcid=parent_place_dcid,
+        child_place_type=child_place_type,
     )
     summary = summarize_table(table)
     result = OkScriptResult(
@@ -713,8 +737,9 @@ def derive_observation_table(
             difference or sum keeps the inputs' unit, a percentage change
             is in `Percent`, and a quotient has no unit.
         places: The target places, in the order to report them. When empty,
-            `left.requested_places` is used, and failing that the union of
-            the places with data in both tables.
+            `left.requested_places` is used, then `right.requested_places`,
+            and failing that the union of the places with data in both
+            tables.
         start_date: The inclusive start of the window, a `YYYY`, `YYYY-MM`,
             or `YYYY-MM-DD` date compared as `is_within_date_range` does.
         end_date: The inclusive end of the window, in the same form.
@@ -934,7 +959,10 @@ def compute_derived_metric(
         derived_variable_name: The display name of the derived variable;
             defaults to a label built from the input names.
         derived_unit: The unit of the derived values.
-        places: The target places, in the order to report them.
+        places: The target places, in the order to report them. When empty,
+            `left.requested_places` is used, then `right.requested_places`,
+            and failing that the union of the places with data in both
+            tables.
         start_date: The inclusive start of the window (`YYYY`, `YYYY-MM`,
             or `YYYY-MM-DD`).
         end_date: The inclusive end of the window, in the same form.
