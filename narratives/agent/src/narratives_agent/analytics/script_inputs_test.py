@@ -22,6 +22,7 @@ from narratives_agent.analytics.script_inputs import (
     build_refusal,
     describe_missing_focal_places,
     resolve_aligned_cohort,
+    resolve_target_places,
     validate_place_dcids,
 )
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
@@ -30,22 +31,30 @@ from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 def _build_table(
     observations: Sequence[tuple[str, str, float]],
     *,
+    variable_dcid: str = "Count_Person",
+    variable_name: str = "Total population",
     requested_places: Sequence[str] = (),
+    source_id: int = 1,
 ) -> ObservationTable:
-    """Builds a population table from `(place, date, value)` triples."""
+    """Builds a table from `(place, date, value)` triples."""
     places = list(
         dict.fromkeys(
             [*requested_places, *(place for place, _, _ in observations)]
         )
     )
     return ObservationTable(
-        variable_dcid="Count_Person",
-        variable_name="Total population",
+        variable_dcid=variable_dcid,
+        variable_name=variable_name,
         unit="Person",
         scaling_factor=None,
         provenance=Provenance(
-            sources=(Source(name="Census", url="https://census"),),
-            facet_ids=("f1",),
+            sources=(
+                Source(
+                    name=f"Source {source_id}",
+                    url=f"https://source-{source_id}",
+                ),
+            ),
+            facet_ids=(f"f{source_id}",),
         ),
         rows=tuple(
             ObservationRow(place, place.upper(), date, value)
@@ -67,6 +76,26 @@ def _build_aligned_cohort_with_caveats() -> AlignedCohort:
     assert isinstance(aligned, AlignedCohort)
     assert aligned.caveats
     return aligned
+
+
+def test_resolve_target_places_reads_requested_observed_and_cohort_places() -> (
+    None
+):
+    # Test: `resolve_target_places` on tables and aligned cohorts.
+    # Situation: A table with duplicate requested places, a table without
+    #   requested places, and an aligned cohort with two contributing places
+    #   and one missing place.
+    # Expectation: The first returns the requested places deduplicated in
+    #   request order; the second returns `places_with_data`; the third
+    #   returns the contributing places followed by the missing places.
+    with_requested = _build_table(
+        [("a", "2022", 1.0)], requested_places=["b", "a", "b"]
+    )
+    assert resolve_target_places(with_requested) == ("b", "a")
+    observed_only = _build_table([("b", "2022", 1.0), ("a", "2022", 2.0)])
+    assert resolve_target_places(observed_only) == ("a", "b")
+    aligned = _build_aligned_cohort_with_caveats()
+    assert resolve_target_places(aligned) == ("a", "b", "c")
 
 
 def test_validate_place_dcids_rejects_strings_and_invalid_entries() -> None:
@@ -126,6 +155,60 @@ def test_refusals_keep_an_aligned_cohorts_caveats_and_coverage() -> None:
     )
     assert empty.refusal_reason == "no_observations"
     assert empty.caveats == ("None match.",)
+
+
+def test_multi_input_refusals_merge_provenance_and_keep_aligned_caveats() -> (
+    None
+):
+    # Test: `build_refusal` and `build_invalid_parameters_refusal` on
+    #   sequences of inputs.
+    # Situation: An empty sequence; an aligned cohort paired with a second
+    #   table; and two aligned cohorts on different reference dates.
+    # Expectation: The empty sequence yields empty variables and no unit;
+    #   the cohort-plus-table refusal lists both variables, merges their
+    #   provenance, carries the single aligned cohort's coverage, and keeps
+    #   its caveats ahead of the refusal's; conflicting aligned coverages
+    #   leave `coverage` as None while still keeping both cohorts' caveats.
+    empty = build_invalid_parameters_refusal(
+        (),
+        script="compute_composition",
+        step_id="s1",
+        caveat="At least one component variable is required.",
+    )
+    assert empty.variables == ()
+    assert empty.unit is None
+    assert empty.coverage is None
+    assert empty.caveats == ("At least one component variable is required.",)
+
+    aligned = _build_aligned_cohort_with_caveats()
+    part = _build_table(
+        [("a", "2022", 0.5)],
+        variable_dcid="Count_Person_Employed",
+        variable_name="Employed population",
+        source_id=2,
+    )
+    combined = build_invalid_parameters_refusal(
+        (aligned, part),
+        script="compute_composition",
+        step_id="s1",
+        caveat="Bad parameter.",
+    )
+    assert combined.variables == ("Count_Person", "Count_Person_Employed")
+    assert combined.provenance.facet_ids == ("f1", "f2")
+    assert combined.coverage == aligned.coverage
+    assert combined.caveats == (*aligned.caveats, "Bad parameter.")
+
+    later = align_cohort(_build_table([("a", "2023", 1.0)], source_id=2))
+    assert isinstance(later, AlignedCohort)
+    conflicting = build_invalid_parameters_refusal(
+        (aligned, later),
+        script="compute_composition",
+        step_id="s1",
+        caveat="Different dates.",
+    )
+    assert conflicting.variables == ("Count_Person",)
+    assert conflicting.coverage is None
+    assert conflicting.caveats == (*aligned.caveats, "Different dates.")
 
 
 def test_resolve_aligned_cohort_aligns_tables_and_checks_cohorts() -> None:

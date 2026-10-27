@@ -34,15 +34,55 @@ from narratives_agent.analytics.digest import (
     format_place_names,
 )
 from narratives_agent.analytics.metrics import ScriptName
+from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.tables import ObservationTable, is_valid_dcid
 
 __all__ = [
+    "CohortInput",
     "build_invalid_parameters_refusal",
     "build_refusal",
     "describe_missing_focal_places",
     "resolve_aligned_cohort",
+    "resolve_target_places",
     "validate_place_dcids",
 ]
+
+type CohortInput = AlignedCohort | ObservationTable
+
+
+def _normalize_inputs(
+    cohort_or_table: CohortInput | Sequence[CohortInput],
+) -> tuple[CohortInput, ...]:
+    """Returns one or more script inputs as a tuple."""
+    if isinstance(cohort_or_table, (AlignedCohort, ObservationTable)):
+        return (cohort_or_table,)
+    return tuple(cohort_or_table)
+
+
+def resolve_target_places(cohort_or_table: CohortInput) -> tuple[str, ...]:
+    """Returns the target places of a table or an aligned cohort.
+
+    Args:
+        cohort_or_table: The table or aligned cohort to inspect.
+
+    Returns:
+        For a table, its deduplicated `requested_places` when present and
+        its `places_with_data` otherwise; for an aligned cohort, its
+        contributing places followed by its missing places, deduplicated in
+        order.
+    """
+    if isinstance(cohort_or_table, ObservationTable):
+        if cohort_or_table.requested_places:
+            return tuple(dict.fromkeys(cohort_or_table.requested_places))
+        return cohort_or_table.places_with_data
+    return tuple(
+        dict.fromkeys(
+            (
+                *(row.place_dcid for row in cohort_or_table.rows),
+                *cohort_or_table.coverage.missing_places,
+            )
+        )
+    )
 
 
 def validate_place_dcids(
@@ -83,7 +123,7 @@ def validate_place_dcids(
 
 
 def build_refusal(
-    cohort_or_table: AlignedCohort | ObservationTable,
+    cohort_or_table: CohortInput | Sequence[CohortInput],
     *,
     script: ScriptName,
     step_id: str,
@@ -91,11 +131,12 @@ def build_refusal(
     coverage: CoverageReport | None,
     caveat: str,
 ) -> RefusedScriptResult:
-    """Builds a refused result for one variable with the refusal's caveat.
+    """Builds a refused result for one or more inputs with `caveat`.
 
     Args:
-        cohort_or_table: The cohort or table the script was given; supplies
-            the variable, unit, scaling factor, and provenance.
+        cohort_or_table: The cohort, table, or sequence of cohorts and
+            tables the script was given; supplies the variables, unit,
+            scaling factor, and provenance.
         script: Name of the refusing script.
         step_id: Identifier of the analysis step.
         reason: Why the script refused.
@@ -103,32 +144,42 @@ def build_refusal(
         caveat: The reason for the refusal, stated for the prompt.
 
     Returns:
-        A `RefusedScriptResult`. A refused aligned cohort keeps its own
+        A `RefusedScriptResult`. Any refused aligned cohort keeps its own
         caveats, which qualify its coverage, ahead of `caveat`.
     """
-    caveats = (
-        (*cohort_or_table.caveats, caveat)
-        if isinstance(cohort_or_table, AlignedCohort)
-        else (caveat,)
+    inputs = _normalize_inputs(cohort_or_table)
+    cohort_caveats = tuple(
+        dict.fromkeys(
+            cohort_caveat
+            for item in inputs
+            if isinstance(item, AlignedCohort)
+            for cohort_caveat in item.caveats
+        )
     )
+    provenance = (
+        inputs[0].provenance
+        if len(inputs) == 1
+        else merge_provenance(*(item.provenance for item in inputs))
+    )
+    variable_names: dict[str, str] = {}
+    for item in inputs:
+        variable_names.setdefault(item.variable_dcid, item.variable_name)
     return RefusedScriptResult(
         step_id=step_id,
         script=script,
         refusal_reason=reason,
-        variables=(cohort_or_table.variable_dcid,),
-        variable_names={
-            cohort_or_table.variable_dcid: cohort_or_table.variable_name
-        },
-        unit=cohort_or_table.unit,
-        scaling_factor=cohort_or_table.scaling_factor,
+        variables=tuple(variable_names),
+        variable_names=variable_names,
+        unit=inputs[0].unit if inputs else None,
+        scaling_factor=inputs[0].scaling_factor if inputs else None,
         coverage=coverage,
-        provenance=cohort_or_table.provenance,
-        caveats=caveats,
+        provenance=provenance,
+        caveats=(*cohort_caveats, caveat),
     )
 
 
 def build_invalid_parameters_refusal(
-    cohort_or_table: AlignedCohort | ObservationTable,
+    cohort_or_table: CohortInput | Sequence[CohortInput],
     *,
     script: ScriptName,
     step_id: str,
@@ -137,24 +188,30 @@ def build_invalid_parameters_refusal(
     """Builds an `invalid_parameters` refusal for a script's arguments.
 
     Args:
-        cohort_or_table: The cohort or table the script was given.
+        cohort_or_table: The cohort, table, or sequence of cohorts and
+            tables the script was given.
         script: Name of the refusing script.
         step_id: Identifier of the analysis step.
         caveat: Why the arguments are invalid, stated for the prompt.
 
     Returns:
         A `RefusedScriptResult` with reason `invalid_parameters`, carrying
-        the coverage of an aligned cohort, which is already known, and no
-        coverage for a table, which has not been aligned.
+        the coverage when the aligned inputs agree on one coverage report,
+        and no coverage when no input is aligned or aligned inputs carry
+        different coverage reports.
     """
+    inputs = _normalize_inputs(cohort_or_table)
+    aligned_coverages = {
+        item.coverage for item in inputs if isinstance(item, AlignedCohort)
+    }
     return build_refusal(
-        cohort_or_table,
+        inputs,
         script=script,
         step_id=step_id,
         reason="invalid_parameters",
         coverage=(
-            cohort_or_table.coverage
-            if isinstance(cohort_or_table, AlignedCohort)
+            next(iter(aligned_coverages))
+            if len(aligned_coverages) == 1
             else None
         ),
         caveat=caveat,
