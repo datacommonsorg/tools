@@ -1,0 +1,1506 @@
+{
+  "alignment_prefers_coverage_over_recency": {
+    "caveats": [
+      "The places report different latest observation dates, so every value is aligned to 2022.",
+      "9 of 10 places on 2022 reported a value for Total population."
+    ],
+    "coverage": {
+      "contributing_places": 9,
+      "coverage_ratio": 0.9,
+      "missing_places": [
+        "country/C9"
+      ],
+      "mixed_vintages": true,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "place_names": {
+      "country/C0": "Country 0",
+      "country/C1": "Country 1",
+      "country/C2": "Country 2",
+      "country/C3": "Country 3",
+      "country/C4": "Country 4",
+      "country/C5": "Country 5",
+      "country/C6": "Country 6",
+      "country/C7": "Country 7",
+      "country/C8": "Country 8",
+      "country/C9": "Country 9"
+    },
+    "provenance": {
+      "facet_ids": [
+        "12850099660527362240"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "reference_date": "2022",
+    "rows": [
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C0",
+        "place_name": "Country 0",
+        "value": 0.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C1",
+        "place_name": "Country 1",
+        "value": 400.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C2",
+        "place_name": "Country 2",
+        "value": 800.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C3",
+        "place_name": "Country 3",
+        "value": 100.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C4",
+        "place_name": "Country 4",
+        "value": 500.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C5",
+        "place_name": "Country 5",
+        "value": 900.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C6",
+        "place_name": "Country 6",
+        "value": 200.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C7",
+        "place_name": "Country 7",
+        "value": 600.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C8",
+        "place_name": "Country 8",
+        "value": 1000.0
+      }
+    ],
+    "scaling_factor": null,
+    "unit": null,
+    "variable_dcid": "Count_Person",
+    "variable_name": "Total population"
+  },
+  "compatible_units": null,
+  "digest": {
+    "has_data": true,
+    "missing_notes": [
+      "No county-level series was found for this topic."
+    ],
+    "results": [
+      {
+        "caveats": [],
+        "coverage": null,
+        "metrics": {
+          "cross_place_comparison": null,
+          "missing_places": [],
+          "place_count": 1,
+          "series": [
+            {
+              "absolute_change": 100.0,
+              "cagr": 3.5264923841377582,
+              "end_date": "2020",
+              "end_value": 200.0,
+              "local_extrema": [
+                {
+                  "date": "2005",
+                  "kind": "peak",
+                  "value": 180.0
+                },
+                {
+                  "date": "2010",
+                  "kind": "trough",
+                  "value": 100.0
+                }
+              ],
+              "max_date": "2020",
+              "max_period_decrease": {
+                "absolute_change": -30.0,
+                "from_date": "2005",
+                "from_value": 180.0,
+                "percent_change": -16.666666666666664,
+                "to_date": "2006",
+                "to_value": 150.0
+              },
+              "max_period_increase": {
+                "absolute_change": 40.0,
+                "from_date": "2004",
+                "from_value": 140.0,
+                "percent_change": 28.57142857142857,
+                "to_date": "2005",
+                "to_value": 180.0
+              },
+              "max_value": 200.0,
+              "min_date": "2000",
+              "min_value": 100.0,
+              "percent_change": 100.0,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "point_count": 21,
+              "start_date": "2000",
+              "start_value": 100.0
+            }
+          ]
+        },
+        "provenance": {
+          "facet_ids": [
+            "18369491376878146239"
+          ],
+          "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+          "sources": [
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "datatopics.worldbank.org",
+              "provider": null,
+              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            }
+          ]
+        },
+        "refusal_reason": null,
+        "scaling_factor": null,
+        "script": "analyze_timeseries",
+        "status": "ok",
+        "step_id": "s1",
+        "unit": null,
+        "variable_names": {
+          "Count_Person": "Total population"
+        },
+        "variables": [
+          "Count_Person"
+        ]
+      },
+      {
+        "caveats": [
+          "The places report different latest observation dates, so every value is aligned to 2022.",
+          "9 of 10 places on 2022 reported a value for Total population."
+        ],
+        "coverage": {
+          "contributing_places": 9,
+          "coverage_ratio": 0.9,
+          "missing_places": [
+            "country/C9"
+          ],
+          "mixed_vintages": true,
+          "reference_date": "2022",
+          "requested_places": 10
+        },
+        "metrics": {
+          "bottom_n": [
+            {
+              "is_tied": false,
+              "percentile": 11.11111111111111,
+              "place_dcid": "country/C0",
+              "place_name": "Country 0",
+              "rank": 9,
+              "value": 0.0
+            },
+            {
+              "is_tied": false,
+              "percentile": 22.22222222222222,
+              "place_dcid": "country/C3",
+              "place_name": "Country 3",
+              "rank": 8,
+              "value": 100.0
+            },
+            {
+              "is_tied": false,
+              "percentile": 33.33333333333333,
+              "place_dcid": "country/C6",
+              "place_name": "Country 6",
+              "rank": 7,
+              "value": 200.0
+            }
+          ],
+          "cohort_size": 9,
+          "direction": "desc",
+          "focal_entries": [],
+          "max_entries_per_end": 3,
+          "missing_focal_places": [],
+          "reference_date": "2022",
+          "top_n": [
+            {
+              "is_tied": false,
+              "percentile": 100.0,
+              "place_dcid": "country/C8",
+              "place_name": "Country 8",
+              "rank": 1,
+              "value": 1000.0
+            },
+            {
+              "is_tied": false,
+              "percentile": 88.88888888888889,
+              "place_dcid": "country/C5",
+              "place_name": "Country 5",
+              "rank": 2,
+              "value": 900.0
+            },
+            {
+              "is_tied": false,
+              "percentile": 77.77777777777779,
+              "place_dcid": "country/C2",
+              "place_name": "Country 2",
+              "rank": 3,
+              "value": 800.0
+            }
+          ]
+        },
+        "provenance": {
+          "facet_ids": [
+            "12850099660527362240"
+          ],
+          "methodology": "Ranked 9 places by Total population on 2022 in descending order; places with the same value share a rank.",
+          "sources": [
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "wikidata.org",
+              "provider": null,
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            }
+          ]
+        },
+        "refusal_reason": null,
+        "scaling_factor": null,
+        "script": "rank_cohort",
+        "status": "ok",
+        "step_id": "s2",
+        "unit": null,
+        "variable_names": {
+          "Count_Person": "Total population"
+        },
+        "variables": [
+          "Count_Person"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "dataset": null,
+        "date_range": null,
+        "license": null,
+        "name": "datatopics.worldbank.org",
+        "provider": null,
+        "url": "https://datatopics.worldbank.org/world-development-indicators/"
+      },
+      {
+        "dataset": null,
+        "date_range": null,
+        "license": null,
+        "name": "wikidata.org",
+        "provider": null,
+        "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+      }
+    ]
+  },
+  "digest_prompt": "Step s1: analyze_timeseries on Total population (Count_Person)\n  cite: [1]\n  method: Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":1,\"series\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":21,\"start_date\":\"2000\",\"start_value\":100,\"end_date\":\"2020\",\"end_value\":200,\"min_date\":\"2000\",\"min_value\":100,\"max_date\":\"2020\",\"max_value\":200,\"local_extrema\":[{\"date\":\"2005\",\"value\":180,\"kind\":\"peak\"},{\"date\":\"2010\",\"value\":100,\"kind\":\"trough\"}],\"absolute_change\":100,\"percent_change\":100,\"cagr\":3.53,\"max_period_increase\":{\"from_date\":\"2004\",\"to_date\":\"2005\",\"from_value\":140,\"to_value\":180,\"absolute_change\":40,\"percent_change\":28.57},\"max_period_decrease\":{\"from_date\":\"2005\",\"to_date\":\"2006\",\"from_value\":180,\"to_value\":150,\"absolute_change\":-30,\"percent_change\":-16.67}}],\"missing_places\":[],\"cross_place_comparison\":null}\n\nStep s2: rank_cohort on Total population (Count_Person)\n  coverage: 9 of 10 places on 2022; cite: [2]\n  method: Ranked 9 places by Total population on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":3,\"cohort_size\":9,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/C8\",\"place_name\":\"Country 8\",\"value\":1000,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/C5\",\"place_name\":\"Country 5\",\"value\":900,\"percentile\":88.89},{\"rank\":3,\"is_tied\":false,\"place_dcid\":\"country/C2\",\"place_name\":\"Country 2\",\"value\":800,\"percentile\":77.78}],\"bottom_n\":[{\"rank\":9,\"is_tied\":false,\"place_dcid\":\"country/C0\",\"place_name\":\"Country 0\",\"value\":0,\"percentile\":11.11},{\"rank\":8,\"is_tied\":false,\"place_dcid\":\"country/C3\",\"place_name\":\"Country 3\",\"value\":100,\"percentile\":22.22},{\"rank\":7,\"is_tied\":false,\"place_dcid\":\"country/C6\",\"place_name\":\"Country 6\",\"value\":200,\"percentile\":33.33}],\"focal_entries\":[],\"missing_focal_places\":[]}\n  caveat: The places report different latest observation dates, so every value is aligned to 2022.\n  caveat: 9 of 10 places on 2022 reported a value for Total population.\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)\n\nMissing data:\n- No county-level series was found for this topic.",
+  "ranking_with_ties": {
+    "caveats": [
+      "geoId/09 has no value for Total population in the ranked cohort on 2022, so no rank is available.",
+      "2 places share rank 2, so the bottom 3 entries include only 1 of them, chosen in DCID order."
+    ],
+    "coverage": {
+      "contributing_places": 5,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 5
+    },
+    "metrics": {
+      "bottom_n": [
+        {
+          "is_tied": true,
+          "percentile": 40.0,
+          "place_dcid": "geoId/04",
+          "place_name": "State 4",
+          "rank": 4,
+          "value": 5.0
+        },
+        {
+          "is_tied": true,
+          "percentile": 40.0,
+          "place_dcid": "geoId/05",
+          "place_name": "State 5",
+          "rank": 4,
+          "value": 5.0
+        },
+        {
+          "is_tied": true,
+          "percentile": 80.0,
+          "place_dcid": "geoId/02",
+          "place_name": "State 2",
+          "rank": 2,
+          "value": 8.0
+        }
+      ],
+      "cohort_size": 5,
+      "direction": "desc",
+      "focal_entries": [
+        {
+          "is_tied": true,
+          "percentile": 40.0,
+          "place_dcid": "geoId/05",
+          "place_name": "State 5",
+          "rank": 4,
+          "value": 5.0
+        }
+      ],
+      "max_entries_per_end": 3,
+      "missing_focal_places": [
+        "geoId/09"
+      ],
+      "reference_date": "2022",
+      "top_n": [
+        {
+          "is_tied": false,
+          "percentile": 100.0,
+          "place_dcid": "geoId/01",
+          "place_name": "State 1",
+          "rank": 1,
+          "value": 10.0
+        },
+        {
+          "is_tied": true,
+          "percentile": 80.0,
+          "place_dcid": "geoId/02",
+          "place_name": "State 2",
+          "rank": 2,
+          "value": 8.0
+        },
+        {
+          "is_tied": true,
+          "percentile": 80.0,
+          "place_dcid": "geoId/03",
+          "place_name": "State 3",
+          "rank": 2,
+          "value": 8.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Ranked 5 places by Total population on 2022 in descending order; places with the same value share a rank.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "rank_cohort",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "ranking_with_ties_ascending": {
+    "caveats": [
+      "2 places share rank 3, so the bottom 2 entries include only 1 of them, chosen in DCID order."
+    ],
+    "coverage": {
+      "contributing_places": 5,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 5
+    },
+    "metrics": {
+      "bottom_n": [
+        {
+          "is_tied": false,
+          "percentile": 100.0,
+          "place_dcid": "geoId/01",
+          "place_name": "State 1",
+          "rank": 5,
+          "value": 10.0
+        },
+        {
+          "is_tied": true,
+          "percentile": 80.0,
+          "place_dcid": "geoId/02",
+          "place_name": "State 2",
+          "rank": 3,
+          "value": 8.0
+        }
+      ],
+      "cohort_size": 5,
+      "direction": "asc",
+      "focal_entries": [],
+      "max_entries_per_end": 2,
+      "missing_focal_places": [],
+      "reference_date": "2022",
+      "top_n": [
+        {
+          "is_tied": true,
+          "percentile": 40.0,
+          "place_dcid": "geoId/04",
+          "place_name": "State 4",
+          "rank": 1,
+          "value": 5.0
+        },
+        {
+          "is_tied": true,
+          "percentile": 40.0,
+          "place_dcid": "geoId/05",
+          "place_name": "State 5",
+          "rank": 1,
+          "value": 5.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Ranked 5 places by Total population on 2022 in ascending order; places with the same value share a rank.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "rank_cohort",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "refusal_empty_table_alignment": {
+    "coverage": {
+      "contributing_places": 0,
+      "coverage_ratio": 0.0,
+      "missing_places": [
+        "country/FRA"
+      ],
+      "mixed_vintages": false,
+      "reference_date": null,
+      "requested_places": 1
+    },
+    "message": "Total population (Count_Person) has no observations for any of the requested places (0 of 1 place).",
+    "reason": "no_observations",
+    "variable_dcid": "Count_Person"
+  },
+  "refusal_empty_table_timeseries": {
+    "caveats": [
+      "No observations match the requested places and date window for Total population."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "12850099660527362240"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": "no_observations",
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "refusal_insufficient_coverage": {
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 0.3,
+      "missing_places": [
+        "country/S3",
+        "country/S4",
+        "country/S5",
+        "country/S6",
+        "country/S7",
+        "country/S8",
+        "country/S9"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "message": "Only 3 of 10 places on 2022 have a value for Total population (Count_Person), below the required 50% coverage.",
+    "reason": "insufficient_coverage",
+    "variable_dcid": "Count_Person"
+  },
+  "refusal_ranking_insufficient_coverage": {
+    "caveats": [
+      "Only 3 of 10 places on 2022 have a value for Total population (Count_Person), below the required 50% coverage."
+    ],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 0.3,
+      "missing_places": [
+        "country/S3",
+        "country/S4",
+        "country/S5",
+        "country/S6",
+        "country/S7",
+        "country/S8",
+        "country/S9"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "insufficient_coverage",
+    "scaling_factor": null,
+    "script": "rank_cohort",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "refusal_ranking_invalid_n": {
+    "caveats": [
+      "max_entries_per_end must be at least 1, not 0."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "invalid_parameters",
+    "scaling_factor": null,
+    "script": "rank_cohort",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "refusal_scaling_mismatch": {
+    "message": "Scaling factors differ: Total population (Count_Person) reports a scaling factor of 1; Total population (Count_Person) reports a scaling factor of 1000.",
+    "reason": "scaling_mismatch"
+  },
+  "refusal_unit_mismatch": {
+    "message": "Units differ: Total population (Count_Person) reports USDollar; Total population (Count_Person) reports Euro.",
+    "reason": "unit_mismatch"
+  },
+  "summary_cohort": {
+    "alternative_sources": [
+      {
+        "facet_id": "18369491376878146239",
+        "measurement_method": null,
+        "observation_period": "P1Y",
+        "places_found_count": null,
+        "provenance_url": "https://datatopics.worldbank.org/world-development-indicators/",
+        "unit": null
+      }
+    ],
+    "date_range": [
+      "2021",
+      "2023"
+    ],
+    "facet_id": "12850099660527362240",
+    "measurement_method": null,
+    "observation_count": 12,
+    "observation_period": "P1Y",
+    "places_with_data": [
+      "Country 0 (country/C0)",
+      "Country 1 (country/C1)",
+      "Country 2 (country/C2)",
+      "Country 3 (country/C3)",
+      "Country 4 (country/C4)",
+      "Country 5 (country/C5)",
+      "Country 6 (country/C6)",
+      "Country 7 (country/C7)",
+      "Country 8 (country/C8)",
+      "Country 9 (country/C9)"
+    ],
+    "places_with_data_count": 10,
+    "places_without_data": [],
+    "places_without_data_count": 0,
+    "sample_rows": [
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C0",
+        "place_name": "Country 0",
+        "value": 0.0
+      },
+      {
+        "date": "2023",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C1",
+        "place_name": "Country 1",
+        "value": 2000.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C4",
+        "place_name": "Country 4",
+        "value": 500.0
+      },
+      {
+        "date": "2022",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C6",
+        "place_name": "Country 6",
+        "value": 200.0
+      },
+      {
+        "date": "2021",
+        "facet_id": "12850099660527362240",
+        "place_dcid": "country/C9",
+        "place_name": "Country 9",
+        "value": 900.0
+      }
+    ],
+    "scaling_factor": null,
+    "source": {
+      "dataset": null,
+      "date_range": null,
+      "license": null,
+      "name": "wikidata.org",
+      "provider": null,
+      "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+    },
+    "unit": null,
+    "value_range": [
+      0.0,
+      2000.0
+    ],
+    "variable_dcid": "Count_Person",
+    "variable_name": "Total population"
+  },
+  "summary_empty_table": {
+    "alternative_sources": [],
+    "date_range": null,
+    "facet_id": "12850099660527362240",
+    "measurement_method": null,
+    "observation_count": 0,
+    "observation_period": null,
+    "places_with_data": [],
+    "places_with_data_count": 0,
+    "places_without_data": [
+      "country/FRA (country/FRA)"
+    ],
+    "places_without_data_count": 1,
+    "sample_rows": [],
+    "scaling_factor": null,
+    "source": {
+      "dataset": null,
+      "date_range": null,
+      "license": null,
+      "name": "wikidata.org",
+      "provider": null,
+      "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+    },
+    "unit": null,
+    "value_range": null,
+    "variable_dcid": "Count_Person",
+    "variable_name": "Total population"
+  },
+  "summary_multi_decade_positive": {
+    "alternative_sources": [
+      {
+        "facet_id": "12850099660527362240",
+        "measurement_method": "WikidataPopulation",
+        "observation_period": null,
+        "places_found_count": null,
+        "provenance_url": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+        "unit": null
+      }
+    ],
+    "date_range": [
+      "2000",
+      "2020"
+    ],
+    "facet_id": "18369491376878146239",
+    "measurement_method": null,
+    "observation_count": 21,
+    "observation_period": "P1Y",
+    "places_with_data": [
+      "Germany (country/DEU)"
+    ],
+    "places_with_data_count": 1,
+    "places_without_data": [],
+    "places_without_data_count": 0,
+    "sample_rows": [
+      {
+        "date": "2000",
+        "facet_id": "18369491376878146239",
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 100.0
+      },
+      {
+        "date": "2005",
+        "facet_id": "18369491376878146239",
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 180.0
+      },
+      {
+        "date": "2010",
+        "facet_id": "18369491376878146239",
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 100.0
+      },
+      {
+        "date": "2015",
+        "facet_id": "18369491376878146239",
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 150.0
+      },
+      {
+        "date": "2020",
+        "facet_id": "18369491376878146239",
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 200.0
+      }
+    ],
+    "scaling_factor": null,
+    "source": {
+      "dataset": null,
+      "date_range": null,
+      "license": null,
+      "name": "datatopics.worldbank.org",
+      "provider": null,
+      "url": "https://datatopics.worldbank.org/world-development-indicators/"
+    },
+    "unit": null,
+    "value_range": [
+      100.0,
+      200.0
+    ],
+    "variable_dcid": "Count_Person",
+    "variable_name": "Total population"
+  },
+  "timeseries_daily_change_under_a_year": {
+    "caveats": [
+      "The compound annual growth rate is undefined for France because the series spans less than a year."
+    ],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 1,
+      "series": [
+        {
+          "absolute_change": 9.0,
+          "cagr": null,
+          "end_date": "2020-03-02",
+          "end_value": 10.0,
+          "local_extrema": [],
+          "max_date": "2020-03-02",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 9.0,
+            "from_date": "2020-03-01",
+            "from_value": 1.0,
+            "percent_change": 900.0,
+            "to_date": "2020-03-02",
+            "to_value": 10.0
+          },
+          "max_value": 10.0,
+          "min_date": "2020-03-01",
+          "min_value": 1.0,
+          "percent_change": 900.0,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "point_count": 2,
+          "start_date": "2020-03-01",
+          "start_value": 1.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_mixed_precision": {
+    "caveats": [
+      "France has dates at more than one precision, such as years and months, so only the most common precision is analyzed for each.",
+      "Only one observation is available for France, so no change over time is computed."
+    ],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 1,
+      "series": [
+        {
+          "absolute_change": null,
+          "cagr": null,
+          "end_date": "2020-01",
+          "end_value": 50.0,
+          "local_extrema": [],
+          "max_date": "2020-01",
+          "max_period_decrease": null,
+          "max_period_increase": null,
+          "max_value": 50.0,
+          "min_date": "2020-01",
+          "min_value": 50.0,
+          "percent_change": null,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "point_count": 1,
+          "start_date": "2020-01",
+          "start_value": 50.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_multi_decade_positive": {
+    "caveats": [],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 1,
+      "series": [
+        {
+          "absolute_change": 100.0,
+          "cagr": 3.5264923841377582,
+          "end_date": "2020",
+          "end_value": 200.0,
+          "local_extrema": [
+            {
+              "date": "2005",
+              "kind": "peak",
+              "value": 180.0
+            },
+            {
+              "date": "2010",
+              "kind": "trough",
+              "value": 100.0
+            }
+          ],
+          "max_date": "2020",
+          "max_period_decrease": {
+            "absolute_change": -30.0,
+            "from_date": "2005",
+            "from_value": 180.0,
+            "percent_change": -16.666666666666664,
+            "to_date": "2006",
+            "to_value": 150.0
+          },
+          "max_period_increase": {
+            "absolute_change": 40.0,
+            "from_date": "2004",
+            "from_value": 140.0,
+            "percent_change": 28.57142857142857,
+            "to_date": "2005",
+            "to_value": 180.0
+          },
+          "max_value": 200.0,
+          "min_date": "2000",
+          "min_value": 100.0,
+          "percent_change": 100.0,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "point_count": 21,
+          "start_date": "2000",
+          "start_value": 100.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_multi_place_disjoint_dates": {
+    "caveats": [
+      "The places share no observation date, so they are not compared against each other."
+    ],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 2,
+      "series": [
+        {
+          "absolute_change": 0.29999999999999716,
+          "cagr": 0.4615384615384466,
+          "end_date": "2011",
+          "end_value": 65.3,
+          "local_extrema": [],
+          "max_date": "2011",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 0.29999999999999716,
+            "from_date": "2010",
+            "from_value": 65.0,
+            "percent_change": 0.4615384615384572,
+            "to_date": "2011",
+            "to_value": 65.3
+          },
+          "max_value": 65.3,
+          "min_date": "2010",
+          "min_value": 65.0,
+          "percent_change": 0.4615384615384572,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "point_count": 2,
+          "start_date": "2010",
+          "start_value": 65.0
+        },
+        {
+          "absolute_change": 0.20000000000000284,
+          "cagr": 0.24096385542169418,
+          "end_date": "2021",
+          "end_value": 83.2,
+          "local_extrema": [],
+          "max_date": "2021",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 0.20000000000000284,
+            "from_date": "2020",
+            "from_value": 83.0,
+            "percent_change": 0.24096385542169016,
+            "to_date": "2021",
+            "to_value": 83.2
+          },
+          "max_value": 83.2,
+          "min_date": "2020",
+          "min_value": 83.0,
+          "percent_change": 0.24096385542169016,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "point_count": 2,
+          "start_date": "2020",
+          "start_value": 83.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_multi_place_shared_date": {
+    "caveats": [],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": {
+        "deltas_from_leader": [
+          {
+            "absolute_delta": -15.700000000000003,
+            "percent_delta": -18.87019230769231,
+            "place_dcid": "country/FRA",
+            "place_name": "France"
+          }
+        ],
+        "entries": [
+          {
+            "place_dcid": "country/DEU",
+            "place_name": "Germany",
+            "value": 83.2
+          },
+          {
+            "place_dcid": "country/FRA",
+            "place_name": "France",
+            "value": 67.5
+          }
+        ],
+        "leader": {
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "value": 83.2
+        },
+        "reference_date": "2021",
+        "spread": 15.700000000000003
+      },
+      "missing_places": [],
+      "place_count": 2,
+      "series": [
+        {
+          "absolute_change": 0.5,
+          "cagr": 0.746268656716409,
+          "end_date": "2021",
+          "end_value": 67.5,
+          "local_extrema": [],
+          "max_date": "2021",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 0.5,
+            "from_date": "2020",
+            "from_value": 67.0,
+            "percent_change": 0.7462686567164178,
+            "to_date": "2021",
+            "to_value": 67.5
+          },
+          "max_value": 67.5,
+          "min_date": "2020",
+          "min_value": 67.0,
+          "percent_change": 0.7462686567164178,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "point_count": 2,
+          "start_date": "2020",
+          "start_value": 67.0
+        },
+        {
+          "absolute_change": 0.20000000000000284,
+          "cagr": 0.24096385542169418,
+          "end_date": "2021",
+          "end_value": 83.2,
+          "local_extrema": [],
+          "max_date": "2021",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 0.20000000000000284,
+            "from_date": "2020",
+            "from_value": 83.0,
+            "percent_change": 0.24096385542169016,
+            "to_date": "2021",
+            "to_value": 83.2
+          },
+          "max_value": 83.2,
+          "min_date": "2020",
+          "min_value": 83.0,
+          "percent_change": 0.24096385542169016,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "point_count": 2,
+          "start_date": "2020",
+          "start_value": 83.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_negative_end": {
+    "caveats": [
+      "The compound annual growth rate is undefined for Argentina because the ending value is not positive."
+    ],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 1,
+      "series": [
+        {
+          "absolute_change": -55.0,
+          "cagr": null,
+          "end_date": "2020",
+          "end_value": -5.0,
+          "local_extrema": [],
+          "max_date": "2010",
+          "max_period_decrease": {
+            "absolute_change": -40.0,
+            "from_date": "2010",
+            "from_value": 50.0,
+            "percent_change": -80.0,
+            "to_date": "2015",
+            "to_value": 10.0
+          },
+          "max_period_increase": null,
+          "max_value": 50.0,
+          "min_date": "2020",
+          "min_value": -5.0,
+          "percent_change": -110.00000000000001,
+          "place_dcid": "country/ARG",
+          "place_name": "Argentina",
+          "point_count": 3,
+          "start_date": "2010",
+          "start_value": 50.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_single_point": {
+    "caveats": [
+      "Only one observation is available for France, so no change over time is computed."
+    ],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 1,
+      "series": [
+        {
+          "absolute_change": null,
+          "cagr": null,
+          "end_date": "2023",
+          "end_value": 68287487.0,
+          "local_extrema": [],
+          "max_date": "2023",
+          "max_period_decrease": null,
+          "max_period_increase": null,
+          "max_value": 68287487.0,
+          "min_date": "2023",
+          "min_value": 68287487.0,
+          "percent_change": null,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "point_count": 1,
+          "start_date": "2023",
+          "start_value": 68287487.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "timeseries_zero_start": {
+    "caveats": [
+      "The percentage change is undefined for Zimbabwe because the starting value is zero.",
+      "The compound annual growth rate is undefined for Zimbabwe because the starting value is not positive."
+    ],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": null,
+      "missing_places": [],
+      "place_count": 1,
+      "series": [
+        {
+          "absolute_change": 50.0,
+          "cagr": null,
+          "end_date": "2020",
+          "end_value": 50.0,
+          "local_extrema": [],
+          "max_date": "2020",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 25.0,
+            "from_date": "2010",
+            "from_value": 0.0,
+            "percent_change": null,
+            "to_date": "2015",
+            "to_value": 25.0
+          },
+          "max_value": 50.0,
+          "min_date": "2010",
+          "min_value": 0.0,
+          "percent_change": null,
+          "place_dcid": "country/ZWE",
+          "place_name": "Zimbabwe",
+          "point_count": 3,
+          "start_date": "2010",
+          "start_value": 0.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  }
+}
