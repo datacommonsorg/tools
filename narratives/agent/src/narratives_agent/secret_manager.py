@@ -45,6 +45,8 @@ except ImportError:
     )
 
 _SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
+_SECRET_MANAGER_DEFAULT_TTL_SECONDS = 300.0
+_SECRET_MANAGER_DEFAULT_NEGATIVE_TTL_SECONDS = 30.0
 
 _secret_client: Any = None
 _secret_manager_lock = threading.RLock()
@@ -74,11 +76,11 @@ def reset_secret_manager_client() -> None:
 
 def _normalize_secret_resource_name(secret_name: str, env_var: str) -> str:
     """Normalizes `secret_name` to a versioned Secret Manager resource name."""
-    normalized_secret_name = secret_name.strip().rstrip("/")
-    if not normalized_secret_name:
+    normalized = secret_name.strip().rstrip("/")
+    if not normalized:
         return ""
     project = get_settings().google_cloud_project
-    if not normalized_secret_name.startswith("projects/"):
+    if not normalized.startswith("projects/"):
         if not project:
             logger.error(
                 "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
@@ -86,10 +88,10 @@ def _normalize_secret_resource_name(secret_name: str, env_var: str) -> str:
                 env_var,
             )
             return ""
-        return f"projects/{project}/secrets/{normalized_secret_name}/versions/latest"
-    if "/versions/" not in normalized_secret_name:
-        return f"{normalized_secret_name}/versions/latest"
-    return normalized_secret_name
+        return f"projects/{project}/secrets/{normalized}/versions/latest"
+    if "/versions/" not in normalized:
+        return f"{normalized}/versions/latest"
+    return normalized
 
 
 def fetch_secret(secret_name: str, env_var: str) -> str:
@@ -136,17 +138,23 @@ def fetch_secret(secret_name: str, env_var: str) -> str:
 
 
 def fetch_secret_with_ttl(
-    secret_name: str, env_var: str, ttl_seconds: float = 300.0
+    secret_name: str,
+    env_var: str,
+    ttl_seconds: float = _SECRET_MANAGER_DEFAULT_TTL_SECONDS,
+    negative_ttl_seconds: float = _SECRET_MANAGER_DEFAULT_NEGATIVE_TTL_SECONDS,
 ) -> str:
     """Fetches a secret from Secret Manager with time-bounded in-memory caching.
 
     Multiple concurrent requests for the same secret share a single lookup.
-    Cached values expire after `ttl_seconds`.
+    Cached values expire after `ttl_seconds` on success, or
+    `negative_ttl_seconds` on failure (empty string) to prevent hammering Secret
+    Manager while allowing quick recovery from transient errors.
 
     Args:
         secret_name: Short secret ID or full resource path.
         env_var: Name of the environment variable (for log messages).
-        ttl_seconds: Seconds to retain the cached secret before refetching.
+        ttl_seconds: Seconds to retain successful lookups before refetching.
+        negative_ttl_seconds: Seconds to retain failed lookups before retrying.
 
     Returns:
         The secret payload string, or an empty string on failure.
@@ -155,14 +163,17 @@ def fetch_secret_with_ttl(
         return ""
     now = time.time()
     cached = _secret_manager_cache.get(secret_name)
-    if cached and now - cached[0] < ttl_seconds:
-        return cached[1]
+    if cached:
+        active_ttl = ttl_seconds if cached[1] else negative_ttl_seconds
+        if now - cached[0] < active_ttl:
+            return cached[1]
     with _secret_manager_lock:
         cached = _secret_manager_cache.get(secret_name)
         now = time.time()
-        if cached and now - cached[0] < ttl_seconds:
-            return cached[1]
+        if cached:
+            active_ttl = ttl_seconds if cached[1] else negative_ttl_seconds
+            if now - cached[0] < active_ttl:
+                return cached[1]
         key = fetch_secret(secret_name, env_var)
-        if key:
-            _secret_manager_cache[secret_name] = (now, key)
+        _secret_manager_cache[secret_name] = (now, key)
         return key

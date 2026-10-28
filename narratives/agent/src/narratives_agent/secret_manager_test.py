@@ -191,6 +191,55 @@ def test_fetch_secret_with_ttl_caches_and_expires(
     assert call_count == 2
 
 
+def test_fetch_secret_with_ttl_negative_caching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Negative caching for failed lookups in `fetch_secret_with_ttl`.
+    # Situation: A secret lookup fails initially (returns ""), followed by a
+    #   second lookup within the negative TTL, and a third lookup after the
+    #   negative TTL expires when the secret becomes available.
+    # Expectation: The second lookup returns "" without calling `fetch_secret`
+    #   again. After the negative TTL expires, the third lookup calls
+    #   `fetch_secret` and returns the newly available key.
+    call_count = 0
+
+    def _stub_fetch(name: str, var: str) -> str:
+        nonlocal call_count
+        call_count += 1
+        return "" if call_count == 1 else "recovered-key"
+
+    monkeypatch.setattr(secret_manager, "fetch_secret", _stub_fetch)
+    secret_manager.reset_secret_manager_client()
+
+    # Initial failed fetch
+    val1 = secret_manager.fetch_secret_with_ttl(
+        "failing-secret", "VAR", ttl_seconds=300.0, negative_ttl_seconds=10.0
+    )
+    assert val1 == ""
+    assert call_count == 1
+
+    # Second call within negative TTL uses cached empty string
+    val2 = secret_manager.fetch_secret_with_ttl(
+        "failing-secret", "VAR", ttl_seconds=300.0, negative_ttl_seconds=10.0
+    )
+    assert val2 == ""
+    assert call_count == 1
+
+    # Fast-forward past negative TTL
+    cached = secret_manager._secret_manager_cache["failing-secret"]
+    secret_manager._secret_manager_cache["failing-secret"] = (
+        cached[0] - 15.0,
+        cached[1],
+    )
+
+    # Call after negative TTL expiry retries and gets the recovered key
+    val3 = secret_manager.fetch_secret_with_ttl(
+        "failing-secret", "VAR", ttl_seconds=300.0, negative_ttl_seconds=10.0
+    )
+    assert val3 == "recovered-key"
+    assert call_count == 2
+
+
 class _SignalingSecretCache(dict[str, tuple[float, str]]):
     """Secret cache that sets an event when a lookup returns no entry."""
 
