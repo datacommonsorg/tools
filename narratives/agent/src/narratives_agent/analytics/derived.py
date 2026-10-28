@@ -62,6 +62,7 @@ from narratives_agent.analytics.tables import (
 )
 
 __all__ = [
+    "SCALED_OPERATIONS",
     "DerivedMetricOutcome",
     "compute_derived_metric",
     "derive_observation_table",
@@ -80,7 +81,7 @@ _PER_CAPITA_SCALES = (_UNSCALED, 1_000.0, 100_000.0)
 _MIN_READABLE_PER_CAPITA_MEDIAN = 1.0
 
 # Quotient operations accept an optional caller-supplied scale multiplier.
-_SCALED_OPERATIONS: frozenset[DerivedOperation] = frozenset(
+SCALED_OPERATIONS: frozenset[DerivedOperation] = frozenset(
     {"per_capita", "ratio"}
 )
 # Additive operations require both inputs to share a unit and scaling factor.
@@ -430,7 +431,7 @@ def _validate_derived_parameters(
 ) -> str | None:
     """Returns an `invalid_parameters` message when any argument is invalid."""
     if scale is not None:
-        if operation not in _SCALED_OPERATIONS:
+        if operation not in SCALED_OPERATIONS:
             return (
                 "The scale parameter applies only to 'per_capita' and "
                 f"'ratio', not {operation!r}."

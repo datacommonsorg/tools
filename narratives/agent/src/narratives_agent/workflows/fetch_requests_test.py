@@ -25,9 +25,11 @@ from pydantic import ValidationError
 
 from narratives_agent.json_value import JsonObject
 from narratives_agent.workflows.fetch_requests import (
+    NAMED_PLACE_SERIES_LIMIT,
     FetchArgumentError,
     FetchMultiEntityRequest,
     FetchObservationsRequest,
+    is_named_place_cohort,
     parse_fetch_request,
 )
 
@@ -246,3 +248,22 @@ def test_entity_dcids_are_stripped_and_deduplicated() -> None:
         "donor": ["country/ARE", "country/USA"],
         "recipient": ["country/AFG"],
     }
+
+
+@pytest.mark.parametrize(
+    ("place_count", "expected"),
+    [
+        (NAMED_PLACE_SERIES_LIMIT, False),
+        (NAMED_PLACE_SERIES_LIMIT + 1, True),
+    ],
+    ids=["at the limit", "above the limit"],
+)
+def test_named_places_above_the_series_limit_are_a_cohort(
+    place_count: int, expected: bool
+) -> None:
+    # Test: `is_named_place_cohort` at its boundary.
+    # Situation: Exactly `NAMED_PLACE_SERIES_LIMIT` named places, and one
+    #   more.
+    # Expectation: The limit itself is still a set of series; one more place
+    #   makes a cohort.
+    assert is_named_place_cohort(place_count) is expected
