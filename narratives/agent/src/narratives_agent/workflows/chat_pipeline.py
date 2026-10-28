@@ -68,6 +68,7 @@ from narratives_agent.workflows.mcp_loop import (
     DiscoveryResult,
     McpLoopError,
     execute_discovery_loop,
+    format_count,
 )
 from narratives_agent.workflows.messages import (
     CHART_CONFIG_STATUS,
@@ -134,13 +135,6 @@ _FALLBACK_SOURCE = Source(name="Data Commons", url="https://datacommons.org/")
 
 _NO_CHARTS: JsonObject = {"should_render": False}
 
-_SYNTHESIS_FAILED = SYNTHESIS_FAILED
-_MCP_UNAVAILABLE = MCP_UNAVAILABLE
-_MCP_TOOLS_TIMEOUT = MCP_TOOLS_TIMEOUT
-_INTERNAL_ERROR = INTERNAL_ERROR
-_CLASSIFY_STATUS = CLASSIFY_STATUS
-_NO_DATA_MESSAGE = NO_DATA_MESSAGE
-_TRUNCATED_MESSAGE = TRUNCATED_MESSAGE
 _NO_OBSERVATIONS_NOTE = "No observations were retrieved for the question."
 
 # Default pattern recorded in telemetry when the classifier call failed.
@@ -377,7 +371,8 @@ def _collect_tables_used(
     """
     if specification is None:
         return ()
-    # list_referenced_table_ids returns table IDs in first-reference order.
+    # list_referenced_table_ids returns only fetched (`t<n>`) table IDs, in
+    # first-reference order; the derived (`s<n>`) step IDs follow them.
     table_ids = [
         *specification.list_referenced_table_ids(),
         *(
@@ -409,19 +404,6 @@ def _describe_derived_inputs(
         for step in specification.steps
         if isinstance(step, ComputeDerivedMetricStep)
     }
-
-
-def _format_count(number: int, noun: str) -> str:
-    """Formats a count with its noun, singular or plural.
-
-    Args:
-        number: The integer count.
-        noun: The singular noun phrase.
-
-    Returns:
-        The formatted count string (for example, `"1 place"` or `"2 places"`).
-    """
-    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
 def render_analysis_context(
@@ -470,11 +452,11 @@ def render_analysis_context(
         )
         if len(places) > _INVENTORY_PLACE_CAP:
             extra = len(places) - _INVENTORY_PLACE_CAP
-            named += f", and {_format_count(extra, 'other place')}"
+            named += f", and {format_count(extra, 'other place')}"
         scope = (
             f"every {table.child_place_type} in {table.parent_place_dcid}"
             if table.child_place_type and table.parent_place_dcid
-            else _format_count(len(places), "place")
+            else format_count(len(places), "place")
         )
         span = f"{dates[0]} to {dates[-1]}" if dates else "no dates"
         if table_id in derived_inputs:
@@ -533,11 +515,11 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
             _MCP_TOOLS_TIMEOUT_SECONDS,
         )
         raise TurnAbortedError(
-            ErrorType.MCP_TIMEOUT, _MCP_TOOLS_TIMEOUT
+            ErrorType.MCP_TIMEOUT, MCP_TOOLS_TIMEOUT
         ) from error
     if not tools:
         logger.warning("MCP unavailable: not connected or no tools available")
-        raise TurnAbortedError(ErrorType.MCP_UNAVAILABLE, _MCP_UNAVAILABLE)
+        raise TurnAbortedError(ErrorType.MCP_UNAVAILABLE, MCP_UNAVAILABLE)
     warn_on_missing_tools(tools)
 
     _emit_status(ctx, DISCOVERY_STATUS)
@@ -576,7 +558,7 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     # Include `truncated` on `data_status` so the UI knows when data was cut.
     message: str | None = None
     if not result.has_data:
-        message = _TRUNCATED_MESSAGE if loop.truncated else _NO_DATA_MESSAGE
+        message = TRUNCATED_MESSAGE if loop.truncated else NO_DATA_MESSAGE
     ctx.emit(
         DataStatusFrame(
             data_status={
@@ -702,7 +684,7 @@ async def run_synthesis_phase(
         # The client has already logged the redacted upstream error, so the
         # user receives a fixed message.
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_ERROR, _SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_ERROR, SYNTHESIS_FAILED
         ) from error
 
     full_text = ""
@@ -719,17 +701,17 @@ async def run_synthesis_phase(
         # Once answer text has streamed to the client, a mid-stream block
         # leaves the response truncated and is reported as a stream error.
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_STREAM_ERROR, _SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
         ) from error
     except GeminiStreamError as error:
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_STREAM_ERROR, _SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
         ) from error
     finally:
         await stream.aclose()
     if not full_text.strip():
         logger.warning("Synthesis returned no answer text")
-        raise TurnAbortedError(ErrorType.SYNTHESIS_EMPTY, _SYNTHESIS_FAILED)
+        raise TurnAbortedError(ErrorType.SYNTHESIS_EMPTY, SYNTHESIS_FAILED)
     return full_text
 
 
@@ -840,8 +822,8 @@ async def run_followups(
         )
         if follow_ups:
             ctx.emit(FollowUpsFrame(follow_up_questions=follow_ups))
-    except Exception:
-        logger.exception("Follow-up generation failed")
+    except Exception as error:
+        logger.warning("Follow-up generation failed: %s", type(error).__name__)
 
 
 def _load_turn_config() -> AgentConfig:
@@ -902,7 +884,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             )
             return
         config = _load_turn_config()
-        emit(StatusFrame(phase="classify", message=_CLASSIFY_STATUS))
+        emit(StatusFrame(phase="classify", message=CLASSIFY_STATUS))
         with telemetry.phase("classify"):
             admission = await classify_query(transcript, config, telemetry)
         telemetry.pattern = (
@@ -981,7 +963,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         emit(
             TerminalErrorFrame(
                 idempotency_key=idempotency_key,
-                error=_INTERNAL_ERROR,
+                error=INTERNAL_ERROR,
                 reason=ErrorType.INTERNAL_ERROR,
             )
         )

@@ -321,7 +321,7 @@ def _select_unique(values: list[str], cap: int) -> list[str]:
     return list(dict.fromkeys(values))[:cap]
 
 
-def _format_count(count: int, singular: str, plural: str | None = None) -> str:
+def format_count(count: int, singular: str, plural: str | None = None) -> str:
     """Formats `count` with its grammatical singular or plural noun.
 
     Args:
@@ -362,7 +362,7 @@ def _collect_candidate_names(result_text: str) -> list[str]:
         return []
     place_dcids = set(places) if isinstance(places, dict) else set()
     return [
-        str(name)
+        name
         for dcid, name in names.items()
         if dcid not in place_dcids and isinstance(name, str) and name
     ]
@@ -421,10 +421,10 @@ def _build_server_report(
         listed = ", ".join(fetched)
         if len(unique_empty) > len(fetched):
             extra = len(unique_empty) - len(fetched)
-            listed += f", and {_format_count(extra, 'other variable')}"
+            listed += f", and {format_count(extra, 'other variable')}"
         tested = (
-            f"the {_format_count(len(unique_empty), 'variable')} fetched had "
-            f"no rows for the requested places ({listed})"
+            f"the {format_count(len(unique_empty), 'variable')} fetched had "
+            f"no rows for the requested entities ({listed})"
         )
     else:
         tested = "no candidate variable was fetched to confirm it has data"
@@ -462,7 +462,7 @@ def _build_tool_record(
 
 
 def _format_validation_errors(
-    error: ValidationError, *, include_location: bool
+    error: ValidationError, *, default_location: str
 ) -> list[str]:
     """Formats Pydantic validation errors without echoing untrusted input.
 
@@ -471,14 +471,16 @@ def _format_validation_errors(
     extra key name to `loc`. At the model-input boundary, this helper
     replaces those messages with the expected tags or values from `ctx` and
     strips the extra key name from `loc` so an arbitrary model-supplied
-    string is never echoed back.
+    string is never echoed back. Each message is prefixed with its field
+    path so the model can tell which argument to correct.
 
     Args:
         error: The `ValidationError` raised when validating model arguments.
-        include_location: Whether to prefix each message with its field path.
+        default_location: The label used when an error has no field path,
+            such as a missing argument object (for example, `"report"`).
 
     Returns:
-        A list of sanitized validation error descriptions.
+        A list of sanitized validation error descriptions, one per line.
     """
     formatted: list[str] = []
     for item in error.errors(include_url=False, include_input=False):
@@ -493,18 +495,11 @@ def _format_validation_errors(
             message = f"Input should be {expected}"
         else:
             message = item["msg"]
-        if include_location:
-            loc_parts = (
-                item["loc"][:-1]
-                if error_type == "extra_forbidden"
-                else item["loc"]
-            )
-            location = (
-                ".".join(str(loc) for loc in loc_parts) or "specification"
-            )
-            formatted.append(f"- {location}: {message}")
-        else:
-            formatted.append(message)
+        loc_parts = (
+            item["loc"][:-1] if error_type == "extra_forbidden" else item["loc"]
+        )
+        location = ".".join(str(loc) for loc in loc_parts) or default_location
+        formatted.append(f"- {location}: {message}")
     return formatted
 
 
@@ -512,6 +507,7 @@ async def _run_tool(
     function_call: FunctionCall,
     declared: frozenset[str],
     limit: asyncio.Semaphore,
+    fetch_lock: asyncio.Lock,
     telemetry: TurnTelemetry,
     cache: TurnCache,
 ) -> JsonObject:
@@ -526,6 +522,8 @@ async def _run_tool(
         function_call: The model's `FunctionCall`.
         declared: Names of the tools declared to the model.
         limit: Bounds how many tool calls run at once.
+        fetch_lock: Held for the whole of each fetch, so that fetches never
+            overlap on `cache`.
         telemetry: The turn's telemetry, which receives the tool name.
         cache: The turn's cache, which receives fetched tables and
             metadata payloads.
@@ -557,18 +555,21 @@ async def _run_tool(
         )
     logger.info("Executing discovery tool: %s", name)
     try:
-        async with limit:
-            if name in FETCH_FUNCTION_NAMES:
-                request = parse_fetch_request(name, arguments)
+        if name in FETCH_FUNCTION_NAMES:
+            request = parse_fetch_request(name, arguments)
+            # The lock is taken before the semaphore, so a fetch waiting for
+            # another fetch does not hold a slot a search could use.
+            async with fetch_lock, limit:
                 outcome = await run_fetch(request, cache)
-                result_text = json.dumps(serialize_fetch_result(outcome))
-                failed = False
-            else:
+            result_text = json.dumps(serialize_fetch_result(outcome))
+            failed = False
+        else:
+            async with limit:
                 result = await mcp_client.async_call_tool(name, arguments)
-                result_text = _format_result_text(result)
-                failed = False
-                if name == TOOL_GET_VARIABLE_METADATA:
-                    cache.record_variable_metadata(result)
+            result_text = _format_result_text(result)
+            failed = False
+            if name == TOOL_GET_VARIABLE_METADATA:
+                cache.record_variable_metadata(result)
     except FetchArgumentError as error:
         result_text = json.dumps(error.build_error_response())
         failed = True
@@ -590,7 +591,13 @@ async def _run_tools(
     telemetry: TurnTelemetry,
     cache: TurnCache,
 ) -> list[JsonObject]:
-    """Runs every call of one model turn concurrently, in a task group.
+    """Runs the calls of one model turn in a task group.
+
+    The search and metadata calls run concurrently. The fetches run one at a
+    time, in the order of `function_calls`, because `TurnCache` requires
+    that fetches never overlap: each fetch reads the facet a variable is
+    locked to before it calls MCP. Running them in call order also stores
+    their tables as `t1`, `t2`, ... in the order the model asked for them.
 
     The calls share the turn's MCP session because the caller opened its
     scope before this task spawned them. The first failure cancels the
@@ -609,11 +616,17 @@ async def _run_tools(
     Raises:
         McpLoopError: If any call fails below the tool layer.
     """
+    # `asyncio.Lock` wakes waiters in the order they blocked, and each task
+    # reaches the lock without awaiting anything earlier, so the fetches
+    # acquire it in the order the tasks are created.
+    fetch_lock = asyncio.Lock()
     try:
         async with asyncio.TaskGroup() as group:
             tasks = [
                 group.create_task(
-                    _run_tool(call, declared, limit, telemetry, cache)
+                    _run_tool(
+                        call, declared, limit, fetch_lock, telemetry, cache
+                    )
                 )
                 for call in function_calls
             ]
@@ -698,7 +711,9 @@ class _Loop:
             return self._record_failed_submission(
                 "The specification is invalid:\n"
                 + "\n".join(
-                    _format_validation_errors(error, include_location=True)
+                    _format_validation_errors(
+                        error, default_location="specification"
+                    )
                 )
             )
         self.result.specification = specification
@@ -774,9 +789,9 @@ class _Loop:
             )
         except ValidationError as error:
             return (
-                "The report is invalid: "
-                + "; ".join(
-                    _format_validation_errors(error, include_location=False)
+                "The report is invalid:\n"
+                + "\n".join(
+                    _format_validation_errors(error, default_location="report")
                 ),
                 False,
             )
@@ -1155,4 +1170,5 @@ __all__ = [
     "McpLoopError",
     "StatusCallback",
     "execute_discovery_loop",
+    "format_count",
 ]

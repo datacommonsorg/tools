@@ -534,9 +534,10 @@ async def test_report_unavailable_ends_the_loop_and_rejects_a_bad_report(
     # Test: The model's no-data report.
     # Situation: The model first calls `report_unavailable` without a
     #   `reason`, then calls it with all required fields.
-    # Expectation: The malformed report is returned as an error and the
-    #   loop continues; the complete report ends the loop with the report
-    #   recorded, no digest, and no retry counted.
+    # Expectation: The malformed report is returned as an error naming the
+    #   missing `reason` field and the loop continues; the complete report
+    #   ends the loop with the report recorded, no digest, and no retry
+    #   counted.
     _ = calls
     model_answers(
         _make_calls_turn(
@@ -553,7 +554,9 @@ async def test_report_unavailable_ends_the_loop_and_rejects_a_bad_report(
     assert result.processing_retries == 0
     rejected, accepted = result.tool_calls
     assert rejected["status"] == "error"
-    assert str(rejected["result"]).startswith("The report is invalid:")
+    assert rejected["result"] == (
+        "The report is invalid:\n- reason: Field required"
+    )
     assert accepted["status"] == "success"
     assert telemetry.mcp_iterations == 2
 
@@ -767,6 +770,94 @@ async def test_tool_calls_of_one_turn_run_concurrently_in_the_scope(
         "report_unavailable": 1,
     }
     assert not result.truncated
+
+
+@pytest.mark.asyncio
+async def test_fetches_of_one_turn_run_one_at_a_time_in_call_order(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    model_answers: Callable[..., list[list[Message]]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Fetches from a single model turn never overlap on the cache.
+    # Situation: The model calls `fetch_observations` for `Slow`, then
+    #   `search_indicators`, then `fetch_observations` for `Fast`, in one
+    #   turn. The `Slow` fetch yields to the event loop more times than the
+    #   `Fast` fetch, so the `Fast` fetch would finish first if the two ran
+    #   together. Each fetch waits for the search to start, and the search
+    #   waits for a fetch to start, so the search must overlap a fetch.
+    # Expectation: At most one fetch is in flight at a time; `Slow` runs to
+    #   completion before `Fast` starts and is stored as `t1`, with `Fast`
+    #   as `t2`; the search runs while a fetch is in flight; and the records
+    #   keep the model's call order.
+    _ = calls
+    log: list[str] = []
+    in_flight = 0
+    peak_in_flight = 0
+    search_started = asyncio.Event()
+    fetch_started = asyncio.Event()
+
+    async def run_fetch(request: FetchRequest, cache: TurnCache) -> FetchResult:
+        nonlocal in_flight, peak_in_flight
+        in_flight += 1
+        peak_in_flight = max(peak_in_flight, in_flight)
+        log.append(f"start:{request.variable_dcid}")
+        fetch_started.set()
+        async with asyncio.timeout(1):
+            await search_started.wait()
+        for _ in range(5 if request.variable_dcid == "Slow" else 1):
+            await asyncio.sleep(0)
+        cached = _make_table(cache.get_next_table_id(), {"a": 1.0})
+        cache.store_fetched(cached)
+        log.append(f"end:{request.variable_dcid}:{cached.table_id}")
+        in_flight -= 1
+        return FetchResult(
+            table_id=cached.table_id, summary=summarize_table(cached.table)
+        )
+
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
+        _ = arguments
+        search_started.set()
+        async with asyncio.timeout(1):
+            await fetch_started.wait()
+        log.append(f"tool:{name}")
+        return {"content": [{"type": "text", "text": f"{name} result"}]}
+
+    monkeypatch.setattr(mcp_loop, "run_fetch", run_fetch)
+    monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
+    model_answers(
+        _make_calls_turn(
+            (
+                "fetch_observations",
+                {"variable_dcid": "Slow", "place_dcids": ["a"]},
+            ),
+            ("search_indicators", {"query": "population"}),
+            (
+                "fetch_observations",
+                {"variable_dcid": "Fast", "place_dcids": ["a"]},
+            ),
+        ),
+        _make_unavailable_turn(),
+    )
+
+    result = await _run_loop(telemetry)
+
+    assert peak_in_flight == 1
+    assert [entry for entry in log if not entry.startswith("tool:")] == [
+        "start:Slow",
+        "end:Slow:t1",
+        "start:Fast",
+        "end:Fast:t2",
+    ]
+    assert "tool:search_indicators" in log
+    slow, search, fast = result.tool_calls[:3]
+    assert [slow["name"], search["name"], fast["name"]] == [
+        "fetch_observations",
+        "search_indicators",
+        "fetch_observations",
+    ]
+    assert json.loads(str(slow["result"]))["table_id"] == "t1"
+    assert json.loads(str(fast["result"]))["table_id"] == "t2"
 
 
 @pytest.mark.parametrize(
@@ -1050,7 +1141,7 @@ async def test_the_server_reports_no_data_when_every_fetch_is_empty(
     assert report.related_available == ["Median household income"]
     assert report.reason == (
         "No data was found in 7 rounds of discovery: the 1 variable "
-        "fetched had no rows for the requested places "
+        "fetched had no rows for the requested entities "
         "(Median_Income_Household)."
     )
     filed = result.tool_calls[-1]

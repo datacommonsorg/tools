@@ -95,7 +95,16 @@ from narratives_agent.workflows.mcp_loop import (
     McpLoopError,
     StatusCallback,
 )
-from narratives_agent.workflows.messages import CHAT_DISABLED, REFUSED_MESSAGE
+from narratives_agent.workflows.messages import (
+    CHAT_DISABLED,
+    CLASSIFY_STATUS,
+    INTERNAL_ERROR,
+    MCP_UNAVAILABLE,
+    NO_DATA_MESSAGE,
+    REFUSED_MESSAGE,
+    SYNTHESIS_FAILED,
+    TRUNCATED_MESSAGE,
+)
 from narratives_agent.workflows.pattern_guidance import pattern_directive
 from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
@@ -614,7 +623,7 @@ async def test_an_unavailable_report_answers_without_data(
         {
             "has_data": False,
             "truncated": False,
-            "message": chat_pipeline._NO_DATA_MESSAGE,
+            "message": NO_DATA_MESSAGE,
         }
     ]
     assert turn.list_content_payloads("sources") == []
@@ -682,7 +691,7 @@ async def test_a_truncated_loop_without_tables_reports_no_data(
         {
             "has_data": False,
             "truncated": True,
-            "message": chat_pipeline._TRUNCATED_MESSAGE,
+            "message": TRUNCATED_MESSAGE,
         }
     ]
     assert chat_pipeline._NO_OBSERVATIONS_NOTE in turn.get_synthesis_context()
@@ -1182,7 +1191,7 @@ async def test_failed_synthesis_reports_a_fixed_message(
     assert event == "terminal"
     error_message = terminal["error"]
     assert isinstance(error_message, str)
-    assert error_message == chat_pipeline._SYNTHESIS_FAILED
+    assert error_message == SYNTHESIS_FAILED
     assert terminal["reason"] == ErrorType.SYNTHESIS_ERROR
     assert upstream not in error_message
     assert turn.finished == [(TerminalState.ERROR, ErrorType.SYNTHESIS_ERROR)]
@@ -1389,7 +1398,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
 
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.MCP_UNAVAILABLE
-    assert terminal["error"] == chat_pipeline._MCP_UNAVAILABLE
+    assert terminal["error"] == MCP_UNAVAILABLE
     assert turn.synthesis_calls == 0
     assert turn.finished == [(TerminalState.ERROR, ErrorType.MCP_UNAVAILABLE)]
 
@@ -1483,7 +1492,7 @@ async def test_an_empty_synthesis_fails_the_turn(
 
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_EMPTY
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert not any("chart_config" in data for _, data in turn.events)
     assert turn.finished == [(TerminalState.ERROR, ErrorType.SYNTHESIS_EMPTY)]
 
@@ -1518,7 +1527,7 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     assert ("content", {"text": "About "}) in turn.events
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [
         (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
     ]
@@ -1544,19 +1553,23 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
 
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.INTERNAL_ERROR
-    assert terminal["error"] == chat_pipeline._INTERNAL_ERROR
+    assert terminal["error"] == INTERNAL_ERROR
     assert turn.finished == [(TerminalState.ERROR, ErrorType.INTERNAL_ERROR)]
 
 
 @pytest.mark.asyncio
 async def test_a_follow_up_failure_leaves_the_turn_complete(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Best-effort handling of follow-up question generation.
     # Situation: `generate_follow_up_questions` raises a `RuntimeError`
     #   after the terminal event has been emitted.
     # Expectation: The single terminal event is `complete`, no follow-ups are
-    #   emitted, and the turn is recorded as `complete`.
+    #   emitted, the turn is recorded as `complete`, and the failure is
+    #   logged as one warning naming the exception type, without a traceback
+    #   or the exception text.
     async def fail_follow_ups(
         question: str,
         topics: list[str],
@@ -1569,11 +1582,20 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
         chat_pipeline, "generate_follow_up_questions", fail_follow_ups
     )
 
-    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+    with caplog.at_level(logging.WARNING, logger=chat_pipeline.__name__):
+        await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert _get_only_terminal(turn)["state"] == TerminalState.COMPLETE
     assert "follow_ups" not in turn.list_event_names()
     assert turn.finished == [(TerminalState.COMPLETE, None)]
+    (record,) = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("Follow-up generation failed")
+    ]
+    assert record.levelno == logging.WARNING
+    assert record.getMessage() == "Follow-up generation failed: RuntimeError"
+    assert record.exc_info is None
 
 
 @pytest.mark.asyncio
@@ -1630,7 +1652,7 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
 
     assert turn.events[0] == (
         "status",
-        {"phase": "classify", "message": chat_pipeline._CLASSIFY_STATUS},
+        {"phase": "classify", "message": CLASSIFY_STATUS},
     )
     statuses = [
         data["phase"] for event, data in turn.events if event == "status"
@@ -1897,7 +1919,7 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     terminal = _get_only_terminal(turn)
     assert terminal["state"] == TerminalState.ERROR
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
-    assert terminal["error"] == chat_pipeline._SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_FAILED
     assert turn.finished == [
         (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
     ]
