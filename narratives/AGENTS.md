@@ -53,11 +53,11 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`uvicorn narratives_agent.server.app:app` in production).
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
       admission pre-filter, query classification, and pattern guidance
-      (`prefilter.py`, `classify.py`, `pattern_guidance.py`), MCP tool loop
-      (`mcp_loop.py`), the per-turn cache of `CachedTable`s (`t<n>` fetched,
-      `s<n>` derived), the merged `VariableMetadataEnrichment`, and the
-      locked facets (`turn_cache.py`), the Pydantic fetch request models and
-      the server-side fetch functions (`fetch_observations`,
+      (`prefilter.py`, `classify.py`, `pattern_guidance.py`), the discovery
+      loop (`mcp_loop.py`), the per-turn cache of `CachedTable`s (`t<n>`
+      fetched, `s<n>` derived), the merged `VariableMetadataEnrichment`, and
+      the locked facets (`turn_cache.py`), the Pydantic fetch request models
+      and the server-side fetch functions (`fetch_observations`,
       `fetch_child_observations`, `fetch_multi_entity_observations`), with
       their generated Gemini declarations and the date rules the fetches
       apply (`fetch_requests.py`, `fetch.py`), the `AnalysisSpecification`
@@ -69,15 +69,15 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       `ProcessingDiagnostic` (`processing.py`), chart configuration
       (`chart_config.py`), follow-up generation (`follow_up.py`),
       user-visible messages (`messages.py`), the typed SSE frames the agent
-      loop sends (`sse_frames.py`), and signed transcripts (`transcript.py`).
-      Of the agent's subpackages, it may import `analytics/`, `mcp/`, and
+      loop sends (`sse_frames.py`), the turn's state slots
+      (`state_slots.py`), and signed transcripts (`transcript.py`). Of the
+      agent's subpackages, it may import `analytics/`, `mcp/`, and
       `gemini/`.
     - `mcp/`: MCP transport and tool-result decoding (`client.py`), server
       capability discovery and the required-tool check (`capabilities.py`),
-      schema helpers (`schema.py`), observation data helpers
-      (`data_utils.py`), Pydantic wire models of MCP observation payloads
-      and of the observation tools' arguments, and payload validation
-      (`wire.py`), observation table parsing and payload outlines
+      schema helpers (`schema.py`), Pydantic wire models of MCP observation
+      payloads and of the observation tools' arguments, and payload
+      validation (`wire.py`), observation table parsing and payload outlines
       (`observations.py`), and source and variable metadata readers
       (`metadata.py`). Of the agent's subpackages, it may import only
       `analytics/`; it never imports `workflows/` or `gemini/`.
