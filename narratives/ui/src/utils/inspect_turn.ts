@@ -301,6 +301,7 @@ export function inspectTurn(
         "place_dcid",
         "place_dcids",
         "parent_place_dcid",
+        "parent_entity_dcid",
         "entity_dcids",
         "entities",
       ]) {

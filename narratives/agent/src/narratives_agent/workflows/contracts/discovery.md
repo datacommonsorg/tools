@@ -159,11 +159,11 @@ discarded.
 | Script | Input | Produces |
 |---|---|---|
 | `analyze_timeseries` | `table` of one or a few places | start, end, change, growth, inflection points per place |
-| `rank_cohort` | `table` of a cohort, `n`, `direction`, `focal_places` | both tails on one reference date: the leading `n` places in `direction` and the trailing `n` |
-| `summarize_distribution` | `table` of a cohort, optional `weights`, `focal_places` | median, mean, extremes, spread, and where each focal place sits |
+| `rank_cohort` | `table` of a cohort, `n`, `direction`, `focal_places`, optional `target_date` | both tails on one reference date: the leading `n` places in `direction` and the trailing `n` |
+| `summarize_distribution` | `table` of a cohort, optional `weights`, `focal_places`, optional `target_date` | median, mean, extremes, spread, and where each focal place sits |
 | `compute_composition` | `components` tables, optional `total`, `mode` | shares of the whole, or stage-to-stage transitions in `stages` mode |
 | `compute_derived_metric` | `left`, `right`, `operation`, `scale` | a derived table (per capita, ratio, difference, sum, percent change) that later steps may use |
-| `relate_cohorts` | `target` and `by` tables of one cohort, `n` | the target's mean and median over up to `n` places with the highest and up to `n` with the lowest `by` values (at most half the shared places each), their difference, and the places only one table covers |
+| `relate_cohorts` | `target` and `by` tables of one cohort, `n`, optional `target_date` and `by_date` | the target's mean and median over up to `n` places with the highest and up to `n` with the lowest `by` values (at most half the shared places each), their difference, and the places only one table covers |
 | `align_cohort` | `table` of a cohort, optional `target_date` | an aligned cohort on one reference date, shared by later ranking, distribution, composition, and relation steps |
 
 A derived step's output is a table: rank it or summarize it in a later step.

@@ -306,6 +306,29 @@ describe("inspectTurn", () => {
     expect(out.places.sort()).toEqual(["country/DEU", "country/KEN"]);
   });
 
+  it("lists the parent place of a multi-entity cohort expansion", () => {
+    // Test: Places of a multi-entity fetch that expands a role into children.
+    // Situation: A `fetch_multi_entity_observations` call expands the
+    //   `recipient` role into the countries of `Earth`, and its compact
+    //   summary carries no table and no `places_with_data`.
+    // Expectation: The fixed donor and the parent of the expansion are
+    //   listed.
+    const out = inspectTurn(
+      calls({
+        name: "fetch_multi_entity_observations",
+        arguments: {
+          variable_dcid: "Amount_ODA",
+          entities: { donor: ["country/DEU"] },
+          parent_entity_property: "recipient",
+          parent_entity_dcid: "Earth",
+          child_entity_type: "Country",
+        },
+        result: JSON.stringify({ table_id: null, row_count: 0 }),
+      }),
+    );
+    expect(out.places.sort()).toEqual(["Earth", "country/DEU"]);
+  });
+
   it("reads the served facet, the name, and the places from a fetch summary", () => {
     // Test: Inspection of the server-side fetch functions.
     // Situation: A `fetch_observations` call names two places and returns

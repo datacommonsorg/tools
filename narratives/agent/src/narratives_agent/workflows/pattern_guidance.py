@@ -21,7 +21,7 @@ its own, so the synthesis model is never handed tool calls it cannot make.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, assert_never
 
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 
@@ -57,10 +57,16 @@ class Directive:
             phase: The phase the directive is rendered for.
 
         Returns:
-            The discovery half when `phase` is `"discovery"`, and the synthesis
-            half otherwise.
+            The discovery half for `"discovery"` and the synthesis half for
+            `"synthesis"`.
         """
-        return self.discovery if phase == "discovery" else self.synthesis
+        match phase:
+            case "discovery":
+                return self.discovery
+            case "synthesis":
+                return self.synthesis
+            case _:
+                assert_never(phase)
 
 
 # One directive per pattern.
