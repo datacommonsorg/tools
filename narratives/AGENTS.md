@@ -60,7 +60,13 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       the server-side fetch functions (`fetch_observations`,
       `fetch_child_observations`, `fetch_multi_entity_observations`), with
       their generated Gemini declarations and the date rules the fetches
-      apply (`fetch_requests.py`, `fetch.py`), chart configuration
+      apply (`fetch_requests.py`, `fetch.py`), the `AnalysisSpecification`
+      and `UnavailableReport` models (`submit_specification`,
+      `report_unavailable`), their generated Gemini declarations, their
+      validation against the cache, and the default specification
+      (`specification.py`), the bounded processing phase that runs a
+      specification and returns an `AnalysisDigest` or a
+      `ProcessingDiagnostic` (`processing.py`), chart configuration
       (`chart_config.py`), follow-up generation (`follow_up.py`),
       user-visible messages (`messages.py`), the typed SSE frames the agent
       loop sends (`sse_frames.py`), and signed transcripts (`transcript.py`).

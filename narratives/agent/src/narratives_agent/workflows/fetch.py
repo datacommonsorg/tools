@@ -64,12 +64,12 @@ from narratives_agent.workflows.fetch_requests import (
     FETCH_MULTI_ENTITY_OBSERVATIONS_DESCRIPTION,
     FETCH_OBSERVATIONS,
     FETCH_OBSERVATIONS_DESCRIPTION,
-    NAMED_PLACE_SERIES_LIMIT,
     FetchArgumentError,
     FetchChildObservationsRequest,
     FetchMultiEntityRequest,
     FetchObservationsRequest,
     FetchRequest,
+    is_named_place_cohort,
     validate_date_selection_fields,
 )
 from narratives_agent.workflows.turn_cache import (
@@ -82,6 +82,7 @@ __all__ = [
     "DateRequest",
     "FetchResult",
     "build_fetch_declarations",
+    "build_parameters_schema",
     "resolve_dates",
     "run_fetch",
     "serialize_fetch_result",
@@ -100,6 +101,8 @@ _ENTITY_ROLE_RESPONSE_NOTE = (
     "The response did not parse as place observations, so it was not cached "
     "as a table and has no table_id."
 )
+# A docstring's summary is its first paragraph, which ends at a blank line.
+_PARAGRAPH_BREAK = "\n\n"
 _EMPTY_PLACE_RESPONSE_NOTE = (
     "The response has no observations in the requested dates, so it was not "
     "cached as a table and has no table_id."
@@ -586,7 +589,7 @@ async def fetch_observations(
         request.start_date,
         request.end_date,
         request.year,
-        is_cohort=len(request.place_dcids) > NAMED_PLACE_SERIES_LIMIT,
+        is_cohort=is_named_place_cohort(len(request.place_dcids)),
     )
     override = _resolve_source_override(
         request.source_override,
@@ -775,16 +778,32 @@ async def run_fetch(request: FetchRequest, cache: TurnCache) -> FetchOutcome:
     return await fetch_multi_entity_observations(request, cache)
 
 
-def _build_parameters_schema(model: type[BaseModel]) -> JsonObject:
-    """Returns the JSON schema of a request model's parameters.
+def build_parameters_schema(model: type[BaseModel]) -> JsonObject:
+    """Returns the JSON schema of a declaration's parameter model.
 
-    The model's docstring documents it for developers. Pydantic copies it
-    into the schema's top-level `description`, so it is removed; the
-    model-facing text is the function description and the field
-    descriptions.
+    A model's docstring documents it for developers, and Pydantic copies it
+    into the schema's `description`. The top-level description is removed,
+    because the model-facing text is the function description and the field
+    descriptions. A nested model, listed under `$defs`, keeps only the first
+    paragraph of its docstring, its one-line summary.
+
+    Args:
+        model: The Pydantic model of the function's parameters.
+
+    Returns:
+        The model's JSON schema with the descriptions trimmed.
     """
     schema: JsonObject = model.model_json_schema()
     schema.pop("description", None)
+    definitions = schema.get("$defs")
+    if isinstance(definitions, dict):
+        for definition in definitions.values():
+            if isinstance(definition, dict):
+                description = definition.get("description")
+                if isinstance(description, str):
+                    definition["description"] = description.split(
+                        _PARAGRAPH_BREAK, 1
+                    )[0]
     return schema
 
 
@@ -801,21 +820,21 @@ def build_fetch_declarations() -> list[types.FunctionDeclaration]:
         types.FunctionDeclaration(
             name=FETCH_OBSERVATIONS,
             description=FETCH_OBSERVATIONS_DESCRIPTION,
-            parameters_json_schema=_build_parameters_schema(
+            parameters_json_schema=build_parameters_schema(
                 FetchObservationsRequest
             ),
         ),
         types.FunctionDeclaration(
             name=FETCH_CHILD_OBSERVATIONS,
             description=FETCH_CHILD_OBSERVATIONS_DESCRIPTION,
-            parameters_json_schema=_build_parameters_schema(
+            parameters_json_schema=build_parameters_schema(
                 FetchChildObservationsRequest
             ),
         ),
         types.FunctionDeclaration(
             name=FETCH_MULTI_ENTITY_OBSERVATIONS,
             description=FETCH_MULTI_ENTITY_OBSERVATIONS_DESCRIPTION,
-            parameters_json_schema=_build_parameters_schema(
+            parameters_json_schema=build_parameters_schema(
                 FetchMultiEntityRequest
             ),
         ),
