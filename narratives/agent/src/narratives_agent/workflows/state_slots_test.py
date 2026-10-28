@@ -273,6 +273,61 @@ def test_a_legacy_chart_cohort_is_read_from_the_top_level() -> None:
     assert scopes[1].date_range is None
 
 
+def test_a_chart_cohort_takes_the_place_of_its_listed_places() -> None:
+    # Test: A chart scope with a cohort records no explicit places.
+    # Situation: A displayed chart names a fetched cohort (parent place and
+    #   child place type) and also lists one of the cohort's places.
+    # Expectation: The chart scope records the cohort and no places, as a
+    #   cohort table's scope does.
+    table = _make_table(
+        rows={"geoId/06001": ("2020",)}, parent="geoId/06", child_type="County"
+    )
+    chart_config: JsonObject = {
+        "should_render": True,
+        "charts": [
+            {
+                "title": "Population by county",
+                "variable_dcids": ["Count_Person"],
+                "place_dcids": ["geoId/06001"],
+                "parent_place": "geoId/06",
+                "child_place_type": "County",
+                "date": "2021",
+            }
+        ],
+    }
+
+    scopes = build_state_slots([table], chart_config).scopes
+
+    assert scopes[1].places == {}
+    assert scopes[1].parent_place == {"geoId/06": "California"}
+    assert scopes[1].child_place_type == "County"
+
+
+def test_scopes_with_the_same_places_in_another_order_are_one() -> None:
+    # Test: Deduplication ignores the order in which places are listed.
+    # Situation: Two displayed charts name the same two places in opposite
+    #   orders, with the same variable and date.
+    # Expectation: The table's scope and one chart scope are returned.
+    table = _make_table(rows={"geoId/06": ("2020",), "geoId/48": ("2020",)})
+    chart: JsonObject = {
+        "title": "Population",
+        "variable_dcids": ["Count_Person"],
+        "date": "2021",
+    }
+    chart_config: JsonObject = {
+        "should_render": True,
+        "charts": [
+            {**chart, "place_dcids": ["geoId/06", "geoId/48"]},
+            {**chart, "place_dcids": ["geoId/48", "geoId/06"]},
+        ],
+    }
+
+    scopes = build_state_slots([table], chart_config).scopes
+
+    assert len(scopes) == 2
+    assert scopes[1].places == {"geoId/06": "California", "geoId/48": "Texas"}
+
+
 @pytest.mark.parametrize(
     "chart_config",
     [

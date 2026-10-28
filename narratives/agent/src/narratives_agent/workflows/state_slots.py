@@ -165,12 +165,14 @@ def _build_scope(
 
     A scope requires at least one statistical variable and either explicit
     places or a complete cohort (both a valid parent place DCID and a valid
-    child place type).
+    child place type). A complete cohort takes the place of `places`, so a
+    scope never records both.
 
     Args:
         names: Mapping of entity DCIDs to display names.
         variables: Grounded variable DCIDs for the scope.
-        places: Grounded place DCIDs for the scope.
+        places: Grounded place DCIDs for the scope, ignored when the scope
+            has a complete cohort.
         parent: Optional parent place DCID for a cohort scope.
         child_type: Optional child place type for a cohort scope.
         date_range: Optional `(earliest_date, latest_date)` span for the scope.
@@ -184,7 +186,7 @@ def _build_scope(
         return None
     try:
         return QueryScope(
-            places=_build_entity_map(places, names),
+            places=_build_entity_map(() if has_cohort else places, names),
             parent_place=(
                 _build_entity_map([str(parent)], names) if has_cohort else None
             ),
@@ -236,20 +238,15 @@ def _build_table_scope(
         return None
     dates = [row.date for row in table.rows if _is_date(row.date)]
     date_range = (min(dates), max(dates)) if dates else None
-    has_cohort = _is_dcid(table.parent_place_dcid) and _is_place_type(
-        table.child_place_type
-    )
     # `table.places_with_data` is already sorted and deduplicated by
     # `ObservationTable`, so `_build_entity_map` caps places in sorted DCID
     # order.
     return _build_scope(
         names,
         variables=[table.variable_dcid],
-        places=()
-        if has_cohort
-        else [p for p in table.places_with_data if _is_dcid(p)],
-        parent=table.parent_place_dcid if has_cohort else None,
-        child_type=table.child_place_type if has_cohort else None,
+        places=[p for p in table.places_with_data if _is_dcid(p)],
+        parent=table.parent_place_dcid,
+        child_type=table.child_place_type,
         date_range=date_range,
     )
 
@@ -343,12 +340,15 @@ def build_state_slots(
         if (scope := _build_table_scope(table, names)) is not None
     ]
     candidates.extend(_iter_chart_scopes(chart_config, names, known))
-    scopes: dict[str, QueryScope] = {}
+    # Scopes compare by value, and dict equality ignores key order, so two
+    # scopes listing the same places in a different order are one scope.
+    scopes: list[QueryScope] = []
     for scope in candidates:
         if len(scopes) == MAX_SCOPES_PER_TURN:
             break
-        scopes.setdefault(scope.model_dump_json(), scope)
-    return ConversationStateSlots(scopes=list(scopes.values()))
+        if scope not in scopes:
+            scopes.append(scope)
+    return ConversationStateSlots(scopes=scopes)
 
 
 __all__ = ["build_state_slots"]
