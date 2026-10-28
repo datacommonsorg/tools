@@ -36,6 +36,7 @@ from narratives_agent.mcp.observations import apply_variable_metadata
 __all__ = [
     "DERIVED_TABLE_PREFIX",
     "FETCHED_TABLE_PREFIX",
+    "TABLE_ID_NUMBER_PATTERN",
     "CachedTable",
     "FacetScope",
     "TurnCache",
@@ -46,8 +47,11 @@ FETCHED_TABLE_PREFIX = "t"
 # Derived tables are stored under the id of the step that derived them, such
 # as `s1`, so a derived table never shares an id with a fetched one.
 DERIVED_TABLE_PREFIX = "s"
-# A step id is the prefix and a positive integer without leading zeros.
-_DERIVED_TABLE_ID = re.compile(rf"{DERIVED_TABLE_PREFIX}[1-9][0-9]*")
+# A table id is its prefix and a positive integer without leading zeros.
+TABLE_ID_NUMBER_PATTERN = "[1-9][0-9]*"
+_DERIVED_TABLE_ID = re.compile(
+    rf"{DERIVED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}"
+)
 
 # The places a facet lock covers, such as every named place or the children
 # of one type within one parent. A facet chosen for one set of places can

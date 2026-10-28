@@ -67,6 +67,7 @@ from narratives_agent.analytics.tables import (
 )
 
 __all__ = [
+    "MIN_SHARED_PLACES",
     "PairedCohort",
     "PairedPlace",
     "PairingRefusal",
@@ -80,7 +81,7 @@ _MIN_GROUP_SIZE = 1
 # Number of groups compared by `relate_cohorts` (`highest_by` and `lowest_by`).
 _GROUP_COUNT = 2
 # Two disjoint groups require at least this many shared places.
-_MIN_SHARED_PLACES = _MIN_GROUP_SIZE * _GROUP_COUNT
+MIN_SHARED_PLACES = _MIN_GROUP_SIZE * _GROUP_COUNT
 
 type PairingRefusalReason = Literal[
     "insufficient_coverage", "no_observations", "invalid_parameters"
@@ -534,14 +535,14 @@ def _rank_shared_places(
     """Ranks the shared places of `paired` by their `by` values.
 
     Raises:
-        ValueError: If `paired` has fewer than `_MIN_SHARED_PLACES` shared
+        ValueError: If `paired` has fewer than `MIN_SHARED_PLACES` shared
             places.
         RuntimeError: If `rank_cohort` refuses the aligned shared places.
     """
     shared = len(paired.places)
-    if shared < _MIN_SHARED_PLACES:
+    if shared < MIN_SHARED_PLACES:
         raise ValueError(
-            f"At least {_MIN_SHARED_PLACES} shared places are required, "
+            f"At least {MIN_SHARED_PLACES} shared places are required, "
             f"not {shared}."
         )
     shared_places = frozenset(place.place_dcid for place in paired.places)
@@ -915,14 +916,14 @@ def relate_cohorts(
             target, by, paired, step_id=step_id
         )
     shared = len(paired.places)
-    if shared < _MIN_SHARED_PLACES:
+    if shared < MIN_SHARED_PLACES:
         noun = "place" if shared == 1 else "places"
         verb = conjugate_have(shared)
         too_few_caveat = (
             f"Only {shared} {noun} {verb} a value for both "
             f"{_format_cohort_label(paired.target)} and "
             f"{_format_cohort_label(paired.by)}; two groups need at "
-            f"least {_MIN_SHARED_PLACES}."
+            f"least {MIN_SHARED_PLACES}."
         )
         refusal_caveats = (*_build_pairing_caveats(paired), too_few_caveat)
         return build_refusal(
