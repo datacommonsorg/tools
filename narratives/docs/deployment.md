@@ -284,6 +284,16 @@ fails to download, or is empty once its HTML comments are stripped, the default
 prompt applies to that slot and the agent logs a warning naming it, so a
 bucket-side failure never leaves a phase without its system instruction.
 
+`discovery.md` holds the domain and geographic guidance for the discovery phase
+(the agent's role and geographic defaults). The tool surface, the fetch and
+specification workflow, the analytical scripts, and the fallback rules live in a
+code-owned contract (`workflows/contracts/discovery.md`, composed by
+`workflows/prompt_contracts.py`) and per-pattern directives
+(`workflows/pattern_guidance.py`) that the server appends after the configured
+`discovery` prompt on every request and that cannot be overridden. An override
+in `config/prompts/discovery.md` should add instance-specific domain and
+regional guidance rather than restating the tool or specification rules.
+
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
 clarification question, and which analytical pattern it follows. Each LLM stage

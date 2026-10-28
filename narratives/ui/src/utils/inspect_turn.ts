@@ -5,8 +5,14 @@
 
 import type { ChartConfig, ProvenanceItem, ToolCallEvent } from "../hooks/use_sse_chat";
 
-/** Tools that fetch numbers, and so are the ones that pin a source. */
+/**
+ * Tools that fetch observations and pin a source: server-side fetch functions
+ * and MCP observation tools.
+ */
 const OBSERVATION_TOOLS = new Set([
+  "fetch_observations",
+  "fetch_child_observations",
+  "fetch_multi_entity_observations",
   "get_observations",
   "get_child_observations",
   "get_multi_entity_observations",
@@ -201,6 +207,13 @@ function collectNames(calls: ToolCallEvent[]): Map<string, string> {
     if (singleDcid && singleName && !names.has(singleDcid)) {
       names.set(singleDcid, singleName);
     }
+
+    // A fetch function's table summary names its one variable at the top level.
+    const summaryDcid = asString(payload.variable_dcid);
+    const summaryName = asString(payload.variable_name);
+    if (summaryDcid && summaryName && !names.has(summaryDcid)) {
+      names.set(summaryDcid, summaryName);
+    }
   }
   return names;
 }
@@ -208,23 +221,35 @@ function collectNames(calls: ToolCallEvent[]): Map<string, string> {
 /**
  * The facet an observation result was actually served from.
  *
- * The server reports this whether or not the agent asked for it by name, and
- * the id is the same one get_variable_metadata lists as a facet. That identity
- * is what lets a server-chosen source be named rather than left as "nobody
- * chose" -- without it, a turn that pinned nothing shows every candidate as
- * unused, which reads as though none of them supplied the numbers.
- *
- * snake_case is accepted too: server 1.2.1 spelled it `source_metadata` /
- * `source_id`.
+ * A fetch function's table summary carries the id as `facet_id`. An MCP
+ * observation payload reports it under `sourceMetadata.sourceId` or
+ * `source_metadata.source_id`, using the literal "unknown" for an empty
+ * result.
  */
-function servedFacetId(payload: Record<string, unknown> | null): string | undefined {
+function getServedFacetId(payload: Record<string, unknown> | null): string | undefined {
   if (!payload) return undefined;
+  const summaryId = asString(payload.facet_id);
+  if (summaryId) return summaryId;
   const metadata =
     asRecord(payload.sourceMetadata) ?? asRecord(payload.source_metadata);
   if (!metadata) return undefined;
   const id = asString(metadata.sourceId) ?? asString(metadata.source_id);
-  // 1.2.1 used the literal "unknown" for an empty result rather than omitting it.
   return id && id !== "unknown" ? id : undefined;
+}
+
+/** Matches the trailing `(dcid)` of a summary's `name (dcid)` place label. */
+const PLACE_LABEL_DCID = /\(([^()\s]+)\)\s*$/;
+
+/**
+ * Reads the places a fetch function's table summary reports data for. The
+ * summary lists them as `name (dcid)` labels, so the DCID is the text in the
+ * trailing parentheses; a bare DCID is kept as it is.
+ */
+function readPlacesWithData(payload: Record<string, unknown> | null): string[] {
+  if (!payload) return [];
+  return dcidsFrom(payload.places_with_data).map(
+    (label) => PLACE_LABEL_DCID.exec(label)?.[1] ?? label,
+  );
 }
 
 /**
@@ -271,15 +296,25 @@ export function inspectTurn(
     }
 
     if (isObservation) {
-      for (const key of ["place_dcid", "parent_place_dcid", "entity_dcids", "entities"]) {
+      const payload = parseResult(call.result);
+      for (const key of [
+        "place_dcid",
+        "place_dcids",
+        "parent_place_dcid",
+        "entity_dcids",
+        "entities",
+      ]) {
         for (const dcid of dcidsFrom(args[key])) places.add(dcid);
       }
+      // A cohort fetch names only its parent place in its arguments; the
+      // summary it returns lists the places it got.
+      for (const dcid of readPlacesWithData(payload)) places.add(dcid);
       const override = asString(args.source_override);
       if (override) sourceChosenExplicitly = true;
 
       // Prefer what the server says it served over what was asked for: if the
       // two ever disagree, the served id is the one the numbers came from.
-      const served = servedFacetId(parseResult(call.result)) ?? override;
+      const served = getServedFacetId(payload) ?? override;
       if (served) {
         const use: FacetUse = override ? "chosen" : "server-default";
         const known = facets.get(served);

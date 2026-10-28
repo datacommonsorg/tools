@@ -276,7 +276,10 @@ time and replaced by its default. Each Gemini call resolves its model,
 temperature, and thinking level through
 `config.resolve_role_config(GeminiRole.<ROLE>)`, which combines the configured
 models and thinking levels with the per-role settings fixed in
-`config_model.py`.
+`config_model.py`. Where a phase carries a code-owned contract under
+`workflows/contracts/`, `workflows/prompt_contracts.py` appends it after the
+configured prompt so an instance override cannot drop or contradict the
+server's contract.
 
 For the Gemini API key (`get_gemini_api_key()`):
 

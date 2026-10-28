@@ -180,13 +180,17 @@ export interface ProvenanceItem {
 
 /**
  * Represents the lifecycle of one chat turn, driven by `status` and `terminal`
- * events. A `refused` turn is settled with a refusal notice rather than an
- * answer or an error, and is never signed into the multi-turn window.
+ * events. `discovery` covers the loop that finds and fetches data, and
+ * `processing` the server-side analysis of the submitted specification, which
+ * can hand back to `discovery` on a retry. A `refused` turn is settled with a
+ * refusal notice rather than an answer or an error, and is never signed into
+ * the multi-turn window.
  */
 export type TurnStatus =
   | "idle"
   | "classify"
   | "discovery"
+  | "processing"
   | "synthesis"
   | "done"
   | "refused"
@@ -354,7 +358,12 @@ export type ChatStreamEvent =
   | {
       event: "status";
       data: {
-        phase: "classify" | "discovery" | "synthesis" | "chart_config";
+        phase:
+          | "classify"
+          | "discovery"
+          | "processing"
+          | "synthesis"
+          | "chart_config";
         message?: string;
       };
     }
@@ -889,6 +898,7 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
       if (
         evt.data.phase === "classify" ||
         evt.data.phase === "discovery" ||
+        evt.data.phase === "processing" ||
         evt.data.phase === "synthesis"
       ) {
         return { ...turn, status: evt.data.phase };

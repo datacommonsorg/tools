@@ -45,8 +45,9 @@ from narratives_agent.workflows.fetch_requests import (
     FetchObservationsRequest,
     FetchRequest,
 )
-from narratives_agent.workflows.pattern_guidance import pattern_directive
+from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.processing import StepRefusalDiagnostic
+from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.sse_frames import StatusPhase
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
@@ -1544,9 +1545,10 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     #   comparison shape, and once without a classification, as when the
     #   classifier failed.
     # Expectation: With the classification, the system instruction is the
-    #   `discovery` prompt followed by the pattern's directive and the
-    #   comparison sentence; without it, the system instruction is the
-    #   prompt alone.
+    #   `discovery` prompt followed by the discovery contract and the
+    #   discovery half of the pattern's directive and the comparison
+    #   sentence; without it, the system instruction is the `discovery`
+    #   prompt followed by the discovery contract.
     _ = calls
     instructions: list[str] = []
 
@@ -1567,9 +1569,11 @@ async def test_the_classification_directive_is_appended_to_the_prompt(
     await _run_loop(telemetry, config=config)
 
     guided, plain = instructions
-    assert guided.startswith("Be an analyst.")
-    assert guided.endswith(pattern_directive(_CLASSIFICATION))
-    assert plain == "Be an analyst."
+    assert plain == f"Be an analyst.\n\n{load_prompt_contract('discovery')}"
+    assert guided.startswith(plain)
+    assert guided.endswith(
+        build_pattern_directive(_CLASSIFICATION, "discovery")
+    )
 
 
 @pytest.mark.asyncio

@@ -77,6 +77,34 @@ const OBSERVATION_RESULT = JSON.stringify({
   data: { columns: ["date", "value"], rows: [["2011", 1210854977]] },
 });
 
+/**
+ * The table summary a fetch function returns, in the shape of the agent's
+ * `serialize_fetch_result`: the rows stay on the server, and the places are
+ * listed as `name (dcid)` labels.
+ */
+const FETCH_SUMMARY = JSON.stringify({
+  table_id: "t1",
+  variable_dcid: "Count_Person",
+  variable_name: "Total population",
+  observation_count: 128,
+  places_with_data_count: 2,
+  places_with_data: ["India (country/IND)", "China (country/CHN)"],
+  places_without_data_count: 0,
+  places_without_data: [],
+  date_range: ["1960", "2023"],
+  source: { name: "NITI India Population Projection", url: "https://ndap.niti.gov.in/dataset/7208" },
+  facet_id: "16633743049422531122",
+  unit: "Person",
+  scaling_factor: null,
+  measurement_method: "NITIIndiaProjection",
+  observation_period: "P1Y",
+  alternative_sources: [{ source_id: "16450972571663981028" }],
+  value_range: [445954579, 1428627663],
+  sample_rows: [
+    { place_dcid: "country/IND", place_name: "India", date: "2023", value: 1428627663, facet_id: "16633743049422531122" },
+  ],
+});
+
 const calls = (...items: ToolCallEvent[]) => items;
 
 describe("inspectTurn", () => {
@@ -276,6 +304,84 @@ describe("inspectTurn", () => {
       }),
     );
     expect(out.places.sort()).toEqual(["country/DEU", "country/KEN"]);
+  });
+
+  it("reads the served facet, the name, and the places from a fetch summary", () => {
+    // Test: Inspection of the server-side fetch functions.
+    // Situation: A `fetch_observations` call names two places and returns
+    //   the table summary the agent streams, which carries `facet_id`,
+    //   `variable_name`, and `places_with_data`; a metadata call described
+    //   the facet earlier.
+    // Expectation: The variable is marked fetched under its summary name,
+    //   both places are listed, and the facet is marked used as the
+    //   server's default with its metadata joined.
+    const out = inspectTurn(
+      calls(
+        { name: "get_variable_metadata", arguments: {}, result: METADATA_RESULT },
+        {
+          name: "fetch_observations",
+          arguments: { variable_dcid: "Count_Person", place_dcids: ["country/IND", "country/CHN"] },
+          result: FETCH_SUMMARY,
+        },
+      ),
+    );
+
+    const variable = out.variables.find((v) => v.dcid === "Count_Person");
+    expect(variable?.fetched).toBe(true);
+    expect(variable?.name).toBe("Total population");
+    expect(variable?.referencedBy).toEqual(["fetch_observations"]);
+    expect(out.places.sort()).toEqual(["country/CHN", "country/IND"]);
+    expect(out.sourceChosenExplicitly).toBe(false);
+    const served = out.facets.find((f) => f.facetId === "16633743049422531122");
+    expect(served?.used).toBe(true);
+    expect(served?.use).toBe("server-default");
+    expect(served?.provenance).toBe("NITI India Population Projection");
+  });
+
+  it("lists the places a cohort fetch returned and the cohort's parent", () => {
+    // Test: Places of fetches that name none in their arguments.
+    // Situation: Two `fetch_child_observations` calls name only a parent
+    //   place, so only their summaries say which places they fetched, and
+    //   the second pins a facet.
+    // Expectation: The parent and the places from both summaries are all
+    //   listed once, and the pinned facet is marked as chosen.
+    const out = inspectTurn(
+      calls(
+        {
+          name: "fetch_child_observations",
+          arguments: {
+            variable_dcid: "Count_Person",
+            parent_place_dcid: "country/IND",
+            child_place_type: "State",
+          },
+          result: FETCH_SUMMARY,
+        },
+        {
+          name: "fetch_child_observations",
+          arguments: {
+            variable_dcid: "Median_Income",
+            parent_place_dcid: "country/IND",
+            child_place_type: "State",
+            source_override: "999",
+          },
+          result: JSON.stringify({
+            table_id: "t2",
+            variable_dcid: "Median_Income",
+            places_with_data: ["wikidataId/Q1159", "wikidataId/Q1445"],
+            facet_id: "999",
+          }),
+        },
+      ),
+    );
+
+    expect(out.places).toEqual([
+      "country/IND",
+      "country/CHN",
+      "wikidataId/Q1159",
+      "wikidataId/Q1445",
+    ]);
+    expect(out.sourceChosenExplicitly).toBe(true);
+    expect(out.facets.find((f) => f.facetId === "999")?.use).toBe("chosen");
   });
 
   it("shows a source_override that no metadata call described", () => {
