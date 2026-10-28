@@ -74,8 +74,11 @@ def reset_secret_manager_client() -> None:
 
 def _normalize_secret_resource_name(secret_name: str, env_var: str) -> str:
     """Normalizes `secret_name` to a versioned Secret Manager resource name."""
+    normalized_secret_name = secret_name.strip().rstrip("/")
+    if not normalized_secret_name:
+        return ""
     project = get_settings().google_cloud_project
-    if not secret_name.startswith("projects/"):
+    if not normalized_secret_name.startswith("projects/"):
         if not project:
             logger.error(
                 "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
@@ -83,10 +86,10 @@ def _normalize_secret_resource_name(secret_name: str, env_var: str) -> str:
                 env_var,
             )
             return ""
-        return f"projects/{project}/secrets/{secret_name}/versions/latest"
-    if "/versions/" not in secret_name:
-        return f"{secret_name}/versions/latest"
-    return secret_name
+        return f"projects/{project}/secrets/{normalized_secret_name}/versions/latest"
+    if "/versions/" not in normalized_secret_name:
+        return f"{normalized_secret_name}/versions/latest"
+    return normalized_secret_name
 
 
 def fetch_secret(secret_name: str, env_var: str) -> str:

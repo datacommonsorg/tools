@@ -55,7 +55,7 @@ def test_fetch_secret_resolves_names_and_strips(
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
     secret_manager.reset_secret_manager_client()
 
-    val1 = secret_manager.fetch_secret("my-secret", "MY_ENV_VAR")
+    val1 = secret_manager.fetch_secret("  my-secret/  ", "MY_ENV_VAR")
     assert val1 == "secret-value-123"
     assert (
         requested_names[0]
@@ -63,7 +63,7 @@ def test_fetch_secret_resolves_names_and_strips(
     )
 
     val2 = secret_manager.fetch_secret(
-        "projects/other-proj/secrets/other-secret", "OTHER_VAR"
+        "projects/other-proj/secrets/other-secret/ ", "OTHER_VAR"
     )
     assert val2 == "secret-value-123"
     assert (
@@ -79,6 +79,20 @@ def test_fetch_secret_resolves_names_and_strips(
         requested_names[2]
         == "projects/other-proj/secrets/other-secret/versions/2"
     )
+
+
+def test_fetch_secret_empty_name_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Blank or empty secret names return empty without API calls.
+    # Situation: `fetch_secret` is called with empty or whitespace-only names.
+    # Expectation: Empty string is returned.
+    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
+    secret_manager.reset_secret_manager_client()
+
+    assert secret_manager.fetch_secret("", "MY_VAR") == ""
+    assert secret_manager.fetch_secret("   ", "MY_VAR") == ""
 
 
 def test_fetch_secret_short_name_requires_project(
