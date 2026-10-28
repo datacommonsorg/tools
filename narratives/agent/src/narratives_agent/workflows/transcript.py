@@ -74,7 +74,13 @@ from narratives_agent.gemini.client import (
     GeminiError,
     async_gemini_request,
 )
-from narratives_agent.settings import get_settings
+from narratives_agent.secret_manager import fetch_secret
+from narratives_agent.settings import (
+    TRANSCRIPT_HMAC_SECRET_ENV,
+    TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+    get_settings,
+    validate_hmac_secret,
+)
 from narratives_agent.telemetry import TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -323,11 +329,13 @@ class TranscriptError(Exception):
 
 
 @functools.cache
-def _signing_key() -> bytes:
+def _resolve_signing_key() -> bytes:
     """Returns the transcript signing key, resolved once per process.
 
     Resolution order:
     - `TRANSCRIPT_HMAC_SECRET` set: uses the configured secret's UTF-8 bytes.
+    - `TRANSCRIPT_HMAC_SECRET_NAME` set: loads the secret from Secret Manager
+      and validates it is at least 32 bytes.
     - Unset on Kubernetes (`KUBERNETES_SERVICE_HOST` set): raises
       `RuntimeError`, since multi-pod deployments require a shared key.
     - Unset on Cloud Run (`K_SERVICE` set): logs a warning and falls back to a
@@ -335,36 +343,57 @@ def _signing_key() -> bytes:
     - Unset in local development: generates a per-process random key.
 
     Raises:
-        RuntimeError: `TRANSCRIPT_HMAC_SECRET` is unset on Kubernetes.
+        RuntimeError: An explicitly configured secret cannot be loaded or is
+            invalid, or no secret is configured on Kubernetes.
     """
     settings = get_settings()
     secret = settings.transcript_hmac_secret.get_secret_value()
     if secret:
         return secret.encode("utf-8")
+    if settings.transcript_hmac_secret_name:
+        sm_secret = fetch_secret(
+            settings.transcript_hmac_secret_name,
+            TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+        )
+        if not sm_secret:
+            raise RuntimeError(
+                f"{TRANSCRIPT_HMAC_SECRET_NAME_ENV} could not be loaded from "
+                "Secret Manager."
+            )
+        try:
+            validate_hmac_secret(sm_secret, TRANSCRIPT_HMAC_SECRET_NAME_ENV)
+        except ValueError as e:
+            raise RuntimeError(str(e)) from e
+        return sm_secret.encode("utf-8")
     if settings.kubernetes_service_host:
         raise RuntimeError(
-            "TRANSCRIPT_HMAC_SECRET must be set on Kubernetes so every pod "
-            "signs and verifies transcripts with the same key."
+            f"{TRANSCRIPT_HMAC_SECRET_ENV} or "
+            f"{TRANSCRIPT_HMAC_SECRET_NAME_ENV} must be set on Kubernetes so "
+            "every pod signs and verifies transcripts with the same key."
         )
     if settings.k_service:
         logger.warning(
-            "TRANSCRIPT_HMAC_SECRET is not set, so transcripts are signed "
+            "%s is not set (and neither is %s), so transcripts are signed "
             "with a key that exists only in this instance. A follow-up turn "
-            "that reaches another instance, or arrives after a restart, "
-            "fails verification and loses its earlier context. Set "
-            "TRANSCRIPT_HMAC_SECRET to a secret shared by every instance."
+            "that reaches another instance, or arrives after a restart, fails "
+            "verification and loses its earlier context. Set %s or %s to a "
+            "secret shared by every instance.",
+            TRANSCRIPT_HMAC_SECRET_ENV,
+            TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+            TRANSCRIPT_HMAC_SECRET_ENV,
+            TRANSCRIPT_HMAC_SECRET_NAME_ENV,
         )
     return secrets.token_bytes(_GENERATED_KEY_BYTES)
 
 
 def init_signing_key() -> None:
     """Resolves and caches the transcript signing key at server startup."""
-    _signing_key()
+    _resolve_signing_key()
 
 
 def reset_signing_key() -> None:
     """Makes the next signature resolve the signing key again."""
-    _signing_key.cache_clear()
+    _resolve_signing_key.cache_clear()
 
 
 def _turn_signature(
@@ -389,7 +418,7 @@ def _turn_signature(
     }
     message = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hmac.new(
-        _signing_key(), message.encode("utf-8"), hashlib.sha256
+        _resolve_signing_key(), message.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
 

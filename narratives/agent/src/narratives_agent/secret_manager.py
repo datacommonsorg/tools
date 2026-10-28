@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Google Cloud Secret Manager client and cached secret resolution.
+
+Provides centralized access to Secret Manager secrets (`GEMINI_API_KEY_SECRET`,
+`DC_API_KEY_SECRET`, and `TRANSCRIPT_HMAC_SECRET_NAME`). Secrets may be named by
+short secret ID (resolved against `GOOGLE_CLOUD_PROJECT` at `latest`) or by full
+resource path (`projects/<proj>/secrets/<name>/versions/<v>`).
+
+Reuses a single lazy client singleton across lookups to share gRPC channels, and
+provides thread-safe in-memory caching and test resets.
+"""
+
+import logging
+import threading
+import time
+from typing import Any
+
+from narratives_agent.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
+# Optional Secret Manager client import.
+try:
+    from google.cloud import secretmanager
+
+    _SECRET_MANAGER_AVAILABLE = True
+except ImportError:
+    _SECRET_MANAGER_AVAILABLE = False
+    logger.warning(
+        "google-cloud-secret-manager not installed; Secret Manager lookups "
+        "will be unavailable"
+    )
+
+_SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
+
+_secret_client: Any = None
+_secret_manager_lock = threading.RLock()
+_secret_manager_cache: dict[str, tuple[float, str]] = {}
+
+
+def _get_secret_client() -> Any:
+    """Returns the shared Secret Manager client, initializing it lazily."""
+    global _secret_client
+    if _secret_client is not None:
+        return _secret_client
+    if not _SECRET_MANAGER_AVAILABLE:
+        return None
+    with _secret_manager_lock:
+        if _secret_client is None:
+            _secret_client = secretmanager.SecretManagerServiceClient()
+        return _secret_client
+
+
+def reset_secret_manager_client() -> None:
+    """Resets the cached Secret Manager client and cache (for testing)."""
+    global _secret_client
+    with _secret_manager_lock:
+        _secret_client = None
+        _secret_manager_cache.clear()
+
+
+def _normalize_secret_resource_name(secret_name: str, env_var: str) -> str:
+    """Normalizes `secret_name` to a versioned Secret Manager resource name."""
+    project = get_settings().google_cloud_project
+    if not secret_name.startswith("projects/"):
+        if not project:
+            logger.error(
+                "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
+                "name in %s",
+                env_var,
+            )
+            return ""
+        return f"projects/{project}/secrets/{secret_name}/versions/latest"
+    if "/versions/" not in secret_name:
+        return f"{secret_name}/versions/latest"
+    return secret_name
+
+
+def fetch_secret(secret_name: str, env_var: str) -> str:
+    """Reads a secret payload from Secret Manager.
+
+    Args:
+        secret_name: Short secret ID (resolved against `GOOGLE_CLOUD_PROJECT` at
+            `latest`) or full `projects/...` resource path.
+        env_var: The name of the environment variable, used in log messages.
+
+    Returns:
+        The stripped UTF-8 secret payload, or an empty string on failure.
+    """
+    if not _SECRET_MANAGER_AVAILABLE:
+        logger.warning(
+            "google-cloud-secret-manager not installed; %s cannot be loaded",
+            env_var,
+        )
+        return ""
+    full_name = _normalize_secret_resource_name(secret_name, env_var)
+    if not full_name:
+        return ""
+    try:
+        client = _get_secret_client()
+        if client is None:
+            return ""
+        response = client.access_secret_version(
+            request={"name": full_name},
+            timeout=_SECRET_MANAGER_TIMEOUT_SECONDS,
+        )
+        raw_payload: bytes = response.payload.data
+        key = raw_payload.decode("utf-8").strip()
+        if not key:
+            return ""
+        logger.info("Loaded %s from Secret Manager", env_var)
+        return key
+    except Exception as e:
+        logger.error(
+            "Failed to load %s from Secret Manager (%s)",
+            env_var,
+            type(e).__name__,
+        )
+        return ""
+
+
+def fetch_secret_with_ttl(
+    secret_name: str, env_var: str, ttl_seconds: float = 300.0
+) -> str:
+    """Fetches a secret from Secret Manager with time-bounded in-memory caching.
+
+    Multiple concurrent requests for the same secret share a single lookup.
+    Cached values expire after `ttl_seconds`.
+
+    Args:
+        secret_name: Short secret ID or full resource path.
+        env_var: Name of the environment variable (for log messages).
+        ttl_seconds: Seconds to retain the cached secret before refetching.
+
+    Returns:
+        The secret payload string, or an empty string on failure.
+    """
+    if not _SECRET_MANAGER_AVAILABLE:
+        return ""
+    now = time.time()
+    cached = _secret_manager_cache.get(secret_name)
+    if cached and now - cached[0] < ttl_seconds:
+        return cached[1]
+    with _secret_manager_lock:
+        cached = _secret_manager_cache.get(secret_name)
+        now = time.time()
+        if cached and now - cached[0] < ttl_seconds:
+            return cached[1]
+        key = fetch_secret(secret_name, env_var)
+        if key:
+            _secret_manager_cache[secret_name] = (now, key)
+        return key

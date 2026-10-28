@@ -206,10 +206,12 @@ that previous answers were not modified before feeding them back to Gemini:
 If the server returns `400`, the UI clears its stored signatures so the user's
 next question starts fresh.
 
-In local development, if `TRANSCRIPT_HMAC_SECRET` is not set, the server
-generates a temporary random key at startup. On Cloud Run, where follow-up
-requests can land on any container instance, all instances share the same
-`TRANSCRIPT_HMAC_SECRET` from Secret Manager.
+In local development, if neither `TRANSCRIPT_HMAC_SECRET` nor
+`TRANSCRIPT_HMAC_SECRET_NAME` is set, the server generates a temporary random
+key at startup. In multi-instance deployments (such as GKE or Cloud Run), where
+follow-up requests can land on any container instance, all instances share the
+same key either by injecting `TRANSCRIPT_HMAC_SECRET` directly or by resolving
+`TRANSCRIPT_HMAC_SECRET_NAME` from Secret Manager at startup.
 
 ### Keeping conversation history compact
 
@@ -261,11 +263,18 @@ models and thinking levels with the per-role settings fixed in
 
 For the Gemini API key (`get_gemini_api_key()`):
 
-- **Cloud Run:** Reads `GEMINI_API_KEY_SECRET` from Secret Manager and caches it
-  in memory for 5 minutes. Any `key=...` query parameters are redacted from logs
-  and error messages.
+- **Cloud Run / GKE:** Reads `GEMINI_API_KEY_SECRET` from Secret Manager and
+  caches it in memory for 5 minutes. Any `key=...` query parameters are redacted
+  from logs and error messages.
 - **Local development:** Reads `gemini.api_key` from the local
   `agent/config.json`.
+
+For the Data Commons API key (`attach_auth()`):
+
+- Uses `DC_API_KEY` directly when set (local dev or direct secret injection).
+- When `DC_API_KEY` is unset and `DC_API_KEY_SECRET` is configured, resolves the
+  key from Secret Manager once at startup and caches it in memory.
+- If neither is set, no credential header is attached.
 
 ### UI theme & instance branding
 
