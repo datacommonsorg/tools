@@ -351,20 +351,22 @@ def _resolve_signing_key() -> bytes:
     if secret:
         return secret.encode("utf-8")
     if settings.transcript_hmac_secret_name:
-        sm_secret = fetch_secret(
+        fetched_secret = fetch_secret(
             settings.transcript_hmac_secret_name,
             TRANSCRIPT_HMAC_SECRET_NAME_ENV,
         )
-        if not sm_secret:
+        if not fetched_secret:
             raise RuntimeError(
                 f"{TRANSCRIPT_HMAC_SECRET_NAME_ENV} could not be loaded from "
                 "Secret Manager."
             )
         try:
-            validate_hmac_secret(sm_secret, TRANSCRIPT_HMAC_SECRET_NAME_ENV)
+            validate_hmac_secret(
+                fetched_secret, TRANSCRIPT_HMAC_SECRET_NAME_ENV
+            )
         except ValueError as e:
             raise RuntimeError(str(e)) from e
-        return sm_secret.encode("utf-8")
+        return fetched_secret.encode("utf-8")
     if settings.kubernetes_service_host:
         raise RuntimeError(
             f"{TRANSCRIPT_HMAC_SECRET_ENV} or "
