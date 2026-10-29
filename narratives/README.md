@@ -10,7 +10,7 @@ Context Protocol (MCP).
 
 - **Grounded statistical Q&A:** Answers natural-language questions using Data
   Commons MCP tools.
-- **Interactive visualizations:** Renders Data Commons charts alongside
+- **Interactive visualizations:** Renders Data Commons charts inline within
   generated responses.
 - **Source attribution:** Attaches inline citations and dataset provenance to
   statistical claims.

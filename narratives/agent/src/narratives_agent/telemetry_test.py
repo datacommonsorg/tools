@@ -304,6 +304,8 @@ def test_turn_summary_records_operations_without_content(
     turn.tables_fetched = 2
     turn.total_rows_fetched = 1_200
     turn.processing_retries = 1
+    turn.charts_emitted = 2
+    turn.charts_rejected = 1
     turn.tokens.add(
         telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
     )
@@ -328,6 +330,8 @@ def test_turn_summary_records_operations_without_content(
     assert record["tables_fetched"] == 2
     assert record["total_rows_fetched"] == 1_200
     assert record["processing_retries"] == 1
+    assert record["charts_emitted"] == 2
+    assert record["charts_rejected"] == 1
     assert record["tokens"] == {
         "prompt_token_count": 10,
         "candidates_token_count": 4,
@@ -351,6 +355,8 @@ def test_turn_summary_records_operations_without_content(
         "tables_fetched",
         "total_rows_fetched",
         "processing_retries",
+        "charts_emitted",
+        "charts_rejected",
     }
 
 
@@ -361,9 +367,9 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     # Situation: The module tracer records spans in memory; a turn times
     #   the processing phase twice, as a retried specification does, with
     #   the clock advanced by 100 ms and then 50 ms, and records the
-    #   analysis counts before finishing.
+    #   analysis and chart counts before finishing.
     # Expectation: The processing duration is the sum of both runs, and
-    #   the turn span carries the scripts and the three counts.
+    #   the turn span carries the scripts and the five counts.
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -384,6 +390,8 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     turn.tables_fetched = 1
     turn.total_rows_fetched = 30
     turn.processing_retries = 1
+    turn.charts_emitted = 1
+    turn.charts_rejected = 2
 
     turn.finish(telemetry.TerminalState.COMPLETE)
 
@@ -398,6 +406,8 @@ def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
     assert attributes["narratives.tables_fetched"] == 1
     assert attributes["narratives.total_rows_fetched"] == 30
     assert attributes["narratives.processing_retries"] == 1
+    assert attributes["narratives.charts_emitted"] == 1
+    assert attributes["narratives.charts_rejected"] == 2
 
 
 @pytest.mark.parametrize(

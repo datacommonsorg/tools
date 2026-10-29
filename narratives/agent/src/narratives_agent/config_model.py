@@ -60,8 +60,6 @@ class GeminiRole(Enum):
     CLASSIFY = "classify"
     DISCOVERY = "discovery"
     SYNTHESIS = "synthesis"
-    CHART_CONFIG = "chart_config"
-    CHART_VALIDATION = "chart_validation"
     FOLLOW_UP = "follow_up"
     COMPACTION = "compaction"
 
@@ -85,8 +83,6 @@ _ROLE_TEMPERATURES: Mapping[GeminiRole, float] = {
     GeminiRole.CLASSIFY: 0.0,
     GeminiRole.DISCOVERY: 0.2,
     GeminiRole.SYNTHESIS: 0.3,
-    GeminiRole.CHART_CONFIG: 0.2,
-    GeminiRole.CHART_VALIDATION: 0.0,
     # A higher temperature varies the phrasing of the follow-up questions.
     GeminiRole.FOLLOW_UP: 0.8,
     GeminiRole.COMPACTION: 0.1,
@@ -100,8 +96,6 @@ _ROLE_TEMPERATURES: Mapping[GeminiRole, float] = {
 # accept `MINIMAL`.
 _FIXED_THINKING_LEVELS: Mapping[GeminiRole, types.ThinkingLevel] = {
     GeminiRole.CLASSIFY: types.ThinkingLevel.MINIMAL,
-    GeminiRole.CHART_CONFIG: types.ThinkingLevel.LOW,
-    GeminiRole.CHART_VALIDATION: types.ThinkingLevel.LOW,
     GeminiRole.FOLLOW_UP: types.ThinkingLevel.LOW,
     GeminiRole.COMPACTION: types.ThinkingLevel.LOW,
 }
@@ -179,8 +173,6 @@ class GeminiConfig:
     classify_model: str = DEFAULT_GEMINI_CLASSIFY_MODEL
     discovery_model: str = DEFAULT_GEMINI_MODEL
     synthesis_model: str = DEFAULT_GEMINI_MODEL
-    chart_config_model: str = DEFAULT_GEMINI_MODEL
-    chart_validation_model: str = DEFAULT_GEMINI_MODEL
     follow_up_model: str = DEFAULT_GEMINI_MODEL
     compaction_model: str = DEFAULT_GEMINI_MODEL
     api_key: str = field(default="", repr=False)
@@ -444,14 +436,6 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
             ),
             synthesis_model=_read_model_name(
                 gemini, "synthesis_model", GeminiConfig.synthesis_model
-            ),
-            chart_config_model=_read_model_name(
-                gemini, "chart_config_model", GeminiConfig.chart_config_model
-            ),
-            chart_validation_model=_read_model_name(
-                gemini,
-                "chart_validation_model",
-                GeminiConfig.chart_validation_model,
             ),
             follow_up_model=_read_model_name(
                 gemini, "follow_up_model", GeminiConfig.follow_up_model

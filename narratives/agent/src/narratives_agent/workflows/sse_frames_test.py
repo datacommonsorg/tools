@@ -30,9 +30,11 @@ import pytest
 
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.telemetry import ErrorType
+from narratives_agent.workflows.blocks import ChartBlock, TextBlock
+from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.sse_frames import (
-    ChartConfigFrame,
+    BlockContentFrame,
     DataStatusFrame,
     EventName,
     FollowUpsFrame,
@@ -42,7 +44,6 @@ from narratives_agent.workflows.sse_frames import (
     TerminalCompleteFrame,
     TerminalErrorFrame,
     TerminalRefusedFrame,
-    TextFrame,
     ThoughtFrame,
     ToolCallFrame,
     serialize_source,
@@ -136,9 +137,37 @@ _WINDOW_FIELD = (
             id="thought",
         ),
         pytest.param(
-            TextFrame(text="About 68 million."),
-            ("content", '{"text": "About 68 million."}'),
-            id="text",
+            BlockContentFrame(
+                block=TextBlock(index=0, markdown="About 68 million.")
+            ),
+            (
+                "content",
+                '{"block": {"index": 0, "type": "text", '
+                '"markdown": "About 68 million."}}',
+            ),
+            id="text_block",
+        ),
+        pytest.param(
+            BlockContentFrame(
+                block=ChartBlock(
+                    index=1,
+                    chart=ResolvedLineChart(
+                        title="Population of France",
+                        variable_dcids=("Count_Person",),
+                        scope=PlaceList(("country/FRA",)),
+                        facet_ids=(("Count_Person", "f1"),),
+                    ),
+                )
+            ),
+            (
+                "content",
+                '{"block": {"index": 1, "type": "chart", "chart": '
+                '{"viz_type": "line", "title": "Population of France", '
+                '"variable_dcids": ["Count_Person"], '
+                '"place_dcids": ["country/FRA"], '
+                '"facet_ids": {"Count_Person": "f1"}}}}',
+            ),
+            id="chart_block",
         ),
         pytest.param(
             ToolCallFrame(
@@ -196,17 +225,6 @@ _WINDOW_FIELD = (
                 '"dateRange": "1960 - 2023"}]}',
             ),
             id="sources_from_domain_model",
-        ),
-        pytest.param(
-            ChartConfigFrame(
-                chart_config={"should_render": False, "hide_charts": True}
-            ),
-            (
-                "content",
-                '{"chart_config": {"should_render": false, '
-                '"hide_charts": true}}',
-            ),
-            id="chart_config",
         ),
         pytest.param(
             FollowUpsFrame(follow_up_questions=["And Spain?"]),

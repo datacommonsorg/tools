@@ -323,7 +323,7 @@ def _select_unique(values: list[str], cap: int) -> list[str]:
     return list(dict.fromkeys(values))[:cap]
 
 
-def format_count(count: int, singular: str, plural: str | None = None) -> str:
+def _format_count(count: int, singular: str, plural: str | None = None) -> str:
     """Formats `count` with its grammatical singular or plural noun.
 
     Args:
@@ -423,9 +423,9 @@ def _build_server_report(
         listed = ", ".join(fetched)
         if len(unique_empty) > len(fetched):
             extra = len(unique_empty) - len(fetched)
-            listed += f", and {format_count(extra, 'other variable')}"
+            listed += f", and {_format_count(extra, 'other variable')}"
         tested = (
-            f"the {format_count(len(unique_empty), 'variable')} fetched had "
+            f"the {_format_count(len(unique_empty), 'variable')} fetched had "
             f"no rows for the requested entities ({listed})"
         )
     else:
@@ -1172,5 +1172,4 @@ __all__ = [
     "McpLoopError",
     "StatusCallback",
     "execute_discovery_loop",
-    "format_count",
 ]

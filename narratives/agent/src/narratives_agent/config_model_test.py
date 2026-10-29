@@ -77,8 +77,6 @@ def test_an_empty_document_gives_every_default() -> None:
         classify_model=DEFAULT_GEMINI_CLASSIFY_MODEL,
         discovery_model=DEFAULT_GEMINI_MODEL,
         synthesis_model=DEFAULT_GEMINI_MODEL,
-        chart_config_model=DEFAULT_GEMINI_MODEL,
-        chart_validation_model=DEFAULT_GEMINI_MODEL,
         follow_up_model=DEFAULT_GEMINI_MODEL,
         compaction_model=DEFAULT_GEMINI_MODEL,
     )
@@ -104,8 +102,6 @@ def test_configured_values_are_carried_through() -> None:
                 "classify_model": " gemini-3.8-flash ",
                 "discovery_model": " gemini-3-pro ",
                 "synthesis_model": " gemini-3-pro-synthesis ",
-                "chart_config_model": " gemini-3-flash-charts ",
-                "chart_validation_model": " gemini-3-flash-val ",
                 "follow_up_model": " gemini-3-flash-followup ",
                 "compaction_model": " gemini-3-flash-compact ",
                 "api_key": " test-key ",
@@ -130,8 +126,6 @@ def test_configured_values_are_carried_through() -> None:
             classify_model="gemini-3.8-flash",
             discovery_model="gemini-3-pro",
             synthesis_model="gemini-3-pro-synthesis",
-            chart_config_model="gemini-3-flash-charts",
-            chart_validation_model="gemini-3-flash-val",
             follow_up_model="gemini-3-flash-followup",
             compaction_model="gemini-3-flash-compact",
             api_key="test-key",
@@ -362,16 +356,6 @@ def test_an_unrecognized_thinking_level_gives_the_default(
             id="synthesis",
         ),
         pytest.param(
-            GeminiRole.CHART_CONFIG,
-            RoleConfig(DEFAULT_GEMINI_MODEL, 0.2, types.ThinkingLevel.LOW),
-            id="chart_config",
-        ),
-        pytest.param(
-            GeminiRole.CHART_VALIDATION,
-            RoleConfig(DEFAULT_GEMINI_MODEL, 0.0, types.ThinkingLevel.LOW),
-            id="chart_validation",
-        ),
-        pytest.param(
             GeminiRole.FOLLOW_UP,
             RoleConfig(DEFAULT_GEMINI_MODEL, 0.8, types.ThinkingLevel.LOW),
             id="follow_up",
@@ -446,8 +430,6 @@ def test_configured_values_apply_to_the_roles_they_govern() -> None:
             classify_model="gemini-3.6-flash",
             discovery_model="gemini-discovery-custom",
             synthesis_model="gemini-synthesis-custom",
-            chart_config_model="gemini-chart-config-custom",
-            chart_validation_model="gemini-chart-validation-custom",
             follow_up_model="gemini-follow-up-custom",
             compaction_model="gemini-compaction-custom",
         ),
@@ -465,14 +447,6 @@ def test_configured_values_apply_to_the_roles_they_govern() -> None:
     )
     assert config.resolve_role_config(GeminiRole.SYNTHESIS) == RoleConfig(
         "gemini-synthesis-custom", 0.3, types.ThinkingLevel.LOW
-    )
-    assert config.resolve_role_config(GeminiRole.CHART_CONFIG) == RoleConfig(
-        "gemini-chart-config-custom", 0.2, types.ThinkingLevel.LOW
-    )
-    assert config.resolve_role_config(
-        GeminiRole.CHART_VALIDATION
-    ) == RoleConfig(
-        "gemini-chart-validation-custom", 0.0, types.ThinkingLevel.LOW
     )
     assert config.resolve_role_config(GeminiRole.FOLLOW_UP) == RoleConfig(
         "gemini-follow-up-custom", 0.8, types.ThinkingLevel.LOW

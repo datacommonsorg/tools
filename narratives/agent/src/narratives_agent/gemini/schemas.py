@@ -22,17 +22,6 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ChartVizType = Literal[
-    "line",
-    "bar",
-    "ranking",
-    "pie",
-    "highlight",
-    "gauge",
-    "scatter",
-    "slider",
-]
-
 QueryPattern = Literal[
     "single_point",
     "top_n_ranking",
@@ -137,58 +126,6 @@ class QueryClassification(BaseModel):
         return self
 
 
-class ChartItem(BaseModel):
-    """One chart configuration within a chart config response."""
-
-    model_config = _SCHEMA_CONFIG
-
-    viz_type: ChartVizType | None = None
-    # Required to prevent blank UI headers: forces the model to always
-    # generate a descriptive title rather than rendering an empty header strip.
-    # Asking for a title in the prompt alone was not enough; the model dropped
-    # it often enough to notice.
-    title: str = Field(description="Descriptive chart title")
-    variable_dcids: list[str] | None = None
-    place_dcids: list[str] | None = None
-    parent_place: str | None = None
-    child_place_type: str | None = None
-    date: str | None = Field(
-        default=None,
-        description="Single comparison date in YYYY, YYYY-MM, or YYYY-MM-DD",
-    )
-
-
-class ChartConfigResponse(BaseModel):
-    """Chart configurations, one per group of compatible variables."""
-
-    model_config = _SCHEMA_CONFIG
-
-    should_render: bool = Field(
-        description="True if at least one chart should be rendered"
-    )
-    charts: list[ChartItem] | None = Field(
-        default=None,
-        description=(
-            "Array of chart configurations (max 3). Group compatible "
-            "variables together."
-        ),
-    )
-
-
-class DataValidationResponse(BaseModel):
-    """Verdict on whether a synthesized answer contains actual data."""
-
-    model_config = _SCHEMA_CONFIG
-
-    data_found: bool = Field(
-        description=(
-            "True if the response contains actual data/statistics that "
-            "answer the query. False if data is unavailable, not found, "
-            "or the response says data doesn't exist."
-        )
-    )
-
-
 class FollowUpResponse(BaseModel):
     """Suggested follow-up questions for a completed answer."""
 
@@ -199,7 +136,5 @@ class FollowUpResponse(BaseModel):
     )
 
 
-# The workflows pass these names as `response_schema`.
-CHART_CONFIG_SCHEMA = ChartConfigResponse
-DATA_VALIDATION_SCHEMA = DataValidationResponse
+# Passed by the follow-up workflow as `response_schema`.
 FOLLOW_UP_SCHEMA = FollowUpResponse

@@ -19,10 +19,6 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from narratives_agent.gemini.schemas import (
-    ChartConfigResponse,
-    ChartItem,
-    ChartVizType,
-    DataValidationResponse,
     FollowUpResponse,
     GeographicShape,
     QueryClassification,
@@ -32,60 +28,20 @@ from narratives_agent.gemini.schemas import (
 
 _MODELS: list[type[BaseModel]] = [
     QueryClassification,
-    ChartItem,
-    ChartConfigResponse,
-    DataValidationResponse,
     FollowUpResponse,
 ]
 
 # Holds the smallest valid payload for each schema model.
 _MINIMAL_PAYLOADS: dict[type[BaseModel], dict[str, Any]] = {
     QueryClassification: {"serviceable": True},
-    ChartItem: {"title": "Population of California"},
-    ChartConfigResponse: {"should_render": False},
-    DataValidationResponse: {"data_found": True},
     FollowUpResponse: {"questions": []},
 }
-
-
-def test_a_chart_config_response_parses_nested_charts() -> None:
-    # Test: Parsing a complete chart config response.
-    # Situation: The model returns JSON with one fully populated chart.
-    # Expectation: The JSON parses into a ChartConfigResponse with all
-    #   provided chart fields populated and omitted optional fields set to
-    #   None.
-    response = ChartConfigResponse.model_validate_json(
-        """{
-            "should_render": true,
-            "charts": [{
-                "viz_type": "line",
-                "title": "Population over time",
-                "variable_dcids": ["Count_Person"],
-                "place_dcids": ["geoId/06"],
-                "date": "2020"
-            }]
-        }"""
-    )
-
-    assert response.should_render is True
-    assert response.charts is not None
-    chart = response.charts[0]
-    assert chart.viz_type == "line"
-    assert chart.title == "Population over time"
-    assert chart.variable_dcids == ["Count_Person"]
-    assert chart.place_dcids == ["geoId/06"]
-    assert chart.date == "2020"
-    assert chart.parent_place is None
-    assert chart.child_place_type is None
 
 
 @pytest.mark.parametrize(
     ("model", "required_field"),
     [
         (QueryClassification, "serviceable"),
-        (ChartItem, "title"),
-        (ChartConfigResponse, "should_render"),
-        (DataValidationResponse, "data_found"),
         (FollowUpResponse, "questions"),
     ],
 )
@@ -105,33 +61,6 @@ def test_a_missing_required_field_is_rejected(
 
     assert raised.value.errors()[0]["loc"] == (required_field,)
     assert model.model_json_schema()["required"] == [required_field]
-
-
-@pytest.mark.parametrize("viz_type", get_args(ChartVizType))
-def test_every_supported_viz_type_is_accepted(viz_type: str) -> None:
-    # Test: Accepted chart types.
-    # Situation: ChartItem is validated with each visualization type in
-    #   ChartVizType.
-    # Expectation: Validation succeeds and preserves viz_type for every
-    #   supported value.
-    chart = ChartItem.model_validate({"title": "t", "viz_type": viz_type})
-
-    assert chart.viz_type == viz_type
-
-
-def test_an_unsupported_viz_type_is_rejected() -> None:
-    # Test: Chart type enforcement.
-    # Situation: ChartItem is given a visualization type ("histogram") that
-    #   the Data Commons web components do not support.
-    # Expectation: Validation fails on viz_type, and the JSON schema
-    #   enumerates only the supported types.
-    with pytest.raises(ValidationError) as raised:
-        ChartItem.model_validate({"title": "t", "viz_type": "histogram"})
-
-    assert raised.value.errors()[0]["loc"] == ("viz_type",)
-    viz_schema = ChartItem.model_json_schema()["properties"]["viz_type"]
-    enums = [option.get("enum") for option in viz_schema["anyOf"]]
-    assert list(get_args(ChartVizType)) in enums
 
 
 def test_query_classification_populates_defaults() -> None:

@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 # The packaged contracts under `narratives_agent.workflows.contracts`.
-type ContractName = Literal["discovery"]
+type ContractName = Literal["discovery", "synthesis"]
 
 _CONTRACTS_PACKAGE = "narratives_agent.workflows.contracts"
 

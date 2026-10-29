@@ -66,6 +66,10 @@ When an answer includes a chart, the UI renders Data Commons web components
 their own chart data and place names directly from Data Commons
 (`datacommons.org` or the same-origin Data Commons website host).
 
+Prose figures come from the digest while charts are drawn by the Data Commons
+web components from their own fetch, pinned by `facet_ids`, so the reference
+date and the per-capita denominator can differ between prose and chart.
+
 ## MCP tool discovery & session recovery
 
 ### Automatic tool discovery
@@ -110,9 +114,10 @@ agent loop in five steps:
      not signed and is excluded from the multi-turn window, and the UI renders
      the message as a notice rather than an error card.
    - **Clarification:** When a place name is ambiguous or required and omitted,
-     streams the clarification question as answer `text`, signs the turn with
-     empty state slots, and emits a signed `complete` terminal frame without
-     `data_status`, `sources`, `chart_config`, or `follow_ups` frames.
+     streams the clarification question as the answer's one text block, signs
+     the turn with empty state slots, and emits a signed `complete` terminal
+     frame without `data_status`, `sources`, chart block, or `follow_ups`
+     frames.
    - **Classified:** Continues into the discovery loop and synthesis with the
      analytical `pattern` (`single_point`, `top_n_ranking`, `distribution`,
      `trend_delta`, `outliers`, `correlation`, `composition`,
@@ -138,12 +143,44 @@ agent loop in five steps:
    default specification is built from the cached tables and the query's
    pattern. If the MCP server cannot be reached, the turn stops and returns an
    error so the model never guesses numbers without data.
-3. **Answer synthesis & chart selection (`synthesis` / `chart_config`):**
-   Gemini receives the rendered `AnalysisDigest`, the inventory of cached
-   tables the specification used, and the numbered sources (`[1]`, `[2]`, ...),
-   and writes a markdown response with inline citations while checking in
-   parallel whether the data can be shown in a chart. A chart is included only
-   if validation confirms that matching data exists.
+3. **Answer synthesis (`synthesis`):** The synthesis phase
+   (`workflows/synthesis.py`, `workflows/blocks.py`, `workflows/charts.py`, and
+   `workflows/chart_defaults.py`) writes the answer from the digest alone. The
+   prompt holds the digest's computed results (with floats rounded to display
+   precision), the numbered sources, the missing-data notes, the pattern's
+   directive, and a table inventory naming each cached table's variable, unit,
+   places, and dates; externally sourced text (variable names, source names, and
+   missing-data notes) stays in typed fields until the message is rendered. The
+   model writes markdown and places each chart where it belongs as a fenced
+   block tagged `chart` holding one specification: the chart kind (`line`,
+   `bar`, `map`, `ranking`, `scatter`, or `highlight`), the table ids it draws
+   from, a title, and the places (an explicit subset, the table's cohort, or a
+   `top_n` or `bottom_n` slice), with an optional unit and, on single-date
+   charts, an optional date.
+   The server splits the stream at paragraph boundaries and at the closing fence
+   of each chart block, and emits one `content {block}` frame per completed
+   paragraph and per chart that resolves. Resolution is set membership against
+   the turn cache: an unknown table, a place or date the table does not hold, a
+   unit mismatch across the tables on one axis, or a kind the table shape cannot
+   support (a map without a cohort, a scatter without two variables) rejects the
+   chart, which is dropped and counted while the prose stands. Each resolved
+   chart carries `facet_ids` mapping its variables to the facets that served
+   them, matching the Data Commons web components' facet attributes (`facetId`
+   on highlight, `facetIds` or `facetMapping` on the other components). A
+   derived per-capita table is scaled automatically in the digest (per 1,
+   1,000, or 100,000 people so the median non-zero magnitude is at least 1) and
+   is charted when referenced by its `s<n>` table id as its numerator with the
+   web component's per-person normalization; other derived tables are not
+   chartable. At most three charts are accepted per answer. When the digest has
+   data and no chart is emitted, the default chart floor appends at most one
+   chart projected directly from the primary result (`scatter` for a cohort
+   `relate_cohorts` result, which is considered first, or the direct chart of
+   `analyze_timeseries`, `rank_cohort`, or `compute_composition`;
+   distributions, standalone derivations, and non-cohort relations receive
+   none). The signed `model_response` is the text blocks joined by blank lines,
+   with the chart blocks stripped, matching the text blocks emitted in
+   `content` frames. A stream that stalls for 60 seconds waiting for a chunk
+   ends the turn with `synthesis_stream_error`.
 4. **Turn signing (`finalize`):** The server builds the turn's `state_slots`
    from the fetched tables the specification used and the displayed charts
    (`workflows/state_slots.py`), and signs the completed turn into the window
@@ -159,9 +196,9 @@ for `heartbeat`) a sequential `id` starting at `1`:
 
 | Event | What it contains |
 | :--- | :--- |
-| `status` | Current step (`classify`, `discovery`, `processing`, `synthesis`, or `chart_config`) and status message |
+| `status` | Current step (`classify`, `discovery`, `processing`, or `synthesis`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
-| `content` | Answer text (`{text}`), tool call details (`{tool_call}`), citations (`{sources}`), data status (`{data_status}`), or chart config (`{chart_config}`) |
+| `content` | Answer block (`{block}` of type `text` or `chart`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
 | `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `heartbeat` | `{}`, sent every 15 seconds so proxies do not close idle connections |
