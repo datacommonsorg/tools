@@ -333,6 +333,28 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
     )
 
 
+def test_format_results_for_prompt_omits_sources_and_missing_notes() -> None:
+    # Test: Text rendering of `AnalysisDigest.format_results_for_prompt()`.
+    # Situation: `format_results_for_prompt()` is called on a digest with a
+    #   sourced `"refused"` result and one missing-data note, and on a
+    #   digest with no results.
+    # Expectation: Renders the step block with its citation exactly as
+    #   `format_for_prompt()` does, without the `"Sources:"` and
+    #   `"Missing data:"` sections; the empty digest renders as `""`.
+    digest = AnalysisDigest.from_results(
+        (_refused("s2", Provenance(sources=(_CENSUS,))),),
+        missing_notes=("No data for median income by county.",),
+    )
+    text = digest.format_results_for_prompt()
+    assert text == (
+        "Step s2: analyze_timeseries on Total population (Count_Person) "
+        "[refused: no_observations]\n"
+        "  cite: [1]"
+    )
+    assert digest.format_for_prompt().startswith(text + "\n\nSources:\n")
+    assert AnalysisDigest.from_results(()).format_results_for_prompt() == ""
+
+
 def test_format_for_prompt_rounds_figures_to_display_precision() -> None:
     # Test: Float rounding in `format_for_prompt()` versus full precision in
     #   `to_dict()`.
