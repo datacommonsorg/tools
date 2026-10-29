@@ -51,8 +51,11 @@ from narratives_agent.mcp.metadata import parse_scaling_factor
 
 __all__ = [
     "AlternativeSourceWire",
+    "ChildObservationsToolArguments",
     "ColumnarTableWire",
+    "MultiEntityObservationsToolArguments",
     "ObservationPayloadWire",
+    "ObservationsToolArguments",
     "SourceMetadataWire",
     "VariableWire",
     "validate_observation_payload",
@@ -63,6 +66,99 @@ logger = logging.getLogger(__name__)
 # Validation context key under which dropped `alternativeSources` entries are
 # counted, so the caller can log them with the variable or place they belong to.
 _DROPPED_ALTERNATIVES = "dropped_alternatives"
+
+# Tool arguments are built by the agent, so an unknown field is a bug.
+_TOOL_ARGUMENTS_CONFIG = ConfigDict(extra="forbid", frozen=True)
+
+
+class ObservationsToolArguments(BaseModel):
+    """Wire arguments for the MCP `get_observations` tool.
+
+    The observation tools take snake_case arguments, so the argument models
+    have no aliases.
+
+    Attributes:
+        variable_dcid: The statistical variable DCID.
+        place_dcid: The one place to fetch.
+        date: `latest`, `all`, `range`, or a `YYYY` year.
+        date_range_start: The inclusive range start, or `None` when `date` is
+            not `range` or the range is open at the start.
+        date_range_end: The inclusive range end, or `None` when `date` is not
+            `range` or the range is open at the end.
+        source_override: The facet to fetch from, or `None` to let the server
+            choose.
+    """
+
+    model_config = _TOOL_ARGUMENTS_CONFIG
+
+    variable_dcid: str
+    place_dcid: str
+    date: str
+    date_range_start: str | None = None
+    date_range_end: str | None = None
+    source_override: str | None = None
+
+
+class ChildObservationsToolArguments(BaseModel):
+    """Wire arguments for the MCP `get_child_observations` tool.
+
+    Attributes:
+        variable_dcid: The statistical variable DCID.
+        parent_place_dcid: The parent place whose children are fetched.
+        child_place_type: The place type of the children, such as `State`.
+        date: `latest`, `all`, `range`, or a `YYYY` year.
+        date_range_start: The inclusive range start, or `None` when `date` is
+            not `range` or the range is open at the start.
+        date_range_end: The inclusive range end, or `None` when `date` is not
+            `range` or the range is open at the end.
+        source_override: The facet to fetch from, or `None` to let the server
+            choose.
+    """
+
+    model_config = _TOOL_ARGUMENTS_CONFIG
+
+    variable_dcid: str
+    parent_place_dcid: str
+    child_place_type: str
+    date: str
+    date_range_start: str | None = None
+    date_range_end: str | None = None
+    source_override: str | None = None
+
+
+class MultiEntityObservationsToolArguments(BaseModel):
+    """Wire arguments for the MCP `get_multi_entity_observations` tool.
+
+    Attributes:
+        variable_dcid: The relationship variable DCID.
+        entities: The DCIDs of each entity property.
+        parent_entity_property: The entity property expanded into child
+            places, or `None` when no property is expanded. The tool takes
+            the three expansion fields together or not at all.
+        parent_entity_dcid: The parent place of the expansion, or `None` when
+            no property is expanded.
+        child_entity_type: The child place type of the expansion, or `None`
+            when no property is expanded.
+        date: `latest`, `all`, `range`, or a `YYYY` year.
+        date_range_start: The inclusive range start, or `None` when `date` is
+            not `range` or the range is open at the start.
+        date_range_end: The inclusive range end, or `None` when `date` is not
+            `range` or the range is open at the end.
+        source_override: The facet to fetch from, or `None` to let the server
+            choose.
+    """
+
+    model_config = _TOOL_ARGUMENTS_CONFIG
+
+    variable_dcid: str
+    entities: dict[str, list[str]]
+    parent_entity_property: str | None = None
+    parent_entity_dcid: str | None = None
+    child_entity_type: str | None = None
+    date: str
+    date_range_start: str | None = None
+    date_range_end: str | None = None
+    source_override: str | None = None
 
 
 def _descriptive_str(value: object) -> str | None:

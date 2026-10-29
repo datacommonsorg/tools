@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import sys
+import time
 from collections.abc import AsyncIterator, Iterator
 
 import httpx
@@ -126,7 +127,7 @@ def instrumented_genai(
         instrumentor.instrument()
 
 
-def _gemini_response(request: httpx.Request) -> httpx.Response:
+def _make_gemini_response(request: httpx.Request) -> httpx.Response:
     """Answers every Gemini request with a fixed model response."""
     return httpx.Response(
         200,
@@ -164,7 +165,7 @@ async def test_an_instrumented_gemini_call_records_no_content(
         api_key="test-key",
         http_options=types.HttpOptions(
             async_client_args={
-                "transport": httpx.MockTransport(_gemini_response)
+                "transport": httpx.MockTransport(_make_gemini_response)
             }
         ),
     )
@@ -241,12 +242,12 @@ def test_a_streamed_request_produces_one_request_span() -> None:
     app = FastAPI()
 
     @app.get("/stream")
-    async def stream() -> StreamingResponse:
-        async def chunks() -> AsyncIterator[bytes]:
+    async def serve_stream() -> StreamingResponse:
+        async def iter_chunks() -> AsyncIterator[bytes]:
             for _ in range(_STREAMED_CHUNKS):
                 yield b"data: {}\n\n"
 
-        return StreamingResponse(chunks(), media_type="text/event-stream")
+        return StreamingResponse(iter_chunks(), media_type="text/event-stream")
 
     telemetry.instrument_app(app, tracer_provider=provider)
 
@@ -287,17 +288,22 @@ def test_turn_summary_records_operations_without_content(
     turn_records: list[str],
 ) -> None:
     # Test: The turn summary carries operational fields only.
-    # Situation: A turn runs a discovery phase with two tool calls over three
-    #   iterations, adds token usage from two Gemini calls, and finishes
+    # Situation: A turn runs a discovery phase with two tool calls over
+    #   three iterations, records the scripts and fetch counts of its
+    #   analysis, adds token usage from two Gemini calls, and finishes
     #   `complete`; `finish` is then called again with `error`.
     # Expectation: Exactly one summary is emitted, with state `complete`, the
-    #   phase duration, tool names and counts, and summed tokens, and it
-    #   contains no tool arguments or other content.
+    #   phase duration, tool names and counts, the analysis counts, and
+    #   summed tokens, and it contains no tool arguments or other content.
     turn = telemetry.TurnTelemetry()
     with turn.phase("discovery"):
         turn.mcp_iterations = 3
         turn.record_tool_call("search_indicators")
-        turn.record_tool_call("get_observations")
+        turn.record_tool_call("fetch_observations")
+    turn.scripts = ["rank_cohort", "summarize_distribution"]
+    turn.tables_fetched = 2
+    turn.total_rows_fetched = 1_200
+    turn.processing_retries = 1
     turn.tokens.add(
         telemetry.TokenCounts(prompt=10, candidates=0, thoughts=0, total=15)
     )
@@ -305,19 +311,23 @@ def test_turn_summary_records_operations_without_content(
         telemetry.TokenCounts(prompt=0, candidates=4, thoughts=2, total=0)
     )
 
-    turn.finish("complete")
-    turn.finish("error", "late_error")
+    turn.finish(telemetry.TerminalState.COMPLETE)
+    turn.finish(telemetry.TerminalState.ERROR, "late_error")
 
     (message,) = turn_records
     record = json.loads(message)
-    assert record["terminal_state"] == "complete"
+    assert record["terminal_state"] == telemetry.TerminalState.COMPLETE
     assert record["turn_id"] == turn.turn_id
     assert set(record["phase_durations_ms"]) == {"discovery"}
     assert record["mcp_iterations"] == 3
     assert record["tool_calls"] == {
         "search_indicators": 1,
-        "get_observations": 1,
+        "fetch_observations": 1,
     }
+    assert record["scripts"] == ["rank_cohort", "summarize_distribution"]
+    assert record["tables_fetched"] == 2
+    assert record["total_rows_fetched"] == 1_200
+    assert record["processing_retries"] == 1
     assert record["tokens"] == {
         "prompt_token_count": 10,
         "candidates_token_count": 4,
@@ -337,12 +347,69 @@ def test_turn_summary_records_operations_without_content(
         "tool_call_count",
         "tool_calls",
         "tokens",
+        "scripts",
+        "tables_fetched",
+        "total_rows_fetched",
+        "processing_retries",
     }
+
+
+def test_repeated_phases_accumulate_and_analysis_fields_reach_the_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Phase accumulation and the span attributes of the analysis.
+    # Situation: The module tracer records spans in memory; a turn times
+    #   the processing phase twice, as a retried specification does, with
+    #   the clock advanced by 100 ms and then 50 ms, and records the
+    #   analysis counts before finishing.
+    # Expectation: The processing duration is the sum of both runs, and
+    #   the turn span carries the scripts and the three counts.
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer(__name__))
+    turn = telemetry.TurnTelemetry()
+    readings = [0.0, 0.1, 0.0, 0.05]
+
+    def read_clock() -> float:
+        # The phase readings are consumed in order; `finish` reads the
+        # clock afterwards and gets the last reading again.
+        return readings.pop(0) if len(readings) > 1 else readings[0]
+
+    monkeypatch.setattr(time, "monotonic", read_clock)
+    for _ in range(2):
+        with turn.phase("processing"):
+            pass
+    turn.scripts = ["analyze_timeseries"]
+    turn.tables_fetched = 1
+    turn.total_rows_fetched = 30
+    turn.processing_retries = 1
+
+    turn.finish(telemetry.TerminalState.COMPLETE)
+
+    assert turn.phase_durations_ms == {"processing": 150.0}
+    (span,) = [
+        span
+        for span in exporter.get_finished_spans()
+        if span.name == "narratives.turn"
+    ]
+    attributes = dict(span.attributes or {})
+    assert attributes["narratives.scripts"] == ("analyze_timeseries",)
+    assert attributes["narratives.tables_fetched"] == 1
+    assert attributes["narratives.total_rows_fetched"] == 30
+    assert attributes["narratives.processing_retries"] == 1
 
 
 @pytest.mark.parametrize(
     ("state", "error_type", "severity"),
-    [("error", "mcp_timeout", "ERROR"), ("complete", None, "INFO")],
+    [
+        (
+            telemetry.TerminalState.ERROR,
+            telemetry.ErrorType.MCP_TIMEOUT,
+            "ERROR",
+        ),
+        (telemetry.TerminalState.COMPLETE, None, "INFO"),
+    ],
 )
 def test_turn_span_severity_matches_the_terminal_state(
     monkeypatch: pytest.MonkeyPatch,
@@ -389,11 +456,13 @@ def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
     classified = telemetry.TurnTelemetry()
     with classified.phase("classify"):
         classified.pattern = "trend_delta"
-    classified.finish("complete")
-    telemetry.TurnTelemetry().finish("refused", "off_domain")
+    classified.finish(telemetry.TerminalState.COMPLETE)
+    telemetry.TurnTelemetry().finish(
+        telemetry.TerminalState.REFUSED, "off_domain"
+    )
     later_refused = telemetry.TurnTelemetry()
     later_refused.pattern = "single_point"
-    later_refused.finish("refused", "safety_blocked")
+    later_refused.finish(telemetry.TerminalState.REFUSED, "safety_blocked")
 
     first, second, third = (json.loads(message) for message in turn_records)
     assert first["pattern"] == "trend_delta"
@@ -413,7 +482,7 @@ def test_the_pattern_is_recorded_only_when_the_classifier_assigned_one(
     assert "narratives.pattern" not in attributes[2]
 
 
-def _finished_span() -> ReadableSpan:
+def _make_finished_span() -> ReadableSpan:
     """Returns one finished span with an allowlisted attribute."""
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
@@ -432,7 +501,7 @@ def test_span_exporter_writes_to_the_current_stdout(
     #   as a test runner does after the exporter's thread has started.
     # Expectation: The span's `format_span` line is written to the new
     #   stream, and the export reports success.
-    span = _finished_span()
+    span = _make_finished_span()
     exporter = telemetry._StdoutSpanExporter()
     stdout = io.StringIO()
     monkeypatch.setattr(sys, "stdout", stdout)
@@ -469,12 +538,12 @@ def test_turn_summary_handler_does_not_raise_when_writing_fails(
     #   been closed.
     # Expectation: `emit` returns normally and passes the record to
     #   `handleError`, as `logging.StreamHandler` does.
-    def failing_write(line: str) -> None:
+    def raise_on_write(line: str) -> None:
         raise ValueError("I/O operation on closed file.")
 
     handled: list[logging.LogRecord] = []
     handler = telemetry._StdoutLineHandler()
-    monkeypatch.setattr(telemetry, "_write_stdout_line", failing_write)
+    monkeypatch.setattr(telemetry, "_write_stdout_line", raise_on_write)
     monkeypatch.setattr(handler, "handleError", handled.append)
     record = logging.makeLogRecord({"msg": "summary"})
 

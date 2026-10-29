@@ -35,9 +35,11 @@ from narratives_agent.mcp.metadata import (
 )
 from narratives_agent.mcp.observations import (
     ObservationPayloadError,
+    ObservationPayloadOutline,
     apply_variable_metadata,
     merge_observation_payloads,
     parse_observation_table,
+    read_payload_outline,
 )
 
 _WDI_URL = "https://datatopics.worldbank.org/world-development-indicators/"
@@ -1565,3 +1567,55 @@ def test_merge_falls_back_to_first_header_and_rejects_invalid_payloads() -> (
         )
     with pytest.raises(ValueError, match="requires a payload"):
         merge_observation_payloads([])
+
+
+def test_payload_outline_reads_entity_role_rows_and_sources() -> None:
+    # Test: `read_payload_outline` on a payload keyed by entity role.
+    # Situation: A relationship payload has `donor`, `recipient`, `date`, and
+    #   `value` columns, two list rows and one row that is not a list, a
+    #   served facet with a provenance URL, and two alternatives, one without
+    #   a facet ID; separately, a place-keyed payload and one without the
+    #   `variable` block.
+    # Expectation: The outline keeps the columns and the list rows as sent,
+    #   reports no place column, reads the facet and source, and drops the
+    #   alternative without a facet ID; the place-keyed payload reports a
+    #   place column; the payload without `variable` raises.
+    payload: JsonObject = {
+        "variable": {"dcid": "Aid"},
+        "data": {
+            "columns": ["donor", "recipient", "date", "value"],
+            "rows": [
+                ["country/ARE", "country/AFG", "2020", 1.0],
+                ["country/ARE", "country/PAK", "2020", 2.0],
+                "not a row",
+            ],
+        },
+        "sourceMetadata": {"sourceId": "f1", "provenanceUrl": _WDI_URL},
+        "alternativeSources": [
+            {"sourceMetadata": {"sourceId": "f2", "unit": "USDollar"}},
+            {"sourceMetadata": {"provenanceUrl": _WIKIDATA_URL}},
+        ],
+    }
+
+    outline = read_payload_outline(payload, "Aid")
+
+    assert outline == ObservationPayloadOutline(
+        columns=("donor", "recipient", "date", "value"),
+        rows=(
+            ("country/ARE", "country/AFG", "2020", 1.0),
+            ("country/ARE", "country/PAK", "2020", 2.0),
+        ),
+        has_place_column=False,
+        facet_id="f1",
+        source=Source(name="datatopics.worldbank.org", url=_WDI_URL),
+        alternative_sources=(
+            AlternativeSource(facet_id="f2", unit="USDollar"),
+        ),
+    )
+    place_payload: JsonObject = {
+        "variable": _VARIABLE,
+        "data": _data([["country/FRA", "2020", 1.0]]),
+    }
+    assert read_payload_outline(place_payload, "Count_Person").has_place_column
+    with pytest.raises(ObservationPayloadError, match="variable"):
+        read_payload_outline({"data": {}}, "Aid")

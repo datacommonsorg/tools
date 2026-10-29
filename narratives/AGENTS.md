@@ -47,32 +47,53 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
-    `config_model.py`, `gcp_auth.py`, `json_value.py`, `telemetry.py`,
-    `server/`, `workflows/`, `mcp/`, `gemini/`, `analytics/`).
+    `config_model.py`, `gcp_auth.py`, `json_value.py`, `secret_manager.py`,
+    `telemetry.py`, `server/`, `workflows/`, `mcp/`, `gemini/`, `analytics/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
       admission pre-filter, query classification, and pattern guidance
-      (`prefilter.py`, `classify.py`, `pattern_guidance.py`), MCP tool loop
-      (`mcp_loop.py`), chart configuration (`chart_config.py`), follow-up
-      generation (`follow_up.py`), user-visible messages (`messages.py`), the
-      typed SSE frames the agent loop sends (`sse_frames.py`), and signed
-      transcripts (`transcript.py`). Of the agent's subpackages, it may import
-      `analytics/`, `mcp/`, and `gemini/`.
-    - `mcp/`: MCP transport (`client.py`), server capability discovery and the
-      required-tool check (`capabilities.py`), schema helpers (`schema.py`),
-      observation data helpers (`data_utils.py`), Pydantic wire models and
-      validation of MCP observation payloads (`wire.py`), observation table
-      parsing (`observations.py`), and source and variable metadata readers
+      (`prefilter.py`, `classify.py`, `pattern_guidance.py`), the code-owned
+      prompt contracts appended after the configured guidance
+      (`prompt_contracts.py`, with packaged contracts under `contracts/`),
+      the discovery loop (`mcp_loop.py`), the per-turn cache of
+      `CachedTable`s (`t<n>` fetched, `s<n>` derived), the merged
+      `VariableMetadataEnrichment`, and the locked facets (`turn_cache.py`),
+      the Pydantic fetch request models
+      and the server-side fetch functions (`fetch_observations`,
+      `fetch_child_observations`, `fetch_multi_entity_observations`), with
+      their generated Gemini declarations and the date rules the fetches
+      apply (`fetch_requests.py`, `fetch.py`), the `AnalysisSpecification`
+      and `UnavailableReport` models (`submit_specification`,
+      `report_unavailable`), their generated Gemini declarations, their
+      validation against the cache, and the default specification
+      (`specification.py`), the bounded processing phase that runs a
+      specification and returns an `AnalysisDigest` or a
+      `ProcessingDiagnostic` (`processing.py`), chart configuration
+      (`chart_config.py`), follow-up generation (`follow_up.py`),
+      user-visible messages (`messages.py`), the typed SSE frames the agent
+      loop sends (`sse_frames.py`), the turn's state slots
+      (`state_slots.py`), and signed transcripts (`transcript.py`). Of the
+      agent's subpackages, it may import `analytics/`, `mcp/`, and
+      `gemini/`.
+    - `mcp/`: MCP transport and tool-result decoding (`client.py`), server
+      capability discovery and the required-tool check (`capabilities.py`),
+      schema helpers (`schema.py`), Pydantic wire models of MCP observation
+      payloads and of the observation tools' arguments, and payload
+      validation (`wire.py`), observation table parsing and payload outlines
+      (`observations.py`), and source and variable metadata readers
       (`metadata.py`). Of the agent's subpackages, it may import only
       `analytics/`; it never imports `workflows/` or `gemini/`.
     - `analytics/`: the deterministic analytics library, holding observation
       tables and provenance models (`tables.py`, `provenance.py`), cohort
       alignment and unit checks (`alignment.py`), the table summary
       (`summarize.py`), the digest and metric types (`digest.py`,
-      `metrics.py`), and the analytical scripts (`timeseries.py`,
-      `ranking.py`). It imports only the Python standard library, other
-      `analytics/` modules, and `json_value.py`.
+      `metrics.py`), the analytical scripts (`timeseries.py`, `ranking.py`,
+      `distribution.py`, `composition.py`, `derived.py`, `relations.py`),
+      the input checks and refusals they share (`script_inputs.py`), and the
+      golden fixture under `golden/` with its regeneration script. It
+      imports only the Python standard library, other `analytics/` modules,
+      and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
       layers the prompts, and returns the result as an `AgentConfig`.
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
@@ -84,6 +105,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `json_value.py`: the `JsonValue` and `JsonObject` aliases for data
       that is JSON by nature, such as MCP tool arguments and results, and
       `json_safe`, which converts typed values back into a `JsonValue`.
+    - `secret_manager.py`: reads secrets from Google Cloud Secret Manager,
+      caches results, and provides test resets.
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
@@ -149,6 +172,11 @@ Agent, from `narratives/agent/` (requires **Python 3.14** and **uv**):
 - `uv run ruff format . ../deploy` — format Python files.
 - `uv run ruff check . ../deploy` — lint Python files.
 - `uv run mypy` — run strict static type-checking.
+- `uv run python -m narratives_agent.analytics.golden.regenerate_golden`:
+  rewrite the analytics golden fixture, `core_golden.json`, after a
+  deliberate change to analytics output, and review its diff (never edit
+  the fixture by hand); `--check` exits non-zero when the fixture is stale,
+  without writing it.
 - `uv lock` — regenerate `uv.lock` after editing `pyproject.toml` (never edit
   `uv.lock` by hand).
 

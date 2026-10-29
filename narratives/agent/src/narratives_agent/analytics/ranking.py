@@ -25,19 +25,11 @@ from typing import Literal
 from narratives_agent.analytics.alignment import (
     DEFAULT_MIN_COVERAGE,
     AlignedCohort,
-    AlignmentRefusal,
-    align_cohort,
-    validate_alignment_parameters,
 )
 from narratives_agent.analytics.digest import (
     PERCENT_SCALE,
-    CoverageReport,
     OkScriptResult,
-    RefusalReason,
-    RefusedScriptResult,
     ScriptResult,
-    conjugate_have,
-    format_place_names,
 )
 from narratives_agent.analytics.metrics import (
     RankEntry,
@@ -45,10 +37,15 @@ from narratives_agent.analytics.metrics import (
     RankingMetrics,
 )
 from narratives_agent.analytics.provenance import merge_provenance
+from narratives_agent.analytics.script_inputs import (
+    build_invalid_parameters_refusal,
+    describe_missing_focal_places,
+    resolve_aligned_cohort,
+    validate_place_dcids,
+)
 from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
-    is_valid_dcid,
 )
 
 __all__ = [
@@ -159,137 +156,16 @@ def _describe_tie_cut(
     )
 
 
-def _build_refusal(
-    cohort_or_table: AlignedCohort | ObservationTable,
-    step_id: str,
-    reason: RefusalReason,
-    coverage: CoverageReport | None,
-    caveat: str,
-) -> ScriptResult:
-    """Builds a refused result, carrying the cohort coverage when known.
-
-    A refused aligned cohort keeps its own caveats, which qualify its
-    coverage, ahead of `caveat`.
-    """
-    caveats = (
-        (*cohort_or_table.caveats, caveat)
-        if isinstance(cohort_or_table, AlignedCohort)
-        else (caveat,)
-    )
-    return RefusedScriptResult(
-        step_id=step_id,
-        script=_SCRIPT_NAME,
-        refusal_reason=reason,
-        variables=(cohort_or_table.variable_dcid,),
-        variable_names={
-            cohort_or_table.variable_dcid: cohort_or_table.variable_name
-        },
-        unit=cohort_or_table.unit,
-        scaling_factor=cohort_or_table.scaling_factor,
-        coverage=coverage,
-        provenance=cohort_or_table.provenance,
-        caveats=caveats,
-    )
-
-
-def _resolve_aligned_cohort(
-    cohort_or_table: AlignedCohort | ObservationTable,
-    *,
-    max_entries_per_end: int,
-    focal_places: Sequence[str],
-    target_date: str | None,
-    min_coverage: float,
-    step_id: str,
-) -> AlignedCohort | ScriptResult:
-    """Checks the parameters and returns the cohort to rank, or a refusal.
-
-    A table is aligned with `target_date` and `min_coverage`. An aligned
-    cohort is used as given: `min_coverage` is not checked, and a
-    `target_date` other than its reference date is refused. A refusal of an
-    aligned cohort carries the cohort's coverage.
-    """
-    known_coverage = (
-        cohort_or_table.coverage
-        if isinstance(cohort_or_table, AlignedCohort)
-        else None
-    )
+def _validate_parameters(
+    max_entries_per_end: int, focal_places: Sequence[str]
+) -> str | None:
+    """Returns why the ranking parameters are invalid, or None if valid."""
     if max_entries_per_end < 1:
-        return _build_refusal(
-            cohort_or_table,
-            step_id,
-            "invalid_parameters",
-            known_coverage,
+        return (
             "max_entries_per_end must be at least 1, not "
-            f"{max_entries_per_end}.",
+            f"{max_entries_per_end}."
         )
-    # A `str` is a `Sequence[str]`, so the type does not exclude it.
-    if isinstance(focal_places, str):
-        return _build_refusal(
-            cohort_or_table,
-            step_id,
-            "invalid_parameters",
-            known_coverage,
-            f"focal_places must be a sequence of DCIDs, not the string "
-            f"{focal_places!r}.",
-        )
-    # The entry itself is not quoted, so a malformed string never reaches a
-    # caveat or the prompt.
-    invalid = next(
-        (
-            position
-            for position, place in enumerate(focal_places, start=1)
-            if not is_valid_dcid(place)
-        ),
-        None,
-    )
-    if invalid is not None:
-        return _build_refusal(
-            cohort_or_table,
-            step_id,
-            "invalid_parameters",
-            known_coverage,
-            f"focal_places must hold DCIDs, but entry {invalid} of "
-            f"{len(focal_places)} is not a valid DCID.",
-        )
-    if isinstance(cohort_or_table, AlignedCohort):
-        # `min_coverage` applies only to alignment, which already happened.
-        error = validate_alignment_parameters(target_date=target_date)
-        if error is None and target_date not in (
-            None,
-            cohort_or_table.reference_date,
-        ):
-            error = (
-                f"The cohort is aligned to {cohort_or_table.reference_date}, "
-                f"so it cannot be ranked on the target date {target_date}."
-            )
-        if error is not None:
-            return _build_refusal(
-                cohort_or_table,
-                step_id,
-                "invalid_parameters",
-                known_coverage,
-                error,
-            )
-        return cohort_or_table
-    error = validate_alignment_parameters(
-        target_date=target_date, min_coverage=min_coverage
-    )
-    if error is not None:
-        return _build_refusal(
-            cohort_or_table, step_id, "invalid_parameters", None, error
-        )
-    aligned = align_cohort(
-        cohort_or_table, target_date=target_date, min_coverage=min_coverage
-    )
-    if isinstance(aligned, AlignmentRefusal):
-        return _build_refusal(
-            cohort_or_table,
-            step_id,
-            aligned.reason,
-            aligned.coverage,
-            aligned.message,
-        )
-    return aligned
+    return validate_place_dcids(focal_places, parameter_name="focal_places")
 
 
 def _select_ends(
@@ -310,20 +186,6 @@ def _select_ends(
         taken = {row.place_dcid for row in leading}
         trailing = [row for row in trailing if row.place_dcid not in taken]
     return leading, trailing[:size]
-
-
-def _describe_missing_focal_places(
-    aligned: AlignedCohort, missing_focal: Sequence[str]
-) -> str:
-    """States which focal places have no value in the ranked cohort."""
-    names = format_place_names(
-        [aligned.place_names.get(place, place) for place in missing_focal]
-    )
-    return (
-        f"{names} {conjugate_have(len(missing_focal))} no value for "
-        f"{aligned.variable_name} in the ranked cohort on "
-        f"{aligned.reference_date}, so no rank is available."
-    )
 
 
 def rank_cohort(
@@ -369,13 +231,20 @@ def rank_cohort(
         was passed; and with the alignment's reason when the cohort cannot
         be aligned.
     """
-    aligned = _resolve_aligned_cohort(
+    error = _validate_parameters(max_entries_per_end, focal_places)
+    if error is not None:
+        return build_invalid_parameters_refusal(
+            cohort_or_table, script=_SCRIPT_NAME, step_id=step_id, caveat=error
+        )
+    # `min_coverage` applies only to alignment, so it is not checked for a
+    # cohort that is already aligned.
+    aligned = resolve_aligned_cohort(
         cohort_or_table,
-        max_entries_per_end=max_entries_per_end,
-        focal_places=focal_places,
+        script=_SCRIPT_NAME,
+        step_id=step_id,
         target_date=target_date,
         min_coverage=min_coverage,
-        step_id=step_id,
+        operation="ranked",
     )
     if not isinstance(aligned, AlignedCohort):
         return aligned
@@ -397,7 +266,14 @@ def rank_cohort(
 
     caveats = list(aligned.caveats)
     if missing_focal:
-        caveats.append(_describe_missing_focal_places(aligned, missing_focal))
+        caveats.append(
+            describe_missing_focal_places(
+                aligned,
+                missing_focal,
+                cohort_label="ranked cohort",
+                unavailable_figure="rank",
+            )
+        )
     for listed, label in ((leading, "top"), (trailing, "bottom")):
         tie_cut = _describe_tie_cut(listed, label, ranks, tie_counts)
         if tie_cut is not None:

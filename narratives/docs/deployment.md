@@ -284,6 +284,16 @@ fails to download, or is empty once its HTML comments are stripped, the default
 prompt applies to that slot and the agent logs a warning naming it, so a
 bucket-side failure never leaves a phase without its system instruction.
 
+`discovery.md` holds the domain and geographic guidance for the discovery phase
+(the agent's role and geographic defaults). The tool surface, the fetch and
+specification workflow, the analytical scripts, and the fallback rules live in a
+code-owned contract (`workflows/contracts/discovery.md`, composed by
+`workflows/prompt_contracts.py`) and per-pattern directives
+(`workflows/pattern_guidance.py`) that the server appends after the configured
+`discovery` prompt on every request and that cannot be overridden. An override
+in `config/prompts/discovery.md` should add instance-specific domain and
+regional guidance rather than restating the tool or specification rules.
+
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
 clarification question, and which analytical pattern it follows. Each LLM stage
@@ -358,6 +368,51 @@ git remote add upstream https://github.com/datacommonsorg/tools.git   # once
 git pull upstream main
 ./deploy.sh
 ```
+
+### Disabling chat (emergency off switch)
+
+You can temporarily disable new chat turns while keeping the static React UI,
+Key Metrics dashboard, and shared stories online — for example, during:
+
+- **Unexpected traffic spikes or runaway model spend:** Automated scraping or
+  burst traffic driving up Gemini token usage or exhausting project quota.
+- **Upstream service outages:** Sustained errors or latency in Vertex AI /
+  Gemini or the Data Commons MCP server where failing fast is preferable to
+  hanging requests.
+- **Safety or quality incidents:** Investigating a prompt-injection vector or a
+  regression in generated answers without taking down the entire site.
+
+To turn off chat, set the `ENABLE_CHAT` environment variable to `false` (default
+`true`). When `ENABLE_CHAT=false`, `POST /agent/chat/stream` immediately returns
+a terminal error event (`reason: "chat_disabled"`, `"Chat is temporarily
+unavailable. Please try again later."`) before invoking the classifier, MCP tool
+loop, or synthesis models.
+
+- **Cloud Run:**
+
+  ```sh
+  # Disable chat immediately
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=ENABLE_CHAT=false
+
+  # Re-enable chat
+  gcloud run services update <instance>-app --region=<region> \
+    --update-env-vars=ENABLE_CHAT=true
+  ```
+
+- **GKE (`datacommons-website`):**
+
+  ```sh
+  # Disable chat immediately (<30s rollout, no PR required)
+  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=false
+
+  # Re-enable chat
+  kubectl set env deployment/website-narratives-app -n website ENABLE_CHAT=true
+  ```
+
+  To persist the setting across subsequent Cloud Deploy releases on GKE, also
+  set `narratives.enableChat: false` in `deploy/helm_charts/envs/<env>.yaml` in
+  the `datacommons-website` repository.
 
 ### Tearing down a deployment
 
@@ -453,9 +508,12 @@ instead.
 
 For further diagnostics, inspect the Cloud Run service logs. Each completed chat
 turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
-containing the terminal state, error reason (if any), phase latencies, MCP tool
-names, token usage, and the analytical `pattern` assigned by the `classify`
-phase (user query text is never logged). On a `refused` turn, `error_type` holds
-the refusal reason (`adversarial`, `off_domain`, or `safety_blocked`) and
+containing the terminal state, error reason (if any), phase latencies
+(`classify`, `discovery`, `processing`, `synthesis`, `chart_config`, `finalize`,
+`follow_ups`), tool names and counts, the analytical `scripts` run,
+`tables_fetched`, `total_rows_fetched`, `processing_retries`, token usage, and
+the analytical `pattern` assigned by the `classify` phase (user query text is
+never logged). On a `refused` turn, `error_type` holds the refusal reason
+(`adversarial`, `off_domain`, `safety_blocked`, or `chat_disabled`) and
 `pattern` is omitted; if the classifier call itself fails, the turn falls
 through with `pattern` set to `exploratory`.

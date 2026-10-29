@@ -18,10 +18,15 @@
 for public Data Commons hosts, and nothing for any other host.
 """
 
+import functools
 import logging
 from urllib.parse import urlparse
 
-from narratives_agent.settings import get_settings
+from narratives_agent.secret_manager import fetch_secret_with_ttl
+from narratives_agent.settings import (
+    DC_API_KEY_SECRET_ENV,
+    get_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,45 @@ _API_KEY_HOSTS = frozenset(
         "datacommons.org",
     }
 )
+
+
+@functools.cache
+def _resolve_dc_api_key() -> str:
+    """Returns the Data Commons API key, resolved once per process.
+
+    Resolution order:
+    1. `DC_API_KEY` set: returns the configured API key string.
+    2. `DC_API_KEY_SECRET` set: loads the key from Secret Manager.
+    3. Neither set: returns an empty string.
+
+    Raises:
+        RuntimeError: `DC_API_KEY_SECRET` is configured but could not be loaded
+            from Secret Manager.
+    """
+    settings = get_settings()
+    if settings.dc_api_key:
+        return settings.dc_api_key
+    if settings.dc_api_key_secret:
+        key = fetch_secret_with_ttl(
+            settings.dc_api_key_secret, DC_API_KEY_SECRET_ENV
+        )
+        if not key:
+            raise RuntimeError(
+                f"{DC_API_KEY_SECRET_ENV} could not be loaded from "
+                "Secret Manager."
+            )
+        return key
+    return ""
+
+
+def init_dc_api_key() -> None:
+    """Resolves and caches the Data Commons API key at server startup."""
+    _resolve_dc_api_key()
+
+
+def reset_dc_api_key() -> None:
+    """Makes the next request resolve the Data Commons API key again."""
+    _resolve_dc_api_key.cache_clear()
 
 
 def attach_auth(headers: dict[str, str], target_url: str) -> None:
@@ -63,7 +107,7 @@ def attach_auth(headers: dict[str, str], target_url: str) -> None:
         return
 
     if parsed.hostname in _API_KEY_HOSTS:
-        key = settings.dc_api_key
+        key = _resolve_dc_api_key()
         if key:
             headers["X-API-Key"] = key
         else:

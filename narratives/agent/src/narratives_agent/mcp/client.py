@@ -46,8 +46,9 @@ run in separate request contexts and keep separate sessions.
 
 `async_get_tools` and `cached_tools` return each tool definition as an
 `McpTool`. `async_call_tool` returns the tool result as a dictionary in the
-MCP wire format expected by `workflows/` and `mcp/data_utils.py`
-(`"content"` and optional `"structuredContent"`).
+MCP wire format expected by `workflows/` (`"content"` and optional
+`"structuredContent"`), and `decode_tool_payload` decodes the JSON object
+payload inside such a result.
 
 Every failure the client raises derives from `McpClientError`. A tool call
 that fails at the tool layer raises `McpToolError`, whose message the model
@@ -58,10 +59,11 @@ model as a tool result.
 """
 
 import asyncio
+import json
 import logging
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -74,7 +76,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from narratives_agent.config import load_config
 from narratives_agent.gcp_auth import attach_auth
-from narratives_agent.json_value import JsonObject
+from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp.schema import fix_tool_arguments
 from narratives_agent.settings import get_settings
 
@@ -863,3 +865,49 @@ def cached_tools() -> list[McpTool]:
         _refresh_tools_in_background()
         return []
     return tools
+
+
+def decode_tool_payload(
+    result: JsonValue | Mapping[str, JsonValue],
+) -> JsonObject | None:
+    """Unwraps an MCP tool result into the JSON object payload it returned.
+
+    A result is usually the MCP envelope mapping `async_call_tool` returns,
+    whose `content[0].text` is itself a JSON object; its JSON encoding and an
+    already decoded payload are also accepted. A mapping with a top-level
+    `content` key is read as an envelope.
+
+    Args:
+        result: The tool result as `async_call_tool` returns it, its JSON
+            encoding, or an already decoded payload.
+
+    Returns:
+        The payload, or `None` when the result is not a JSON object, its
+        `content` is empty or not a list, or its `content[0].text` does not
+        decode to a JSON object.
+    """
+    payload: object = result
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(payload, Mapping):
+        return None
+    if "content" not in payload:
+        return dict(payload)
+    content = payload["content"]
+    # An envelope whose `content` is empty or not a list carries no payload.
+    if not isinstance(content, list) or not content:
+        return None
+    first_item = content[0]
+    if not isinstance(first_item, Mapping):
+        return None
+    text = first_item.get("text")
+    if not isinstance(text, str):
+        return None
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, dict) else None

@@ -14,10 +14,13 @@
 """Script name literals and typed metric records for analytical scripts.
 
 Defines `ScriptName`, the per-script metric dataclasses (`TimeseriesMetrics`,
-`RankingMetrics`) and their shared value records (`PeriodChange`,
-`LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`, `LeaderDelta`,
-`CrossPlaceComparison`, `RankEntry`), and the `ScriptMetrics` union. Each
-metrics record names its script in a `script` class variable so
+`RankingMetrics`, `DistributionMetrics`, `CompositionMetrics`,
+`DerivedMetrics`, `RelationMetrics`) and their shared value records
+(`PeriodChange`, `LocalExtremum`, `PlaceSeriesSummary`, `PlaceValue`,
+`LeaderDelta`, `CrossPlaceComparison`, `RankEntry`, `DistributionFocalEntry`,
+`CompositionComponent`, `CompositionPlace`, `StageShare`, `StageTransition`,
+`StagesPlace`, `RelationEntry`, `GroupSummary`), and the `ScriptMetrics` union.
+Each metrics record names its script in a `script` class variable so
 `OkScriptResult` can enforce at construction time that it carries the metric
 record matching its `script`.
 """
@@ -25,9 +28,20 @@ record matching its `script`.
 from dataclasses import dataclass
 from typing import ClassVar, Literal
 
+from narratives_agent.analytics.tables import ObservationRow
+
 __all__ = [
+    "CompositionComponent",
+    "CompositionMetrics",
+    "CompositionMode",
+    "CompositionPlace",
     "CrossPlaceComparison",
+    "DerivedMetrics",
+    "DerivedOperation",
+    "DistributionFocalEntry",
+    "DistributionMetrics",
     "ExtremumKind",
+    "GroupSummary",
     "LeaderDelta",
     "LocalExtremum",
     "PeriodChange",
@@ -36,8 +50,13 @@ __all__ = [
     "RankEntry",
     "RankingDirection",
     "RankingMetrics",
+    "RelationEntry",
+    "RelationMetrics",
     "ScriptMetrics",
     "ScriptName",
+    "StageShare",
+    "StageTransition",
+    "StagesPlace",
     "TimeseriesMetrics",
 ]
 
@@ -48,10 +67,15 @@ type ScriptName = Literal[
     "summarize_distribution",
     "compute_composition",
     "compute_derived_metric",
+    "relate_cohorts",
 ]
 
 type ExtremumKind = Literal["peak", "trough"]
 type RankingDirection = Literal["desc", "asc"]
+type CompositionMode = Literal["composition", "stages"]
+type DerivedOperation = Literal[
+    "per_capita", "ratio", "difference", "sum", "pct_change"
+]
 
 
 @dataclass(frozen=True)
@@ -287,4 +311,440 @@ class RankingMetrics:
     missing_focal_places: tuple[str, ...]
 
 
-type ScriptMetrics = TimeseriesMetrics | RankingMetrics
+@dataclass(frozen=True)
+class DistributionFocalEntry:
+    """One focal place benchmarked against a cohort's distribution.
+
+    Attributes:
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        value: Value on the reference date.
+        diff_from_median: `value - median`, positive above the median.
+        pct_of_median: `value` as a percentage (0 to 100 scale) of the
+            cohort median, so 100 is at the median; None when the median is
+            zero or negative, where a ratio to the median does not order
+            places by value, or when the percentage is too large to
+            represent as a float.
+        diff_from_mean: `value - mean`, positive above the mean.
+        z_score: `diff_from_mean` divided by the sample standard deviation;
+            None when the cohort has one place or every place reports the
+            same value.
+        percentile: Percentage (0 to 100 scale) of cohort places whose value
+            is less than or equal to `value`, as `compute_cohort_percentiles`
+            defines it, so the largest value is at 100.
+    """
+
+    place_dcid: str
+    place_name: str
+    value: float
+    diff_from_median: float
+    pct_of_median: float | None
+    diff_from_mean: float
+    z_score: float | None
+    percentile: float
+
+
+@dataclass(frozen=True)
+class DistributionMetrics:
+    """Metrics produced by `summarize_distribution`.
+
+    Attributes:
+        reference_date: The date the cohort is aligned to.
+        cohort_size: Number of places in the cohort.
+        mean: Arithmetic mean of the cohort's values.
+        median: Median of the cohort's values.
+        min: The place with the smallest value, ties by DCID.
+        max: The place with the largest value, ties by DCID.
+        max_minus_min: `max.value - min.value`, in the variable's unit.
+        stdev: Sample standard deviation (divisor `cohort_size - 1`); None
+            when `cohort_size` is below 2.
+        q25: First quartile by inclusive linear interpolation; None when
+            `cohort_size` is below 2.
+        q50: Second quartile, equal to `median`; None when `cohort_size` is
+            below 2.
+        q75: Third quartile by inclusive linear interpolation; None when
+            `cohort_size` is below 2.
+        iqr: `q75 - q25`; None when `cohort_size` is below 2.
+        deciles: The nine decile cut points keyed `p10` through `p90`, by
+            inclusive linear interpolation; None when `cohort_size` is below
+            2.
+        skewness: Adjusted Fisher-Pearson sample skewness, positive for a
+            long upper tail; None when `cohort_size` is below 3 or every
+            place reports the same value.
+        weighted_mean: Mean of the cohort's values weighted by the weights
+            variable over the places with a positive weight; None when no
+            weights are given or the weighted mean is omitted with a caveat.
+        weight_variable_dcid: DCID of the weights variable; None when no
+            weights are given. Set even when `weighted_mean` is omitted.
+        weighted_place_count: Number of cohort places with a positive
+            weight on `reference_date`, or 0 when a negative weight omits
+            the weighted mean; None when no weights are given.
+        focal_entries: Entries of the requested focal places with a value
+            on `reference_date`, in request order with duplicates removed.
+        missing_focal_places: DCIDs of focal places with no value on
+            `reference_date`.
+    """
+
+    script: ClassVar[ScriptName] = "summarize_distribution"
+
+    reference_date: str
+    cohort_size: int
+    mean: float
+    median: float
+    min: PlaceValue
+    max: PlaceValue
+    max_minus_min: float
+    stdev: float | None
+    q25: float | None
+    q50: float | None
+    q75: float | None
+    iqr: float | None
+    deciles: dict[str, float] | None
+    skewness: float | None
+    weighted_mean: float | None
+    weight_variable_dcid: str | None
+    weighted_place_count: int | None
+    focal_entries: tuple[DistributionFocalEntry, ...]
+    missing_focal_places: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CompositionComponent:
+    """One component's value and share of a place's total.
+
+    Attributes:
+        variable_dcid: DCID of the component variable.
+        variable_name: Display name of the component variable.
+        value: Component's value for the place on `reference_date`.
+        share_pct: `value` as a percentage (0 to 100 scale) of the place's
+            explicit `total_value` when `total` is given, or of
+            `component_sum` when `total` is omitted; None when that
+            denominator is zero or the percentage is too large to represent
+            as a float.
+    """
+
+    variable_dcid: str
+    variable_name: str
+    value: float
+    share_pct: float | None
+
+
+@dataclass(frozen=True)
+class CompositionPlace:
+    """One place's component breakdown and unallocated remainder.
+
+    Attributes:
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        total_value: Value of the explicit `total` variable on
+            `reference_date`; None when `total` is omitted.
+        component_sum: Sum of the component values for the place on
+            `reference_date`.
+        components: One `CompositionComponent` per component variable, in
+            `components` input order.
+        unallocated_value: `max(0.0, total_value - component_sum)` when
+            `total` is given, or 0.0 when `total` is omitted.
+        unallocated_share_pct: `unallocated_value` as a percentage (0 to 100
+            scale) of `total_value` when `total` is given, or 0.0 when
+            `total` is omitted and `component_sum` is positive; None when
+            the denominator is zero or the percentage is too large to
+            represent as a float.
+    """
+
+    place_dcid: str
+    place_name: str
+    total_value: float | None
+    component_sum: float
+    components: tuple[CompositionComponent, ...]
+    unallocated_value: float
+    unallocated_share_pct: float | None
+
+
+@dataclass(frozen=True)
+class StageShare:
+    """One sequential stage's value and shares of the first stage and total.
+
+    Attributes:
+        variable_dcid: DCID of the stage variable.
+        variable_name: Display name of the stage variable.
+        value: Stage's value for the place on `reference_date`.
+        share_of_first_stage_pct: `value / stages[0].value * 100`, the
+            stage's value as a percentage of the first stage's value; None
+            when the first stage's value is zero or negative, or when the
+            percentage is too large to represent as a float.
+        share_pct: `value / total_value * 100`, the stage's value as a
+            percentage of `total_value`; None when `total` is omitted,
+            `total_value` is zero or negative, or the percentage is too
+            large to represent as a float.
+    """
+
+    variable_dcid: str
+    variable_name: str
+    value: float
+    share_of_first_stage_pct: float | None
+    share_pct: float | None
+
+
+@dataclass(frozen=True)
+class StageTransition:
+    """The transition between two consecutive stages for one place.
+
+    Attributes:
+        from_variable: DCID of the earlier stage variable.
+        from_variable_name: Display name of the earlier stage variable.
+        from_value: Earlier stage's value on `reference_date`.
+        to_variable: DCID of the later stage variable.
+        to_variable_name: Display name of the later stage variable.
+        to_value: Later stage's value on `reference_date`.
+        absolute_delta: `to_value - from_value`.
+        percent_change: `(to_value - from_value) / abs(from_value) * 100`, the
+            percentage change; None when `from_value` is zero or the
+            percentage is too large to represent as a float.
+        retention_ratio: `to_value / from_value`; None when `from_value` is
+            zero or negative, or when the ratio is too large to represent as
+            a float.
+        retention_pct: `to_value / from_value * 100`, `to_value` as a
+            percentage of `from_value`; None when `from_value` is zero or
+            negative, or when the percentage is too large to represent as a
+            float.
+    """
+
+    from_variable: str
+    from_variable_name: str
+    from_value: float
+    to_variable: str
+    to_variable_name: str
+    to_value: float
+    absolute_delta: float
+    percent_change: float | None
+    retention_ratio: float | None
+    retention_pct: float | None
+
+
+@dataclass(frozen=True)
+class StagesPlace:
+    """One place's ordered stage shares and stage-to-stage transitions.
+
+    Attributes:
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        total_value: Value of the explicit `total` variable on
+            `reference_date`; None when `total` is omitted.
+        stages: One `StageShare` per stage, in `components` input order.
+        transitions: One `StageTransition` per consecutive pair of stages,
+            so `len(stages) - 1` of them.
+    """
+
+    place_dcid: str
+    place_name: str
+    total_value: float | None
+    stages: tuple[StageShare, ...]
+    transitions: tuple[StageTransition, ...]
+
+
+@dataclass(frozen=True)
+class CompositionMetrics:
+    """Metrics produced by `compute_composition`.
+
+    Attributes:
+        reference_date: The single observation date on which every input
+            was evaluated.
+        mode: `composition` for shares of a total, `stages` for
+            stage-to-stage transitions.
+        has_explicit_total: Whether an explicit `total` input was given.
+        total_variable_dcid: DCID of the `total` variable; None when
+            `total` is omitted.
+        component_variable_dcids: DCIDs of the `components` inputs, in
+            input order.
+        place_count: Number of places with a value in every input on
+            `reference_date`, equal to `len(places)`.
+        places: One entry per complete place, in target-place order: a
+            `CompositionPlace` in `composition` mode, a `StagesPlace` in
+            `stages` mode.
+        missing_places: DCIDs of target places without a value in one or
+            more inputs on `reference_date`.
+    """
+
+    script: ClassVar[ScriptName] = "compute_composition"
+
+    reference_date: str
+    mode: CompositionMode
+    has_explicit_total: bool
+    total_variable_dcid: str | None
+    component_variable_dcids: tuple[str, ...]
+    place_count: int
+    places: tuple[CompositionPlace | StagesPlace, ...]
+    missing_places: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DerivedMetrics:
+    """Metrics produced by `compute_derived_metric`.
+
+    Attributes:
+        derived_variable_dcid: DCID of the derived variable.
+        derived_variable_name: Display name of the derived variable.
+        operation: Arithmetic operation applied to each paired observation.
+        scale: Multiplier applied to quotient operations (`1.0` for
+            `difference`, `sum`, and `pct_change`).
+        observation_count: Total number of derived `(place, date)`
+            observations.
+        place_count: Number of distinct places with at least one derived
+            observation.
+        date_range: `(earliest_date, latest_date)` across derived
+            observations; None when `observation_count` is zero.
+        value_range: `(min_value, max_value)` across derived observations;
+            None when `observation_count` is zero.
+        sample_rows: Up to five derived `ObservationRow` entries spread
+            evenly across the table in `(place_dcid, date)` order.
+        missing_places: DCIDs of target places without any derived
+            observation, in target-place order.
+    """
+
+    script: ClassVar[ScriptName] = "compute_derived_metric"
+
+    derived_variable_dcid: str
+    derived_variable_name: str
+    operation: DerivedOperation
+    scale: float
+    observation_count: int
+    place_count: int
+    date_range: tuple[str, str] | None
+    value_range: tuple[float, float] | None
+    sample_rows: tuple[ObservationRow, ...]
+    missing_places: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RelationEntry:
+    """One shared place in a `relate_cohorts` group, with both values.
+
+    `rank` and `is_tied` describe the place's position by its `by` value among
+    every shared place, with the competition ranks `rank_cohort` assigns in
+    descending order.
+
+    Attributes:
+        rank: Competition rank (`1`-based) of the place by `by_value` across
+            all shared places in descending order.
+        is_tied: True when at least one other shared place has the same
+            `by_value`.
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        by_value: Value of the `by` variable on `by_reference_date`.
+        target_value: Value of the `target` variable on
+            `target_reference_date`.
+    """
+
+    rank: int
+    is_tied: bool
+    place_dcid: str
+    place_name: str
+    by_value: float
+    target_value: float
+
+
+@dataclass(frozen=True)
+class GroupSummary:
+    """The target variable summarized over the entries of a group.
+
+    Attributes:
+        count: Number of places in the group, equal to `group_size`.
+        target_mean: Arithmetic mean of `target_value` across the group's
+            entries; None when the mean exceeds the finite floating-point
+            range.
+        target_median: Median of `target_value` across the group's entries;
+            None when the median exceeds the finite floating-point range.
+    """
+
+    count: int
+    target_mean: float | None
+    target_median: float | None
+
+
+@dataclass(frozen=True)
+class RelationMetrics:
+    """Metrics produced by `relate_cohorts`.
+
+    The groups are named by the `by` variable: `highest_by` lists the shared
+    places with the largest `by` values, largest first, and `lowest_by` the
+    smallest, smallest first. `target_mean_difference` is the highest
+    group's target mean minus the lowest group's, in the target's unit.
+    Each side's `contributing_places` of `requested_places` is that side's
+    alignment coverage on its own reference date, before the intersection.
+
+    Attributes:
+        target_variable_dcid: DCID of the `target` variable.
+        target_reference_date: Reference date on which `target` was aligned.
+        target_unit: Unit of the `target` variable; None when `target`
+            carries no unit.
+        target_scaling_factor: Scaling factor of the `target` variable; None
+            when `target` carries no scaling factor.
+        target_contributing_places: Number of places with a `target` value on
+            `target_reference_date` before the intersection.
+        target_requested_places: Total number of target places for the
+            `target` cohort before the intersection.
+        by_variable_dcid: DCID of the `by` variable.
+        by_reference_date: Reference date on which `by` was aligned.
+        by_unit: Unit of the `by` variable; None when `by` carries no unit.
+        by_scaling_factor: Scaling factor of the `by` variable; None when
+            `by` carries no scaling factor.
+        by_contributing_places: Number of places with a `by` value on
+            `by_reference_date` before the intersection.
+        by_requested_places: Total number of target places for the `by`
+            cohort before the intersection.
+        shared_place_count: Number of places with a value in both aligned
+            cohorts.
+        target_only_place_count: Number of aligned `target` places with no
+            `by` value on `by_reference_date`.
+        by_only_place_count: Number of aligned `by` places with no `target`
+            value on `target_reference_date`.
+        n: Requested number of places per group.
+        group_size: Actual number of places in each group, equal to
+            `min(n, shared_place_count // 2)`.
+        highest_by: The `group_size` shared places with the largest `by`
+            values, ordered from largest `by_value` to smallest.
+        lowest_by: The `group_size` shared places with the smallest `by`
+            values, ordered from smallest `by_value` to largest.
+        highest_by_summary: Count, mean, and median of `target_value` over
+            `highest_by`.
+        lowest_by_summary: Count, mean, and median of `target_value` over
+            `lowest_by`.
+        target_mean_difference: `highest_by_summary.target_mean` minus
+            `lowest_by_summary.target_mean`; None when either group mean is
+            None or their difference exceeds the finite floating-point range.
+    """
+
+    script: ClassVar[ScriptName] = "relate_cohorts"
+
+    target_variable_dcid: str
+    target_reference_date: str
+    target_unit: str | None
+    target_scaling_factor: float | None
+    target_contributing_places: int
+    target_requested_places: int
+    by_variable_dcid: str
+    by_reference_date: str
+    by_unit: str | None
+    by_scaling_factor: float | None
+    by_contributing_places: int
+    by_requested_places: int
+    shared_place_count: int
+    target_only_place_count: int
+    by_only_place_count: int
+    n: int
+    group_size: int
+    highest_by: tuple[RelationEntry, ...]
+    lowest_by: tuple[RelationEntry, ...]
+    highest_by_summary: GroupSummary
+    lowest_by_summary: GroupSummary
+    target_mean_difference: float | None
+
+
+type ScriptMetrics = (
+    TimeseriesMetrics
+    | RankingMetrics
+    | DistributionMetrics
+    | CompositionMetrics
+    | DerivedMetrics
+    | RelationMetrics
+)

@@ -171,6 +171,14 @@ pnpm fix
 - **Backend (`agent/`):** Pytest unit tests are colocated with source modules as
   `*_test.py` under `agent/src/narratives_agent/`. All backend modules and test
   files are type-checked under `mypy --strict`.
+- **Analytics golden fixture (`agent/src/narratives_agent/analytics/golden/`):**
+  `core_golden.json` holds the exact serialized output of the analytics
+  functions over a fixed set of inputs, including the refusal cases, and
+  `golden_test.py` fails when the code no longer reproduces it. Never edit
+  `core_golden.json` by hand: after a deliberate change, run
+  `uv run python -m narratives_agent.analytics.golden.regenerate_golden` from
+  `agent/` and review the JSON diff (`--check` reports a stale fixture without
+  writing it).
 
 ## Repository layout
 
@@ -208,7 +216,7 @@ narratives/
 │       ├── telemetry.py       OpenTelemetry and structured logging
 │       ├── server/            FastAPI app and routes (spa, chat, system)
 │       ├── mcp/               MCP client, capabilities, schemas, and parsers
-│       ├── workflows/         Agent loop, classify, MCP loop, charts, follow-up
+│       ├── workflows/         Agent loop, discovery, fetch, spec, processing
 │       ├── analytics/         Tables, alignment, summaries, digest, scripts
 │       └── gemini/            Gemini SDK client and Pydantic schemas
 ├── ui/                        React 19 + Vite frontend (managed with pnpm)

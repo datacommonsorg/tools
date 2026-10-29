@@ -55,8 +55,9 @@ for browser-rendered charts:
 ### 1. Agent queries (via MCP)
 
 When a user asks a question, the Python agent uses the Model Context Protocol
-(`mcp/client.py`) over HTTP to search Data Commons for places, statistical
-variables, and observations.
+(`mcp/client.py`) over HTTP to search Data Commons for statistical variables
+and their metadata, and fetches observations through the server's fetch
+functions (`workflows/fetch.py`).
 
 ### 2. Browser chart requests
 
@@ -92,8 +93,11 @@ agent automatically starts a fresh MCP session and retries the tool call.
 
 ### What happens during a chat turn
 
-Each `POST /agent/chat/stream` request runs through the agent loop in five
-steps:
+Each `POST /agent/chat/stream` request first checks whether chat is enabled
+(`ENABLE_CHAT`, default `true`); when `ENABLE_CHAT=false`, the turn aborts
+immediately with a single `terminal` error frame (`reason: "chat_disabled"`)
+before making any Gemini or MCP calls. Otherwise, the request runs through the
+agent loop in five steps:
 
 1. **Query classification (`classify`):** Before any tool is called, a
    deterministic pre-filter screens out prompt injection, persona overrides,
@@ -117,18 +121,34 @@ steps:
      `workflows/pattern_guidance.py` appended to the system instructions of both
      calls. If the classifier call fails, the turn falls through as
      `exploratory` without a directive.
-2. **Data gathering (`discovery`):** Gemini calls Data Commons MCP tools to look
-   up places, variables, and observations. If the MCP server cannot be reached,
-   the turn stops and returns an error so the model never guesses numbers
-   without data.
+2. **Discovery and processing (`discovery` / `processing`):** Gemini runs the
+   discovery loop (`workflows/mcp_loop.py`) with the three MCP discovery tools
+   (`search_indicators`, `search_child_indicators`, `get_variable_metadata`),
+   the three server-side fetch functions (`fetch_observations`,
+   `fetch_child_observations`, `fetch_multi_entity_observations`), and the two
+   terminal functions (`submit_specification`, `report_unavailable`). Each
+   fetch stores an `ObservationTable` in the turn's cache (`t1`, `t2`, ...) and
+   returns a compact `TableSummary` to the model rather than the observation
+   rows. When the model calls `submit_specification`, the server validates the
+   `AnalysisSpecification` against the cache and runs its steps through the
+   deterministic analytics scripts (`workflows/processing.py`) under the
+   `processing` status phase; a validation or step refusal is returned to the
+   model for up to two retries, and an accepted `AnalysisDigest` ends the loop.
+   If the loop ends without an accepted digest or an `UnavailableReport`, a
+   default specification is built from the cached tables and the query's
+   pattern. If the MCP server cannot be reached, the turn stops and returns an
+   error so the model never guesses numbers without data.
 3. **Answer synthesis & chart selection (`synthesis` / `chart_config`):**
-   Gemini writes a markdown response with inline citations while checking in
+   Gemini receives the rendered `AnalysisDigest`, the inventory of cached
+   tables the specification used, and the numbered sources (`[1]`, `[2]`, ...),
+   and writes a markdown response with inline citations while checking in
    parallel whether the data can be shown in a chart. A chart is included only
    if validation confirms that matching data exists.
-4. **Turn signing (`finalize`):** The server packages the updated conversation
-   history and signs the completed turn so the browser can include it in
-   follow-up questions.
-5. **Follow-up suggestions (`follow_up`):** Suggested follow-up questions are
+4. **Turn signing (`finalize`):** The server builds the turn's `state_slots`
+   from the fetched tables the specification used and the displayed charts
+   (`workflows/state_slots.py`), and signs the completed turn into the window
+   so the browser can include it in follow-up questions.
+5. **Follow-up suggestions (`follow_ups`):** Suggested follow-up questions are
    streamed after the main answer finishes.
 
 ### Server-Sent Events (SSE)
@@ -139,7 +159,7 @@ for `heartbeat`) a sequential `id` starting at `1`:
 
 | Event | What it contains |
 | :--- | :--- |
-| `status` | Current step (`classify`, `discovery`, `synthesis`, or `chart_config`) and status message |
+| `status` | Current step (`classify`, `discovery`, `processing`, `synthesis`, or `chart_config`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
 | `content` | Answer text (`{text}`), tool call details (`{tool_call}`), citations (`{sources}`), data status (`{data_status}`), or chart config (`{chart_config}`) |
 | `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason}` on failure |
@@ -203,10 +223,12 @@ that previous answers were not modified before feeding them back to Gemini:
 If the server returns `400`, the UI clears its stored signatures so the user's
 next question starts fresh.
 
-In local development, if `TRANSCRIPT_HMAC_SECRET` is not set, the server
-generates a temporary random key at startup. On Cloud Run, where follow-up
-requests can land on any container instance, all instances share the same
-`TRANSCRIPT_HMAC_SECRET` from Secret Manager.
+In local development, if neither `TRANSCRIPT_HMAC_SECRET` nor
+`TRANSCRIPT_HMAC_SECRET_NAME` is set, the server generates a temporary random
+key at startup. In multi-instance deployments (such as GKE or Cloud Run), where
+follow-up requests can land on any container instance, all instances share the
+same key either by injecting `TRANSCRIPT_HMAC_SECRET` directly or by resolving
+`TRANSCRIPT_HMAC_SECRET_NAME` from Secret Manager at startup.
 
 ### Keeping conversation history compact
 
@@ -254,15 +276,25 @@ time and replaced by its default. Each Gemini call resolves its model,
 temperature, and thinking level through
 `config.resolve_role_config(GeminiRole.<ROLE>)`, which combines the configured
 models and thinking levels with the per-role settings fixed in
-`config_model.py`.
+`config_model.py`. Where a phase carries a code-owned contract under
+`workflows/contracts/`, `workflows/prompt_contracts.py` appends it after the
+configured prompt so an instance override cannot drop or contradict the
+server's contract.
 
 For the Gemini API key (`get_gemini_api_key()`):
 
-- **Cloud Run:** Reads `GEMINI_API_KEY_SECRET` from Secret Manager and caches it
-  in memory for 5 minutes. Any `key=...` query parameters are redacted from logs
-  and error messages.
+- **Cloud Run / GKE:** Reads `GEMINI_API_KEY_SECRET` from Secret Manager and
+  caches it in memory for 5 minutes. Any `key=...` query parameters are redacted
+  from logs and error messages.
 - **Local development:** Reads `gemini.api_key` from the local
   `agent/config.json`.
+
+For the Data Commons API key (`attach_auth()`):
+
+- Uses `DC_API_KEY` directly when set (local dev or direct secret injection).
+- When `DC_API_KEY` is unset and `DC_API_KEY_SECRET` is configured, resolves the
+  key from Secret Manager once at startup and caches it in memory.
+- If neither is set, no credential header is attached.
 
 ### UI theme & instance branding
 

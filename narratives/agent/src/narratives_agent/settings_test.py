@@ -33,7 +33,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from narratives_agent.settings import Settings
+from narratives_agent.settings import (
+    DC_API_KEY_SECRET_ENV,
+    MIN_SECRET_BYTES,
+    TRANSCRIPT_HMAC_SECRET_ENV,
+    TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+    Settings,
+    validate_hmac_secret,
+)
 
 # Matches the shape of a Google API key while using explicit
 # test/dummy/example/fake tokens to avoid secret-scanner false alarms.
@@ -265,6 +272,31 @@ def test_google_genai_use_vertexai_parses_truthy_values(
     assert settings.google_genai_use_vertexai is expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param(None, True, id="unset"),
+        pytest.param(" TRUE ", True, id="padded-true"),
+        pytest.param("yes", True, id="yes"),
+        pytest.param("1", True, id="one"),
+        pytest.param(" 0 ", False, id="padded-zero"),
+        pytest.param("false", False, id="false"),
+        pytest.param("no", False, id="no"),
+    ],
+)
+def test_enable_chat_defaults_to_true_and_parses_env_values(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: bool
+) -> None:
+    # Test: Default and parsing of `ENABLE_CHAT`.
+    # Situation: `ENABLE_CHAT` is unset, or set to a truthy or non-truthy
+    #   string, with or without surrounding whitespace.
+    # Expectation: When unset or set to "1", "true", or "yes" (in any case),
+    #   chat is enabled; any other non-blank value disables it.
+    env = {} if raw is None else {"ENABLE_CHAT": raw}
+    settings = _read_settings(monkeypatch, env)
+    assert settings.enable_chat is expected
+
+
 @pytest.mark.parametrize("name", ["AGENT_PORT", "MCP_PORT"])
 def test_non_numeric_port_is_rejected(
     monkeypatch: pytest.MonkeyPatch, name: str
@@ -291,7 +323,7 @@ def test_transcript_hmac_secret_is_read_and_masked(
     assert Settings().transcript_hmac_secret.get_secret_value() == ""
 
     settings = _read_settings(
-        monkeypatch, {"TRANSCRIPT_HMAC_SECRET": _KEY_SHAPED}
+        monkeypatch, {TRANSCRIPT_HMAC_SECRET_ENV: _KEY_SHAPED}
     )
 
     assert settings.transcript_hmac_secret.get_secret_value() == _KEY_SHAPED
@@ -306,5 +338,40 @@ def test_a_short_transcript_hmac_secret_is_rejected(
     # Situation: The variable is exported with 31 bytes.
     # Expectation: Reading the settings raises `ValidationError` naming the
     #   variable.
-    with pytest.raises(ValidationError, match="TRANSCRIPT_HMAC_SECRET"):
-        _read_settings(monkeypatch, {"TRANSCRIPT_HMAC_SECRET": "s" * 31})
+    with pytest.raises(ValidationError, match=TRANSCRIPT_HMAC_SECRET_ENV):
+        _read_settings(monkeypatch, {TRANSCRIPT_HMAC_SECRET_ENV: "s" * 31})
+
+
+def test_secret_names_are_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Secret Manager reference variables are read from the environment.
+    # Situation: `DC_API_KEY_SECRET` and `TRANSCRIPT_HMAC_SECRET_NAME` are
+    #   exported in the environment.
+    # Expectation: `settings.dc_api_key_secret` and
+    #   `settings.transcript_hmac_secret_name` hold the configured names.
+    settings = _read_settings(
+        monkeypatch,
+        {
+            DC_API_KEY_SECRET_ENV: "projects/p/secrets/dc-key/versions/latest",
+            TRANSCRIPT_HMAC_SECRET_NAME_ENV: "narratives-hmac-secret",
+        },
+    )
+    assert (
+        settings.dc_api_key_secret
+        == "projects/p/secrets/dc-key/versions/latest"
+    )
+    assert settings.transcript_hmac_secret_name == "narratives-hmac-secret"
+
+
+def test_validate_hmac_secret_enforces_length() -> None:
+    # Test: Length validation via `validate_hmac_secret`.
+    # Situation: A secret meeting `MIN_SECRET_BYTES` and a secret shorter than
+    #   `MIN_SECRET_BYTES` are validated.
+    # Expectation: The valid secret is returned unchanged; the short secret
+    #   raises `ValueError` naming the configured source and `MIN_SECRET_BYTES`.
+    valid = "s" * MIN_SECRET_BYTES
+    assert validate_hmac_secret(valid, "TEST_HMAC_SECRET") == valid
+
+    with pytest.raises(ValueError, match="TEST_HMAC_SECRET"):
+        validate_hmac_secret("s" * (MIN_SECRET_BYTES - 1), "TEST_HMAC_SECRET")
