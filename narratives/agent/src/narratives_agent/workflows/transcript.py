@@ -74,7 +74,7 @@ from narratives_agent.gemini.client import (
     GeminiError,
     async_gemini_request,
 )
-from narratives_agent.secret_manager import fetch_secret
+from narratives_agent.secret_manager import fetch_secret_with_ttl
 from narratives_agent.settings import (
     TRANSCRIPT_HMAC_SECRET_ENV,
     TRANSCRIPT_HMAC_SECRET_NAME_ENV,
@@ -351,7 +351,7 @@ def _resolve_signing_key() -> bytes:
     if secret:
         return secret.encode("utf-8")
     if settings.transcript_hmac_secret_name:
-        fetched_secret = fetch_secret(
+        fetched_secret = fetch_secret_with_ttl(
             settings.transcript_hmac_secret_name,
             TRANSCRIPT_HMAC_SECRET_NAME_ENV,
         )

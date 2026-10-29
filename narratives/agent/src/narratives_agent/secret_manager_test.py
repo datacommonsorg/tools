@@ -23,7 +23,7 @@ from narratives_agent import secret_manager
 def test_fetch_secret_resolves_names_and_strips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Name resolution and whitespace stripping in `fetch_secret`.
+    # Test: Name resolution and whitespace stripping in `_fetch_secret`.
     # Situation: A short secret ID, an unversioned full resource path, and a
     #   fully versioned path are fetched with surrounding whitespace.
     # Expectation: The short name resolves to
@@ -55,14 +55,14 @@ def test_fetch_secret_resolves_names_and_strips(
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
     secret_manager.reset_secret_manager_client()
 
-    val1 = secret_manager.fetch_secret("  my-secret/  ", "MY_ENV_VAR")
+    val1 = secret_manager._fetch_secret("  my-secret/  ", "MY_ENV_VAR")
     assert val1 == "secret-value-123"
     assert (
         requested_names[0]
         == "projects/my-project/secrets/my-secret/versions/latest"
     )
 
-    val2 = secret_manager.fetch_secret(
+    val2 = secret_manager._fetch_secret(
         "projects/other-proj/secrets/other-secret/ ", "OTHER_VAR"
     )
     assert val2 == "secret-value-123"
@@ -71,7 +71,7 @@ def test_fetch_secret_resolves_names_and_strips(
         == "projects/other-proj/secrets/other-secret/versions/latest"
     )
 
-    val3 = secret_manager.fetch_secret(
+    val3 = secret_manager._fetch_secret(
         "projects/other-proj/secrets/other-secret/versions/2", "VERSIONED_VAR"
     )
     assert val3 == "secret-value-123"
@@ -85,14 +85,14 @@ def test_fetch_secret_empty_name_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Test: Blank or empty secret names return empty without API calls.
-    # Situation: `fetch_secret` is called with empty or whitespace-only names.
+    # Situation: `_fetch_secret` is called with empty or whitespace-only names.
     # Expectation: Empty string is returned.
     monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
     secret_manager.reset_secret_manager_client()
 
-    assert secret_manager.fetch_secret("", "MY_VAR") == ""
-    assert secret_manager.fetch_secret("   ", "MY_VAR") == ""
+    assert secret_manager._fetch_secret("", "MY_VAR") == ""
+    assert secret_manager._fetch_secret("   ", "MY_VAR") == ""
 
 
 def test_fetch_secret_short_name_requires_project(
@@ -101,22 +101,22 @@ def test_fetch_secret_short_name_requires_project(
     # Test: Short secret IDs require `GOOGLE_CLOUD_PROJECT`.
     # Situation: A short secret name is requested but `GOOGLE_CLOUD_PROJECT` is
     #   unset.
-    # Expectation: `fetch_secret` returns an empty string without making any
+    # Expectation: `_fetch_secret` returns an empty string without making any
     #   client calls.
     monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     secret_manager.reset_secret_manager_client()
 
-    assert secret_manager.fetch_secret("short-name", "MY_VAR") == ""
+    assert secret_manager._fetch_secret("short-name", "MY_VAR") == ""
 
 
 def test_fetch_secret_handles_client_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Error handling in `fetch_secret`.
+    # Test: Error handling in `_fetch_secret`.
     # Situation: Secret Manager client raises an error or is unavailable.
-    # Expectation: `fetch_secret` returns an empty string without re-raising the
-    #   exception.
+    # Expectation: `_fetch_secret` returns an empty string without
+    #   re-raising the exception.
     class _ErrorClient:
         def access_secret_version(
             self, request: dict[str, str], timeout: float
@@ -133,13 +133,17 @@ def test_fetch_secret_handles_client_exception(
     secret_manager.reset_secret_manager_client()
 
     assert (
-        secret_manager.fetch_secret("projects/p/secrets/s/versions/1", "MY_VAR")
+        secret_manager._fetch_secret(
+            "projects/p/secrets/s/versions/1", "MY_VAR"
+        )
         == ""
     )
 
     monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", False)
     assert (
-        secret_manager.fetch_secret("projects/p/secrets/s/versions/1", "MY_VAR")
+        secret_manager._fetch_secret(
+            "projects/p/secrets/s/versions/1", "MY_VAR"
+        )
         == ""
     )
 
@@ -159,7 +163,7 @@ def test_fetch_secret_with_ttl_caches_and_expires(
         call_count += 1
         return f"value-{call_count}"
 
-    monkeypatch.setattr(secret_manager, "fetch_secret", _stub_fetch)
+    monkeypatch.setattr(secret_manager, "_fetch_secret", _stub_fetch)
     secret_manager.reset_secret_manager_client()
 
     # Initial fetch
@@ -208,7 +212,7 @@ def test_fetch_secret_with_ttl_negative_caching(
         call_count += 1
         return "" if call_count == 1 else "recovered-key"
 
-    monkeypatch.setattr(secret_manager, "fetch_secret", _stub_fetch)
+    monkeypatch.setattr(secret_manager, "_fetch_secret", _stub_fetch)
     secret_manager.reset_secret_manager_client()
 
     # Initial failed fetch

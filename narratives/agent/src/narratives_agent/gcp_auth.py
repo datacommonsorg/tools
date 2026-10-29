@@ -22,7 +22,7 @@ import functools
 import logging
 from urllib.parse import urlparse
 
-from narratives_agent.secret_manager import fetch_secret
+from narratives_agent.secret_manager import fetch_secret_with_ttl
 from narratives_agent.settings import (
     DC_API_KEY_SECRET_ENV,
     get_settings,
@@ -65,7 +65,9 @@ def _resolve_dc_api_key() -> str:
     if settings.dc_api_key:
         return settings.dc_api_key
     if settings.dc_api_key_secret:
-        key = fetch_secret(settings.dc_api_key_secret, DC_API_KEY_SECRET_ENV)
+        key = fetch_secret_with_ttl(
+            settings.dc_api_key_secret, DC_API_KEY_SECRET_ENV
+        )
         if not key:
             raise RuntimeError(
                 f"{DC_API_KEY_SECRET_ENV} could not be loaded from "

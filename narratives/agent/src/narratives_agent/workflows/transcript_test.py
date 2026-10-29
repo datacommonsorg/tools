@@ -565,7 +565,7 @@ def test_transcript_hmac_secret_name_is_loaded_from_secret_manager(
     #   Manager and returns its UTF-8 bytes.
     monkeypatch.setattr(
         transcript,
-        "fetch_secret",
+        "fetch_secret_with_ttl",
         lambda name, var: _SECRET,
     )
     monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
@@ -592,7 +592,7 @@ def test_transcript_hmac_secret_takes_precedence_over_secret_manager(
         secret_manager_called = True
         return "other-secret-0123456789abcdef01234"
 
-    monkeypatch.setattr(transcript, "fetch_secret", _fetch)
+    monkeypatch.setattr(transcript, "fetch_secret_with_ttl", _fetch)
     monkeypatch.setenv(TRANSCRIPT_HMAC_SECRET_ENV, _SECRET)
     monkeypatch.setenv(
         TRANSCRIPT_HMAC_SECRET_NAME_ENV, "narratives-hmac-secret"
@@ -612,7 +612,7 @@ def test_transcript_hmac_secret_name_short_secret_rejected(
     #   `TRANSCRIPT_HMAC_SECRET_NAME`.
     monkeypatch.setattr(
         transcript,
-        "fetch_secret",
+        "fetch_secret_with_ttl",
         lambda name, var: "short-key",
     )
     monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
@@ -634,7 +634,7 @@ def test_transcript_hmac_secret_name_fetch_failure_raises_runtime_error(
     #   `TRANSCRIPT_HMAC_SECRET_NAME`.
     monkeypatch.setattr(
         transcript,
-        "fetch_secret",
+        "fetch_secret_with_ttl",
         lambda name, var: "",
     )
     monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)

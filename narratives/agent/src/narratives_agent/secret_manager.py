@@ -26,7 +26,7 @@ provides thread-safe in-memory caching and test resets.
 import logging
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING
 
 from narratives_agent.settings import get_settings
 
@@ -44,16 +44,19 @@ except ImportError:
         "will be unavailable"
     )
 
+if TYPE_CHECKING:
+    from google.cloud.secretmanager import SecretManagerServiceClient
+
 _SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
 _SECRET_MANAGER_DEFAULT_TTL_SECONDS = 300.0
 _SECRET_MANAGER_DEFAULT_NEGATIVE_TTL_SECONDS = 30.0
 
-_secret_client: Any = None
+_secret_client: SecretManagerServiceClient | None = None
 _secret_manager_lock = threading.RLock()
 _secret_manager_cache: dict[str, tuple[float, str]] = {}
 
 
-def _get_secret_client() -> Any:
+def _get_secret_client() -> SecretManagerServiceClient | None:
     """Returns the shared Secret Manager client, initializing it lazily."""
     global _secret_client
     if _secret_client is not None:
@@ -94,7 +97,7 @@ def _normalize_secret_resource_name(secret_name: str, env_var: str) -> str:
     return normalized
 
 
-def fetch_secret(secret_name: str, env_var: str) -> str:
+def _fetch_secret(secret_name: str, env_var: str) -> str:
     """Reads a secret payload from Secret Manager.
 
     Args:
@@ -174,6 +177,6 @@ def fetch_secret_with_ttl(
             active_ttl = ttl_seconds if cached[1] else negative_ttl_seconds
             if now - cached[0] < active_ttl:
                 return cached[1]
-        key = fetch_secret(secret_name, env_var)
+        key = _fetch_secret(secret_name, env_var)
         _secret_manager_cache[secret_name] = (now, key)
         return key

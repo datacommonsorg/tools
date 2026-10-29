@@ -113,7 +113,7 @@ def test_dc_api_key_takes_precedence_over_secret_manager(
         secret_called = True
         return "sm-key"
 
-    monkeypatch.setattr(gcp_auth, "fetch_secret", _fake_fetch)
+    monkeypatch.setattr(gcp_auth, "fetch_secret_with_ttl", _fake_fetch)
     monkeypatch.setenv(DC_API_KEY_ENV, "env-key")
     monkeypatch.setenv(DC_API_KEY_SECRET_ENV, "my-secret")
     gcp_auth.reset_dc_api_key()
@@ -137,7 +137,7 @@ def test_dc_api_key_secret_is_loaded_from_secret_manager(
         fetch_calls.append((secret_name, env_var))
         return "secret-loaded-key"
 
-    monkeypatch.setattr(gcp_auth, "fetch_secret", _fake_fetch)
+    monkeypatch.setattr(gcp_auth, "fetch_secret_with_ttl", _fake_fetch)
     monkeypatch.delenv(DC_API_KEY_ENV, raising=False)
     monkeypatch.setenv(DC_API_KEY_SECRET_ENV, "mixer-api-key")
     gcp_auth.reset_dc_api_key()
@@ -162,7 +162,7 @@ def test_dc_api_key_secret_failure_raises_runtime_error(
     #   Manager returns an empty string or fails.
     # Expectation: `init_dc_api_key()` raises `RuntimeError` naming
     #   `DC_API_KEY_SECRET`.
-    monkeypatch.setattr(gcp_auth, "fetch_secret", lambda name, var: "")
+    monkeypatch.setattr(gcp_auth, "fetch_secret_with_ttl", lambda name, var: "")
     monkeypatch.delenv(DC_API_KEY_ENV, raising=False)
     monkeypatch.setenv(DC_API_KEY_SECRET_ENV, "mixer-api-key")
     gcp_auth.reset_dc_api_key()
