@@ -11,121 +11,296 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Maps a `QueryClassification` to an analytical directive for the agent loop.
+"""Maps a query classification to the directive appended to a system prompt.
 
-Appends a pattern-specific instruction section (`with_pattern_guidance`) to the
-discovery loop and synthesis system instructions so retrieval and narrative
-structure match the classified query pattern and geographic shape.
+Each pattern has two directives: the discovery directive names the fetch
+functions and analytical scripts the discovery loop uses, and the synthesis
+directive says how the answer presents the result. Each phase receives only
+its own, so the synthesis model is never handed tool calls it cannot make.
 """
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Literal, assert_never
 
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 
+__all__ = [
+    "Directive",
+    "DirectivePhase",
+    "append_pattern_guidance",
+    "build_pattern_directive",
+]
+
 _DIRECTIVE_HEADING = "### Analytical directive for this question"
 
-# Pattern-specific instructions appended to the discovery and synthesis prompts.
-_DIRECTIVES: dict[QueryPattern, str] = {
-    "single_point": (
-        "Lead directly with the exact statistical value, its unit of "
-        "measurement, its observation date, and the official statistical "
-        "agency that published it."
+# The phase a directive is rendered for.
+type DirectivePhase = Literal["discovery", "synthesis"]
+
+
+@dataclass(frozen=True)
+class Directive:
+    """The two halves of one pattern's guidance.
+
+    Attributes:
+        discovery: The fetch functions and scripts the discovery loop uses.
+        synthesis: How the answer presents the computed result.
+    """
+
+    discovery: str
+    synthesis: str
+
+    def get_phase_text(self, phase: DirectivePhase) -> str:
+        """Returns the half that applies to `phase`.
+
+        Args:
+            phase: The phase the directive is rendered for.
+
+        Returns:
+            The discovery half for `"discovery"` and the synthesis half for
+            `"synthesis"`.
+        """
+        match phase:
+            case "discovery":
+                return self.discovery
+            case "synthesis":
+                return self.synthesis
+            case _:
+                assert_never(phase)
+
+
+# One directive per pattern.
+_DIRECTIVES: Mapping[QueryPattern, Directive] = {
+    "single_point": Directive(
+        discovery=(
+            "Fetch the variable for the named place with "
+            "`fetch_observations` and specify `analyze_timeseries` on that "
+            "table."
+        ),
+        synthesis=(
+            "Lead directly with the exact statistical value, its unit of "
+            "measurement, its observation date, and the official statistical "
+            "agency that published it."
+        ),
     ),
-    "top_n_ranking": (
-        "Sort every retrieved entity by value, state the top and bottom "
-        "ranks explicitly with their exact values and observation years, "
-        "and cite the official source agency."
+    "top_n_ranking": Directive(
+        discovery=(
+            "Fetch the cohort with `fetch_child_observations` and specify "
+            "`rank_cohort` with the question's `n` and `direction`; one "
+            "`rank_cohort` step reports both the leading and the trailing "
+            "tail of its table, and a question about one variable needs "
+            "nothing more. When the question asks for a second variable "
+            "across places ranked by another, fetch the ranking variable and "
+            "the target variable across the cohort with "
+            "`fetch_child_observations` in the same round, then specify "
+            "`relate_cohorts` with the target variable as `target`, the "
+            "ranking variable as `by`, and the question's `n`, together with "
+            "`rank_cohort` on each table."
+        ),
+        synthesis=(
+            "State the leading and trailing ranks explicitly with their "
+            "exact values and the shared observation year, and cite the "
+            "official source agency. Chart the ranked cohort as a `ranking` "
+            "with the tail the question asked for. When the digest relates a "
+            "second variable to the ranking, state in prose each group's "
+            "places, its mean and median of the target variable, the "
+            "difference between the two group means, and the places the "
+            "result reports as left out; chart a `ranking` for each "
+            "variable, and optionally pair the two tables in a `scatter`."
+        ),
     ),
-    "distribution": (
-        "Describe the cohort as a whole rather than listing its members: "
-        "report the median, the mean, the minimum and maximum, and the "
-        "spread between them, all at one shared observation year, and say "
-        "where the focal place sits within that range when the question "
-        "names one."
+    "distribution": Directive(
+        discovery=(
+            "Fetch the cohort with `fetch_child_observations` and specify "
+            "`summarize_distribution` with the place the question names in "
+            "`focal_places`."
+        ),
+        synthesis=(
+            "Describe the cohort as a whole rather than listing its members: "
+            "report the median, the mean, the minimum and maximum, and the "
+            "spread between them, all at one shared observation year, and "
+            "say where the focal place sits within that range."
+        ),
     ),
-    "trend_delta": (
-        "Compute the overall start-to-end change as an absolute delta and "
-        "as a percentage growth or decline, and point out the key "
-        "inflection points across the period."
+    "trend_delta": Directive(
+        discovery=(
+            "Fetch the full series with `fetch_observations` and specify "
+            "`analyze_timeseries`, with `start_date` and `end_date` when the "
+            "question bounds the period."
+        ),
+        synthesis=(
+            "Report the overall start-to-end change as an absolute delta and "
+            "as a percentage growth or decline, and point out the key "
+            "inflection points across the period."
+        ),
     ),
-    "outliers": (
-        "Retrieve time-series observations across the target entities, "
-        "compute period-over-period deltas or percentage spikes and drops, "
-        "and identify the largest outliers explicitly with their exact "
-        "before and after values."
+    "outliers": Directive(
+        discovery=(
+            "Fetch the series across the target entities with "
+            "`fetch_observations` or `fetch_child_observations` and specify "
+            "`analyze_timeseries`."
+        ),
+        synthesis=(
+            "Identify the largest period-over-period spikes and drops "
+            "explicitly with their exact before and after values."
+        ),
     ),
-    "correlation": (
-        "Retrieve aligned observations across the common geographic "
-        "entities and the same time frame for both indicators. Describe the "
-        "relationship from those figures: the places that rank high or low "
-        "on both indicators, the ones that diverge, and the spread of each, "
-        "and claim no strength or direction of association beyond what "
-        "those figures show. Open with that description, not with a remark "
-        "about what was or was not computed."
+    "correlation": Directive(
+        discovery=(
+            "Fetch both indicators over the same places and period with "
+            "`fetch_observations` or `fetch_child_observations`, one table "
+            "each, in the same round. Use `compute_derived_metric` with "
+            "`per_capita` only when a raw count must be normalized by a "
+            "population table before the comparison, and never divide one "
+            "indicator by the other. Specify `relate_cohorts` with one "
+            "indicator as `target` and the other as `by`, and `rank_cohort` "
+            "and `summarize_distribution` on both indicator tables; each "
+            "table is aligned on its own reference date. Specify "
+            "`analyze_timeseries` on both instead when comparing two "
+            "trajectories of one place."
+        ),
+        synthesis=(
+            "Pair the two tables in a `scatter` chart. Describe the "
+            "relationship from the figures given: the mean and median of the "
+            "target indicator in the groups with the highest and the lowest "
+            "values of the other, the difference between them, the places "
+            "that rank high or low on both indicators, the ones that "
+            "diverge, and the spread of each. Claim no strength or direction "
+            "of association beyond what those figures show. Open with that "
+            "description, not with a remark about what was or was not "
+            "computed."
+        ),
     ),
-    "composition": (
-        "Compute exact percentage shares, each component's proportion of "
-        "the total, and the deltas between components before writing the "
-        "narrative. Do not merely list raw numbers."
+    "composition": Directive(
+        discovery=(
+            "Fetch one table per component, and the total when it exists, "
+            "with `fetch_observations` or `fetch_child_observations` over the "
+            "same places and with the same `source_override`, and specify "
+            "`compute_composition` in `composition` mode."
+        ),
+        synthesis=(
+            "Report each component's exact percentage share of the total and "
+            "the deltas between components. Do not merely list raw numbers."
+        ),
     ),
-    "sequential_stages": (
-        "Keep the stages in the order the question gives them, report each "
-        "stage's value and its share of the whole, and compute the "
-        "stage-to-stage ratios and deltas across the ordered tiers."
+    "sequential_stages": Directive(
+        discovery=(
+            "Fetch one table per stage with `fetch_observations` or "
+            "`fetch_child_observations`, in the order the question gives "
+            "them, and specify `compute_composition` in `stages` mode with "
+            "`components` in that order."
+        ),
+        synthesis=(
+            "Report each stage's value and its share of the whole, and the "
+            "stage-to-stage ratios and deltas across the ordered tiers."
+        ),
     ),
-    "clustering": (
-        "Do not attempt a clustering. Answer as an exploratory profile of "
-        "the named entities across the requested variables, and say plainly "
-        "that no clustering is performed."
+    "clustering": Directive(
+        discovery=(
+            "Do not attempt a clustering. Fetch the requested variables for "
+            "the named entities with `fetch_observations` and specify "
+            "`analyze_timeseries` or `rank_cohort` as an exploratory profile."
+        ),
+        synthesis=(
+            "Present the figures as an exploratory profile, and say plainly "
+            "that no clustering is performed."
+        ),
     ),
-    "forecasting": (
-        "Do not attempt a projection. Answer from the historical series, "
-        "report the trend up to the latest observation, and say plainly "
-        "that no projection is performed."
+    "forecasting": Directive(
+        discovery=(
+            "Do not attempt a projection. Fetch the full historical series "
+            "with `fetch_observations` and specify `analyze_timeseries`."
+        ),
+        synthesis=(
+            "Report the trend up to the latest observation, and say plainly "
+            "that no projection is performed."
+        ),
     ),
-    "exploratory": (
-        "Retrieve a multi-indicator profile spanning the core pillars of the "
-        "requested domain, for example four or five primary indicators, "
-        "organize them into a structured summary, and cite the "
-        "authoritative provenance of each metric."
+    "exploratory": Directive(
+        discovery=(
+            "Fetch four or five primary indicators spanning the core pillars "
+            "of the requested domain, one table each, with "
+            "`fetch_observations` or `fetch_child_observations`, and specify "
+            "`analyze_timeseries` or `rank_cohort` on each."
+        ),
+        synthesis=(
+            "Organize the indicators into a structured summary and cite the "
+            "authoritative provenance of each metric."
+        ),
     ),
-    "data_availability": (
-        "Survey the requested topic with `search_indicators` (with `places` "
-        "naming the target place and `include_topics` enabled) and "
-        "`get_variable_metadata` to learn its coverage, sources, and date "
-        "ranges. Fetch a representative series for the headline indicator "
-        "with `get_observations` or `get_child_observations` when "
-        "observations exist for the requested place, and summarize what the "
-        "catalog covers for that place, with the headline figure as its "
-        "anchor."
+    "data_availability": Directive(
+        discovery=(
+            "Survey the requested topic with `search_indicators` (with "
+            "`places` naming the target place and `include_topics` enabled) "
+            "and `get_variable_metadata` to learn its coverage, sources, and "
+            "date ranges. Always fetch at least one representative table for "
+            "the headline indicator with `fetch_observations` or "
+            "`fetch_child_observations`, and specify `analyze_timeseries` or "
+            "`rank_cohort` on it with `submit_specification`, recording in "
+            "`missing` every sub-topic or breakdown that lacks coverage. "
+            "Call `report_unavailable` only when no relevant or closely "
+            "related indicator has observations for the requested place."
+        ),
+        synthesis=(
+            "Summarize what the catalog covers for that place, with the "
+            "headline figure as its anchor."
+        ),
     ),
 }
 
-_COMPARISON_DIRECTIVE = (
-    "Retrieve aligned observations for the exact same indicator and year "
-    "across every named place, present a direct side-by-side comparison, "
-    "and compute the spread or delta between them."
+# Appended when the query compares a few named places side by side.
+_COMPARISON_DIRECTIVE = Directive(
+    discovery=(
+        "Fetch the exact same indicator for every named place in one "
+        "`fetch_observations` call, so that the places share one facet and "
+        "year."
+    ),
+    synthesis=(
+        "Present a direct side-by-side comparison of the places and state "
+        "the spread or delta between them as the digest gives it."
+    ),
 )
 
 
-def pattern_directive(classification: QueryClassification) -> str:
-    """Returns the directive text for `classification`.
+def build_pattern_directive(
+    classification: QueryClassification, phase: DirectivePhase
+) -> str:
+    """Returns the directive text for a classification and phase.
 
-    Appends `_COMPARISON_DIRECTIVE` when `classification.geographic_shape` is
-    `"comparison"`.
+    Args:
+        classification: The classify phase's verdict on the query.
+        phase: The phase the text is rendered for.
+
+    Returns:
+        The pattern's directive for the phase, followed by the comparison
+        directive for the phase when the query compares several places.
     """
-    directive = _DIRECTIVES[classification.pattern]
+    directive = _DIRECTIVES[classification.pattern].get_phase_text(phase)
     if classification.geographic_shape == "comparison":
-        return f"{directive} {_COMPARISON_DIRECTIVE}"
+        return f"{directive} {_COMPARISON_DIRECTIVE.get_phase_text(phase)}"
     return directive
 
 
-def with_pattern_guidance(
-    system_instruction: str, classification: QueryClassification | None
+def append_pattern_guidance(
+    system_instruction: str,
+    classification: QueryClassification | None,
+    phase: DirectivePhase,
 ) -> str:
-    """Appends the directive for `classification` to `system_instruction`.
+    """Appends the classification's directive to a system instruction.
 
-    Returns `system_instruction` unchanged when `classification` is `None`.
+    Args:
+        system_instruction: The prompt body of the discovery loop or of
+            synthesis.
+        classification: The classify phase's verdict, or `None` when the
+            classifier failed, in which case the instruction is returned
+            unchanged.
+        phase: Which half of the directive to append.
+
+    Returns:
+        The system instruction with the directive appended as its final
+        section.
     """
     if classification is None:
         return system_instruction
-    directive = pattern_directive(classification)
+    directive = build_pattern_directive(classification, phase)
     return f"{system_instruction}\n\n{_DIRECTIVE_HEADING}\n\n{directive}"

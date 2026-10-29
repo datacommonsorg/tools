@@ -21,10 +21,14 @@
  * ring while it holds focus.
  */
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
 import { SendIcon } from './icons';
 import { Tooltip } from './tooltip';
+
+/** Streaming placeholder: a raised `⋅` walks across the last two dots. */
+const THINKING_FRAMES = ['Thinking...', 'Thinking.⋅.', 'Thinking..⋅'];
+const THINKING_FRAME_MS = 400;
 
 interface PromptInputProps {
   value: string;
@@ -52,6 +56,26 @@ export function PromptInput({
 }: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isExpanded, isScrolling } = useTextareaAutosize(textareaRef, value);
+  // The placeholder is a pseudo-element CSS cannot animate per character, so
+  // a timer steps through the frames; under reduced motion it holds at the
+  // first. Stopping resets to the first so the next stream starts there.
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (
+      !isStreaming ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return;
+    }
+    const id = setInterval(
+      () => setFrame((f) => (f + 1) % THINKING_FRAMES.length),
+      THINKING_FRAME_MS,
+    );
+    return () => {
+      clearInterval(id);
+      setFrame(0);
+    };
+  }, [isStreaming]);
   const actionLabel = isStreaming ? 'Stop Response' : 'Submit';
   // The one gate for every submit path: the button, the form and Enter.
   const canSubmit = !isStreaming && value.trim().length > 0;
@@ -90,13 +114,13 @@ export function PromptInput({
           onChange={(e) => onValueChange(e.target.value)}
           // The accessible name stays the prompt's own placeholder while the
           // visible one reports the stream.
-          placeholder={isStreaming ? 'Streaming…' : placeholder}
+          placeholder={isStreaming ? THINKING_FRAMES[frame] : placeholder}
           aria-label={placeholder}
           disabled={isStreaming}
           rows={1}
           // Caps at four lines (max-h-24); the autosize hook turns scrolling
           // on only past that cap.
-          className={`bg-transparent outline-none resize-none max-h-24 overflow-y-hidden thin-scrollbar text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out ${
+          className={`bg-transparent outline-none resize-none max-h-24 overflow-y-hidden thin-scrollbar text-body-large leading-6 text-on-surface caret-theme-primary placeholder:text-placeholder disabled:placeholder:text-placeholder/50 pl-4 my-2 motion-safe:transition-[height] duration-200 ease-out ${
             isScrolling ? 'pr-4 mr-4.5' : 'flex-1'
           }`}
           onKeyDown={(e) => {
