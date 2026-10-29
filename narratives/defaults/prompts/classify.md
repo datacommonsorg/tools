@@ -81,8 +81,10 @@ user's question:
   named place and time (for example, `"What is the population of France?"` or
   `"What was California's unemployment rate in 2020?"`).
 - `"top_n_ranking"`: asks for the highest, lowest, top N, or bottom N
-  places on a metric (for example, `"Which states have the highest median
-  income?"`).
+  places on a metric, or for a metric across the top or bottom places of
+  another metric (for example, `"Which states have the highest median
+  income?"` or `"What is the diabetes rate in the poorest counties of
+  California?"`).
 - `"distribution"`: asks how a metric is spread across a cohort of child
   places (for example, `"How does poverty rate vary across counties in
   Ohio?"` or `"What is the spread of literacy rates across Indian

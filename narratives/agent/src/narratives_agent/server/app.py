@@ -28,6 +28,7 @@ from fastapi.responses import RedirectResponse
 
 from narratives_agent import telemetry
 from narratives_agent.config import bootstrap_config_from_url
+from narratives_agent.gcp_auth import init_dc_api_key
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.server.routes import chat, spa, system
 from narratives_agent.settings import get_settings
@@ -88,6 +89,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     provider. Spans that are still buffered are written at shutdown.
     """
     init_signing_key()
+    init_dc_api_key()
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
     try:

@@ -42,7 +42,11 @@ from pydantic import ValidationError
 from narratives_agent.config_model import AgentConfig
 from narratives_agent.gemini.client import GeminiBlockedError, GeminiError
 from narratives_agent.gemini.response import GeminiResponse
-from narratives_agent.settings import get_settings
+from narratives_agent.settings import (
+    TRANSCRIPT_HMAC_SECRET_ENV,
+    TRANSCRIPT_HMAC_SECRET_NAME_ENV,
+    get_settings,
+)
 from narratives_agent.telemetry import TokenUsage
 from narratives_agent.workflows import transcript
 from narratives_agent.workflows.transcript import (
@@ -86,7 +90,7 @@ class _Request:
 @pytest.fixture(autouse=True)
 def signing_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     """Signs with a fixed secret for each test."""
-    monkeypatch.setenv("TRANSCRIPT_HMAC_SECRET", _SECRET)
+    monkeypatch.setenv(TRANSCRIPT_HMAC_SECRET_ENV, _SECRET)
 
 
 def _reply(text: str) -> GeminiResponse:
@@ -514,40 +518,132 @@ def test_a_missing_secret_uses_a_generated_key(
     #   set) or in local development.
     # Expectation: A random 32-byte key is used for the life of the process,
     #   and a warning is logged when `K_SERVICE` is set.
-    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
+    monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
     monkeypatch.setenv("K_SERVICE", k_service)
     transcript.reset_signing_key()
 
     with caplog.at_level(logging.WARNING, logger=transcript.__name__):
-        key = transcript._signing_key()
+        key = transcript._resolve_signing_key()
 
     assert len(key) == 32
-    assert transcript._signing_key() is key
-    assert ("TRANSCRIPT_HMAC_SECRET is not set" in caplog.text) is warned
+    assert transcript._resolve_signing_key() is key
+    assert (f"{TRANSCRIPT_HMAC_SECRET_ENV} is not set" in caplog.text) is warned
 
 
 def test_the_configured_secret_is_the_key() -> None:
     # Test: When `TRANSCRIPT_HMAC_SECRET` is set, its UTF-8 bytes are used as
     #   the signing key.
     # Situation: The `signing_secret` fixture sets `TRANSCRIPT_HMAC_SECRET`.
-    # Expectation: `_signing_key()` returns the secret's UTF-8 bytes.
-    assert transcript._signing_key() == _SECRET.encode("utf-8")
+    # Expectation: `_resolve_signing_key()` returns the secret's UTF-8 bytes.
+    assert transcript._resolve_signing_key() == _SECRET.encode("utf-8")
 
 
 def test_a_missing_secret_on_kubernetes_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: On Kubernetes, a missing `TRANSCRIPT_HMAC_SECRET` raises
-    #   `RuntimeError` instead of generating an instance-local key.
-    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset and
-    #   `KUBERNETES_SERVICE_HOST` is set.
+    # Test: On Kubernetes, a missing secret raises `RuntimeError`.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` and `TRANSCRIPT_HMAC_SECRET_NAME` are
+    #   unset and `KUBERNETES_SERVICE_HOST` is set.
     # Expectation: `init_signing_key()` raises `RuntimeError` naming
-    #   `TRANSCRIPT_HMAC_SECRET`.
-    monkeypatch.delenv("TRANSCRIPT_HMAC_SECRET")
+    #   both variables.
+    monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
+    monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_NAME_ENV, raising=False)
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
     transcript.reset_signing_key()
 
-    with pytest.raises(RuntimeError, match="TRANSCRIPT_HMAC_SECRET"):
+    with pytest.raises(RuntimeError, match=TRANSCRIPT_HMAC_SECRET_ENV):
+        transcript.init_signing_key()
+
+
+def test_transcript_hmac_secret_name_is_loaded_from_secret_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Loading transcript signing key via `TRANSCRIPT_HMAC_SECRET_NAME`.
+    # Situation: `TRANSCRIPT_HMAC_SECRET` is unset and
+    #   `TRANSCRIPT_HMAC_SECRET_NAME` is configured.
+    # Expectation: `_resolve_signing_key()` loads the secret from Secret
+    #   Manager and returns its UTF-8 bytes.
+    monkeypatch.setattr(
+        transcript,
+        "fetch_secret_with_ttl",
+        lambda name, var: _SECRET,
+    )
+    monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
+    monkeypatch.setenv(
+        TRANSCRIPT_HMAC_SECRET_NAME_ENV, "narratives-hmac-secret"
+    )
+    transcript.reset_signing_key()
+
+    assert transcript._resolve_signing_key() == _SECRET.encode("utf-8")
+
+
+def test_transcript_hmac_secret_takes_precedence_over_secret_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Precedence of `TRANSCRIPT_HMAC_SECRET` over
+    #   `TRANSCRIPT_HMAC_SECRET_NAME`.
+    # Situation: Both variables are configured.
+    # Expectation: `_resolve_signing_key()` returns `TRANSCRIPT_HMAC_SECRET`
+    #   without calling Secret Manager.
+    secret_manager_called = False
+
+    def _fetch(name: str, var: str) -> str:
+        nonlocal secret_manager_called
+        secret_manager_called = True
+        return "other-secret-0123456789abcdef01234"
+
+    monkeypatch.setattr(transcript, "fetch_secret_with_ttl", _fetch)
+    monkeypatch.setenv(TRANSCRIPT_HMAC_SECRET_ENV, _SECRET)
+    monkeypatch.setenv(
+        TRANSCRIPT_HMAC_SECRET_NAME_ENV, "narratives-hmac-secret"
+    )
+    transcript.reset_signing_key()
+
+    assert transcript._resolve_signing_key() == _SECRET.encode("utf-8")
+    assert not secret_manager_called
+
+
+def test_transcript_hmac_secret_name_short_secret_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Rejecting a short secret loaded from Secret Manager.
+    # Situation: Secret Manager returns a secret shorter than 32 bytes.
+    # Expectation: `init_signing_key()` raises `RuntimeError` naming
+    #   `TRANSCRIPT_HMAC_SECRET_NAME`.
+    monkeypatch.setattr(
+        transcript,
+        "fetch_secret_with_ttl",
+        lambda name, var: "short-key",
+    )
+    monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
+    monkeypatch.setenv(
+        TRANSCRIPT_HMAC_SECRET_NAME_ENV, "narratives-hmac-secret"
+    )
+    transcript.reset_signing_key()
+
+    with pytest.raises(RuntimeError, match=TRANSCRIPT_HMAC_SECRET_NAME_ENV):
+        transcript.init_signing_key()
+
+
+def test_transcript_hmac_secret_name_fetch_failure_raises_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: Handling failure to load `TRANSCRIPT_HMAC_SECRET_NAME`.
+    # Situation: Secret Manager returns an empty string or fails.
+    # Expectation: `init_signing_key()` raises `RuntimeError` naming
+    #   `TRANSCRIPT_HMAC_SECRET_NAME`.
+    monkeypatch.setattr(
+        transcript,
+        "fetch_secret_with_ttl",
+        lambda name, var: "",
+    )
+    monkeypatch.delenv(TRANSCRIPT_HMAC_SECRET_ENV)
+    monkeypatch.setenv(
+        TRANSCRIPT_HMAC_SECRET_NAME_ENV, "narratives-hmac-secret"
+    )
+    transcript.reset_signing_key()
+
+    with pytest.raises(RuntimeError, match=TRANSCRIPT_HMAC_SECRET_NAME_ENV):
         transcript.init_signing_key()
 
 

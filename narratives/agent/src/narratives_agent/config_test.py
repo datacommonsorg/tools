@@ -39,7 +39,6 @@ Covers six configuration behaviors in `config`:
 
 import json
 import os
-import threading
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -55,6 +54,7 @@ from narratives_agent.config_model import (
     Prompts,
     ThinkingLevels,
 )
+from narratives_agent.settings import GEMINI_API_KEY_SECRET_ENV
 
 
 @pytest.fixture(autouse=True)
@@ -320,7 +320,7 @@ def test_get_gemini_api_key_resolves_and_validates_config_fallback(
     #   configuration is loaded.
     # Expectation: A valid key is returned; placeholders, a missing key, and
     #   a missing configuration return "".
-    monkeypatch.delenv("GEMINI_API_KEY_SECRET", raising=False)
+    monkeypatch.delenv(GEMINI_API_KEY_SECRET_ENV, raising=False)
     monkeypatch.setattr(config, "load_config", lambda: loaded)
 
     assert config.get_gemini_api_key() == expected
@@ -334,7 +334,7 @@ def test_get_gemini_api_key_prefers_secret_manager_and_falls_back_on_empty(
     #   key, then it returns "".
     # Expectation: Secret Manager value wins when non-empty; config.json
     #   fallback is used when Secret Manager returns "".
-    monkeypatch.setenv("GEMINI_API_KEY_SECRET", "gemini-key-secret")
+    monkeypatch.setenv(GEMINI_API_KEY_SECRET_ENV, "gemini-key-secret")
     monkeypatch.setattr(
         config,
         "load_config",
@@ -342,73 +342,33 @@ def test_get_gemini_api_key_prefers_secret_manager_and_falls_back_on_empty(
     )
 
     monkeypatch.setattr(
-        config, "_fetch_key_from_secret_manager", lambda name: "secret-key"
+        config, "fetch_secret_with_ttl", lambda name, var: "secret-key"
     )
     assert config.get_gemini_api_key() == "secret-key"
 
-    monkeypatch.setattr(
-        config, "_fetch_key_from_secret_manager", lambda name: ""
-    )
+    monkeypatch.setattr(config, "fetch_secret_with_ttl", lambda name, var: "")
     assert config.get_gemini_api_key() == "fallback-key"
 
 
-@pytest.mark.parametrize(
-    ("raw_payload", "expected"),
-    [
-        (b"  test-bare-gemini-key\n", "test-bare-gemini-key"),
-        (b'["test-array-gemini-key"]', ""),
-        (b'"test-quoted-gemini-key"', ""),
-        (b"   \n", ""),
-    ],
-    ids=[
-        "bare key",
-        "legacy json array",
-        "quoted json string",
-        "whitespace only",
-    ],
-)
-def test_fetch_key_from_secret_manager_validates_secret_payload(
+def test_get_gemini_api_key_rejects_legacy_json_array(
     monkeypatch: pytest.MonkeyPatch,
-    raw_payload: bytes,
-    expected: str,
 ) -> None:
-    # Test: Payload validation in _fetch_key_from_secret_manager.
-    # Situation: Secret Manager returns a bare key, a legacy JSON array, a
-    #   JSON-quoted string, or whitespace.
-    # Expectation: Only the bare key is returned and cached; JSON-encoded and
-    #   empty payloads are rejected with "". The read is bounded by
-    #   `_SECRET_MANAGER_TIMEOUT_SECONDS`.
-    timeouts: list[float] = []
-
-    class _StubPayload:
-        data = raw_payload
-
-    class _StubVersionResponse:
-        payload = _StubPayload()
-
-    class _StubSecretClient:
-        def access_secret_version(
-            self, request: dict[str, str], timeout: float
-        ) -> _StubVersionResponse:
-            timeouts.append(timeout)
-            return _StubVersionResponse()
-
-    class _StubSecretModule:
-        SecretManagerServiceClient = _StubSecretClient
-
-    monkeypatch.setattr(config, "_SECRET_MANAGER_AVAILABLE", True)
+    # Test: Rejection of legacy JSON array secrets in get_gemini_api_key.
+    # Situation: Secret Manager returns a JSON array string.
+    # Expectation: The legacy JSON value is rejected and get_gemini_api_key
+    #   falls back to config.json.
+    monkeypatch.setenv(GEMINI_API_KEY_SECRET_ENV, "gemini-key-secret")
     monkeypatch.setattr(
-        config, "secretmanager", _StubSecretModule, raising=False
+        config,
+        "load_config",
+        lambda: AgentConfig(gemini=GeminiConfig(api_key="fallback-key")),
     )
-    monkeypatch.setattr(config, "_secret_manager_cache", {})
-
-    secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
-    assert config._fetch_key_from_secret_manager(secret_path) == expected
-    assert timeouts == [config._SECRET_MANAGER_TIMEOUT_SECONDS]
-    if expected:
-        assert config._secret_manager_cache[secret_path][1] == expected
-    else:
-        assert secret_path not in config._secret_manager_cache
+    monkeypatch.setattr(
+        config,
+        "fetch_secret_with_ttl",
+        lambda name, var: '["legacy-array-key"]',
+    )
+    assert config.get_gemini_api_key() == "fallback-key"
 
 
 # --- prompt bodies ----------------------------------------------------------
@@ -1009,61 +969,3 @@ def test_unresolvable_timezone_falls_back_to_utc(
         result = config.get_current_datetime()
     assert result.endswith("UTC")
     assert "Mars/Olympus_Mons" in caplog.text
-
-
-class _SignalingSecretCache(dict[str, tuple[float, str]]):
-    """Secret cache that sets an event when a lookup returns no entry."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.missed = threading.Event()
-
-    def get(  # type: ignore[override]
-        self, key: str, default: tuple[float, str] | None = None
-    ) -> tuple[float, str] | None:
-        value = super().get(key, default)
-        if value is None:
-            self.missed.set()
-        return value
-
-
-def test_a_waiting_thread_reuses_the_key_loaded_while_it_waited(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Test: Concurrent cache misses share one Secret Manager request.
-    # Situation: The test holds `_secret_manager_lock` as if another thread
-    #   were loading the key. A worker thread misses the empty cache and waits
-    #   on the lock; the test then stores a key, as the loading thread would,
-    #   and releases the lock.
-    # Expectation: The worker returns the stored key without creating a
-    #   Secret Manager client itself.
-    clients: list[object] = []
-
-    class _StubSecretModule:
-        @staticmethod
-        def SecretManagerServiceClient() -> object:  # noqa: N802
-            clients.append(object())
-            raise AssertionError("Secret Manager must not be called")
-
-    secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
-    cache = _SignalingSecretCache()
-    monkeypatch.setattr(config, "_SECRET_MANAGER_AVAILABLE", True)
-    monkeypatch.setattr(
-        config, "secretmanager", _StubSecretModule, raising=False
-    )
-    monkeypatch.setattr(config, "_secret_manager_cache", cache)
-    result: list[str] = []
-
-    with config._secret_manager_lock:
-        worker = threading.Thread(
-            target=lambda: result.append(
-                config._fetch_key_from_secret_manager(secret_path)
-            )
-        )
-        worker.start()
-        assert cache.missed.wait(timeout=5)
-        cache[secret_path] = (float("inf"), "loaded-key")
-    worker.join(timeout=5)
-
-    assert result == ["loaded-key"]
-    assert clients == []

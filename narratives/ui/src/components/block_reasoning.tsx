@@ -212,17 +212,19 @@ const PLACEHOLDER_DONE =
 
 /**
  * Header label is derived from the turn status. The server's `status` events
- * move the turn through the `classify`, `discovery`, and `synthesis` phases,
- * and its `terminal` event ends it; these strings are the UI-side copy for
- * each phase.
+ * move the turn through the `classify`, `discovery`, `processing`, and
+ * `synthesis` phases, and its `terminal` event ends it; these strings are the
+ * UI-side copy for each phase.
  */
-function phaseLabel(streaming: boolean, status?: TurnStatus): string {
+function getPhaseLabel(streaming: boolean, status?: TurnStatus): string {
   if (!streaming) return "Reasoning details";
   switch (status) {
     case "classify":
       return "Understanding your question…";
     case "discovery":
       return "Querying data tools…";
+    case "processing":
+      return "Analyzing data…";
     case "synthesis":
       return "Synthesizing answer…";
     default:
@@ -258,7 +260,7 @@ export function ReasoningBlock({
   status,
 }: ReasoningBlockProps) {
   const [open, setOpen] = useState(defaultOpen);
-  const label = phaseLabel(streaming, status);
+  const label = getPhaseLabel(streaming, status);
 
   // The thoughts render back to back as one continuous block, not grouped
   // per phase; the placeholder stands in only when there are none.
