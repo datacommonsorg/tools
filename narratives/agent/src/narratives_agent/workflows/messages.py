@@ -11,7 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""User-visible status, refusal, and error messages for the agent loop."""
+"""User-visible status, refusal, error, and chart title text.
+
+The agent loop sends these strings to the reader.
+"""
 
 # Status messages carried on `status` SSE frames for each phase of a turn.
 CLASSIFY_STATUS = "Understanding the question..."
@@ -49,6 +52,10 @@ MCP_NO_RESPONSE = "The model returned no response. Please try again."
 MCP_LOOP_TIMEOUT = "The data request took too long. Please try again."
 INTERNAL_ERROR = "An internal error occurred. Please try again."
 
+# Default chart titles built by the agent loop. `{variable_name}` is the
+# display name of the fetched numerator the chart normalizes by population.
+PER_CAPITA_CHART_TITLE_TEMPLATE = "{variable_name} per person"
+
 __all__ = [
     "CHART_CONFIG_STATUS",
     "CHAT_DISABLED",
@@ -62,6 +69,7 @@ __all__ = [
     "MCP_UNAVAILABLE",
     "NO_DATA_MESSAGE",
     "OFF_DOMAIN_TEMPLATE",
+    "PER_CAPITA_CHART_TITLE_TEMPLATE",
     "PROCESSING_STATUS",
     "REFUSED_MESSAGE",
     "SYNTHESIS_FAILED",

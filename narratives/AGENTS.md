@@ -71,6 +71,7 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       specification and returns an `AnalysisDigest` or a
       `ProcessingDiagnostic` (`processing.py`), the chart grammar,
       resolver, and wire serializer (`charts.py`),
+      the default chart floor (`chart_defaults.py`),
       chart configuration (`chart_config.py`), follow-up generation
       (`follow_up.py`),
       user-visible messages (`messages.py`), the typed SSE frames the agent
