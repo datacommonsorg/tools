@@ -105,7 +105,7 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_FAILED,
     TRUNCATED_MESSAGE,
 )
-from narratives_agent.workflows.pattern_guidance import pattern_directive
+from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
     execute_specification,
@@ -1661,7 +1661,9 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     assert turn.loop_classifications == [_CLASSIFICATION]
     (instruction,) = turn.synthesis_instructions
     assert instruction.startswith("Write prose.")
-    assert instruction.endswith(pattern_directive(_CLASSIFICATION))
+    assert instruction.endswith(
+        build_pattern_directive(_CLASSIFICATION, "synthesis")
+    )
     assert turn.telemetry is not None
     assert turn.telemetry.pattern == "single_point"
     assert "classify" in turn.telemetry.phase_durations_ms

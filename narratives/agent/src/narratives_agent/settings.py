@@ -41,6 +41,37 @@ _TRUTHY_ENV_VALUES = ("1", "true", "yes")
 # 256 bits of an HMAC-SHA256 key.
 MIN_SECRET_BYTES = 32
 
+# Environment variable names for credentials and Secret Manager references.
+GEMINI_API_KEY_SECRET_ENV = "GEMINI_API_KEY_SECRET"
+DC_API_KEY_ENV = "DC_API_KEY"
+DC_API_KEY_SECRET_ENV = "DC_API_KEY_SECRET"
+TRANSCRIPT_HMAC_SECRET_ENV = "TRANSCRIPT_HMAC_SECRET"
+TRANSCRIPT_HMAC_SECRET_NAME_ENV = "TRANSCRIPT_HMAC_SECRET_NAME"
+
+
+def validate_hmac_secret(
+    secret: str, source: str = TRANSCRIPT_HMAC_SECRET_ENV
+) -> str:
+    """Rejects an HMAC secret shorter than `MIN_SECRET_BYTES`.
+
+    Args:
+        secret: The raw secret string to validate.
+        source: The name of the environment variable or configuration source,
+            used in error messages.
+
+    Returns:
+        The validated secret string.
+
+    Raises:
+        ValueError: The secret is shorter than `MIN_SECRET_BYTES`.
+    """
+    if len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
+        raise ValueError(
+            f"{source} must be at least {MIN_SECRET_BYTES} bytes; "
+            "generate one with `openssl rand -hex 32`."
+        )
+    return secret
+
 
 def _normalize_url_path_prefix(value: str) -> str:
     """Normalizes `value` to a leading-slash path without trailing slashes."""
@@ -147,6 +178,11 @@ class Settings(BaseSettings):
     # The agent sends this API key as `X-API-Key` to public Data Commons hosts.
     dc_api_key: str = ""
 
+    # This Secret Manager secret, named in full or by a short secret ID, holds
+    # the Data Commons API key. When `dc_api_key` is unset, this is resolved
+    # against Secret Manager at startup.
+    dc_api_key_secret: str = ""
+
     # The agent reaches the MCP server at this URL, which takes precedence over
     # `mcp.server_url` in config.json. With neither set, it calls localhost on
     # `mcp_port`.
@@ -164,8 +200,9 @@ class Settings(BaseSettings):
     # zone falls back to UTC.
     timezone: str = "UTC"
 
-    # A short `gemini_api_key_secret` name resolves against this project, and
-    # Vertex AI calls run against it when `google_genai_use_vertexai` is true.
+    # Short secret names in `gemini_api_key_secret`, `dc_api_key_secret`, and
+    # `transcript_hmac_secret_name` resolve against this project, and Vertex AI
+    # calls run against it when `google_genai_use_vertexai` is true.
     google_cloud_project: str = ""
 
     # Region for Vertex AI Gemini calls when `google_genai_use_vertexai` is
@@ -192,6 +229,11 @@ class Settings(BaseSettings):
     # key of its own, and a transcript then verifies only on the process that
     # signed it. `SecretStr` keeps the value out of `repr()` output and logs.
     transcript_hmac_secret: SecretStr = SecretStr("")
+
+    # This Secret Manager secret, named in full or by a short secret ID, holds
+    # the 32+ byte HMAC-SHA256 signing key. When `transcript_hmac_secret` is
+    # unset, this is resolved against Secret Manager at startup.
+    transcript_hmac_secret_name: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -221,11 +263,8 @@ class Settings(BaseSettings):
             ValueError: The secret is set and shorter than the minimum.
         """
         secret = value.get_secret_value()
-        if secret and len(secret.encode("utf-8")) < MIN_SECRET_BYTES:
-            raise ValueError(
-                f"TRANSCRIPT_HMAC_SECRET must be at least {MIN_SECRET_BYTES} "
-                "bytes; generate one with `openssl rand -hex 32`."
-            )
+        if secret:
+            validate_hmac_secret(secret, TRANSCRIPT_HMAC_SECRET_ENV)
         return value
 
     @model_validator(mode="after")

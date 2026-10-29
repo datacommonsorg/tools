@@ -83,7 +83,7 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_STATUS,
     TRUNCATED_MESSAGE,
 )
-from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
+from narratives_agent.workflows.pattern_guidance import append_pattern_guidance
 from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
     execute_specification,
@@ -668,8 +668,8 @@ async def run_synthesis_phase(
     try:
         stream = await async_gemini_stream(
             messages=messages,
-            system_instruction=with_pattern_guidance(
-                config.prompts.synthesis, ctx.classification
+            system_instruction=append_pattern_guidance(
+                config.prompts.synthesis, ctx.classification, "synthesis"
             ),
             model=role.model,
             temperature=role.temperature,

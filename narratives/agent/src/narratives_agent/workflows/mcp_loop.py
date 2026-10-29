@@ -70,10 +70,12 @@ from narratives_agent.workflows.messages import (
 from narratives_agent.workflows.messages import (
     PROCESSING_STATUS as _PROCESSING_STATUS_MESSAGE,
 )
-from narratives_agent.workflows.pattern_guidance import with_pattern_guidance
 from narratives_agent.workflows.processing import (
     ProcessingDiagnostic,
     execute_specification,
+)
+from narratives_agent.workflows.prompt_contracts import (
+    compose_system_instruction,
 )
 from narratives_agent.workflows.specification import (
     REPORT_UNAVAILABLE,
@@ -966,8 +968,8 @@ async def _iterate(
         McpLoopError: If tool schemas are invalid, a model call fails or is
             empty, or an MCP transport error occurs.
     """
-    discovery_prompt = with_pattern_guidance(
-        config.prompts.discovery, classification
+    discovery_prompt = compose_system_instruction(
+        config.prompts.discovery, "discovery", classification
     )
     role = config.resolve_role_config(GeminiRole.DISCOVERY)
     try:

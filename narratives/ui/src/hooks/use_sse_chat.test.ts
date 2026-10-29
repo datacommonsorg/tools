@@ -21,6 +21,7 @@ import {
   type ChatTurn,
   type ProvenanceItem,
   type ConversationStateSlots,
+  type TurnStatus,
   type WireTurn,
 } from "./use_sse_chat";
 
@@ -424,6 +425,32 @@ describe("applyEvent", () => {
     expect(streaming.textComplete).toBeUndefined();
     expect(finished.textComplete).toBe(true);
     expect(finished.status).toBe("synthesis");
+  });
+
+  it("moves the turn through the discovery and processing phases", () => {
+    // Test: The status phases of the discovery loop.
+    // Situation: A turn receives a `discovery` status, a thought tagged
+    //   `discovery`, a `processing` status, a `discovery` status again as
+    //   the loop retries, and a `chart_config` status.
+    // Expectation: Each of the first four statuses becomes the turn status
+    //   in order, the thought keeps its `discovery` phase, and the
+    //   `chart_config` status leaves the status where it was.
+    const statuses: TurnStatus[] = [];
+    let turn = blankTurn();
+    const events: ChatStreamEvent[] = [
+      { event: "status", data: { phase: "discovery", message: "Querying data tools..." } },
+      { event: "thought", data: { thought: "Fetching population", phase: "discovery" } },
+      { event: "status", data: { phase: "processing", message: "Analyzing data..." } },
+      { event: "status", data: { phase: "discovery", message: "Querying data tools..." } },
+      { event: "status", data: { phase: "chart_config" } },
+    ];
+    for (const event of events) {
+      turn = applyEvent(turn, event);
+      statuses.push(turn.status);
+    }
+
+    expect(statuses).toEqual(["discovery", "discovery", "processing", "discovery", "discovery"]);
+    expect(turn.thoughts).toEqual([{ text: "Fetching population", phase: "discovery" }]);
   });
 
   it.each([

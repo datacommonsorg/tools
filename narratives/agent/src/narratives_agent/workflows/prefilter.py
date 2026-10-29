@@ -61,8 +61,8 @@ PREFILTER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ),
         (
             "secret_exfiltration",
-            r"\b(GEMINI_API_KEY(_SECRET)?|DC_API_KEY|TRANSCRIPT_HMAC_SECRET)"
-            r"\b|\.env\.local\b",
+            r"\b(GEMINI_API_KEY(_SECRET)?|DC_API_KEY(_SECRET)?|"
+            r"TRANSCRIPT_HMAC_SECRET(_NAME)?)\b|\.env\.local\b",
         ),
         (
             "jailbreak_mode",
