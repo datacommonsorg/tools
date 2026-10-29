@@ -40,11 +40,10 @@ import sys
 import time
 import uuid
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
 
 from fastapi import FastAPI
 from opentelemetry import trace
@@ -66,8 +65,10 @@ from opentelemetry.util.genai.environment_variables import (
     OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK,
     OTEL_INSTRUMENTATION_GENAI_EMIT_EVENT,
 )
+from opentelemetry.util.types import AnyValue
 
 from narratives_agent.gemini.schemas import QueryPattern
+from narratives_agent.json_value import JsonObject
 
 SERVICE_NAME = "narratives-agent"
 
@@ -151,8 +152,15 @@ _configured: dict[str, TracerProvider] = {}
 _FLUSH_TIMEOUT_MILLIS = 5000
 
 
-def _span_attributes(span: ReadableSpan) -> dict[str, Any]:
-    """Returns the allowlisted attributes of `span`."""
+def _filter_span_attributes(span: ReadableSpan) -> Mapping[str, AnyValue]:
+    """Filters `span` attributes to the content-free allowlist.
+
+    Args:
+        span: The finished OpenTelemetry span to inspect.
+
+    Returns:
+        A mapping of allowlisted attribute keys to their values.
+    """
     return {
         key: value
         for key, value in (span.attributes or {}).items()
@@ -166,6 +174,13 @@ def format_span(span: ReadableSpan) -> str:
 
     Span events are omitted entirely, because the google-genai
     instrumentation can attach message content to them.
+
+    Args:
+        span: The finished OpenTelemetry span to serialize.
+
+    Returns:
+        A newline-terminated JSON line with the span metadata and allowlisted
+        attributes.
     """
     context = span.get_span_context()
     start = span.start_time or 0
@@ -181,7 +196,7 @@ def format_span(span: ReadableSpan) -> str:
         "parent_span_id": f"{span.parent.span_id:016x}" if span.parent else "",
         "duration_ms": round((end - start) / _NANOSECONDS_PER_MILLISECOND, 2),
         "status": span.status.status_code.name,
-        "attributes": _span_attributes(span),
+        "attributes": _filter_span_attributes(span),
     }
     return json.dumps(record, default=str) + "\n"
 
@@ -193,6 +208,9 @@ def _write_stdout_line(line: str) -> None:
     the span exporter runs on a background thread for the life of the
     process and the stream it was handed may since have been replaced (as a
     test runner does) or closed.
+
+    Args:
+        line: The text line to write and flush to stdout.
     """
     sys.stdout.write(line)
     sys.stdout.flush()
@@ -202,7 +220,14 @@ class _StdoutSpanExporter(SpanExporter):
     """Exports spans to stdout as content-free JSON lines."""
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        """Writes one `format_span` line per span."""
+        """Writes one `format_span` line per span.
+
+        Args:
+            spans: The finished spans to export.
+
+        Returns:
+            `SpanExportResult.SUCCESS` after writing every span.
+        """
         for span in spans:
             _write_stdout_line(format_span(span))
         return SpanExportResult.SUCCESS
@@ -212,7 +237,11 @@ class _StdoutLineHandler(logging.Handler):
     """Writes each log record's bare message as one stdout line."""
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Writes the record's message followed by a newline."""
+        """Writes the record's message followed by a newline.
+
+        Args:
+            record: The log record to write.
+        """
         try:
             _write_stdout_line(record.getMessage() + "\n")
         # A logging handler must not propagate exceptions to the caller; this
@@ -297,7 +326,14 @@ def instrument_app(
 
 @dataclass(frozen=True)
 class TokenCounts:
-    """Holds the token counts of one Gemini call."""
+    """Holds the token counts of one Gemini call.
+
+    Attributes:
+        prompt: The input prompt token count.
+        candidates: The candidate output token count.
+        thoughts: The reasoning thought token count.
+        total: The total token count reported for the call.
+    """
 
     prompt: int
     candidates: int
@@ -307,7 +343,14 @@ class TokenCounts:
 
 @dataclass
 class TokenUsage:
-    """Accumulates Gemini token counts across all model calls in a turn."""
+    """Accumulates Gemini token counts across all model calls in a turn.
+
+    Attributes:
+        prompt_token_count: Total input prompt tokens across the turn.
+        candidates_token_count: Total candidate output tokens across the turn.
+        thoughts_token_count: Total reasoning thought tokens across the turn.
+        total_token_count: Total tokens reported across the turn.
+    """
 
     prompt_token_count: int = 0
     candidates_token_count: int = 0
@@ -315,7 +358,12 @@ class TokenUsage:
     total_token_count: int = 0
 
     def add(self, counts: TokenCounts | None) -> None:
-        """Adds one call's token counts to the totals; `None` adds nothing."""
+        """Adds one call's token counts to the totals; `None` adds nothing.
+
+        Args:
+            counts: The token counts from one Gemini call, or `None` when the
+                call reported no usage metadata.
+        """
         if counts is None:
             return
         self.prompt_token_count += counts.prompt
@@ -324,8 +372,15 @@ class TokenUsage:
         self.total_token_count += counts.total
 
 
-def _elapsed_ms(start: float) -> float:
-    """Returns the milliseconds elapsed since a `time.monotonic()` timestamp."""
+def _compute_elapsed_ms(start: float) -> float:
+    """Computes the milliseconds elapsed since a `time.monotonic()` timestamp.
+
+    Args:
+        start: The monotonic start timestamp in seconds.
+
+    Returns:
+        The elapsed duration in milliseconds, rounded to two decimal places.
+    """
     return round((time.monotonic() - start) * _MILLISECONDS_PER_SECOND, 2)
 
 
@@ -340,6 +395,21 @@ class TurnTelemetry:
     made current so that the span tree does not depend on which task or
     context executes a phase; attaching a context in one task and detaching
     it in another raises a ValueError.
+
+    Attributes:
+        turn_id: Server-minted correlation ID for the turn.
+        tokens: Accumulated Gemini token counts for the turn.
+        tool_calls: Counter of MCP tool and server function calls by name.
+        mcp_iterations: Number of discovery loop iterations executed.
+        phase_durations_ms: Total duration in milliseconds for each phase name.
+        pattern: The analytical pattern assigned during the classify phase, or
+            `None` when the turn was refused or ended before classification.
+        scripts: The analytical script names executed by the turn's
+            specification, in step order.
+        tables_fetched: Number of observation tables fetched during the turn.
+        total_rows_fetched: Total observation rows across all fetched tables.
+        processing_retries: Number of rejected `submit_specification` attempts
+            that returned to discovery for a retry.
     """
 
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -350,6 +420,12 @@ class TurnTelemetry:
     # The analytical pattern assigned during the classify phase, or `None` when
     # the turn was refused or ended before classification.
     pattern: QueryPattern | None = None
+    # The scripts the turn's specification ran, in step order, and the counts
+    # of its fetches and processing retries.
+    scripts: list[str] = field(default_factory=list)
+    tables_fetched: int = 0
+    total_rows_fetched: int = 0
+    processing_retries: int = 0
     _start: float = field(default_factory=time.monotonic)
     _span: trace.Span = field(
         default_factory=lambda: _tracer.start_span("narratives.turn")
@@ -358,7 +434,15 @@ class TurnTelemetry:
 
     @contextmanager
     def phase(self, name: str) -> Iterator[None]:
-        """Records a span and a duration for one pipeline phase."""
+        """Records a span and a duration for one pipeline phase.
+
+        Args:
+            name: The pipeline phase name (for example, `"discovery"` or
+                `"processing"`).
+
+        Yields:
+            `None` while the phase body runs inside the phase span.
+        """
         start = time.monotonic()
         span = _tracer.start_span(
             f"narratives.phase.{name}",
@@ -367,11 +451,21 @@ class TurnTelemetry:
         try:
             yield
         finally:
-            self.phase_durations_ms[name] = _elapsed_ms(start)
+            # A retried specification enters `processing` more than once, so
+            # repeated phases accumulate into the phase's total duration.
+            self.phase_durations_ms[name] = round(
+                self.phase_durations_ms.get(name, 0.0)
+                + _compute_elapsed_ms(start),
+                2,
+            )
             span.end()
 
     def record_tool_call(self, name: str) -> None:
-        """Counts one MCP tool call by tool name."""
+        """Counts one MCP tool or server function call by name.
+
+        Args:
+            name: The declared tool or function name (or `"unknown"`).
+        """
         self.tool_calls[name] += 1
 
     def finish(
@@ -392,8 +486,15 @@ class TurnTelemetry:
         if self._finished:
             return
         self._finished = True
-        duration_ms = _elapsed_ms(self._start)
-        record: dict[str, Any] = {
+        duration_ms = _compute_elapsed_ms(self._start)
+        tool_call_count = sum(self.tool_calls.values())
+        tokens: dict[str, int] = {
+            "prompt_token_count": self.tokens.prompt_token_count,
+            "candidates_token_count": self.tokens.candidates_token_count,
+            "thoughts_token_count": self.tokens.thoughts_token_count,
+            "total_token_count": self.tokens.total_token_count,
+        }
+        record: JsonObject = {
             "severity": "ERROR" if state == TerminalState.ERROR else "INFO",
             "message": f"chat turn {state}",
             "event": "chat_turn",
@@ -401,27 +502,34 @@ class TurnTelemetry:
             "terminal_state": state,
             "error_type": error_type,
             "duration_ms": duration_ms,
-            "phase_durations_ms": self.phase_durations_ms,
+            "phase_durations_ms": dict(self.phase_durations_ms),
             "mcp_iterations": self.mcp_iterations,
-            "tool_call_count": sum(self.tool_calls.values()),
+            "tool_call_count": tool_call_count,
             "tool_calls": dict(self.tool_calls),
-            "tokens": asdict(self.tokens),
+            "tokens": dict(tokens),
+            "scripts": list(self.scripts),
+            "tables_fetched": self.tables_fetched,
+            "total_rows_fetched": self.total_rows_fetched,
+            "processing_retries": self.processing_retries,
         }
         if self.pattern is not None and state != TerminalState.REFUSED:
             record["pattern"] = self.pattern
-        self._span.set_attributes(
-            {
-                "narratives.turn_id": self.turn_id,
-                "narratives.terminal_state": state,
-                "narratives.mcp_iterations": self.mcp_iterations,
-                "narratives.tool_call_count": record["tool_call_count"],
-                "narratives.tool_names": sorted(self.tool_calls),
-                **{
-                    f"narratives.tokens.{key}": value
-                    for key, value in asdict(self.tokens).items()
-                },
-            }
-        )
+        attributes: Mapping[str, AnyValue] = {
+            "narratives.turn_id": self.turn_id,
+            "narratives.terminal_state": state,
+            "narratives.mcp_iterations": self.mcp_iterations,
+            "narratives.tool_call_count": tool_call_count,
+            "narratives.tool_names": sorted(self.tool_calls),
+            "narratives.scripts": list(self.scripts),
+            "narratives.tables_fetched": self.tables_fetched,
+            "narratives.total_rows_fetched": self.total_rows_fetched,
+            "narratives.processing_retries": self.processing_retries,
+            **{
+                f"narratives.tokens.{key}": value
+                for key, value in tokens.items()
+            },
+        }
+        self._span.set_attributes(attributes)
         if self.pattern is not None and state != TerminalState.REFUSED:
             self._span.set_attribute("narratives.pattern", self.pattern)
         if error_type:
@@ -433,3 +541,17 @@ class TurnTelemetry:
             self._span.set_status(StatusCode.ERROR)
         self._span.end()
         _turn_logger.info(json.dumps(record))
+
+
+__all__ = [
+    "SERVICE_NAME",
+    "ErrorType",
+    "TerminalState",
+    "TokenCounts",
+    "TokenUsage",
+    "TurnTelemetry",
+    "configure_telemetry",
+    "flush_telemetry",
+    "format_span",
+    "instrument_app",
+]

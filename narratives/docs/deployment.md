@@ -498,9 +498,12 @@ instead.
 
 For further diagnostics, inspect the Cloud Run service logs. Each completed chat
 turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
-containing the terminal state, error reason (if any), phase latencies, MCP tool
-names, token usage, and the analytical `pattern` assigned by the `classify`
-phase (user query text is never logged). On a `refused` turn, `error_type` holds
-the refusal reason (`adversarial`, `off_domain`, or `safety_blocked`) and
+containing the terminal state, error reason (if any), phase latencies
+(`classify`, `discovery`, `processing`, `synthesis`, `chart_config`, `finalize`,
+`follow_ups`), tool names and counts, the analytical `scripts` run,
+`tables_fetched`, `total_rows_fetched`, `processing_retries`, token usage, and
+the analytical `pattern` assigned by the `classify` phase (user query text is
+never logged). On a `refused` turn, `error_type` holds the refusal reason
+(`adversarial`, `off_domain`, `safety_blocked`, or `chat_disabled`) and
 `pattern` is omitted; if the classifier call itself fails, the turn falls
 through with `pattern` set to `exploratory`.

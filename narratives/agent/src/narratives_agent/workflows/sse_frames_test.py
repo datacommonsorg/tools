@@ -28,6 +28,7 @@ import json
 
 import pytest
 
+from narratives_agent.analytics.provenance import Source
 from narratives_agent.telemetry import ErrorType
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.sse_frames import (
@@ -44,6 +45,7 @@ from narratives_agent.workflows.sse_frames import (
     TextFrame,
     ThoughtFrame,
     ToolCallFrame,
+    serialize_source,
 )
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
@@ -62,7 +64,7 @@ def _serialize(frame: SseFrame) -> tuple[EventName, str]:
     return frame.event, json.dumps(frame.payload())
 
 
-def _turn(turn_index: int, idempotency_key: str, signature: str) -> Turn:
+def _make_turn(turn_index: int, idempotency_key: str, signature: str) -> Turn:
     """Returns a signed turn whose slots hold one scope."""
     return Turn(
         turn_index=turn_index,
@@ -82,12 +84,12 @@ def _turn(turn_index: int, idempotency_key: str, signature: str) -> Turn:
     )
 
 
-def _window(compacted_summary: str | None) -> SignedWindow:
+def _make_window(compacted_summary: str | None) -> SignedWindow:
     """Returns a two-turn window ending with the turn that just completed."""
     return SignedWindow(
         turns=[
-            _turn(3, "key-3", _EARLIER_HMAC),
-            _turn(4, _IDEMPOTENCY_KEY, _LATEST_HMAC),
+            _make_turn(3, "key-3", _EARLIER_HMAC),
+            _make_turn(4, _IDEMPOTENCY_KEY, _LATEST_HMAC),
         ],
         compacted_summary=compacted_summary,
     )
@@ -116,6 +118,14 @@ _WINDOW_FIELD = (
                 '{"phase": "discovery", "message": "Querying data tools..."}',
             ),
             id="status",
+        ),
+        pytest.param(
+            StatusFrame(phase="processing", message="Analyzing data..."),
+            (
+                "status",
+                '{"phase": "processing", "message": "Analyzing data..."}',
+            ),
+            id="status_processing",
         ),
         pytest.param(
             ThoughtFrame(thought="Looking up France.", phase="synthesis"),
@@ -157,13 +167,35 @@ _WINDOW_FIELD = (
         ),
         pytest.param(
             SourcesFrame(
-                sources=[{"name": "INSEE", "url": "https://insee.fr/"}]
+                sources=[Source(name="INSEE", url="https://insee.fr/")]
             ),
             (
                 "content",
                 '{"sources": [{"name": "INSEE", "url": "https://insee.fr/"}]}',
             ),
             id="sources",
+        ),
+        pytest.param(
+            SourcesFrame(
+                sources=[
+                    Source(
+                        name="WDI",
+                        url="https://wdi.example/",
+                        license="CC-BY-4.0",
+                        provider="World Bank",
+                        dataset="World Development Indicators",
+                        date_range="1960 - 2023",
+                    )
+                ]
+            ),
+            (
+                "content",
+                '{"sources": [{"name": "WDI", "url": "https://wdi.example/", '
+                '"license": "CC-BY-4.0", "dataset": "World Development '
+                'Indicators", "provider": "World Bank", '
+                '"dateRange": "1960 - 2023"}]}',
+            ),
+            id="sources_from_domain_model",
         ),
         pytest.param(
             ChartConfigFrame(
@@ -192,6 +224,18 @@ def test_a_frame_serializes_to_its_wire_form(
     # Expectation: The event name and the JSON `data` string equal the
     #   payload the browser reads, key for key and in the same order.
     assert _serialize(frame) == expected
+
+
+def test_serialize_source_omits_absent_optional_fields() -> None:
+    # Test: Wire conversion of a `Source` with only required fields.
+    # Situation: A `Source` has `name` and `url` set and all optional fields
+    #   as `None`.
+    # Expectation: `serialize_source` returns only `name` and `url`.
+    source = Source(name="INSEE", url="https://insee.fr/")
+    assert serialize_source(source) == {
+        "name": "INSEE",
+        "url": "https://insee.fr/",
+    }
 
 
 def test_an_error_frame_carries_the_error_and_the_reason() -> None:
@@ -238,7 +282,8 @@ def test_a_signed_complete_frame_carries_the_summary_and_the_window() -> None:
     # Expectation: The payload adds the latest turn's index, signature, and
     #   slots, the summary, and every turn of the window, oldest first.
     frame = TerminalCompleteFrame(
-        idempotency_key=_IDEMPOTENCY_KEY, window=_window("Earlier turns.")
+        idempotency_key=_IDEMPOTENCY_KEY,
+        window=_make_window("Earlier turns."),
     )
 
     assert _serialize(frame) == (
@@ -255,7 +300,7 @@ def test_a_signed_complete_frame_keeps_a_null_summary_key() -> None:
     # Expectation: `compacted_summary` is present with the value `null`
     #   rather than omitted.
     frame = TerminalCompleteFrame(
-        idempotency_key=_IDEMPOTENCY_KEY, window=_window(None)
+        idempotency_key=_IDEMPOTENCY_KEY, window=_make_window(None)
     )
 
     assert _serialize(frame) == (
