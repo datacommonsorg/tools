@@ -146,4 +146,20 @@ describe('ReasoningBlock', () => {
     expect(container.querySelector('.markdown-stream')).toBeNull();
     expect(container.querySelector('.stream-word')).toBeNull();
   });
+
+  it.each([
+    ['discovery', 'Querying data tools…'],
+    ['processing', 'Analyzing data…'],
+  ] as const)('labels the header for the %s phase while streaming', (status, label) => {
+    // Test: Phase copy for the discovery and processing statuses.
+    // Situation: ReasoningBlock renders while the turn is streaming in the
+    //            `discovery` or `processing` status.
+    // Expectation: The header carries the copy for finding data or for
+    //              analyzing it.
+    const { getByRole } = render(
+      <ReasoningBlock thoughts={[]} streaming status={status} />,
+    );
+
+    expect(getByRole('button').textContent).toContain(label);
+  });
 });

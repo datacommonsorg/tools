@@ -235,7 +235,9 @@ function TurnView({
   const showSkeleton =
     !showAnswer &&
     !turn.stopped &&
-    (turn.status === "discovery" || turn.status === "synthesis");
+    (turn.status === "discovery" ||
+      turn.status === "processing" ||
+      turn.status === "synthesis");
   // Keep a shown skeleton under the answer until the crossfade ends.
   const [hadSkeleton, setHadSkeleton] = useState(false);
   if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
