@@ -69,8 +69,10 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       validation against the cache, and the default specification
       (`specification.py`), the bounded processing phase that runs a
       specification and returns an `AnalysisDigest` or a
-      `ProcessingDiagnostic` (`processing.py`), chart configuration
-      (`chart_config.py`), follow-up generation (`follow_up.py`),
+      `ProcessingDiagnostic` (`processing.py`), the chart grammar,
+      resolver, and wire serializer (`charts.py`),
+      chart configuration (`chart_config.py`), follow-up generation
+      (`follow_up.py`),
       user-visible messages (`messages.py`), the typed SSE frames the agent
       loop sends (`sse_frames.py`), the turn's state slots
       (`state_slots.py`), and signed transcripts (`transcript.py`). Of the

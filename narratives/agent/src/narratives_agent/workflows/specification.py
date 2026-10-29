@@ -71,7 +71,9 @@ __all__ = [
     "build_default_specification",
     "build_specification_declarations",
     "get_step_output_kind",
+    "list_reference_table_ids",
     "list_step_inputs",
+    "list_step_table_ids",
     "validate_specification",
 ]
 
@@ -576,6 +578,19 @@ class AnalysisSpecification(BaseModel):
         """
         return [step.script for step in self.steps]
 
+    def find_step(self, step_id: str) -> SpecificationStep | None:
+        """Returns the step with an id.
+
+        Args:
+            step_id: Identifier of the analysis step (for example, `"s1"`).
+
+        Returns:
+            The step, or None when no step has the id.
+        """
+        return next(
+            (step for step in self.steps if step.step_id == step_id), None
+        )
+
 
 class UnavailableReport(BaseModel):
     """The structured note the model files when the data does not exist.
@@ -680,6 +695,67 @@ def list_step_inputs(step: SpecificationStep) -> tuple[tuple[str, str], ...]:
             return (("table", step.table), *weights)
         case _:
             return (("table", step.table),)
+
+
+def list_reference_table_ids(
+    specification: AnalysisSpecification,
+    reference: str,
+    reader: SpecificationStep,
+) -> tuple[str, ...]:
+    """Lists the cached table ids one step input reference reads.
+
+    A reference to a fetched table, or to the table a
+    `compute_derived_metric` step derives, names that table. A reference to
+    any other earlier step, such as an `align_cohort` step, names the
+    tables that step reads, followed through the steps it reads in turn.
+    Only steps before `reader` are followed, as `validate_specification`
+    requires, so a reference to the reader itself or to a later step names
+    itself and the walk always ends.
+
+    Args:
+        specification: The specification that holds `reader`.
+        reference: A table id or step id from `list_step_inputs(reader)`.
+        reader: The step whose input `reference` is.
+
+    Returns:
+        The `t<n>` and `s<n>` table ids, each once, in input order, or the
+        reference itself when it names no earlier step.
+
+    Raises:
+        ValueError: If no step of `specification` equals `reader`.
+    """
+    earlier = specification.steps[: specification.steps.index(reader)]
+    source = next((step for step in earlier if step.step_id == reference), None)
+    if source is None or isinstance(source, ComputeDerivedMetricStep):
+        return (reference,)
+    return list_step_table_ids(specification, source)
+
+
+def list_step_table_ids(
+    specification: AnalysisSpecification, step: SpecificationStep
+) -> tuple[str, ...]:
+    """Lists the cached table ids a step reads, through the steps it reads.
+
+    Args:
+        specification: The specification that holds `step`.
+        step: The step to inspect.
+
+    Returns:
+        The `t<n>` and `s<n>` table ids of every input, as
+        `list_reference_table_ids` resolves them, each once, in input order.
+
+    Raises:
+        ValueError: If no step of `specification` equals `step`.
+    """
+    return tuple(
+        dict.fromkeys(
+            table_id
+            for _, reference in list_step_inputs(step)
+            for table_id in list_reference_table_ids(
+                specification, reference, step
+            )
+        )
+    )
 
 
 def get_step_output_kind(step: SpecificationStep) -> StepOutputKind:

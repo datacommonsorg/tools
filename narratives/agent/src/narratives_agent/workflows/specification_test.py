@@ -44,7 +44,9 @@ from narratives_agent.workflows.specification import (
     build_default_specification,
     build_specification_declarations,
     get_step_output_kind,
+    list_reference_table_ids,
     list_step_inputs,
+    list_step_table_ids,
     validate_specification,
 )
 from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
@@ -285,6 +287,123 @@ def test_step_inputs_are_listed_in_the_order_the_script_takes_them(
     #   optional total and weights last.
     (parsed,) = _build_specification(step).steps
     assert list_step_inputs(parsed) == expected
+
+
+def test_find_step_returns_the_step_with_an_id_or_none() -> None:
+    # Test: `AnalysisSpecification.find_step`.
+    # Situation: A two-step specification, asked for each step id and for
+    #   an id no step has.
+    # Expectation: Each id returns its step, and the unknown id None.
+    specification = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+                {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+            ]
+        }
+    )
+    first, second = specification.steps
+
+    assert specification.find_step("s1") is first
+    assert specification.find_step("s2") is second
+    assert specification.find_step("s3") is None
+
+
+def test_list_step_table_ids_follows_steps_to_the_tables_they_read() -> None:
+    # Test: `list_step_table_ids`.
+    # Situation: A ranking of an aligned cohort of `t1`, a relation of a
+    #   per-capita table `s3` (derived from `t2` and `t1`) to `t1`, and a
+    #   weighted distribution of `t2` by `t1`.
+    # Expectation: The ranking reads `t1` through its alignment step, the
+    #   relation reads `s3` itself rather than the tables it was derived
+    #   from, and the distribution reads both of its tables in input order.
+    specification = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+                {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+                {
+                    "step_id": "s3",
+                    "script": "compute_derived_metric",
+                    "left": "t2",
+                    "right": "t1",
+                    "operation": "per_capita",
+                },
+                {
+                    "step_id": "s4",
+                    "script": "relate_cohorts",
+                    "target": "s3",
+                    "by": "t1",
+                },
+                {
+                    "step_id": "s5",
+                    "script": "summarize_distribution",
+                    "table": "t2",
+                    "weights": "t1",
+                },
+            ]
+        }
+    )
+    steps = {step.step_id: step for step in specification.steps}
+
+    assert list_step_table_ids(specification, steps["s2"]) == ("t1",)
+    assert list_step_table_ids(specification, steps["s4"]) == ("s3", "t1")
+    assert list_step_table_ids(specification, steps["s5"]) == ("t2", "t1")
+
+
+def test_list_reference_table_ids_resolves_one_reference() -> None:
+    # Test: `list_reference_table_ids`.
+    # Situation: The last step of a specification reads a fetched table, an
+    #   alignment step, and a derived table, and an alignment step reads
+    #   itself.
+    # Expectation: The fetched and derived references name themselves, the
+    #   alignment step names the table it aligned, and the self-reference
+    #   names itself rather than being followed without end.
+    specification = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+                {
+                    "step_id": "s2",
+                    "script": "compute_derived_metric",
+                    "left": "t2",
+                    "right": "t1",
+                },
+                {"step_id": "s3", "script": "align_cohort", "table": "s3"},
+                {
+                    "step_id": "s4",
+                    "script": "compute_composition",
+                    "components": ["t2", "s1", "s2"],
+                },
+            ]
+        }
+    )
+    _, _, self_reading, reader = specification.steps
+
+    assert list_reference_table_ids(specification, "t2", reader) == ("t2",)
+    assert list_reference_table_ids(specification, "s1", reader) == ("t1",)
+    assert list_reference_table_ids(specification, "s2", reader) == ("s2",)
+    assert list_reference_table_ids(specification, "s3", self_reading) == (
+        "s3",
+    )
+
+
+def test_table_id_listing_rejects_a_step_of_another_specification() -> None:
+    # Test: The `reader` and `step` checks of the table id listings.
+    # Situation: A step of one specification is passed with another.
+    # Expectation: Both `list_reference_table_ids` and
+    #   `list_step_table_ids` raise `ValueError`.
+    specification = AnalysisSpecification.model_validate(
+        {"steps": [{"step_id": "s1", "script": "rank_cohort", "table": "t1"}]}
+    )
+    (foreign,) = AnalysisSpecification.model_validate(
+        {"steps": [{"step_id": "s1", "script": "rank_cohort", "table": "t2"}]}
+    ).steps
+
+    with pytest.raises(ValueError):
+        list_reference_table_ids(specification, "t2", foreign)
+    with pytest.raises(ValueError):
+        list_step_table_ids(specification, foreign)
 
 
 @pytest.mark.parametrize(
