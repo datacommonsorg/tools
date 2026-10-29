@@ -32,8 +32,6 @@ import json
 import logging
 import posixpath
 import re
-import threading
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -47,26 +45,17 @@ from narratives_agent.config_model import (
     AgentConfig,
     parse_agent_config,
 )
-from narratives_agent.settings import get_settings
+from narratives_agent.secret_manager import fetch_secret_with_ttl
+from narratives_agent.settings import (
+    GEMINI_API_KEY_SECRET_ENV,
+    get_settings,
+)
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-
-# Secret Manager client for runtime key loading (optional import).
-try:
-    from google.cloud import secretmanager
-
-    _SECRET_MANAGER_AVAILABLE = True
-except ImportError:
-    _SECRET_MANAGER_AVAILABLE = False
-    logger.warning(
-        "google-cloud-secret-manager not installed; "
-        "GEMINI_API_KEY_SECRET will be ignored"
-    )
 
 
 # `_bootstrapped` records that `bootstrap_config_from_url` ran with
@@ -81,18 +70,6 @@ _config_mtime = 0.0
 _config_path: Path | None = None
 _defaults_config: AgentConfig | None = None
 _defaults_dir: Path | None = None
-
-# Secret Manager lookup cache and TTL (seconds)
-_SECRET_MANAGER_TTL_SECONDS = 300
-# `_SECRET_MANAGER_TIMEOUT_SECONDS` bounds a single Secret Manager read.
-# Concurrent cache misses wait on the thread performing the read, so an
-# unbounded read would stall all of them.
-_SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
-_secret_manager_cache: dict[str, tuple[float, str]] = {}
-# The Gemini client resolves the key on a worker thread
-# (`asyncio.to_thread`), so concurrent turns can miss the cache together. The
-# lock makes them share one Secret Manager request.
-_secret_manager_lock = threading.Lock()
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -508,68 +485,6 @@ def render_prompt(prompt: str) -> str:
     return rendered
 
 
-def _fetch_key_from_secret_manager(secret_name: str) -> str:
-    """Load the Gemini API key from Secret Manager, or return an empty string.
-
-    The secret payload must contain the bare API key string. `secret_name` may
-    be either a full resource name
-    (`projects/<proj>/secrets/<name>/versions/<v>`) or a short secret ID
-    resolved against `GOOGLE_CLOUD_PROJECT` at version `latest`. Successful
-    lookups are cached for 5 minutes.
-    """
-    if not _SECRET_MANAGER_AVAILABLE:
-        return ""
-    cached = _secret_manager_cache.get(secret_name)
-    if cached and time.time() - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
-        return cached[1]
-    with _secret_manager_lock:
-        # Another thread may have loaded the key while this one waited.
-        cached = _secret_manager_cache.get(secret_name)
-        now = time.time()
-        if cached and now - cached[0] < _SECRET_MANAGER_TTL_SECONDS:
-            return cached[1]
-        return _load_secret(secret_name, now)
-
-
-def _load_secret(secret_name: str, now: float) -> str:
-    """Reads `secret_name` from Secret Manager and caches a usable key."""
-    project = get_settings().google_cloud_project
-    if not secret_name.startswith("projects/"):
-        if not project:
-            logger.error(
-                "GOOGLE_CLOUD_PROJECT not set; cannot resolve short secret "
-                "name in GEMINI_API_KEY_SECRET"
-            )
-            return ""
-        full_name = f"projects/{project}/secrets/{secret_name}/versions/latest"
-    else:
-        full_name = secret_name
-    try:
-        client = secretmanager.SecretManagerServiceClient()
-        response = client.access_secret_version(
-            request={"name": full_name},
-            timeout=_SECRET_MANAGER_TIMEOUT_SECONDS,
-        )
-        key = response.payload.data.decode("utf-8").strip()
-        if not key:
-            return ""
-        if key.startswith(("[", '"')):
-            logger.error(
-                "GEMINI_API_KEY_SECRET holds a legacy JSON array of keys; "
-                "re-run ./deploy.sh --bootstrap-secrets to store the bare key"
-            )
-            return ""
-        _secret_manager_cache[secret_name] = (now, key)
-        logger.info("Loaded the Gemini API key from Secret Manager")
-        return key
-    except Exception as e:
-        logger.error(
-            "Failed to load GEMINI_API_KEY_SECRET from Secret Manager (%s)",
-            type(e).__name__,
-        )
-        return ""
-
-
 def get_gemini_api_key() -> str:
     """Return the configured Gemini API key, or an empty string if unavailable.
 
@@ -579,12 +494,19 @@ def get_gemini_api_key() -> str:
     """
     secret = get_settings().gemini_api_key_secret
     if secret:
-        key = _fetch_key_from_secret_manager(secret)
+        key = fetch_secret_with_ttl(secret, GEMINI_API_KEY_SECRET_ENV)
+        if key.startswith(("[", '"')):
+            logger.error(
+                "%s holds a legacy JSON array of keys; "
+                "re-run ./deploy.sh --bootstrap-secrets to store the bare key",
+                GEMINI_API_KEY_SECRET_ENV,
+            )
+            key = ""
         if key:
             return key
         logger.warning(
-            "GEMINI_API_KEY_SECRET set but returned no key; falling back "
-            "to config"
+            "%s set but returned no key; falling back to config",
+            GEMINI_API_KEY_SECRET_ENV,
         )
 
     config = load_config()

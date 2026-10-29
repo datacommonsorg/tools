@@ -47,8 +47,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
   - `pyproject.toml`, `uv.lock` — dependencies and tool configuration (`ruff`,
     `mypy`, `pytest`).
   - `src/narratives_agent/` — installable Python package (`config.py`,
-    `config_model.py`, `gcp_auth.py`, `json_value.py`, `telemetry.py`,
-    `server/`, `workflows/`, `mcp/`, `gemini/`, `analytics/`).
+    `config_model.py`, `gcp_auth.py`, `json_value.py`, `secret_manager.py`,
+    `telemetry.py`, `server/`, `workflows/`, `mcp/`, `gemini/`, `analytics/`).
     - `server/app.py` — the FastAPI application
       (`uvicorn narratives_agent.server.app:app` in production).
     - `workflows/`: agent loop orchestration (`chat_pipeline.py`), the
@@ -102,6 +102,8 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
     - `json_value.py`: the `JsonValue` and `JsonObject` aliases for data
       that is JSON by nature, such as MCP tool arguments and results, and
       `json_safe`, which converts typed values back into a `JsonValue`.
+    - `secret_manager.py`: reads secrets from Google Cloud Secret Manager,
+      caches results, and provides test resets.
     - `settings.py` — every environment variable the agent reads (`Settings`).
 - `defaults/` — baseline `theme.json`, `agent-config.json`, and `prompts/`.
 - `config/` — instance-specific overrides layered over `defaults/` at deploy
