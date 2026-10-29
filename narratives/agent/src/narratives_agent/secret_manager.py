@@ -26,26 +26,12 @@ provides thread-safe in-memory caching and test resets.
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING
+
+from google.cloud.secretmanager import SecretManagerServiceClient
 
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-# Optional Secret Manager client import.
-try:
-    from google.cloud import secretmanager
-
-    _SECRET_MANAGER_AVAILABLE = True
-except ImportError:
-    _SECRET_MANAGER_AVAILABLE = False
-    logger.warning(
-        "google-cloud-secret-manager not installed; Secret Manager lookups "
-        "will be unavailable"
-    )
-
-if TYPE_CHECKING:
-    from google.cloud.secretmanager import SecretManagerServiceClient
 
 _SECRET_MANAGER_TIMEOUT_SECONDS = 10.0
 _SECRET_MANAGER_DEFAULT_TTL_SECONDS = 300.0
@@ -56,16 +42,14 @@ _secret_manager_lock = threading.RLock()
 _secret_manager_cache: dict[str, tuple[float, str]] = {}
 
 
-def _get_secret_client() -> SecretManagerServiceClient | None:
+def _get_secret_client() -> SecretManagerServiceClient:
     """Returns the shared Secret Manager client, initializing it lazily."""
     global _secret_client
     if _secret_client is not None:
         return _secret_client
-    if not _SECRET_MANAGER_AVAILABLE:
-        return None
     with _secret_manager_lock:
         if _secret_client is None:
-            _secret_client = secretmanager.SecretManagerServiceClient()
+            _secret_client = SecretManagerServiceClient()
         return _secret_client
 
 
@@ -108,19 +92,11 @@ def _fetch_secret(secret_name: str, env_var: str) -> str:
     Returns:
         The stripped UTF-8 secret payload, or an empty string on failure.
     """
-    if not _SECRET_MANAGER_AVAILABLE:
-        logger.warning(
-            "google-cloud-secret-manager not installed; %s cannot be loaded",
-            env_var,
-        )
-        return ""
     full_name = _normalize_secret_resource_name(secret_name, env_var)
     if not full_name:
         return ""
     try:
         client = _get_secret_client()
-        if client is None:
-            return ""
         response = client.access_secret_version(
             request={"name": full_name},
             timeout=_SECRET_MANAGER_TIMEOUT_SECONDS,
@@ -162,8 +138,6 @@ def fetch_secret_with_ttl(
     Returns:
         The secret payload string, or an empty string on failure.
     """
-    if not _SECRET_MANAGER_AVAILABLE:
-        return ""
     now = time.time()
     cached = _secret_manager_cache.get(secret_name)
     if cached:

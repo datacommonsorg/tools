@@ -45,12 +45,8 @@ def test_fetch_secret_resolves_names_and_strips(
             requested_names.append(request["name"])
             return _StubVersionResponse()
 
-    class _StubSecretModule:
-        SecretManagerServiceClient = _StubSecretClient
-
-    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.setattr(
-        secret_manager, "secretmanager", _StubSecretModule, raising=False
+        secret_manager, "SecretManagerServiceClient", _StubSecretClient
     )
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
     secret_manager.reset_secret_manager_client()
@@ -87,7 +83,6 @@ def test_fetch_secret_empty_name_returns_empty(
     # Test: Blank or empty secret names return empty without API calls.
     # Situation: `_fetch_secret` is called with empty or whitespace-only names.
     # Expectation: Empty string is returned.
-    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
     secret_manager.reset_secret_manager_client()
 
@@ -103,7 +98,6 @@ def test_fetch_secret_short_name_requires_project(
     #   unset.
     # Expectation: `_fetch_secret` returns an empty string without making any
     #   client calls.
-    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     secret_manager.reset_secret_manager_client()
 
@@ -123,23 +117,11 @@ def test_fetch_secret_handles_client_exception(
         ) -> None:
             raise RuntimeError("API error")
 
-    class _StubSecretModule:
-        SecretManagerServiceClient = _ErrorClient
-
-    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.setattr(
-        secret_manager, "secretmanager", _StubSecretModule, raising=False
+        secret_manager, "SecretManagerServiceClient", _ErrorClient
     )
     secret_manager.reset_secret_manager_client()
 
-    assert (
-        secret_manager._fetch_secret(
-            "projects/p/secrets/s/versions/1", "MY_VAR"
-        )
-        == ""
-    )
-
-    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", False)
     assert (
         secret_manager._fetch_secret(
             "projects/p/secrets/s/versions/1", "MY_VAR"
@@ -272,17 +254,14 @@ def test_a_waiting_thread_reuses_the_key_loaded_while_it_waited(
     #   Secret Manager client itself.
     clients: list[object] = []
 
-    class _StubSecretModule:
-        @staticmethod
-        def SecretManagerServiceClient() -> object:  # noqa: N802
-            clients.append(object())
-            raise AssertionError("Secret Manager must not be called")
+    def _stub_client() -> object:
+        clients.append(object())
+        raise AssertionError("Secret Manager must not be called")
 
     secret_path = "projects/test-proj/secrets/gemini-key/versions/latest"
     cache = _SignalingSecretCache()
-    monkeypatch.setattr(secret_manager, "_SECRET_MANAGER_AVAILABLE", True)
     monkeypatch.setattr(
-        secret_manager, "secretmanager", _StubSecretModule, raising=False
+        secret_manager, "SecretManagerServiceClient", _stub_client
     )
     monkeypatch.setattr(secret_manager, "_secret_manager_cache", cache)
     result: list[str] = []
