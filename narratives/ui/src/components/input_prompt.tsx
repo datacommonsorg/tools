@@ -64,8 +64,9 @@ export function PromptInput({
     if (
       !isStreaming ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    )
+    ) {
       return;
+    }
     const id = setInterval(
       () => setFrame((f) => (f + 1) % THINKING_FRAMES.length),
       THINKING_FRAME_MS,

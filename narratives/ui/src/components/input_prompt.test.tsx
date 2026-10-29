@@ -146,7 +146,7 @@ describe('PromptInput', () => {
       const { rerender } = render(prompt(true));
       const textbox = screen.getByRole('textbox', { name: 'Ask' });
       const frames = [];
-      for (let i = 0; i < 4; i++) {
+      for (let step = 0; step < 4; step++) {
         frames.push(textbox.getAttribute('placeholder'));
         act(() => vi.advanceTimersByTime(400));
       }
@@ -161,6 +161,36 @@ describe('PromptInput', () => {
       rerender(prompt(true));
       expect(textbox.getAttribute('placeholder')).toBe('Thinking...');
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('holds the placeholder on the first frame under reduced motion', () => {
+    // Test: Reduced-motion streaming placeholder.
+    // Situation: The user prefers reduced motion and a response streams for
+    // several 400ms ticks.
+    // Expectation: The placeholder stays at the plain "Thinking...".
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+    }));
+    try {
+      render(
+        <PromptInput
+          value=""
+          placeholder="Ask"
+          onValueChange={vi.fn()}
+          onSubmit={vi.fn()}
+          isStreaming
+        />,
+      );
+      const textbox = screen.getByRole('textbox', { name: 'Ask' });
+      for (let step = 0; step < 4; step++) {
+        expect(textbox.getAttribute('placeholder')).toBe('Thinking...');
+        act(() => vi.advanceTimersByTime(400));
+      }
+    } finally {
+      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });
