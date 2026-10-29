@@ -16,6 +16,7 @@
 # Status messages carried on `status` SSE frames for each phase of a turn.
 CLASSIFY_STATUS = "Understanding the question..."
 DISCOVERY_STATUS = "Querying data tools..."
+PROCESSING_STATUS = "Analyzing data..."
 SYNTHESIS_STATUS = "Generating response..."
 CHART_CONFIG_STATUS = "Preparing charts..."
 
@@ -31,6 +32,13 @@ OFF_DOMAIN_TEMPLATE = (
     "or social indicator for a place."
 )
 
+# Informational and truncation messages carried on `data_status` SSE frames.
+NO_DATA_MESSAGE = "We didn't find data for your query."
+TRUNCATED_MESSAGE = (
+    "We ran out of research steps before finding data for your query. Try "
+    "asking something narrower."
+)
+
 # Error messages carried on `terminal` SSE frames with `state == "error"`.
 CHAT_DISABLED = "Chat is temporarily unavailable. Please try again later."
 SYNTHESIS_FAILED = "The response could not be generated. Please try again."
@@ -40,3 +48,23 @@ MCP_MODEL_ERROR = "The data request failed. Please try again."
 MCP_NO_RESPONSE = "The model returned no response. Please try again."
 MCP_LOOP_TIMEOUT = "The data request took too long. Please try again."
 INTERNAL_ERROR = "An internal error occurred. Please try again."
+
+__all__ = [
+    "CHART_CONFIG_STATUS",
+    "CHAT_DISABLED",
+    "CLASSIFY_STATUS",
+    "DISCOVERY_STATUS",
+    "INTERNAL_ERROR",
+    "MCP_LOOP_TIMEOUT",
+    "MCP_MODEL_ERROR",
+    "MCP_NO_RESPONSE",
+    "MCP_TOOLS_TIMEOUT",
+    "MCP_UNAVAILABLE",
+    "NO_DATA_MESSAGE",
+    "OFF_DOMAIN_TEMPLATE",
+    "PROCESSING_STATUS",
+    "REFUSED_MESSAGE",
+    "SYNTHESIS_FAILED",
+    "SYNTHESIS_STATUS",
+    "TRUNCATED_MESSAGE",
+]

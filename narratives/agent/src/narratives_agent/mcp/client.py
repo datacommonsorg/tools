@@ -46,9 +46,9 @@ run in separate request contexts and keep separate sessions.
 
 `async_get_tools` and `cached_tools` return each tool definition as an
 `McpTool`. `async_call_tool` returns the tool result as a dictionary in the
-MCP wire format expected by `workflows/` and `mcp/data_utils.py`
-(`"content"` and optional `"structuredContent"`), and `decode_tool_payload`
-decodes the JSON object payload inside such a result.
+MCP wire format expected by `workflows/` (`"content"` and optional
+`"structuredContent"`), and `decode_tool_payload` decodes the JSON object
+payload inside such a result.
 
 Every failure the client raises derives from `McpClientError`. A tool call
 that fails at the tool layer raises `McpToolError`, whose message the model
