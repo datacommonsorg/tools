@@ -724,7 +724,13 @@ def list_reference_table_ids(
     Raises:
         ValueError: If no step of `specification` equals `reader`.
     """
-    earlier = specification.steps[: specification.steps.index(reader)]
+    try:
+        position = specification.steps.index(reader)
+    except ValueError as error:
+        raise ValueError(
+            f"Step {reader.step_id} is not a step of this specification."
+        ) from error
+    earlier = specification.steps[:position]
     source = next((step for step in earlier if step.step_id == reference), None)
     if source is None or isinstance(source, ComputeDerivedMetricStep):
         return (reference,)

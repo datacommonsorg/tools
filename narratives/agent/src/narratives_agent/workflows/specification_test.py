@@ -392,7 +392,7 @@ def test_table_id_listing_rejects_a_step_of_another_specification() -> None:
     # Test: The `reader` and `step` checks of the table id listings.
     # Situation: A step of one specification is passed with another.
     # Expectation: Both `list_reference_table_ids` and
-    #   `list_step_table_ids` raise `ValueError`.
+    #   `list_step_table_ids` raise a `ValueError` that names the step.
     specification = AnalysisSpecification.model_validate(
         {"steps": [{"step_id": "s1", "script": "rank_cohort", "table": "t1"}]}
     )
@@ -400,9 +400,9 @@ def test_table_id_listing_rejects_a_step_of_another_specification() -> None:
         {"steps": [{"step_id": "s1", "script": "rank_cohort", "table": "t2"}]}
     ).steps
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Step s1 is not a step"):
         list_reference_table_ids(specification, "t2", foreign)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Step s1 is not a step"):
         list_step_table_ids(specification, foreign)
 
 

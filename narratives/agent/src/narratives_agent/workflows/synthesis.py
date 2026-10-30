@@ -75,6 +75,22 @@ _CLOSING_INSTRUCTION = (
     "given, with their units, dates, and citations."
 )
 
+# How an inventory line identifies a fetched table, a derived table charted
+# per capita, and a derived table that cannot be charted.
+_FETCHED_IDENTITY_TEMPLATE = "{table_id}: {variable_name} ({variable_dcid})"
+_PER_CAPITA_IDENTITY_TEMPLATE = (
+    "{table_id} (derived from {left} and {right}; chartable, {reported}the "
+    "chart shows values per person): {variable_name}"
+)
+_UNCHARTABLE_IDENTITY_TEMPLATE = (
+    "{table_id} (derived from {left} and {right}; not a Data Commons "
+    "variable, do not chart it): {variable_name}"
+)
+# The clause a per-capita line adds when the digest states another scale.
+_DIGEST_SCALE_CLAUSE_TEMPLATE = (
+    "the digest reports values per {scale} people and "
+)
+
 
 @dataclass(frozen=True)
 class SynthesisSource:
@@ -193,6 +209,15 @@ def _build_inventory_item(
 
     `cohort` is the cohort of the table a chart of `entry` draws, which
     for a per-capita table is its numerator's.
+
+    Display names and units come from external metadata and are cleaned to
+    single lines here. The variable DCID, the place DCIDs, and the cohort's
+    `parent_place` and `child_place_type` are used as they are: each passed
+    `is_valid_dcid` (printable ASCII without whitespace) where it entered
+    the agent, in `mcp/observations.py` and `mcp/wire.py`. A derived table's
+    DCID is either checked by `derive_observation_table` or built there from
+    its inputs' DCIDs and the operation name. None can hold a line break or
+    a control character.
     """
     table = entry.table
     dates = sorted({row.date for row in table.rows})
@@ -316,29 +341,35 @@ def _render_inventory_line(item: TableInventoryItem) -> str:
     )
     derivation = item.derivation
     if derivation is None:
-        identity = (
-            f"{item.table_id}: {item.variable_name} ({item.variable_dcid})"
+        identity = _FETCHED_IDENTITY_TEMPLATE.format(
+            table_id=item.table_id,
+            variable_name=item.variable_name,
+            variable_dcid=item.variable_dcid,
         )
     elif derivation.is_charted_per_capita:
         # A digest scaled per 1,000 or per 100,000 people would otherwise
         # suggest that scale for a chart that shows values per person.
         scale = derivation.scale
         reported = (
-            f"the digest reports values per {format_scaling_factor(scale)} "
-            "people and "
+            _DIGEST_SCALE_CLAUSE_TEMPLATE.format(
+                scale=format_scaling_factor(scale)
+            )
             if scale is not None and scale != _PER_PERSON_SCALE
             else ""
         )
-        identity = (
-            f"{item.table_id} (derived from {derivation.left} and "
-            f"{derivation.right}; chartable, {reported}the chart shows "
-            f"values per person): {item.variable_name}"
+        identity = _PER_CAPITA_IDENTITY_TEMPLATE.format(
+            table_id=item.table_id,
+            left=derivation.left,
+            right=derivation.right,
+            reported=reported,
+            variable_name=item.variable_name,
         )
     else:
-        identity = (
-            f"{item.table_id} (derived from {derivation.left} and "
-            f"{derivation.right}; not a Data Commons variable, do not "
-            f"chart it): {item.variable_name}"
+        identity = _UNCHARTABLE_IDENTITY_TEMPLATE.format(
+            table_id=item.table_id,
+            left=derivation.left,
+            right=derivation.right,
+            variable_name=item.variable_name,
         )
     unit = item.unit or "unknown"
     if item.scaling_factor is not None:

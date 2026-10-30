@@ -249,6 +249,31 @@ def test_an_appended_chart_takes_the_next_index() -> None:
     assert splitter.text == "Only prose."
 
 
+def test_feed_after_finish_raises() -> None:
+    # Test: The single-pass lifecycle of a splitter.
+    # Situation: A splitter has finished its stream and is fed more text.
+    # Expectation: `feed` raises, and no further block is emitted.
+    splitter, recorder = _split("Only prose.")
+
+    with pytest.raises(RuntimeError, match="after finish"):
+        splitter.feed("More prose.\n\n")
+
+    assert [_get_block_kind(block) for block in recorder.blocks] == ["text"]
+
+
+def test_a_second_finish_emits_nothing() -> None:
+    # Test: Calling `finish` twice.
+    # Situation: A finished splitter, whose last paragraph was flushed, is
+    #   finished again.
+    # Expectation: The second call emits no block and counts no rejection.
+    splitter, recorder = _split("Only prose.\n\n```chart\n{")
+
+    splitter.finish()
+
+    assert [_get_block_kind(block) for block in recorder.blocks] == ["text"]
+    assert splitter.charts_rejected == 1
+
+
 def test_an_info_string_fence_does_not_close_a_code_block() -> None:
     # Test: The closing fence of a non-chart code block.
     # Situation: A plain fenced block holds a fence line with the `python`
@@ -275,19 +300,18 @@ def test_an_info_string_fence_does_not_close_a_code_block() -> None:
             ["Intro.\n```\nMore.", "After."],
         ),
         (
-            "````md\n```python\nx\n```\n````\n\n"
-            f"```chart\n{_CHART}\n```\n\nAfter.",
-            ["````md\n```python\nx\n```\n````", "After."],
+            f"````md\n```python\nx\n```\n\n```chart\n{_CHART}\n```\n\nAfter.",
+            ["````md\n```python\nx\n```", "After."],
         ),
     ],
-    ids=["stray_bare_fence", "longer_fence_holding_a_shorter_one"],
+    ids=["stray_bare_fence", "longer_fence_left_open"],
 )
 def test_a_chart_fence_ends_a_code_block_left_open(
     text: str, expected_text_blocks: list[str]
 ) -> None:
     # Test: A chart block after a code block the model left open.
-    # Situation: A stray bare fence, or a longer fence closed early by the
-    #   shorter fence it holds, leaves a code block open when a chart block
+    # Situation: A stray bare fence, or a longer fence that the shorter fence
+    #   it holds does not close, leaves a code block open when a chart block
     #   follows.
     # Expectation: The chart fence ends the open code block, which is
     #   emitted as text, and the chart is resolved, so no text block holds
@@ -298,6 +322,39 @@ def test_a_chart_fence_ends_a_code_block_left_open(
     assert [spec.title for spec in recorder.specs] == ["Population"]
     assert splitter.charts_emitted == 1
     assert all("kind" not in block for block in splitter.text_blocks)
+
+
+@pytest.mark.parametrize(
+    "fence",
+    ["````", "~~~~"],
+    ids=["backticks", "tildes"],
+)
+def test_a_shorter_fence_does_not_close_a_longer_code_block(
+    fence: str,
+) -> None:
+    # Test: The CommonMark closing-fence length rule.
+    # Situation: A four-character fence holds a three-character example
+    #   fence followed by a blank line, then closes with its own length.
+    # Expectation: The shorter fence and the blank line stay in the code
+    #   block, so the outer block is one text block and the paragraph after
+    #   it is another.
+    short = fence[:3]
+    block = f"{fence}md\n{short}py\nx = 1\n{short}\n\nProse inside.\n{fence}"
+
+    splitter, _ = _split(f"{block}\n\nAfter.")
+
+    assert list(splitter.text_blocks) == [block, "After."]
+
+
+def test_a_longer_bare_fence_closes_a_code_block() -> None:
+    # Test: A closing fence longer than the opening fence.
+    # Situation: A three-backtick block closes on a four-backtick bare fence,
+    #   followed by a blank line and a paragraph.
+    # Expectation: The longer fence closes the block, so the paragraph is a
+    #   separate text block.
+    splitter, _ = _split("```py\nx = 1\n````\n\nAfter.")
+
+    assert list(splitter.text_blocks) == ["```py\nx = 1\n````", "After."]
 
 
 # The observable outcome of one splitter run: the emitted blocks, the answer
@@ -367,8 +424,8 @@ def test_the_outcome_does_not_depend_on_chunk_boundaries() -> None:
 
 
 # One segment of a generated stream: a paragraph, a valid chart, an invalid
-# chart, or a non-chart code block.
-type _Segment = Literal["paragraph", "chart", "invalid", "code"]
+# chart, a non-chart code block, or a longer code fence holding a shorter one.
+type _Segment = Literal["paragraph", "chart", "invalid", "code", "nested"]
 
 # The block an independent oracle expects: its kind and its Markdown or
 # chart title.
@@ -382,6 +439,9 @@ def _write_segment(segment: _Segment, number: int) -> tuple[str, str]:
         return markdown, markdown
     if segment == "code":
         markdown = f"```py\na = {number}\n\nb = {number}\n```"
+        return markdown, markdown
+    if segment == "nested":
+        markdown = f"````md\n```py\na = {number}\n```\n\nb = {number}\n````"
         return markdown, markdown
     if segment == "chart":
         title = f"Chart {number}"
@@ -400,11 +460,12 @@ def _build_case(
     """Writes a stream from segments and the blocks an oracle expects.
 
     The oracle reads the segments rather than the stream: a paragraph or a
-    code block is one text block, a valid chart is one chart block until
-    `MAX_CHARTS_PER_TURN` charts are shown, an invalid or unclosed chart
-    shows nothing, and an appended chart is one chart block at the end.
-    With `is_tight`, a single line break separates a chart fence from its
-    neighbors; blank lines separate everything else.
+    code block (including a longer fence holding a shorter one) is one text
+    block, a valid chart is one chart block until `MAX_CHARTS_PER_TURN`
+    charts are shown, an invalid or unclosed chart shows nothing, and an
+    appended chart is one chart block at the end. With `is_tight`, a single
+    line break separates a chart fence from its neighbors; blank lines
+    separate everything else.
     """
     pieces: list[str] = []
     expected: list[_ExpectedBlock] = []
@@ -417,7 +478,7 @@ def _build_case(
             ] in ("chart", "invalid")
             pieces.append("\n" if is_tight and touches_chart else "\n\n")
         pieces.append(piece)
-        if segment in ("paragraph", "code"):
+        if segment in ("paragraph", "code", "nested"):
             expected.append(("text", shown))
         elif segment == "chart" and charts_shown < MAX_CHARTS_PER_TURN:
             expected.append(("chart", shown))
@@ -431,7 +492,13 @@ def _build_case(
 
 def _generate_cases() -> list[tuple[str, list[_ExpectedBlock], bool]]:
     """Generates every stream of one to four segments, with its variants."""
-    alphabet: tuple[_Segment, ...] = ("paragraph", "chart", "invalid", "code")
+    alphabet: tuple[_Segment, ...] = (
+        "paragraph",
+        "chart",
+        "invalid",
+        "code",
+        "nested",
+    )
     cases: list[tuple[str, list[_ExpectedBlock], bool]] = []
     for length in range(1, 5):
         for segments in itertools.product(alphabet, repeat=length):

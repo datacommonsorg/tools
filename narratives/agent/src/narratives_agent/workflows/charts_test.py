@@ -1669,6 +1669,111 @@ def test_a_bar_of_named_places_is_not_drawn_at_a_date_none_of_them_has(
     assert chart == expected
 
 
+def _make_bar_coverage_case(
+    *extra_first_rows: ObservationRow,
+) -> tuple[TurnCache, AnalysisDigest, AnalysisSpecification]:
+    """Builds two tables where `t2` holds France only in 2022.
+
+    `t1` holds France and Germany in 2022 and 2023, plus `extra_first_rows`;
+    `t2`, of another variable in the same unit, holds France in 2022 and
+    Germany in 2023, so both tables share 2022 and 2023. The digest's series
+    over `t1` is aligned at 2023.
+    """
+    first = _make_table("t1")
+    first_table = replace(
+        first.table, rows=(*first.table.rows, *extra_first_rows)
+    )
+    second = _make_table("t2", "Count_Person_Female", name="Female Population")
+    second_table = replace(
+        second.table,
+        rows=tuple(
+            row
+            for row in second.table.rows
+            if (row.place_dcid, row.date)
+            not in {("country/FRA", "2023"), ("country/DEU", "2022")}
+        ),
+    )
+    cache = _make_cache(
+        CachedTable("t1", first_table), CachedTable("t2", second_table)
+    )
+    digest = _make_digest(analyze_timeseries(first.table, step_id="s1"))
+    analysis = _make_spec(step_id="s1", script="analyze_timeseries", table="t1")
+    return cache, digest, analysis
+
+
+@pytest.mark.parametrize(
+    ("places", "fields"),
+    [
+        (["country/ITA"], {}),
+        (["country/FRA"], {"date": "2023"}),
+    ],
+    ids=["no_value_at_any_date", "no_value_at_the_named_date"],
+)
+def test_a_bar_rejects_a_table_without_a_named_place(
+    places: list[str], fields: dict[str, object]
+) -> None:
+    # Test: Per-table coverage on a bar chart of named places.
+    # Situation: A bar over `t1` and `t2` names Italy, which only `t1`
+    #   holds, or names France at 2023, a date both tables hold but at
+    #   which `t2` has no France value.
+    # Expectation: The chart is rejected, as a line is when a table has no
+    #   series for its places, rather than drawing an empty `t2` series.
+    cache, digest, analysis = _make_bar_coverage_case(
+        ObservationRow("country/ITA", "ITA", "2023", 59.0)
+    )
+
+    chart = _resolve_chart_wire(
+        "bar", ["t1", "t2"], cache, digest, analysis, places=places, **fields
+    )
+
+    assert chart is None
+
+
+def test_a_bar_drops_a_reference_date_a_table_lacks_for_its_places() -> None:
+    # Test: The default reference date on a multi-table bar of named places.
+    # Situation: The digest's reference date is 2023, which both tables
+    #   hold, but `t2` holds France only in 2022. The bar names France and
+    #   no date.
+    # Expectation: The 2023 reference date is dropped so the component draws
+    #   each variable's latest France value, and both variables are charted.
+    cache, digest, analysis = _make_bar_coverage_case()
+
+    chart = _resolve_chart_wire(
+        "bar", ["t1", "t2"], cache, digest, analysis, places=["country/FRA"]
+    )
+
+    assert chart is not None
+    assert chart["variable_dcids"] == ["Count_Person", "Count_Person_Female"]
+    assert chart["place_dcids"] == ["country/FRA"]
+    assert "date" not in chart
+
+
+def test_a_bar_of_one_place_per_table_resolves() -> None:
+    # Test: A bar of two tables that each hold a different named place.
+    # Situation: `t1` holds only France and `t2`, of another variable in
+    #   the same unit, holds only Germany; the bar names both.
+    # Expectation: Each table holds a value for a named place, so the chart
+    #   resolves with both places and both variables.
+    first = _make_table("t1", places=("country/FRA",))
+    second = _make_table(
+        "t2",
+        "Count_Person_Female",
+        name="Female Population",
+        places=("country/DEU",),
+    )
+
+    chart = _resolve_chart_wire(
+        "bar",
+        ["t1", "t2"],
+        _make_cache(first, second),
+        places=["country/FRA", "country/DEU"],
+    )
+
+    assert chart is not None
+    assert chart["place_dcids"] == ["country/FRA", "country/DEU"]
+    assert chart["variable_dcids"] == ["Count_Person", "Count_Person_Female"]
+
+
 def test_a_line_needs_a_charted_place_with_at_least_two_dates() -> None:
     # Test: Multi-date series check per charted place on a line chart.
     # Situation: In `staggered`, France reports only in 2022 and Germany only

@@ -78,6 +78,10 @@ _MIN_BAR_CHART_PLACES = 2
 _SCATTER_TABLE_COUNT = 2
 # Date keyword that leaves a multi-vintage scatter unpinned to a single date.
 _LATEST_DATE = "LATEST"
+# Default chart priorities: `relate_cohorts` results are considered before
+# every other result.
+_RELATION_PRIORITY = 0
+_DEFAULT_PRIORITY = 1
 
 
 @dataclass(frozen=True)
@@ -397,19 +401,23 @@ def _build_default_specification(
             )
 
 
+def _rank_default_candidate(result: ScriptResult) -> int:
+    """Returns a result's default chart priority; lower is considered first."""
+    if isinstance(result.metrics, RelationMetrics):
+        return _RELATION_PRIORITY
+    return _DEFAULT_PRIORITY
+
+
 def _order_default_candidates(
     results: Sequence[ScriptResult],
 ) -> list[ScriptResult]:
     """Orders `ok` results for the default chart floor, first to last.
 
     `relate_cohorts` results come first so a two-variable cohort relation
-    charts as a scatter ahead of a single-table supporting step; the
-    digest's order holds otherwise.
+    charts as a scatter ahead of a single-table supporting step; `sorted` is
+    stable, so the digest's order holds otherwise.
     """
-    return sorted(
-        results,
-        key=lambda result: not isinstance(result.metrics, RelationMetrics),
-    )
+    return sorted(results, key=_rank_default_candidate)
 
 
 def _resolve_candidate_charts(

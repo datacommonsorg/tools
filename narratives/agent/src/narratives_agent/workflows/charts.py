@@ -1218,19 +1218,69 @@ def _resolve_places_date(
     return None
 
 
+def _has_place_value(
+    table: ObservationTable, places: AbstractSet[str], date: str | None
+) -> bool:
+    """Returns whether a named place holds a value at `date`, or at all."""
+    return any(
+        row.place_dcid in places and (date is None or row.date == date)
+        for row in table.rows
+    )
+
+
+def _resolve_bar_places_date(
+    places: AbstractSet[str],
+    tables: Sequence[_ResolvedTable],
+    date: str | None,
+    *,
+    has_explicit_date: bool,
+) -> str | None:
+    """Checks that each table of a named-place bar chart holds a value.
+
+    A bar chart draws a series per table, so a table without a value for any
+    named place would draw an empty series, which `_check_line_dates` also
+    rejects for a line. Every table must hold a value for a named place at
+    `date`: an explicit date that a table lacks rejects the chart, and a
+    default reference date that a table lacks is dropped so the component
+    shows the places' latest observations. Every table must then hold a
+    value for a named place at some date.
+
+    Raises:
+        _ChartRejectedError: If a table has no value for a named place at
+            an explicit date, or at any date.
+    """
+    if date is not None and not all(
+        _has_place_value(item.analysis_table, places, date) for item in tables
+    ):
+        if has_explicit_date:
+            raise _ChartRejectedError(
+                "a charted table has no value for a named place at the date"
+            )
+        date = None
+    if not all(
+        _has_place_value(item.analysis_table, places, None) for item in tables
+    ):
+        raise _ChartRejectedError(
+            "each table of a bar chart needs a value for a named place"
+        )
+    return date
+
+
 def _resolve_bar_slice(
     spec: BarChartSpecification,
     tables: Sequence[_ResolvedTable],
     context: _ChartContext,
     slice_choice: _RankedPlaces,
     date: str | None,
+    shared_dates: AbstractSet[str],
 ) -> tuple[PlaceList, str | None]:
     """Resolves a bar chart's `top_n` or `bottom_n` slice and drawn date.
 
     A sliced bar chart is drawn at the date its slice was ranked at: the
     block's literal date when it names one, the table's latest covered date
     when `date` names a latest keyword, or else the date of the digest's
-    ranking or of the table ranked again.
+    ranking or of the table ranked again. That date must be one of
+    `shared_dates`, the dates every charted table holds.
 
     Raises:
         _ChartRejectedError: If the slice selects no place or more than
@@ -1251,7 +1301,7 @@ def _resolve_bar_slice(
     if not places:
         raise _ChartRejectedError("the ranked slice selected no place")
     scope = _build_place_list(spec.kind, places)
-    if ranked_at not in _list_shared_dates(tables):
+    if ranked_at not in shared_dates:
         raise _ChartRejectedError(
             "the ranked slice's date is not in every table"
         )
@@ -1352,30 +1402,34 @@ def _resolve_bar_scope(
     tables: Sequence[_ResolvedTable],
     context: _ChartContext,
     date: str | None,
+    shared_dates: AbstractSet[str],
 ) -> tuple[ChartScope, str | None]:
     """Resolves the places or cohort a bar chart draws, and its date.
 
-    Named places must have data in at least one charted table, and at least
-    one named place must hold a value when `date` is set. A slice is ranked
-    from the digest or the primary table and drawn at the date it was ranked
-    at. Without a place choice, the bar draws the tables' cohort when they
-    were fetched across one, and otherwise every place with data.
+    Named places must have data in at least one charted table, and every
+    charted table must hold a value for a named place, at `date` when it is
+    set (`_resolve_bar_places_date`). A slice is ranked from the digest or
+    the primary table and drawn at the date it was ranked at, which must be
+    one of `shared_dates`. Without a place choice, the bar draws the tables'
+    cohort when they were fetched across one, and otherwise every place with
+    data.
 
     Returns:
         The places or the cohort, and the chart's date.
 
     Raises:
-        _ChartRejectedError: If a named place has no data or no named place
-            has a value at an explicit date, a slice selects no place or was
-            ranked at a date not every table holds, a cohort is required and
-            the tables are not one cohort, or the place count is outside 1
-            to `INVENTORY_PLACE_CAP`.
+        _ChartRejectedError: If a named place has no data, a table has no
+            value for a named place (at an explicit date, or at any date),
+            a slice selects no place or was ranked at a date not every
+            table holds, a cohort is required and the tables are not one
+            cohort, or the place count is outside 1 to
+            `INVENTORY_PLACE_CAP`.
     """
     available = _list_available_places(tables)
     match spec.read_place_choice():
         case _NamedPlaces(place_dcids=places):
             _check_known_places(places, set(available))
-            resolved_date = _resolve_places_date(
+            resolved_date = _resolve_bar_places_date(
                 set(places),
                 tables,
                 date,
@@ -1385,7 +1439,9 @@ def _resolve_bar_scope(
         case _WholeCohort():
             return _resolve_cohort(spec.kind, tables), date
         case _RankedPlaces() as slice_choice:
-            return _resolve_bar_slice(spec, tables, context, slice_choice, date)
+            return _resolve_bar_slice(
+                spec, tables, context, slice_choice, date, shared_dates
+            )
         case _DefaultPlaces():
             if get_chart_cohort(tables[0].chart_table) is not None:
                 return _resolve_cohort(spec.kind, tables), date
@@ -1453,22 +1509,23 @@ def _resolve_date(
     spec: _SingleDateSpecification,
     tables: Sequence[_ResolvedTable],
     context: _ChartContext,
+    shared_dates: AbstractSet[str],
 ) -> str | None:
     """Resolves the observation date a single-date chart is drawn at.
 
-    A date is drawn only when every charted table has it, so that no table
-    is empty at the drawn date and no two precisions (`2023` and `2023-06`)
-    are mixed at it. Without an explicit date, the chart defaults to the
-    aligned reference date of the first result over the primary table when
-    every table has that date, and otherwise to None, which the web
-    components read as the latest date. A ranked bar slice replaces this
-    default with the date it was ranked at (`_resolve_bar_slice`).
+    A date is drawn only when every charted table has it (`shared_dates`),
+    so that no table is empty at the drawn date and no two precisions
+    (`2023` and `2023-06`) are mixed at it. Without an explicit date, the
+    chart defaults to the aligned reference date of the first result over
+    the primary table when every table has that date, and otherwise to None,
+    which the web components read as the latest date. A ranked bar slice
+    replaces this default with the date it was ranked at
+    (`_resolve_bar_slice`).
 
     Raises:
         _ChartRejectedError: If an explicit literal date is not in every
             charted table.
     """
-    shared_dates = _list_shared_dates(tables)
     if spec.date is not None:
         if spec.date.upper() in _LATEST_DATE_KEYWORDS:
             return None
@@ -1550,10 +1607,13 @@ def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
             variable_dcids=_require_variables(variables),
             scope=_resolve_line_scope(spec, tables, context),
         )
-    date = _resolve_date(spec, tables, context)
+    shared_dates = _list_shared_dates(tables)
+    date = _resolve_date(spec, tables, context, shared_dates)
     match spec:
         case BarChartSpecification():
-            scope, bar_date = _resolve_bar_scope(spec, tables, context, date)
+            scope, bar_date = _resolve_bar_scope(
+                spec, tables, context, date, shared_dates
+            )
             return ResolvedBarChart(
                 **shared,
                 date=bar_date,

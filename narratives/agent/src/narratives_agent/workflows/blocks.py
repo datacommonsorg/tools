@@ -108,9 +108,12 @@ class _CodeFence:
 
     Attributes:
         char: The fence character that opened it, which closes it.
+        length: How many fence characters opened it; as in CommonMark, only
+            a bare fence of at least this many characters closes it.
     """
 
     char: str
+    length: int
 
 
 @dataclass
@@ -118,25 +121,27 @@ class BlockSplitter:
     """Splits the synthesis stream into text and chart blocks as it arrives.
 
     Feed the stream's text deltas to `feed` and call `finish` once the
-    stream ends. Outside a fenced block, prose is split into paragraphs at
-    blank lines, so a list or a table without internal blank lines stays in
-    one block; inside a fenced block that is not a chart, blank lines are
-    kept. A chart block opens on a line that is only a fence with the `chart`
-    info string, which ends the paragraph before it, and closes on a line
-    that is only a bare fence. A JSON string cannot span lines, so no line of
-    a chart body is a bare fence. When the block closes, its body is parsed as
-    a `ChartSpecification` and resolved. A body that is not valid JSON, does
-    not match the grammar, or fails resolution is dropped and counted in
-    `charts_rejected`, as is a fence still open when the stream ends, so a
-    chart block never reaches the reader as text. A chart fence line inside
-    a code block the model left open ends that code block, which is emitted
-    as text, and opens the chart block. A chart fence written inside a line
-    of prose is not a chart block and stays in the text.
+    stream ends; a splitter reads one stream. Outside a fenced block, prose
+    is split into paragraphs at blank lines, so a list or a table without
+    internal blank lines stays in one block; inside a fenced block that is
+    not a chart, blank lines are kept. A chart block opens on a line that is
+    only a fence with the `chart` info string, which ends the paragraph
+    before it, and closes on a line that is only a bare fence. A JSON string
+    cannot span lines, so no line of a chart body is a bare fence. When the
+    block closes, its body is parsed as a `ChartSpecification` and resolved.
+    A body that is not valid JSON, does not match the grammar, or fails
+    resolution is dropped and counted in `charts_rejected`, as is a fence
+    still open when the stream ends, so a chart block never reaches the
+    reader as text. A chart fence line inside a code block the model left
+    open ends that code block, which is emitted as text, and opens the chart
+    block. A chart fence written inside a line of prose is not a chart block
+    and stays in the text.
     Backtick and tilde fences are recognized with any leading whitespace, so
-    an over-indented fence never leaks raw JSON into prose, and a block
-    closes on a bare fence of its opening character whatever its length, so a
-    longer fence that holds a shorter one of the same character is not kept
-    in one text block.
+    an over-indented fence never leaks raw JSON into prose. As in CommonMark,
+    a code block closes only on a bare fence of its opening character that is
+    at least as long as its opening fence, so a longer fence that holds a
+    shorter one stays in one text block; a chart block closes on a bare fence
+    of its opening character of any length.
 
     Attributes:
         on_block: Receives each completed `TextBlock` or `ChartBlock`.
@@ -159,6 +164,7 @@ class BlockSplitter:
         default=None, init=False, repr=False
     )
     _next_index: int = field(default=0, init=False, repr=False)
+    _finished: bool = field(default=False, init=False, repr=False)
 
     @property
     def text_blocks(self) -> tuple[str, ...]:
@@ -191,7 +197,15 @@ class BlockSplitter:
 
         Returns:
             None. Completed blocks are passed to `on_block`.
+
+        Raises:
+            RuntimeError: If `finish` was already called; a splitter reads
+                one stream.
         """
+        if self._finished:
+            raise RuntimeError(
+                "BlockSplitter.feed() was called after finish()."
+            )
         self._pending += delta
         *lines, self._pending = self._pending.split("\n")
         for line in lines:
@@ -201,11 +215,16 @@ class BlockSplitter:
         """Flushes the buffered text once the stream has ended.
 
         Processes the last line, drops a chart fence that is still open and
-        counts it in `charts_rejected`, and emits the last paragraph.
+        counts it in `charts_rejected`, and emits the last paragraph. After
+        it, `feed` raises and a second `finish` does nothing, while
+        `append_chart` may still add server-supplied charts.
 
         Returns:
             None. Completed blocks are passed to `on_block`.
         """
+        if self._finished:
+            return
+        self._finished = True
         if self._pending:
             self._consume_line(self._pending.removesuffix("\r"))
             self._pending = ""
@@ -239,8 +258,10 @@ class BlockSplitter:
             return
         if fence["backticks"]:
             char, info = "`", fence["backtick_info"].lower()
+            length = len(fence["backticks"])
         else:
             char, info = "~", fence["tilde_info"].lower()
+            length = len(fence["tildes"])
         match self._open:
             case _ChartFence() as chart:
                 # A closing fence carries no info string and repeats the
@@ -256,14 +277,14 @@ class BlockSplitter:
                     self._open_chart(char)
                     return
                 self._paragraph.append(line)
-                if not info and char == code.char:
+                if not info and char == code.char and length >= code.length:
                     self._open = None
             case None:
                 if info == _CHART_FENCE_TAG:
                     self._open_chart(char)
                     return
                 self._paragraph.append(line)
-                self._open = _CodeFence(char)
+                self._open = _CodeFence(char, length)
 
     def _consume_plain_line(self, line: str) -> None:
         """Adds a line that is not a fence to the open block or paragraph.
