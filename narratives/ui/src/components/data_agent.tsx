@@ -83,7 +83,9 @@ export function DataAgent() {
   // below the question, top to bottom, and the viewport stays where it is;
   // the last turn's min-height (see TurnView) reserves the room for it.
   useEffect(() => {
-    if (turns.length > prevTurnsLength.current) {
+    const prevLength = prevTurnsLength.current;
+    prevTurnsLength.current = turns.length;
+    if (turns.length > prevLength) {
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
       // <main> is the scroll container (see App).
@@ -103,6 +105,8 @@ export function DataAgent() {
           top += node.offsetTop;
           node = node.offsetParent as HTMLElement | null;
         }
+        // Walked past a static <main>: offsets are body-relative.
+        if (!node) top -= scroller.offsetTop;
         top -= document.querySelector<HTMLElement>("main > header")?.offsetHeight ?? 0;
         // Ease-out cubic. The target is re-read every frame, so the glide
         // lands on the bubble even if the layout above it is still settling.
@@ -133,7 +137,6 @@ export function DataAgent() {
         window.removeEventListener("touchmove", onUserScroll);
       }, PIN_HOLD_MS + 100);
     }
-    prevTurnsLength.current = turns.length;
   }, [turns.length]);
 
   // Exposes the sticky header + prompt height as --chrome-h for TurnView.
