@@ -20,12 +20,12 @@ import pytest
 
 from narratives_agent.analytics.digest import RefusalReason
 from narratives_agent.gemini.schemas import (
-    ChartVizType,
     GeographicShape,
     QueryClassification,
     QueryPattern,
 )
 from narratives_agent.workflows import pattern_guidance
+from narratives_agent.workflows.charts import ChartKind
 from narratives_agent.workflows.fetch import build_fetch_declarations
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_TOOL_NAMES,
@@ -242,7 +242,7 @@ def _collect_declared_vocabulary() -> set[str]:
     ):
         _collect_schema_names(declaration.parameters_json_schema, names)
     names.update(get_args(RefusalReason.__value__))
-    names.update(get_args(ChartVizType))
+    names.update(get_args(ChartKind.__value__))
     names.update(_MCP_TOOL_ARGUMENTS)
     return names
 

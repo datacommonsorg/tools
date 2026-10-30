@@ -407,6 +407,32 @@ class AnalysisDigest:
             "missing_notes": json_safe(self.missing_notes),
         }
 
+    def _list_result_lines(self) -> list[str]:
+        """Returns every result's prompt lines, each block then a blank line."""
+        lines: list[str] = []
+        for result in self.results:
+            lines.extend(
+                _format_result(
+                    result,
+                    citation_label=self.citation_label(result.provenance),
+                )
+            )
+            lines.append("")
+        return lines
+
+    def format_results_for_prompt(self) -> str:
+        """Renders only the results, as `format_for_prompt` renders them.
+
+        Callers that present the numbered sources and the missing-data
+        notes themselves use this so that neither appears twice.
+
+        Returns:
+            The result blocks separated by blank lines, without the
+            `"Sources:"` and `"Missing data:"` sections; empty when the
+            digest has no results.
+        """
+        return "\n".join(self._list_result_lines()).rstrip("\n")
+
     def format_for_prompt(self) -> str:
         """Renders the digest as compact, human-readable text for synthesis.
 
@@ -417,15 +443,7 @@ class AnalysisDigest:
         and `"Missing data:"` sections at the end. Only prompt text is
         rounded; `to_dict` preserves full floating-point precision.
         """
-        lines: list[str] = []
-        for result in self.results:
-            lines.extend(
-                _format_result(
-                    result,
-                    citation_label=self.citation_label(result.provenance),
-                )
-            )
-            lines.append("")
+        lines = self._list_result_lines()
         if self.sources:
             lines.append("Sources:")
             for index, source in enumerate(self.sources, start=1):
