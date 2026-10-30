@@ -93,12 +93,12 @@ const REASONING_COMPONENTS: Components = {
     ),
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   ul: ({ children }) => (
-    <ul className="list-disc space-y-0.5 pl-9.5">
+    <ul className="list-disc space-y-0.5 pl-9.5 text-on-surface-variant italic text-sm leading-5.5">
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal space-y-0.5 pl-9.5">
+    <ol className="list-decimal space-y-0.5 pl-9.5 text-on-surface-variant italic text-sm leading-5.5">
       {children}
     </ol>
   ),
@@ -235,7 +235,7 @@ export function ReasoningBlock({
       >
         <div className="overflow-hidden min-h-0">
         {/* Indented so the reasoning reads as an aside to the answer; the
-            paragraphs add the muted italic. */}
+            paragraphs and lists add the muted italic. */}
         <div className="mt-2 ml-2.25 reasoning-markdown">
           {thoughts.length > 0 ? (
             thoughts.map((thought, i) => (
@@ -248,12 +248,12 @@ export function ReasoningBlock({
               />
             ))
           ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={REASONING_COMPONENTS}
-            >
-              {placeholder}
-            </ReactMarkdown>
+            <Thought
+              key="placeholder"
+              text={placeholder}
+              animate={streaming}
+              isLatest
+            />
           )}
         </div>
         </div>

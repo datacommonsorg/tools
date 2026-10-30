@@ -30,7 +30,7 @@
   --color-theme-gradient-border-stop-4: var(--theme-gradient-border-stop-4, #8CB8FF);
 
   /* Surfaces */
-  --color-surface: #ffffff;
+  --color-surface: var(--theme-background, #ffffff);
   --color-surface-soft: var(--theme-surface, #F9F9F9);
   --color-surface-muted: #f3f4f6;
   --color-surface-blue: #f0f4f9;
@@ -39,7 +39,7 @@
   --color-surface-narrative: var(--theme-surface-narrative, #F5FAFF);
   --color-skeleton-bar: var(--theme-skeleton-bar, #EFEDED);
   /* Inline-code chip behind `code` in the reasoning aside. */
-  --color-code-surface: #F2F2F2;
+  --color-code-surface: var(--theme-code-surface, #F2F2F2);
   --color-user-msg: var(--theme-user-msg, #EAEEF5);
   /* Active navigation indicator and label color, defaulting to the primary
      text color when unconfigured. */
@@ -131,9 +131,6 @@
     }
   }
 
-  /* Reasoning bar's end dot while the turn streams: grows to 120% and back,
-     fully opaque. Animates `scale`, so the dot's `translate` is untouched.
-     Consumed as `animate-dot-pulse`, gated with `motion-safe:`. */
   /* Streamed thought entering: its grid row grows from 0fr, so the height
      eases open instead of jumping. Consumed as `animate-thought-expand`,
      gated with `motion-safe:`. */
@@ -145,6 +142,9 @@
     }
   }
 
+  /* Reasoning bar's end dot while the turn streams: grows to 140% and back.
+     Animates `scale`, so the dot's `translate` is untouched. Consumed as
+     `animate-dot-pulse`, gated with `motion-safe:`. */
   --animate-dot-pulse: dot-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
   @keyframes dot-pulse {
