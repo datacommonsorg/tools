@@ -42,6 +42,7 @@ _API_KEY_HOSTS = frozenset(
     {
         "api.datacommons.org",
         "autopush.api.datacommons.org",
+        "dev.api.datacommons.org",
         "staging.api.datacommons.org",
         "datacommons.org",
     }
