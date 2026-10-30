@@ -15,7 +15,8 @@
  */
 
 /**
- * @fileoverview Tests for DataAgent turn rendering and its skeleton handoff timing.
+ * @fileoverview Tests for DataAgent turn rendering, new-turn scrolling, and its
+ * skeleton handoff timing.
  */
 
 import { readFileSync } from 'node:fs';
@@ -153,6 +154,43 @@ describe('DataAgent New chat', () => {
       name: 'Ask a question to explore relevant statistical data',
     });
     expect((prompt as HTMLTextAreaElement).value).toBe('');
+  });
+});
+
+describe('DataAgent new-turn scroll', () => {
+  it('scrolls <main>, not the window, to a newly added question', () => {
+    // Test: A follow-up question is added to the chat.
+    // Situation: The surface renders inside <main>, the app's scroll
+    //            container, and a second turn is appended.
+    // Expectation: The glide scrolls <main>; the window does not move.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const windowScrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', windowScrollTo);
+    const turn: ChatTurn = {
+      userMessage: 'What is the population of France?',
+      status: 'done',
+      toolCalls: [],
+      thoughts: [],
+      text: 'About 68 million.',
+      provenance: [],
+    };
+    const { rerender } = render(<main>{chatSurface([turn])}</main>);
+    const mainScrollTo = vi.fn();
+    screen.getByRole('main').scrollTo = mainScrollTo;
+
+    rerender(
+      <main>
+        {chatSurface([turn, { ...turn, userMessage: 'And Germany?' }])}
+      </main>,
+    );
+    frames.shift()?.(performance.now());
+
+    expect(mainScrollTo).toHaveBeenCalled();
+    expect(windowScrollTo).not.toHaveBeenCalled();
   });
 });
 

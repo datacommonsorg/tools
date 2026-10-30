@@ -56,10 +56,10 @@ export function App() {
   return (
     <ChatSessionProvider>
       <ChatResetOnTabChange view={view} />
-      <div className="flex min-h-dvh w-full bg-surface relative">
+      <div className="flex h-dvh w-full bg-surface relative">
         <Sidebar />
         <MenuDrawer />
-        <main className="flex-1 flex flex-col relative min-w-0">
+        <main className="flex-1 flex flex-col relative min-w-0 overflow-y-auto overscroll-none">
           <Header />
           {renderContent(view)}
         </main>
@@ -79,8 +79,8 @@ function ChatResetOnTabChange({ view }: { view: View }) {
   useEffect(() => {
     if (prevView.current === view) return;
     prevView.current = view;
-    // Scrolling is managed on the page level, so each view starts at its top.
-    window.scrollTo(0, 0);
+    // <main> is the scroll container, so each view starts at its top.
+    document.querySelector('main')?.scrollTo(0, 0);
     if (turns.length > 0 || isStreaming) {
       newChat();
     }

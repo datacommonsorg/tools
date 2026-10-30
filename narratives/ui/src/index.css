@@ -195,6 +195,8 @@ html, body {
   /* No horizontal scrollbar from wide children. `clip`, not `hidden`, which
      would make <body> a scroll container and break position: sticky. */
   overflow-x: clip;
+  /* <main> owns the scroll; no rubber-band bounce on the page itself. */
+  overscroll-behavior: none;
 }
 
 /*
