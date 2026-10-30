@@ -235,8 +235,9 @@ export function ReasoningBlock({
       >
         <div className="overflow-hidden min-h-0">
         {/* Indented so the reasoning reads as an aside to the answer; the
-            paragraphs and lists add the muted italic. */}
-        <div className="mt-2 ml-2.25 reasoning-markdown">
+            paragraphs and lists add the muted italic. The bottom padding keeps
+            the last dot's pulse inside the clipping wrapper above. */}
+        <div className="mt-2 ml-2.25 pb-1 reasoning-markdown">
           {thoughts.length > 0 ? (
             thoughts.map((thought, i) => (
               // Thoughts only ever append, so the index is a stable key.
