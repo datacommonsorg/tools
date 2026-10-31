@@ -41,9 +41,8 @@ export interface ThoughtEvent {
 }
 
 /**
- * One chart the agent asks the UI to render, in the UI's camelCase domain
- * shape. Produced by {@link mapRawChartItem} from the snake_case
- * {@link RawChartItem} wire format.
+ * One chart to render in the UI's camelCase domain shape, produced by
+ * {@link mapRawChartItem} from the snake_case {@link RawChartItem} wire format.
  */
 export interface ChartItem {
   vizType:
@@ -51,9 +50,7 @@ export interface ChartItem {
     | "bar"
     | "map"
     | "ranking"
-    | "pie"
     | "highlight"
-    | "gauge"
     | "scatter"
     | "slider";
   title?: string;
@@ -63,14 +60,23 @@ export interface ChartItem {
   childPlaceType?: string;
   date?: string;
   unit?: string;
+  /** Divide each variable by population in the Data Commons web component. */
+  perCapita?: boolean;
+  /** Maps each charted variable DCID to the facet ID that served its table. */
+  facetIds?: Record<string, string>;
+  /** How many places a ranking lists from each end. */
+  rankingCount?: number;
+  /** Show both the highest and the lowest places of a ranking. */
+  showHighestLowest?: boolean;
+  /** Show the lowest places of a ranking instead of the highest. */
+  showLowest?: boolean;
+  /** Sort order of a bar chart's places. */
+  sort?: "ascending" | "descending";
 }
 
 /**
- * The agent's chart-rendering directive for a turn, in camelCase domain shape.
- * Produced by {@link mapRawChartConfig} from the snake_case
- * {@link RawChartConfig} wire format. Supports the modern multi-chart format
- * (`charts: [...]`); legacy single-chart fallback fields are folded into
- * `charts` during mapping.
+ * The chart list a `ChartTile` renders. The tile renders nothing unless
+ * `shouldRender` is true and `hideCharts` is unset.
  */
 export interface ChartConfig {
   shouldRender: boolean;
@@ -79,12 +85,10 @@ export interface ChartConfig {
 }
 
 /**
- * Wire format of one chart item as emitted by the agent
- * (the agent's `gemini/schemas.py` CHART_CONFIG_SCHEMA + homepage.html
- * renderDCComponent).
- * snake_case matches the SSE payload; {@link mapRawChartItem} converts to the
- * camelCase {@link ChartItem} the UI consumes, so an upstream schema rename
- * only requires updating the mapper.
+ * Wire format of one chart serialized by `workflows/charts.py` inside a
+ * chart block. `snake_case` matches the SSE payload; {@link mapRawChartItem}
+ * converts to the camelCase {@link ChartItem} the UI consumes, so an upstream
+ * rename only requires updating the mapper.
  */
 interface RawChartItem {
   viz_type: ChartItem["vizType"];
@@ -95,25 +99,40 @@ interface RawChartItem {
   child_place_type?: string;
   date?: string;
   unit?: string;
+  per_capita?: boolean;
+  facet_ids?: Record<string, string>;
+  ranking_count?: number;
+  show_highest_lowest?: boolean;
+  show_lowest?: boolean;
+  sort?: ChartItem["sort"];
 }
 
 /**
- * Wire format of the chart_config SSE field. Older agent versions emit the
- * legacy single-chart fields (`viz_type`, `variable_dcids`, …) at the top
- * level instead of inside a `charts` array; {@link mapRawChartConfig}
- * normalizes both shapes.
+ * The chart kinds `serialize_resolved_chart` in `workflows/charts.py` emits.
+ * A chart block of any other kind is dropped.
  */
-interface RawChartConfig {
-  should_render: boolean;
-  hide_charts?: boolean;
-  charts?: RawChartItem[];
-  viz_type?: ChartItem["vizType"];
-  title?: string;
-  variable_dcids?: string[];
-  place_dcids?: string[];
-  parent_place?: string;
-  child_place_type?: string;
-  date?: string;
+const CHART_VIZ_TYPES: ReadonlySet<string> = new Set<ChartItem["vizType"]>([
+  "line",
+  "bar",
+  "map",
+  "ranking",
+  "scatter",
+  "highlight",
+]);
+
+/**
+ * Reads a chart's facet mapping from the wire, keeping only the string-valued
+ * entries of a plain object. Returns undefined when no entry remains, so a
+ * malformed mapping is treated as absent.
+ */
+function readFacetIds(value: unknown): Record<string, string> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 /** Converts one raw snake_case chart item into the camelCase domain shape. */
@@ -121,40 +140,53 @@ function mapRawChartItem(raw: RawChartItem): ChartItem {
   return {
     vizType: raw.viz_type,
     title: raw.title,
-    variableDcids: raw.variable_dcids ?? [],
+    variableDcids: raw.variable_dcids,
     placeDcids: raw.place_dcids,
     parentPlace: raw.parent_place,
     childPlaceType: raw.child_place_type,
     date: raw.date,
     unit: raw.unit,
+    perCapita: raw.per_capita,
+    facetIds: readFacetIds(raw.facet_ids),
+    rankingCount: raw.ranking_count,
+    showHighestLowest: raw.show_highest_lowest,
+    showLowest: raw.show_lowest,
+    sort: raw.sort,
   };
 }
 
 /**
- * Converts the raw chart_config payload into the camelCase domain shape,
- * folding the legacy top-level single-chart fields into a one-element
- * `charts` array when no modern `charts` list is present.
+ * Wire format of one streamed answer block: a completed Markdown paragraph,
+ * or a chart resolved against the turn's cached tables.
  */
-function mapRawChartConfig(raw: RawChartConfig): ChartConfig {
-  let charts = raw.charts?.map(mapRawChartItem);
-  if ((!charts || charts.length === 0) && raw.variable_dcids?.length) {
-    charts = [
-      mapRawChartItem({
-        viz_type: raw.viz_type ?? "line",
-        title: raw.title,
-        variable_dcids: raw.variable_dcids,
-        place_dcids: raw.place_dcids,
-        parent_place: raw.parent_place,
-        child_place_type: raw.child_place_type,
-        date: raw.date,
-      }),
-    ];
-  }
-  return {
-    shouldRender: raw.should_render,
-    hideCharts: raw.hide_charts,
-    charts,
-  };
+export type RawAnswerBlock =
+  | { type: "text"; markdown: string }
+  | { type: "chart"; chart: RawChartItem };
+
+/**
+ * One block of an answer in the UI's domain shape, rendered in order. `index`
+ * is the block's position in the turn, which the answer panel uses as its key.
+ * The position is assigned on arrival, so a dropped malformed block cannot
+ * produce duplicate or invalid React keys.
+ */
+export type AnswerBlock =
+  | { index: number; type: "text"; markdown: string }
+  | { index: number; type: "chart"; chart: ChartItem };
+
+/** Returns the charts a turn renders: the charts of its chart blocks, in order. */
+export function getTurnCharts(turn: ChatTurn): ChartItem[] {
+  return turn.blocks.flatMap((block) =>
+    block.type === "chart" ? [block.chart] : [],
+  );
+}
+
+/**
+ * Reports whether a turn has an answer to show. The answer panel is shown
+ * only once a turn has answer text: a turn with charts but no prose is a
+ * failed turn.
+ */
+export function hasAnswer(turn: ChatTurn): boolean {
+  return turn.text !== "";
 }
 
 /** A source attribution (display name + link) surfaced with an answer. */
@@ -250,14 +282,13 @@ export interface ChatTurn {
   status: TurnStatus;
   toolCalls: ToolCallEvent[];
   thoughts: ThoughtEvent[];
-  text: string;
   /**
-   * Set once the answer text has finished streaming: on the first event the
-   * agent sends after synthesis, which is the chart phase's status or, when
-   * there is no chart to prepare, the chart config itself.
+   * The answer's prose: the text blocks joined by blank lines, which is the
+   * string the agent signs. Chart blocks are not part of it.
    */
-  textComplete?: boolean;
-  chartConfig?: ChartConfig;
+  text: string;
+  /** The answer's text and chart blocks in emission order. */
+  blocks: AnswerBlock[];
   provenance: ProvenanceItem[];
   /** Holds self-contained follow-up questions emitted by the agent after the terminal event. */
   followUps?: string[];
@@ -302,7 +333,7 @@ type TerminalState = "complete" | "error" | "refused" | "canceled";
  * per frame.
  */
 interface ContentPayload {
-  text?: string;
+  block?: RawAnswerBlock;
   tool_call?: ToolCallEvent;
   sources?: ProvenanceItem[];
   /**
@@ -310,7 +341,6 @@ interface ContentPayload {
    * the flag the UI acts on.
    */
   data_status?: { truncated?: boolean; has_data?: boolean };
-  chart_config?: RawChartConfig;
 }
 
 /** Identifies one turn of the signed window listed in a `terminal` event. */
@@ -358,12 +388,7 @@ export type ChatStreamEvent =
   | {
       event: "status";
       data: {
-        phase:
-          | "classify"
-          | "discovery"
-          | "processing"
-          | "synthesis"
-          | "chart_config";
+        phase: "classify" | "discovery" | "processing" | "synthesis";
         message?: string;
       };
     }
@@ -388,9 +413,13 @@ const newTurn = (userMessage: string, idempotencyKey: string): ChatTurn => ({
   toolCalls: [],
   thoughts: [],
   text: "",
+  blocks: [],
   provenance: [],
   idempotencyKey,
 });
+
+/** The separator between text blocks in the signed answer text. */
+const TEXT_BLOCK_SEPARATOR = "\n\n";
 
 /** Represents a turn that carries everything needed to send it back as signed context. */
 type SignedTurn = ChatTurn & {
@@ -413,26 +442,24 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
 }
 
 /**
- * Builds the transcript fields of a request from the signed turns. The query
- * and answer are sent exactly as stored, because the agent verifies them
- * against the turn's signature.
- */
-/**
  * Labels every answer's citations so one number means one source thread-wide.
  *
  * A source keeps the number it was first given; anything new takes the next
  * free one. Returns one array per turn, parallel to that turn's `provenance`.
  *
- * A turn that renders no answer -- stopped, or errored before any text --
- * takes no numbers, matching the condition `TurnView` renders `AnswerPanel`
- * on. Numbering one would retire `[1]` and `[2]` to a turn with no Citations
- * list, and the next answer would open at `[3]`.
+ * A turn that renders no answer (stopped, or with no answer text, such as
+ * one that errored before any text) takes no numbers, matching the condition
+ * `TurnView` renders `AnswerPanel` on. Numbering one would retire `[1]` and
+ * `[2]` to a turn with no Citations list, and the next answer would open at
+ * `[3]`.
  */
 export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   const assigned = new Map<string, number>();
   let next = 1;
   return turns.map((turn) => {
-    if (!turn.text || turn.stopped) return [];
+    if (!hasAnswer(turn) || turn.stopped) {
+      return [];
+    }
     return turn.provenance.map((source) => {
       const key = source.url || source.name;
       const existing = assigned.get(key);
@@ -443,6 +470,11 @@ export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   });
 }
 
+/**
+ * Builds the transcript fields of a request from the signed turns. The query
+ * and answer are sent exactly as stored, because the agent verifies them
+ * against the turn's signature.
+ */
 export function transcriptRequestFields(turns: ChatTurn[]): {
   turns: WireTurn[];
   compacted_summary: string | null;
@@ -856,11 +888,58 @@ function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
   return { ...turn, status: "error", error: terminalError(terminal) };
 }
 
+/**
+ * Appends one answer block to the turn at position `blocks.length`. A text
+ * block also extends `text`, the signed answer, with the same separator the
+ * agent joins its text blocks by, so the two stay byte for byte equal.
+ * Malformed blocks are ignored: unrecognized types, empty text blocks, and
+ * chart blocks whose kind is not one the agent emits or whose variables are
+ * missing or not all non-empty strings.
+ */
+function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
+  const blocks = turn.blocks;
+  const index = blocks.length;
+  if (raw.type === "chart") {
+    if (
+      typeof raw.chart !== "object" ||
+      raw.chart === null ||
+      !CHART_VIZ_TYPES.has(raw.chart.viz_type) ||
+      !Array.isArray(raw.chart.variable_dcids) ||
+      raw.chart.variable_dcids.length === 0 ||
+      !raw.chart.variable_dcids.every(
+        (dcid: unknown) => typeof dcid === "string" && dcid.length > 0,
+      )
+    ) {
+      console.warn("Ignoring a malformed chart block.");
+      return turn;
+    }
+    const block: AnswerBlock = {
+      index,
+      type: "chart",
+      chart: mapRawChartItem(raw.chart),
+    };
+    return { ...turn, blocks: [...blocks, block] };
+  }
+  if (
+    raw.type !== "text" ||
+    typeof raw.markdown !== "string" ||
+    raw.markdown.length === 0
+  ) {
+    console.warn("Ignoring a malformed or empty answer block.");
+    return turn;
+  }
+  const block: AnswerBlock = { index, type: "text", markdown: raw.markdown };
+  const text = turn.text
+    ? turn.text + TEXT_BLOCK_SEPARATOR + raw.markdown
+    : raw.markdown;
+  return { ...turn, blocks: [...blocks, block], text };
+}
+
 /** Applies one `content` payload to the turn state. */
 function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
   let next = turn;
-  if (typeof content.text === "string") {
-    next = { ...next, text: next.text + content.text };
+  if (content.block && typeof content.block === "object") {
+    next = applyBlock(next, content.block);
   }
   if (content.tool_call) {
     next = { ...next, toolCalls: [...next.toolCalls, content.tool_call] };
@@ -881,13 +960,6 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
   if (content.data_status?.truncated) {
     next = { ...next, truncated: true };
   }
-  if (content.chart_config) {
-    next = {
-      ...next,
-      textComplete: true,
-      chartConfig: mapRawChartConfig(content.chart_config),
-    };
-  }
   return next;
 }
 
@@ -903,8 +975,7 @@ export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
       ) {
         return { ...turn, status: evt.data.phase };
       }
-      // The chart phase only starts once synthesis has finished streaming.
-      return { ...turn, textComplete: true };
+      return turn;
     case "thought":
       return {
         ...turn,

@@ -14,13 +14,18 @@ import {
   applyEvent,
   applySignedWindow,
   assignCitationNumbers,
+  getTurnCharts,
+  hasAnswer,
   parseSseStream,
   transcriptRequestFields,
   useSseChat,
+  type AnswerBlock,
+  type ChartItem,
   type ChatStreamEvent,
   type ChatTurn,
   type ProvenanceItem,
   type ConversationStateSlots,
+  type RawAnswerBlock,
   type TurnStatus,
   type WireTurn,
 } from "./use_sse_chat";
@@ -59,6 +64,22 @@ const sig = (digit: string): string => digit.repeat(64);
 function frame(event: string, data: unknown, id?: number): string {
   const idLine = id === undefined ? "" : `id: ${id}\r\n`;
   return `${idLine}event: ${event}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
+}
+
+/** Builds the `content` payload of one text block. */
+function buildTextBlock(markdown: string): { block: RawAnswerBlock } {
+  return { block: { type: "text", markdown } };
+}
+
+/**
+ * Builds a `content` event carrying one chart block. The chart is untyped so
+ * a test can send a payload that violates the wire contract.
+ */
+function buildChartEvent(chart: Record<string, unknown>): ChatStreamEvent {
+  return {
+    event: "content",
+    data: { block: { type: "chart", chart } },
+  } as unknown as ChatStreamEvent;
 }
 
 /** Returns a byte stream that yields each chunk as one read. */
@@ -128,6 +149,7 @@ const blankTurn = (): ChatTurn => ({
   toolCalls: [],
   thoughts: [],
   text: "",
+  blocks: [],
   provenance: [],
 });
 
@@ -259,7 +281,7 @@ describe("parseSseStream", () => {
       { phase: "discovery", message: "Querying" },
       1,
     );
-    const text = frame("content", { text: "About 68 million." }, 2);
+    const text = frame("content", buildTextBlock("About 68 million."), 2);
     const splitAt = status.length - 1;
 
     const events = await parseAll([
@@ -269,7 +291,7 @@ describe("parseSseStream", () => {
 
     expect(events).toEqual([
       { event: "status", data: { phase: "discovery", message: "Querying" } },
-      { event: "content", data: { text: "About 68 million." } },
+      { event: "content", data: buildTextBlock("About 68 million.") },
     ]);
   });
 
@@ -281,7 +303,7 @@ describe("parseSseStream", () => {
     // Expectation: All three events are decoded with their names and
     //   payloads, and no spurious frames are produced.
     const status = `event: status\rdata: ${JSON.stringify({ phase: "discovery" })}\r\r`;
-    const text = frame("content", { text: "About 68 million." }, 2);
+    const text = frame("content", buildTextBlock("About 68 million."), 2);
     const complete = { state: "complete", ...TERMINAL_FIELDS };
     const terminal = frame("terminal", complete, 3);
 
@@ -289,7 +311,7 @@ describe("parseSseStream", () => {
 
     expect(events).toEqual([
       { event: "status", data: { phase: "discovery" } },
-      { event: "content", data: { text: "About 68 million." } },
+      { event: "content", data: buildTextBlock("About 68 million.") },
       { event: "terminal", data: complete },
     ]);
   });
@@ -330,7 +352,9 @@ describe("parseSseStream", () => {
         controller.enqueue(
           encoder.encode(frame("status", { phase: "discovery" })),
         );
-        controller.enqueue(encoder.encode(frame("content", { text: "x" })));
+        controller.enqueue(
+          encoder.encode(frame("content", buildTextBlock("x"))),
+        );
       },
       cancel() {
         canceled = true;
@@ -368,16 +392,41 @@ describe("parseSseStream", () => {
 describe("applyEvent", () => {
   it("builds the turn from status, thought, and content events", () => {
     // Test: Reduction of the non-terminal events.
-    // Situation: A turn receives a status, a thought, two text chunks,
-    //   duplicate sources, a truncation flag, and a chart config.
-    // Expectation: The status matches the phase, the text chunks are
-    //   concatenated, duplicate source URLs are removed, truncation is set,
-    //   and the chart config is mapped to camelCase.
+    // Situation: A turn receives a status, a thought, a text block, a chart
+    //   block, a second text block, duplicate sources, and a truncation
+    //   flag.
+    // Expectation: The status matches the phase, the blocks are kept in
+    //   order with the chart mapped to camelCase, `text` is the text blocks
+    //   joined by a blank line (the string the agent signs), duplicate
+    //   source URLs are removed, and truncation is set.
     const events: ChatStreamEvent[] = [
       { event: "status", data: { phase: "synthesis" } },
       { event: "thought", data: { thought: "Checking", phase: "discovery" } },
-      { event: "content", data: { text: "About " } },
-      { event: "content", data: { text: "68 million." } },
+      { event: "content", data: buildTextBlock("About 68 million.") },
+      {
+        event: "content",
+        data: {
+          block: {
+            type: "chart",
+            chart: {
+              viz_type: "ranking",
+              title: "GDP per capita by state",
+              variable_dcids: ["Amount_EconomicActivity_GrossDomesticProduct_Nominal"],
+              parent_place: "country/USA",
+              child_place_type: "State",
+              date: "2023",
+              per_capita: true,
+              facet_ids: {
+                Amount_EconomicActivity_GrossDomesticProduct_Nominal: "f1",
+              },
+              ranking_count: 5,
+              show_highest_lowest: true,
+              show_lowest: false,
+            },
+          },
+        },
+      },
+      { event: "content", data: buildTextBlock("It grew 0.3% last year.") },
       {
         event: "content",
         data: {
@@ -388,53 +437,211 @@ describe("applyEvent", () => {
         },
       },
       { event: "content", data: { data_status: { truncated: true } } },
-      {
-        event: "content",
-        data: { chart_config: { should_render: true, hide_charts: true } },
-      },
     ];
 
     const turn = events.reduce(applyEvent, blankTurn());
 
     expect(turn.status).toBe("synthesis");
     expect(turn.thoughts).toEqual([{ text: "Checking", phase: "discovery" }]);
-    expect(turn.text).toBe("About 68 million.");
+    const expectedBlocks: AnswerBlock[] = [
+      { index: 0, type: "text", markdown: "About 68 million." },
+      {
+        index: 1,
+        type: "chart",
+        chart: {
+          vizType: "ranking",
+          title: "GDP per capita by state",
+          variableDcids: ["Amount_EconomicActivity_GrossDomesticProduct_Nominal"],
+          placeDcids: undefined,
+          parentPlace: "country/USA",
+          childPlaceType: "State",
+          date: "2023",
+          unit: undefined,
+          perCapita: true,
+          facetIds: {
+            Amount_EconomicActivity_GrossDomesticProduct_Nominal: "f1",
+          },
+          rankingCount: 5,
+          showHighestLowest: true,
+          showLowest: false,
+          sort: undefined,
+        },
+      },
+      { index: 2, type: "text", markdown: "It grew 0.3% last year." },
+    ];
+    expect(turn.blocks).toEqual(expectedBlocks);
+    expect(turn.text).toBe("About 68 million.\n\nIt grew 0.3% last year.");
     expect(turn.provenance).toEqual([{ name: "INSEE", url: "https://insee.fr/" }]);
     expect(turn.truncated).toBe(true);
-    expect(turn.chartConfig).toEqual({
-      shouldRender: true,
-      hideCharts: true,
-      charts: undefined,
-    });
   });
 
-  it("marks the text complete when the chart phase starts", () => {
-    // Test: End-of-text signal.
-    // Situation: Text streams, then the agent announces the chart phase.
-    // Expectation: The text is incomplete while it streams and complete once
-    //   the chart phase starts, without leaving the synthesis status.
-    const streaming = applyEvent(
-      { ...blankTurn(), status: "synthesis" },
-      { event: "content", data: { text: "About 68 million." } },
-    );
-    const finished = applyEvent(streaming, {
-      event: "status",
-      data: { phase: "chart_config" },
-    });
+  it("ignores a block without content", () => {
+    // Test: Tolerance of malformed block frames.
+    // Situation: A turn receives an empty text block, chart blocks whose
+    //   chart is missing or lacks variables, an unrecognized block type, and
+    //   then a well-formed text block.
+    // Expectation: Only the well-formed block is kept, numbered by its
+    //   position, and `text` holds its markdown alone.
+    const events = [
+      { event: "content", data: buildTextBlock("") },
+      { event: "content", data: { block: { type: "chart" } } },
+      {
+        event: "content",
+        data: {
+          block: {
+            type: "chart",
+            chart: { variable_dcids: ["Count_Person"] },
+          },
+        },
+      },
+      {
+        event: "content",
+        data: {
+          block: {
+            type: "chart",
+            chart: { viz_type: "line", variable_dcids: [] },
+          },
+        },
+      },
+      {
+        event: "content",
+        data: { block: { type: "unknown", markdown: "Ignored." } },
+      },
+      { event: "content", data: { block: { type: "text", markdown: "Only this." } } },
+    ] as unknown as ChatStreamEvent[];
 
-    expect(streaming.textComplete).toBeUndefined();
-    expect(finished.textComplete).toBe(true);
-    expect(finished.status).toBe("synthesis");
+    const turn = events.reduce(applyEvent, blankTurn());
+
+    expect(turn.blocks).toEqual([{ index: 0, type: "text", markdown: "Only this." }]);
+    expect(turn.text).toBe("Only this.");
+  });
+
+  it("drops a chart block of a kind the agent does not emit", () => {
+    // Test: Chart kind validation at the boundary.
+    // Situation: A turn receives chart blocks whose `viz_type` is `slider`,
+    //   which the UI type lists but the agent never emits, and `pie`.
+    // Expectation: Neither block is kept.
+    const turn = [
+      buildChartEvent({ viz_type: "slider", variable_dcids: ["Count_Person"] }),
+      buildChartEvent({ viz_type: "pie", variable_dcids: ["Count_Person"] }),
+    ].reduce(applyEvent, blankTurn());
+
+    expect(turn.blocks).toEqual([]);
+  });
+
+  it("drops a chart block whose variables are not all non-empty strings", () => {
+    // Test: Variable validation at the boundary.
+    // Situation: A turn receives chart blocks whose `variable_dcids` hold an
+    //   empty string, a number, and a valid DCID beside an empty string.
+    // Expectation: None of the blocks is kept.
+    const turn = [
+      buildChartEvent({ viz_type: "line", variable_dcids: [""] }),
+      buildChartEvent({ viz_type: "line", variable_dcids: [42] }),
+      buildChartEvent({ viz_type: "line", variable_dcids: ["Count_Person", ""] }),
+    ].reduce(applyEvent, blankTurn());
+
+    expect(turn.blocks).toEqual([]);
+  });
+
+  it("maps a bar chart's sort order from the wire", () => {
+    // Test: Mapping of `sort` at the boundary.
+    // Situation: A bar chart block with `sort: "descending"`.
+    // Expectation: The chart the turn renders carries `sort: "descending"`.
+    const turn = applyEvent(
+      blankTurn(),
+      buildChartEvent({
+        viz_type: "bar",
+        variable_dcids: ["Count_Person"],
+        place_dcids: ["country/FRA", "country/DEU"],
+        sort: "descending",
+      }),
+    );
+
+    expect(getTurnCharts(turn)[0].sort).toBe("descending");
+  });
+
+  it("keeps only the string-valued entries of a chart's facet ids", () => {
+    // Test: Facet mapping validation at the boundary.
+    // Situation: Chart blocks whose `facet_ids` is an array, an object with
+    //   one string and one numeric value, and an object with only a numeric
+    //   value.
+    // Expectation: The array and the all-numeric object yield no facet ids,
+    //   and the mixed object keeps only its string entry.
+    const turn = [
+      buildChartEvent({
+        viz_type: "line",
+        variable_dcids: ["Count_Person"],
+        facet_ids: ["f1"],
+      }),
+      buildChartEvent({
+        viz_type: "line",
+        variable_dcids: ["Count_Person"],
+        facet_ids: { Count_Person: "f1", Median_Age_Person: 2 },
+      }),
+      buildChartEvent({
+        viz_type: "line",
+        variable_dcids: ["Count_Person"],
+        facet_ids: { Count_Person: 2 },
+      }),
+    ].reduce(applyEvent, blankTurn());
+
+    expect(getTurnCharts(turn).map((chart) => chart.facetIds)).toEqual([
+      undefined,
+      { Count_Person: "f1" },
+      undefined,
+    ]);
+  });
+
+  it("numbers blocks by arrival even when a malformed block is dropped", () => {
+    // Test: Client-assigned block positions.
+    // Situation: A text block, a chart block of an unknown kind, a valid
+    //   chart block, and a second text block arrive, each carrying a wire
+    //   `index` that does not match its arrival position.
+    // Expectation: The three kept blocks are numbered 0, 1, and 2 in arrival
+    //   order, so their React keys stay unique and sequential.
+    const events = [
+      { event: "content", data: { block: { index: 5, type: "text", markdown: "One." } } },
+      {
+        event: "content",
+        data: {
+          block: {
+            index: 5,
+            type: "chart",
+            chart: { viz_type: "pie", variable_dcids: ["Count_Person"] },
+          },
+        },
+      },
+      {
+        event: "content",
+        data: {
+          block: {
+            index: 9,
+            type: "chart",
+            chart: { viz_type: "bar", variable_dcids: ["Count_Person"] },
+          },
+        },
+      },
+      { event: "content", data: { block: { index: 1, type: "text", markdown: "Two." } } },
+    ] as unknown as ChatStreamEvent[];
+
+    const turn = events.reduce(applyEvent, blankTurn());
+
+    expect(turn.blocks.map((block) => [block.index, block.type])).toEqual([
+      [0, "text"],
+      [1, "chart"],
+      [2, "text"],
+    ]);
   });
 
   it("moves the turn through the discovery and processing phases", () => {
     // Test: The status phases of the discovery loop.
     // Situation: A turn receives a `discovery` status, a thought tagged
     //   `discovery`, a `processing` status, a `discovery` status again as
-    //   the loop retries, and a `chart_config` status.
+    //   the loop retries, and a status whose phase this build does not
+    //   recognize.
     // Expectation: Each of the first four statuses becomes the turn status
-    //   in order, the thought keeps its `discovery` phase, and the
-    //   `chart_config` status leaves the status where it was.
+    //   in order, the thought keeps its `discovery` phase, and the unknown
+    //   phase leaves the status where it was.
     const statuses: TurnStatus[] = [];
     let turn = blankTurn();
     const events: ChatStreamEvent[] = [
@@ -442,7 +649,7 @@ describe("applyEvent", () => {
       { event: "thought", data: { thought: "Fetching population", phase: "discovery" } },
       { event: "status", data: { phase: "processing", message: "Analyzing data..." } },
       { event: "status", data: { phase: "discovery", message: "Querying data tools..." } },
-      { event: "status", data: { phase: "chart_config" } },
+      { event: "status", data: { phase: "later_phase" } } as unknown as ChatStreamEvent,
     ];
     for (const event of events) {
       turn = applyEvent(turn, event);
@@ -595,7 +802,7 @@ describe("useSseChat", () => {
         status: 200,
         statusText: "OK",
         body: streamOf([
-          frame("content", { text: "About 68 million." }, 1),
+          frame("content", buildTextBlock("About 68 million."), 1),
           frame(
             "terminal",
             {
@@ -703,19 +910,19 @@ describe("useSseChat", () => {
 
   it("marks a stream that ends without a terminal event as interrupted", async () => {
     // Test: EOF without a terminal event.
-    // Situation: The stream delivers a status event and partial text, and
+    // Situation: The stream delivers a status event and one text block, and
     //   then ends without a terminal event.
-    // Expectation: The turn keeps its partial text but ends as an error
+    // Expectation: The turn keeps the text it received but ends as an error
     //   with the interrupted-connection message, not stuck mid-stream.
     const { result } = renderChat([
       frame("status", { phase: "synthesis" }, 1),
-      frame("content", { text: "About 68" }, 2),
+      frame("content", buildTextBlock("About 68 million."), 2),
     ]);
 
     await act(() => result.current.chat.send("What is the population of France?"));
 
     const [turn] = result.current.turns;
-    expect(turn.text).toBe("About 68");
+    expect(turn.text).toBe("About 68 million.");
     expect(turn.status).toBe("error");
     expect(turn.error).toBe(INTERRUPTED_TURN_ERROR);
     expect(result.current.chat.error).toBe(INTERRUPTED_TURN_ERROR);
@@ -728,7 +935,7 @@ describe("useSseChat", () => {
     // Expectation: The turn is done with its follow-ups, no error is set,
     //   and the request carried a non-empty idempotency key.
     const { result, fetchMock } = renderChat([
-      frame("content", { text: "About 68 million." }, 1),
+      frame("content", buildTextBlock("About 68 million."), 1),
       frame("terminal", { state: "complete", ...TERMINAL_FIELDS }, 2),
       frame("follow_ups", { follow_up_questions: ["And Spain?"] }, 3),
     ]);
@@ -781,13 +988,13 @@ describe("useSseChat", () => {
 
   it("reports a stream that fails mid-turn as interrupted", async () => {
     // Test: A connection lost after the response started.
-    // Situation: The stream delivers some text, then fails with the
+    // Situation: The stream delivers one text block, then fails with the
     //   browser's network error.
     // Expectation: The turn ends as an error with the interrupted-connection
     //   message rather than the browser's wording.
     const { result } = renderChat(
       failingStreamOf(
-        [frame("content", { text: "About 68" }, 1)],
+        [frame("content", buildTextBlock("About 68 million."), 1)],
         new TypeError("network error"),
       ),
     );
@@ -810,7 +1017,7 @@ describe("useSseChat", () => {
     const { result } = renderChat(stream.body);
     await act(async () => {
       void result.current.chat.send("What is the population of France?");
-      stream.push(frame("content", { text: "About 68 million." }, 1));
+      stream.push(frame("content", buildTextBlock("About 68 million."), 1));
       stream.push(
         frame("terminal", { state: "complete", ...TERMINAL_FIELDS }, 2),
       );
@@ -852,7 +1059,7 @@ describe("useSseChat", () => {
     });
 
     await act(async () => {
-      stream.push(frame("content", { text: "About 68 million." }, 1));
+      stream.push(frame("content", buildTextBlock("About 68 million."), 1));
       stream.push(
         frame(
           "terminal",
@@ -979,7 +1186,7 @@ describe("useSseChat", () => {
     // Expectation: `send` posts to `/narratives/agent/chat/stream`.
     vi.stubEnv("BASE_URL", "/narratives/");
     const { result, fetchMock } = renderChat([
-      frame("content", { text: "About 68 million." }, 1),
+      frame("content", buildTextBlock("About 68 million."), 1),
       frame("terminal", { state: "complete", ...TERMINAL_FIELDS }, 2),
     ]);
 
@@ -998,6 +1205,61 @@ const WDI: ProvenanceItem = {
 const GHO: ProvenanceItem = { name: "GHO", url: "https://who.int/gho" };
 const OECD: ProvenanceItem = { name: "OECD", url: "https://oecd.org/health" };
 
+const LINE_CHART: ChartItem = {
+  vizType: "line",
+  title: "Population, France",
+  variableDcids: ["Count_Person"],
+  placeDcids: ["country/FRA"],
+};
+
+describe("getTurnCharts", () => {
+  it("reads the charts from the turn's chart blocks", () => {
+    // Test: The chart list of a turn streamed as blocks.
+    // Situation: One turn holds a text block and a chart block, another
+    //   holds only a text block, and a third holds no blocks.
+    // Expectation: The first returns the chart block's chart and the others
+    //   return none.
+    const withChartBlock: ChatTurn = {
+      ...blankTurn(),
+      blocks: [
+        { index: 0, type: "text", markdown: "About 68 million." },
+        { index: 1, type: "chart", chart: LINE_CHART },
+      ],
+    };
+    const textOnlyBlocks: ChatTurn = {
+      ...blankTurn(),
+      blocks: [{ index: 0, type: "text", markdown: "About 68 million." }],
+    };
+
+    expect(getTurnCharts(withChartBlock)).toEqual([LINE_CHART]);
+    expect(getTurnCharts(textOnlyBlocks)).toEqual([]);
+    expect(getTurnCharts(blankTurn())).toEqual([]);
+  });
+});
+
+describe("hasAnswer", () => {
+  it("reports only a turn with answer text as having an answer", () => {
+    // Test: The predicate the turn view renders the answer panel on.
+    // Situation: A blank turn, a turn whose only content is a chart block,
+    //   and a turn with a text block.
+    // Expectation: Only the turn with answer text has an answer; the
+    //   chart-only turn is a failed turn and has none.
+    const chartOnly: ChatTurn = {
+      ...blankTurn(),
+      blocks: [{ index: 0, type: "chart", chart: LINE_CHART }],
+    };
+    const withText: ChatTurn = {
+      ...blankTurn(),
+      text: "About 68 million.",
+      blocks: [{ index: 0, type: "text", markdown: "About 68 million." }],
+    };
+
+    expect(hasAnswer(blankTurn())).toBe(false);
+    expect(hasAnswer(chartOnly)).toBe(false);
+    expect(hasAnswer(withText)).toBe(true);
+  });
+});
+
 function citedTurn(
   provenance: ProvenanceItem[],
   extra: Partial<ChatTurn> = {},
@@ -1008,6 +1270,7 @@ function citedTurn(
     toolCalls: [],
     thoughts: [],
     text: "a",
+    blocks: [{ index: 0, type: "text", markdown: "a" }],
     provenance,
     ...extra,
   };
@@ -1019,6 +1282,22 @@ describe("assignCitationNumbers", () => {
     // Situation: A single answer citing two sources.
     // Expectation: [1] and [2].
     expect(assignCitationNumbers([citedTurn([WDI, GHO])])).toEqual([[1, 2]]);
+  });
+
+  it("gives no numbers to a turn whose answer consists solely of a chart block", () => {
+    // Test: Citation numbering for a block-streamed turn with no prose text.
+    // Situation: A turn holds a chart block and provenance while `text` is
+    //   empty, followed by an answer with text.
+    // Expectation: The chart-only turn takes no numbers, so the next answer
+    //   opens at [1].
+    const chartOnly = citedTurn([WDI, GHO], {
+      text: "",
+      blocks: [{ index: 0, type: "chart", chart: LINE_CHART }],
+    });
+    expect(assignCitationNumbers([chartOnly, citedTurn([OECD])])).toEqual([
+      [],
+      [1],
+    ]);
   });
 
   it("keeps counting into the next answer", () => {
@@ -1058,7 +1337,11 @@ describe("assignCitationNumbers", () => {
     // Expectation: It takes no numbers, so the next answer still opens at [1]
     //   rather than at [3] with [1] and [2] nowhere on the page.
     const stopped = citedTurn([WDI, GHO], { stopped: true });
-    const errored = citedTurn([OECD], { status: "error", text: "" });
+    const errored = citedTurn([OECD], {
+      status: "error",
+      text: "",
+      blocks: [],
+    });
     expect(assignCitationNumbers([stopped, citedTurn([OECD])])).toEqual([
       [],
       [1],

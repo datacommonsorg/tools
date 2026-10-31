@@ -203,7 +203,9 @@ describe('ChatSessionProvider', () => {
 
     await act(async () => {
       const answered = result.current.send('What is the population of Spain?');
-      next.push('content', { text: 'About 48 million.' });
+      next.push('content', {
+        block: { index: 0, type: 'text', markdown: 'About 48 million.' },
+      });
       next.push('terminal', { state: 'complete', idempotency_key: 'key-2' });
       next.end();
       await answered;
@@ -244,7 +246,9 @@ describe('ChatSessionProvider', () => {
 
     await act(async () => {
       const answered = result.current.send('What is the population of Spain?');
-      second.push('content', { text: 'About 48 million.' });
+      second.push('content', {
+        block: { index: 0, type: 'text', markdown: 'About 48 million.' },
+      });
       second.push('terminal', { state: 'complete', idempotency_key: 'key-2' });
       second.end();
       await answered;

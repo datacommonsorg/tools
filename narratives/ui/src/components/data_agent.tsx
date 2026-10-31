@@ -18,15 +18,19 @@
  * @fileoverview Data Agent chat surface: prompt input, streaming turns, stop control, and follow-up handling.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InitialView } from "./view_initial";
 import { SkeletonCard } from "./card_skeleton";
 import { ReasoningBlock } from "./block_reasoning";
 import { AnswerPanel } from "./panel_answer";
 import { DISCLAIMER_TEXT } from "./note_disclaimer";
 import { PromptInput } from "./input_prompt";
-import { assignCitationNumbers, type ChatTurn } from "../hooks/use_sse_chat";
-import { useChatSession } from "../hooks/chat_session_context";
+import {
+  assignCitationNumbers,
+  type ChatTurn,
+  hasAnswer,
+} from "@/src/hooks/use_sse_chat";
+import { useChatSession } from "@/src/hooks/chat_session_context";
 
 /** How long the scroll to a new question glides. */
 const PIN_GLIDE_MS = 400;
@@ -226,7 +230,7 @@ interface TurnViewProps {
 }
 
 /** One conversation turn: the user's bubble plus the streamed agent response. */
-function TurnView({
+export function TurnView({
   turn,
   index,
   citationNumbers,
@@ -234,10 +238,13 @@ function TurnView({
   isStreaming,
   onAsk,
 }: TurnViewProps) {
-  // The answer stays behind the skeleton until its text has arrived in full.
-  const textReady =
-    turn.textComplete || turn.status === "done" || turn.status === "error";
-  const showAnswer = Boolean(turn.text) && !turn.stopped && textReady;
+  // The answer stays behind the skeleton until the turn ends (`done` or
+  // `error`), so the whole answer reveals at once in reading order. A turn
+  // with no answer text shows no answer, even when it holds chart blocks.
+  const showAnswer =
+    hasAnswer(turn) &&
+    !turn.stopped &&
+    (turn.status === "done" || turn.status === "error");
   const showSkeleton =
     !showAnswer &&
     !turn.stopped &&
@@ -247,13 +254,28 @@ function TurnView({
   // Keep a shown skeleton under the answer until the crossfade ends.
   const [hadSkeleton, setHadSkeleton] = useState(false);
   if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
+  // The answer mounts invisibly behind the skeleton so its charts load and
+  // take their height before anything is shown; the crossfade starts once
+  // the panel reports it has settled.
+  const [isAnswerSettled, setIsAnswerSettled] = useState(false);
+  const markAnswerSettled = useCallback(() => setIsAnswerSettled(true), []);
+  const isAnswerSettling = showAnswer && hadSkeleton && !isAnswerSettled;
+  const isHandingOff = showAnswer && hadSkeleton && isAnswerSettled;
   const [handedOff, setHandedOff] = useState(false);
   useEffect(() => {
-    if (!showAnswer || !hadSkeleton) return;
+    if (!isHandingOff) return;
     const timer = window.setTimeout(() => setHandedOff(true), HANDOFF_MS);
     return () => window.clearTimeout(timer);
-  }, [showAnswer, hadSkeleton]);
+  }, [isHandingOff]);
   const crossfading = showAnswer && hadSkeleton && !handedOff;
+  // `invisible` keeps the settling answer laid out, so its charts load, while
+  // the skeleton in the same grid cell stays the only thing shown.
+  let answerClassName: string | undefined;
+  if (isAnswerSettling) {
+    answerClassName = "invisible";
+  } else if (hadSkeleton) {
+    answerClassName = "motion-safe:animate-stream-in";
+  }
   const className = [
     "shrink-0 flex flex-col gap-6",
     COLUMN,
@@ -314,15 +336,17 @@ function TurnView({
           Loading: `discovery` through `synthesis`; not during `classify`,
           which may still refuse.
 
-          Answer: AnswerPanel once the text is whole, crossfading over the
-          skeleton in a shared grid cell. Hidden when stopped. */}
+          Answer: AnswerPanel once the turn ends (`done` or `error`) with
+          answer text, mounted invisibly behind the skeleton in a shared grid
+          cell until its charts settle, then crossfading over it. Hidden when
+          stopped. */}
       {(showSkeleton || showAnswer) && (
         <div className="self-start shrink-0 w-full max-w-4xl grid *:col-start-1 *:row-start-1">
           {(showSkeleton || crossfading) && (
             <div
-              aria-hidden={showAnswer}
+              aria-hidden={isHandingOff}
               className={`motion-safe:transition-opacity ease-out${
-                showAnswer ? " opacity-0" : ""
+                isHandingOff ? " opacity-0" : ""
               }`}
               style={{ transitionDuration: `${HANDOFF_MS}ms` }}
             >
@@ -331,11 +355,8 @@ function TurnView({
           )}
           {showAnswer && (
             <div
-              className={
-                hadSkeleton
-                  ? "motion-safe:animate-stream-in"
-                  : undefined
-              }
+              aria-hidden={isAnswerSettling || undefined}
+              className={answerClassName}
             >
               <AnswerPanel
                 turn={turn}
@@ -343,6 +364,7 @@ function TurnView({
                 onAsk={onAsk}
                 citationNumbers={citationNumbers}
                 turnIndex={index}
+                onSettled={isAnswerSettling ? markAnswerSettled : undefined}
               />
             </div>
           )}

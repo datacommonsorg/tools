@@ -18,8 +18,12 @@
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChatTurn } from "../hooks/use_sse_chat";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type AnswerBlock,
+  type ChatTurn,
+  getTurnCharts,
+} from "@/src/hooks/use_sse_chat";
 import { ChartTile } from "./tile_chart";
 import { DisclaimerNote } from "./note_disclaimer";
 import {
@@ -33,8 +37,11 @@ import { ResponseCard } from "./card_response";
 import { Tooltip } from "./tooltip";
 import { CitationNumberingProvider } from "./chip_citation";
 import { CitationsList } from "./list_citations";
-import { downloadPdf } from "../utils/download_pdf";
-import { calculateStreamDurationMs } from "../utils/rehype_stream_words";
+import { downloadPdf } from "@/src/utils/download_pdf";
+import {
+  calculateStreamDurationMs,
+  countWords,
+} from "@/src/utils/rehype_stream_words";
 import { Toast } from "./toast";
 import { CardHeader } from "./card_header";
 
@@ -59,7 +66,46 @@ interface AnswerPanelProps {
   citationNumbers?: number[];
   /** Which turn this is, so its anchors cannot collide with another's. */
   turnIndex?: number;
+  /**
+   * Called once every chart has settled or {@link ANSWER_SETTLE_MAX_MS} has
+   * passed. Passing it makes the panel wait for its charts before it reports
+   * settled, so the caller can keep it hidden until its layout is final.
+   */
+  onSettled?: () => void;
 }
+
+/**
+ * How far the panel's reveal has progressed. `settling`: laid out but waiting for
+ * its charts to finish loading. Charts that settle within
+ * {@link ANSWER_SETTLE_MAX_MS} move nothing once the panel is shown; a chart
+ * that draws or reports no data after the cap can still change its height.
+ * `revealing`: the text is revealing word by word and everything else is
+ * hidden. `revealed`: everything is shown.
+ */
+type RevealPhase = "settling" | "revealing" | "revealed";
+
+/**
+ * Returns the phase a panel mounts in. It settles first only when a caller
+ * waits on `onSettled`; otherwise it reveals at once when it should reveal
+ * and is shown in full when it should not.
+ */
+function getInitialPhase(
+  shouldReveal: boolean,
+  isAwaited: boolean,
+): RevealPhase {
+  if (isAwaited) return "settling";
+  if (shouldReveal) return "revealing";
+  return "revealed";
+}
+
+/** Media query for the user's reduced-motion preference. */
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * Longest the panel waits for its charts to settle before revealing anyway,
+ * in milliseconds, so a slow chart cannot hold back the answer.
+ */
+export const ANSWER_SETTLE_MAX_MS = 2000;
 
 const COLOR_BORDER = "var(--color-border)";
 /**
@@ -85,22 +131,70 @@ export function AnswerPanel({
   onAsk,
   citationNumbers,
   turnIndex,
+  onSettled,
 }: AnswerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const hasCharts = !!turn.chartConfig;
-  // A panel that mounts mid-stream is taking over from the skeleton, so its
-  // text reveals in reading order; one restored with its session is already
-  // there. Everything below the text waits for the reveal to finish.
-  const [enters] = useState(isStreaming);
-  const streamMs = enters ? calculateStreamDurationMs(turn.text) : undefined;
-  const [revealing, setRevealing] = useState(enters);
+  const hasCharts = getTurnCharts(turn).length > 0;
+  // A panel that mounts mid-stream, or whose caller waits on `onSettled`, is
+  // taking over from the skeleton, so it reveals its text in reading order.
+  // The caller check covers a stream that closed in the same render as the
+  // terminal event. A panel with a waiting caller settles its charts first,
+  // so charts that settle within the cap load while hidden. Under reduced
+  // motion there is no word reveal, so the whole card, export controls
+  // included, shows as soon as it settles.
+  const [shouldReveal] = useState(
+    () =>
+      (isStreaming || onSettled !== undefined) &&
+      !window.matchMedia(REDUCED_MOTION_QUERY).matches,
+  );
+  const [phase, setPhase] = useState<RevealPhase>(() =>
+    getInitialPhase(shouldReveal, onSettled !== undefined),
+  );
+  const streamMs = shouldReveal
+    ? calculateStreamDurationMs(turn.text)
+    : undefined;
+  const [settledChartIndices, setSettledChartIndices] = useState<
+    ReadonlySet<number>
+  >(() => new Set());
+  const markChartSettled = useCallback((index: number) => {
+    setSettledChartIndices((prev) => {
+      if (prev.has(index)) return prev;
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+  }, []);
+  // True at once for a turn with no chart blocks.
+  const areChartsSettled = turn.blocks.every(
+    (block) => block.type !== "chart" || settledChartIndices.has(block.index),
+  );
   useEffect(() => {
-    if (streamMs === undefined) return;
-    const timer = window.setTimeout(() => setRevealing(false), streamMs);
+    if (phase !== "settling") return;
+    const nextPhase: RevealPhase = shouldReveal ? "revealing" : "revealed";
+    if (areChartsSettled) {
+      setPhase(nextPhase);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setPhase(nextPhase),
+      ANSWER_SETTLE_MAX_MS,
+    );
     return () => window.clearTimeout(timer);
-  }, [streamMs]);
-  const settled =
-    !isStreaming || turn.status === "done" || turn.status === "error";
+  }, [phase, areChartsSettled, shouldReveal]);
+  useEffect(() => {
+    if (phase !== "revealing" || streamMs === undefined) return;
+    const timer = window.setTimeout(() => setPhase("revealed"), streamMs);
+    return () => window.clearTimeout(timer);
+  }, [phase, streamMs]);
+  // Held in a ref so an inline arrow from the caller does not re-fire the
+  // effect; `isSettling` changes at most once, so the call happens once.
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  const isSettling = phase === "settling";
+  useEffect(() => {
+    if (!isSettling) onSettledRef.current?.();
+  }, [isSettling]);
+  const isRevealed = phase === "revealed";
   /**
    * `turn.provenance` is the sources that actually supplied the answer's
    * numbers. The backend decides membership from which facet each observation
@@ -158,7 +252,7 @@ export function AnswerPanel({
           produces a PDF missing the chart. This matches the filled "Export
           PDF" button below, which also waits for status === "done". */}
       <CardHeader title={turn.userMessage}>
-        {turn.status === "done" && !revealing && (
+        {turn.status === "done" && isRevealed && (
           <>
             {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
@@ -168,37 +262,26 @@ export function AnswerPanel({
         )}
       </CardHeader>
 
-      {/* Content body — dimmed while the turn is in flight and brought to full
-          strength once its terminal event lands. Everything after the text
-          stays hidden until the text has finished revealing. */}
+      {/* Content body: everything after and between the text blocks stays
+          hidden until the text has finished revealing. */}
       <div
-        className={`flex flex-col p-4 sm:p-6 motion-safe:transition-opacity duration-300 ease-out ${
-          settled ? "opacity-100" : "opacity-80"
-        } motion-safe:[&>:not(.markdown-body)]:transition-opacity motion-safe:[&>:not(.markdown-body)]:duration-300${
-          revealing ? " motion-safe:[&>:not(.markdown-body)]:opacity-0" : ""
+        className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body)]:transition-opacity motion-safe:[&>:not(.markdown-body)]:duration-300${
+          isRevealed ? "" : " motion-safe:[&>:not(.markdown-body)]:opacity-0"
         }`}
         style={{
           gap: 16,
           background: COLOR_BODY_BG,
         }}
       >
-        {/* 1. Markdown body — bare (no nested card chrome) */}
-        <ResponseCard
-          title={turn.userMessage}
-          body={turn.text}
-          streaming={isStreaming && turn.status !== "done"}
+        {/* 1. The answer: text and chart blocks in emission order. */}
+        <AnswerBlocks
+          turn={turn}
+          phase={phase}
           streamMs={streamMs}
-          revealing={revealing}
-          sources={turn.provenance}
-          bare
+          onChartSettled={markChartSettled}
         />
 
-        {/* 2. Charts */}
-        {hasCharts && (
-          <ChartTile config={turn.chartConfig!} provenance={turn.provenance} />
-        )}
-
-        {/* 3. Truncation notice — the agent ran out of research steps, so
+        {/* 2. Truncation notice: the agent ran out of research steps, so
             this answer rests on less data than it meant to gather. Not styled
             as an error: the answer is usable, just less complete. */}
         {turn.truncated && (
@@ -211,7 +294,7 @@ export function AnswerPanel({
           </p>
         )}
 
-        {/* 4. Citations — at the end of the document, above the disclaimer,
+        {/* 3. Citations: at the end of the document, above the disclaimer,
             where a reader who has finished the answer looks for them. */}
         {hasCitations && (
           <CitationsList
@@ -221,15 +304,15 @@ export function AnswerPanel({
           />
         )}
 
-        {/* 5. Disclaimer */}
+        {/* 4. Disclaimer */}
         {(hasCharts || hasCitations) && <DisclaimerNote />}
 
-        {/* 6. Export PDF (filled, in-content) */}
-        {turn.status === "done" && !revealing && (
+        {/* 5. Export PDF (filled, in-content) */}
+        {turn.status === "done" && isRevealed && (
           <ExportPdfButton onExport={onExport} busy={exporting} />
         )}
 
-        {/* 7. Follow-up questions — agent-generated, self-contained. Hidden
+        {/* 6. Follow-up questions: agent-generated, self-contained. Hidden
             when the agent returned none (no static fallback).
 
             Marked non-print: they are buttons that ask a NEW question, so they
@@ -248,6 +331,94 @@ export function AnswerPanel({
     </div>
     </CitationNumberingProvider>
   );
+}
+
+interface AnswerBlocksProps {
+  turn: ChatTurn;
+  phase: RevealPhase;
+  /** Duration of the whole text reveal; undefined when the panel does not reveal. */
+  streamMs?: number;
+  onChartSettled: (index: number) => void;
+}
+
+/** One text block's share of the reveal, in milliseconds. */
+interface TextRevealWindow {
+  startMs: number;
+  durationMs: number;
+}
+
+/**
+ * Renders a turn's blocks in emission order, as direct children of the
+ * panel body: each text block through the Markdown renderer and each chart
+ * block through a one-item chart tile that reports when it has settled. The
+ * text blocks share one reveal in reading order, and the word animations
+ * start only once `phase` is `revealing`.
+ */
+function AnswerBlocks({
+  turn,
+  phase,
+  streamMs,
+  onChartSettled,
+}: AnswerBlocksProps) {
+  const blocks = turn.blocks;
+  const schedule =
+    streamMs === undefined ? undefined : scheduleTextReveal(blocks, streamMs);
+  return (
+    <>
+      {blocks.map((block) => {
+        if (block.type === "chart") {
+          return (
+            <ChartTile
+              key={block.index}
+              config={{ shouldRender: true, charts: [block.chart] }}
+              onSettled={() => onChartSettled(block.index)}
+            />
+          );
+        }
+        const revealWindow = schedule?.get(block.index);
+        return (
+          <ResponseCard
+            key={block.index}
+            title={turn.userMessage}
+            body={block.markdown}
+            streamMs={revealWindow?.durationMs}
+            streamStartMs={revealWindow?.startMs}
+            revealing={phase === "revealing"}
+            sources={turn.provenance}
+            bare
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Splits one reveal of `totalMs` across the text blocks in reading order, in
+ * proportion to their word counts, so each block starts where the previous
+ * one ends. Returns each text block's window keyed by its block index.
+ */
+function scheduleTextReveal(
+  blocks: AnswerBlock[],
+  totalMs: number,
+): Map<number, TextRevealWindow> {
+  const wordCounts = blocks.map((block) =>
+    block.type === "text" ? countWords(block.markdown) : 0,
+  );
+  const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
+  const msPerWord = totalMs / Math.max(totalWords, 1);
+  const schedule = new Map<number, TextRevealWindow>();
+  let wordsBefore = 0;
+  blocks.forEach((block, position) => {
+    if (block.type !== "text") return;
+    const words = wordCounts[position];
+    schedule.set(block.index, {
+      startMs: wordsBefore * msPerWord,
+      durationMs: words * msPerWord,
+    });
+    wordsBefore += words;
+  });
+  return schedule;
 }
 
 /**

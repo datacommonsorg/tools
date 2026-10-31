@@ -439,20 +439,30 @@ describe("inspectTurn", () => {
     expect(out.sourceChosenExplicitly).toBe(false);
   });
 
-  it("maps the chart config the agent asked to render", () => {
-    const out = inspectTurn([], {
-      shouldRender: true,
-      charts: [
-        {
-          vizType: "bar",
-          title: "Population across states",
-          variableDcids: ["Count_Person"],
-          placeDcids: ["wikidataId/Q1498"],
-        },
-      ],
-    });
+  it("summarizes the charts the turn renders", () => {
+    // Test: The chart summaries of an inspection.
+    // Situation: The turn renders a bar chart over one place and a ranking
+    //   chart over a cohort, which names no place DCIDs.
+    // Expectation: Each chart is summarized by title, variables, and places,
+    //   with an empty place list for the cohort chart.
+    const out = inspectTurn([], [
+      {
+        vizType: "bar",
+        title: "Population across states",
+        variableDcids: ["Count_Person"],
+        placeDcids: ["wikidataId/Q1498"],
+      },
+      {
+        vizType: "ranking",
+        title: "Median income by state",
+        variableDcids: ["Median_Income_Household"],
+        parentPlace: "country/USA",
+        childPlaceType: "State",
+      },
+    ]);
     expect(out.charts).toEqual([
       { title: "Population across states", variables: ["Count_Person"], places: ["wikidataId/Q1498"] },
+      { title: "Median income by state", variables: ["Median_Income_Household"], places: [] },
     ]);
   });
 });

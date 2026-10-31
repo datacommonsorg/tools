@@ -20,8 +20,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { ChatTurn } from "../hooks/use_sse_chat";
-import { inspectTurn } from "../utils/inspect_turn";
+import { type ChatTurn, getTurnCharts } from "@/src/hooks/use_sse_chat";
+import { inspectTurn } from "@/src/utils/inspect_turn";
 import { InspectIcon } from "./icons";
 
 /**
@@ -60,7 +60,7 @@ function Detail({ label, value }: { label: string; value?: string | number }) {
 /** The inspector's contents, without any chrome. */
 function InspectorBody({ turn }: { turn: ChatTurn }) {
   const [openResult, setOpenResult] = useState<number | null>(null);
-  const inspection = inspectTurn(turn.toolCalls, turn.chartConfig, turn.provenance);
+  const inspection = inspectTurn(turn.toolCalls, getTurnCharts(turn), turn.provenance);
   const usedFacets = inspection.facets.filter((facet) => facet.used);
 
   return (

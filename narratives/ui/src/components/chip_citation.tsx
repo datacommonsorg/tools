@@ -18,8 +18,12 @@
  * @fileoverview Renders an inline numbered citation chip.
  */
 
-import { createContext, useContext } from "react";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import { createContext, useContext, type ReactNode } from "react";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
+import {
+  createCitationMarkerPattern,
+  parseCitationNumbers,
+} from "@/src/utils/citation_marker";
 import { renderNumbers } from "./value_numeric";
 import { Tooltip } from "./tooltip";
 
@@ -193,17 +197,18 @@ function ChildWithCitations({
 }
 
 /**
- * Split a string into a mixed array of text fragments, shortened numbers and
- * CitationChip elements, matching `[N]` where N is 1-99. Handles multiple
- * adjacent citations like `[1] [2]` or `[1][2]`.
+ * Splits a string into a mixed array of text fragments, shortened numbers, and
+ * CitationChip elements, rendering one chip per number in each marker so a
+ * composite `[1, 2]` links to both of its sources. Handles multiple adjacent
+ * citations like `[1] [2]` or `[1][2]`.
  */
-function splitWithCitations(
+export function splitWithCitations(
   s: string,
   sources?: ProvenanceItem[],
   hideCitations = false,
-): React.ReactNode[] {
-  const pattern = /\[(\d{1,2})\]/g;
-  const out: React.ReactNode[] = [];
+): ReactNode[] {
+  const pattern = createCitationMarkerPattern();
+  const out: ReactNode[] = [];
   let last = 0;
   let match: RegExpExecArray | null;
   let i = 0;
@@ -212,9 +217,12 @@ function splitWithCitations(
       out.push(...renderNumbers(s.slice(last, match.index), `n${last}`));
     }
     if (!hideCitations) {
-      out.push(
-        <CitationChip key={`c-${i++}`} n={Number(match[1])} sources={sources} />,
-      );
+      parseCitationNumbers(match[1]).forEach((n, position) => {
+        if (position > 0) {
+          out.push(" ");
+        }
+        out.push(<CitationChip key={`c-${i++}`} n={n} sources={sources} />);
+      });
     }
     last = match.index + match[0].length;
   }

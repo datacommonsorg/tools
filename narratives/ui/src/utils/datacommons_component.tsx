@@ -204,23 +204,27 @@ export function dcChartRenderState(
 
 /**
  * Calls `onEmpty` once if the DC component under `hostRef` settles on having
- * no data to draw.
+ * no data to draw, and `onSettled`, when given, once when the poll stops for
+ * any reason: drawn, empty, or {@link SETTLE_BUDGET_MS} exhausted.
  *
  * Polls rather than observing: the state we need appears inside the
  * component's shadow root, which does not exist yet at mount (Lit attaches it
  * on first update) and which a MutationObserver on the host cannot see into.
  * The poll stops as soon as the component settles either way, and gives up
- * without reporting after {@link SETTLE_BUDGET_MS}.
+ * without reporting emptiness after {@link SETTLE_BUDGET_MS}.
  */
 export function useDcChartEmptyNotice(
   hostRef: RefObject<HTMLElement | null>,
   tag: DataCommonsComponentTagName,
   onEmpty: () => void,
+  onSettled?: () => void,
 ): void {
-  // Held in a ref so an inline arrow from the caller does not restart the
-  // poll on every parent re-render (chat re-renders on every SSE chunk).
+  // Held in refs so inline arrows from the caller do not restart the poll on
+  // every parent re-render (chat re-renders on every SSE chunk).
   const onEmptyRef = useRef(onEmpty);
   onEmptyRef.current = onEmpty;
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
 
   useEffect(() => {
     const deadline = Date.now() + SETTLE_BUDGET_MS;
@@ -231,6 +235,7 @@ export function useDcChartEmptyNotice(
       if (state === 'pending' && Date.now() < deadline) return;
       window.clearInterval(timer);
       if (state === 'empty') onEmptyRef.current();
+      onSettledRef.current?.();
     }, SETTLE_POLL_MS);
     return () => window.clearInterval(timer);
   }, [hostRef, tag]);
