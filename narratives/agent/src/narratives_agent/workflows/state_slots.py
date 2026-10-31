@@ -14,7 +14,7 @@
 """Builds the places, variables, and date ranges a turn retrieved.
 
 Constructs deduplicated `QueryScope` entries from the fetched `CachedTable`
-instances and displayed chart configurations for the signed `Transcript`.
+instances and resolved charts for the signed `Transcript`.
 """
 
 import logging
@@ -25,7 +25,17 @@ from typing import TypeIs
 from pydantic import ValidationError
 
 from narratives_agent.analytics.tables import ObservationTable
-from narratives_agent.json_value import JsonValue
+from narratives_agent.workflows.charts import (
+    ChildCohort,
+    PlaceList,
+    ResolvedBarChart,
+    ResolvedChart,
+    ResolvedHighlightChart,
+    ResolvedLineChart,
+    ResolvedMapChart,
+    ResolvedRankingChart,
+    ResolvedScatterChart,
+)
 from narratives_agent.workflows.transcript import (
     DATE_PATTERN,
     DCID_PATTERN,
@@ -95,23 +105,6 @@ def _is_date(value: object) -> TypeIs[str]:
     return (
         isinstance(value, str) and re.fullmatch(DATE_PATTERN, value) is not None
     )
-
-
-def _iter_strings(value: object) -> Iterator[str]:
-    """Yields the strings in a scalar or a list.
-
-    Args:
-        value: A string, a list of candidate items, or any other object.
-
-    Yields:
-        Each string item in `value`.
-    """
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, list):
-        for item in value:
-            if isinstance(item, str):
-                yield item
 
 
 def _clean_name(value: object) -> str:
@@ -251,52 +244,59 @@ def _build_table_scope(
     )
 
 
+def _read_chart_places(
+    chart: ResolvedChart,
+) -> tuple[tuple[str, ...], ChildCohort | None]:
+    """Returns the places a resolved chart draws, or the cohort it draws.
+
+    Args:
+        chart: A resolved chart of any kind.
+
+    Returns:
+        The chart's explicit place DCIDs and None, or no places and the
+        cohort it draws.
+    """
+    match chart:
+        case ResolvedLineChart(scope=scope) | ResolvedBarChart(scope=scope):
+            if isinstance(scope, PlaceList):
+                return scope.place_dcids, None
+            return (), scope
+        case ResolvedHighlightChart(place_dcid=place_dcid):
+            return (place_dcid,), None
+        case (
+            ResolvedRankingChart(cohort=cohort)
+            | ResolvedMapChart(cohort=cohort)
+            | ResolvedScatterChart(cohort=cohort)
+        ):
+            return (), cohort
+
+
 def _iter_chart_scopes(
-    chart_config: Mapping[str, JsonValue],
+    charts: Sequence[ResolvedChart],
     names: Mapping[str, str],
     known: Set[str],
 ) -> Iterator[QueryScope]:
-    """Yields a `QueryScope` per displayed chart, keeping known DCIDs only.
+    """Yields a `QueryScope` per emitted chart, keeping known DCIDs only.
 
     Args:
-        chart_config: The chart configuration sent to the browser.
+        charts: The resolved charts emitted to the browser.
         names: Mapping of grounded entity DCIDs to display names.
         known: Set of grounded variable and place DCIDs from fetched tables.
 
     Yields:
-        A `QueryScope` for each displayed chart that retains at least one
+        A `QueryScope` for each emitted chart that retains at least one
         grounded variable and place or cohort.
     """
-    if not chart_config.get("should_render") or chart_config.get("hide_charts"):
-        return
-    charts = chart_config.get("charts")
-    # The legacy single-chart format stores the chart fields at the top level.
-    items: Sequence[JsonValue | Mapping[str, JsonValue]] = (
-        charts if isinstance(charts, list) and charts else [chart_config]
-    )
-    for chart in items:
-        if not isinstance(chart, Mapping):
-            continue
-        variables = [
-            dcid
-            for dcid in _iter_strings(chart.get("variable_dcids"))
-            if dcid in known
-        ]
-        places = [
-            dcid
-            for dcid in _iter_strings(chart.get("place_dcids"))
-            if dcid in known
-        ]
-        parent = chart.get("parent_place")
-        date = chart.get("date")
+    for chart in charts:
+        places, cohort = _read_chart_places(chart)
+        parent = cohort.parent_place if cohort is not None else None
+        date = None if isinstance(chart, ResolvedLineChart) else chart.date
         scope = _build_scope(
             names,
-            variables=variables,
-            places=places,
-            parent=parent
-            if isinstance(parent, str) and parent in known
-            else None,
-            child_type=chart.get("child_place_type"),
+            variables=[dcid for dcid in chart.variable_dcids if dcid in known],
+            places=[dcid for dcid in places if dcid in known],
+            parent=parent if parent in known else None,
+            child_type=cohort.child_place_type if cohort is not None else None,
             date_range=(date, date) if _is_date(date) else None,
         )
         if scope is not None:
@@ -304,18 +304,18 @@ def _iter_chart_scopes(
 
 
 def build_state_slots(
-    tables: Sequence[CachedTable], chart_config: Mapping[str, JsonValue]
+    tables: Sequence[CachedTable], charts: Sequence[ResolvedChart] = ()
 ) -> ConversationStateSlots:
     """Builds the query scopes (places, variables, and dates) of a turn.
 
     Args:
         tables: The cached tables the turn's specification used, in order of
             first use, including any derived tables.
-        chart_config: The chart configuration sent to the browser.
+        charts: The resolved charts emitted to the browser.
 
     Returns:
         The deduplicated scopes, with one per fetched table first and then
-        one per displayed chart, capped at `MAX_SCOPES_PER_TURN`.
+        one per emitted chart, capped at `MAX_SCOPES_PER_TURN`.
     """
     names: dict[str, str] = {}
     known: set[str] = set()
@@ -339,7 +339,7 @@ def build_state_slots(
         for table in fetched
         if (scope := _build_table_scope(table, names)) is not None
     ]
-    candidates.extend(_iter_chart_scopes(chart_config, names, known))
+    candidates.extend(_iter_chart_scopes(charts, names, known))
     # Scopes compare by value, and dict equality ignores key order, so two
     # scopes listing the same places in a different order are one scope.
     scopes: list[QueryScope] = []

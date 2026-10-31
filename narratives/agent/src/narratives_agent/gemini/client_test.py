@@ -41,8 +41,6 @@ from narratives_agent.gemini.response import (
     StreamChunk,
 )
 from narratives_agent.gemini.schemas import (
-    ChartConfigResponse,
-    DataValidationResponse,
     FollowUpResponse,
     QueryClassification,
 )
@@ -440,37 +438,37 @@ async def test_a_structured_output_request_sends_the_schema_and_config(
     gemini: _FakeGemini,
 ) -> None:
     # Test: Request configuration for a structured-output call.
-    # Situation: A caller passes ChartConfigResponse as response_schema with a
+    # Situation: A caller passes FollowUpResponse as response_schema with a
     #   system instruction, temperature 0.2, and `ThinkingLevel.LOW`.
     # Expectation: The request sets responseMimeType to "application/json"
     #   with the converted responseSchema, includes the rendered system
     #   instruction and generation settings, and returns a `GeminiResponse`
     #   whose text is the structured reply.
-    answer = json.dumps({"should_render": True, "charts": []})
+    answer = json.dumps({"questions": ["And Spain?"]})
     gemini.respond(
         _answer(200, json=_response_json([{"text": answer}], _USAGE))
     )
 
     result = await _call(
         "async_request",
-        system_instruction="Extract charts.",
+        system_instruction="Suggest questions.",
         temperature=0.2,
         thinking_level=types.ThinkingLevel.LOW,
-        response_schema=ChartConfigResponse,
+        response_schema=FollowUpResponse,
     )
 
     config = gemini.body()["generationConfig"]
     assert config["responseMimeType"] == "application/json"
-    assert config["responseSchema"]["required"] == ["should_render"]
+    assert config["responseSchema"]["required"] == ["questions"]
     assert config["temperature"] == 0.2
     # The SDK serializes ThinkingConfig fields in snake_case, which the
     # Gemini API's protobuf JSON parser accepts alongside camelCase.
     assert config["thinkingConfig"] == {"thinking_level": "LOW"}
     assert gemini.body()["systemInstruction"]["parts"] == [
-        {"text": "rendered:Extract charts."}
+        {"text": "rendered:Suggest questions."}
     ]
     assert isinstance(result, GeminiResponse)
-    assert json.loads(result.text) == {"should_render": True, "charts": []}
+    assert json.loads(result.text) == {"questions": ["And Spain?"]}
 
 
 @pytest.mark.asyncio
@@ -602,8 +600,6 @@ async def test_an_api_key_crossing_the_error_length_limit_is_redacted(
     ("schema", "required"),
     [
         (QueryClassification, ["serviceable"]),
-        (ChartConfigResponse, ["should_render"]),
-        (DataValidationResponse, ["data_found"]),
         (FollowUpResponse, ["questions"]),
     ],
 )
@@ -611,7 +607,7 @@ async def test_each_schema_is_sent_to_gemini_as_expected(
     gemini: _FakeGemini, schema: type[BaseModel], required: list[str]
 ) -> None:
     # Test: The response schema each workflow sends on the wire.
-    # Situation: A structured-output request is made with each of the four
+    # Situation: A structured-output request is made with each of the two
     #   workflow schemas.
     # Expectation: The request carries the required fields and typed
     #   properties, and omits additional_properties (which the Gemini
@@ -627,42 +623,6 @@ async def test_each_schema_is_sent_to_gemini_as_expected(
     assert sent["required"] == required
     assert "additional_properties" not in sent
     assert set(sent["properties"]) == set(schema.model_fields)
-
-
-@pytest.mark.asyncio
-async def test_the_chart_schema_constrains_each_chart_on_the_wire(
-    gemini: _FakeGemini,
-) -> None:
-    # Test: The nested chart item in the chart config schema.
-    # Situation: A request is made with the chart config schema.
-    # Expectation: Each chart item requires a title, enumerates only the
-    #   supported chart types, marks optional fields nullable, and omits
-    #   additional_properties.
-    gemini.respond(_answer(200, json=_response_json([{"text": "{}"}])))
-
-    await client.async_gemini_request(
-        _MESSAGES, "", _MODEL, response_schema=ChartConfigResponse
-    )
-
-    charts = gemini.body()["generationConfig"]["responseSchema"]["properties"][
-        "charts"
-    ]
-    item = charts["items"]
-    assert charts["nullable"] is True
-    assert item["required"] == ["title"]
-    assert "additional_properties" not in item
-    assert item["properties"]["viz_type"]["enum"] == [
-        "line",
-        "bar",
-        "ranking",
-        "pie",
-        "highlight",
-        "gauge",
-        "scatter",
-        "slider",
-    ]
-    assert item["properties"]["viz_type"]["nullable"] is True
-    assert item["properties"]["date"]["nullable"] is True
 
 
 @pytest.mark.asyncio

@@ -8,8 +8,6 @@
     "classify_model": "gemini-3.5-flash-lite",
     "discovery_model": "gemini-3.8-flash",
     "synthesis_model": "gemini-3.8-flash",
-    "chart_config_model": "gemini-3.8-flash",
-    "chart_validation_model": "gemini-3.8-flash",
     "follow_up_model": "gemini-3.8-flash",
     "compaction_model": "gemini-3.8-flash"
   },

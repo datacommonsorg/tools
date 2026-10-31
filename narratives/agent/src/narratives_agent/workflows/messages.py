@@ -21,7 +21,6 @@ CLASSIFY_STATUS = "Understanding the question..."
 DISCOVERY_STATUS = "Querying data tools..."
 PROCESSING_STATUS = "Analyzing data..."
 SYNTHESIS_STATUS = "Generating response..."
-CHART_CONFIG_STATUS = "Preparing charts..."
 
 # Refusal messages carried on `terminal` SSE frames with `state == "refused"`.
 # Adversarial and safety-blocked turns always return a fixed string rather
@@ -57,7 +56,6 @@ INTERNAL_ERROR = "An internal error occurred. Please try again."
 PER_CAPITA_CHART_TITLE_TEMPLATE = "{variable_name} per person"
 
 __all__ = [
-    "CHART_CONFIG_STATUS",
     "CHAT_DISABLED",
     "CLASSIFY_STATUS",
     "DISCOVERY_STATUS",

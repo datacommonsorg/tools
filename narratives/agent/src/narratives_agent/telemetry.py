@@ -410,6 +410,9 @@ class TurnTelemetry:
         total_rows_fetched: Total observation rows across all fetched tables.
         processing_retries: Number of rejected `submit_specification` attempts
             that returned to discovery for a retry.
+        charts_emitted: Number of resolved chart blocks emitted during the turn.
+        charts_rejected: Number of chart blocks dropped by the block splitter or
+            chart resolver during the turn.
     """
 
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -421,11 +424,13 @@ class TurnTelemetry:
     # the turn was refused or ended before classification.
     pattern: QueryPattern | None = None
     # The scripts the turn's specification ran, in step order, and the counts
-    # of its fetches and processing retries.
+    # of its fetches, processing retries, and charts.
     scripts: list[str] = field(default_factory=list)
     tables_fetched: int = 0
     total_rows_fetched: int = 0
     processing_retries: int = 0
+    charts_emitted: int = 0
+    charts_rejected: int = 0
     _start: float = field(default_factory=time.monotonic)
     _span: trace.Span = field(
         default_factory=lambda: _tracer.start_span("narratives.turn")
@@ -511,6 +516,8 @@ class TurnTelemetry:
             "tables_fetched": self.tables_fetched,
             "total_rows_fetched": self.total_rows_fetched,
             "processing_retries": self.processing_retries,
+            "charts_emitted": self.charts_emitted,
+            "charts_rejected": self.charts_rejected,
         }
         if self.pattern is not None and state != TerminalState.REFUSED:
             record["pattern"] = self.pattern
@@ -524,6 +531,8 @@ class TurnTelemetry:
             "narratives.tables_fetched": self.tables_fetched,
             "narratives.total_rows_fetched": self.total_rows_fetched,
             "narratives.processing_retries": self.processing_retries,
+            "narratives.charts_emitted": self.charts_emitted,
+            "narratives.charts_rejected": self.charts_rejected,
             **{
                 f"narratives.tokens.{key}": value
                 for key, value in tokens.items()

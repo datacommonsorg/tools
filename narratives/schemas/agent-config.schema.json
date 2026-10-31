@@ -36,18 +36,8 @@
           "type": "string",
           "default": "gemini-3.8-flash"
         },
-        "chart_config_model": {
-          "description": "Model used for chart configuration, where chart specifications are selected from the gathered observations.",
-          "type": "string",
-          "default": "gemini-3.8-flash"
-        },
-        "chart_validation_model": {
-          "description": "Model used for chart validation, which checks whether the synthesized answer contains chartable data.",
-          "type": "string",
-          "default": "gemini-3.8-flash"
-        },
         "follow_up_model": {
-          "description": "Model used for follow-up generation, which suggests follow-up questions grounded in the chart topics.",
+          "description": "Model used for follow-up generation, which suggests follow-up questions grounded in the turn's digest, chart titles, and missing-data notes.",
           "type": "string",
           "default": "gemini-3.8-flash"
         },

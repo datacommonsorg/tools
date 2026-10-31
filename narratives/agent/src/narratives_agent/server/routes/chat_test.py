@@ -42,13 +42,14 @@ from starlette.types import Message
 from narratives_agent.config_model import AgentConfig
 from narratives_agent.server.routes import chat
 from narratives_agent.workflows import transcript as transcript_module
+from narratives_agent.workflows.blocks import TextBlock
 from narratives_agent.workflows.chat_pipeline import Emit
 from narratives_agent.workflows.messages import DISCOVERY_STATUS
 from narratives_agent.workflows.sse_frames import (
+    BlockContentFrame,
     SseFrame,
     StatusFrame,
     TerminalCompleteFrame,
-    TextFrame,
     ThoughtFrame,
 )
 from narratives_agent.workflows.transcript import (
@@ -72,7 +73,7 @@ _UNSIGNED_COMPLETE = TerminalCompleteFrame(
 )
 _FRAMES: list[SseFrame] = [
     _STATUS,
-    TextFrame(text="About 68 million."),
+    BlockContentFrame(block=TextBlock(index=0, markdown="About 68 million.")),
     _UNSIGNED_COMPLETE,
 ]
 
@@ -157,7 +158,8 @@ def test_stream_sends_each_event_as_a_typed_frame_byte_for_byte(
         b'data: {"phase": "discovery", "message": "Querying data tools..."}'
         b"\r\n\r\n"
         b"id: 2\r\nevent: content\r\n"
-        b'data: {"text": "About 68 million."}\r\n\r\n'
+        b'data: {"block": {"index": 0, "type": "text", '
+        b'"markdown": "About 68 million."}}\r\n\r\n'
         b"id: 3\r\nevent: terminal\r\n"
         b'data: {"state": "complete", '
         b'"idempotency_key": "test-idempotency-key"}\r\n\r\n'

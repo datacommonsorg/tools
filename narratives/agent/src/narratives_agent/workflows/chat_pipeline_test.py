@@ -14,40 +14,42 @@
 """Tests for `run_turn` in the chat pipeline.
 
 Verifies that:
-1. A complete turn emits the answer, the chart config, a `complete`
+1. A complete turn emits the answer as text and chart blocks, a `complete`
    terminal event carrying the idempotency key and the signed window, then
    the follow-ups, and is recorded as `complete`. The signed turn verifies
    on the next request, and an answer too long to sign is left unsigned.
 2. The discovery phase runs the discovery loop, answers from its digest or
    from a default specification over the cache when the loop ends without
    one, streams the tool calls, the data status, and the digest's sources,
-   renders the digest and a table inventory for synthesis and the chart
-   planner, and records the scripts, fetch counts, and retries in
-   telemetry.
+   passes the digest and the table inventory to synthesis, and records the
+   scripts, fetch counts, and retries in telemetry.
 3. A missing configuration, a failed discovery loop, an empty or slow tool
-   list, and a failed, broken, or empty synthesis end the turn with one
-   `error` terminal event carrying a fixed message and the machine-readable
-   `reason`, and are recorded as `error` with that reason. Configuration and
-   MCP failures end the turn before synthesis. When the MCP server is missing
-   required tools, the discovery phase logs a warning and continues the turn.
+   list, and a failed, broken, stalled, or empty synthesis end the turn with
+   one `error` terminal event carrying a fixed message and the
+   machine-readable `reason`, and are recorded as `error` with that reason.
+   Configuration and MCP failures end the turn before synthesis. When the MCP
+   server is missing required tools, the discovery phase logs a warning and
+   continues the turn.
 4. An unexpected exception ends the turn as `internal_error`; a follow-up
    failure after the terminal event leaves the turn `complete`.
-5. A chart config that misses its join timeout is canceled and the turn
-   completes without charts; a chart config that failed is retrieved.
-6. Cancellation mid-turn cancels the background chart task and is recorded
-   as `canceled`; cancellation after the terminal event stays `complete`.
+5. A chart block in the synthesis stream is resolved against the turn cache
+   and emitted in place while its markdown fence is stripped from the signed
+   text; a rejected chart block is dropped and, when no chart block is
+   emitted for a turn with data, a default chart is appended.
+6. Cancellation mid-turn is recorded as `canceled`; cancellation after the
+   terminal event stays `complete`.
 7. Synthesis receives the verified window before the current query, an
    `error` terminal event carries no signing fields, and a failure while
    signing leaves the delivered turn complete and unsigned.
 8. The classify phase runs first behind a `classify` status frame: a
    refusal ends the turn in one `refused` terminal frame without an `error`
-   key and without any model call, a clarification is streamed as the
-   answer and signed with empty state slots, a classification carries its
-   pattern directive into the discovery loop and synthesis and its pattern
-   into telemetry, and a classifier failure proceeds as `exploratory`
-   without a directive. A model call that Gemini blocks in the classify
-   phase, the discovery loop, or synthesis ends the turn as `refused` with
-   reason `safety_blocked`.
+   key and without any model call, a clarification is emitted as the one
+   text block and signed with empty state slots, a classification carries
+   its pattern directive into the discovery loop and synthesis and its
+   pattern into telemetry, and a classifier failure proceeds as
+   `exploratory` without a directive. A model call that Gemini blocks in the
+   classify phase, the discovery loop, or synthesis ends the turn as
+   `refused` with reason `safety_blocked`.
 9. The serialized frames of a complete turn match the recorded wire
    sequence, byte for byte.
 """
@@ -61,9 +63,14 @@ from dataclasses import dataclass, field, replace
 
 import pytest
 
-from narratives_agent.analytics.digest import AnalysisDigest
+from narratives_agent.analytics.digest import (
+    AnalysisDigest,
+    RefusedScriptResult,
+)
 from narratives_agent.analytics.provenance import Provenance, Source
+from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
+from narratives_agent.analytics.timeseries import analyze_timeseries
 from narratives_agent.config_model import AgentConfig, Prompts
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -83,7 +90,7 @@ from narratives_agent.telemetry import (
 )
 from narratives_agent.workflows import chat_pipeline
 from narratives_agent.workflows import transcript as transcript_module
-from narratives_agent.workflows.chat_pipeline import render_analysis_context
+from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import (
     Admitted,
     Clarification,
@@ -110,6 +117,7 @@ from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
     execute_specification,
 )
+from narratives_agent.workflows.prompt_contracts import load_prompt_contract
 from narratives_agent.workflows.specification import (
     AnalysisSpecification,
     UnavailableReport,
@@ -131,9 +139,13 @@ from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
 _QUESTION = "What is the population of France?"
 _IDEMPOTENCY_KEY = "test-idempotency-key"
 _ANSWER = "About 68 million."
-_CHARTS: JsonObject = {
-    "should_render": True,
-    "charts": [{"title": "Population"}],
+# Default chart of the series summary over `t1`: a line chart over France.
+_DEFAULT_CHART: JsonObject = {
+    "viz_type": "line",
+    "title": "Total Population",
+    "variable_dcids": ["Count_Person"],
+    "place_dcids": ["country/FRA"],
+    "facet_ids": {"Count_Person": "f1"},
 }
 _FOLLOW_UPS = ["And Spain?"]
 _TRANSCRIPT = Transcript(
@@ -153,6 +165,8 @@ _TOOL_CALL: JsonObject = {
     "result": json.dumps({"table_id": "t1", "row_count": 2}),
     "status": "success",
 }
+# Scopes of a complete turn: one for the fetched table, with the span of its
+# dates, and one for the default chart, which carries no date.
 _SCOPES: JsonObject = {
     "scopes": [
         {
@@ -161,7 +175,14 @@ _SCOPES: JsonObject = {
             "child_place_type": None,
             "variables": {"Count_Person": "Total Population"},
             "date_range": ["2022", "2023"],
-        }
+        },
+        {
+            "places": {"country/FRA": "France"},
+            "parent_place": None,
+            "child_place_type": None,
+            "variables": {"Count_Person": "Total Population"},
+            "date_range": None,
+        },
     ]
 }
 _CLASSIFICATION = QueryClassification.model_validate(
@@ -262,12 +283,11 @@ class _Turn:
     synthesis_calls: int = 0
     synthesis_messages: list[list[JsonObject]] = field(default_factory=list)
     synthesis_instructions: list[str] = field(default_factory=list)
-    chart_contexts: list[str] = field(default_factory=list)
+    answer: str = _ANSWER
+    follow_up_topics: list[list[str]] = field(default_factory=list)
     loop_classifications: list[QueryClassification | None] = field(
         default_factory=list
     )
-    chart_canceled: asyncio.Event = field(default_factory=asyncio.Event)
-    chart_release: asyncio.Event = field(default_factory=asyncio.Event)
     synthesis_release: asyncio.Event = field(default_factory=asyncio.Event)
     follow_ups_release: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -285,6 +305,31 @@ class _Turn:
             data[key]
             for event, data in self.events
             if event == "content" and key in data
+        ]
+
+    def list_blocks(self) -> list[JsonObject]:
+        """Returns the `block` payloads streamed, in order."""
+        return [
+            dict(block)
+            for block in self.list_content_payloads("block")
+            if isinstance(block, dict)
+        ]
+
+    def list_texts(self) -> list[str]:
+        """Returns the markdown of the text blocks streamed, in order."""
+        return [
+            str(block["markdown"])
+            for block in self.list_blocks()
+            if block["type"] == "text"
+        ]
+
+    def list_charts(self) -> list[JsonObject]:
+        """Returns the charts of the chart blocks streamed, in order."""
+        return [
+            dict(chart)
+            for block in self.list_blocks()
+            if block["type"] == "chart"
+            and isinstance(chart := block.get("chart"), dict)
         ]
 
     def get_synthesis_context(self) -> str:
@@ -315,7 +360,6 @@ async def _run_accepted_loop(cache: TurnCache, **_: object) -> DiscoveryResult:
 def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     """Stubs every external call of a turn so each stage succeeds at once."""
     stub = _Turn()
-    stub.chart_release.set()
     stub.synthesis_release.set()
     stub.follow_ups_release.set()
 
@@ -353,7 +397,7 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
 
     async def stream_answer() -> AsyncGenerator[StreamChunk]:
         await stub.synthesis_release.wait()
-        yield StreamChunk("text", _ANSWER)
+        yield StreamChunk("text", stub.answer)
 
     async def start_synthesis(
         *,
@@ -366,30 +410,15 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
         stub.synthesis_instructions.append(system_instruction)
         return stream_answer()
 
-    async def build_chart_config(
-        results: str, question: str, config: AgentConfig, usage: TokenUsage
-    ) -> JsonObject:
-        stub.chart_contexts.append(results)
-        try:
-            await stub.chart_release.wait()
-        except asyncio.CancelledError:
-            stub.chart_canceled.set()
-            raise
-        return dict(_CHARTS)
-
-    async def validate(
-        text: str, question: str, config: AgentConfig, usage: TokenUsage
-    ) -> bool:
-        return True
-
     async def generate_follow_ups(
         question: str,
         topics: list[str],
         config: AgentConfig,
         usage: TokenUsage,
     ) -> list[str]:
+        stub.follow_up_topics.append(list(topics))
         await stub.follow_ups_release.wait()
-        return list(_FOLLOW_UPS)
+        return list(_FOLLOW_UPS) if topics else []
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", create_telemetry)
     monkeypatch.setattr(
@@ -404,8 +433,6 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
     monkeypatch.setattr(mcp_client, "async_get_tools", get_tools)
     monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_discovery)
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
-    monkeypatch.setattr(chat_pipeline, "get_chart_config", build_chart_config)
-    monkeypatch.setattr(chat_pipeline, "validate_data_response", validate)
     monkeypatch.setattr(
         chat_pipeline, "generate_follow_up_questions", generate_follow_ups
     )
@@ -453,18 +480,22 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
     turn: _Turn,
 ) -> None:
     # Test: The event sequence of a turn in which every phase succeeds.
-    # Situation: Discovery, synthesis, chart config, and follow-ups all
-    #   succeed.
-    # Expectation: The answer text and then the chart config are emitted as
-    #   content, followed by one `complete` terminal event with the
-    #   request's idempotency key, the signed turn, the state slots built
-    #   from the fetched table, and a one-turn window, and last the
-    #   follow-ups; the turn is recorded as `complete`.
+    # Situation: Discovery, synthesis, and follow-ups all succeed, and the
+    #   answer carries no chart block of its own.
+    # Expectation: The answer is emitted as one text block and then the
+    #   default chart as a chart block, followed by one `complete` terminal
+    #   event with the request's idempotency key, the signed turn, the
+    #   state slots built from the fetched table and the chart, and a
+    #   one-turn window, and last the follow-ups; telemetry counts the one
+    #   chart, and the turn is recorded as `complete`.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
+    assert turn.list_blocks() == [
+        {"index": 0, "type": "text", "markdown": _ANSWER},
+        {"index": 1, "type": "chart", "chart": _DEFAULT_CHART},
+    ]
     content = [data for event, data in turn.events if event == "content"]
-    assert {"text": _ANSWER} in content
-    assert content[-1] == {"chart_config": _CHARTS}
+    assert content[-1] == {"block": turn.list_blocks()[1]}
     event, terminal = turn.events[-2]
     assert event == "terminal"
     signature = terminal["hmac"]
@@ -490,6 +521,9 @@ async def test_complete_turn_emits_the_answer_then_the_follow_ups(
         {"follow_up_questions": _FOLLOW_UPS},
     )
     assert turn.list_event_names().count("terminal") == 1
+    assert turn.telemetry is not None
+    assert turn.telemetry.charts_emitted == 1
+    assert turn.telemetry.charts_rejected == 0
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
@@ -504,11 +538,10 @@ async def test_the_discovery_phase_streams_its_results(
     # Expectation: The phase opens with a `discovery` status, relays the
     #   thought with phase `discovery` and the processing status, streams
     #   the tool call, a data status with data and no truncation, and the
-    #   table's source as the one numbered source; synthesis and the chart
-    #   planner receive the digest and the table inventory, prefixed with
-    #   the numbered source, and not the model's finding; and telemetry
-    #   records the script, the fetch counts, no retries, and the discovery
-    #   phase.
+    #   table's source as the one numbered source; synthesis receives the
+    #   digest and the table inventory, prefixed with the numbered source,
+    #   and not the model's finding; and telemetry records the script, the
+    #   fetch counts, no retries, and the discovery phase.
     async def run_loop(
         transcript: Transcript,
         config: AgentConfig,
@@ -551,9 +584,6 @@ async def test_the_discovery_phase_streams_its_results(
     assert "Step s1: analyze_timeseries on Total Population" in context
     assert "France publishes an annual census estimate." not in context
     assert "- t1: Total Population (Count_Person); unit: Person" in context
-    (chart_context,) = turn.chart_contexts
-    assert chart_context.startswith("Step s1: analyze_timeseries")
-    assert chart_context in context
     assert turn.telemetry is not None
     assert turn.telemetry.scripts == ["analyze_timeseries"]
     assert turn.telemetry.tables_fetched == 1
@@ -607,8 +637,9 @@ async def test_an_unavailable_report_answers_without_data(
     #   table.
     # Expectation: The data status reports no data with the no-data
     #   message, no sources are streamed, synthesis receives the note as
-    #   missing data, no chart task runs, the turn completes with empty
-    #   state slots, and telemetry records no scripts.
+    #   missing data, no chart block is emitted and no default chart is
+    #   appended, the follow-ups are grounded in the note alone, the turn
+    #   completes with empty state slots, and telemetry records no scripts.
     report = UnavailableReport(
         searched_indicators=["Count_Person_Martian"],
         searched_places=["country/FRA"],
@@ -627,14 +658,12 @@ async def test_an_unavailable_report_answers_without_data(
         }
     ]
     assert turn.list_content_payloads("sources") == []
-    assert turn.list_content_payloads("chart_config") == [
-        {"should_render": False}
-    ]
+    assert turn.list_charts() == []
     context = turn.get_synthesis_context()
-    assert "Missing data:" in context
+    assert "MISSING DATA:" in context
     assert "- " + report.format_note() in context
     assert "NUMBERED SOURCES" not in context
-    assert turn.chart_contexts == []
+    assert turn.follow_up_topics == [[report.format_note()]]
     _, terminal = turn.events[-2]
     assert terminal["state_slots"] == {"scopes": []}
     assert turn.telemetry is not None
@@ -681,8 +710,9 @@ async def test_a_truncated_loop_without_tables_reports_no_data(
     # Test: The fallback when the loop ends at a bound with nothing cached.
     # Situation: The loop returns truncated with an empty cache.
     # Expectation: The data status reports no data with the truncation
-    #   message, synthesis receives the no-observations note, and the turn
-    #   completes without charts.
+    #   message, synthesis receives the no-observations note, no follow-up
+    #   topics or `follow_ups` frame are emitted, and the turn completes
+    #   without a chart block.
     _install_loop(monkeypatch, DiscoveryResult(truncated=True))
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -695,9 +725,9 @@ async def test_a_truncated_loop_without_tables_reports_no_data(
         }
     ]
     assert chat_pipeline._NO_OBSERVATIONS_NOTE in turn.get_synthesis_context()
-    assert turn.list_content_payloads("chart_config") == [
-        {"should_render": False}
-    ]
+    assert turn.list_charts() == []
+    assert turn.follow_up_topics == [[]]
+    assert "follow_ups" not in turn.list_event_names()
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
@@ -740,109 +770,6 @@ async def test_exhausted_retries_fall_back_and_note_the_failure(
     assert turn.telemetry is not None
     assert turn.telemetry.processing_retries == 2
     assert turn.finished == [(TerminalState.COMPLETE, None)]
-
-
-def test_render_analysis_context_lists_the_tables() -> None:
-    # Test: The adapter that feeds synthesis and the chart planner.
-    # Situation: A digest with no results, a specification with one finding
-    #   whose second step derives a table from the first two, and three
-    #   tables: a cohort of counties with more places than the inventory
-    #   cap and a scaling factor, a single-place table without a unit, and
-    #   the derived table, whose variable DCID the specification chose.
-    # Expectation: The text holds no trace of the finding, which is the
-    #   model's note rather than a computed figure, then one inventory line
-    #   per table naming its id, variable, unit with any scaling factor,
-    #   scope, date span, and places, with the cohort's places capped and
-    #   counted; the derived table is listed by name only, marked as derived
-    #   from its inputs and not a Data Commons variable, so the chart
-    #   planner cannot pick its DCID up.
-    places = tuple(f"geoId/{n:05d}" for n in range(30))
-    cohort = CachedTable(
-        table_id="t1",
-        table=ObservationTable(
-            variable_dcid="Count_Person",
-            variable_name="Total Population",
-            unit="Person",
-            scaling_factor=1000.0,
-            provenance=Provenance(),
-            rows=tuple(
-                ObservationRow(place, f"County {place[-5:]}", "2023", 1.0)
-                for place in places
-            ),
-            requested_places=places,
-            place_names={place: f"County {place[-5:]}" for place in places},
-            parent_place_dcid="geoId/06",
-            child_place_type="County",
-        ),
-    )
-    single_table = ObservationTable(
-        variable_dcid="Median_Income",
-        variable_name="Median Income",
-        unit=None,
-        scaling_factor=None,
-        provenance=Provenance(),
-        rows=(
-            ObservationRow("geoId/06", "California", "2020", 1.0),
-            ObservationRow("geoId/06", "California", "2023", 2.0),
-        ),
-        requested_places=("geoId/06",),
-        place_names={"geoId/06": "California"},
-    )
-    single = CachedTable(table_id="t2", table=single_table)
-    derived = CachedTable(
-        table_id="s2",
-        table=replace(
-            single_table,
-            variable_dcid="Income_Per_Capita_Invented",
-            variable_name="Income per capita",
-            unit="USD",
-        ),
-    )
-    specification = AnalysisSpecification.model_validate(
-        {
-            "steps": [
-                {"step_id": "s1", "script": "rank_cohort", "table": "t1"},
-                {
-                    "step_id": "s2",
-                    "script": "compute_derived_metric",
-                    "left": "t2",
-                    "right": "t1",
-                    "derived_variable_dcid": "Income_Per_Capita_Invented",
-                },
-            ],
-            "findings": ["Counties vary widely."],
-        }
-    )
-
-    text = render_analysis_context(
-        AnalysisDigest(results=(), sources=()),
-        specification,
-        (cohort, single, derived),
-    )
-
-    assert "Counties vary widely" not in text
-    assert "findings" not in text
-    cohort_line, single_line, derived_line = text.split("Tables used:\n")[
-        1
-    ].splitlines()
-    assert cohort_line.startswith(
-        "- t1: Total Population (Count_Person); unit: Person (scaling factor "
-        "1000); every County in geoId/06; dates 2023 to 2023; places with "
-        "data: County 00000 (geoId/00000)"
-    )
-    assert cohort_line.endswith(
-        f", and {30 - chat_pipeline._INVENTORY_PLACE_CAP} other places"
-    )
-    assert single_line == (
-        "- t2: Median Income (Median_Income); unit: unknown; 1 place; "
-        "dates 2020 to 2023; places with data: California (geoId/06)"
-    )
-    assert derived_line == (
-        "- s2 (derived from t2 and t1; not a Data Commons variable, do not "
-        "chart it): Income per capita; unit: USD; 1 place; dates 2020 to "
-        "2023; places with data: California (geoId/06)"
-    )
-    assert "Income_Per_Capita_Invented" not in text
 
 
 def _make_state_cohort(
@@ -1096,8 +1023,7 @@ async def test_a_signing_failure_completes_the_turn_unsigned(
 ) -> None:
     # Test: A signing failure after the answer is delivered leaves the turn
     #   complete and unsigned.
-    # Situation: Signing raises once the answer and chart config have been
-    #   emitted.
+    # Situation: Signing raises once the answer's blocks have been emitted.
     # Expectation: The turn still ends `complete`, without signing fields,
     #   and is recorded as `complete`.
     async def fail_finalize(*args: object, **_: object) -> None:
@@ -1198,126 +1124,270 @@ async def test_failed_synthesis_reports_a_fixed_message(
 
 
 @pytest.mark.asyncio
-async def test_slow_chart_config_is_canceled_and_charts_are_dropped(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+async def test_a_chart_block_is_resolved_and_streamed_in_place(
+    turn: _Turn,
 ) -> None:
-    # Test: The chart-config join timeout.
-    # Situation: The join timeout is shortened to 10 ms and chart
-    #   configuration never finishes.
-    # Expectation: The chart task is canceled, and the turn completes with
-    #   `should_render` set to `False`.
-    monkeypatch.setattr(
-        chat_pipeline, "_CHART_CONFIG_JOIN_TIMEOUT_SECONDS", 0.01
+    # Test: A chart block the model writes.
+    # Situation: The answer holds a paragraph, a chart block over `t1`
+    #   naming the one place the table has, and a closing paragraph.
+    # Expectation: The blocks are streamed in order with the chart resolved
+    #   to the wire shape, the signed answer is the two paragraphs joined by
+    #   a blank line with the block stripped, no default chart is added,
+    #   the chart contributes a state slot, the follow-ups are grounded in
+    #   the variable and the chart's title, and telemetry counts one chart.
+    turn.answer = (
+        "France is growing.\n\n"
+        '```chart\n{"kind": "line", "tables": ["t1"], '
+        '"places": ["country/FRA"], "title": "Population of France"}\n```\n\n'
+        "It reached 68 million in 2023."
     )
-    turn.chart_release.clear()
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    content = [data for event, data in turn.events if event == "content"]
-    assert content[-1] == {"chart_config": {"should_render": False}}
-    assert turn.chart_canceled.is_set()
-    assert turn.finished == [(TerminalState.COMPLETE, None)]
-
-
-@pytest.mark.asyncio
-async def test_a_failed_chart_task_leaves_the_turn_complete(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
-) -> None:
-    # Test: Containment of a chart-configuration failure.
-    # Situation: Chart configuration raises after the answer has streamed.
-    # Expectation: The turn completes with `should_render` set to `False`
-    #   rather than ending as an internal error.
-    async def fail_chart_config(*args: object) -> JsonObject:
-        raise RuntimeError("chart config failed")
-
-    monkeypatch.setattr(chat_pipeline, "get_chart_config", fail_chart_config)
-
-    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
-
-    content = [data for event, data in turn.events if event == "content"]
-    assert {"text": _ANSWER} in content
-    assert content[-1] == {"chart_config": {"should_render": False}}
-    terminals = [data for event, data in turn.events if event == "terminal"]
-    assert [terminal["state"] for terminal in terminals] == [
-        TerminalState.COMPLETE
+    chart = {**_DEFAULT_CHART, "title": "Population of France"}
+    assert turn.list_blocks() == [
+        {"index": 0, "type": "text", "markdown": "France is growing."},
+        {"index": 1, "type": "chart", "chart": chart},
+        {
+            "index": 2,
+            "type": "text",
+            "markdown": "It reached 68 million in 2023.",
+        },
     ]
-    assert turn.finished == [(TerminalState.COMPLETE, None)]
+    _, terminal = turn.events[-2]
+    assert terminal["state_slots"] == _SCOPES
+    stored = Turn.model_validate(
+        {
+            "turn_index": 0,
+            "idempotency_key": _IDEMPOTENCY_KEY,
+            "user_query": _QUESTION,
+            "model_response": (
+                "France is growing.\n\nIt reached 68 million in 2023."
+            ),
+            "state_slots": terminal["state_slots"],
+            "hmac": terminal["hmac"],
+        }
+    )
+    assert load_transcript(_Request("And Spain?", "key-2", [stored])).turns == [
+        stored
+    ]
+    assert turn.follow_up_topics == [
+        ["Total Population in France", "Population of France"]
+    ]
+    assert turn.telemetry is not None
+    assert turn.telemetry.charts_emitted == 1
+    assert turn.telemetry.charts_rejected == 0
 
 
 @pytest.mark.asyncio
-async def test_a_failed_chart_validation_hides_the_charts(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+async def test_a_rejected_chart_block_gives_way_to_the_default_chart(
+    turn: _Turn,
 ) -> None:
-    # Test: Containment of a chart-validation failure.
-    # Situation: The data-validation check raises after the answer has
-    #   streamed, and chart configuration succeeds.
-    # Expectation: The turn completes with the charts hidden rather than
-    #   ending as an internal error.
-    async def fail_validate(*args: object) -> bool:
-        raise RuntimeError("validation failed")
-
-    monkeypatch.setattr(chat_pipeline, "validate_data_response", fail_validate)
+    # Test: The default-chart floor after a rejected block.
+    # Situation: The answer's one chart block names a table the turn never
+    #   fetched.
+    # Expectation: The block is dropped without a trace in the text, the
+    #   default chart is appended after the prose, and telemetry counts one
+    #   rejected and one emitted chart.
+    turn.answer = (
+        "France is growing.\n\n"
+        '```chart\n{"kind": "line", "tables": ["t9"], "title": "Ghost"}\n```'
+    )
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    content = [data for event, data in turn.events if event == "content"]
-    assert content[-1] == {"chart_config": {**_CHARTS, "hide_charts": True}}
-    terminals = [data for event, data in turn.events if event == "terminal"]
-    assert [terminal["state"] for terminal in terminals] == [
-        TerminalState.COMPLETE
-    ]
+    assert turn.list_texts() == ["France is growing."]
+    assert turn.list_charts() == [_DEFAULT_CHART]
+    assert turn.telemetry is not None
+    assert turn.telemetry.charts_emitted == 1
+    assert turn.telemetry.charts_rejected == 1
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
 @pytest.mark.asyncio
-async def test_malformed_chart_entries_do_not_fail_the_turn(
+async def test_a_chart_block_naming_an_unused_cached_table_is_rejected(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
-    # Test: Tolerance of malformed entries in a chart configuration.
-    # Situation: Chart configuration returns an object whose `charts` list
-    #   mixes a well-formed chart with a null entry, a string, and a chart
-    #   whose title is not a string.
-    # Expectation: The turn completes, and the follow-ups are grounded in
-    #   the one well-formed title.
-    topics: list[list[str]] = []
-    malformed: JsonObject = {
-        "should_render": True,
-        "charts": [None, "Population", {"title": 7}, {"title": "GDP"}],
-    }
+    # Test: Rejecting a chart block that names a cached table outside the
+    #   table inventory.
+    # Situation: The loop caches an unused `t1` for Germany and `t2` for
+    #   France, accepts a series specification over `t2` alone, and
+    #   synthesis emits a chart block naming `t1`.
+    # Expectation: The `t1` chart block is dropped, the default chart for
+    #   `t2` is appended in its place, and telemetry counts one rejected
+    #   and one emitted chart.
+    unused = _make_table("t1", places=("country/DEU",))
+    unused = replace(unused, table=replace(unused.table, facet_id="f_unused"))
+    accepted = _make_table("t2", places=("country/FRA",))
+    spec = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "analyze_timeseries", "table": "t2"}
+            ]
+        }
+    )
 
-    async def build_chart_config(*args: object) -> JsonObject:
-        return malformed
-
-    async def generate_follow_ups(
-        question: str,
-        chart_topics: list[str],
+    async def run_loop(
+        transcript: Transcript,
         config: AgentConfig,
-        usage: TokenUsage,
-    ) -> list[str]:
-        topics.append(chart_topics)
-        return list(_FOLLOW_UPS)
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        **_: object,
+    ) -> DiscoveryResult:
+        cache.store_fetched(unused)
+        cache.store_fetched(accepted)
+        digest = await execute_specification(spec, cache)
+        assert isinstance(digest, AnalysisDigest)
+        return DiscoveryResult(specification=spec, digest=digest)
 
-    monkeypatch.setattr(chat_pipeline, "get_chart_config", build_chart_config)
-    monkeypatch.setattr(
-        chat_pipeline, "generate_follow_up_questions", generate_follow_ups
+    monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_loop)
+    turn.answer = (
+        "France is growing.\n\n"
+        '```chart\n{"kind": "line", "tables": ["t1"], '
+        '"places": ["country/DEU"], "title": "Germany"}\n```'
     )
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert topics == [["GDP"]]
+    assert turn.list_texts() == ["France is growing."]
+    assert turn.list_charts() == [_DEFAULT_CHART]
+    assert turn.telemetry is not None
+    assert turn.telemetry.charts_emitted == 1
+    assert turn.telemetry.charts_rejected == 1
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
 @pytest.mark.asyncio
-async def test_cancel_mid_turn_cancels_the_chart_task(turn: _Turn) -> None:
+async def test_a_chart_block_on_a_no_data_turn_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Rejecting a chart block when the turn has no computed data.
+    # Situation: A top-N turn ends at a bound with one state cohort table
+    #   requesting four states with two dates for only one state, so its
+    #   default `rank_cohort` step refuses (`has_data=False`) while `t1`
+    #   stays cached, and synthesis emits a `line` chart block over `t1`.
+    # Expectation: `data_status` reports `has_data=False`, no chart block is
+    #   emitted, and telemetry counts zero emitted and one rejected chart.
+    ranking = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "top_n_ranking",
+            "geographic_shape": "child_places",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(ranking)
+
+    sparse = _make_state_cohort("t1", "Median_Income", "01 02 03 04")
+    sparse = replace(
+        sparse,
+        table=replace(
+            sparse.table,
+            rows=(
+                ObservationRow("geoId/01", "geoId/01", "2022", 1.0),
+                ObservationRow("geoId/01", "geoId/01", "2023", 2.0),
+            ),
+        ),
+    )
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    _install_loop(monkeypatch, DiscoveryResult(truncated=True), sparse)
+    turn.answer = (
+        "State income data is sparse.\n\n"
+        '```chart\n{"kind": "line", "tables": ["t1"], '
+        '"places": ["geoId/01"], "title": "Sparse state"}\n```'
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.list_content_payloads("data_status") == [
+        {"has_data": False, "truncated": True, "message": TRUNCATED_MESSAGE}
+    ]
+    assert turn.list_texts() == ["State income data is sparse."]
+    assert turn.list_charts() == []
+    assert turn.telemetry is not None
+    assert turn.telemetry.charts_emitted == 0
+    assert turn.telemetry.charts_rejected == 1
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_synthesis_stream_fails_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The per-chunk idle timeout of the synthesis stream.
+    # Situation: The timeout is shortened to 10 ms, and the stream yields
+    #   one paragraph and then never yields again.
+    # Expectation: The first paragraph is emitted as a text block, and the
+    #   turn ends in an `error` terminal event with reason
+    #   `synthesis_stream_error` rather than waiting on the stream.
+    async def stream_stalled() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", "First paragraph.\n\n")
+        await asyncio.Event().wait()
+
+    async def start_stalled_synthesis(
+        **_: object,
+    ) -> AsyncGenerator[StreamChunk]:
+        return stream_stalled()
+
+    monkeypatch.setattr(chat_pipeline, "SYNTHESIS_CHUNK_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", start_stalled_synthesis
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.list_texts() == ["First paragraph."]
+    terminal = _get_only_terminal(turn)
+    assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
+    assert terminal["error"] == SYNTHESIS_FAILED
+    assert turn.finished == [
+        (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_synthesis_stream_stalled_on_open_fails_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The first-chunk timeout when opening the synthesis stream.
+    # Situation: `SYNTHESIS_CHUNK_TIMEOUT_SECONDS` is shortened to 10 ms,
+    #   and `async_gemini_stream` stalls awaiting the first chunk.
+    # Expectation: No block is emitted, and the turn ends in an `error`
+    #   terminal event with reason `synthesis_stream_error` and
+    #   `SYNTHESIS_FAILED` rather than waiting for the HTTP timeout.
+    async def hang_on_first_chunk(
+        **_: object,
+    ) -> AsyncGenerator[StreamChunk]:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(chat_pipeline, "SYNTHESIS_CHUNK_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", hang_on_first_chunk
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.list_blocks() == []
+    terminal = _get_only_terminal(turn)
+    assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
+    assert terminal["error"] == SYNTHESIS_FAILED
+    assert turn.finished == [
+        (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cancel_mid_turn_is_recorded_as_canceled(turn: _Turn) -> None:
     # Test: Cancellation while synthesis is streaming.
-    # Situation: Synthesis and chart configuration are both held open, and
-    #   the turn is canceled once synthesis has started.
+    # Situation: Synthesis is held open, and the turn is canceled once it
+    #   has started.
     # Expectation: `CancelledError` is raised to the caller without a
-    #   terminal event, the background chart task is canceled with the turn,
-    #   and the turn is recorded as `canceled`.
+    #   terminal event, and the turn is recorded as `canceled`.
     turn.synthesis_release.clear()
-    turn.chart_release.clear()
     task = await _start_and_wait_for(turn, "status")
     async with asyncio.timeout(1):
         while turn.synthesis_calls == 0:
@@ -1327,8 +1397,6 @@ async def test_cancel_mid_turn_cancels_the_chart_task(turn: _Turn) -> None:
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    async with asyncio.timeout(1):
-        await turn.chart_canceled.wait()
     assert "terminal" not in turn.list_event_names()
     assert turn.finished == [(TerminalState.CANCELED, None)]
 
@@ -1466,18 +1534,32 @@ async def test_a_tool_list_missing_required_tools_logs_one_warning(
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
 
+@pytest.mark.parametrize(
+    ("raw_stream", "expected_charts_emitted"),
+    [
+        (" \n", 0),
+        (
+            '```chart\n{"kind": "line", "tables": ["t1"], '
+            '"title": "Total Population"}\n```\n',
+            1,
+        ),
+    ],
+)
 @pytest.mark.asyncio
 async def test_an_empty_synthesis_fails_the_turn(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    raw_stream: str,
+    expected_charts_emitted: int,
 ) -> None:
-    # Test: Fail-closed handling of empty synthesis output.
-    # Situation: The synthesis stream finishes after yielding only
-    #   whitespace.
+    # Test: Fail-closed handling of synthesis output without prose text.
+    # Situation: The synthesis stream finishes after yielding either only
+    #   whitespace or only a chart block with no accompanying prose.
     # Expectation: The turn ends in an `error` terminal event with reason
-    #   `synthesis_empty` and the fixed synthesis message, and no chart
-    #   config is emitted.
+    #   `synthesis_empty` and the fixed synthesis message, no text block or
+    #   default chart is appended, and telemetry records `charts_emitted`.
     async def stream_blank() -> AsyncGenerator[StreamChunk]:
-        yield StreamChunk("text", " \n")
+        yield StreamChunk("text", raw_stream)
 
     async def start_blank_synthesis(
         **_: object,
@@ -1493,7 +1575,10 @@ async def test_an_empty_synthesis_fails_the_turn(
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_EMPTY
     assert terminal["error"] == SYNTHESIS_FAILED
-    assert not any("chart_config" in data for _, data in turn.events)
+    assert turn.list_texts() == []
+    assert len(turn.list_charts()) == expected_charts_emitted
+    assert turn.telemetry is not None
+    assert turn.telemetry.charts_emitted == expected_charts_emitted
     assert turn.finished == [(TerminalState.ERROR, ErrorType.SYNTHESIS_EMPTY)]
 
 
@@ -1502,15 +1587,16 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
     # Test: Fail-closed handling of a synthesis stream that fails mid-stream.
-    # Situation: The synthesis stream yields part of the answer and then
-    #   raises `GeminiStreamError` with upstream error text.
-    # Expectation: The partial text is emitted, and the turn ends in an
-    #   `error` terminal event with reason `synthesis_stream_error` and the
-    #   fixed message rather than the upstream text.
+    # Situation: The synthesis stream yields one paragraph and part of the
+    #   next, then raises `GeminiStreamError` with upstream error text.
+    # Expectation: The completed paragraph is emitted as a text block, the
+    #   partial paragraph is not, and the turn ends in an `error` terminal
+    #   event with reason `synthesis_stream_error` and the fixed message
+    #   rather than the upstream text.
     upstream = "HTTP 503: upstream detail"
 
     async def stream_broken() -> AsyncGenerator[StreamChunk]:
-        yield StreamChunk("text", "About ")
+        yield StreamChunk("text", "First paragraph.\n\nAbout ")
         raise GeminiStreamError(upstream)
 
     async def start_broken_synthesis(
@@ -1524,7 +1610,7 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert ("content", {"text": "About "}) in turn.events
+    assert turn.list_texts() == ["First paragraph."]
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
     assert terminal["error"] == SYNTHESIS_FAILED
@@ -1538,7 +1624,7 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
     # Test: Catch-all handling for unexpected exceptions inside a phase.
-    # Situation: `render_analysis_context` raises an unexpected
+    # Situation: Rendering the synthesis message raises an unexpected
     #   `RuntimeError` containing internal details.
     # Expectation: The turn ends in an `error` terminal event with reason
     #   `internal_error` and the fixed internal-error message.
@@ -1547,7 +1633,7 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
     def fail_render(*args: object) -> str:
         raise RuntimeError(detail)
 
-    monkeypatch.setattr(chat_pipeline, "render_analysis_context", fail_render)
+    monkeypatch.setattr(chat_pipeline, "render_synthesis_message", fail_render)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
@@ -1598,42 +1684,101 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
     assert record.exc_info is None
 
 
-@pytest.mark.asyncio
-async def test_a_failed_chart_task_is_reaped_when_the_turn_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    turn: _Turn,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # Test: Cleanup of a failed chart task when a later phase fails.
-    # Situation: `get_chart_config` raises a `ValueError`, and synthesis
-    #   fails after the chart task has finished.
-    # Expectation: The turn ends in an `error` terminal event, and the chart
-    #   task's exception is retrieved and logged by type.
-    chart_failed = asyncio.Event()
-
-    async def fail_chart_config(
-        results: str, question: str, config: AgentConfig, usage: TokenUsage
-    ) -> JsonObject:
-        chart_failed.set()
-        raise ValueError("chart detail")
-
-    async def fail_late_synthesis(
-        **_: object,
-    ) -> AsyncGenerator[StreamChunk]:
-        await chart_failed.wait()
-        await asyncio.sleep(0)
-        raise GeminiError("upstream")
-
-    monkeypatch.setattr(chat_pipeline, "get_chart_config", fail_chart_config)
-    monkeypatch.setattr(
-        chat_pipeline, "async_gemini_stream", fail_late_synthesis
+def test_collect_follow_up_topics_leaves_processing_diagnostics_out() -> None:
+    # Test: The missing-data notes that become follow-up topics.
+    # Situation: A digest with no results carries a data-gap note, a
+    #   step-failure diagnostic, a default-analysis diagnostic, and the
+    #   generic no-observations fallback note, and no chart was shown.
+    # Expectation: The data-gap note is the only topic.
+    digest = AnalysisDigest(
+        results=(),
+        sources=(),
+        missing_notes=(
+            "No county breakdown of median income exists.",
+            "An analysis step failed: the cohort has one place.",
+            "The default analysis also failed: the table has no dates.",
+            chat_pipeline._NO_OBSERVATIONS_NOTE,
+        ),
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=digest,
+        spec=None,
+        has_data=False,
+        tool_calls=[],
+        sources=[],
+        tables=(),
     )
 
-    with caplog.at_level(logging.WARNING, logger=chat_pipeline.__name__):
-        await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+    topics = chat_pipeline.collect_follow_up_topics(discovery, [])
 
-    assert _get_only_terminal(turn)["reason"] == ErrorType.SYNTHESIS_ERROR
-    assert "Chart config failed: ValueError" in caplog.text
+    assert topics == ["No county breakdown of median income exists."]
+
+
+def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
+    # Test: Scope formatting, refused-step filtering, and deduplication in
+    #   `collect_follow_up_topics`.
+    # Situation: A digest holds an `OkScriptResult` over a four-place table,
+    #   an `OkScriptResult` over a state cohort table, and a
+    #   `RefusedScriptResult`, alongside two resolved charts and two data-gap
+    #   notes that repeat earlier topics.
+    # Expectation: Named places are capped at three, cohort tables use
+    #   `" by State"`, refused steps are skipped, and duplicate topics across
+    #   results, chart titles, and missing notes are dropped in order.
+    multi_place = _make_table(
+        "t1",
+        places=(
+            "country/FRA",
+            "country/ESP",
+            "country/ITA",
+            "country/DEU",
+        ),
+    )
+    cohort = _make_state_cohort("t2", "Median_Income", "01 02 03 04")
+    refused = RefusedScriptResult(
+        step_id="s3",
+        script="rank_cohort",
+        variables=("Count_Unemployment",),
+        variable_names={"Count_Unemployment": "Unemployment"},
+        provenance=Provenance(),
+        refusal_reason="no_observations",
+    )
+    digest = AnalysisDigest.from_results(
+        (
+            analyze_timeseries(multi_place.table, step_id="s1"),
+            rank_cohort(cohort.table, step_id="s2"),
+            refused,
+        ),
+        missing_notes=("Population Trend", "No county breakdown exists."),
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=digest,
+        spec=None,
+        has_data=True,
+        tool_calls=[],
+        sources=[],
+        tables=(multi_place, cohort),
+    )
+    charts = [
+        ResolvedLineChart(
+            title="Median_Income by State",
+            variable_dcids=("Median_Income",),
+            scope=PlaceList(("geoId/01",)),
+        ),
+        ResolvedLineChart(
+            title="Population Trend",
+            variable_dcids=("Count_Person",),
+            scope=PlaceList(("country/FRA",)),
+        ),
+    ]
+
+    topics = chat_pipeline.collect_follow_up_topics(discovery, charts)
+
+    assert topics == [
+        "Total Population in Deu, Esp, France",
+        "Median_Income by State",
+        "Population Trend",
+        "No county breakdown exists.",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1645,9 +1790,10 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     #   and every later phase succeeds.
     # Expectation: The stream opens with a `classify` status frame followed
     #   by the `discovery` one, the classification reaches the discovery
-    #   loop, the synthesis system instruction ends with the pattern's
-    #   directive, and telemetry records the pattern and the classify phase
-    #   duration.
+    #   loop, the synthesis system instruction opens with the prompt,
+    #   carries the synthesis contract, and ends with the synthesis half of
+    #   the pattern's directive, and telemetry records the pattern and the
+    #   classify phase duration.
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert turn.events[0] == (
@@ -1660,7 +1806,9 @@ async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     assert statuses[:2] == ["classify", "discovery"]
     assert turn.loop_classifications == [_CLASSIFICATION]
     (instruction,) = turn.synthesis_instructions
-    assert instruction.startswith("Write prose.")
+    assert instruction.startswith(
+        f"Write prose.\n\n{load_prompt_contract('synthesis')}"
+    )
     assert instruction.endswith(
         build_pattern_directive(_CLASSIFICATION, "synthesis")
     )
@@ -1725,7 +1873,7 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
 ) -> None:
     # Test: The clarification outcome of the classify phase.
     # Situation: The classifier asks which Georgia the user means.
-    # Expectation: The question is streamed as the answer text, the turn
+    # Expectation: The question is emitted as the one text block, the turn
     #   ends in a signed `complete` frame with empty state slots and a
     #   one-turn window, no data, sources, charts, or follow-ups are
     #   emitted, no discovery loop or synthesis runs, the pattern is
@@ -1745,7 +1893,13 @@ async def test_a_clarification_is_streamed_and_signed_with_empty_slots(
     await chat_pipeline.run_turn(transcript, turn.emit)
 
     assert turn.list_event_names() == ["status", "content", "terminal"]
-    assert turn.events[1][1] == {"text": _CLARIFICATION_QUESTION}
+    assert turn.events[1][1] == {
+        "block": {
+            "index": 0,
+            "type": "text",
+            "markdown": _CLARIFICATION_QUESTION,
+        }
+    }
     terminal = turn.events[2][1]
     assert terminal["state"] == TerminalState.COMPLETE
     assert terminal["turn_index"] == 0
@@ -1783,8 +1937,9 @@ async def test_a_classifier_failure_proceeds_as_exploratory(
     # Test: Fall-through when the classifier failed.
     # Situation: The classify phase admits the query without a verdict.
     # Expectation: The turn completes as usual, the discovery loop receives
-    #   no classification, the synthesis system instruction carries no
-    #   directive, and telemetry records the pattern as `exploratory`.
+    #   no classification, the synthesis system instruction is the prompt
+    #   and the synthesis contract with no directive, and telemetry records
+    #   the pattern as `exploratory`.
     async def return_unclassified(*args: object, **_: object) -> Admitted:
         return Admitted(None)
 
@@ -1793,7 +1948,9 @@ async def test_a_classifier_failure_proceeds_as_exploratory(
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
     assert turn.loop_classifications == [None]
-    assert turn.synthesis_instructions == ["Write prose."]
+    assert turn.synthesis_instructions == [
+        f"Write prose.\n\n{load_prompt_contract('synthesis')}"
+    ]
     assert turn.telemetry is not None
     assert turn.telemetry.pattern == "exploratory"
     assert turn.finished == [(TerminalState.COMPLETE, None)]
@@ -1836,7 +1993,7 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
 ) -> None:
     # Test: Mapping of a blocked prompt in synthesis.
     # Situation: The synthesis request is blocked before any text streams.
-    # Expectation: No answer text is emitted, the turn ends in a `refused`
+    # Expectation: No block is emitted, the turn ends in a `refused`
     #   terminal frame with reason `safety_blocked`, and it is recorded as
     #   `refused` with `safety_blocked`.
     async def raise_blocked_synthesis(
@@ -1850,7 +2007,7 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert not any("text" in data for event, data in turn.events)
+    assert turn.list_blocks() == []
     terminal = _get_only_terminal(turn)
     assert terminal["state"] == TerminalState.REFUSED
     assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
@@ -1860,33 +2017,47 @@ async def test_a_blocked_synthesis_prompt_refuses_the_turn(
 
 
 @pytest.mark.asyncio
-async def test_a_synthesis_stream_blocked_after_thoughts_refuses_the_turn(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+@pytest.mark.parametrize(
+    "chunk",
+    [
+        pytest.param(
+            StreamChunk("thought", "Reviewing data."),
+            id="after_thought",
+        ),
+        pytest.param(
+            StreamChunk("text", "Unfinished first paragraph"),
+            id="after_buffered_text_before_block",
+        ),
+    ],
+)
+async def test_a_synthesis_stream_blocked_before_any_block_refuses_the_turn(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, chunk: StreamChunk
 ) -> None:
-    # Test: Mid-stream safety block in `run_synthesis_phase` before answer text.
-    # Situation: The synthesis stream yields a thought chunk and then raises
+    # Test: Mid-stream safety block in `run_synthesis_phase` before any answer
+    #   block has been emitted.
+    # Situation: The synthesis stream yields either a thought chunk or partial
+    #   paragraph text that has not yet completed a block, and then raises
     #   `GeminiBlockedError("SAFETY")`.
-    # Expectation: No answer text is emitted, the turn ends in a `refused`
-    #   terminal frame with `reason="safety_blocked"`, and telemetry records
-    #   `("refused", "safety_blocked")`.
-    async def stream_blocked_after_thought() -> AsyncGenerator[StreamChunk]:
-        yield StreamChunk("thought", "Reviewing data.")
+    # Expectation: No `content {block}` frame is emitted, the turn ends in a
+    #   `refused` terminal frame with `reason="safety_blocked"`, and telemetry
+    #   records `("refused", "safety_blocked")`.
+    async def stream_blocked() -> AsyncGenerator[StreamChunk]:
+        yield chunk
         raise GeminiBlockedError("SAFETY")
 
     async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
-        return stream_blocked_after_thought()
+        return stream_blocked()
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert (
-        "thought",
-        {"thought": "Reviewing data.", "phase": "synthesis"},
-    ) in turn.events
-    assert not any(
-        event == "content" and "text" in data for event, data in turn.events
-    )
+    if chunk.kind == "thought":
+        assert (
+            "thought",
+            {"thought": "Reviewing data.", "phase": "synthesis"},
+        ) in turn.events
+    assert turn.list_blocks() == []
     terminal = _get_only_terminal(turn)
     assert terminal["state"] == TerminalState.REFUSED
     assert terminal["reason"] == RefusedReason.SAFETY_BLOCKED
@@ -1901,13 +2072,14 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     monkeypatch: pytest.MonkeyPatch, turn: _Turn
 ) -> None:
     # Test: Mid-stream safety block in `run_synthesis_phase` after answer text.
-    # Situation: The synthesis stream yields answer text and then raises
-    #   `GeminiBlockedError("SAFETY")`.
-    # Expectation: The partial text is emitted, and the turn ends in an `error`
-    #   terminal frame with `reason="synthesis_stream_error"` and
-    #   `SYNTHESIS_FAILED` rather than `refused`.
+    # Situation: The synthesis stream yields one paragraph and part of the next,
+    #   then raises `GeminiBlockedError("SAFETY")`.
+    # Expectation: The completed paragraph is emitted as a text block, and the
+    #   turn ends in an `error` terminal frame with
+    #   `reason="synthesis_stream_error"` and `SYNTHESIS_FAILED` rather than
+    #   `refused`.
     async def stream_blocked_after_text() -> AsyncGenerator[StreamChunk]:
-        yield StreamChunk("text", "About ")
+        yield StreamChunk("text", "First paragraph.\n\nAbout ")
         raise GeminiBlockedError("SAFETY")
 
     async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
@@ -1917,7 +2089,7 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert ("content", {"text": "About "}) in turn.events
+    assert turn.list_texts() == ["First paragraph."]
     terminal = _get_only_terminal(turn)
     assert terminal["state"] == TerminalState.ERROR
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
@@ -1968,7 +2140,7 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
 # The serialized frames of a complete turn whose stubs also report a thought
 # from discovery and from synthesis. The HMAC is deterministic because the
 # `signing_secret` fixture fixes the signing key.
-_WIRE_HMAC = "6632f0de072e5eb60fc92d150cd93b07bf6600cdd18512a42af57790e178d7b0"
+_WIRE_HMAC = "bab7873e1b550debfd0193a70934a1781d7cae19c5be8eea5e6dfe069f2917dc"
 _WIRE_FRAMES: list[tuple[EventName, str]] = [
     (
         "status",
@@ -1991,15 +2163,18 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
     ("content", '{"sources": [{"name": "INSEE", "url": "https://insee.fr/"}]}'),
     ("status", '{"phase": "synthesis", "message": "Generating response..."}'),
     ("thought", '{"thought": "Writing the answer.", "phase": "synthesis"}'),
-    ("content", '{"text": "About 68 million."}'),
     (
-        "status",
-        '{"phase": "chart_config", "message": "Preparing charts..."}',
+        "content",
+        '{"block": {"index": 0, "type": "text", '
+        '"markdown": "About 68 million."}}',
     ),
     (
         "content",
-        '{"chart_config": {"should_render": true, "charts": '
-        '[{"title": "Population"}]}}',
+        '{"block": {"index": 1, "type": "chart", "chart": '
+        '{"viz_type": "line", "title": "Total Population", '
+        '"variable_dcids": ["Count_Person"], '
+        '"place_dcids": ["country/FRA"], '
+        '"facet_ids": {"Count_Person": "f1"}}}}',
     ),
     (
         "terminal",
@@ -2008,7 +2183,10 @@ _WIRE_FRAMES: list[tuple[EventName, str]] = [
         '{"scopes": [{"places": {"country/FRA": "France"}, '
         '"parent_place": null, "child_place_type": null, "variables": '
         '{"Count_Person": "Total Population"}, "date_range": '
-        '["2022", "2023"]}]}, "compacted_summary": null, "window": '
+        '["2022", "2023"]}, {"places": {"country/FRA": "France"}, '
+        '"parent_place": null, "child_place_type": null, "variables": '
+        '{"Count_Person": "Total Population"}, "date_range": null}]}, '
+        '"compacted_summary": null, "window": '
         '[{"turn_index": 0, "idempotency_key": "test-idempotency-key", '
         f'"hmac": "{_WIRE_HMAC}"}}]}}',
     ),
