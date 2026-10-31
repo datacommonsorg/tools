@@ -37,7 +37,7 @@ import { ResponseCard } from "./card_response";
 import { Tooltip } from "./tooltip";
 import { CitationNumberingProvider } from "./chip_citation";
 import { CitationsList } from "./list_citations";
-import { downloadPdf } from "../utils/download_pdf";
+import { downloadPdf } from "@/src/utils/download_pdf";
 import {
   calculateStreamDurationMs,
   countWords,
