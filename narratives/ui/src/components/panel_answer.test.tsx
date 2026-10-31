@@ -89,6 +89,7 @@ const getBody = (container: HTMLElement): HTMLElement => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('AnswerPanel', () => {
@@ -295,6 +296,37 @@ describe('AnswerPanel', () => {
           { index: 0, type: 'text', markdown: 'France has about 68 million.' },
         ])}
         isStreaming={false}
+      />,
+    );
+
+    expect(container.querySelector('.markdown-stream')).toBeNull();
+    expect(getBody(container).className).not.toContain(HIDE_NON_TEXT_CLASS);
+    expect(
+      screen.queryAllByRole('button', { name: 'Export PDF' }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('shows the whole card at once under reduced motion', () => {
+    // Test: The reveal under `prefers-reduced-motion: reduce`.
+    // Situation: The user prefers reduced motion, and a text-only panel
+    //   mounts mid-stream on a finished turn.
+    // Expectation: Without advancing any timer, no text block carries the
+    //   reveal animation, the body does not hide its non-text children, and
+    //   the Export PDF control renders.
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'matchMedia',
+      (query: string): Pick<MediaQueryList, 'matches' | 'media'> => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+      }),
+    );
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+        ])}
+        isStreaming
       />,
     );
 

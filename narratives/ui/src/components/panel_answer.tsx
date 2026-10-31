@@ -98,6 +98,9 @@ function getInitialPhase(
   return "revealed";
 }
 
+/** Media query for the user's reduced-motion preference. */
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
 /**
  * Longest the panel waits for its charts to settle before revealing anyway,
  * in milliseconds, so a slow chart cannot hold back the answer.
@@ -136,8 +139,14 @@ export function AnswerPanel({
   // taking over from the skeleton, so it reveals its text in reading order.
   // The caller check covers a stream that closed in the same render as the
   // terminal event. A panel with a waiting caller settles its charts first,
-  // so charts that settle within the cap load while hidden.
-  const [shouldReveal] = useState(isStreaming || onSettled !== undefined);
+  // so charts that settle within the cap load while hidden. Under reduced
+  // motion there is no word reveal, so the whole card, export controls
+  // included, shows as soon as it settles.
+  const [shouldReveal] = useState(
+    () =>
+      (isStreaming || onSettled !== undefined) &&
+      !window.matchMedia(REDUCED_MOTION_QUERY).matches,
+  );
   const [phase, setPhase] = useState<RevealPhase>(() =>
     getInitialPhase(shouldReveal, onSettled !== undefined),
   );
