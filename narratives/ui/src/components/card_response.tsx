@@ -42,9 +42,9 @@ import {
   textOf,
   type MarkdownNode,
   type TableAnalysis,
-} from "../utils/markdown_table";
-import { rehypeStreamWords } from "../utils/rehype_stream_words";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+} from "@/src/utils/markdown_table";
+import { rehypeStreamWords } from "@/src/utils/rehype_stream_words";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
 
 interface ResponseCardProps {
   title: string;

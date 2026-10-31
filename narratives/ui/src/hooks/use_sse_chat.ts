@@ -442,11 +442,6 @@ function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
 }
 
 /**
- * Builds the transcript fields of a request from the signed turns. The query
- * and answer are sent exactly as stored, because the agent verifies them
- * against the turn's signature.
- */
-/**
  * Labels every answer's citations so one number means one source thread-wide.
  *
  * A source keeps the number it was first given; anything new takes the next
@@ -475,6 +470,11 @@ export function assignCitationNumbers(turns: ChatTurn[]): number[][] {
   });
 }
 
+/**
+ * Builds the transcript fields of a request from the signed turns. The query
+ * and answer are sent exactly as stored, because the agent verifies them
+ * against the turn's signature.
+ */
 export function transcriptRequestFields(turns: ChatTurn[]): {
   turns: WireTurn[];
   compacted_summary: string | null;

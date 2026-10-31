@@ -30,7 +30,7 @@ import {
   type ChatTurn,
   hasAnswer,
 } from "@/src/hooks/use_sse_chat";
-import { useChatSession } from "../hooks/chat_session_context";
+import { useChatSession } from "@/src/hooks/chat_session_context";
 
 /** How long the scroll to a new question glides. */
 const PIN_GLIDE_MS = 400;

@@ -21,7 +21,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { type ChatTurn, getTurnCharts } from "@/src/hooks/use_sse_chat";
-import { inspectTurn } from "../utils/inspect_turn";
+import { inspectTurn } from "@/src/utils/inspect_turn";
 import { InspectIcon } from "./icons";
 
 /**

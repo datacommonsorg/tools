@@ -19,7 +19,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
 import {
   createCitationMarkerPattern,
   parseCitationNumbers,
