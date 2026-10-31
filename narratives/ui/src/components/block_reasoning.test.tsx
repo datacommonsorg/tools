@@ -32,6 +32,16 @@ const writeSlot = (themeDocument: Record<string, unknown>): void => {
   resetInstanceConfigForTests();
 };
 
+// Each thought (or the placeholder standing in for them) is one timeline
+// entry: a left bar ending in a dot.
+const getThoughts = (container: HTMLElement): HTMLElement[] => [
+  ...container.querySelectorAll<HTMLElement>('.border-l-2'),
+];
+const isPulsing = (thought: HTMLElement): boolean =>
+  thought.classList.contains('motion-safe:after:animate-dot-pulse');
+const isExpanding = (thought: HTMLElement): boolean =>
+  thought.classList.contains('motion-safe:animate-thought-expand');
+
 const getIndicatorSrc = (container: HTMLElement): string | null =>
   container.querySelector('img')?.getAttribute('src') ?? null;
 
@@ -130,6 +140,66 @@ describe('ReasoningBlock', () => {
     expect(before).not.toBeNull();
     expect(container.querySelector('.stream-word')).toBe(before);
     expect(container.querySelectorAll('.markdown-stream')).toHaveLength(2);
+    const thoughts = getThoughts(container);
+    expect(thoughts).toHaveLength(2);
+    expect(thoughts.every(isExpanding)).toBe(true);
+    expect(thoughts.map(isPulsing)).toEqual([false, true]);
+  });
+
+  it('stops pulsing the latest dot once the turn stops streaming', () => {
+    // Test: The active dot tracks the turn's streaming state live.
+    // Situation: A streaming block with one thought, then the turn ends.
+    // Expectation: The dot pulses while streaming and rests afterwards; the
+    //              thought keeps its bar and is not re-mounted.
+    const thought = { text: 'Looking up data.', phase: 'discovery' as const };
+    const { container, rerender } = render(
+      <ReasoningBlock thoughts={[thought]} streaming />,
+    );
+    const [entry] = getThoughts(container);
+    expect(isPulsing(entry)).toBe(true);
+
+    rerender(<ReasoningBlock thoughts={[thought]} done />);
+
+    expect(getThoughts(container)).toEqual([entry]);
+    expect(isPulsing(entry)).toBe(false);
+    expect(entry.classList.contains('after:bg-border')).toBe(true);
+  });
+
+  it('lays the placeholder out as a timeline entry', () => {
+    // Test: The placeholder matches the thoughts' bar-and-dot layout.
+    // Situation: The block streams with no thoughts yet, then the turn ends
+    //            without any.
+    // Expectation: The placeholder sits in one timeline entry whose dot pulses
+    //              while streaming and rests once done.
+    const { container, rerender } = render(
+      <ReasoningBlock thoughts={[]} streaming status="discovery" />,
+    );
+    let entries = getThoughts(container);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].textContent).toContain('Searching Data Commons');
+    expect(isPulsing(entries[0])).toBe(true);
+
+    rerender(<ReasoningBlock thoughts={[]} done />);
+    entries = getThoughts(container);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].textContent).toContain('Analyzed the query');
+    expect(isPulsing(entries[0])).toBe(false);
+  });
+
+  it('gives tight list items the muted italic body type', () => {
+    // Test: Tight lists match paragraph typography.
+    // Situation: A thought holds a tight list, whose items have no inner <p>.
+    // Expectation: The list carries the muted italic classes the items inherit.
+    const { container } = render(
+      <ReasoningBlock
+        thoughts={[{ text: '- one\n- two', phase: 'discovery' }]}
+        done
+      />,
+    );
+    const list = container.querySelector('ul');
+    expect(list?.querySelector('p')).toBeNull();
+    expect(list?.classList).toContain('italic');
+    expect(list?.classList).toContain('text-on-surface-variant');
   });
 
   it('shows thoughts restored with a finished turn without a reveal', () => {
@@ -145,6 +215,9 @@ describe('ReasoningBlock', () => {
 
     expect(container.querySelector('.markdown-stream')).toBeNull();
     expect(container.querySelector('.stream-word')).toBeNull();
+    const [entry] = getThoughts(container);
+    expect(isExpanding(entry)).toBe(false);
+    expect(isPulsing(entry)).toBe(false);
   });
 
   it.each([

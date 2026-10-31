@@ -18,7 +18,7 @@
  * @fileoverview Renders the agent's collapsible reasoning/thoughts block for a turn.
  */
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDownIcon } from "./icons";
@@ -41,57 +41,9 @@ import {
  *   Default collapsed; chevron rotates 180° when expanded
  */
 
-const COLOR_TEXT = "var(--color-on-surface)";
-/** Reasoning body reads as a muted aside — one step softer than the response. */
-const COLOR_REASONING = "var(--color-on-surface-variant)";
-const FONT_LABEL =
-  '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
-
-// The reasoning aside's left bar. The bar lives on the content blocks — both
-// headings and body (paragraphs, lists) — so each heading + its following body
-// share one continuous bar. Consecutive blocks have no vertical margin so their
-// borders touch; a heading's top margin opens a gap with no border, which is
-// what breaks the bar before the *next* heading.
-const BAR_WIDTH = 2;
-const BAR_PAD = 16;
-const BAR_INSET = BAR_WIDTH + BAR_PAD; // left offset of body text (border + pad)
-const BAR_COLOR = "var(--color-border, #E3E3E3)";
-// The reasoning icon (sparkle/loader) is ICON_SIZE wide and starts at the
-// aside's left edge, so its horizontal center is at ICON_SIZE / 2. Shift the
-// content right so the bar is centered under that icon center.
-const ICON_SIZE = 20;
-const BAR_CENTER_LEFT = ICON_SIZE / 2 - BAR_WIDTH / 2;
-
-/**
- * Body blocks: the barred, italic detail text. margin:0 + internal padding so
- * adjacent blocks' bars join seamlessly.
- */
-const BODY_BLOCK_STYLE: CSSProperties = {
-  margin: 0,
-  borderLeft: `${BAR_WIDTH}px solid ${BAR_COLOR}`,
-  paddingLeft: BAR_PAD,
-  paddingTop: 2,
-  paddingBottom: 2,
-};
-
-/**
- * Headings: bold, upright (not italic like the body), and barred like the body
- * so the section reads as one unit. marginTop opens the gap that breaks the bar
- * before this heading; marginBottom stays 0 so the heading joins its own body.
- */
-const HEADING_STYLE: CSSProperties = {
-  ...BODY_BLOCK_STYLE,
-  marginTop: 14,
-  paddingTop: 4,
-  fontStyle: "normal",
-  fontWeight: 600,
-  fontSize: 16,
-  lineHeight: "24px",
-};
-
-/** Renders a reasoning section heading — bold, upright, barred (HEADING_STYLE). */
+/** Renders a reasoning section heading — bold and upright, unlike the italic body. */
 const ReasoningHeading = ({ children }: { children?: React.ReactNode }) => (
-  <h3 style={HEADING_STYLE}>{children}</h3>
+  <h3 className="font-semibold text-sm">{children}</h3>
 );
 
 /** Minimal shape of the hast node react-markdown hands each renderer. */
@@ -105,8 +57,8 @@ interface HastNode {
 /**
  * Reports whether a paragraph node is really a standalone bold line the model
  * wrote as a heading — e.g. `**Plan**` arrives as `<p><strong>…</strong></p>`,
- * not a real heading. We treat those as headings so the bar breaks at them
- * (models rarely emit `##` here).
+ * not a real heading. These are styled as headings, since models rarely emit
+ * `##` here.
  */
 function isBoldOnlyParagraph(node?: HastNode): boolean {
   const kids = (node?.children ?? []).filter(
@@ -125,48 +77,33 @@ function isBoldOnlyParagraph(node?: HastNode): boolean {
  * entrance animation whenever a new one streamed in.
  */
 const REASONING_COMPONENTS: Components = {
-  // Headings break the left bar (see HEADING_STYLE).
   h1: ReasoningHeading,
   h2: ReasoningHeading,
   h3: ReasoningHeading,
   h4: ReasoningHeading,
   h5: ReasoningHeading,
   h6: ReasoningHeading,
-  // A lone-bold paragraph is really a section heading (breaks the
-  // bar); everything else is a barred body paragraph.
+  // A lone-bold paragraph is really a section heading; everything else is a
+  // body paragraph.
   p: ({ node, children }) =>
     isBoldOnlyParagraph(node as unknown as HastNode) ? (
-      <h3 style={HEADING_STYLE}>{children}</h3>
+      <ReasoningHeading>{children}</ReasoningHeading>
     ) : (
-      <p style={BODY_BLOCK_STYLE}>{children}</p>
+      <p className="text-on-surface-variant italic text-sm leading-5.5">{children}</p>
     ),
-  strong: ({ children }) => (
-    <strong style={{ fontWeight: 600 }}>{children}</strong>
-  ),
-  em: ({ children }) => (
-    <em style={{ fontStyle: "italic" }}>{children}</em>
-  ),
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   ul: ({ children }) => (
-    <ul
-      className="list-disc space-y-0.5"
-      style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
-    >
+    <ul className="list-disc space-y-0.5 pl-9.5 text-on-surface-variant italic text-sm leading-5.5">
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol
-      className="list-decimal space-y-0.5"
-      style={{ ...BODY_BLOCK_STYLE, paddingLeft: BAR_INSET + 20 }}
-    >
+    <ol className="list-decimal space-y-0.5 pl-9.5 text-on-surface-variant italic text-sm leading-5.5">
       {children}
     </ol>
   ),
   code: ({ children }) => (
-    <code
-      className="px-1 rounded font-mono"
-      style={{ backgroundColor: "#F2F2F2", fontSize: "0.92em" }}
-    >
+    <code className="px-1 rounded font-mono bg-code-surface text-[0.92em]">
       {children}
     </code>
   ),
@@ -175,8 +112,7 @@ const REASONING_COMPONENTS: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="hover:underline"
-      style={{ color: "var(--color-theme-primary)" }}
+      className="text-theme-primary hover:underline"
     >
       {children}
     </a>
@@ -279,16 +215,7 @@ export function ReasoningBlock({
         aria-expanded={open}
       >
         {streaming ? <LoaderSpinner /> : <SparkleIcon />}
-        <span
-          className="inline-flex items-center gap-1"
-          style={{
-            fontFamily: FONT_LABEL,
-            fontSize: 14,
-            lineHeight: "20px",
-            fontWeight: 500,
-            color: COLOR_TEXT,
-          }}
-        >
+        <span className="inline-flex items-center gap-1 text-label-large text-on-surface">
           {label}
           <ChevronDownIcon
             className={`text-on-surface-variant transition-transform duration-150 ${
@@ -307,32 +234,27 @@ export function ReasoningBlock({
         }`}
       >
         <div className="overflow-hidden min-h-0">
-        <div
-          className="mt-2 reasoning-markdown"
-          style={{
-            marginLeft: BAR_CENTER_LEFT,
-            fontFamily: FONT_LABEL,
-            fontSize: 16,
-            lineHeight: "28px",
-            // Softer than the response body + italic + a left bar with
-            // indentation, so the reasoning reads as an aside distinct from
-            // the actual answer.
-            color: COLOR_REASONING,
-            fontStyle: "italic",
-          }}
-        >
+        {/* Indented so the reasoning reads as an aside to the answer; the
+            paragraphs and lists add the muted italic. The bottom padding keeps
+            the last dot's pulse inside the clipping wrapper above. */}
+        <div className="mt-2 ml-2.25 pb-1 reasoning-markdown">
           {thoughts.length > 0 ? (
             thoughts.map((thought, i) => (
               // Thoughts only ever append, so the index is a stable key.
-              <Thought key={i} text={thought.text} animate={streaming} />
+              <Thought
+                key={i}
+                text={thought.text}
+                animate={streaming}
+                isLatest={i === thoughts.length - 1}
+              />
             ))
           ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={REASONING_COMPONENTS}
-            >
-              {placeholder}
-            </ReactMarkdown>
+            <Thought
+              key="placeholder"
+              text={placeholder}
+              animate={streaming}
+              isLatest
+            />
           )}
         </div>
         </div>
@@ -342,25 +264,58 @@ export function ReasoningBlock({
 }
 
 /**
+ * Thought layout: a left bar ending in a dot. A one-row grid so a streamed
+ * thought can grow its height from 0fr; the bar and dot live here, outside the
+ * clipping inner wrapper, so the dot is not cut off.
+ */
+const THOUGHT_CLASS = [
+  "relative grid grid-rows-[1fr] pt-2 pb-3 pl-5.5",
+  "border-l-2 border-border",
+  // Dot centered on the 2px bar at its bottom end.
+  "after:absolute after:bottom-0 after:-left-px after:-translate-x-1/2",
+  "after:size-2 after:rounded-full",
+].join(" ");
+
+interface ThoughtProps {
+  text: string;
+  animate: boolean;
+  isLatest: boolean;
+}
+
+/**
  * One thought, revealed word by word like the answer when it arrives live.
  * Whether it animates is fixed at mount: a thought restored with its session,
- * or still on screen when the turn ends, does not replay or cut short.
+ * or still on screen when the turn ends, does not replay or cut short. The
+ * latest thought's end dot tracks `animate` live and pulses until the turn
+ * stops streaming.
  */
-function Thought({ text, animate }: { text: string; animate: boolean }) {
+function Thought({ text, animate, isLatest }: ThoughtProps) {
   const [streamMs] = useState(() =>
     animate ? calculateStreamDurationMs(text) : undefined,
   );
+  const streamClass =
+    streamMs === undefined
+      ? ""
+      : " markdown-stream motion-safe:animate-thought-expand";
+  // The latest thought's dot pulses in the theme tint while the turn streams.
+  const dotClass =
+    animate && isLatest
+      ? " after:bg-theme-container motion-safe:after:animate-dot-pulse"
+      : " after:bg-border";
+  const className = `${THOUGHT_CLASS}${streamClass}${dotClass}`;
   return (
-    <div className={streamMs === undefined ? undefined : "markdown-stream"}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={
-          streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
-        }
-        components={REASONING_COMPONENTS}
-      >
-        {text}
-      </ReactMarkdown>
+    <div className={className}>
+      <div className="flex flex-col gap-1.5 min-h-0 overflow-clip">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={
+            streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
+          }
+          components={REASONING_COMPONENTS}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }
@@ -375,10 +330,7 @@ function LoaderSpinner() {
       aria-hidden="true"
       width={20}
       height={20}
-      style={{
-        flexShrink: 0,
-        animation: "reasoning-spin 1s linear infinite",
-      }}
+      className="shrink-0 motion-safe:animate-spin"
     />
   );
 }
@@ -393,7 +345,7 @@ function SparkleIcon() {
       aria-hidden="true"
       width={20}
       height={20}
-      style={{ flexShrink: 0 }}
+      className="shrink-0"
     />
   );
 }

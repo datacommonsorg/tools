@@ -33,7 +33,7 @@ interface CardHeaderProps {
  */
 export function CardHeader({ title, children }: CardHeaderProps) {
   return (
-    <div className="flex items-center gap-3 py-3 pr-3 pl-5 border-b border-border bg-surface">
+    <div className="flex items-center gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
       {/* On screen this is a one-line card title, so it truncates. In the
           exported PDF it is the document's heading and has to be readable in
           full, so the print rules in index.css undo the truncation and size
