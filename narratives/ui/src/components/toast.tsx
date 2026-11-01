@@ -57,7 +57,7 @@ export function Toast({
       role="status"
       aria-live="polite"
       data-non-print="true"
-      className={`fixed top-3 right-6 z-50 flex items-center gap-2 min-h-12 max-w-[min(560px,calc(100vw-2rem))] rounded bg-theme-primary text-white text-body-medium shadow-lg ${
+      className={`fixed top-3 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-xl z-50 flex items-center gap-2 min-h-12 rounded bg-theme-primary text-white text-body-medium shadow-lg ${
         actionLabel ? 'py-1.5 pl-4 pr-2' : 'py-3.5 px-4'
       }`}
     >
