@@ -211,7 +211,7 @@
         },
         "background": {
           "$ref": "#/$defs/hexColor",
-          "description": "Page background (--theme-background)."
+          "description": "Page background, and the surface of the header, composer, cards, chips and drawers (--theme-background → --color-surface)."
         },
         "surface": {
           "$ref": "#/$defs/hexColor",
@@ -244,6 +244,10 @@
         "surface_narrative": {
           "$ref": "#/$defs/hexColor",
           "description": "Tile behind a rendered narrative — response card and its skeleton (--theme-surface-narrative → --color-surface-narrative)."
+        },
+        "code_surface": {
+          "$ref": "#/$defs/hexColor",
+          "description": "Inline-code chip in the reasoning aside (--theme-code-surface → --color-code-surface)."
         },
         "skeleton_bar": {
           "$ref": "#/$defs/hexColor",
