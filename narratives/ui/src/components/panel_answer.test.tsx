@@ -19,11 +19,22 @@
  * chart blocks, waits for its charts to settle, and reveals its text.
  */
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
 import { ANSWER_SETTLE_MAX_MS, AnswerPanel } from './panel_answer';
+import { EXIT_MS, VISIBLE_MS } from './toast';
+
+vi.mock('@/src/utils/download_pdf', () => ({
+  downloadPdf: vi.fn().mockResolvedValue(undefined),
+}));
 
 const LINE_CHART: ChartItem = {
   vizType: 'line',
@@ -304,6 +315,41 @@ describe('AnswerPanel', () => {
     expect(
       screen.queryAllByRole('button', { name: 'Export PDF' }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('restarts the export toast when the user exports again', async () => {
+    // Test: A second PDF export while the confirmation is still showing.
+    // Situation: The user exports, then exports again shortly before the
+    //   first toast's VISIBLE_MS runs out.
+    // Expectation: The toast is still showing once the first toast's window
+    //   has passed, because the second export started a fresh one.
+    vi.useFakeTimers();
+    render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'France has about 68 million.' },
+        ])}
+        isStreaming={false}
+      />,
+    );
+    const exportPdf = async () => {
+      await act(async () => {
+        fireEvent.click(
+          screen.getAllByRole('button', { name: 'Export PDF' })[0],
+        );
+      });
+    };
+
+    await exportPdf();
+    expect(screen.getByText('PDF downloaded')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(VISIBLE_MS - 1000));
+    await exportPdf();
+    // Two steps: the exit timer is only scheduled once React commits the
+    // leaving state, after the first advance returns.
+    act(() => vi.advanceTimersByTime(2000));
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+
+    expect(screen.queryByText('PDF downloaded')).not.toBeNull();
   });
 
   it('shows the whole card at once under reduced motion', () => {

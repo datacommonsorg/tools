@@ -214,7 +214,9 @@ export function AnswerPanel({
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.
   const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState(false);
+  // When the last export finished; keys the toast so a repeat export remounts
+  // it with a fresh dismiss timer.
+  const [exportedAt, setExportedAt] = useState<number | null>(null);
   // Memoized: a fresh object re-renders every chip on any state change here,
   // including the export flags above.
   const numbering = useMemo(
@@ -227,7 +229,7 @@ export function AnswerPanel({
     setExporting(true);
     try {
       await downloadPdf(panelRef.current, turn.userMessage);
-      setExported(true);
+      setExportedAt(Date.now());
     } finally {
       setExporting(false);
     }
@@ -325,8 +327,12 @@ export function AnswerPanel({
           </div>
         )}
       </div>
-      {exported && (
-        <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
+      {exportedAt !== null && (
+        <Toast
+          key={exportedAt}
+          message="PDF downloaded"
+          onDismiss={() => setExportedAt(null)}
+        />
       )}
     </div>
     </CitationNumberingProvider>
