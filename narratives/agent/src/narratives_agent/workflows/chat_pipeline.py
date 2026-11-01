@@ -14,29 +14,28 @@
 """Runs the agent loop, the phases of one chat turn, as native asyncio code.
 
 `run_turn` drives a turn through its phases in order: classification, the
-discovery loop and specification processing, streamed synthesis, chart
-configuration, turn signing, and follow-up questions. Each phase reports
-progress by calling the turn's `emit` callback with one typed SSE frame at a
-time (an `SseFrame` from `sse_frames`, which declares each frame's event name
-and payload) and hands its results to the next phase as typed values rather
-than shared mutable state.
+discovery loop and specification processing, streamed synthesis with
+interleaved text and chart blocks, turn signing, and follow-up questions. Each
+phase reports progress by calling the turn's `emit` callback with one typed
+SSE frame at a time (an `SseFrame` from `sse_frames`, which declares each
+frame's event name and payload) and hands its results to the next phase as
+typed values rather than shared mutable state.
 
 Every turn that is not canceled ends in one `terminal` frame
 (`TerminalCompleteFrame`, `TerminalRefusedFrame`, or `TerminalErrorFrame`).
 Every phase reads the conversation through the verified `Transcript`, and
 completed turns are appended and signed by `finalize_turn` before the
-`complete` frame is sent. Chart configuration runs as an `asyncio.Task`
-concurrently with synthesis and is awaited, with a timeout, once synthesis
-has finished streaming.
+`complete` frame is sent.
 """
 
 import asyncio
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass, field, replace
 
 from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.analytics.provenance import Source
+from narratives_agent.analytics.tables import ObservationTable
 from narratives_agent.config import load_config
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
@@ -45,15 +44,19 @@ from narratives_agent.gemini.client import (
     GeminiStreamError,
     async_gemini_stream,
 )
+from narratives_agent.gemini.response import StreamChunk
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
-from narratives_agent.json_value import JsonObject, JsonValue
+from narratives_agent.json_value import JsonObject
 from narratives_agent.mcp import client as mcp_client
 from narratives_agent.mcp.capabilities import warn_on_missing_tools
 from narratives_agent.settings import get_settings
 from narratives_agent.telemetry import ErrorType, TerminalState, TurnTelemetry
-from narratives_agent.workflows.chart_config import (
-    get_chart_config,
-    validate_data_response,
+from narratives_agent.workflows.blocks import BlockSplitter, TextBlock
+from narratives_agent.workflows.chart_defaults import build_default_charts
+from narratives_agent.workflows.charts import (
+    ChartSpecification,
+    ResolvedChart,
+    resolve_chart_specification,
 )
 from narratives_agent.workflows.classify import (
     Clarification,
@@ -68,10 +71,8 @@ from narratives_agent.workflows.mcp_loop import (
     DiscoveryResult,
     McpLoopError,
     execute_discovery_loop,
-    format_count,
 )
 from narratives_agent.workflows.messages import (
-    CHART_CONFIG_STATUS,
     CHAT_DISABLED,
     CLASSIFY_STATUS,
     INTERNAL_ERROR,
@@ -83,19 +84,20 @@ from narratives_agent.workflows.messages import (
     SYNTHESIS_STATUS,
     TRUNCATED_MESSAGE,
 )
-from narratives_agent.workflows.pattern_guidance import append_pattern_guidance
 from narratives_agent.workflows.processing import (
     StepRefusalDiagnostic,
     execute_specification,
 )
+from narratives_agent.workflows.prompt_contracts import (
+    compose_system_instruction,
+)
 from narratives_agent.workflows.specification import (
     AnalysisSpecification,
-    ComputeDerivedMetricStep,
     build_default_specification,
     get_step_output_kind,
 )
 from narratives_agent.workflows.sse_frames import (
-    ChartConfigFrame,
+    BlockContentFrame,
     DataStatusFrame,
     FollowUpsFrame,
     SourcesFrame,
@@ -105,11 +107,15 @@ from narratives_agent.workflows.sse_frames import (
     TerminalCompleteFrame,
     TerminalErrorFrame,
     TerminalRefusedFrame,
-    TextFrame,
     ThoughtFrame,
     ToolCallFrame,
 )
 from narratives_agent.workflows.state_slots import build_state_slots
+from narratives_agent.workflows.synthesis import (
+    SYNTHESIS_CHUNK_TIMEOUT_SECONDS,
+    build_synthesis_inputs,
+    render_synthesis_message,
+)
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
     SignedWindow,
@@ -121,21 +127,27 @@ from narratives_agent.workflows.turn_cache import CachedTable, TurnCache
 
 logger = logging.getLogger(__name__)
 
-# Maximum seconds to wait for the background chart task after synthesis ends.
-_CHART_CONFIG_JOIN_TIMEOUT_SECONDS = 5
-
 # Maximum seconds to wait for the MCP tool list before aborting the turn.
 _MCP_TOOLS_TIMEOUT_SECONDS = 20
 
-# Maximum places with data named per table in the synthesis table inventory.
-_INVENTORY_PLACE_CAP = 25
+# Maximum places named in a follow-up topic before keeping the variable alone.
+_FOLLOW_UP_PLACE_CAP = 3
 
 # Fallback source cited when the digest has data but no table reported a URL.
 _FALLBACK_SOURCE = Source(name="Data Commons", url="https://datacommons.org/")
 
-_NO_CHARTS: JsonObject = {"should_render": False}
-
+# Generic fallback note when the discovery loop ends without tables or an
+# unavailable report; passed to synthesis and excluded from follow-up topics.
 _NO_OBSERVATIONS_NOTE = "No observations were retrieved for the question."
+
+# Prefixes of missing-data notes that report a processing failure rather than a
+# data gap, excluded from follow-up topics.
+_STEP_FAILED_NOTE_PREFIX = "An analysis step failed: "
+_DEFAULT_FAILED_NOTE_PREFIX = "The default analysis also failed: "
+_DIAGNOSTIC_NOTE_PREFIXES = (
+    _STEP_FAILED_NOTE_PREFIX,
+    _DEFAULT_FAILED_NOTE_PREFIX,
+)
 
 # Default pattern recorded in telemetry when the classifier call failed.
 _UNCLASSIFIED_PATTERN: QueryPattern = "exploratory"
@@ -186,31 +198,55 @@ class TurnContext:
     cache: TurnCache = field(default_factory=TurnCache)
 
 
+def _build_empty_digest() -> AnalysisDigest:
+    """Returns the digest of a turn that computed nothing."""
+    return AnalysisDigest(results=(), sources=())
+
+
 @dataclass
 class DiscoveryPhaseResult:
     """Holds the discovery phase outputs passed to later phases.
 
-    `context` is the rendering of the digest and the tables it rests on
-    that synthesis and the chart planner read. `sources` is the single
-    authority on citation numbering; see `run_discovery_phase`. `tables`
-    are the cached tables the specification used, in order of first use,
-    from which the state slots are built.
+    `digest` is the analysis the turn is answered from and `spec` is the
+    specification that produced it, or `None` when the turn has none.
+    `sources` is the single authority on citation numbering; see
+    `run_discovery_phase`. `tables` are the cached tables the specification
+    used, in order of first use, from which the table inventory and the
+    state slots are built.
 
     Attributes:
-        context: Rendered digest and table inventory text for synthesis.
+        digest: The resolved `AnalysisDigest` for the turn.
+        spec: The `AnalysisSpecification` that produced `digest`, or `None`
+            when no specification ran.
         has_data: Whether the resolved digest holds computed data.
         tool_calls: Serialized tool-call records streamed to the client.
         sources: Ordered provenance sources for citation numbering.
         tables: Cached tables used by the specification, in first-use order.
-        chart_task: Background task computing chart configuration, if started.
     """
 
-    context: str = ""
+    digest: AnalysisDigest = field(default_factory=_build_empty_digest)
+    spec: AnalysisSpecification | None = None
     has_data: bool = False
     tool_calls: list[JsonObject] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)
     tables: tuple[CachedTable, ...] = ()
-    chart_task: asyncio.Task[JsonObject] | None = None
+
+
+@dataclass(frozen=True)
+class SynthesisPhaseResult:
+    """Holds what the synthesis phase streamed.
+
+    `text` is the answer that is signed: the text blocks joined by blank
+    lines, with every chart block left out. `charts` are the resolved
+    charts in the order their blocks were emitted.
+
+    Attributes:
+        text: The signed prose text with chart blocks excluded.
+        charts: Resolved charts in emission order.
+    """
+
+    text: str
+    charts: tuple[ResolvedChart, ...] = ()
 
 
 def _emit_status(ctx: TurnContext, status: tuple[StatusPhase, str]) -> None:
@@ -277,7 +313,7 @@ async def _run_default_specification(
             )
             if retry is None:
                 break
-            notes.append(f"An analysis step failed: {outcome.message}")
+            notes.append(f"{_STEP_FAILED_NOTE_PREFIX}{outcome.message}")
             specification = retry
             logger.info(
                 "Default specification step %s (%s) refused; running %s",
@@ -291,7 +327,7 @@ async def _run_default_specification(
             replace(outcome, missing_notes=(*outcome.missing_notes, *notes)),
             specification,
         )
-    notes.append(f"The default analysis also failed: {outcome.message}")
+    notes.append(f"{_DEFAULT_FAILED_NOTE_PREFIX}{outcome.message}")
     return (
         AnalysisDigest.from_results(
             (
@@ -338,7 +374,9 @@ async def _resolve_digest(
         )
     notes: list[str] = []
     if loop.last_diagnostic is not None:
-        notes.append(f"An analysis step failed: {loop.last_diagnostic.message}")
+        notes.append(
+            f"{_STEP_FAILED_NOTE_PREFIX}{loop.last_diagnostic.message}"
+        )
     specification = build_default_specification(ctx.classification, ctx.cache)
     if specification is None:
         notes.append(_NO_OBSERVATIONS_NOTE)
@@ -385,114 +423,20 @@ def _collect_tables_used(
     return tuple(table for table in tables if table is not None)
 
 
-def _describe_derived_inputs(
-    specification: AnalysisSpecification | None,
-) -> dict[str, str]:
-    """Maps each derived table's step id to a description of its inputs.
-
-    Args:
-        specification: The specification that answered the turn, or `None`.
-
-    Returns:
-        A dictionary mapping derived step IDs to `"derived from <left> and
-        <right>"`.
-    """
-    if specification is None:
-        return {}
-    return {
-        step.step_id: f"derived from {step.left} and {step.right}"
-        for step in specification.steps
-        if isinstance(step, ComputeDerivedMetricStep)
-    }
-
-
-def render_analysis_context(
-    digest: AnalysisDigest,
-    specification: AnalysisSpecification | None,
-    tables: Sequence[CachedTable],
-) -> str:
-    """Renders the digest and its tables as the text synthesis reads.
-
-    This adapter feeds the existing synthesis prompt and chart planner,
-    which read one block of text, a rendering of the digest in place of raw
-    tool results. Everything in the text is computed or fetched by the
-    server: the digest's results and missing-data notes, then one line per
-    table. The specification's `findings` are not included, because they
-    are the model's reading of five sample rows and the digest holds the
-    computed figures. The chart planner extracts variable DCIDs, place
-    DCIDs, parent places, and child place types from the text, so the
-    inventory lists each fetched table's identity and places alongside the
-    computed figures. A derived table is listed by name only, marked as not
-    a Data Commons variable, because its DCID names no series the chart web
-    components could fetch.
-
-    Args:
-        digest: The computed `AnalysisDigest` for the turn.
-        specification: The `AnalysisSpecification` that produced `digest`, or
-            `None` when no specification ran.
-        tables: The cached tables used by `specification`.
-
-    Returns:
-        The formatted digest and table inventory text.
-    """
-    lines = [digest.format_for_prompt()]
-    if tables:
-        lines.append("\nTables used:")
-    derived_inputs = _describe_derived_inputs(specification)
-    for cached in tables:
-        table_id = cached.table_id
-        table = cached.table
-        dates = sorted({row.date for row in table.rows})
-        # table.places_with_data is already sorted and deduplicated by
-        # ObservationTable.
-        places = table.places_with_data
-        named = ", ".join(
-            f"{table.place_names.get(place, place)} ({place})"
-            for place in places[:_INVENTORY_PLACE_CAP]
-        )
-        if len(places) > _INVENTORY_PLACE_CAP:
-            extra = len(places) - _INVENTORY_PLACE_CAP
-            named += f", and {format_count(extra, 'other place')}"
-        scope = (
-            f"every {table.child_place_type} in {table.parent_place_dcid}"
-            if table.child_place_type and table.parent_place_dcid
-            else format_count(len(places), "place")
-        )
-        span = f"{dates[0]} to {dates[-1]}" if dates else "no dates"
-        if table_id in derived_inputs:
-            identity = (
-                f"{table_id} ({derived_inputs[table_id]}; not a "
-                f"Data Commons variable, do not chart it): "
-                f"{table.variable_name}"
-            )
-        else:
-            identity = (
-                f"{table_id}: {table.variable_name} ({table.variable_dcid})"
-            )
-        unit = table.unit or "unknown"
-        if table.scaling_factor is not None:
-            unit += f" (scaling factor {table.scaling_factor:g})"
-        lines.append(
-            f"- {identity}; unit: {unit}; {scope}; dates {span}; places with "
-            f"data: {named or 'none'}"
-        )
-    return "\n".join(lines)
-
-
 async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
     """Finds and analyzes the data, the discovery and processing phases.
 
     Runs the discovery loop, resolves the digest the turn is answered from,
     streams the tool calls, the data status, and the provenance sources,
-    records the phase's telemetry counts, and starts chart configuration in
-    the background when the digest has data.
+    and records the phase's telemetry counts.
 
     Args:
         ctx: The turn context holding the transcript, config, telemetry, and
             cache.
 
     Returns:
-        The populated `DiscoveryPhaseResult` for synthesis and chart planning.
+        The populated `DiscoveryPhaseResult` for synthesis, state slots, and
+        follow-up generation.
 
     Raises:
         TurnAbortedError: If no MCP tools are available or the loop fails.
@@ -546,6 +490,8 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
         ctx.emit(ToolCallFrame(tool_call=call))
 
     digest, specification = await _resolve_digest(ctx, loop)
+    result.digest = digest
+    result.spec = specification
     result.has_data = digest.has_data
     result.tables = _collect_tables_used(specification, ctx.cache)
     ctx.telemetry.scripts = (
@@ -577,106 +523,71 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
         result.sources = [_FALLBACK_SOURCE]
     if result.sources:
         ctx.emit(SourcesFrame(sources=result.sources))
-
-    result.context = render_analysis_context(
-        digest, specification, result.tables
-    )
-    # Only generate charts when the digest holds computed figures.
-    if result.has_data:
-        result.chart_task = asyncio.create_task(
-            get_chart_config(
-                result.context,
-                ctx.transcript.current_query,
-                ctx.config,
-                ctx.telemetry.tokens,
-            ),
-            name="chart-config",
-        )
-    else:
-        logger.info(
-            "Chart config skipped: the digest has no data (truncated=%s, "
-            "unavailable=%s)",
-            loop.truncated,
-            loop.unavailable is not None,
-        )
     return result
-
-
-def _build_synthesis_message(
-    user_message: str, discovery: DiscoveryPhaseResult
-) -> str:
-    """Builds the final user message that carries the analysis.
-
-    Args:
-        user_message: The user's current query text.
-        discovery: The completed discovery phase result.
-
-    Returns:
-        The formatted user prompt combining numbered sources and data results.
-    """
-    context_parts = []
-    if discovery.context:
-        # Number sources 1..N in the order streamed to the UI as `sources`.
-        if discovery.sources:
-            numbered_sources = "\n".join(
-                f"[{number}] {source.name or source.url} - {source.url}"
-                for number, source in enumerate(discovery.sources, start=1)
-            )
-            context_parts.append(
-                "**NUMBERED SOURCES - cite these numbers, exactly as given:**\n"
-                f"{numbered_sources}"
-            )
-        context_parts.append(f"**DATA RESULTS:**\n{discovery.context}")
-    context = (
-        "\n".join(context_parts)
-        if context_parts
-        else "No additional context available."
-    )
-    return (
-        f"User Query: {user_message}\n\n{context}\n\n"
-        "Please provide a comprehensive response combining all available "
-        "information."
-    )
 
 
 async def run_synthesis_phase(
     ctx: TurnContext, discovery: DiscoveryPhaseResult
-) -> str:
-    """Streams the narrative answer, the synthesis phase.
+) -> SynthesisPhaseResult:
+    """Streams the answer as text and chart blocks, the synthesis phase.
+
+    The user message is rendered from the typed inputs at the last moment,
+    the stream is split into blocks as it arrives, and every chart block is
+    resolved against the turn's table inventory and cache before it is
+    emitted. When the digest has data and no chart block was emitted, at
+    most one default chart from the primary result is appended. Opening the
+    stream and reading each chunk are bounded by
+    `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, so a stalled stream ends the turn
+    rather than holding it open for the whole HTTP timeout.
 
     Args:
         ctx: The turn context holding the transcript, config, and telemetry.
         discovery: The discovery phase result to synthesize into prose.
 
     Returns:
-        The complete answer text.
+        The signed text and the resolved charts.
 
     Raises:
         TurnAbortedError: If the synthesis request fails, its stream breaks
-            part-way, or it returns no answer text.
+            or stalls part-way, or it returns no prose.
         GeminiBlockedError: If Gemini blocks the synthesis prompt or the
-            candidate before any answer text has streamed.
+            candidate before any answer block has been emitted.
     """
     ctx.emit(StatusFrame(phase="synthesis", message=SYNTHESIS_STATUS))
     config = ctx.config
     role = config.resolve_role_config(GeminiRole.SYNTHESIS)
+    inputs = build_synthesis_inputs(
+        ctx.transcript.current_query,
+        discovery.digest,
+        discovery.spec,
+        discovery.tables,
+        discovery.sources,
+    )
     # Put the verified window first, then the query with the analysis context.
     messages = transcript_contents(
-        ctx.transcript,
-        _build_synthesis_message(ctx.transcript.current_query, discovery),
+        ctx.transcript, render_synthesis_message(inputs)
     )
     try:
-        stream = await async_gemini_stream(
-            messages=messages,
-            system_instruction=append_pattern_guidance(
-                config.prompts.synthesis, ctx.classification, "synthesis"
-            ),
-            model=role.model,
-            temperature=role.temperature,
-            thinking_level=role.thinking_level,
-            token_usage=ctx.telemetry.tokens,
-            include_thoughts=True,
+        async with asyncio.timeout(SYNTHESIS_CHUNK_TIMEOUT_SECONDS):
+            stream = await async_gemini_stream(
+                messages=messages,
+                system_instruction=compose_system_instruction(
+                    config.prompts.synthesis, "synthesis", ctx.classification
+                ),
+                model=role.model,
+                temperature=role.temperature,
+                thinking_level=role.thinking_level,
+                token_usage=ctx.telemetry.tokens,
+                include_thoughts=True,
+            )
+    except TimeoutError as error:
+        logger.warning(
+            "Synthesis stream stalled for %.0f seconds",
+            SYNTHESIS_CHUNK_TIMEOUT_SECONDS,
         )
+        raise TurnAbortedError(
+            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
+        ) from error
     except GeminiBlockedError:
         # Propagates to `run_turn`, which ends the turn as `refused`.
         raise
@@ -687,18 +598,88 @@ async def run_synthesis_phase(
             ErrorType.SYNTHESIS_ERROR, SYNTHESIS_FAILED
         ) from error
 
-    full_text = ""
+    allowed_table_ids = {entry.table_id for entry in discovery.tables}
+
+    def resolve(spec: ChartSpecification) -> ResolvedChart | None:
+        if not discovery.has_data:
+            logger.info("Chart block rejected: turn has no data")
+            return None
+        for table_id in spec.tables:
+            if table_id not in allowed_table_ids:
+                logger.info(
+                    "Chart block rejected: %s is not in the table inventory",
+                    table_id,
+                )
+                return None
+        return resolve_chart_specification(
+            spec, ctx.cache, discovery.digest, discovery.spec
+        )
+
+    splitter = BlockSplitter(
+        on_block=lambda block: ctx.emit(BlockContentFrame(block=block)),
+        resolve_chart=resolve,
+    )
     try:
-        async for chunk in stream:
+        await _consume_synthesis_stream(ctx, stream, splitter)
+        splitter.finish()
+        if not splitter.text:
+            logger.warning("Synthesis returned no answer text")
+            raise TurnAbortedError(ErrorType.SYNTHESIS_EMPTY, SYNTHESIS_FAILED)
+        if discovery.has_data and not splitter.charts:
+            for default in build_default_charts(
+                discovery.digest, discovery.spec, ctx.cache
+            ):
+                splitter.append_chart(default)
+    finally:
+        ctx.telemetry.charts_emitted = splitter.charts_emitted
+        ctx.telemetry.charts_rejected = splitter.charts_rejected
+    return SynthesisPhaseResult(splitter.text, tuple(splitter.charts))
+
+
+async def _consume_synthesis_stream(
+    ctx: TurnContext,
+    stream: AsyncGenerator[StreamChunk],
+    splitter: BlockSplitter,
+) -> None:
+    """Feeds the synthesis stream to the splitter and relays its thoughts.
+
+    Args:
+        ctx: The turn context holding the `emit` callback.
+        stream: The open Gemini synthesis stream yielding thought and text
+            chunks.
+        splitter: The block splitter that buffers paragraphs and chart blocks
+            and emits each completed block.
+
+    Raises:
+        TurnAbortedError: If the stream breaks part-way, a chunk does not
+            arrive within `SYNTHESIS_CHUNK_TIMEOUT_SECONDS`, or Gemini blocks
+            the candidate after at least one answer block has been emitted.
+        GeminiBlockedError: If Gemini blocks the candidate before any answer
+            block has been emitted.
+    """
+    try:
+        while True:
+            try:
+                async with asyncio.timeout(SYNTHESIS_CHUNK_TIMEOUT_SECONDS):
+                    chunk = await anext(stream)
+            except StopAsyncIteration:
+                return
+            except TimeoutError as error:
+                logger.warning(
+                    "Synthesis stream stalled for %.0f seconds",
+                    SYNTHESIS_CHUNK_TIMEOUT_SECONDS,
+                )
+                raise TurnAbortedError(
+                    ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
+                ) from error
             if chunk.kind == "thought":
                 ctx.emit(ThoughtFrame(thought=chunk.text, phase="synthesis"))
             else:
-                full_text += chunk.text
-                ctx.emit(TextFrame(text=chunk.text))
+                splitter.feed(chunk.text)
     except GeminiBlockedError as error:
-        if not full_text.strip():
+        if not splitter.text_blocks and not splitter.charts:
             raise
-        # Once answer text has streamed to the client, a mid-stream block
+        # Once an answer block has streamed to the client, a mid-stream block
         # leaves the response truncated and is reported as a stream error.
         raise TurnAbortedError(
             ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
@@ -709,114 +690,90 @@ async def run_synthesis_phase(
         ) from error
     finally:
         await stream.aclose()
-    if not full_text.strip():
-        logger.warning("Synthesis returned no answer text")
-        raise TurnAbortedError(ErrorType.SYNTHESIS_EMPTY, SYNTHESIS_FAILED)
-    return full_text
 
 
-async def resolve_chart_config(
-    ctx: TurnContext, discovery: DiscoveryPhaseResult, full_text: str
-) -> JsonObject:
-    """Determines whether to display charts and returns their configuration.
-
-    Charts are best-effort because the answer has already streamed when this
-    phase runs. They are hidden when a second model call finds that the
-    answer does not contain data or when that call fails, and they are
-    omitted when chart configuration fails or does not finish within
-    `_CHART_CONFIG_JOIN_TIMEOUT_SECONDS`.
+def _format_topic_scope(table: ObservationTable | None) -> str:
+    """Formats where a variable was measured as a suffix for a follow-up topic.
 
     Args:
-        ctx: The turn context holding the transcript, config, and telemetry.
-        discovery: The discovery phase result holding the background chart task.
-        full_text: The complete synthesized answer text.
+        table: The observation table for the variable, or `None` when none is
+            cached.
 
     Returns:
-        The resolved chart configuration JSON object.
+        A suffix such as `" by County"` or `" in California, Texas"`, or `""`
+        when no place scope applies.
     """
-    if discovery.chart_task is None:
-        return dict(_NO_CHARTS)
-    ctx.emit(StatusFrame(phase="chart_config", message=CHART_CONFIG_STATUS))
-    show_charts = True
-    if full_text:
-        try:
-            show_charts = await validate_data_response(
-                full_text,
-                ctx.transcript.current_query,
-                ctx.config,
-                ctx.telemetry.tokens,
-            )
-        except Exception as error:
-            logger.warning(
-                "Chart validation failed with %s; hiding charts",
-                type(error).__name__,
-            )
-            show_charts = False
-        else:
-            if not show_charts:
-                logger.info("Chart validation found no data; hiding charts")
-    try:
-        # `wait_for` cancels the task when the timeout expires.
-        chart_config = await asyncio.wait_for(
-            discovery.chart_task, _CHART_CONFIG_JOIN_TIMEOUT_SECONDS
-        )
-    except TimeoutError:
-        logger.warning(
-            "Chart config did not finish within %d seconds; rendering "
-            "without charts",
-            _CHART_CONFIG_JOIN_TIMEOUT_SECONDS,
-        )
-        chart_config = dict(_NO_CHARTS)
-    except Exception:
-        # `_settle_chart_task` logs the task exception when the turn ends.
-        chart_config = dict(_NO_CHARTS)
-    if not show_charts:
-        chart_config["hide_charts"] = True
-    return chart_config
+    if table is None:
+        return ""
+    if table.child_place_type and table.parent_place_dcid:
+        return f" by {table.child_place_type}"
+    names = [
+        table.place_names.get(place, place)
+        for place in table.places_with_data[:_FOLLOW_UP_PLACE_CAP]
+    ]
+    return f" in {', '.join(names)}" if names else ""
 
 
-def _collect_chart_topics(chart_config: Mapping[str, JsonValue]) -> list[str]:
-    """Returns the chart titles that ground the follow-up questions.
+def collect_follow_up_topics(
+    discovery: DiscoveryPhaseResult, charts: Sequence[ResolvedChart]
+) -> list[str]:
+    """Returns the topics that ground the follow-up questions.
+
+    The topics are the variables the digest's results computed figures
+    for, each with the places or the child place type it was measured
+    over, then the titles of the charts shown, then the missing-data notes
+    that name a data gap (excluding processing diagnostics and the generic
+    no-observations fallback note). Duplicates are dropped in order of
+    first appearance.
 
     Args:
-        chart_config: The resolved chart configuration dictionary.
+        discovery: The completed discovery phase result.
+        charts: The resolved charts emitted during synthesis.
 
     Returns:
-        A list of non-empty chart title strings.
+        Deduplicated follow-up topic strings in first-appearance order.
     """
-    charts = chart_config.get("charts")
+    tables_by_variable: dict[str, ObservationTable] = {}
+    for cached in discovery.tables:
+        tables_by_variable.setdefault(cached.table.variable_dcid, cached.table)
     topics: list[str] = []
-    if isinstance(charts, list):
-        for chart in charts:
-            if isinstance(chart, dict):
-                chart_title = chart.get("title")
-                if isinstance(chart_title, str) and chart_title:
-                    topics.append(chart_title)
-    title = chart_config.get("title")
-    if not topics and isinstance(title, str) and title:
-        # Legacy single-chart shape.
-        topics.append(title)
-    return topics
+    for result in discovery.digest.results:
+        if result.status != "ok":
+            continue
+        for dcid in result.variables:
+            name = result.variable_names.get(dcid, dcid)
+            scope = _format_topic_scope(tables_by_variable.get(dcid))
+            topics.append(f"{name}{scope}")
+    topics.extend(chart.title for chart in charts if chart.title)
+    topics.extend(
+        note
+        for note in discovery.digest.missing_notes
+        if note != _NO_OBSERVATIONS_NOTE
+        and not note.startswith(_DIAGNOSTIC_NOTE_PREFIXES)
+    )
+    return list(dict.fromkeys(topics))
 
 
 async def run_followups(
-    ctx: TurnContext, chart_config: Mapping[str, JsonValue]
+    ctx: TurnContext,
+    discovery: DiscoveryPhaseResult,
+    charts: Sequence[ResolvedChart],
 ) -> None:
-    """Emits follow-up questions grounded in the chart topics.
+    """Emits follow-up questions grounded in the digest and the charts.
 
     This phase runs after the terminal event so the UI can display the
     answer and charts immediately and show the follow-up questions when they
-    arrive. If there are no chart topics or generation fails, nothing is
-    emitted.
+    arrive. If there are no topics or generation fails, nothing is emitted.
 
     Args:
         ctx: The turn context holding the transcript, config, and telemetry.
-        chart_config: The resolved chart configuration dictionary.
+        discovery: The completed discovery phase result.
+        charts: The resolved charts emitted during synthesis.
     """
     try:
         follow_ups = await generate_follow_up_questions(
             ctx.transcript.current_query,
-            _collect_chart_topics(chart_config),
+            collect_follow_up_topics(discovery, charts),
             ctx.config,
             ctx.telemetry.tokens,
         )
@@ -849,18 +806,17 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
 
     Runs classification first: refuses adversarial or off-domain queries,
     streams and signs a clarification question when disambiguation is
-    required, or admits the query into the discovery loop, synthesis, chart
-    configuration, and turn signing. A model call that Gemini blocks in any
-    of those phases ends the turn as `refused` with reason `safety_blocked`;
-    the phases let `GeminiBlockedError` propagate here rather than each
-    translating it. Every non-canceled turn ends in one `terminal` frame
-    (`complete`, `refused`, or `error`) and records its outcome and
-    classified pattern in telemetry. Only `asyncio.CancelledError` is
-    re-raised to the caller; cancellation emits no terminal frame because the
-    client has already disconnected, and it is recorded as `canceled` unless
-    the turn has already completed. Follow-up questions are emitted after the
-    terminal frame, and the background chart task is settled whenever the
-    turn ends so no orphaned task outlives the request.
+    required, or admits the query into the discovery loop, synthesis, and
+    turn signing. A model call that Gemini blocks in any of those phases
+    ends the turn as `refused` with reason `safety_blocked`; the phases let
+    `GeminiBlockedError` propagate here rather than each translating it.
+    Every non-canceled turn ends in one `terminal` frame (`complete`,
+    `refused`, or `error`) and records its outcome and classified pattern
+    in telemetry. Only `asyncio.CancelledError` is re-raised to the caller;
+    cancellation emits no terminal frame because the client has already
+    disconnected, and it is recorded as `canceled` unless the turn has
+    already completed. Follow-up questions are emitted after the terminal
+    frame.
 
     Args:
         transcript: The verified transcript holding the current query,
@@ -871,7 +827,6 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
     telemetry = TurnTelemetry()
     state: TerminalState | None = None
     error_type: ErrorType | RefusedReason | None = None
-    chart_task: asyncio.Task[JsonObject] | None = None
     try:
         if not get_settings().enable_chat:
             state, error_type = TerminalState.REFUSED, ErrorType.CHAT_DISABLED
@@ -907,17 +862,13 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
         # Processing runs inside discovery are also timed under their own phase.
         with telemetry.phase("discovery"):
             discovery = await run_discovery_phase(ctx)
-        chart_task = discovery.chart_task
         with telemetry.phase("synthesis"):
-            full_text = await run_synthesis_phase(ctx, discovery)
-        with telemetry.phase("chart_config"):
-            chart_config = await resolve_chart_config(ctx, discovery, full_text)
-        emit(ChartConfigFrame(chart_config=chart_config))
+            synthesis = await run_synthesis_phase(ctx, discovery)
         with telemetry.phase("finalize"):
             window = await _sign_turn(
                 ctx,
-                full_text,
-                lambda: build_state_slots(discovery.tables, chart_config),
+                synthesis.text,
+                lambda: build_state_slots(discovery.tables, synthesis.charts),
             )
         state = TerminalState.COMPLETE
         emit(
@@ -926,7 +877,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             )
         )
         with telemetry.phase("follow_ups"):
-            await run_followups(ctx, chart_config)
+            await run_followups(ctx, discovery, synthesis.charts)
     except TurnRefusedError as refusal:
         state, error_type = TerminalState.REFUSED, refusal.reason
         emit(
@@ -968,26 +919,27 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             )
         )
     finally:
-        _settle_chart_task(chart_task)
         telemetry.finish(state or TerminalState.ERROR, error_type)
 
 
 async def run_clarification(
     ctx: TurnContext, question: str
 ) -> SignedWindow | None:
-    """Streams `question` as the turn response and signs it with empty slots.
+    """Answers the turn with the classifier's clarification question.
 
-    No `data_status`, `sources`, `chart_config`, or `follow_ups` events are
-    emitted because no observations were retrieved.
+    The question is emitted as the one text block of the answer and the
+    turn is signed with empty state slots, so that the user's reply arrives
+    with this exchange as context. No data, sources, charts, or follow-ups
+    are emitted, because nothing was retrieved.
 
     Args:
         ctx: The turn context holding the transcript, config, and telemetry.
         question: The clarification question to stream to the user.
 
     Returns:
-        The signed conversation window, or `None` if signing failed.
+        The signed window, or `None` when the turn could not be signed.
     """
-    ctx.emit(TextFrame(text=question))
+    ctx.emit(BlockContentFrame(block=TextBlock(index=0, markdown=question)))
     with ctx.telemetry.phase("finalize"):
         return await _sign_turn(ctx, question, ConversationStateSlots)
 
@@ -1028,33 +980,13 @@ async def _sign_turn(
         return None
 
 
-def _settle_chart_task(task: asyncio.Task[JsonObject] | None) -> None:
-    """Cancels the chart task if it is still running, or logs its error.
-
-    This is the one place a chart task failure is logged, whether
-    `resolve_chart_config` contained it or synthesis failed before the task
-    was awaited. Retrieving the exception also prevents the "exception was
-    never retrieved" warning that asyncio logs when a failed task that no
-    one awaited is garbage collected.
-
-    Args:
-        task: The background chart configuration task, or `None`.
-    """
-    if task is None:
-        return
-    if not task.done():
-        task.cancel()
-    elif not task.cancelled() and (error := task.exception()) is not None:
-        logger.warning("Chart config failed: %s", type(error).__name__)
-
-
 __all__ = [
     "DiscoveryPhaseResult",
     "Emit",
+    "SynthesisPhaseResult",
     "TurnAbortedError",
     "TurnContext",
-    "render_analysis_context",
-    "resolve_chart_config",
+    "collect_follow_up_topics",
     "run_clarification",
     "run_discovery_phase",
     "run_followups",

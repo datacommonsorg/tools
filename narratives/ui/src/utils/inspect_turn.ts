@@ -3,7 +3,7 @@
  * data sources the answer was actually built on.
  */
 
-import type { ChartConfig, ProvenanceItem, ToolCallEvent } from "../hooks/use_sse_chat";
+import type { ChartItem, ProvenanceItem, ToolCallEvent } from "@/src/hooks/use_sse_chat";
 
 /**
  * Tools that fetch observations and pin a source: server-side fetch functions
@@ -255,13 +255,13 @@ function readPlacesWithData(payload: Record<string, unknown> | null): string[] {
 /**
  * Summarizes what a turn actually used.
  *
- * Everything is derived from data already in the browser -- the tool calls the
- * agent streamed -- so this adds no request and cannot disagree with what the
- * answer was built from.
+ * Everything is derived from data already in the browser (the streamed tool
+ * calls), so this adds no request and cannot disagree with what the answer was
+ * built from. `charts` is the list the turn renders from its chart blocks.
  */
 export function inspectTurn(
   toolCalls: ToolCallEvent[],
-  chartConfig?: ChartConfig,
+  charts?: ChartItem[],
   _provenance?: ProvenanceItem[],
 ): TurnInspection {
   const calls = toolCalls ?? [];
@@ -332,7 +332,7 @@ export function inspectTurn(
     }
   }
 
-  const charts = (chartConfig?.charts ?? []).map((chart) => ({
+  const chartSummaries = (charts ?? []).map((chart) => ({
     title: chart.title ?? "(untitled)",
     variables: chart.variableDcids ?? [],
     places: chart.placeDcids ?? [],
@@ -344,6 +344,6 @@ export function inspectTurn(
     // Used facets first: those are what the answer rests on.
     facets: [...facets.values()].sort((a, b) => Number(b.used) - Number(a.used)),
     sourceChosenExplicitly,
-    charts,
+    charts: chartSummaries,
   };
 }

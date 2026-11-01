@@ -18,10 +18,16 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
+from pydantic import TypeAdapter
 
 from narratives_agent.config import strip_prompt_comments
 from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.workflows import prompt_contracts
+from narratives_agent.workflows.charts import (
+    BarSort,
+    ChartKind,
+    ChartSpecification,
+)
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_TOOL_NAMES,
     SERVER_FUNCTION_NAMES,
@@ -173,3 +179,85 @@ def test_discovery_contract_tables_match_declared_tools_and_scripts() -> None:
 
     assert tools == DISCOVERY_TOOL_NAMES | SERVER_FUNCTION_NAMES
     assert scripts == set(mapping)
+
+
+def test_composed_default_synthesis_prompt_includes_guidance_and_contract() -> (
+    None
+):
+    # Test: Composition of the shipped default `synthesis.md` guidance with
+    #   the packaged synthesis contract.
+    # Situation: `defaults/prompts/synthesis.md` is read and stripped of HTML
+    #   comments, then composed with the `synthesis` contract.
+    # Expectation: The composed instruction begins with the role heading from
+    #   `defaults/prompts/synthesis.md`, includes the citation and chart-block
+    #   sections from `workflows/contracts/synthesis.md`, and contains no HTML
+    #   comments.
+    repo_root = Path(__file__).resolve().parents[4]
+    guidance = strip_prompt_comments(
+        (repo_root / "defaults" / "prompts" / "synthesis.md").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    composed = compose_system_instruction(guidance, "synthesis")
+
+    assert composed == f"{guidance}\n\n{load_prompt_contract('synthesis')}"
+    assert composed.startswith("## Data Agent: Narrative Synthesis")
+    assert "\n\n### Citations\n\n" in composed
+    assert "\n\n### Chart blocks\n\n" in composed
+    assert "<!--" not in composed
+
+
+def test_synthesis_contract_matches_chart_specification_grammar() -> None:
+    # Test: Alignment between `contracts/synthesis.md`,
+    #   `defaults/prompts/synthesis.md`, and `ChartSpecification`.
+    # Situation: The `### Chart blocks` section of
+    #   `load_prompt_contract("synthesis")` and the shipped default
+    #   `synthesis.md` prompt are inspected alongside `ChartKind`, `BarSort`,
+    #   and `ChartSpecification`'s JSON Schema.
+    # Expectation: The backticked lowercase identifiers in `### Chart blocks`
+    #   equal the union of `ChartSpecification` property names, `ChartKind`,
+    #   `BarSort`, and `"chart"`, `LineChartSpecification` takes no `date`
+    #   field, legacy chart-config field names (`should_render`, `viz_type`,
+    #   `per_capita`) do not appear, and `defaults/prompts/synthesis.md` names
+    #   all five sections rendered by `render_synthesis_message`.
+    contract = load_prompt_contract("synthesis")
+    _, found, chart_blocks_section = contract.partition("### Chart blocks\n")
+    assert found
+    backticked = set(
+        re.findall(r"`([a-z_]+)(?::\s*true)?`", chart_blocks_section)
+    )
+
+    schema = TypeAdapter(ChartSpecification).json_schema()
+    defs = schema["$defs"]
+    schema_fields = {
+        field_name
+        for defn in defs.values()
+        for field_name in defn.get("properties", {})
+    }
+    expected_tokens = (
+        schema_fields
+        | set(get_args(ChartKind.__value__))
+        | set(get_args(BarSort.__value__))
+        | {"chart"}
+    )
+    assert backticked == expected_tokens
+    assert "date" not in defs["LineChartSpecification"]["properties"]
+
+    repo_root = Path(__file__).resolve().parents[4]
+    guidance = strip_prompt_comments(
+        (repo_root / "defaults" / "prompts" / "synthesis.md").read_text(
+            encoding="utf-8"
+        )
+    )
+    for legacy_term in ("should_render", "viz_type", "per_capita"):
+        assert legacy_term not in contract
+        assert legacy_term not in guidance
+    for section_name in (
+        "User Query",
+        "NUMBERED SOURCES",
+        "ANALYSIS DIGEST",
+        "MISSING DATA",
+        "TABLE INVENTORY",
+    ):
+        assert section_name in guidance

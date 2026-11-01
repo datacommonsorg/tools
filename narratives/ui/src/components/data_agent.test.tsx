@@ -20,14 +20,21 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
-import { DataAgent, HANDOFF_MS } from './data_agent';
+import { DataAgent, HANDOFF_MS, TurnView } from './data_agent';
+import { ANSWER_SETTLE_MAX_MS } from './panel_answer';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -42,6 +49,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 /** Returns the surface over a settled chat state holding `turns`. */
@@ -83,6 +91,7 @@ describe('DataAgent refused and clarification turns', () => {
         toolCalls: [],
         thoughts: [],
         text: '',
+        blocks: [],
         provenance: [],
       },
     ]);
@@ -97,17 +106,21 @@ describe('DataAgent refused and clarification turns', () => {
 
   it('omits the completed reasoning placeholder on a clarification turn with no data calls', () => {
     // Test: Rendering a completed clarification turn in DataAgent.
-    // Situation: A turn completes with a clarification question in `text`,
-    //            while `thoughts`, `toolCalls`, and `provenance` are all empty.
+    // Situation: A turn completes with a clarification question as its only
+    //            text block, while `thoughts`, `toolCalls`, and `provenance`
+    //            are all empty.
     // Expectation: The clarification text is rendered and the completed
     //              ReasoningBlock placeholder is omitted.
+    const clarification =
+      'Are you referring to the state of Georgia in the United States or the country of Georgia?';
     renderTurns([
       {
         userMessage: 'What is the population of Georgia?',
         status: 'done',
         toolCalls: [],
         thoughts: [],
-        text: 'Are you referring to the state of Georgia in the United States or the country of Georgia?',
+        text: clarification,
+        blocks: [{ index: 0, type: 'text', markdown: clarification }],
         provenance: [],
       },
     ]);
@@ -123,6 +136,49 @@ describe('DataAgent refused and clarification turns', () => {
         'Analyzed the query and retrieved relevant data from Data Commons.',
       ),
     ).toBeNull();
+  });
+
+  it('shows the error and no answer panel for an error turn with only chart blocks', () => {
+    // Test: A failed turn that streamed charts but no prose.
+    // Situation: A turn ends in `error` holding a single chart block and no
+    //   answer text.
+    // Expectation: The error message renders and no answer panel, chart, or
+    //   Markdown body does.
+    const { container } = render(
+      <TurnView
+        turn={{
+          userMessage: 'What is the population of France?',
+          status: 'error',
+          error: 'The agent failed to finish the answer.',
+          toolCalls: [],
+          thoughts: [],
+          text: '',
+          blocks: [
+            {
+              index: 0,
+              type: 'chart',
+              chart: {
+                vizType: 'line',
+                title: 'Population, France',
+                variableDcids: ['Count_Person'],
+                placeDcids: ['country/FRA'],
+              },
+            },
+          ],
+          provenance: [],
+        }}
+        index={0}
+        isLast
+        isStreaming={false}
+      />,
+    );
+
+    expect(
+      screen.getByText('The agent failed to finish the answer.'),
+    ).toBeDefined();
+    expect(container.querySelector('.max-w-4xl.grid')).toBeNull();
+    expect(container.querySelector('.dc-chart-card')).toBeNull();
+    expect(container.querySelector('.markdown-body')).toBeNull();
   });
 });
 
@@ -140,6 +196,7 @@ describe('DataAgent New chat', () => {
         toolCalls: [],
         thoughts: [],
         text: 'About 68 million.',
+        blocks: [{ index: 0, type: 'text', markdown: 'About 68 million.' }],
         provenance: [],
       },
     ]);
@@ -176,6 +233,7 @@ describe('DataAgent new-turn scroll', () => {
       toolCalls: [],
       thoughts: [],
       text: 'About 68 million.',
+      blocks: [{ index: 0, type: 'text', markdown: 'About 68 million.' }],
       provenance: [],
     };
     const { rerender } = render(<main>{chatSurface([turn])}</main>);
@@ -206,5 +264,72 @@ describe('DataAgent skeleton handoff', () => {
     const duration = css.match(/--animate-stream-in:\s*stream-in\s+(\d+)ms/);
     expect(duration).not.toBeNull();
     expect(Number(duration?.[1])).toBe(HANDOFF_MS);
+  });
+
+  it('holds the answer invisible behind the skeleton until it settles', () => {
+    // Test: The skeleton handoff after synthesis.
+    // Situation: A streaming turn in the synthesis phase already holds a
+    //   text block and a chart block, then finishes, and its chart never
+    //   draws.
+    // Expectation: During synthesis only the skeleton renders. Once the turn
+    //   is done the answer mounts invisible and aria-hidden behind a fully
+    //   visible skeleton; when the settle cap passes, the answer shows and
+    //   the skeleton fades.
+    vi.useFakeTimers();
+    const synthesizing: ChatTurn = {
+      userMessage: 'What is the population of France?',
+      status: 'synthesis',
+      toolCalls: [],
+      thoughts: [],
+      text: 'France has about 68 million people.',
+      blocks: [
+        {
+          index: 0,
+          type: 'text',
+          markdown: 'France has about 68 million people.',
+        },
+        {
+          index: 1,
+          type: 'chart',
+          chart: {
+            vizType: 'line',
+            title: 'Population, France',
+            variableDcids: ['Count_Person'],
+            placeDcids: ['country/FRA'],
+          },
+        },
+      ],
+      provenance: [],
+    };
+    const { container, rerender } = render(
+      <TurnView turn={synthesizing} index={0} isLast isStreaming />,
+    );
+
+    expect(container.querySelector('.bg-skeleton-bar')).not.toBeNull();
+    expect(container.querySelector('.markdown-body')).toBeNull();
+
+    rerender(
+      <TurnView
+        turn={{ ...synthesizing, status: 'done' }}
+        index={0}
+        isLast
+        isStreaming
+      />,
+    );
+    const cell = container.querySelector('.max-w-4xl.grid');
+    const [skeleton, answer] = Array.from(cell?.children ?? []);
+    expect(skeleton.querySelector('.bg-skeleton-bar')).not.toBeNull();
+    expect(skeleton.classList.contains('opacity-0')).toBe(false);
+    expect(answer.querySelector('.markdown-body')).not.toBeNull();
+    expect(answer.classList.contains('invisible')).toBe(true);
+    expect(answer.getAttribute('aria-hidden')).toBe('true');
+
+    act(() => {
+      vi.advanceTimersByTime(ANSWER_SETTLE_MAX_MS);
+    });
+
+    expect(answer.classList.contains('invisible')).toBe(false);
+    expect(answer.getAttribute('aria-hidden')).toBeNull();
+    expect(skeleton.classList.contains('opacity-0')).toBe(true);
   });
 });

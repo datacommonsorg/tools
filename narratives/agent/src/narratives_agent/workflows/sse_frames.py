@@ -29,15 +29,15 @@ from typing import ClassVar, Literal
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.json_value import JsonObject
 from narratives_agent.telemetry import ErrorType, TerminalState
+from narratives_agent.workflows.blocks import SynthesisBlock, TextBlock
+from narratives_agent.workflows.charts import serialize_resolved_chart
 from narratives_agent.workflows.classify import RefusedReason
 from narratives_agent.workflows.transcript import SignedWindow
 
 type EventName = Literal[
     "status", "thought", "content", "terminal", "follow_ups"
 ]
-type StatusPhase = Literal[
-    "classify", "discovery", "processing", "synthesis", "chart_config"
-]
+type StatusPhase = Literal["classify", "discovery", "processing", "synthesis"]
 type ThoughtPhase = Literal["discovery", "synthesis"]
 
 
@@ -69,7 +69,7 @@ class StatusFrame:
 
     Attributes:
         phase: The pipeline phase name (`"classify"`, `"discovery"`,
-            `"processing"`, `"synthesis"`, or `"chart_config"`).
+            `"processing"`, or `"synthesis"`).
         message: The user-visible status message for the phase.
     """
 
@@ -110,23 +110,38 @@ class ThoughtFrame:
 
 
 @dataclass(frozen=True, kw_only=True)
-class TextFrame:
-    """Carries one chunk of answer text, or a whole clarification question.
+class BlockContentFrame:
+    """Carries one streamed synthesis block (a text paragraph or a chart).
 
     Attributes:
-        text: The answer text chunk or clarification question.
+        block: The text or chart synthesis block to serialize.
     """
 
     event: ClassVar[EventName] = "content"
-    text: str
+    block: SynthesisBlock
 
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame.
 
         Returns:
-            A JSON object with `text`.
+            A JSON object with `block` (`index`, `type`, and either `markdown`
+            or `chart`).
         """
-        return {"text": self.text}
+        if isinstance(self.block, TextBlock):
+            return {
+                "block": {
+                    "index": self.block.index,
+                    "type": "text",
+                    "markdown": self.block.markdown,
+                }
+            }
+        return {
+            "block": {
+                "index": self.block.index,
+                "type": "chart",
+                "chart": serialize_resolved_chart(self.block.chart),
+            }
+        }
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -191,27 +206,6 @@ class SourcesFrame:
         return {
             "sources": [serialize_source(source) for source in self.sources]
         }
-
-
-@dataclass(frozen=True, kw_only=True)
-class ChartConfigFrame:
-    """Carries the chart configuration that the browser renders.
-
-    Attributes:
-        chart_config: The chart configuration mapping (`should_render`,
-            optional `charts`, and optional `hide_charts`).
-    """
-
-    event: ClassVar[EventName] = "content"
-    chart_config: JsonObject
-
-    def payload(self) -> JsonObject:
-        """Returns the `data` payload of the frame.
-
-        Returns:
-            A JSON object with `chart_config`.
-        """
-        return {"chart_config": self.chart_config}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -356,11 +350,10 @@ class TerminalErrorFrame:
 type SseFrame = (
     StatusFrame
     | ThoughtFrame
-    | TextFrame
+    | BlockContentFrame
     | ToolCallFrame
     | DataStatusFrame
     | SourcesFrame
-    | ChartConfigFrame
     | FollowUpsFrame
     | TerminalCompleteFrame
     | TerminalRefusedFrame
@@ -368,7 +361,7 @@ type SseFrame = (
 )
 
 __all__ = [
-    "ChartConfigFrame",
+    "BlockContentFrame",
     "DataStatusFrame",
     "EventName",
     "FollowUpsFrame",
@@ -379,7 +372,6 @@ __all__ = [
     "TerminalCompleteFrame",
     "TerminalErrorFrame",
     "TerminalRefusedFrame",
-    "TextFrame",
     "ThoughtFrame",
     "ThoughtPhase",
     "ToolCallFrame",

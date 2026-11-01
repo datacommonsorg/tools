@@ -19,6 +19,10 @@
  * its per-column citations.
  */
 
+import {
+  createCitationMarkerPattern,
+  parseCitationNumbers,
+} from "./citation_marker";
 import { isNeutralText, isNumericText, isYearText } from "./format_number";
 
 /**
@@ -32,9 +36,6 @@ export interface MarkdownNode {
   value?: string;
   children?: MarkdownNode[];
 }
-
-/** A `[n]` citation marker, matching the range chip_citation renders. */
-const CITATION_MARKER = /\[(\d{1,2})\]/g;
 
 /** What the table renderer needs to know that a single cell cannot tell it. */
 export interface TableAnalysis {
@@ -57,11 +58,11 @@ export function textOf(node: MarkdownNode | undefined): string {
 
 /** The citation numbers in `text`, in the order they appear. */
 export function citationsIn(text: string): number[] {
+  const pattern = createCitationMarkerPattern();
   const out: number[] = [];
   let match: RegExpExecArray | null;
-  CITATION_MARKER.lastIndex = 0;
-  while ((match = CITATION_MARKER.exec(text)) !== null) {
-    out.push(Number(match[1]));
+  while ((match = pattern.exec(text)) !== null) {
+    out.push(...parseCitationNumbers(match[1]));
   }
   return out;
 }
@@ -117,7 +118,7 @@ export function analyzeMarkdownTable(
     // Citations first: the markers have to come off before the rest of the
     // cell can be judged a number.
     const values = cells.map((text) =>
-      text.replace(CITATION_MARKER, "").trim(),
+      text.replace(createCitationMarkerPattern(), "").trim(),
     );
     const citations = cells
       .filter((_, i) => !isNeutralText(values[i]))
@@ -128,7 +129,7 @@ export function analyzeMarkdownTable(
       key !== "" &&
       citations.every((list) => list.join(",") === key)
     ) {
-      hoistedCitations.set(column, citations[0]);
+      hoistedCitations.set(column, [...new Set(citations[0])]);
     }
 
     const numeric = values.filter((text) => isNumericText(text));

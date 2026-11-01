@@ -42,14 +42,13 @@ import {
   textOf,
   type MarkdownNode,
   type TableAnalysis,
-} from "../utils/markdown_table";
-import { rehypeStreamWords } from "../utils/rehype_stream_words";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+} from "@/src/utils/markdown_table";
+import { rehypeStreamWords } from "@/src/utils/rehype_stream_words";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
 
 interface ResponseCardProps {
   title: string;
   body: string;
-  streaming?: boolean;
   // The answer's provenance list, so an inline [n] chip can name the source
   // it points at rather than showing a bare number. Position n is chip [n] --
   // the same order the synthesis prompt numbered and CitationsList renders.
@@ -61,6 +60,9 @@ interface ResponseCardProps {
   // When set, the content animates in over this many milliseconds. When
   // unset, it appears immediately.
   streamMs?: number;
+  // Delay before the first word animates, in milliseconds, so a body that
+  // follows another in one reveal starts where the previous one ends.
+  streamStartMs?: number;
   // Whether the animation is still running. Once it ends the animation class
   // is dropped, so a copy of the DOM (the PDF export) does not replay it.
   revealing?: boolean;
@@ -72,10 +74,10 @@ const LINK_COLOR = "var(--color-theme-primary)";
 export function ResponseCard({
   title,
   body,
-  streaming,
   sources,
   bare = false,
   streamMs,
+  streamStartMs,
   revealing = streamMs !== undefined,
 }: ResponseCardProps) {
   const markdown = (
@@ -84,7 +86,12 @@ export function ResponseCard({
         revealing ? " markdown-stream" : ""
       }`}
     >
-      <ReactMarkdownInner body={body} sources={sources} streamMs={streamMs} />
+      <ReactMarkdownInner
+        body={body}
+        sources={sources}
+        streamMs={streamMs}
+        streamStartMs={streamStartMs}
+      />
     </div>
   );
 
@@ -96,12 +103,6 @@ export function ResponseCard({
     <div className="self-start w-full border border-outline rounded-card overflow-hidden shadow-sm bg-surface-narrative">
       <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface">
         <h3 className="text-label-large text-on-surface">{title}</h3>
-        {streaming && (
-          <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-theme-primary animate-pulse" />
-            streaming
-          </span>
-        )}
       </div>
       {markdown}
     </div>
@@ -116,10 +117,12 @@ function ReactMarkdownInner({
   body,
   sources,
   streamMs,
+  streamStartMs,
 }: {
   body: string;
   sources?: ProvenanceItem[];
   streamMs?: number;
+  streamStartMs?: number;
 }) {
   // Memoized so streaming updates don't remount the answer and restart its
   // reveal.
@@ -243,7 +246,9 @@ function ReactMarkdownInner({
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={
-        streamMs === undefined ? [] : [[rehypeStreamWords, streamMs]]
+        streamMs === undefined
+          ? []
+          : [[rehypeStreamWords, streamMs, streamStartMs]]
       }
       components={components}
     >

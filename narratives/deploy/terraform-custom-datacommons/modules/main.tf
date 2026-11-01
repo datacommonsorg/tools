@@ -88,8 +88,8 @@ resource "google_cloud_run_v2_service" "dc_app_service" {
 
       resources {
         # All CPU-hungry work happens inside a request: the SSE stream holds
-        # the request open for its duration, and the chart-config thread is
-        # joined before the generator returns. Startup is covered by the boost.
+        # the request open for its duration through follow-up generation.
+        # Startup is covered by the boost.
         cpu_idle = true
         limits = {
           cpu    = var.agent_cpu

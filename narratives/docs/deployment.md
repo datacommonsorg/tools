@@ -294,15 +294,23 @@ code-owned contract (`workflows/contracts/discovery.md`, composed by
 in `config/prompts/discovery.md` should add instance-specific domain and
 regional guidance rather than restating the tool or specification rules.
 
+`synthesis.md` holds the narrative role, input description, and grounding rules
+for the synthesis phase. The `[n]` and `[n, m]` citation markers, answer-writing
+rules, and fenced `chart` block grammar live in a code-owned contract
+(`workflows/contracts/synthesis.md`, composed by `workflows/prompt_contracts.py`
+together with the per-pattern synthesis directive from
+`workflows/pattern_guidance.py`) that the server appends after the configured
+`synthesis` prompt on every request and that cannot be overridden. An override
+in `config/prompts/synthesis.md` should add instance-specific tone, domain, or
+grounding guidance rather than restating the citation or chart-block grammar.
+
 `classify.md` governs the admission phase that runs at the start of every turn
 to decide whether a question is served, refused, or answered with a
 clarification question, and which analytical pattern it follows. Each LLM stage
 reads its own model key under `gemini` in `agent-config.json`:
 `gemini.classify_model` (default `gemini-3.5-flash-lite`), and
-`gemini.discovery_model`, `gemini.synthesis_model`,
-`gemini.chart_config_model`, `gemini.chart_validation_model`,
-`gemini.follow_up_model`, and `gemini.compaction_model` (each defaulting to
-`gemini-3.8-flash`).
+`gemini.discovery_model`, `gemini.synthesis_model`, `gemini.follow_up_model`,
+and `gemini.compaction_model` (each defaulting to `gemini-3.8-flash`).
 
 Prompts support runtime template placeholders:
 
@@ -509,11 +517,15 @@ instead.
 For further diagnostics, inspect the Cloud Run service logs. Each completed chat
 turn writes a structured `chat_turn` JSON log entry keyed by `turn_id`,
 containing the terminal state, error reason (if any), phase latencies
-(`classify`, `discovery`, `processing`, `synthesis`, `chart_config`, `finalize`,
-`follow_ups`), tool names and counts, the analytical `scripts` run,
-`tables_fetched`, `total_rows_fetched`, `processing_retries`, token usage, and
-the analytical `pattern` assigned by the `classify` phase (user query text is
-never logged). On a `refused` turn, `error_type` holds the refusal reason
-(`adversarial`, `off_domain`, `safety_blocked`, or `chat_disabled`) and
-`pattern` is omitted; if the classifier call itself fails, the turn falls
-through with `pattern` set to `exploratory`.
+(`classify`, `discovery`, `processing`, `synthesis`, `finalize`, `follow_ups`),
+tool names and counts, token usage, the analytical `pattern` assigned by the
+`classify` phase, and the analysis counts (`scripts`, `tables_fetched`,
+`total_rows_fetched`, `processing_retries`, `charts_emitted`, and
+`charts_rejected`; user query text is never logged). The turn span carries the
+same analysis counts as `narratives.scripts`, `narratives.tables_fetched`,
+`narratives.total_rows_fetched`, `narratives.processing_retries`,
+`narratives.charts_emitted`, and `narratives.charts_rejected`. On a `refused`
+turn, `error_type` holds the refusal reason (`adversarial`, `off_domain`,
+`safety_blocked`, or `chat_disabled`) and `pattern` is omitted; if the
+classifier call itself fails, the turn falls through with `pattern` set to
+`exploratory`.
