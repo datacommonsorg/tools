@@ -18,37 +18,50 @@
  * @fileoverview Material 3 snackbar shown after an action completes.
  */
 
-import { useEffect } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 /** How long the snackbar stays up. M3 guidance is 4-10s for a short message. */
-const VISIBLE_MS = 5000;
+export const VISIBLE_MS = 5000;
+
+/** Duration of `--animate-exit` in index.css; toast.test.tsx checks they match. */
+export const EXIT_MS = 200;
 
 interface ToastProps {
   message: string;
-  /** Optional trailing action, e.g. "Open file". */
-  actionLabel?: string;
-  onAction?: () => void;
   onDismiss: () => void;
 }
 
 /**
- * A single snackbar, pinned top-right above all other layers.
+ * A single snackbar, pinned bottom-right above the page (tooltips still layer
+ * over it). Fades and slides up in, then back down out before `onDismiss`
+ * unmounts it.
  *
  * Deliberately self-dismissing rather than a queue: the only caller is the PDF
  * export, one message at a time. `role="status"` rather than `alert` — this
  * confirms something the user asked for, so it should not interrupt them.
  */
-export function Toast({
-  message,
-  actionLabel,
-  onAction,
-  onDismiss,
-}: ToastProps) {
+export function Toast({ message, onDismiss }: ToastProps) {
+  const reduceMotion = useReducedMotion();
+  const [leaving, setLeaving] = useState(false);
+
   useEffect(() => {
-    const timer = window.setTimeout(onDismiss, VISIBLE_MS);
+    const timer = window.setTimeout(() => setLeaving(true), VISIBLE_MS);
     return () => window.clearTimeout(timer);
-  }, [onDismiss]);
+  }, []);
+
+  // Stay mounted until the exit animation has played. A timer rather than
+  // `animationend`, which never fires when reduced motion skips the animation.
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(onDismiss, reduceMotion ? 0 : EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving, onDismiss, reduceMotion]);
+
+  const animation = leaving
+    ? 'motion-safe:animate-exit'
+    : 'motion-safe:animate-enter';
 
   // Portalled to body: the caller sits inside the answer panel, whose stacking
   // context would otherwise trap z-50 beneath the sticky header.
@@ -57,23 +70,9 @@ export function Toast({
       role="status"
       aria-live="polite"
       data-non-print="true"
-      className={`fixed top-3 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-xl z-50 flex items-center gap-2 min-h-12 rounded bg-theme-primary text-white text-body-medium shadow-lg ${
-        actionLabel ? 'py-1.5 pl-4 pr-2' : 'py-3.5 px-4'
-      }`}
+      className={`fixed bottom-3 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-xl z-50 flex items-center justify-center min-h-12 py-3.5 px-4 rounded bg-theme-primary text-on-theme-primary text-body-medium text-center shadow-lg ${animation}`}
     >
-      <span className="flex-1">{message}</span>
-      {actionLabel && (
-        <button
-          type="button"
-          onClick={() => {
-            onAction?.();
-            onDismiss();
-          }}
-          className="px-3 py-2.5 rounded border-0 bg-transparent text-white text-label-large"
-        >
-          {actionLabel}
-        </button>
-      )}
+      {message}
     </div>,
     document.body,
   );
