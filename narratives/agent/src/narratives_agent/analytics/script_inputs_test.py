@@ -14,8 +14,15 @@
 """Tests for the shared script input checks in `analytics.script_inputs`."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+
+import pytest
 
 from narratives_agent.analytics.alignment import AlignedCohort, align_cohort
+from narratives_agent.analytics.digest import (
+    CoverageReport,
+    RefusedScriptResult,
+)
 from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.script_inputs import (
     build_invalid_parameters_refusal,
@@ -26,6 +33,55 @@ from narratives_agent.analytics.script_inputs import (
     validate_place_dcids,
 )
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
+
+
+@dataclass(frozen=True)
+class _SpanningRow:
+    """A test-local `CohortRow` holding one place's value over a window."""
+
+    place_dcid: str
+    place_name: str
+    value: float
+
+
+@dataclass(frozen=True)
+class _SpanningCohort:
+    """A test-local `Cohort` whose reference date is a date window."""
+
+    variable_dcid: str
+    variable_name: str
+    metric_label: str
+    reference_date: str
+    unit: str | None
+    scaling_factor: float | None
+    provenance: Provenance
+    rows: tuple[_SpanningRow, ...]
+    place_names: dict[str, str]
+    coverage: CoverageReport
+    caveats: tuple[str, ...] = ()
+
+
+def _build_spanning_cohort() -> _SpanningCohort:
+    """Builds the change in population from 2020 to 2024 for two of three."""
+    return _SpanningCohort(
+        variable_dcid="Count_Person",
+        variable_name="Total population",
+        metric_label="change in Total population",
+        reference_date="2020..2024",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(Source(name="s", url="u"),)),
+        rows=(_SpanningRow("a", "A", 5.0), _SpanningRow("b", "B", -2.0)),
+        place_names={"a": "A", "b": "B", "c": "C"},
+        coverage=CoverageReport(
+            contributing_places=2,
+            requested_places=3,
+            coverage_ratio=2 / 3,
+            reference_date="2020..2024",
+            missing_places=("c",),
+        ),
+        caveats=("2 of 3 places from 2020 to 2024 reported a change.",),
+    )
 
 
 def _build_table(
@@ -363,4 +419,116 @@ def test_describe_missing_focal_places_names_the_cohort_and_figure() -> None:
     ) == (
         "x and y have no value for Total population in the cohort on 2022, "
         "so no benchmark is available."
+    )
+
+
+@pytest.mark.parametrize(
+    ("min_coverage", "should_check"),
+    [(1.5, False), (0.5, True)],
+    ids=["unchecked-out-of-range", "checked-valid"],
+)
+def test_resolve_aligned_cohort_passes_a_window_cohort_through(
+    min_coverage: float, should_check: bool
+) -> None:
+    # Test: Resolution of a cohort whose reference date is a date window.
+    # Situation: The window cohort with no `target_date`, with an unchecked
+    #   `min_coverage` of 1.5 or a valid checked `min_coverage` of 0.5.
+    # Expectation: The cohort is returned as given.
+    spanning = _build_spanning_cohort()
+    assert (
+        resolve_aligned_cohort(
+            spanning,
+            script="rank_cohort",
+            step_id="s1",
+            target_date=None,
+            min_coverage=min_coverage,
+            operation="ranked",
+            should_check_min_coverage=should_check,
+        )
+        is spanning
+    )
+
+
+def test_resolve_aligned_cohort_checks_min_coverage_of_a_window_cohort() -> (
+    None
+):
+    # Test: The checked `min_coverage` of a date-window cohort.
+    # Situation: The window cohort with `min_coverage` 1.5 and
+    #   `should_check_min_coverage=True`.
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage and caveats, followed by the threshold message.
+    spanning = _build_spanning_cohort()
+    refused = resolve_aligned_cohort(
+        spanning,
+        script="summarize_distribution",
+        step_id="s1",
+        target_date=None,
+        min_coverage=1.5,
+        operation="summarized",
+        should_check_min_coverage=True,
+    )
+    assert isinstance(refused, RefusedScriptResult)
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == spanning.coverage
+    assert refused.caveats == (
+        *spanning.caveats,
+        "The minimum coverage must be between 0 and 1, not 1.5.",
+    )
+
+
+@pytest.mark.parametrize(
+    ("target_date", "message"),
+    [
+        (
+            "latest",
+            "The target date 'latest' is not a year, a year and month, or a "
+            "full date.",
+        ),
+        (
+            "2024",
+            "The cohort spans from 2020 to 2024, so it cannot be ranked on "
+            "the single target date 2024.",
+        ),
+    ],
+    ids=["malformed-date", "valid-date"],
+)
+def test_resolve_aligned_cohort_refuses_a_target_date_for_a_window(
+    target_date: str, message: str
+) -> None:
+    # Test: A `target_date` passed with a date-window cohort.
+    # Situation: The window cohort with a malformed `target_date` (`latest`)
+    #   or a valid `target_date` (`2024`, the window's end).
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage and caveats; the malformed date reports the date format,
+    #   and the valid date reports that the cohort spans a window and names
+    #   the operation.
+    spanning = _build_spanning_cohort()
+    refused = resolve_aligned_cohort(
+        spanning,
+        script="rank_cohort",
+        step_id="s1",
+        target_date=target_date,
+        min_coverage=0.5,
+        operation="ranked",
+    )
+    assert isinstance(refused, RefusedScriptResult)
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == spanning.coverage
+    assert refused.caveats == (*spanning.caveats, message)
+
+
+def test_describe_missing_focal_places_reads_a_window_cohort() -> None:
+    # Test: The missing focal place caveat for a date-window cohort.
+    # Situation: The window cohort, whose figure is labeled `change in Total
+    #   population`, with focal place `c` missing.
+    # Expectation: The caveat names the figure's label and reads the window
+    #   as `"from 2020 to 2024"`.
+    assert describe_missing_focal_places(
+        _build_spanning_cohort(),
+        ["c"],
+        cohort_label="ranked cohort",
+        unavailable_figure="rank",
+    ) == (
+        "C has no value for change in Total population in the ranked cohort "
+        "from 2020 to 2024, so no rank is available."
     )

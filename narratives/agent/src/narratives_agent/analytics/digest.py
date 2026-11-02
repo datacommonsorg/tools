@@ -32,6 +32,7 @@ from typing import Literal, Self
 
 from narratives_agent.analytics.metrics import ScriptMetrics, ScriptName
 from narratives_agent.analytics.provenance import Provenance, Source
+from narratives_agent.analytics.tables import format_reference_date_phrase
 from narratives_agent.json_value import JsonObject, JsonValue, json_safe
 
 __all__ = [
@@ -184,7 +185,8 @@ class CoverageReport:
         requested_places: Total number of target places (`M`).
         coverage_ratio: Ratio `k / M`, or `0.0` when `M` is zero.
         reference_date: Observation date to which the cohort is aligned, or
-            `None` when no date could be selected.
+            its `start..end` date window, or `None` when no date could be
+            selected.
         missing_places: Target place DCIDs that had no observation on
             `reference_date`.
         mixed_vintages: Whether places in the unaligned table had different
@@ -199,11 +201,16 @@ class CoverageReport:
     mixed_vintages: bool = False
 
     def describe(self) -> str:
-        """Formats coverage as `"k of M place(s)"` and `" on <date>"`."""
+        """Formats coverage as `"k of M place(s)"` and its date phrase.
+
+        The date phrase is `" on <date>"` for a single reference date and
+        `" from <start> to <end>"` for a date window, and is omitted when
+        `reference_date` is None.
+        """
         noun = "place" if self.requested_places == 1 else "places"
         text = f"{self.contributing_places} of {self.requested_places} {noun}"
         if self.reference_date is not None:
-            text += f" on {self.reference_date}"
+            text += f" {format_reference_date_phrase(self.reference_date)}"
         return text
 
 
