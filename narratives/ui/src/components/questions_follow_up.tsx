@@ -31,7 +31,7 @@ export function FollowUpQuestions({
   if (!questions || questions.length === 0) return null;
 
   return (
-    <section aria-labelledby="followups-heading" className="mt-2 px-6 mb-2">
+    <section aria-labelledby="followups-heading" className="mt-2">
       <h2
         id="followups-heading"
         className="m-0 pt-3 text-title-large-emphasized text-on-surface"
