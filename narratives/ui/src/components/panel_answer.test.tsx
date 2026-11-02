@@ -35,8 +35,12 @@ const LINE_CHART: ChartItem = {
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
 
-/** Class that hides the body's non-text children while the text reveals. */
-const HIDE_NON_TEXT_CLASS = 'motion-safe:[&>:not(.markdown-body)]:opacity-0';
+/**
+ * Class that hides the body's non-text children, other than chart tiles,
+ * while the text reveals.
+ */
+const HIDE_NON_TEXT_CLASS =
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0';
 
 /** Builds a finished turn whose answer arrived as the given blocks. */
 const buildTurnWithBlocks = (
@@ -335,6 +339,32 @@ describe('AnswerPanel', () => {
     expect(
       screen.queryAllByRole('button', { name: 'Export PDF' }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('holds a drawn chart behind its skeleton until the reveal ends', () => {
+    // Test: The chart skeleton during the reveal.
+    // Situation: A panel mounts mid-stream with a long paragraph and a chart
+    //   block whose chart draws before the text has finished revealing.
+    // Expectation: The chart card stays busy behind its skeleton while the
+    //   text reveals, and is released once the reveal duration passes.
+    vi.useFakeTimers();
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'France grew. '.repeat(100) },
+      { index: 1, type: 'chart', chart: LINE_CHART },
+    ]);
+    const { container } = render(<AnswerPanel turn={turn} isStreaming />);
+    const card = container.querySelector('.dc-chart-card');
+
+    drawLineChart(container);
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+    expect(card?.getAttribute('aria-busy')).toBe('true');
+
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
+    });
+    expect(card?.getAttribute('aria-busy')).toBe('false');
   });
 
   it('hides non-text children and the export controls until the reveal ends', () => {

@@ -152,6 +152,19 @@
       scale: 1.4;
     }
   }
+
+  /* Chart skeleton highlight: a band sweeping top to bottom across the
+     placeholder. Consumed as `animate-shimmer`, gated with `motion-safe:`. */
+  --animate-shimmer: shimmer 1.5s linear infinite;
+
+  @keyframes shimmer {
+    from {
+      translate: 0 -100%;
+    }
+    to {
+      translate: 0 100%;
+    }
+  }
 }
 
 :root {

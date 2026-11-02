@@ -79,8 +79,8 @@ interface AnswerPanelProps {
  * its charts to finish loading. Charts that settle within
  * {@link ANSWER_SETTLE_MAX_MS} move nothing once the panel is shown; a chart
  * that draws or reports no data after the cap can still change its height.
- * `revealing`: the text is revealing word by word and everything else is
- * hidden. `revealed`: everything is shown.
+ * `revealing`: the text is revealing word by word, charts show their skeleton,
+ * and everything else is hidden. `revealed`: everything is shown.
  */
 type RevealPhase = "settling" | "revealing" | "revealed";
 
@@ -263,10 +263,11 @@ export function AnswerPanel({
       </CardHeader>
 
       {/* Content body: everything after and between the text blocks stays
-          hidden until the text has finished revealing. */}
+          hidden until the text has finished revealing, except chart tiles,
+          which hold their space behind a skeleton so no gap shows. */}
       <div
-        className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body)]:transition-opacity motion-safe:[&>:not(.markdown-body)]:duration-300${
-          isRevealed ? "" : " motion-safe:[&>:not(.markdown-body)]:opacity-0"
+        className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:duration-300${
+          isRevealed ? "" : " motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0"
         }`}
         style={{
           gap: 16,
@@ -372,6 +373,7 @@ function AnswerBlocks({
               key={block.index}
               config={{ shouldRender: true, charts: [block.chart] }}
               onSettled={() => onChartSettled(block.index)}
+              shouldHoldSkeleton={phase !== "revealed"}
             />
           );
         }
