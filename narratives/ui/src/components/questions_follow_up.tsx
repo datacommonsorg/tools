@@ -18,11 +18,6 @@
  * @fileoverview Renders clickable follow-up questions that resubmit the query via the onAsk callback.
  */
 
-const COLOR_HEADING = 'var(--color-on-surface)';
-const COLOR_LINK = 'var(--color-theme-primary)';
-const FONT_STACK =
-  '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
-
 interface FollowUpQuestionsProps {
   questions: string[];
   onAsk?: (question: string) => void;
@@ -36,38 +31,20 @@ export function FollowUpQuestions({
   if (!questions || questions.length === 0) return null;
 
   return (
-    <section aria-labelledby="followups-heading" className="mt-2">
+    <section aria-labelledby="followups-heading" className="mt-2 px-6 mb-2">
       <h2
         id="followups-heading"
-        className="font-medium"
-        style={{
-          fontFamily: '"Google Sans", "Google Sans Text", sans-serif',
-          fontSize: 22,
-          lineHeight: '28px',
-          color: COLOR_HEADING,
-          fontWeight: 500,
-          margin: 0,
-          paddingTop: 12,
-        }}
+        className="m-0 pt-3 text-title-large-emphasized text-on-surface"
       >
         Follow up questions
       </h2>
-      <ul
-        className="list-none p-0 m-0 mt-2 flex flex-col gap-1.5"
-        style={{
-          fontFamily: FONT_STACK,
-          fontSize: 16,
-          lineHeight: '24px',
-          fontWeight: 500,
-        }}
-      >
+      <ul className="list-none p-0 m-0 mt-2 flex flex-col gap-1.5 text-body-large-emphasized">
         {questions.map((q, i) => (
           <li key={`${q}-${i}`}>
             <button
               type="button"
               onClick={() => onAsk?.(q)}
-              className="bg-transparent border-0 p-0 text-left cursor-pointer hover:underline"
-              style={{ color: COLOR_LINK, font: 'inherit' }}
+              className="bg-transparent border-0 p-0 text-left text-theme-primary cursor-pointer hover:underline"
             >
               {q}
             </button>

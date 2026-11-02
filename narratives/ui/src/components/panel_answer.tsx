@@ -311,6 +311,12 @@ export function AnswerPanel({
         {turn.status === "done" && isRevealed && (
           <ExportPdfButton onExport={onExport} busy={exporting} />
         )}
+      </div>
+      {exported && (
+        <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
+      )}
+    </div>
+
 
         {/* 6. Follow-up questions: agent-generated, self-contained. Hidden
             when the agent returned none (no static fallback).
@@ -324,12 +330,9 @@ export function AnswerPanel({
             <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
           </div>
         )}
-      </div>
-      {exported && (
-        <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
-      )}
-    </div>
+
     </CitationNumberingProvider>
+    
   );
 }
 
