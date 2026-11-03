@@ -26,8 +26,8 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MetricsPage } from '@/src/components/metrics_page';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
-import { MetricsPage } from './metrics_page';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
   const slot = document.createElement('script');

@@ -28,13 +28,13 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DataAgent, HANDOFF_MS, TurnView } from '@/src/components/data_agent';
+import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
-import { DataAgent, HANDOFF_MS, TurnView } from './data_agent';
-import { ANSWER_SETTLE_MAX_MS } from './panel_answer';
 
 class NoopResizeObserver {
   observe = vi.fn();

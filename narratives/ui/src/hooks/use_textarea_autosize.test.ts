@@ -12,7 +12,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { useTextareaAutosize } from './use_textarea_autosize';
+import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
 
 const LINE_HEIGHT = 24;
 

@@ -212,3 +212,5 @@ Prefix every review comment with an appropriate severity tag:
   * No inline hex colors; reusable colors live in the Tailwind theme.
   * Brand colors come from runtime CSS variables (`var(--brand-*, <fallback>)`),
     never hardcoded values.
+  * Imports use the `@/src/...` alias; no `./` or `../` (except
+    `ui/vite.config.ts`).

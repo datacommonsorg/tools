@@ -4,7 +4,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useHashRoute } from './use_hash_route';
+import { useHashRoute } from '@/src/hooks/use_hash_route';
 
 describe('useHashRoute', () => {
   beforeEach(() => {

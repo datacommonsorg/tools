@@ -21,12 +21,12 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ProvenanceInspector } from '@/src/components/panel_debug_provenance';
 import type {
   ChartItem,
   ChatTurn,
   ToolCallEvent,
 } from '@/src/hooks/use_sse_chat';
-import { ProvenanceInspector } from './panel_debug_provenance';
 
 const FETCH_CALL: ToolCallEvent = {
   name: 'fetch_observations',

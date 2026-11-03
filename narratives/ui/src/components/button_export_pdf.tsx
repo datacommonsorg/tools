@@ -19,8 +19,8 @@
  */
 
 import { useRef } from 'react';
-import { ExportIcon } from './icons';
-import { Tooltip } from './tooltip';
+import { ExportIcon } from '@/src/components/icons';
+import { Tooltip } from '@/src/components/tooltip';
 
 interface ExportPdfButtonProps {
   onExport: () => void;

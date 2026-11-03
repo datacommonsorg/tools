@@ -22,7 +22,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type ChatTurn, getTurnCharts } from "@/src/hooks/use_sse_chat";
 import { inspectTurn } from "@/src/utils/inspect_turn";
-import { InspectIcon } from "./icons";
+import { InspectIcon } from "@/src/components/icons";
 
 /**
  * Reports whether the provenance inspector is enabled — i.e. the page was

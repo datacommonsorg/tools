@@ -14,7 +14,7 @@ import {
   chartScaleFactor,
   MAX_CARD_PAGE_FILL,
   pageBreak,
-} from './download_pdf';
+} from '@/src/utils/download_pdf';
 
 /** A4 content box at scale 2, roughly: 717px wide, 273mm tall. */
 const PAGE = 2000;

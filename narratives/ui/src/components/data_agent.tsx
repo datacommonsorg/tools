@@ -19,12 +19,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { InitialView } from "./view_initial";
-import { SkeletonCard } from "./card_skeleton";
-import { ReasoningBlock } from "./block_reasoning";
-import { AnswerPanel } from "./panel_answer";
-import { DISCLAIMER_TEXT } from "./note_disclaimer";
-import { PromptInput } from "./input_prompt";
+import { InitialView } from "@/src/components/view_initial";
+import { SkeletonCard } from "@/src/components/card_skeleton";
+import { ReasoningBlock } from "@/src/components/block_reasoning";
+import { AnswerPanel } from "@/src/components/panel_answer";
+import { DISCLAIMER_TEXT } from "@/src/components/note_disclaimer";
+import { PromptInput } from "@/src/components/input_prompt";
 import {
   assignCitationNumbers,
   type ChatTurn,

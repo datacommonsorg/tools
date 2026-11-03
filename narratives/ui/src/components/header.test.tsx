@@ -20,9 +20,9 @@
 
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { Header } from '@/src/components/header';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 import { ChatSessionProvider } from '@/src/hooks/chat_session_context';
-import { Header } from './header';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
   const slot = document.createElement('script');

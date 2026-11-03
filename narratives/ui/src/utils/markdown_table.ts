@@ -22,8 +22,12 @@
 import {
   createCitationMarkerPattern,
   parseCitationNumbers,
-} from "./citation_marker";
-import { isNeutralText, isNumericText, isYearText } from "./format_number";
+} from "@/src/utils/citation_marker";
+import {
+  isNeutralText,
+  isNumericText,
+  isYearText,
+} from "@/src/utils/format_number";
 
 /**
  * The part of an HTML AST node this module reads. Declared locally rather

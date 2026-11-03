@@ -18,7 +18,7 @@
  * @fileoverview Renders the AI-generated-content disclaimer note.
  */
 
-import { GeminiInfoIcon } from './icons';
+import { GeminiInfoIcon } from '@/src/components/icons';
 
 /**
  * Figma node 3427-16777 "Disclaimer" → 3427-16778 "DisclaimerNote".

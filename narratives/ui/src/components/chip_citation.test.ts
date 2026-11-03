@@ -23,8 +23,8 @@ import {
   isCitable,
   sourceLabel,
   splitWithCitations,
-} from "./chip_citation";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+} from "@/src/components/chip_citation";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
 
 const SOURCES: ProvenanceItem[] = [
   { name: "World Development Indicators", url: "https://worldbank.org/wdi" },
