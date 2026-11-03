@@ -43,5 +43,6 @@ styles.
   This is stricter than [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md)
   §3.1, which bans only `../`. Biome's `noRestrictedImports` enforces it in
   every file that `biome.json` does not exclude.
-- `ui/vite.config.ts` is the one exception. Vite loads that file before the
-  alias exists, so it imports `./src/config/base_url`.
+- Config files (`*.config.*`) and `scripts/**` are exempt. Vite loads
+  `ui/vite.config.ts` before the alias exists, and scripts run directly in
+  Node, where `@/` is not defined.
