@@ -26,13 +26,17 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
+from narratives_agent.analytics.alignment import WindowCohort
 from narratives_agent.analytics.derived import derive_observation_table
 from narratives_agent.analytics.digest import AnalysisDigest, ScriptResult
 from narratives_agent.analytics.provenance import Provenance
 from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.relations import relate_cohorts
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
-from narratives_agent.analytics.timeseries import analyze_timeseries
+from narratives_agent.analytics.timeseries import (
+    analyze_timeseries,
+    reduce_series,
+)
 from narratives_agent.json_value import JsonObject
 from narratives_agent.workflows.charts import (
     BarChartSpecification,
@@ -1829,3 +1833,166 @@ def test_a_line_needs_a_charted_place_with_at_least_two_dates() -> None:
     )
     assert resolved is not None
     assert resolved["place_dcids"] == ["country/FRA", "country/DEU"]
+
+
+def _make_window_case(
+    *, has_single_date_ranking: bool = False
+) -> tuple[TurnCache, AnalysisDigest, AnalysisSpecification]:
+    """Builds six states' 2020 and 2024 values, ranked by their change.
+
+    State `n` grows by `n * 10` and its 2024 level falls with `n`, so the
+    ranking by change runs opposite to the ranking by level. The digest
+    holds the top three by change (`s2`) and, when asked, a ranking of the
+    raw 2024 levels (`s3`).
+    """
+    rows = tuple(
+        ObservationRow(place, place, date, value)
+        for index, place in enumerate(_STATES, start=1)
+        for date, value in (
+            ("2020", 100.0 - index * 15.0),
+            ("2024", 100.0 - index * 5.0),
+        )
+    )
+    table = ObservationTable(
+        variable_dcid="Count_Person",
+        variable_name="Total Population",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(),
+        rows=rows,
+        requested_places=_STATES,
+        place_names={place: place for place in _STATES},
+        parent_place_dcid="country/USA",
+        child_place_type="State",
+    )
+    entry = CachedTable(table_id="t1", table=table)
+    steps: list[dict[str, object]] = [
+        {
+            "step_id": "s1",
+            "script": "reduce_series",
+            "table": "t1",
+            "metric": "absolute_change",
+        },
+        {"step_id": "s2", "script": "rank_cohort", "table": "s1", "n": 3},
+    ]
+    window = reduce_series(table, "absolute_change", step_id="s1")
+    assert isinstance(window, WindowCohort)
+    results: list[ScriptResult] = [
+        rank_cohort(window, max_entries_per_end=3, step_id="s2")
+    ]
+    if has_single_date_ranking:
+        steps.append({"step_id": "s3", "script": "rank_cohort", "table": "t1"})
+        results.append(rank_cohort(table, step_id="s3"))
+    analysis = AnalysisSpecification.model_validate({"steps": steps})
+    return _make_cache(entry), _make_digest(*results), analysis
+
+
+@pytest.mark.parametrize("kind", ["ranking", "bar", "map"])
+def test_an_undated_snapshot_of_a_window_ranking_is_rejected(
+    kind: str,
+) -> None:
+    # Test: Single-date charts of a table ranked over a date window.
+    # Situation: The digest ranks six states only by their change from 2020
+    #   to 2024, and a `ranking`, `bar`, or `map` of the table names no
+    #   date.
+    # Expectation: The chart is rejected, because it would draw the latest
+    #   levels rather than the change the prose ranks.
+    cache, digest, analysis = _make_window_case()
+    fields: dict[str, object] = {"top_n": 3} if kind != "map" else {}
+    assert (
+        _resolve_chart_wire(kind, ["t1"], cache, digest, analysis, **fields)
+        is None
+    )
+
+
+def test_a_dated_snapshot_of_a_window_ranking_resolves() -> None:
+    # Test: An explicit date on a table ranked over a date window.
+    # Situation: The same window ranking charted as a `ranking` on 2024.
+    # Expectation: The chart resolves at that date.
+    cache, digest, analysis = _make_window_case()
+    chart = _resolve_chart_wire(
+        "ranking", ["t1"], cache, digest, analysis, date="2024", top_n=3
+    )
+    assert chart is not None
+    assert chart["date"] == "2024"
+
+
+def test_a_line_of_a_window_ranking_slice_draws_the_ranked_places() -> None:
+    # Test: A `top_n` line of a table ranked over a date window.
+    # Situation: The digest's three leading states by change, charted as a
+    #   line of the top three.
+    # Expectation: The line draws the three states the digest ranks first,
+    #   which are not the three highest 2024 levels.
+    cache, digest, analysis = _make_window_case()
+    chart = _resolve_chart_wire(
+        "line", ["t1"], cache, digest, analysis, top_n=3
+    )
+    assert chart is not None
+    assert chart["place_dcids"] == [_STATES[5], _STATES[4], _STATES[3]]
+
+
+def test_a_line_slice_beyond_a_window_ranking_is_not_re_ranked() -> None:
+    # Test: A slice larger than the digest's window ranking.
+    # Situation: The digest ranks the top three states by change, and a
+    #   line asks for the top five.
+    # Expectation: The chart is rejected rather than filled by ranking the
+    #   table's 2024 levels, which would name other states.
+    cache, digest, analysis = _make_window_case()
+    assert (
+        _resolve_chart_wire("line", ["t1"], cache, digest, analysis, top_n=5)
+        is None
+    )
+
+
+def test_a_highlight_of_a_window_ranked_table_resolves_undated() -> None:
+    # Test: The highlight chart of a table ranked over a date window.
+    # Situation: One state of the window-ranked table as an undated
+    #   highlight.
+    # Expectation: The chart resolves without a date.
+    cache, digest, analysis = _make_window_case()
+    chart = _resolve_chart_wire(
+        "highlight", ["t1"], cache, digest, analysis, places=[_STATES[0]]
+    )
+    assert chart is not None
+    assert "date" not in chart
+
+
+def test_a_table_also_ranked_on_one_date_takes_an_undated_snapshot() -> None:
+    # Test: A table the digest ranks both over a window and on one date.
+    # Situation: The window ranking and a ranking of the 2024 levels, with
+    #   an undated `ranking` chart.
+    # Expectation: The chart resolves at the single-date ranking's date.
+    cache, digest, analysis = _make_window_case(has_single_date_ranking=True)
+    chart = _resolve_chart_wire(
+        "ranking", ["t1"], cache, digest, analysis, top_n=3
+    )
+    assert chart is not None
+    assert chart["date"] == "2024"
+
+
+def test_an_undated_scatter_with_a_window_ranked_table_is_rejected() -> None:
+    # Test: The scatter chart of a table ranked over a date window.
+    # Situation: The window-ranked population table paired in an undated
+    #   scatter with a 2024 income table of the same states.
+    # Expectation: The chart is rejected, because the population axis would
+    #   draw the latest levels rather than the ranked change.
+    cache, digest, analysis = _make_window_case()
+    income = _make_table(
+        "t2",
+        "Median_Income",
+        name="Income",
+        unit="USDollar",
+        places=_STATES,
+        dates=("2024",),
+        parent="country/USA",
+        child_type="State",
+    )
+    cache.store_fetched(income)
+    assert (
+        _resolve_chart_wire("scatter", ["t1", "t2"], cache, digest, analysis)
+        is None
+    )
+    dated = _resolve_chart_wire(
+        "scatter", ["t1", "t2"], cache, digest, analysis, date="2024"
+    )
+    assert dated is not None

@@ -1018,3 +1018,88 @@ async def test_alternatives_are_traced_through_a_derived_table() -> None:
         "f2",
         "f3",
     ]
+
+
+def _build_series_table(
+    table_id: str, series: dict[str, tuple[float, float]]
+) -> CachedTable:
+    """Builds a cached state table of 2020 and 2024 values keyed by place."""
+    rows = tuple(
+        ObservationRow(place, place.upper(), date, value)
+        for place, (start, end) in series.items()
+        for date, value in (("2020", start), ("2024", end))
+    )
+    table = ObservationTable(
+        variable_dcid="Count_Person",
+        variable_name="Count Person",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(_WDI,), facet_ids=("f1",)),
+        rows=rows,
+        requested_places=tuple(series),
+        place_names={place: place.upper() for place in series},
+        parent_place_dcid="country/USA",
+        child_place_type="State",
+    )
+    return CachedTable(table_id=table_id, table=table)
+
+
+@pytest.mark.asyncio
+async def test_a_reduction_is_ranked_by_a_later_step() -> None:
+    # Test: The dispatch of a `reduce_series` step.
+    # Situation: The change in population from 2020 to 2024 of three states
+    #   is reduced and then ranked.
+    # Expectation: The digest holds only the ranking, over the window, with
+    #   the places in order of their change.
+    cache = _build_cache(
+        _build_series_table(
+            "t1", {"a": (10.0, 12.0), "b": (10.0, 19.0), "c": (10.0, 8.0)}
+        )
+    )
+    specification = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "reduce_series",
+            "table": "t1",
+            "metric": "absolute_change",
+        },
+        {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+    )
+    digest = await execute_specification(specification, cache)
+    assert isinstance(digest, AnalysisDigest)
+    (result,) = digest.results
+    assert result.step_id == "s2"
+    assert isinstance(result.metrics, RankingMetrics)
+    assert result.metrics.reference_date == "2020..2024"
+    assert [entry.place_dcid for entry in result.metrics.top_n] == [
+        "b",
+        "a",
+        "c",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_reduction_becomes_a_diagnostic() -> None:
+    # Test: A `reduce_series` step whose script refuses.
+    # Situation: A growth rate over a window whose places all fall to zero.
+    # Expectation: A diagnostic for the reduction step naming its table, and
+    #   no result for the ranking that would read it.
+    cache = _build_cache(
+        _build_series_table("t1", {"a": (10.0, 0.0), "b": (10.0, 0.0)})
+    )
+    specification = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "reduce_series",
+            "table": "t1",
+            "metric": "cagr",
+        },
+        {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+    )
+    diagnostic = await execute_specification(specification, cache)
+    assert isinstance(diagnostic, StepRefusalDiagnostic)
+    assert diagnostic.step_id == "s1"
+    assert diagnostic.script == "reduce_series"
+    assert diagnostic.refusal_reason == "insufficient_coverage"
+    assert diagnostic.input_table_ids == ("t1",)
+    assert diagnostic.completed_results == ()

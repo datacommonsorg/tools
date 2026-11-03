@@ -89,7 +89,12 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "`rank_cohort` with the question's `n` and `direction`; one "
             "`rank_cohort` step reports both the leading and the trailing "
             "tail of its table, and a question about one variable needs "
-            "nothing more. When the question asks for a second variable "
+            "nothing more. When the question ranks a change over a period "
+            "(the largest gains since 2020, the fastest growth over the "
+            "decade), specify `reduce_series` on the cohort table with the "
+            "matching `metric`, such as `absolute_change`, `percent_change`, "
+            "or `cagr`, and `rank_cohort` on its output. When the question "
+            "asks for a second variable "
             "across places ranked by another, fetch the ranking variable and "
             "the target variable across the cohort with "
             "`fetch_child_observations` in the same round, then specify "
@@ -101,7 +106,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "State the leading and trailing ranks explicitly with their "
             "exact values and the shared observation year, and cite the "
             "official source agency. Chart the ranked cohort as a `ranking` "
-            "with the tail the question asked for. When the digest relates a "
+            "with the tail the question asked for; when the ranking covers a "
+            "window from one date to another, state both dates and chart the "
+            "ranked places as a `line` instead. When the digest relates a "
             "second variable to the ranking, state in prose each group's "
             "places, its mean and median of the target variable, the "
             "difference between the two group means, and the places the "
@@ -113,32 +120,45 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
         discovery=(
             "Fetch the cohort with `fetch_child_observations` and specify "
             "`summarize_distribution` with the place the question names in "
-            "`focal_places`."
+            "`focal_places`. When the question asks how a change over a "
+            "period is distributed, specify `reduce_series` on the cohort "
+            "table first and `summarize_distribution` on its output."
         ),
         synthesis=(
             "Describe the cohort as a whole rather than listing its members: "
             "report the median, the mean, the minimum and maximum, and the "
-            "spread between them, all at one shared observation year, and "
-            "say where the focal place sits within that range."
+            "spread between them, all at one shared observation year or over "
+            "one shared window, and say where the focal place sits within "
+            "that range."
         ),
     ),
     "trend_delta": Directive(
         discovery=(
             "Fetch the full series with `fetch_observations` and specify "
             "`analyze_timeseries`, with `start_date` and `end_date` when the "
-            "question bounds the period."
+            "question bounds the period, for one place or up to ten named "
+            "places. For the change across a larger cohort, fetch it with "
+            "`fetch_child_observations` and specify `reduce_series` with "
+            "`absolute_change`, `percent_change`, or `cagr`, followed by "
+            "`rank_cohort` or `summarize_distribution` on its output."
         ),
         synthesis=(
             "Report the overall start-to-end change as an absolute delta and "
             "as a percentage growth or decline, and point out the key "
-            "inflection points across the period."
+            "inflection points across the period. For a cohort ranked by its "
+            "change, name the window's two dates and the leading and "
+            "trailing places, and chart their trajectories as a `line`."
         ),
     ),
     "outliers": Directive(
         discovery=(
             "Fetch the series across the target entities with "
             "`fetch_observations` or `fetch_child_observations` and specify "
-            "`analyze_timeseries`."
+            "`analyze_timeseries` for up to ten places. Across a larger "
+            "cohort, specify `reduce_series` with `latest_period_change` or "
+            "`latest_period_percent_change`, followed by `rank_cohort` on "
+            "its output, to find the places with the largest latest spikes "
+            "and drops."
         ),
         synthesis=(
             "Identify the largest period-over-period spikes and drops "

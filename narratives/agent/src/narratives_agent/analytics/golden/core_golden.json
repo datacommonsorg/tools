@@ -2548,6 +2548,129 @@
       "Count_Person"
     ]
   },
+  "distribution_window_cohort_end_date_weights": {
+    "caveats": [
+      "4 of 5 places from 2018 to 2024 have a value for change in Total population."
+    ],
+    "coverage": {
+      "contributing_places": 4,
+      "coverage_ratio": 0.8,
+      "missing_places": [
+        "country/W4"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2018..2024",
+      "requested_places": 5
+    },
+    "metrics": {
+      "cohort_size": 4,
+      "deciles": {
+        "p10": 78.0,
+        "p20": 96.0,
+        "p30": 114.0,
+        "p40": 132.0,
+        "p50": 150.0,
+        "p60": 168.0,
+        "p70": 186.0,
+        "p80": 204.0,
+        "p90": 222.0
+      },
+      "focal_entries": [
+        {
+          "diff_from_mean": -90.0,
+          "diff_from_median": -90.0,
+          "from_date": "2018",
+          "from_value": 1000.0,
+          "pct_of_median": 40.0,
+          "percentile": 25.0,
+          "place_dcid": "country/W0",
+          "place_name": "Window 0",
+          "to_date": "2024",
+          "to_value": 1060.0,
+          "value": 60.0,
+          "z_score": -1.161895003862225
+        }
+      ],
+      "iqr": 90.0,
+      "max": {
+        "from_date": "2018",
+        "from_value": 1000.0,
+        "place_dcid": "country/W3",
+        "place_name": "Window 3",
+        "to_date": "2024",
+        "to_value": 1240.0,
+        "value": 240.0
+      },
+      "max_minus_min": 180.0,
+      "mean": 150.0,
+      "median": 150.0,
+      "min": {
+        "from_date": "2018",
+        "from_value": 1000.0,
+        "place_dcid": "country/W0",
+        "place_name": "Window 0",
+        "to_date": "2024",
+        "to_value": 1060.0,
+        "value": 60.0
+      },
+      "missing_focal_places": [],
+      "q25": 105.0,
+      "q50": 150.0,
+      "q75": 195.0,
+      "reference_date": "2018..2024",
+      "skewness": 0.0,
+      "stdev": 77.45966692414834,
+      "weight_variable_dcid": "Count_Person",
+      "weighted_mean": 153.91304347826087,
+      "weighted_place_count": 4
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Change in Total population computed for each place from 2018 to 2024, using each place's observations at both ends of the window; Distribution of change in Total population across 4 places from 2018 to 2024: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, quartiles and deciles by linear interpolation, and adjusted Fisher-Pearson sample skewness, with the mean also weighted by Total population; focal places are compared with the cohort mean, median, and percentile.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "ok",
+    "step_id": "s3",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
   "distribution_with_focal_places": {
     "caveats": [
       "The places report different latest observation dates, so every value is aligned to 2022.",
@@ -2786,6 +2909,127 @@
       "Count_Person"
     ]
   },
+  "ranking_window_cohort": {
+    "caveats": [
+      "4 of 5 places from 2018 to 2024 have a value for change in Total population."
+    ],
+    "coverage": {
+      "contributing_places": 4,
+      "coverage_ratio": 0.8,
+      "missing_places": [
+        "country/W4"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2018..2024",
+      "requested_places": 5
+    },
+    "metrics": {
+      "bottom_n": [
+        {
+          "from_date": "2018",
+          "from_value": 1000.0,
+          "is_tied": false,
+          "percentile": 25.0,
+          "place_dcid": "country/W0",
+          "place_name": "Window 0",
+          "rank": 4,
+          "to_date": "2024",
+          "to_value": 1060.0,
+          "value": 60.0
+        },
+        {
+          "from_date": "2018",
+          "from_value": 1000.0,
+          "is_tied": false,
+          "percentile": 50.0,
+          "place_dcid": "country/W1",
+          "place_name": "Window 1",
+          "rank": 3,
+          "to_date": "2024",
+          "to_value": 1120.0,
+          "value": 120.0
+        }
+      ],
+      "cohort_size": 4,
+      "direction": "desc",
+      "focal_entries": [],
+      "max_entries_per_end": 2,
+      "missing_focal_places": [],
+      "reference_date": "2018..2024",
+      "top_n": [
+        {
+          "from_date": "2018",
+          "from_value": 1000.0,
+          "is_tied": false,
+          "percentile": 100.0,
+          "place_dcid": "country/W3",
+          "place_name": "Window 3",
+          "rank": 1,
+          "to_date": "2024",
+          "to_value": 1240.0,
+          "value": 240.0
+        },
+        {
+          "from_date": "2018",
+          "from_value": 1000.0,
+          "is_tied": false,
+          "percentile": 75.0,
+          "place_dcid": "country/W2",
+          "place_name": "Window 2",
+          "rank": 2,
+          "to_date": "2024",
+          "to_value": 1180.0,
+          "value": 180.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Change in Total population computed for each place from 2018 to 2024, using each place's observations at both ends of the window; Ranked 4 places by change in Total population from 2018 to 2024 in descending order; places with the same value share a rank.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "rank_cohort",
+    "status": "ok",
+    "step_id": "s2",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
   "ranking_with_ties": {
     "caveats": [
       "geoId/09 has no value for Total population in the ranked cohort on 2022, so no rank is available.",
@@ -3019,6 +3263,172 @@
     "variables": [
       "Count_Person"
     ]
+  },
+  "reduce_series_latest_period_percent_change": {
+    "caveats": [
+      "4 of 5 places from 2023 to 2024 have a value for 1-period percentage change in Total population."
+    ],
+    "coverage": {
+      "contributing_places": 4,
+      "coverage_ratio": 0.8,
+      "missing_places": [
+        "country/W4"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2023..2024",
+      "requested_places": 5
+    },
+    "end_date": "2024",
+    "metric": "latest_period_percent_change",
+    "place_names": {
+      "country/W0": "Window 0",
+      "country/W1": "Window 1",
+      "country/W2": "Window 2",
+      "country/W3": "Window 3",
+      "country/W4": "Window 4"
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "1-period percentage change in Total population computed for each place from 2023 to 2024, using the latest pair of consecutive observations the places share.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "from_date": "2023",
+        "from_value": 1050.0,
+        "place_dcid": "country/W0",
+        "place_name": "Window 0",
+        "to_date": "2024",
+        "to_value": 1060.0,
+        "value": 0.9523809523809524
+      },
+      {
+        "from_date": "2023",
+        "from_value": 1100.0,
+        "place_dcid": "country/W1",
+        "place_name": "Window 1",
+        "to_date": "2024",
+        "to_value": 1120.0,
+        "value": 1.8181818181818181
+      },
+      {
+        "from_date": "2023",
+        "from_value": 1150.0,
+        "place_dcid": "country/W2",
+        "place_name": "Window 2",
+        "to_date": "2024",
+        "to_value": 1180.0,
+        "value": 2.608695652173913
+      },
+      {
+        "from_date": "2023",
+        "from_value": 1200.0,
+        "place_dcid": "country/W3",
+        "place_name": "Window 3",
+        "to_date": "2024",
+        "to_value": 1240.0,
+        "value": 3.3333333333333335
+      }
+    ],
+    "scaling_factor": null,
+    "start_date": "2023",
+    "unit": "Percent",
+    "variable_dcid": "Count_Person",
+    "variable_name": "Total population"
+  },
+  "reduce_series_window_cohort": {
+    "caveats": [
+      "4 of 5 places from 2018 to 2024 have a value for change in Total population."
+    ],
+    "coverage": {
+      "contributing_places": 4,
+      "coverage_ratio": 0.8,
+      "missing_places": [
+        "country/W4"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2018..2024",
+      "requested_places": 5
+    },
+    "end_date": "2024",
+    "metric": "absolute_change",
+    "place_names": {
+      "country/W0": "Window 0",
+      "country/W1": "Window 1",
+      "country/W2": "Window 2",
+      "country/W3": "Window 3",
+      "country/W4": "Window 4"
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Change in Total population computed for each place from 2018 to 2024, using each place's observations at both ends of the window.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "from_date": "2018",
+        "from_value": 1000.0,
+        "place_dcid": "country/W0",
+        "place_name": "Window 0",
+        "to_date": "2024",
+        "to_value": 1060.0,
+        "value": 60.0
+      },
+      {
+        "from_date": "2018",
+        "from_value": 1000.0,
+        "place_dcid": "country/W1",
+        "place_name": "Window 1",
+        "to_date": "2024",
+        "to_value": 1120.0,
+        "value": 120.0
+      },
+      {
+        "from_date": "2018",
+        "from_value": 1000.0,
+        "place_dcid": "country/W2",
+        "place_name": "Window 2",
+        "to_date": "2024",
+        "to_value": 1180.0,
+        "value": 180.0
+      },
+      {
+        "from_date": "2018",
+        "from_value": 1000.0,
+        "place_dcid": "country/W3",
+        "place_name": "Window 3",
+        "to_date": "2024",
+        "to_value": 1240.0,
+        "value": 240.0
+      }
+    ],
+    "scaling_factor": null,
+    "start_date": "2018",
+    "unit": null,
+    "variable_dcid": "Count_Person",
+    "variable_name": "Total population"
   },
   "refusal_composition_components_exceed_total": {
     "caveats": [
@@ -3839,6 +4249,59 @@
     "status": "refused",
     "step_id": "s1",
     "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "refusal_reduce_series_short_span": {
+    "caveats": [
+      "No place has two observations of Total population in the requested date window at least a year apart, so the compound annual growth rate is undefined."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "invalid_parameters",
+    "scaling_factor": null,
+    "script": "reduce_series",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": "Percent per year",
     "variable_names": {
       "Count_Person": "Total population"
     },

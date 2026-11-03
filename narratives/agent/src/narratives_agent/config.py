@@ -26,12 +26,19 @@ On every path the default prompt bodies in `defaults/prompts/` are read first,
 and the configured prompts (`prompts/<slot>.md` beside `CONFIG_URL`, then
 inline `prompts` entries) are layered over them slot by slot. A configured
 prompt that is absent or fails to load leaves the default prompt in place.
+
+`render_prompt` substitutes `{{CURRENT_DATETIME}}` with the timestamp that
+`pin_current_datetime` holds for the current context, so every prompt of one
+chat turn names the same time.
 """
 
 import json
 import logging
 import posixpath
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -70,6 +77,12 @@ _config_mtime = 0.0
 _config_path: Path | None = None
 _defaults_config: AgentConfig | None = None
 _defaults_dir: Path | None = None
+# The timestamp `get_current_datetime` returns while `pin_current_datetime`
+# is active. A context variable keeps concurrent asyncio turns, each in its
+# own task context, from reading another turn's timestamp.
+_pinned_current_datetime: ContextVar[str | None] = ContextVar(
+    "_pinned_current_datetime", default=None
+)
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -452,7 +465,43 @@ def load_config() -> AgentConfig | None:
 
 
 def get_current_datetime() -> str:
-    """Get the current date and time in the configured timezone.
+    """Returns the pinned timestamp, or the current date and time.
+
+    Inside `pin_current_datetime` the pinned timestamp is returned, so every
+    prompt rendered during one turn names the same time; otherwise the
+    current time is formatted by `_format_current_datetime`.
+    """
+    if (pinned := _pinned_current_datetime.get()) is not None:
+        return pinned
+    return _format_current_datetime()
+
+
+@contextmanager
+def pin_current_datetime(value: str | None = None) -> Iterator[str]:
+    """Pins the timestamp `get_current_datetime` returns in this context.
+
+    The pin applies to the current context, to the tasks it creates, and to
+    its `asyncio.to_thread` calls, which copy the context (a bare
+    `ThreadPoolExecutor` does not), and is removed on exit, also when the
+    block raises.
+
+    Args:
+        value: The timestamp to pin, or None to pin the current time as
+            `_format_current_datetime` formats it.
+
+    Yields:
+        The pinned timestamp.
+    """
+    resolved = value if value is not None else _format_current_datetime()
+    token = _pinned_current_datetime.set(resolved)
+    try:
+        yield resolved
+    finally:
+        _pinned_current_datetime.reset(token)
+
+
+def _format_current_datetime() -> str:
+    """Formats the current date and time in the configured timezone.
 
     The TIMEZONE environment variable selects the zone (for example
     "Asia/Kolkata" or "America/Los_Angeles"), and the trailing label

@@ -142,6 +142,14 @@ agent loop in five steps:
    deterministic analytics scripts (`workflows/processing.py`) under the
    `processing` status phase; a validation or step refusal is returned to the
    model for up to two retries, and an accepted `AnalysisDigest` ends the loop.
+   A specification holds at most six steps. `analyze_timeseries` and
+   `compute_composition` report every place they cover, so without `places`
+   their input may cover at most ten places, and a ranking or relation
+   reports at most 25 places per end. A change, growth rate, or period mean
+   across a larger cohort is computed by `reduce_series`, which reduces each
+   place's series to one figure over a window the places share and produces
+   a window cohort (reference date `start..end`) that a later `rank_cohort`,
+   `summarize_distribution`, or `relate_cohorts` step reads.
    If the loop ends without an accepted digest or an `UnavailableReport`, a
    default specification is built from the cached tables and the query's
    pattern. If the MCP server cannot be reached, the turn stops and returns an
@@ -183,8 +191,13 @@ agent loop in five steps:
    chart projected directly from the primary result (`scatter` for a cohort
    `relate_cohorts` result, which is considered first, or the direct chart of
    `analyze_timeseries`, `rank_cohort`, or `compute_composition`;
-   distributions, standalone derivations, and non-cohort relations receive
-   none). The signed `model_response` is the text blocks joined by blank lines,
+   distributions, standalone derivations, non-cohort relations, and
+   relations over a window cohort receive none). A ranking over a window
+   cohort is charted as a `line` of its leading places, and a `ranking`,
+   `bar`, `map`, or `scatter` of a table that the digest ranks only over a
+   window needs an explicit date, because without one it would draw the
+   latest values rather than the change the prose describes. The signed
+   `model_response` is the text blocks joined by blank lines,
    with the chart blocks stripped, matching the text blocks emitted in
    `content` frames. A stream that stalls for 60 seconds waiting for a chunk
    ends the turn with `synthesis_stream_error`.
@@ -324,6 +337,16 @@ models and thinking levels with the per-role settings fixed in
 `workflows/contracts/`, `workflows/prompt_contracts.py` appends it after the
 configured prompt so an instance override cannot drop or contradict the
 server's contract.
+
+Every Gemini call renders its system instruction with `render_prompt`, which
+fills in `{{CURRENT_DATETIME}}` and the `{{instance.*}}` placeholders. The
+`classify` prompt, the discovery contract, and the `synthesis` prompt name the
+current date and time, so relative dates such as "this month" or "over the
+last decade" resolve against it. `run_turn` pins one timestamp for the whole
+turn with `pin_current_datetime` (a context variable, so concurrent turns
+keep their own), and every phase of the turn renders that same timestamp. An
+instance that overrides the `classify` or `synthesis` prompt keeps the date
+only when its own prompt includes `{{CURRENT_DATETIME}}`.
 
 For the Gemini API key (`get_gemini_api_key()`):
 

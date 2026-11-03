@@ -11,11 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for `analyze_timeseries` in `analytics.timeseries`.
+"""Tests for `analyze_timeseries` and `reduce_series` in `analytics.timeseries`.
 
 Covers single-point and multi-point series statistics, undefined growth-rate
 caveats, fractional-year arithmetic across date granularities, local extrema
-caps, window and place filtering, and multi-place comparisons.
+caps, window and place filtering, and multi-place comparisons; and, for
+`reduce_series`, the shared window selection, cohort-wide date precision,
+each window metric with its unit, undefined figures, coverage, and refusals.
 """
 
 import datetime
@@ -24,11 +26,16 @@ import random
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import pairwise
 
 import pytest
 
-from narratives_agent.analytics.digest import PLACE_NAME_CAP
+from narratives_agent.analytics.alignment import WindowCohort, WindowRow
+from narratives_agent.analytics.digest import (
+    PLACE_NAME_CAP,
+    RefusedScriptResult,
+)
 from narratives_agent.analytics.metrics import (
     CrossPlaceComparison,
     LeaderDelta,
@@ -44,6 +51,7 @@ from narratives_agent.analytics.timeseries import (
     LOCAL_EXTREMA_CAP,
     _find_extreme_period_changes,
     analyze_timeseries,
+    reduce_series,
 )
 
 _SOURCE = Source(name="World Development Indicators", url="https://wdi")
@@ -1291,3 +1299,439 @@ def test_generated_series_comparisons_order_entries_and_deltas() -> None:
         comparison = case.metrics.cross_place_comparison
         if comparison is not None:
             _assert_comparison_entries(comparison, case.by_place)
+
+
+def _build_unit_table(
+    observations: Sequence[tuple[str, str, float]],
+    *,
+    unit: str | None,
+    scaling_factor: float | None,
+) -> ObservationTable:
+    """Builds a table like `_table` with its own unit and scaling factor."""
+    table = _table(observations)
+    return ObservationTable(
+        variable_dcid=table.variable_dcid,
+        variable_name=table.variable_name,
+        unit=unit,
+        scaling_factor=scaling_factor,
+        provenance=table.provenance,
+        rows=table.rows,
+        requested_places=table.requested_places,
+        place_names=table.place_names,
+    )
+
+
+def _expect_cohort(
+    outcome: WindowCohort | RefusedScriptResult,
+) -> WindowCohort:
+    """Narrows a `reduce_series` outcome to its cohort."""
+    assert isinstance(outcome, WindowCohort), outcome
+    return outcome
+
+
+def _expect_refusal(
+    outcome: WindowCohort | RefusedScriptResult,
+) -> RefusedScriptResult:
+    """Narrows a `reduce_series` outcome to its refusal."""
+    assert isinstance(outcome, RefusedScriptResult), outcome
+    return outcome
+
+
+def _list_values(cohort: WindowCohort) -> list[tuple[str, float]]:
+    """Lists each row's place and figure, in row order."""
+    return [(row.place_dcid, row.value) for row in cohort.rows]
+
+
+def test_a_reduction_takes_the_latest_consecutive_pair_with_coverage() -> None:
+    # Test: The consecutive window of `latest_period_change`.
+    # Situation: Places `a`, `b`, and `c` report 2020 to 2023, and only `a`
+    #   reports 2024, so 2023 to 2024 holds 1 of 3 places.
+    # Expectation: The window is 2022 to 2023, the latest pair at least half
+    #   the places share, and each place's figure is its change over it.
+    table = _table(
+        [
+            *_series("a", [("2021", 1.0), ("2022", 2.0), ("2023", 5.0)]),
+            ("a", "2024", 9.0),
+            *_series("b", [("2021", 1.0), ("2022", 4.0), ("2023", 3.0)]),
+            *_series("c", [("2021", 1.0), ("2022", 1.0), ("2023", 1.5)]),
+        ]
+    )
+    cohort = _expect_cohort(reduce_series(table, "latest_period_change"))
+    assert cohort.reference_date == "2022..2023"
+    assert _list_values(cohort) == [("a", 3.0), ("b", -1.0), ("c", 0.5)]
+    assert cohort.unit == "Person"
+    assert cohort.caveats == ()
+
+
+def test_a_consecutive_window_leaves_out_a_place_observed_inside_it() -> None:
+    # Test: The per-place adjacency of a consecutive window.
+    # Situation: `a` and `b` report only 2022 and 2024, so 2022 to 2024 is
+    #   consecutive for them, while `c` also reports 2023.
+    # Expectation: The window is 2022 to 2024 and `c` is left out, because
+    #   its own series has a period in between, with a coverage caveat.
+    table = _table(
+        [
+            *_series("a", [("2022", 1.0), ("2024", 3.0)]),
+            *_series("b", [("2022", 2.0), ("2024", 1.0)]),
+            *_series("c", [("2022", 1.0), ("2023", 2.0), ("2024", 9.0)]),
+        ]
+    )
+    cohort = _expect_cohort(reduce_series(table, "latest_period_change"))
+    assert cohort.reference_date == "2022..2024"
+    assert _list_values(cohort) == [("a", 2.0), ("b", -1.0)]
+    assert cohort.coverage.missing_places == ("c",)
+    assert cohort.caveats == (
+        "2 of 3 places from 2022 to 2024 have a value for 1-period change "
+        "in Total population.",
+    )
+
+
+def test_a_span_window_ends_late_and_starts_early() -> None:
+    # Test: The span window of `absolute_change`.
+    # Situation: `a` reports 2018 to 2024, `b` 2019 to 2024, and `c` 2020 to
+    #   2023, so 2024 is shared by 2 of 3 places and 2019 is the earliest
+    #   start both of those report.
+    # Expectation: The window is 2019 to 2024, each row carries its
+    #   endpoints, the rows are sorted by place, and `c` is missing.
+    years = [str(year) for year in range(2018, 2025)]
+    table = _table(
+        [
+            *_series(
+                "b",
+                [(year, float(index)) for index, year in enumerate(years[1:])],
+            ),
+            *_series(
+                "a", [(year, float(index)) for index, year in enumerate(years)]
+            ),
+            *_series("c", [(year, 1.0) for year in years[2:-1]]),
+        ]
+    )
+    cohort = _expect_cohort(reduce_series(table, "absolute_change"))
+    assert cohort.reference_date == "2019..2024"
+    assert cohort.rows == (
+        WindowRow("a", "A", "2019", "2024", 1.0, 6.0, 5.0),
+        WindowRow("b", "B", "2019", "2024", 0.0, 5.0, 5.0),
+    )
+    assert cohort.coverage.missing_places == ("c",)
+
+
+def test_the_cohort_keeps_its_most_common_precision_finer_on_a_tie() -> None:
+    # Test: The cohort-wide date precision.
+    # Situation: `a` reports two years and `b` two months, a tie in count.
+    # Expectation: The monthly precision is kept, `a` is left out, and a
+    #   caveat names `a` and the monthly precision.
+    table = _table(
+        [
+            *_series("a", [("2020", 1.0), ("2021", 2.0)]),
+            *_series("b", [("2020-01", 1.0), ("2021-01", 4.0)]),
+        ]
+    )
+    cohort = _expect_cohort(reduce_series(table, "absolute_change"))
+    assert cohort.reference_date == "2020-01..2021-01"
+    assert _list_values(cohort) == [("b", 3.0)]
+    assert cohort.caveats[0] == (
+        "A has dates at a precision other than the cohort's monthly dates, "
+        "so only monthly observations are compared."
+    )
+
+
+def test_a_percentage_change_is_in_percent_with_a_source_unit_caveat() -> None:
+    # Test: The unit and caveats of `percent_change`.
+    # Situation: A table in thousands of US dollars where `a` rises from 2
+    #   to 3, `b` falls from 4 to 2, and `c` starts at zero.
+    # Expectation: The figures are percentages in `Percent` with no scaling
+    #   factor, `c` is left out with the zero-start caveat, and a caveat
+    #   states the endpoints' source unit and scaling factor.
+    table = _build_unit_table(
+        [
+            *_series("a", [("2020", 2.0), ("2024", 3.0)]),
+            *_series("b", [("2020", 4.0), ("2024", 2.0)]),
+            *_series("c", [("2020", 0.0), ("2024", 1.0)]),
+        ],
+        unit="USDollar",
+        scaling_factor=1000.0,
+    )
+    cohort = _expect_cohort(reduce_series(table, "percent_change"))
+    assert _list_values(cohort) == [("a", 50.0), ("b", -50.0)]
+    assert (cohort.unit, cohort.scaling_factor) == ("Percent", None)
+    assert cohort.metric_label == "percentage change in Total population"
+    assert cohort.caveats == (
+        "The percentage change is undefined for C because the starting "
+        "value is zero.",
+        "2 of 3 places from 2020 to 2024 have a value for percentage change "
+        "in Total population.",
+        "Each place's from_value and to_value are reported in USDollar and "
+        "scaled by 1000, as the source reports them, while the figure "
+        "itself is in Percent.",
+    )
+
+
+def test_a_growth_rate_is_annualized_and_leaves_out_non_positive_ends() -> None:
+    # Test: The figures of `cagr`.
+    # Situation: `a` doubles from 2020 to 2024 and `b` falls to zero.
+    # Expectation: `a` grows at the fourth root of two minus one, in
+    #   `Percent per year`, and `b` is left out with the growth-rate caveat.
+    table = _table(
+        [
+            *_series("a", [("2020", 100.0), ("2024", 200.0)]),
+            *_series("b", [("2020", 100.0), ("2024", 0.0)]),
+        ]
+    )
+    cohort = _expect_cohort(reduce_series(table, "cagr"))
+    assert cohort.unit == "Percent per year"
+    ((place, value),) = _list_values(cohort)
+    assert place == "a"
+    assert value == pytest.approx((2.0**0.25 - 1.0) * 100.0)
+    assert cohort.caveats[0] == (
+        "The compound annual growth rate is undefined for B because the "
+        "ending value is not positive."
+    )
+
+
+def test_a_growth_rate_over_less_than_a_year_is_refused() -> None:
+    # Test: The year span a growth rate requires.
+    # Situation: Monthly observations from January to June 2020 only.
+    # Expectation: An `invalid_parameters` refusal stating that no place
+    #   has two observations a year apart.
+    table = _table(_series("a", [("2020-01", 1.0), ("2020-06", 2.0)]))
+    refusal = _expect_refusal(reduce_series(table, "cagr"))
+    assert refusal.refusal_reason == "invalid_parameters"
+    assert refusal.script == "reduce_series"
+    assert refusal.caveats == (
+        "No place has two observations of Total population in the "
+        "requested date window at least a year apart, so the compound "
+        "annual growth rate is undefined.",
+    )
+
+
+def test_a_period_mean_averages_the_window_exactly() -> None:
+    # Test: The figure of `period_mean`.
+    # Situation: `a` reports 0.1, 0.2, and 0.4 over 2020 to 2022.
+    # Expectation: The figure is the exact mean of the three values rounded
+    #   once, with both endpoints in the window.
+    table = _table(_series("a", [("2020", 0.1), ("2021", 0.2), ("2022", 0.4)]))
+    cohort = _expect_cohort(reduce_series(table, "period_mean"))
+    expected = float((Fraction(0.1) + Fraction(0.2) + Fraction(0.4)) / 3)
+    assert _list_values(cohort) == [("a", expected)]
+    assert cohort.unit == "Person"
+
+
+def test_too_few_places_after_exclusions_are_refused() -> None:
+    # Test: The coverage check after undefined figures are left out.
+    # Situation: Of three places, two start at zero, so one percentage
+    #   change is defined.
+    # Expectation: An `insufficient_coverage` refusal carrying the coverage
+    #   on the window, its message, and the zero-start caveat.
+    table = _table(
+        [
+            *_series("a", [("2020", 1.0), ("2024", 2.0)]),
+            *_series("b", [("2020", 0.0), ("2024", 2.0)]),
+            *_series("c", [("2020", 0.0), ("2024", 2.0)]),
+        ]
+    )
+    refusal = _expect_refusal(reduce_series(table, "percent_change"))
+    assert refusal.refusal_reason == "insufficient_coverage"
+    assert refusal.coverage is not None
+    assert refusal.coverage.reference_date == "2020..2024"
+    assert refusal.coverage.contributing_places == 1
+    assert refusal.unit == "Percent"
+    assert refusal.caveats == (
+        "Only 1 of 3 places from 2020 to 2024 has a value for percentage "
+        "change in Total population (Count_Person), below the required 50% "
+        "coverage.",
+        "The percentage change is undefined for B and C because the "
+        "starting value is zero.",
+    )
+
+
+def test_a_consecutive_window_below_coverage_reports_the_best_pair() -> None:
+    # Test: The fallback of a consecutive window that no pair covers.
+    # Situation: Three places each report a different pair of consecutive
+    #   years, at a threshold of 1.
+    # Expectation: An `insufficient_coverage` refusal on the latest of the
+    #   pairs, which each hold 1 of 3 places.
+    table = _table(
+        [
+            *_series("a", [("2020", 1.0), ("2021", 2.0)]),
+            *_series("b", [("2021", 1.0), ("2022", 2.0)]),
+            *_series("c", [("2022", 1.0), ("2023", 2.0)]),
+        ]
+    )
+    refusal = _expect_refusal(
+        reduce_series(table, "latest_period_change", min_coverage=1.0)
+    )
+    assert refusal.refusal_reason == "insufficient_coverage"
+    assert refusal.coverage is not None
+    assert refusal.coverage.reference_date == "2022..2023"
+
+
+def test_a_cohort_with_single_observations_is_refused() -> None:
+    # Test: A cohort in which no place has two observations.
+    # Situation: Two places with one observation each.
+    # Expectation: An `insufficient_coverage` refusal with no reference
+    #   date, stating that no place has two observations.
+    table = _table([("a", "2020", 1.0), ("b", "2021", 1.0)])
+    refusal = _expect_refusal(reduce_series(table, "absolute_change"))
+    assert refusal.refusal_reason == "insufficient_coverage"
+    assert refusal.coverage is not None
+    assert refusal.coverage.reference_date is None
+    assert refusal.caveats == (
+        "No place has two observations of Total population in the "
+        "requested date window, so no change in Total population can be "
+        "computed.",
+    )
+
+
+def test_a_reduction_without_matching_rows_is_refused() -> None:
+    # Test: A reduction whose places and dates match no row.
+    # Situation: The requested window ends before every observation.
+    # Expectation: A `no_observations` refusal with every place missing.
+    table = _table(_series("a", [("2020", 1.0), ("2021", 2.0)]))
+    refusal = _expect_refusal(
+        reduce_series(table, "absolute_change", end_date="2010")
+    )
+    assert refusal.refusal_reason == "no_observations"
+    assert refusal.coverage is not None
+    assert refusal.coverage.missing_places == ("a",)
+
+
+@pytest.mark.parametrize(
+    ("options", "caveat"),
+    [
+        (
+            {"min_coverage": 1.5},
+            "The minimum coverage must be between 0 and 1, not 1.5.",
+        ),
+        (
+            {"start_date": "2024", "end_date": "2020"},
+            "The date window starts at 2024 and ends at 2020, which is before "
+            "it starts.",
+        ),
+    ],
+    ids=["coverage above one", "inverted window"],
+)
+def test_invalid_reduction_parameters_are_refused(
+    options: dict[str, str | float], caveat: str
+) -> None:
+    # Test: Parameter validation of `reduce_series`.
+    # Situation: A coverage above one, or a window that ends before it
+    #   starts.
+    # Expectation: An `invalid_parameters` refusal stating the problem.
+    table = _table(_series("a", [("2020", 1.0), ("2021", 2.0)]))
+    min_coverage = options.get("min_coverage", 0.5)
+    start_date = options.get("start_date")
+    end_date = options.get("end_date")
+    assert isinstance(min_coverage, float)
+    assert start_date is None or isinstance(start_date, str)
+    assert end_date is None or isinstance(end_date, str)
+    refusal = _expect_refusal(
+        reduce_series(
+            table,
+            "absolute_change",
+            min_coverage=min_coverage,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    )
+    assert refusal.refusal_reason == "invalid_parameters"
+    assert refusal.caveats == (caveat,)
+
+
+def test_a_reduction_records_its_methodology() -> None:
+    # Test: The provenance of a window cohort.
+    # Situation: The change in population from 2020 to 2024 for one place.
+    # Expectation: The source is kept and the methodology names the figure,
+    #   the window, and the observations it compares.
+    table = _table(_series("a", [("2020", 1.0), ("2024", 2.0)]))
+    cohort = _expect_cohort(reduce_series(table, "absolute_change"))
+    assert cohort.provenance.sources == (_SOURCE,)
+    assert cohort.provenance.methodology == (
+        "Change in Total population computed for each place from 2020 to "
+        "2024, using each place's observations at both ends of the window."
+    )
+
+
+def test_a_change_too_large_to_represent_is_left_out() -> None:
+    # Test: The overflow guard of the change metrics.
+    # Situation: `a` falls from the largest float to its negative, whose
+    #   change overflows, and `b` rises from 1 to 2.
+    # Expectation: `a` is left out with the overflow caveat and `b` keeps
+    #   its change.
+    table = _table(
+        [
+            *_series("a", [("2020", 1e308), ("2024", -1e308)]),
+            *_series("b", [("2020", 1.0), ("2024", 2.0)]),
+        ]
+    )
+    cohort = _expect_cohort(
+        reduce_series(table, "absolute_change", min_coverage=0.5)
+    )
+    assert _list_values(cohort) == [("b", 1.0)]
+    assert cohort.caveats[0] == (
+        "The change is undefined for A because it is too large to represent."
+    )
+
+
+def test_a_percentage_too_large_to_represent_is_left_out() -> None:
+    # Test: The overflow guard of the percentage metrics.
+    # Situation: `a` rises from the smallest subnormal float to 1, whose
+    #   percentage overflows, and `b` rises from 1 to 2.
+    # Expectation: `a` is left out with the overflow caveat.
+    table = _table(
+        [
+            *_series("a", [("2020", 5e-324), ("2024", 1.0)]),
+            *_series("b", [("2020", 1.0), ("2024", 2.0)]),
+        ]
+    )
+    cohort = _expect_cohort(reduce_series(table, "percent_change"))
+    assert _list_values(cohort) == [("b", 100.0)]
+    assert cohort.caveats[0] == (
+        "The percentage change is undefined for A because it is too large "
+        "to represent."
+    )
+
+
+def test_a_latest_percentage_change_leaves_out_a_zero_start() -> None:
+    # Test: The zero-start guard of `latest_period_percent_change`.
+    # Situation: `a` rises from 0 to 3 and `b` from 2 to 3 over the latest
+    #   consecutive pair of years.
+    # Expectation: `a` is left out with the zero-start caveat and `b`
+    #   reports a 50 percent change.
+    table = _table(
+        [
+            *_series("a", [("2023", 0.0), ("2024", 3.0)]),
+            *_series("b", [("2023", 2.0), ("2024", 3.0)]),
+        ]
+    )
+    cohort = _expect_cohort(
+        reduce_series(table, "latest_period_percent_change")
+    )
+    assert _list_values(cohort) == [("b", 50.0)]
+    assert cohort.caveats[0] == (
+        "The percentage change is undefined for A because the starting "
+        "value is zero."
+    )
+
+
+def test_a_long_series_without_an_adequate_window_reports_the_best() -> None:
+    # Test: The full scan of a span window that no window covers.
+    # Situation: 400 monthly dates across ten places, each place observed
+    #   on a different stretch of months, at a threshold of 1.
+    # Expectation: An `insufficient_coverage` refusal on the latest window
+    #   that the most places share.
+    months = [
+        f"{1990 + index // 12}-{index % 12 + 1:02d}" for index in range(400)
+    ]
+    observations = [
+        (f"p{place}", month, float(index))
+        for place in range(10)
+        for index, month in enumerate(months)
+        if place * 30 <= index < place * 30 + 130
+    ]
+    refusal = _expect_refusal(
+        reduce_series(_table(observations), "absolute_change", min_coverage=1.0)
+    )
+    assert refusal.refusal_reason == "insufficient_coverage"
+    assert refusal.coverage is not None
+    assert refusal.coverage.contributing_places == 5
+    assert refusal.coverage.reference_date == f"{months[270]}..{months[279]}"

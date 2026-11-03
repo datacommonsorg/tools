@@ -30,6 +30,8 @@ import pytest
 from narratives_agent.analytics.alignment import (
     AlignedCohort,
     AlignmentRefusal,
+    WindowCohort,
+    WindowRow,
     align_cohort,
 )
 from narratives_agent.analytics.digest import CoverageReport, ScriptResult
@@ -38,6 +40,8 @@ from narratives_agent.analytics.metrics import (
     DistributionFocalEntry,
     DistributionMetrics,
     PlaceValue,
+    WindowDistributionFocalEntry,
+    WindowPlaceValue,
 )
 from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
@@ -1466,21 +1470,63 @@ def test_a_window_cohort_refuses_a_single_target_date() -> None:
     )
 
 
-def test_a_window_cohort_refuses_weights() -> None:
-    # Test: Weights passed with a date-window cohort.
-    # Situation: The 2020 to 2024 window cohort summarized with a weights
-    #   table observed on 2024.
+def _build_window_cohort(
+    values: Sequence[tuple[str, float, float]],
+    *,
+    variable_dcid: str = "Count_Person",
+    variable_name: str = "Total population",
+) -> WindowCohort:
+    """Builds the change from 2020 to 2024 per `(place, from, to)` value."""
+    return WindowCohort(
+        variable_dcid=variable_dcid,
+        variable_name=variable_name,
+        metric="absolute_change",
+        start_date="2020",
+        end_date="2024",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+        rows=tuple(
+            WindowRow(
+                place,
+                place.upper(),
+                "2020",
+                "2024",
+                from_value,
+                to_value,
+                to_value - from_value,
+            )
+            for place, from_value, to_value in values
+        ),
+        place_names={place: place.upper() for place, _, _ in values},
+        coverage=CoverageReport(
+            contributing_places=len(values),
+            requested_places=len(values),
+            coverage_ratio=1.0,
+            reference_date="2020..2024",
+        ),
+    )
+
+
+def test_a_window_cohort_is_refused_as_weights() -> None:
+    # Test: A `WindowCohort` passed as weights.
+    # Situation: The 2020 to 2024 window cohort summarized with another
+    #   window cohort as its weights.
     # Expectation: An `invalid_parameters` refusal carrying the cohort's
-    #   coverage, with a caveat stating that the cohort spans the window
-    #   and cannot be weighted on a single date.
+    #   coverage, with a caveat stating that weights must be observed on a
+    #   single date.
     spanning = _build_spanning_cohort([("a", 1.0), ("b", 2.0)])
-    weights = _build_weights([("a", "2024", 1.0), ("b", "2024", 1.0)])
+    weights = _build_window_cohort(
+        [("a", 1.0, 2.0), ("b", 1.0, 3.0)],
+        variable_dcid="Count_Person_Weight",
+        variable_name="Weight population",
+    )
     refused = summarize_distribution(spanning, weights=weights)
     assert refused.refusal_reason == "invalid_parameters"
     assert refused.coverage == spanning.coverage
     assert refused.caveats == (
-        "The cohort spans from 2020 to 2024, so its mean cannot be weighted "
-        "by Weight population on a single date.",
+        "The weights for Weight population span from 2020 to 2024, so they "
+        "cannot weight the mean; weights must be observed on a single date.",
     )
 
 
@@ -1541,3 +1587,106 @@ def test_summarize_distribution_records_per_variable_provenance() -> None:
             sources=(_CENSUS,), facet_ids=("f2",)
         ),
     }
+
+
+def test_a_window_cohort_is_weighted_at_the_end_of_its_window() -> None:
+    # Test: Table weights for a date-window cohort.
+    # Situation: The changes 1 (`a`) and 4 (`b`) from 2020 to 2024 weighted
+    #   by a table that reports weights 1 and 1 in 2020 and 1 and 3 in 2024.
+    # Expectation: The mean is weighted by the 2024 weights, (1 + 12) / 4,
+    #   and the methodology names the weights variable.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 4.0)])
+    weights = _build_weights(
+        [
+            ("a", "2020", 1.0),
+            ("b", "2020", 1.0),
+            ("a", "2024", 1.0),
+            ("b", "2024", 3.0),
+        ]
+    )
+    result = summarize_distribution(spanning, weights=weights)
+    assert isinstance(result.metrics, DistributionMetrics)
+    assert result.metrics.weighted_mean == 3.25
+    assert result.metrics.weighted_place_count == 2
+    assert result.provenance.methodology is not None
+    assert "weighted by Weight population" in result.provenance.methodology
+
+
+def test_an_aligned_weights_cohort_at_the_window_end_is_accepted() -> None:
+    # Test: An `AlignedCohort` of weights for a date-window cohort.
+    # Situation: The 2020 to 2024 window cohort weighted by weights aligned
+    #   to 2024, the end of its window.
+    # Expectation: The weighted mean is reported.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 4.0)])
+    weights = align_cohort(
+        _build_weights([("a", "2024", 1.0), ("b", "2024", 3.0)])
+    )
+    assert isinstance(weights, AlignedCohort)
+    result = summarize_distribution(spanning, weights=weights)
+    assert isinstance(result.metrics, DistributionMetrics)
+    assert result.metrics.weighted_mean == 3.25
+
+
+def test_an_aligned_weights_cohort_before_the_window_end_is_refused() -> None:
+    # Test: An `AlignedCohort` of weights aligned before the window's end.
+    # Situation: The 2020 to 2024 window cohort weighted by weights aligned
+    #   to 2020.
+    # Expectation: An `invalid_parameters` refusal whose caveat names the
+    #   weights date and 2024, the end of the cohort's window.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 4.0)])
+    weights = align_cohort(
+        _build_weights([("a", "2020", 1.0), ("b", "2020", 3.0)])
+    )
+    assert isinstance(weights, AlignedCohort)
+    refused = summarize_distribution(spanning, weights=weights)
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.caveats == (
+        "The weights cohort for Weight population is aligned to 2020, not "
+        "to 2024, the end of the cohort's window from 2020 to 2024.",
+    )
+
+
+def test_window_weights_caveats_name_the_end_of_the_window() -> None:
+    # Test: The weighted-mean caveat for a date-window cohort.
+    # Situation: The 2020 to 2024 window cohort weighted by a table that
+    #   reports weights only in 2020.
+    # Expectation: The weighted mean is omitted with a caveat naming 2024,
+    #   the date the weights are read on, rather than the window.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 4.0)])
+    weights = _build_weights([("a", "2020", 1.0), ("b", "2020", 3.0)])
+    result = summarize_distribution(spanning, weights=weights)
+    assert isinstance(result.metrics, DistributionMetrics)
+    assert result.metrics.weighted_mean is None
+    assert result.caveats[-1] == (
+        "Weight population has no value on 2024 for any place in the "
+        "cohort, so the weighted mean is omitted."
+    )
+
+
+def test_a_window_cohort_summarizes_into_window_entries() -> None:
+    # Test: The extrema and focal entries of a summarized `WindowCohort`.
+    # Situation: The changes from 2020 to 2024 of `a` (10 to 11), `b` (10
+    #   to 14), and `c` (10 to 19), with `b` as a focal place.
+    # Expectation: The minimum and maximum are `WindowPlaceValue` records
+    #   and the focal entry is a `WindowDistributionFocalEntry`, each
+    #   carrying the place's dates and values.
+    cohort = _build_window_cohort(
+        [("a", 10.0, 11.0), ("b", 10.0, 14.0), ("c", 10.0, 19.0)]
+    )
+    metrics = summarize_distribution(cohort, focal_places=["b"]).metrics
+    assert isinstance(metrics, DistributionMetrics)
+    assert metrics.min == WindowPlaceValue(
+        place_dcid="a",
+        place_name="A",
+        value=1.0,
+        from_date="2020",
+        to_date="2024",
+        from_value=10.0,
+        to_value=11.0,
+    )
+    assert isinstance(metrics.max, WindowPlaceValue)
+    assert metrics.max.to_value == 19.0
+    (focal,) = metrics.focal_entries
+    assert isinstance(focal, WindowDistributionFocalEntry)
+    assert (focal.value, focal.from_value, focal.to_value) == (4.0, 10.0, 14.0)
+    assert (focal.from_date, focal.to_date) == ("2020", "2024")

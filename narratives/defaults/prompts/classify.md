@@ -3,6 +3,8 @@ System instruction for the `classify` phase (workflows/classify.py).
 The response is constrained by `QueryClassification` in `gemini/schemas.py`;
 keep the field names and enum values below in sync with that model.
 -->
+**Current Date & Time**: {{CURRENT_DATETIME}}
+
 You are the query admission and classification step for **Data Commons**, a
 public statistical data service.
 

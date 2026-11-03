@@ -25,6 +25,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from narratives_agent.analytics.alignment import (
+    WindowCohort,
     align_cohort,
     find_unit_mismatch,
 )
@@ -47,7 +48,10 @@ from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
 )
-from narratives_agent.analytics.timeseries import analyze_timeseries
+from narratives_agent.analytics.timeseries import (
+    analyze_timeseries,
+    reduce_series,
+)
 from narratives_agent.json_value import JsonObject, json_safe
 
 __all__ = ["GOLDEN_PATH", "build_golden_cases", "main", "render_golden"]
@@ -832,6 +836,61 @@ def _build_relation_cases() -> JsonObject:
     }
 
 
+def _build_window_cohort_table() -> ObservationTable:
+    """Builds five countries' yearly series from 2018 to 2024.
+
+    Country 4 stops reporting after 2023, so the latest pair of consecutive
+    years that most countries share ends in 2024 while one country is
+    missing from it.
+    """
+    places = {f"country/W{index}": f"Window {index}" for index in range(5)}
+    rows: list[tuple[str, str, float]] = []
+    for index, place in enumerate(places):
+        for year in range(2018, 2025):
+            if index == 4 and year == 2024:
+                continue
+            growth = 1.0 + 0.01 * (index + 1) * (year - 2018)
+            rows.append((place, str(year), round(1000.0 * growth, 2)))
+    return _build_table(
+        rows,
+        names=places,
+        requested_places=list(places),
+        parent_place_dcid="Earth",
+        child_place_type="Country",
+    )
+
+
+def _build_window_cohort_cases() -> JsonObject:
+    """Builds the `reduce_series` window-cohort, consumer, and refusal cases."""
+    window_table = _build_window_cohort_table()
+    window = reduce_series(window_table, "absolute_change", step_id="s1")
+    if not isinstance(window, WindowCohort):
+        raise RuntimeError("The window golden table no longer reduces.")
+    return {
+        "reduce_series_window_cohort": json_safe(window),
+        "reduce_series_latest_period_percent_change": json_safe(
+            reduce_series(window_table, "latest_period_percent_change")
+        ),
+        "ranking_window_cohort": rank_cohort(
+            window, max_entries_per_end=2, step_id="s2"
+        ).to_dict(),
+        "distribution_window_cohort_end_date_weights": summarize_distribution(
+            window,
+            weights=window_table,
+            focal_places=["country/W0"],
+            step_id="s3",
+        ).to_dict(),
+        "refusal_reduce_series_short_span": json_safe(
+            reduce_series(
+                _build_series_table(
+                    "country/FRA", [("2020-01", 1.0), ("2020-06", 2.0)]
+                ),
+                "cagr",
+            )
+        ),
+    }
+
+
 def _merge_case_families(families: Sequence[JsonObject]) -> JsonObject:
     """Merges per-family case mappings, rejecting duplicate case names."""
     merged: JsonObject = {}
@@ -854,8 +913,8 @@ def build_golden_cases() -> JsonObject:
     Raises:
         ValueError: If more than one case-family builder defines the same
             case name.
-        RuntimeError: If `derive_observation_table` returns a refusal for
-            the per-capita fixture inputs.
+        RuntimeError: If `derive_observation_table` or `reduce_series`
+            returns a refusal for the fixture inputs.
     """
     return _merge_case_families(
         (
@@ -867,6 +926,7 @@ def build_golden_cases() -> JsonObject:
             _build_composition_cases(),
             _build_derived_cases(),
             _build_relation_cases(),
+            _build_window_cohort_cases(),
         )
     )
 

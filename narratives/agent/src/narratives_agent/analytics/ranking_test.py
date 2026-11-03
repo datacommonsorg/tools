@@ -25,12 +25,18 @@ from dataclasses import dataclass
 
 import pytest
 
-from narratives_agent.analytics.alignment import AlignedCohort, align_cohort
+from narratives_agent.analytics.alignment import (
+    AlignedCohort,
+    WindowCohort,
+    WindowRow,
+    align_cohort,
+)
 from narratives_agent.analytics.digest import CoverageReport, ScriptResult
 from narratives_agent.analytics.metrics import (
     RankEntry,
     RankingDirection,
     RankingMetrics,
+    WindowRankEntry,
 )
 from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.ranking import (
@@ -744,4 +750,62 @@ def test_a_window_cohort_refuses_a_single_target_date() -> None:
         *spanning.caveats,
         "The cohort spans from 2020 to 2024, so it cannot be ranked on the "
         "single target date 2024.",
+    )
+
+
+def test_a_window_cohort_ranks_into_window_entries() -> None:
+    # Test: The entries of a ranked `WindowCohort`.
+    # Situation: The change in population from 2020 to 2024 for `a` (from
+    #   10 to 15) and `b` (from 20 to 18).
+    # Expectation: Each entry is a `WindowRankEntry` carrying the place's
+    #   rank and figure and the dates and values its change was computed
+    #   from.
+    cohort = WindowCohort(
+        variable_dcid="Count_Person",
+        variable_name="Total population",
+        metric="absolute_change",
+        start_date="2020",
+        end_date="2024",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(_SOURCE,)),
+        rows=(
+            WindowRow("a", "A", "2020", "2024", 10.0, 15.0, 5.0),
+            WindowRow("b", "B", "2020", "2024", 20.0, 18.0, -2.0),
+        ),
+        place_names={"a": "A", "b": "B"},
+        coverage=CoverageReport(
+            contributing_places=2,
+            requested_places=2,
+            coverage_ratio=1.0,
+            reference_date="2020..2024",
+        ),
+    )
+    metrics = rank_cohort(cohort).metrics
+    assert isinstance(metrics, RankingMetrics)
+    assert metrics.top_n == (
+        WindowRankEntry(
+            rank=1,
+            is_tied=False,
+            place_dcid="a",
+            place_name="A",
+            value=5.0,
+            percentile=100.0,
+            from_date="2020",
+            to_date="2024",
+            from_value=10.0,
+            to_value=15.0,
+        ),
+        WindowRankEntry(
+            rank=2,
+            is_tied=False,
+            place_dcid="b",
+            place_name="B",
+            value=-2.0,
+            percentile=50.0,
+            from_date="2020",
+            to_date="2024",
+            from_value=20.0,
+            to_value=18.0,
+        ),
     )
