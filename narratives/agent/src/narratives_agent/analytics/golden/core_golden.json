@@ -114,6 +114,1561 @@
     "variable_name": "Total population"
   },
   "compatible_units": null,
+  "composition_implied_total": {
+    "caveats": [
+      "No separate total variable was provided, so shares are computed relative to the sum of the supplied components and the unallocated remainder is zero by construction."
+    ],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 3
+    },
+    "metrics": {
+      "component_variable_dcids": [
+        "Count_Person_Male",
+        "Count_Person_Female"
+      ],
+      "has_explicit_total": false,
+      "missing_places": [],
+      "mode": "composition",
+      "place_count": 3,
+      "places": [
+        {
+          "component_sum": 980.0,
+          "components": [
+            {
+              "share_pct": 48.97959183673469,
+              "value": 480.0,
+              "variable_dcid": "Count_Person_Male",
+              "variable_name": "Male population"
+            },
+            {
+              "share_pct": 51.02040816326531,
+              "value": 500.0,
+              "variable_dcid": "Count_Person_Female",
+              "variable_name": "Female population"
+            }
+          ],
+          "place_dcid": "country/P0",
+          "place_name": "Part 0",
+          "total_value": null,
+          "unallocated_share_pct": 0.0,
+          "unallocated_value": 0.0
+        },
+        {
+          "component_sum": 2000.0,
+          "components": [
+            {
+              "share_pct": 50.0,
+              "value": 1000.0,
+              "variable_dcid": "Count_Person_Male",
+              "variable_name": "Male population"
+            },
+            {
+              "share_pct": 50.0,
+              "value": 1000.0,
+              "variable_dcid": "Count_Person_Female",
+              "variable_name": "Female population"
+            }
+          ],
+          "place_dcid": "country/P1",
+          "place_name": "Part 1",
+          "total_value": null,
+          "unallocated_share_pct": 0.0,
+          "unallocated_value": 0.0
+        },
+        {
+          "component_sum": 3900.0,
+          "components": [
+            {
+              "share_pct": 48.717948717948715,
+              "value": 1900.0,
+              "variable_dcid": "Count_Person_Male",
+              "variable_name": "Male population"
+            },
+            {
+              "share_pct": 51.28205128205128,
+              "value": 2000.0,
+              "variable_dcid": "Count_Person_Female",
+              "variable_name": "Female population"
+            }
+          ],
+          "place_dcid": "country/P2",
+          "place_name": "Part 2",
+          "total_value": null,
+          "unallocated_share_pct": 0.0,
+          "unallocated_value": 0.0
+        }
+      ],
+      "reference_date": "2022",
+      "total_variable_dcid": null
+    },
+    "provenance": {
+      "facet_ids": [
+        "12850099660527362240"
+      ],
+      "methodology": "Shares of the sum of Male population, Female population on 2022: each component's value divided by the sum of the supplied components; computed for 3 places.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person_Female": "Female population",
+      "Count_Person_Male": "Male population"
+    },
+    "variables": [
+      "Count_Person_Male",
+      "Count_Person_Female"
+    ]
+  },
+  "composition_stages": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 2,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 2
+    },
+    "metrics": {
+      "component_variable_dcids": [
+        "Count_Student_Primary",
+        "Count_Student_Secondary",
+        "Count_Student_Tertiary"
+      ],
+      "has_explicit_total": false,
+      "missing_places": [],
+      "mode": "stages",
+      "place_count": 2,
+      "places": [
+        {
+          "place_dcid": "country/P0",
+          "place_name": "Part 0",
+          "stages": [
+            {
+              "share_of_first_stage_pct": 100.0,
+              "share_pct": null,
+              "value": 1000.0,
+              "variable_dcid": "Count_Student_Primary",
+              "variable_name": "Primary students"
+            },
+            {
+              "share_of_first_stage_pct": 80.0,
+              "share_pct": null,
+              "value": 800.0,
+              "variable_dcid": "Count_Student_Secondary",
+              "variable_name": "Secondary students"
+            },
+            {
+              "share_of_first_stage_pct": 40.0,
+              "share_pct": null,
+              "value": 400.0,
+              "variable_dcid": "Count_Student_Tertiary",
+              "variable_name": "Tertiary students"
+            }
+          ],
+          "total_value": null,
+          "transitions": [
+            {
+              "absolute_delta": -200.0,
+              "from_value": 1000.0,
+              "from_variable": "Count_Student_Primary",
+              "from_variable_name": "Primary students",
+              "percent_change": -20.0,
+              "retention_pct": 80.0,
+              "retention_ratio": 0.8,
+              "to_value": 800.0,
+              "to_variable": "Count_Student_Secondary",
+              "to_variable_name": "Secondary students"
+            },
+            {
+              "absolute_delta": -400.0,
+              "from_value": 800.0,
+              "from_variable": "Count_Student_Secondary",
+              "from_variable_name": "Secondary students",
+              "percent_change": -50.0,
+              "retention_pct": 50.0,
+              "retention_ratio": 0.5,
+              "to_value": 400.0,
+              "to_variable": "Count_Student_Tertiary",
+              "to_variable_name": "Tertiary students"
+            }
+          ]
+        },
+        {
+          "place_dcid": "country/P1",
+          "place_name": "Part 1",
+          "stages": [
+            {
+              "share_of_first_stage_pct": 100.0,
+              "share_pct": null,
+              "value": 500.0,
+              "variable_dcid": "Count_Student_Primary",
+              "variable_name": "Primary students"
+            },
+            {
+              "share_of_first_stage_pct": 60.0,
+              "share_pct": null,
+              "value": 300.0,
+              "variable_dcid": "Count_Student_Secondary",
+              "variable_name": "Secondary students"
+            },
+            {
+              "share_of_first_stage_pct": 18.0,
+              "share_pct": null,
+              "value": 90.0,
+              "variable_dcid": "Count_Student_Tertiary",
+              "variable_name": "Tertiary students"
+            }
+          ],
+          "total_value": null,
+          "transitions": [
+            {
+              "absolute_delta": -200.0,
+              "from_value": 500.0,
+              "from_variable": "Count_Student_Primary",
+              "from_variable_name": "Primary students",
+              "percent_change": -40.0,
+              "retention_pct": 60.0,
+              "retention_ratio": 0.6,
+              "to_value": 300.0,
+              "to_variable": "Count_Student_Secondary",
+              "to_variable_name": "Secondary students"
+            },
+            {
+              "absolute_delta": -210.0,
+              "from_value": 300.0,
+              "from_variable": "Count_Student_Secondary",
+              "from_variable_name": "Secondary students",
+              "percent_change": -70.0,
+              "retention_pct": 30.0,
+              "retention_ratio": 0.3,
+              "to_value": 90.0,
+              "to_variable": "Count_Student_Tertiary",
+              "to_variable_name": "Tertiary students"
+            }
+          ]
+        }
+      ],
+      "reference_date": "2022",
+      "total_variable_dcid": null
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Stage-to-stage transitions across Primary students, Secondary students, Tertiary students on 2022: absolute delta, percentage change, and retention ratio between consecutive stages, with each stage as a share of Primary students; computed for 2 places.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Student_Primary": "Primary students",
+      "Count_Student_Secondary": "Secondary students",
+      "Count_Student_Tertiary": "Tertiary students"
+    },
+    "variables": [
+      "Count_Student_Primary",
+      "Count_Student_Secondary",
+      "Count_Student_Tertiary"
+    ]
+  },
+  "composition_with_total": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 3
+    },
+    "metrics": {
+      "component_variable_dcids": [
+        "Count_Person_Male",
+        "Count_Person_Female"
+      ],
+      "has_explicit_total": true,
+      "missing_places": [],
+      "mode": "composition",
+      "place_count": 3,
+      "places": [
+        {
+          "component_sum": 980.0,
+          "components": [
+            {
+              "share_pct": 48.0,
+              "value": 480.0,
+              "variable_dcid": "Count_Person_Male",
+              "variable_name": "Male population"
+            },
+            {
+              "share_pct": 50.0,
+              "value": 500.0,
+              "variable_dcid": "Count_Person_Female",
+              "variable_name": "Female population"
+            }
+          ],
+          "place_dcid": "country/P0",
+          "place_name": "Part 0",
+          "total_value": 1000.0,
+          "unallocated_share_pct": 2.0,
+          "unallocated_value": 20.0
+        },
+        {
+          "component_sum": 2000.0,
+          "components": [
+            {
+              "share_pct": 50.0,
+              "value": 1000.0,
+              "variable_dcid": "Count_Person_Male",
+              "variable_name": "Male population"
+            },
+            {
+              "share_pct": 50.0,
+              "value": 1000.0,
+              "variable_dcid": "Count_Person_Female",
+              "variable_name": "Female population"
+            }
+          ],
+          "place_dcid": "country/P1",
+          "place_name": "Part 1",
+          "total_value": 2000.0,
+          "unallocated_share_pct": 0.0,
+          "unallocated_value": 0.0
+        },
+        {
+          "component_sum": 3900.0,
+          "components": [
+            {
+              "share_pct": 47.5,
+              "value": 1900.0,
+              "variable_dcid": "Count_Person_Male",
+              "variable_name": "Male population"
+            },
+            {
+              "share_pct": 50.0,
+              "value": 2000.0,
+              "variable_dcid": "Count_Person_Female",
+              "variable_name": "Female population"
+            }
+          ],
+          "place_dcid": "country/P2",
+          "place_name": "Part 2",
+          "total_value": 4000.0,
+          "unallocated_share_pct": 2.5,
+          "unallocated_value": 100.0
+        }
+      ],
+      "reference_date": "2022",
+      "total_variable_dcid": "Count_Person"
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Shares of Total population on 2022: each component's value divided by the total, with the remainder the components leave unallocated; computed for 3 places.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population",
+      "Count_Person_Female": "Female population",
+      "Count_Person_Male": "Male population"
+    },
+    "variables": [
+      "Count_Person",
+      "Count_Person_Male",
+      "Count_Person_Female"
+    ]
+  },
+  "derived_chained_distribution": {
+    "caveats": [
+      "Skewness requires at least 3 places, so it is not computed for this cohort of two."
+    ],
+    "coverage": {
+      "contributing_places": 2,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 2
+    },
+    "metrics": {
+      "cohort_size": 2,
+      "deciles": {
+        "p10": 25.5,
+        "p20": 26.0,
+        "p30": 26.5,
+        "p40": 27.0,
+        "p50": 27.5,
+        "p60": 28.0,
+        "p70": 28.5,
+        "p80": 29.0,
+        "p90": 29.5
+      },
+      "focal_entries": [
+        {
+          "diff_from_mean": 2.5,
+          "diff_from_median": 2.5,
+          "pct_of_median": 109.09090909090908,
+          "percentile": 100.0,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "value": 30.0,
+          "z_score": 0.7071067811865475
+        }
+      ],
+      "iqr": 2.5,
+      "max": {
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 30.0
+      },
+      "max_minus_min": 5.0,
+      "mean": 27.5,
+      "median": 27.5,
+      "min": {
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 25.0
+      },
+      "missing_focal_places": [],
+      "q25": 26.25,
+      "q50": 27.5,
+      "q75": 28.75,
+      "reference_date": "2022",
+      "skewness": null,
+      "stdev": 3.5355339059327378,
+      "weight_variable_dcid": null,
+      "weighted_mean": null,
+      "weighted_place_count": null
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "ok",
+    "step_id": "s3",
+    "unit": null,
+    "variable_names": {
+      "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+    },
+    "variables": [
+      "derived_Count_Case_per_capita_Count_Person"
+    ]
+  },
+  "derived_chained_ranking": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 2,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 2
+    },
+    "metrics": {
+      "bottom_n": [
+        {
+          "is_tied": false,
+          "percentile": 50.0,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "rank": 2,
+          "value": 25.0
+        },
+        {
+          "is_tied": false,
+          "percentile": 100.0,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "rank": 1,
+          "value": 30.0
+        }
+      ],
+      "cohort_size": 2,
+      "direction": "desc",
+      "focal_entries": [],
+      "max_entries_per_end": 2,
+      "missing_focal_places": [],
+      "reference_date": "2022",
+      "top_n": [
+        {
+          "is_tied": false,
+          "percentile": 100.0,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "rank": 1,
+          "value": 30.0
+        },
+        {
+          "is_tied": false,
+          "percentile": 50.0,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "rank": 2,
+          "value": 25.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "rank_cohort",
+    "status": "ok",
+    "step_id": "s2",
+    "unit": null,
+    "variable_names": {
+      "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+    },
+    "variables": [
+      "derived_Count_Case_per_capita_Count_Person"
+    ]
+  },
+  "derived_chained_timeseries": {
+    "caveats": [],
+    "coverage": null,
+    "metrics": {
+      "cross_place_comparison": {
+        "deltas_from_leader": [
+          {
+            "absolute_delta": -5.0,
+            "percent_delta": -16.666666666666664,
+            "place_dcid": "country/DEU",
+            "place_name": "Germany"
+          }
+        ],
+        "entries": [
+          {
+            "place_dcid": "country/FRA",
+            "place_name": "France",
+            "value": 30.0
+          },
+          {
+            "place_dcid": "country/DEU",
+            "place_name": "Germany",
+            "value": 25.0
+          }
+        ],
+        "leader": {
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "value": 30.0
+        },
+        "reference_date": "2022",
+        "spread": 5.0
+      },
+      "missing_places": [],
+      "place_count": 2,
+      "series": [
+        {
+          "absolute_change": 20.0,
+          "cagr": 73.20508075688772,
+          "end_date": "2022",
+          "end_value": 30.0,
+          "local_extrema": [],
+          "max_date": "2022",
+          "max_period_decrease": null,
+          "max_period_increase": {
+            "absolute_change": 10.0,
+            "from_date": "2020",
+            "from_value": 10.0,
+            "percent_change": 100.0,
+            "to_date": "2021",
+            "to_value": 20.0
+          },
+          "max_value": 30.0,
+          "min_date": "2020",
+          "min_value": 10.0,
+          "percent_change": 200.0,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "point_count": 3,
+          "start_date": "2020",
+          "start_value": 10.0
+        },
+        {
+          "absolute_change": -15.0,
+          "cagr": -20.943058495790513,
+          "end_date": "2022",
+          "end_value": 25.0,
+          "local_extrema": [],
+          "max_date": "2020",
+          "max_period_decrease": {
+            "absolute_change": -8.333333333333336,
+            "from_date": "2021",
+            "from_value": 33.333333333333336,
+            "percent_change": -25.000000000000007,
+            "to_date": "2022",
+            "to_value": 25.0
+          },
+          "max_period_increase": null,
+          "max_value": 40.0,
+          "min_date": "2022",
+          "min_value": 25.0,
+          "percent_change": -37.5,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "point_count": 3,
+          "start_date": "2020",
+          "start_value": 40.0
+        }
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "analyze_timeseries",
+    "status": "ok",
+    "step_id": "s4",
+    "unit": null,
+    "variable_names": {
+      "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+    },
+    "variables": [
+      "derived_Count_Case_per_capita_Count_Person"
+    ]
+  },
+  "derived_difference": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": null,
+      "requested_places": 3
+    },
+    "metrics": {
+      "date_range": [
+        "2022",
+        "2022"
+      ],
+      "derived_variable_dcid": "derived_Count_Person_difference_Count_Person_Female",
+      "derived_variable_name": "Total population minus Female population",
+      "missing_places": [],
+      "observation_count": 3,
+      "operation": "difference",
+      "place_count": 3,
+      "sample_rows": [
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/P0",
+          "place_name": "Part 0",
+          "value": 500.0
+        },
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/P1",
+          "place_name": "Part 1",
+          "value": 1000.0
+        },
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/P2",
+          "place_name": "Part 2",
+          "value": 2000.0
+        }
+      ],
+      "scale": 1.0,
+      "value_range": [
+        500.0,
+        2000.0
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Total population (Count_Person) minus Female population (Count_Person_Female). Observations are joined on place and date.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "compute_derived_metric",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population",
+      "Count_Person_Female": "Female population"
+    },
+    "variables": [
+      "Count_Person",
+      "Count_Person_Female"
+    ]
+  },
+  "derived_digest": {
+    "has_data": true,
+    "missing_notes": [],
+    "results": [
+      {
+        "caveats": [],
+        "coverage": {
+          "contributing_places": 2,
+          "coverage_ratio": 1.0,
+          "missing_places": [],
+          "mixed_vintages": false,
+          "reference_date": null,
+          "requested_places": 2
+        },
+        "metrics": {
+          "date_range": [
+            "2020",
+            "2022"
+          ],
+          "derived_variable_dcid": "derived_Count_Case_per_capita_Count_Person",
+          "derived_variable_name": "Reported cases per 100,000 people",
+          "missing_places": [],
+          "observation_count": 6,
+          "operation": "per_capita",
+          "place_count": 2,
+          "sample_rows": [
+            {
+              "date": "2020",
+              "facet_id": null,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "value": 40.0
+            },
+            {
+              "date": "2021",
+              "facet_id": null,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "value": 33.333333333333336
+            },
+            {
+              "date": "2022",
+              "facet_id": null,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "value": 25.0
+            },
+            {
+              "date": "2021",
+              "facet_id": null,
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "value": 20.0
+            },
+            {
+              "date": "2022",
+              "facet_id": null,
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "value": 30.0
+            }
+          ],
+          "scale": 100000.0,
+          "value_range": [
+            10.0,
+            40.0
+          ]
+        },
+        "provenance": {
+          "facet_ids": [
+            "18369491376878146239",
+            "12850099660527362240"
+          ],
+          "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.",
+          "sources": [
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "datatopics.worldbank.org",
+              "provider": null,
+              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            },
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "wikidata.org",
+              "provider": null,
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            }
+          ]
+        },
+        "refusal_reason": null,
+        "scaling_factor": null,
+        "script": "compute_derived_metric",
+        "status": "ok",
+        "step_id": "s1",
+        "unit": null,
+        "variable_names": {
+          "Count_Case": "Reported cases",
+          "Count_Person": "Total population"
+        },
+        "variables": [
+          "Count_Case",
+          "Count_Person"
+        ]
+      },
+      {
+        "caveats": [],
+        "coverage": {
+          "contributing_places": 2,
+          "coverage_ratio": 1.0,
+          "missing_places": [],
+          "mixed_vintages": false,
+          "reference_date": "2022",
+          "requested_places": 2
+        },
+        "metrics": {
+          "bottom_n": [
+            {
+              "is_tied": false,
+              "percentile": 50.0,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "rank": 2,
+              "value": 25.0
+            },
+            {
+              "is_tied": false,
+              "percentile": 100.0,
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "rank": 1,
+              "value": 30.0
+            }
+          ],
+          "cohort_size": 2,
+          "direction": "desc",
+          "focal_entries": [],
+          "max_entries_per_end": 2,
+          "missing_focal_places": [],
+          "reference_date": "2022",
+          "top_n": [
+            {
+              "is_tied": false,
+              "percentile": 100.0,
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "rank": 1,
+              "value": 30.0
+            },
+            {
+              "is_tied": false,
+              "percentile": 50.0,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "rank": 2,
+              "value": 25.0
+            }
+          ]
+        },
+        "provenance": {
+          "facet_ids": [
+            "18369491376878146239",
+            "12850099660527362240"
+          ],
+          "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.",
+          "sources": [
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "datatopics.worldbank.org",
+              "provider": null,
+              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            },
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "wikidata.org",
+              "provider": null,
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            }
+          ]
+        },
+        "refusal_reason": null,
+        "scaling_factor": null,
+        "script": "rank_cohort",
+        "status": "ok",
+        "step_id": "s2",
+        "unit": null,
+        "variable_names": {
+          "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+        },
+        "variables": [
+          "derived_Count_Case_per_capita_Count_Person"
+        ]
+      },
+      {
+        "caveats": [
+          "Skewness requires at least 3 places, so it is not computed for this cohort of two."
+        ],
+        "coverage": {
+          "contributing_places": 2,
+          "coverage_ratio": 1.0,
+          "missing_places": [],
+          "mixed_vintages": false,
+          "reference_date": "2022",
+          "requested_places": 2
+        },
+        "metrics": {
+          "cohort_size": 2,
+          "deciles": {
+            "p10": 25.5,
+            "p20": 26.0,
+            "p30": 26.5,
+            "p40": 27.0,
+            "p50": 27.5,
+            "p60": 28.0,
+            "p70": 28.5,
+            "p80": 29.0,
+            "p90": 29.5
+          },
+          "focal_entries": [
+            {
+              "diff_from_mean": 2.5,
+              "diff_from_median": 2.5,
+              "pct_of_median": 109.09090909090908,
+              "percentile": 100.0,
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "value": 30.0,
+              "z_score": 0.7071067811865475
+            }
+          ],
+          "iqr": 2.5,
+          "max": {
+            "place_dcid": "country/FRA",
+            "place_name": "France",
+            "value": 30.0
+          },
+          "max_minus_min": 5.0,
+          "mean": 27.5,
+          "median": 27.5,
+          "min": {
+            "place_dcid": "country/DEU",
+            "place_name": "Germany",
+            "value": 25.0
+          },
+          "missing_focal_places": [],
+          "q25": 26.25,
+          "q50": 27.5,
+          "q75": 28.75,
+          "reference_date": "2022",
+          "skewness": null,
+          "stdev": 3.5355339059327378,
+          "weight_variable_dcid": null,
+          "weighted_mean": null,
+          "weighted_place_count": null
+        },
+        "provenance": {
+          "facet_ids": [
+            "18369491376878146239",
+            "12850099660527362240"
+          ],
+          "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.",
+          "sources": [
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "datatopics.worldbank.org",
+              "provider": null,
+              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            },
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "wikidata.org",
+              "provider": null,
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            }
+          ]
+        },
+        "refusal_reason": null,
+        "scaling_factor": null,
+        "script": "summarize_distribution",
+        "status": "ok",
+        "step_id": "s3",
+        "unit": null,
+        "variable_names": {
+          "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+        },
+        "variables": [
+          "derived_Count_Case_per_capita_Count_Person"
+        ]
+      },
+      {
+        "caveats": [],
+        "coverage": null,
+        "metrics": {
+          "cross_place_comparison": {
+            "deltas_from_leader": [
+              {
+                "absolute_delta": -5.0,
+                "percent_delta": -16.666666666666664,
+                "place_dcid": "country/DEU",
+                "place_name": "Germany"
+              }
+            ],
+            "entries": [
+              {
+                "place_dcid": "country/FRA",
+                "place_name": "France",
+                "value": 30.0
+              },
+              {
+                "place_dcid": "country/DEU",
+                "place_name": "Germany",
+                "value": 25.0
+              }
+            ],
+            "leader": {
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "value": 30.0
+            },
+            "reference_date": "2022",
+            "spread": 5.0
+          },
+          "missing_places": [],
+          "place_count": 2,
+          "series": [
+            {
+              "absolute_change": 20.0,
+              "cagr": 73.20508075688772,
+              "end_date": "2022",
+              "end_value": 30.0,
+              "local_extrema": [],
+              "max_date": "2022",
+              "max_period_decrease": null,
+              "max_period_increase": {
+                "absolute_change": 10.0,
+                "from_date": "2020",
+                "from_value": 10.0,
+                "percent_change": 100.0,
+                "to_date": "2021",
+                "to_value": 20.0
+              },
+              "max_value": 30.0,
+              "min_date": "2020",
+              "min_value": 10.0,
+              "percent_change": 200.0,
+              "place_dcid": "country/FRA",
+              "place_name": "France",
+              "point_count": 3,
+              "start_date": "2020",
+              "start_value": 10.0
+            },
+            {
+              "absolute_change": -15.0,
+              "cagr": -20.943058495790513,
+              "end_date": "2022",
+              "end_value": 25.0,
+              "local_extrema": [],
+              "max_date": "2020",
+              "max_period_decrease": {
+                "absolute_change": -8.333333333333336,
+                "from_date": "2021",
+                "from_value": 33.333333333333336,
+                "percent_change": -25.000000000000007,
+                "to_date": "2022",
+                "to_value": 25.0
+              },
+              "max_period_increase": null,
+              "max_value": 40.0,
+              "min_date": "2022",
+              "min_value": 25.0,
+              "percent_change": -37.5,
+              "place_dcid": "country/DEU",
+              "place_name": "Germany",
+              "point_count": 3,
+              "start_date": "2020",
+              "start_value": 40.0
+            }
+          ]
+        },
+        "provenance": {
+          "facet_ids": [
+            "18369491376878146239",
+            "12850099660527362240"
+          ],
+          "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.",
+          "sources": [
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "datatopics.worldbank.org",
+              "provider": null,
+              "url": "https://datatopics.worldbank.org/world-development-indicators/"
+            },
+            {
+              "dataset": null,
+              "date_range": null,
+              "license": null,
+              "name": "wikidata.org",
+              "provider": null,
+              "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+            }
+          ]
+        },
+        "refusal_reason": null,
+        "scaling_factor": null,
+        "script": "analyze_timeseries",
+        "status": "ok",
+        "step_id": "s4",
+        "unit": null,
+        "variable_names": {
+          "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+        },
+        "variables": [
+          "derived_Count_Case_per_capita_Count_Person"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "dataset": null,
+        "date_range": null,
+        "license": null,
+        "name": "datatopics.worldbank.org",
+        "provider": null,
+        "url": "https://datatopics.worldbank.org/world-development-indicators/"
+      },
+      {
+        "dataset": null,
+        "date_range": null,
+        "license": null,
+        "name": "wikidata.org",
+        "provider": null,
+        "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+      }
+    ]
+  },
+  "derived_digest_prompt": "Step s1: compute_derived_metric on Reported cases (Count_Case), Total population (Count_Person)\n  coverage: 2 of 2 places; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.\n  metrics: {\"derived_variable_dcid\":\"derived_Count_Case_per_capita_Count_Person\",\"derived_variable_name\":\"Reported cases per 100,000 people\",\"operation\":\"per_capita\",\"scale\":100000,\"observation_count\":6,\"place_count\":2,\"date_range\":[\"2020\",\"2022\"],\"value_range\":[10,40],\"sample_rows\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2020\",\"value\":40,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2021\",\"value\":33.33,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2022\",\"value\":25,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2021\",\"value\":20,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2022\",\"value\":30,\"facet_id\":null}],\"missing_places\":[]}\n\nStep s2: rank_cohort on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":2,\"cohort_size\":2,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50}],\"bottom_n\":[{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50},{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100}],\"focal_entries\":[],\"missing_focal_places\":[]}\n\nStep s3: summarize_distribution on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.\n  metrics: {\"reference_date\":\"2022\",\"cohort_size\":2,\"mean\":27.5,\"median\":27.5,\"min\":{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25},\"max\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"max_minus_min\":5,\"stdev\":3.54,\"q25\":26.25,\"q50\":27.5,\"q75\":28.75,\"iqr\":2.5,\"deciles\":{\"p10\":25.5,\"p20\":26,\"p30\":26.5,\"p40\":27,\"p50\":27.5,\"p60\":28,\"p70\":28.5,\"p80\":29,\"p90\":29.5},\"skewness\":null,\"weighted_mean\":null,\"weight_variable_dcid\":null,\"weighted_place_count\":null,\"focal_entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"diff_from_median\":2.5,\"pct_of_median\":109.09,\"diff_from_mean\":2.5,\"z_score\":0.707,\"percentile\":100}],\"missing_focal_places\":[]}\n  caveat: Skewness requires at least 3 places, so it is not computed for this cohort of two.\n\nStep s4: analyze_timeseries on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":2,\"series\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":10,\"end_date\":\"2022\",\"end_value\":30,\"min_date\":\"2020\",\"min_value\":10,\"max_date\":\"2022\",\"max_value\":30,\"local_extrema\":[],\"absolute_change\":20,\"percent_change\":200,\"cagr\":73.21,\"max_period_increase\":{\"from_date\":\"2020\",\"to_date\":\"2021\",\"from_value\":10,\"to_value\":20,\"absolute_change\":10,\"percent_change\":100},\"max_period_decrease\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":40,\"end_date\":\"2022\",\"end_value\":25,\"min_date\":\"2022\",\"min_value\":25,\"max_date\":\"2020\",\"max_value\":40,\"local_extrema\":[],\"absolute_change\":-15,\"percent_change\":-37.5,\"cagr\":-20.94,\"max_period_increase\":null,\"max_period_decrease\":{\"from_date\":\"2021\",\"to_date\":\"2022\",\"from_value\":33.33,\"to_value\":25,\"absolute_change\":-8.33,\"percent_change\":-25}}],\"missing_places\":[],\"cross_place_comparison\":{\"reference_date\":\"2022\",\"entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25}],\"spread\":5,\"leader\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"deltas_from_leader\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"absolute_delta\":-5,\"percent_delta\":-16.67}]}}\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)",
+  "derived_pct_change": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": null,
+      "requested_places": 3
+    },
+    "metrics": {
+      "date_range": [
+        "2022",
+        "2022"
+      ],
+      "derived_variable_dcid": "derived_Count_Person_Male_pct_change_Count_Person_Female",
+      "derived_variable_name": "Percentage change from Female population to Male population",
+      "missing_places": [],
+      "observation_count": 3,
+      "operation": "pct_change",
+      "place_count": 3,
+      "sample_rows": [
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/P0",
+          "place_name": "Part 0",
+          "value": -4.0
+        },
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/P1",
+          "place_name": "Part 1",
+          "value": 0.0
+        },
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/P2",
+          "place_name": "Part 2",
+          "value": -5.0
+        }
+      ],
+      "scale": 1.0,
+      "value_range": [
+        -5.0,
+        0.0
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "12850099660527362240"
+      ],
+      "methodology": "Male population (Count_Person_Male) minus Female population (Count_Person_Female), divided by the magnitude of Female population (Count_Person_Female) and expressed in percent; pairs with a zero baseline are skipped. Observations are joined on place and date.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "compute_derived_metric",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": "Percent",
+    "variable_names": {
+      "Count_Person_Female": "Female population",
+      "Count_Person_Male": "Male population"
+    },
+    "variables": [
+      "Count_Person_Male",
+      "Count_Person_Female"
+    ]
+  },
+  "derived_per_capita": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 2,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": null,
+      "requested_places": 2
+    },
+    "metrics": {
+      "date_range": [
+        "2020",
+        "2022"
+      ],
+      "derived_variable_dcid": "derived_Count_Case_per_capita_Count_Person",
+      "derived_variable_name": "Reported cases per 100,000 people",
+      "missing_places": [],
+      "observation_count": 6,
+      "operation": "per_capita",
+      "place_count": 2,
+      "sample_rows": [
+        {
+          "date": "2020",
+          "facet_id": null,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "value": 40.0
+        },
+        {
+          "date": "2021",
+          "facet_id": null,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "value": 33.333333333333336
+        },
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/DEU",
+          "place_name": "Germany",
+          "value": 25.0
+        },
+        {
+          "date": "2021",
+          "facet_id": null,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "value": 20.0
+        },
+        {
+          "date": "2022",
+          "facet_id": null,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "value": 30.0
+        }
+      ],
+      "scale": 100000.0,
+      "value_range": [
+        10.0,
+        40.0
+      ]
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "compute_derived_metric",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Case": "Reported cases",
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Case",
+      "Count_Person"
+    ]
+  },
+  "derived_per_capita_table": {
+    "alternative_sources": [],
+    "child_place_type": null,
+    "facet_id": null,
+    "measurement_method": null,
+    "observation_period": null,
+    "parent_place_dcid": null,
+    "place_names": {
+      "country/DEU": "Germany",
+      "country/FRA": "France"
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "requested_places": [
+      "country/FRA",
+      "country/DEU"
+    ],
+    "rows": [
+      {
+        "date": "2020",
+        "facet_id": null,
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 40.0
+      },
+      {
+        "date": "2021",
+        "facet_id": null,
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 33.333333333333336
+      },
+      {
+        "date": "2022",
+        "facet_id": null,
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 25.0
+      },
+      {
+        "date": "2020",
+        "facet_id": null,
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 10.0
+      },
+      {
+        "date": "2021",
+        "facet_id": null,
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 20.0
+      },
+      {
+        "date": "2022",
+        "facet_id": null,
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 30.0
+      }
+    ],
+    "scaling_factor": null,
+    "source": null,
+    "unit": null,
+    "variable_dcid": "derived_Count_Case_per_capita_Count_Person",
+    "variable_name": "Reported cases per 100,000 people"
+  },
   "digest": {
     "has_data": true,
     "missing_notes": [
@@ -328,6 +1883,353 @@
     ]
   },
   "digest_prompt": "Step s1: analyze_timeseries on Total population (Count_Person)\n  cite: [1]\n  method: Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":1,\"series\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":21,\"start_date\":\"2000\",\"start_value\":100,\"end_date\":\"2020\",\"end_value\":200,\"min_date\":\"2000\",\"min_value\":100,\"max_date\":\"2020\",\"max_value\":200,\"local_extrema\":[{\"date\":\"2005\",\"value\":180,\"kind\":\"peak\"},{\"date\":\"2010\",\"value\":100,\"kind\":\"trough\"}],\"absolute_change\":100,\"percent_change\":100,\"cagr\":3.53,\"max_period_increase\":{\"from_date\":\"2004\",\"to_date\":\"2005\",\"from_value\":140,\"to_value\":180,\"absolute_change\":40,\"percent_change\":28.57},\"max_period_decrease\":{\"from_date\":\"2005\",\"to_date\":\"2006\",\"from_value\":180,\"to_value\":150,\"absolute_change\":-30,\"percent_change\":-16.67}}],\"missing_places\":[],\"cross_place_comparison\":null}\n\nStep s2: rank_cohort on Total population (Count_Person)\n  coverage: 9 of 10 places on 2022; cite: [2]\n  method: Ranked 9 places by Total population on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":3,\"cohort_size\":9,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/C8\",\"place_name\":\"Country 8\",\"value\":1000,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/C5\",\"place_name\":\"Country 5\",\"value\":900,\"percentile\":88.89},{\"rank\":3,\"is_tied\":false,\"place_dcid\":\"country/C2\",\"place_name\":\"Country 2\",\"value\":800,\"percentile\":77.78}],\"bottom_n\":[{\"rank\":9,\"is_tied\":false,\"place_dcid\":\"country/C0\",\"place_name\":\"Country 0\",\"value\":0,\"percentile\":11.11},{\"rank\":8,\"is_tied\":false,\"place_dcid\":\"country/C3\",\"place_name\":\"Country 3\",\"value\":100,\"percentile\":22.22},{\"rank\":7,\"is_tied\":false,\"place_dcid\":\"country/C6\",\"place_name\":\"Country 6\",\"value\":200,\"percentile\":33.33}],\"focal_entries\":[],\"missing_focal_places\":[]}\n  caveat: The places report different latest observation dates, so every value is aligned to 2022.\n  caveat: 9 of 10 places on 2022 reported a value for Total population.\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)\n\nMissing data:\n- No county-level series was found for this topic.",
+  "distribution_one_place": {
+    "caveats": [
+      "Only one place (France) reported a value for Total population on 2023; dispersion, quantiles, and z-scores require at least 2 places and skewness at least 3, so they are not computed."
+    ],
+    "coverage": {
+      "contributing_places": 1,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2023",
+      "requested_places": 1
+    },
+    "metrics": {
+      "cohort_size": 1,
+      "deciles": null,
+      "focal_entries": [
+        {
+          "diff_from_mean": 0.0,
+          "diff_from_median": 0.0,
+          "pct_of_median": 100.0,
+          "percentile": 100.0,
+          "place_dcid": "country/FRA",
+          "place_name": "France",
+          "value": 68287487.0,
+          "z_score": null
+        }
+      ],
+      "iqr": null,
+      "max": {
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 68287487.0
+      },
+      "max_minus_min": 0.0,
+      "mean": 68287487.0,
+      "median": 68287487.0,
+      "min": {
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 68287487.0
+      },
+      "missing_focal_places": [],
+      "q25": null,
+      "q50": null,
+      "q75": null,
+      "reference_date": "2023",
+      "skewness": null,
+      "stdev": null,
+      "weight_variable_dcid": null,
+      "weighted_mean": null,
+      "weighted_place_count": null
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Distribution of Total population across 1 place on 2023: mean, median, minimum, maximum, and the gap from minimum to maximum (max_minus_min); focal places are compared with the cohort mean, median, and percentile.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "distribution_two_places": {
+    "caveats": [
+      "Skewness requires at least 3 places, so it is not computed for this cohort of two."
+    ],
+    "coverage": {
+      "contributing_places": 2,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2021",
+      "requested_places": 2
+    },
+    "metrics": {
+      "cohort_size": 2,
+      "deciles": {
+        "p10": 69.07000000000001,
+        "p20": 70.64,
+        "p30": 72.21000000000001,
+        "p40": 73.78,
+        "p50": 75.35,
+        "p60": 76.92,
+        "p70": 78.49,
+        "p80": 80.06,
+        "p90": 81.63000000000001
+      },
+      "focal_entries": [],
+      "iqr": 7.8500000000000085,
+      "max": {
+        "place_dcid": "country/DEU",
+        "place_name": "Germany",
+        "value": 83.2
+      },
+      "max_minus_min": 15.700000000000003,
+      "mean": 75.35,
+      "median": 75.35,
+      "min": {
+        "place_dcid": "country/FRA",
+        "place_name": "France",
+        "value": 67.5
+      },
+      "missing_focal_places": [],
+      "q25": 71.425,
+      "q50": 75.35,
+      "q75": 79.275,
+      "reference_date": "2021",
+      "skewness": null,
+      "stdev": 11.101576464628797,
+      "weight_variable_dcid": null,
+      "weighted_mean": null,
+      "weighted_place_count": null
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": "Distribution of Total population across 2 places on 2021: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "distribution_with_focal_places": {
+    "caveats": [
+      "The places report different latest observation dates, so every value is aligned to 2022.",
+      "9 of 10 places on 2022 reported a value for Total population.",
+      "Country 9 has no value for Total population in the cohort on 2022, so no benchmark is available."
+    ],
+    "coverage": {
+      "contributing_places": 9,
+      "coverage_ratio": 0.9,
+      "missing_places": [
+        "country/C9"
+      ],
+      "mixed_vintages": true,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "metrics": {
+      "cohort_size": 9,
+      "deciles": {
+        "p10": 80.0,
+        "p20": 160.0,
+        "p30": 280.0,
+        "p40": 420.0,
+        "p50": 500.0,
+        "p60": 580.0,
+        "p70": 720.0,
+        "p80": 840.0,
+        "p90": 920.0
+      },
+      "focal_entries": [
+        {
+          "diff_from_mean": -400.0,
+          "diff_from_median": -400.0,
+          "pct_of_median": 20.0,
+          "percentile": 22.22222222222222,
+          "place_dcid": "country/C3",
+          "place_name": "Country 3",
+          "value": 100.0,
+          "z_score": -1.1202240672224077
+        }
+      ],
+      "iqr": 600.0,
+      "max": {
+        "place_dcid": "country/C8",
+        "place_name": "Country 8",
+        "value": 1000.0
+      },
+      "max_minus_min": 1000.0,
+      "mean": 500.0,
+      "median": 500.0,
+      "min": {
+        "place_dcid": "country/C0",
+        "place_name": "Country 0",
+        "value": 0.0
+      },
+      "missing_focal_places": [
+        "country/C9"
+      ],
+      "q25": 200.0,
+      "q50": 500.0,
+      "q75": 800.0,
+      "reference_date": "2022",
+      "skewness": 0.0,
+      "stdev": 357.0714214271425,
+      "weight_variable_dcid": null,
+      "weighted_mean": null,
+      "weighted_place_count": null
+    },
+    "provenance": {
+      "facet_ids": [
+        "12850099660527362240"
+      ],
+      "methodology": "Distribution of Total population across 9 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, quartiles and deciles by linear interpolation, and adjusted Fisher-Pearson sample skewness; focal places are compared with the cohort mean, median, and percentile.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "distribution_with_population_weights": {
+    "caveats": [],
+    "coverage": {
+      "contributing_places": 5,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 5
+    },
+    "metrics": {
+      "cohort_size": 5,
+      "deciles": {
+        "p10": 24000.0,
+        "p20": 28000.0,
+        "p30": 32000.0,
+        "p40": 36000.0,
+        "p50": 40000.0,
+        "p60": 44000.0,
+        "p70": 48000.0,
+        "p80": 60000.0,
+        "p90": 80000.0
+      },
+      "focal_entries": [],
+      "iqr": 20000.0,
+      "max": {
+        "place_dcid": "country/W4",
+        "place_name": "Weighted 4",
+        "value": 100000.0
+      },
+      "max_minus_min": 80000.0,
+      "mean": 48000.0,
+      "median": 40000.0,
+      "min": {
+        "place_dcid": "country/W0",
+        "place_name": "Weighted 0",
+        "value": 20000.0
+      },
+      "missing_focal_places": [],
+      "q25": 30000.0,
+      "q50": 40000.0,
+      "q75": 50000.0,
+      "reference_date": "2022",
+      "skewness": 1.5491313812566692,
+      "stdev": 31144.823004794875,
+      "weight_variable_dcid": "Count_Person",
+      "weighted_mean": 74000.0,
+      "weighted_place_count": 5
+    },
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": "Distribution of Median income across 5 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, quartiles and deciles by linear interpolation, and adjusted Fisher-Pearson sample skewness, with the mean also weighted by Total population.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": "USDollar",
+    "variable_names": {
+      "Count_Person": "Total population",
+      "Median_Income_Person": "Median income"
+    },
+    "variables": [
+      "Median_Income_Person",
+      "Count_Person"
+    ]
+  },
   "ranking_with_ties": {
     "caveats": [
       "geoId/09 has no value for Total population in the ranked cohort on 2022, so no rank is available.",
@@ -526,6 +2428,368 @@
       "Count_Person"
     ]
   },
+  "refusal_composition_components_exceed_total": {
+    "caveats": [
+      "The components of Part 0 sum to 1480 on 2022, more than the total of 1000, so they are not disjoint parts of it."
+    ],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 1.0,
+      "missing_places": [],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 3
+    },
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": "components_exceed_total",
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population",
+      "Count_Person_Female": "Female population",
+      "Count_Person_Male": "Male population",
+      "Count_Person_Urban": "Urban population"
+    },
+    "variables": [
+      "Count_Person",
+      "Count_Person_Male",
+      "Count_Person_Female",
+      "Count_Person_Urban"
+    ]
+  },
+  "refusal_composition_insufficient_coverage": {
+    "caveats": [
+      "Only 3 of 10 places on 2022 have a value in every input, below the required 50% coverage."
+    ],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 0.3,
+      "missing_places": [
+        "country/S3",
+        "country/S4",
+        "country/S5",
+        "country/S6",
+        "country/S7",
+        "country/S8",
+        "country/S9"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "insufficient_coverage",
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
+  "refusal_composition_scaling_mismatch": {
+    "caveats": [
+      "Scaling factors differ: Nominal GDP (Amount_EconomicActivity_GrossDomesticProduction_Nominal) reports a scaling factor of 1; Household consumption (Amount_Consumption_Households) reports a scaling factor of 1000."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "scaling_mismatch",
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": "USDollar",
+    "variable_names": {
+      "Amount_Consumption_Households": "Household consumption",
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variables": [
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+      "Amount_Consumption_Households"
+    ]
+  },
+  "refusal_composition_unit_mismatch": {
+    "caveats": [
+      "Units differ: Nominal GDP (Amount_EconomicActivity_GrossDomesticProduction_Nominal) reports USDollar; Government debt (Amount_Debt_Government) reports Euro."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "unit_mismatch",
+    "scaling_factor": null,
+    "script": "compute_composition",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": "USDollar",
+    "variable_names": {
+      "Amount_Debt_Government": "Government debt",
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variables": [
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+      "Amount_Debt_Government"
+    ]
+  },
+  "refusal_derived_non_positive_denominator": {
+    "caveats": [
+      "No observation of Reported cases and Total population shares a place and date within the requested window, so nothing can be derived.",
+      "2 place and date pairs (Germany (2022) and France (2022)) were skipped because the denominator Total population is zero or negative."
+    ],
+    "coverage": {
+      "contributing_places": 0,
+      "coverage_ratio": 0.0,
+      "missing_places": [
+        "country/FRA",
+        "country/DEU"
+      ],
+      "mixed_vintages": false,
+      "reference_date": null,
+      "requested_places": 2
+    },
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": "no_observations",
+    "scaling_factor": null,
+    "script": "compute_derived_metric",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Case": "Reported cases",
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Case",
+      "Count_Person"
+    ]
+  },
+  "refusal_derived_scaling_mismatch": {
+    "caveats": [
+      "Scaling factors differ: Nominal GDP (Amount_EconomicActivity_GrossDomesticProduction_Nominal) reports a scaling factor of 1; Household consumption (Amount_Consumption_Households) reports a scaling factor of 1000."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "scaling_mismatch",
+    "scaling_factor": null,
+    "script": "compute_derived_metric",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Amount_Consumption_Households": "Household consumption",
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variables": [
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+      "Amount_Consumption_Households"
+    ]
+  },
+  "refusal_derived_unit_mismatch": {
+    "caveats": [
+      "Units differ: Nominal GDP (Amount_EconomicActivity_GrossDomesticProduction_Nominal) reports USDollar; Government debt (Amount_Debt_Government) reports Euro."
+    ],
+    "coverage": null,
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "unit_mismatch",
+    "scaling_factor": null,
+    "script": "compute_derived_metric",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": "USDollar",
+    "variable_names": {
+      "Amount_Debt_Government": "Government debt",
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variables": [
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
+      "Amount_Debt_Government"
+    ]
+  },
+  "refusal_distribution_insufficient_coverage": {
+    "caveats": [
+      "Only 3 of 10 places on 2022 have a value for Total population (Count_Person), below the required 50% coverage."
+    ],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 0.3,
+      "missing_places": [
+        "country/S3",
+        "country/S4",
+        "country/S5",
+        "country/S6",
+        "country/S7",
+        "country/S8",
+        "country/S9"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": "insufficient_coverage",
+    "scaling_factor": null,
+    "script": "summarize_distribution",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": null,
+    "variable_names": {
+      "Count_Person": "Total population"
+    },
+    "variables": [
+      "Count_Person"
+    ]
+  },
   "refusal_empty_table_alignment": {
     "coverage": {
       "contributing_places": 0,
@@ -682,13 +2946,186 @@
       "Count_Person"
     ]
   },
+  "refusal_relation_insufficient_coverage": {
+    "caveats": [
+      "The target cohort (Diabetes prevalence) could not be aligned: Only 3 of 10 places on 2022 have a value for Diabetes prevalence (Percent_Person_WithDiabetes), below the required 50% coverage."
+    ],
+    "coverage": {
+      "contributing_places": 3,
+      "coverage_ratio": 0.3,
+      "missing_places": [
+        "country/S3",
+        "country/S4",
+        "country/S5",
+        "country/S6",
+        "country/S7",
+        "country/S8",
+        "country/S9"
+      ],
+      "mixed_vintages": false,
+      "reference_date": "2022",
+      "requested_places": 10
+    },
+    "metrics": null,
+    "provenance": {
+      "facet_ids": [
+        "18369491376878146239",
+        "12850099660527362240"
+      ],
+      "methodology": null,
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        }
+      ]
+    },
+    "refusal_reason": "insufficient_coverage",
+    "scaling_factor": null,
+    "script": "relate_cohorts",
+    "status": "refused",
+    "step_id": "s1",
+    "unit": "Percent",
+    "variable_names": {
+      "Count_Person": "Total population",
+      "Percent_Person_WithDiabetes": "Diabetes prevalence"
+    },
+    "variables": [
+      "Percent_Person_WithDiabetes",
+      "Count_Person"
+    ]
+  },
   "refusal_scaling_mismatch": {
-    "message": "Scaling factors differ: Total population (Count_Person) reports a scaling factor of 1; Total population (Count_Person) reports a scaling factor of 1000.",
+    "message": "Scaling factors differ: Nominal GDP (Amount_EconomicActivity_GrossDomesticProduction_Nominal) reports a scaling factor of 1; Household consumption (Amount_Consumption_Households) reports a scaling factor of 1000.",
     "reason": "scaling_mismatch"
   },
   "refusal_unit_mismatch": {
-    "message": "Units differ: Total population (Count_Person) reports USDollar; Total population (Count_Person) reports Euro.",
+    "message": "Units differ: Nominal GDP (Amount_EconomicActivity_GrossDomesticProduction_Nominal) reports USDollar; Government debt (Amount_Debt_Government) reports Euro.",
     "reason": "unit_mismatch"
+  },
+  "relation_two_cohorts": {
+    "caveats": [
+      "Diabetes prevalence is compared on 2021 and Median household income on 2022, the reference date of each cohort.",
+      "Only places with a value for both variables are compared: 1 place with a value for Diabetes prevalence has no value for Median household income on 2022 (County 9); 1 place with a value for Median household income has no value for Diabetes prevalence on 2021 (County 6)."
+    ],
+    "coverage": null,
+    "metrics": {
+      "by_contributing_places": 6,
+      "by_only_place_count": 1,
+      "by_reference_date": "2022",
+      "by_requested_places": 6,
+      "by_scaling_factor": null,
+      "by_unit": "USDollar",
+      "by_variable_dcid": "Median_Income_Household",
+      "group_size": 2,
+      "highest_by": [
+        {
+          "by_value": 90000.0,
+          "is_tied": false,
+          "place_dcid": "geoId/06001",
+          "place_name": "County 1",
+          "rank": 1,
+          "target_value": 7.5
+        },
+        {
+          "by_value": 70000.0,
+          "is_tied": true,
+          "place_dcid": "geoId/06002",
+          "place_name": "County 2",
+          "rank": 2,
+          "target_value": 9.0
+        }
+      ],
+      "highest_by_summary": {
+        "count": 2,
+        "target_mean": 8.25,
+        "target_median": 8.25
+      },
+      "lowest_by": [
+        {
+          "by_value": 40000.0,
+          "is_tied": false,
+          "place_dcid": "geoId/06005",
+          "place_name": "County 5",
+          "rank": 5,
+          "target_value": 12.0
+        },
+        {
+          "by_value": 50000.0,
+          "is_tied": false,
+          "place_dcid": "geoId/06004",
+          "place_name": "County 4",
+          "rank": 4,
+          "target_value": 11.5
+        }
+      ],
+      "lowest_by_summary": {
+        "count": 2,
+        "target_mean": 11.75,
+        "target_median": 11.75
+      },
+      "n": 2,
+      "shared_place_count": 5,
+      "target_contributing_places": 6,
+      "target_mean_difference": -3.5,
+      "target_only_place_count": 1,
+      "target_reference_date": "2021",
+      "target_requested_places": 6,
+      "target_scaling_factor": null,
+      "target_unit": "Percent",
+      "target_variable_dcid": "Percent_Person_WithDiabetes"
+    },
+    "provenance": {
+      "facet_ids": [
+        "12850099660527362240",
+        "18369491376878146239"
+      ],
+      "methodology": "Paired the 5 places with a value for both Diabetes prevalence on 2021 and Median household income on 2022, ranked them by Median household income in descending order with places of the same value sharing a rank, and summarized Diabetes prevalence over the 2 places with the highest and the 2 with the lowest Median household income.",
+      "sources": [
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "wikidata.org",
+          "provider": null,
+          "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        },
+        {
+          "dataset": null,
+          "date_range": null,
+          "license": null,
+          "name": "datatopics.worldbank.org",
+          "provider": null,
+          "url": "https://datatopics.worldbank.org/world-development-indicators/"
+        }
+      ]
+    },
+    "refusal_reason": null,
+    "scaling_factor": null,
+    "script": "relate_cohorts",
+    "status": "ok",
+    "step_id": "s1",
+    "unit": "Percent",
+    "variable_names": {
+      "Median_Income_Household": "Median household income",
+      "Percent_Person_WithDiabetes": "Diabetes prevalence"
+    },
+    "variables": [
+      "Percent_Person_WithDiabetes",
+      "Median_Income_Household"
+    ]
   },
   "summary_cohort": {
     "alternative_sources": [
