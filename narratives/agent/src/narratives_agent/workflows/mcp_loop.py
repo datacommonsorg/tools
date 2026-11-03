@@ -287,29 +287,6 @@ def _format_result_text(result: Mapping[str, JsonValue]) -> str:
     return json.dumps(result)
 
 
-def _append_user_text(contents: list[Message], text: str) -> None:
-    """Adds an instruction to the model as part of the next user message.
-
-    When the last message is already the user's (the function responses of
-    the previous round), the text joins its parts, so the conversation keeps
-    alternating between the model and the user.
-
-    Args:
-        contents: The mutable conversation message list sent to Gemini.
-        text: The user-role instruction text to append.
-    """
-    if (
-        contents
-        and isinstance(contents[-1], dict)
-        and contents[-1].get("role") == "user"
-    ):
-        parts = contents[-1].setdefault("parts", [])
-        if isinstance(parts, list):
-            parts.append({"text": text})
-            return
-    contents.append({"role": "user", "parts": [{"text": text}]})
-
-
 def _select_unique(values: list[str], cap: int) -> list[str]:
     """Returns the first `cap` distinct values, in order.
 
@@ -1010,12 +987,12 @@ async def _iterate(
             "Discovery loop iteration %d/%d", iteration + 1, MAX_ITERATIONS
         )
         if unproductive == _UNPRODUCTIVE_ROUNDS_BEFORE_REMINDER:
-            _append_user_text(
-                contents,
-                _PROGRESS_REMINDER.format(
-                    rounds=unproductive, left=MAX_ITERATIONS - iteration
-                ),
+            reminder = _PROGRESS_REMINDER.format(
+                rounds=unproductive, left=MAX_ITERATIONS - iteration
             )
+            # Vertex AI rejects a user message that holds function responses
+            # followed by text, so the reminder is a separate user message.
+            contents.append({"role": "user", "parts": [{"text": reminder}]})
         rows_before = loop.cache.total_rows_fetched
         response = await _request_discovery_turn(
             contents,
