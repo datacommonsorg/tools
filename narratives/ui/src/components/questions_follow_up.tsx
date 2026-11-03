@@ -34,17 +34,18 @@ export function FollowUpQuestions({
     <section aria-labelledby="followups-heading" className="mt-2">
       <h2
         id="followups-heading"
-        className="m-0 pt-3 text-title-large-emphasized text-on-surface"
+        className="pt-3 pb-4 mb-4 border-b border-border text-title-large-emphasized text-on-surface"
       >
         Follow up questions
       </h2>
-      <ul className="list-none p-0 m-0 mt-2 flex flex-col gap-1.5 text-body-large-emphasized">
+      {/* No gap between items: each button's vertical padding creates the touch target spacing. */}
+      <ul className="list-disc flex flex-col text-body-medium-emphasized">
         {questions.map((q, i) => (
-          <li key={`${q}-${i}`}>
+          <li key={`${q}-${i}`} className="ml-6 text-theme-primary">
             <button
               type="button"
               onClick={() => onAsk?.(q)}
-              className="bg-transparent border-0 p-0 text-left text-theme-primary cursor-pointer hover:underline"
+              className="block py-1 text-left cursor-pointer hover:underline leading-5"
             >
               {q}
             </button>

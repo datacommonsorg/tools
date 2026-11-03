@@ -327,7 +327,7 @@ export function AnswerPanel({
     {turn.status === "done" &&
       isRevealed &&
       (turn.followUps?.length ?? 0) > 0 && (
-        <div data-non-print="true" className="px-4 sm:px-6 mb-2">
+        <div data-non-print="true" className="px-4 sm:px-6 mb-6">
           <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
         </div>
       )}
