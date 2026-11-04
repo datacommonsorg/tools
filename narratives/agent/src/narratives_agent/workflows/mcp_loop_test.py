@@ -54,8 +54,13 @@ from narratives_agent.workflows.messages import (
     MCP_UNAVAILABLE,
 )
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
-from narratives_agent.workflows.processing import StepRefusalDiagnostic
+from narratives_agent.workflows.processing import (
+    ProcessingDiagnostic,
+    StepRefusalDiagnostic,
+    TimeoutDiagnostic,
+)
 from narratives_agent.workflows.prompt_contracts import load_prompt_contract
+from narratives_agent.workflows.specification import AnalysisSpecification
 from narratives_agent.workflows.sse_frames import StatusPhase
 from narratives_agent.workflows.transcript import (
     ConversationStateSlots,
@@ -2051,3 +2056,293 @@ async def test_give_up_emits_synthetic_record_with_round_and_zero_duration(
     assert filed["duration_ms"] == 0.0
     assert filed["round"] == telemetry.mcp_iterations
     assert json.loads(str(filed["result"]))["filed_by"] == "server"
+
+
+@pytest.mark.asyncio
+async def test_thought_callback_receives_text_and_1_based_round_number(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Tagging streamed thoughts with 1-based discovery rounds.
+    # Situation: The model streams a thought during round 1 before calling
+    #   search_indicators, and streams another thought during round 2 before
+    #   calling report_unavailable.
+    # Expectation: The installed thought callback receives ("Thought 1", 1) on
+    #   round 1 and ("Thought 2", 2) on round 2.
+    _ = calls
+    rounds_recorded: list[tuple[str, int]] = []
+    responses = [
+        _make_tool_turn("search_indicators"),
+        _make_unavailable_turn(),
+    ]
+    turn_index = 0
+
+    async def handle_request(
+        *,
+        thought_callback: Callable[[str], None] | None = None,
+        **_: object,
+    ) -> GeminiResponse:
+        nonlocal turn_index
+        turn_index += 1
+        if thought_callback is not None:
+            thought_callback(f"Thought {turn_index}")
+        return responses[turn_index - 1]
+
+    monkeypatch.setattr(
+        mcp_loop,
+        "async_gemini_request_with_thought_streaming",
+        handle_request,
+    )
+
+    await mcp_loop.execute_discovery_loop(
+        _TRANSCRIPT,
+        _CONFIG,
+        _TOOLS,
+        telemetry,
+        TurnCache(),
+        thought_callback=lambda text, round_num: rounds_recorded.append(
+            (text, round_num)
+        ),
+    )
+
+    assert rounds_recorded == [("Thought 1", 1), ("Thought 2", 2)]
+
+
+@pytest.mark.asyncio
+async def test_rejected_submissions_and_diagnostics_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Recording rejected submissions and processing diagnostics.
+    # Situation: The model submits 4 specifications across rounds:
+    #   1. Schema invalid (invalid script tag and untrusted extra field).
+    #   2. Reference invalid (references nonexistent table t99).
+    #   3. Processing failure via StepRefusalDiagnostic.
+    #   4. Processing failure via TimeoutDiagnostic.
+    # Expectation: rejected_submissions records schema_invalid with sanitized
+    #   errors and None specification; reference_invalid with populated
+    #   specification and error naming t99; and processing_failed for both
+    #   StepRefusalDiagnostic and TimeoutDiagnostic, with both stored in
+    #   result.diagnostics with their round numbers.
+    _ = calls
+    cache = TurnCache()
+    cache.store_fetched(
+        _make_table("t1", {"a": 1.0}, requested=("a", "b", "c", "d"))
+    )
+
+    refusal_diagnostic = StepRefusalDiagnostic(
+        refusal_reason="insufficient_coverage",
+        message="Coverage too low",
+        step_id="s1",
+        script="rank_cohort",
+        input_table_ids=("t1",),
+        coverage=None,
+        alternative_sources=(),
+        completed_results=(),
+    )
+    timeout_diagnostic = TimeoutDiagnostic(
+        timeout_seconds=5.0,
+        message="Step timed out",
+    )
+
+    diagnostics_to_return: list[ProcessingDiagnostic] = [
+        refusal_diagnostic,
+        timeout_diagnostic,
+    ]
+
+    async def mock_execute_specification(
+        specification: AnalysisSpecification,
+        cache_arg: TurnCache,
+    ) -> ProcessingDiagnostic:
+        _ = specification
+        _ = cache_arg
+        return diagnostics_to_return.pop(0)
+
+    monkeypatch.setattr(
+        mcp_loop, "execute_specification", mock_execute_specification
+    )
+
+    # Allow up to 5 retries for the test to exercise all cases.
+    monkeypatch.setattr(mcp_loop, "MAX_PROCESSING_RETRIES", 5)
+
+    responses = [
+        # Round 1: schema invalid
+        _make_submit_turn(
+            {"step_id": "s1", "script": "unrecognized_script", "table": "t1"},
+            untrusted_extra_field="secret_value",
+        ),
+        # Round 2: reference invalid
+        _make_submit_turn(
+            {"step_id": "s1", "script": "rank_cohort", "table": "t99"}
+        ),
+        # Round 3: processing failed (StepRefusalDiagnostic)
+        _make_submit_turn(
+            {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+        ),
+        # Round 4: processing failed (TimeoutDiagnostic)
+        _make_submit_turn(
+            {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+        ),
+        # Round 5: end loop
+        _make_unavailable_turn(),
+    ]
+    turn_index = 0
+
+    async def handle_request(**_: object) -> GeminiResponse:
+        nonlocal turn_index
+        resp = responses[turn_index]
+        turn_index += 1
+        return resp
+
+    monkeypatch.setattr(
+        mcp_loop,
+        "async_gemini_request_with_thought_streaming",
+        handle_request,
+    )
+
+    result = await mcp_loop.execute_discovery_loop(
+        _TRANSCRIPT,
+        _CONFIG,
+        _TOOLS,
+        telemetry,
+        cache,
+    )
+
+    assert len(result.rejected_submissions) == 4
+
+    sub1 = result.rejected_submissions[0]
+    assert sub1.round_number == 1
+    assert sub1.reason == "schema_invalid"
+    assert sub1.specification is None
+    assert any("Invalid 'script' tag" in err for err in sub1.errors)
+    assert not any(
+        "untrusted_extra_field" in err or "secret_value" in err
+        for err in sub1.errors
+    )
+
+    sub2 = result.rejected_submissions[1]
+    assert sub2.round_number == 2
+    assert sub2.reason == "reference_invalid"
+    assert sub2.specification is not None
+    assert any("t99" in err for err in sub2.errors)
+
+    sub3 = result.rejected_submissions[2]
+    assert sub3.round_number == 3
+    assert sub3.reason == "processing_failed"
+    assert sub3.errors == ("Coverage too low",)
+    assert sub3.specification is not None
+
+    sub4 = result.rejected_submissions[3]
+    assert sub4.round_number == 4
+    assert sub4.reason == "processing_failed"
+    assert sub4.errors == ("Step timed out",)
+    assert sub4.specification is not None
+
+    assert result.diagnostics == [
+        (3, refusal_diagnostic),
+        (4, timeout_diagnostic),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_partial_tool_calls_preserved_on_mcp_loop_error(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Preservation of completed tool calls when the loop aborts.
+    # Situation: Round 1 successfully completes a search_indicators tool call.
+    #   Round 2 model answer is empty, raising McpLoopError(MCP_EMPTY_RESPONSE).
+    # Expectation: execute_discovery_loop raises McpLoopError whose result
+    #   retains round 1's tool call; and a pre-allocated result passed into
+    #   execute_discovery_loop is populated with the same tool call.
+    _ = calls
+    responses: list[GeminiResponse] = [
+        _make_tool_turn("search_indicators"),
+        _make_text_turn(""),
+    ]
+    turn_index = 0
+
+    async def handle_request(**_: object) -> GeminiResponse:
+        nonlocal turn_index
+        resp = responses[turn_index]
+        turn_index += 1
+        return resp
+
+    monkeypatch.setattr(
+        mcp_loop,
+        "async_gemini_request_with_thought_streaming",
+        handle_request,
+    )
+
+    passed_result = mcp_loop.DiscoveryResult()
+    with pytest.raises(mcp_loop.McpLoopError) as exc_info:
+        await mcp_loop.execute_discovery_loop(
+            _TRANSCRIPT,
+            _CONFIG,
+            _TOOLS,
+            telemetry,
+            TurnCache(),
+            result=passed_result,
+        )
+
+    assert exc_info.value.error_type == ErrorType.MCP_EMPTY_RESPONSE
+    assert len(exc_info.value.result.tool_calls) == 1
+    assert exc_info.value.result.tool_calls[0]["name"] == "search_indicators"
+    assert exc_info.value.result.tool_calls[0]["round"] == 1
+    assert passed_result.tool_calls == exc_info.value.result.tool_calls
+
+
+@pytest.mark.asyncio
+async def test_concurrent_batch_preserves_completed_sibling_call_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: Preservation of completed sibling calls during a failing batch.
+    # Situation: A model turn calls search_indicators and
+    #   search_child_indicators concurrently. search_indicators completes
+    #   successfully while search_child_indicators fails with McpTransportError.
+    # Expectation: execute_discovery_loop raises McpLoopError with error_type
+    #   MCP_TRANSPORT_ERROR, and error.result.tool_calls preserves the completed
+    #   search_indicators record.
+    search_done = asyncio.Event()
+
+    async def call_tool(name: str, arguments: JsonObject) -> JsonObject:
+        _ = arguments
+        if name == "search_child_indicators":
+            await search_done.wait()
+            raise mcp_client.McpTransportError()
+        search_done.set()
+        return {"content": [{"type": "text", "text": "search result"}]}
+
+    monkeypatch.setattr(mcp_client, "async_call_tool", call_tool)
+
+    turn = _make_calls_turn(
+        ("search_indicators", {"query": "pop"}),
+        ("search_child_indicators", {"query": "pop"}),
+    )
+
+    async def handle_request(**_: object) -> GeminiResponse:
+        return turn
+
+    monkeypatch.setattr(
+        mcp_loop,
+        "async_gemini_request_with_thought_streaming",
+        handle_request,
+    )
+
+    with pytest.raises(mcp_loop.McpLoopError) as exc_info:
+        await mcp_loop.execute_discovery_loop(
+            _TRANSCRIPT,
+            _CONFIG,
+            _TOOLS,
+            telemetry,
+            TurnCache(),
+        )
+
+    assert exc_info.value.error_type == ErrorType.MCP_TRANSPORT_ERROR
+    assert len(exc_info.value.result.tool_calls) == 1
+    assert exc_info.value.result.tool_calls[0]["name"] == "search_indicators"
+    assert exc_info.value.result.tool_calls[0]["round"] == 1
