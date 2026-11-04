@@ -2641,3 +2641,139 @@ async def test_a_correlation_over_named_places_is_written_as_a_comparison(
         )
     )
     assert "`scatter`" not in instruction.rpartition("### Analytical")[2]
+
+
+@pytest.mark.asyncio
+async def test_run_synthesis_phase_captures_prompt_and_raw_output(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Capture of rendered prompt and raw output in `run_synthesis_phase`.
+    # Situation: Synthesis streams text followed by a chart block and a second
+    #   text block.
+    # Expectation: `rendered_prompt` and `raw_output` are populated on both
+    #   SynthesisPhaseResult and SynthesisCapture, and `raw_output` preserves
+    #   the fenced chart block that is stripped from `result.text`.
+    table = _make_table("t1")
+    cache = TurnCache()
+    cache.store_fetched(table)
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        telemetry=TurnTelemetry("test-turn-id"),
+        emit=turn.emit,
+        cache=cache,
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=AnalysisDigest(results=()),
+        spec=_SERIES_SPECIFICATION,
+        tables=(table,),
+        sources=[_INSEE],
+    )
+    raw_synthesis_text = (
+        "Here is the introduction.\n\n"
+        "```chart\n"
+        '{"viz_type": "line", "title": "Total Population", "tables": ["t1"]}\n'
+        "```\n\n"
+        "Here is the conclusion."
+    )
+
+    async def stream_chunks() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("thought", "Analyzing population trend.")
+        yield StreamChunk("text", raw_synthesis_text)
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_chunks()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+
+    capture = chat_pipeline.SynthesisCapture()
+    result = await chat_pipeline.run_synthesis_phase(
+        ctx, discovery, capture=capture
+    )
+
+    expected_signed_text = (
+        "Here is the introduction.\n\nHere is the conclusion."
+    )
+    assert result.text == expected_signed_text
+    assert result.raw_output == raw_synthesis_text
+    assert "```chart" in result.raw_output
+    assert "```chart" not in result.text
+    assert result.rendered_prompt != ""
+    assert "What is the population of France?" in result.rendered_prompt
+
+    assert capture.raw_output == result.raw_output
+    assert capture.rendered_prompt == result.rendered_prompt
+
+
+@pytest.mark.asyncio
+async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: `SynthesisCapture` behavior on `SYNTHESIS_EMPTY` and stream error.
+    # Situation:
+    #   1. Synthesis stream emits only an invalid chart fence and no prose.
+    #   2. Synthesis stream open fails with a GeminiError before yielding.
+    # Expectation:
+    #   1. On SYNTHESIS_EMPTY, SynthesisCapture retains rendered_prompt and
+    #      raw_output with the rejected fence.
+    #   2. On open failure, SynthesisCapture retains rendered_prompt and
+    #      raw_output is None.
+    table = _make_table("t1")
+    cache = TurnCache()
+    cache.store_fetched(table)
+    ctx = chat_pipeline.TurnContext(
+        transcript=_TRANSCRIPT,
+        config=AgentConfig(),
+        telemetry=TurnTelemetry("test-turn-id"),
+        emit=turn.emit,
+        cache=cache,
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=AnalysisDigest(results=()),
+        spec=_SERIES_SPECIFICATION,
+        tables=(table,),
+        sources=[_INSEE],
+    )
+
+    # 1. SYNTHESIS_EMPTY: rejected chart fence only, no prose
+    rejected_chart_text = '```chart\n{"viz_type": "unknown"}\n```'
+
+    async def stream_empty_prose() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", rejected_chart_text)
+
+    async def start_empty_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_empty_prose()
+
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", start_empty_synthesis
+    )
+
+    capture_empty = chat_pipeline.SynthesisCapture()
+    with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info:
+        await chat_pipeline.run_synthesis_phase(
+            ctx, discovery, capture=capture_empty
+        )
+    assert exc_info.value.error_type == ErrorType.SYNTHESIS_EMPTY
+    assert capture_empty.raw_output == rejected_chart_text
+    assert capture_empty.rendered_prompt is not None
+    assert "What is the population of France?" in capture_empty.rendered_prompt
+
+    # 2. SYNTHESIS_ERROR: async_gemini_stream fails to open
+    async def start_failing_synthesis(
+        **_: object,
+    ) -> AsyncGenerator[StreamChunk]:
+        raise GeminiError("Upstream model unreachable", is_retryable=True)
+
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", start_failing_synthesis
+    )
+
+    capture_error = chat_pipeline.SynthesisCapture()
+    with pytest.raises(chat_pipeline.TurnAbortedError) as exc_info_err:
+        await chat_pipeline.run_synthesis_phase(
+            ctx, discovery, capture=capture_error
+        )
+    assert exc_info_err.value.error_type == ErrorType.SYNTHESIS_ERROR
+    assert capture_error.raw_output is None
+    assert capture_error.rendered_prompt is not None
+    assert "What is the population of France?" in capture_error.rendered_prompt

@@ -252,6 +252,14 @@ class DiscoveryPhaseResult:
     tables: tuple[CachedTable, ...] = ()
 
 
+@dataclass
+class SynthesisCapture:
+    """Holds optional capture slots for debug reporting during synthesis."""
+
+    rendered_prompt: str | None = None
+    raw_output: str | None = None
+
+
 @dataclass(frozen=True)
 class SynthesisPhaseResult:
     """Holds what the synthesis phase streamed.
@@ -263,10 +271,14 @@ class SynthesisPhaseResult:
     Attributes:
         text: The signed prose text with chart blocks excluded.
         charts: Resolved charts in emission order.
+        rendered_prompt: The rendered synthesis user prompt.
+        raw_output: The raw Gemini output including chart fences.
     """
 
     text: str
     charts: tuple[ResolvedChart, ...] = ()
+    rendered_prompt: str = ""
+    raw_output: str = ""
 
 
 def _emit_status(ctx: TurnContext, status: tuple[StatusPhase, str]) -> None:
@@ -564,7 +576,10 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
 
 
 async def run_synthesis_phase(
-    ctx: TurnContext, discovery: DiscoveryPhaseResult
+    ctx: TurnContext,
+    discovery: DiscoveryPhaseResult,
+    *,
+    capture: SynthesisCapture | None = None,
 ) -> SynthesisPhaseResult:
     """Streams the answer as text and chart blocks, the synthesis phase.
 
@@ -580,6 +595,7 @@ async def run_synthesis_phase(
     Args:
         ctx: The turn context holding the transcript, config, and telemetry.
         discovery: The discovery phase result to synthesize into prose.
+        capture: Optional mutable capture for debug reporting slots.
 
     Returns:
         The signed text and the resolved charts.
@@ -600,10 +616,11 @@ async def run_synthesis_phase(
         discovery.tables,
         discovery.sources,
     )
+    rendered_prompt = render_synthesis_message(inputs)
+    if capture is not None:
+        capture.rendered_prompt = rendered_prompt
     # Put the verified window first, then the query with the analysis context.
-    messages = transcript_contents(
-        ctx.transcript, render_synthesis_message(inputs)
-    )
+    messages = transcript_contents(ctx.transcript, rendered_prompt)
     # A `scatter` chart is drawn only across a cohort, so the synthesis
     # directive of a correlation question depends on whether one was fetched.
     has_cohort_table = any(
@@ -651,6 +668,7 @@ async def run_synthesis_phase(
             ErrorType.SYNTHESIS_ERROR, message, is_retryable=error.is_retryable
         ) from error
 
+    raw_chunks: list[str] = []
     allowed_table_ids = {entry.table_id for entry in discovery.tables}
 
     def resolve(spec: ChartSpecification) -> ResolvedChart | None:
@@ -673,7 +691,7 @@ async def run_synthesis_phase(
         resolve_chart=resolve,
     )
     try:
-        await _consume_synthesis_stream(ctx, stream, splitter)
+        await _consume_synthesis_stream(ctx, stream, splitter, raw_chunks)
         splitter.finish()
         if not splitter.text:
             logger.warning("Synthesis returned no answer text")
@@ -690,13 +708,22 @@ async def run_synthesis_phase(
     finally:
         ctx.telemetry.charts_emitted = splitter.charts_emitted
         ctx.telemetry.charts_rejected = splitter.charts_rejected
-    return SynthesisPhaseResult(splitter.text, tuple(splitter.charts))
+        raw_output = "".join(raw_chunks)
+        if capture is not None:
+            capture.raw_output = raw_output
+    return SynthesisPhaseResult(
+        splitter.text,
+        tuple(splitter.charts),
+        rendered_prompt=rendered_prompt,
+        raw_output=raw_output,
+    )
 
 
 async def _consume_synthesis_stream(
     ctx: TurnContext,
     stream: AsyncGenerator[StreamChunk],
     splitter: BlockSplitter,
+    raw_chunks: list[str],
 ) -> None:
     """Feeds the synthesis stream to the splitter and relays its thoughts.
 
@@ -706,6 +733,7 @@ async def _consume_synthesis_stream(
             chunks.
         splitter: The block splitter that buffers paragraphs and chart blocks
             and emits each completed block.
+        raw_chunks: Mutable list collecting raw non-thought chunk texts.
 
     Raises:
         TurnAbortedError: If the stream breaks part-way, a chunk does not
@@ -734,6 +762,7 @@ async def _consume_synthesis_stream(
             if chunk.kind == "thought":
                 ctx.emit(ThoughtFrame(thought=chunk.text, phase="synthesis"))
             else:
+                raw_chunks.append(chunk.text)
                 splitter.feed(chunk.text)
     except GeminiBlockedError as error:
         if not splitter.text_blocks and not splitter.charts:
@@ -1082,6 +1111,7 @@ async def _sign_turn(
 __all__ = [
     "DiscoveryPhaseResult",
     "Emit",
+    "SynthesisCapture",
     "SynthesisPhaseResult",
     "TurnAbortedError",
     "TurnContext",

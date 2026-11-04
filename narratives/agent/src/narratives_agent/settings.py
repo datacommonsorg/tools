@@ -272,6 +272,9 @@ class Settings(BaseSettings):
     # - "on": always emit the report and show the debug entry without ?debug.
     debug_report: _DebugReportMode | None = None
 
+    # Optional commit or build SHA surfaced in turn debug reports.
+    build_sha: str | None = None
+
     # This Secret Manager secret, named in full or by a short secret ID, holds
     # the Gemini API key. When it is unset or yields no key, `gemini.api_key`
     # in config.json applies.
