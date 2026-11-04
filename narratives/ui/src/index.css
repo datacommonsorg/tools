@@ -11,6 +11,9 @@
 @theme {
   --font-sans: var(--theme-font-body, "Google Sans Text", "Inter", system-ui, sans-serif);
   --font-display: var(--theme-font, "Google Sans", "Roboto", system-ui, sans-serif);
+  /* IBM Plex Mono stack for the debug panel's DCIDs, facet ids, and raw tool
+     payloads. Separate from --font-mono, which the answer's code elements use. */
+  --font-mono-plex: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-theme-primary: var(--theme-primary, #0B57D0);
   /* Selected-item pills and active tabs tint the theme primary at 14% opacity
