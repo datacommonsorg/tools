@@ -32,6 +32,8 @@ export const DEBUG_PANEL_COPY = {
   copiedStatus: 'Copied',
   copyFailedStatus: 'Copy failed',
   tablistAriaLabel: 'Turn debug sections',
+  scrollTabsLeftLabel: 'Scroll tabs left',
+  scrollTabsRightLabel: 'Scroll tabs right',
   noneFallback: 'None',
   notRecordedFallback: 'Not recorded',
   unnamedSource: 'Unnamed source',

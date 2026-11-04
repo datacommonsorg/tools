@@ -346,6 +346,7 @@ select:not(:disabled) {
 /* Floating rounded thumb: transparent track, thumb inset from the edges. */
 .thin-scrollbar::-webkit-scrollbar {
   width: 10px;
+  height: 10px;
 }
 .thin-scrollbar::-webkit-scrollbar-track {
   background: transparent;
