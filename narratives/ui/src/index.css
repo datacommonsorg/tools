@@ -13,9 +13,6 @@
   --font-display: var(--theme-font, "Google Sans", "Roboto", system-ui, sans-serif);
 
   --color-theme-primary: var(--theme-primary, #0B57D0);
-  /* Text on a solid theme-primary fill. An instance with a light primary sets
-     --theme-on-primary to keep 4.5:1 contrast. */
-  --color-on-theme-primary: var(--theme-on-primary, #FFFFFF);
   /* Selected-item pills and active tabs tint the theme primary at 14% opacity
      when no explicit container color is set. */
   --color-theme-container: var(

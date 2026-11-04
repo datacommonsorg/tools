@@ -15,13 +15,20 @@
  */
 
 /**
- * @fileoverview Tests for the Toast snackbar's dismissal timing.
+ * @fileoverview Tests for the Toast snackbar's dismissal timing, pausing, close
+ * button, and focus return.
  */
 
 import { readFileSync } from 'node:fs';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EXIT_MS, Toast, VISIBLE_MS } from './toast';
+import { EXIT_MS, RESUME_MS, Toast, VISIBLE_MS } from './toast';
 
 // Motion caches the media query after its first read, so stub the hook rather
 // than matchMedia to flip reduced motion per test.
@@ -36,6 +43,7 @@ describe('Toast', () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -81,5 +89,115 @@ describe('Toast', () => {
     act(() => vi.advanceTimersByTime(VISIBLE_MS));
     act(() => vi.advanceTimersByTime(0));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('plays the exit animation when the close button is pressed', () => {
+    // Test: Manual dismissal.
+    // Situation: The user presses Close before VISIBLE_MS has passed.
+    // Expectation: The toast exits right away and onDismiss fires after
+    //              EXIT_MS, without waiting for the auto-dismiss timer.
+    const onDismiss = vi.fn();
+    render(<Toast message="PDF downloaded" onDismiss={onDismiss} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByRole('status').className).toContain(
+      'motion-safe:animate-exit',
+    );
+
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses the countdown while hovered', () => {
+    // Test: Hover pause.
+    // Situation: The pointer rests on the toast past VISIBLE_MS, then leaves.
+    // Expectation: The toast stays up while hovered and leaves RESUME_MS
+    //              after the pointer does.
+    render(<Toast message="PDF downloaded" onDismiss={vi.fn()} />);
+    const toast = screen.getByRole('status');
+
+    fireEvent.pointerEnter(toast);
+    act(() => vi.advanceTimersByTime(VISIBLE_MS * 2));
+    expect(toast.className).toContain('motion-safe:animate-enter');
+
+    fireEvent.pointerLeave(toast);
+    act(() => vi.advanceTimersByTime(RESUME_MS - 1));
+    expect(toast.className).toContain('motion-safe:animate-enter');
+    act(() => vi.advanceTimersByTime(1));
+    expect(toast.className).toContain('motion-safe:animate-exit');
+  });
+
+  it('holds while focused and returns focus when closed', () => {
+    // Test: Keyboard dismissal.
+    // Situation: A keyboard user focuses Close, waits past VISIBLE_MS, then
+    //            presses it.
+    // Expectation: The toast does not time out under focus, and on close the
+    //              focus moves to returnFocusRef instead of falling to <body>.
+    const prompt = document.createElement('textarea');
+    document.body.append(prompt);
+    const onDismiss = vi.fn();
+    render(
+      <Toast
+        message="PDF downloaded"
+        onDismiss={onDismiss}
+        returnFocusRef={{ current: prompt }}
+      />,
+    );
+    const close = screen.getByRole('button', { name: 'Close' });
+
+    act(() => close.focus());
+    act(() => vi.advanceTimersByTime(VISIBLE_MS * 2));
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    fireEvent.click(close);
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(prompt);
+    prompt.remove();
+  });
+
+  it('moves focus to returnFocusRef when it times out', () => {
+    // Test: Focus after self-dismissal.
+    // Situation: The toast runs its full VISIBLE_MS untouched.
+    // Expectation: Once it unmounts, focus is on returnFocusRef.
+    const prompt = document.createElement('textarea');
+    document.body.append(prompt);
+    render(
+      <Toast
+        message="PDF downloaded"
+        onDismiss={vi.fn()}
+        returnFocusRef={{ current: prompt }}
+      />,
+    );
+
+    act(() => vi.advanceTimersByTime(VISIBLE_MS));
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(document.activeElement).toBe(prompt);
+    prompt.remove();
+  });
+
+  it('leaves focus alone on touch devices', () => {
+    // Test: Focus after dismissal on a touch-first device.
+    // Situation: The primary pointer is coarse, and the toast times out.
+    // Expectation: returnFocusRef is not focused, so no on-screen keyboard
+    //              opens unasked.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(pointer: coarse)',
+      media: query,
+    }));
+    const prompt = document.createElement('textarea');
+    document.body.append(prompt);
+    render(
+      <Toast
+        message="PDF downloaded"
+        onDismiss={vi.fn()}
+        returnFocusRef={{ current: prompt }}
+      />,
+    );
+
+    act(() => vi.advanceTimersByTime(VISIBLE_MS));
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(document.activeElement).not.toBe(prompt);
+    prompt.remove();
   });
 });

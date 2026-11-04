@@ -18,7 +18,14 @@
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   type AnswerBlock,
   type ChatTurn,
@@ -72,6 +79,8 @@ interface AnswerPanelProps {
    * settled, so the caller can keep it hidden until its layout is final.
    */
   onSettled?: () => void;
+  /** The follow-up prompt, which takes focus when the export toast closes. */
+  promptTextareaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 /**
@@ -132,6 +141,7 @@ export function AnswerPanel({
   citationNumbers,
   turnIndex,
   onSettled,
+  promptTextareaRef,
 }: AnswerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const hasCharts = getTurnCharts(turn).length > 0;
@@ -332,6 +342,7 @@ export function AnswerPanel({
           key={exportedAt}
           message="PDF downloaded"
           onDismiss={() => setExportedAt(null)}
+          returnFocusRef={promptTextareaRef}
         />
       )}
     </div>
