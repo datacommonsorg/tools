@@ -165,6 +165,7 @@ export function DataAgent() {
   }, [turns.length]);
 
   // Exposes the sticky header + prompt height as --chrome-h for TurnView.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showConversation decides whether the prompt bar is mounted, so the observer is attached again when it changes.
   useEffect(() => {
     const prompt = promptRef.current;
     const header = document.querySelector<HTMLElement>('main > header');

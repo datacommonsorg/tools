@@ -323,7 +323,7 @@ describe('parseSseStream', () => {
     //   JSON is null, a string, or an array, and a heartbeat.
     // Expectation: Only the heartbeat is yielded; the rest are skipped
     //   without ending the stream.
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockReturnValue(undefined);
 
     const events = await parseAll([
       ': ping\r\n\r\n',

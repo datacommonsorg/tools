@@ -532,6 +532,7 @@ select:not(:disabled) {
   /* Nothing to hover on paper — see the same rule applied to the PDF clone in
      utils/download_pdf.ts. */
   .dc-numeric {
+    /* biome-ignore lint/complexity/noImportantStyles: overrides the inline underline that NumericValue sets. */
     text-decoration: none !important;
   }
   /* Avoid splitting a chart card or table across pages where possible */

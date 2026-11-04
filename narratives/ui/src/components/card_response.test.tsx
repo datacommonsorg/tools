@@ -167,14 +167,14 @@ describe('ResponseCard prose', () => {
     // Situation: Two figures split by a citation marker, so each run is
     //   rendered separately and the pieces end up siblings in one array.
     // Expectation: Both are shortened and React reports no duplicate key.
-    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = vi.spyOn(console, 'error').mockReturnValue(undefined);
     const { container } = renderMarkdown(
       'It rose from 82.8426829268 [1] to 84.0412195122 [1] over the decade.',
     );
     expect(container.textContent).toContain('82.84');
     expect(container.textContent).toContain('84.04');
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });
 

@@ -67,6 +67,7 @@ export interface FacetInfo {
   use: FacetUse;
 }
 
+/** What one turn used, as returned by {@link inspectTurn}. */
 export interface TurnInspection {
   variables: VariableUse[];
   /** Place DCIDs referenced by observation calls, deduplicated. */
@@ -114,8 +115,9 @@ function asString(value: unknown): string | undefined {
 /** Collects the DCIDs an argument names, whether it is a string or a list. */
 function dcidsFrom(value: unknown): string[] {
   if (typeof value === 'string') return [value];
-  if (Array.isArray(value))
+  if (Array.isArray(value)) {
     return value.filter((v): v is string => typeof v === 'string');
+  }
   // get_multi_entity_observations takes a role -> DCID[] map.
   const record = asRecord(value);
   if (record) return Object.values(record).flatMap(dcidsFrom);
@@ -143,7 +145,7 @@ function collectFacets(calls: ToolCallEvent[]): Map<string, FacetInfo> {
 
     for (const [variableDcid, rawVariable] of Object.entries(variables)) {
       const variable = asRecord(rawVariable);
-      const list = Array.isArray(variable?.facets) ? variable!.facets : [];
+      const list = Array.isArray(variable?.facets) ? variable.facets : [];
       for (const rawFacet of list) {
         const facet = asRecord(rawFacet);
         const facetId = asString(facet?.id);
@@ -309,8 +311,9 @@ export function inspectTurn(
     const isObservation = OBSERVATION_TOOLS.has(call.name);
 
     for (const key of ['variable_dcid', 'variable_dcids']) {
-      for (const dcid of dcidsFrom(args[key]))
+      for (const dcid of dcidsFrom(args[key])) {
         noteVariable(dcid, call.name, isObservation);
+      }
     }
 
     if (isObservation) {

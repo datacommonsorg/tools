@@ -64,8 +64,7 @@ export function textOf(node: MarkdownNode | undefined): string {
 export function citationsIn(text: string): number[] {
   const pattern = createCitationMarkerPattern();
   const out: number[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
+  for (const match of text.matchAll(pattern)) {
     out.push(...parseCitationNumbers(match[1]));
   }
   return out;

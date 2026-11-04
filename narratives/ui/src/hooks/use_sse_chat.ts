@@ -646,7 +646,7 @@ export async function* parseSseStream(
       const { value, done } = await reader.read();
       if (done) break;
       let chunk = decoder.decode(value, { stream: true });
-      if (pendingCr) chunk = '\r' + chunk;
+      if (pendingCr) chunk = `\r${chunk}`;
       pendingCr = chunk.endsWith('\r');
       if (pendingCr) chunk = chunk.slice(0, -1);
       // A separator that straddles the previous chunk and this one starts in
@@ -657,20 +657,21 @@ export async function* parseSseStream(
         buffer.length - (SSE_EVENT_SEPARATOR.length - 1),
       );
       buffer += normalizeLineEndings(chunk);
-      let idx;
-      while ((idx = buffer.indexOf(SSE_EVENT_SEPARATOR, searchFrom)) >= 0) {
-        const frame = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + SSE_EVENT_SEPARATOR.length);
+      let separatorIndex = buffer.indexOf(SSE_EVENT_SEPARATOR, searchFrom);
+      while (separatorIndex >= 0) {
+        const frame = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + SSE_EVENT_SEPARATOR.length);
         searchFrom = 0;
         const event = decodeFrame(frame);
         if (event) yield event;
+        separatorIndex = buffer.indexOf(SSE_EVENT_SEPARATOR, searchFrom);
       }
     }
   } finally {
     // This block runs even when the caller stops reading early. It cancels
     // the download and releases the stream. If the stream has already
     // failed, `cancel` returns a rejected promise, which is ignored.
-    await reader.cancel().catch(() => {});
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

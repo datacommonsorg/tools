@@ -39,8 +39,8 @@ beforeAll(() => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: query.includes('prefers-reduced-motion'),
     media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
   }));
   vi.spyOn(
     HTMLTextAreaElement.prototype,
@@ -69,9 +69,10 @@ afterAll(() => {
 /** Renders the view with `query` and returns the search box element. */
 const renderSearchBox = (query: string) => {
   const view = render(
-    <InitialView query={query} setQuery={() => {}} onSend={() => {}} />,
+    <InitialView query={query} setQuery={vi.fn()} onSend={vi.fn()} />,
   );
-  const searchBox = screen.getByRole('textbox').closest('form')!;
+  const searchBox = screen.getByRole('textbox').closest('form');
+  if (!searchBox) throw new Error('The search box renders no form.');
   return { view, searchBox };
 };
 
@@ -112,7 +113,7 @@ describe('InitialView search box', () => {
     const { view, searchBox } = renderSearchBox('a question long enough');
     lines = 1;
     view.rerender(
-      <InitialView query="short" setQuery={() => {}} onSend={() => {}} />,
+      <InitialView query="short" setQuery={vi.fn()} onSend={vi.fn()} />,
     );
     expect(searchBox.className).toContain('rounded-pill');
   });

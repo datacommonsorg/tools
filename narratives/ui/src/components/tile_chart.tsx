@@ -218,7 +218,6 @@ export function getDcComponentTag(
       return 'datacommons-highlight';
     case 'scatter':
       return 'datacommons-scatter';
-    case 'line':
     default:
       return 'datacommons-line';
   }

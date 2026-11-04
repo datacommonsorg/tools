@@ -72,6 +72,7 @@ const WARM_MS = 400;
 /** When the last tooltip closed — drives the {@link WARM_MS} grace period. */
 let lastHiddenAt = 0;
 
+/** The side of its anchor that a tooltip opens on. */
 export type Placement = 'top' | 'bottom' | 'left' | 'right';
 
 /** The part of a DOMRect the placement maths actually reads. */
@@ -84,6 +85,7 @@ export interface Box {
   height: number;
 }
 
+/** Props for {@link Tooltip}. */
 export interface TooltipProps {
   /** The label to show for plain tooltips, or supporting body text for rich tooltips. */
   label?: string;
@@ -159,6 +161,7 @@ export function Tooltip({
   // Position after the tooltip has been laid out, so its real measured size
   // decides whether the preferred side fits. Runs before paint, so the
   // tooltip is never visible at the wrong spot.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: label, title and content change the tooltip's size, so it is placed again when they change.
   useLayoutEffect(() => {
     if (!open) return;
     const anchor = anchorRef.current;
@@ -353,7 +356,7 @@ export function Tooltip({
  * clamps along the cross axis so a tooltip on an edge control stays on screen.
  */
 export function place(anchor: Box, tip: Box, preferred: Placement): Coords {
-  const side = fit(anchor, tip, preferred);
+  const side = pickSide(anchor, tip, preferred);
   const vertical = side === 'top' || side === 'bottom';
 
   const top = vertical
@@ -375,7 +378,7 @@ export function place(anchor: Box, tip: Box, preferred: Placement): Coords {
 }
 
 /** Returns the preferred side, or its opposite when that side has no room. */
-function fit(anchor: Box, tip: Box, preferred: Placement): Placement {
+function pickSide(anchor: Box, tip: Box, preferred: Placement): Placement {
   const room: Record<Placement, number> = {
     top: anchor.top,
     bottom: window.innerHeight - anchor.bottom,

@@ -133,9 +133,7 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
 export function splitFormattedNumbers(text: string): TextSegment[] {
   const out: TextSegment[] = [];
   let last = 0;
-  let match: RegExpExecArray | null;
-  NUMBER_TOKEN.lastIndex = 0;
-  while ((match = NUMBER_TOKEN.exec(text)) !== null) {
+  for (const match of text.matchAll(NUMBER_TOKEN)) {
     const start = match.index;
     const end = start + match[0].length;
     if (isWordish(text[start - 1]) || isWordish(text[end])) continue;

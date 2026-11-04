@@ -421,6 +421,12 @@ function unbreakableBands(clone: HTMLElement): Band[] {
   return bands.sort((a, b) => a.top - b.top);
 }
 
+/** A vertical span of the canvas, in canvas pixels. */
+export interface Band {
+  top: number;
+  bottom: number;
+}
+
 /**
  * Chooses where to end a page.
  *
@@ -439,11 +445,6 @@ function unbreakableBands(clone: HTMLElement): Band[] {
  * of the page precisely so it cannot. What is left here is for tables, which
  * have no scale factor to give.
  */
-export interface Band {
-  top: number;
-  bottom: number;
-}
-
 export function pageBreak(
   offset: number,
   pageHeight: number,
@@ -534,28 +535,28 @@ async function renderToPdf(
 
   // Drop everything the printed document should not carry: the export buttons,
   // the provenance icon.
-  clone
-    .querySelectorAll('[data-non-print="true"]')
-    .forEach((el) => el.remove());
+  clone.querySelectorAll('[data-non-print="true"]').forEach((el) => {
+    el.remove();
+  });
 
   // Remove hover styling for print layout.
-  clone.querySelectorAll<HTMLElement>('.dc-numeric').forEach((n) => {
-    n.style.textDecoration = 'none';
-    n.style.cursor = 'auto';
+  clone.querySelectorAll<HTMLElement>('.dc-numeric').forEach((numeric) => {
+    numeric.style.textDecoration = 'none';
+    numeric.style.cursor = 'auto';
   });
 
   // The question is the document's heading: undo its on-screen one-line
   // truncation so a long question is not cut off.
-  clone.querySelectorAll<HTMLElement>('.print-question').forEach((q) => {
-    q.style.whiteSpace = 'normal';
-    q.style.textOverflow = 'clip';
-    q.style.overflow = 'visible';
-    q.style.fontSize = '18px';
-    q.style.lineHeight = '26px';
-    q.style.fontWeight = '700';
-    q.style.color = '#000000';
+  clone.querySelectorAll<HTMLElement>('.print-question').forEach((heading) => {
+    heading.style.whiteSpace = 'normal';
+    heading.style.textOverflow = 'clip';
+    heading.style.overflow = 'visible';
+    heading.style.fontSize = '18px';
+    heading.style.lineHeight = '26px';
+    heading.style.fontWeight = '700';
+    heading.style.color = '#000000';
     // The row it sits in is sized for one line on screen; let it grow.
-    const row = q.parentElement;
+    const row = heading.parentElement;
     if (row) {
       row.style.height = 'auto';
       row.style.minHeight = '0';

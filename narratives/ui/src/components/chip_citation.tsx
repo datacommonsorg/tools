@@ -210,9 +210,8 @@ export function splitWithCitations(
   const pattern = createCitationMarkerPattern();
   const out: ReactNode[] = [];
   let last = 0;
-  let match: RegExpExecArray | null;
   let i = 0;
-  while ((match = pattern.exec(s)) !== null) {
+  for (const match of s.matchAll(pattern)) {
     if (match.index > last) {
       out.push(...renderNumbers(s.slice(last, match.index), `n${last}`));
     }
