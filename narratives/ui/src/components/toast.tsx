@@ -43,8 +43,11 @@ interface ToastProps {
   onDismiss: () => void;
   /**
    * Takes focus once the toast has closed, by timeout or the close button, so
-   * the user lands back on the next action rather than on `<body>`. Skipped on
-   * touch-first devices; see {@link TOUCH_QUERY}.
+   * the user lands back on the next action rather than on `<body>`. Only when
+   * focus has not moved on: it must still be where it was when the toast
+   * appeared, on `<body>`, or inside the toast — never pulled out of a dialog
+   * or field the user has since moved to. Skipped on touch-first devices; see
+   * {@link TOUCH_QUERY}.
    */
   returnFocusRef?: RefObject<HTMLElement | null>;
 }
@@ -64,6 +67,9 @@ interface ToastProps {
  */
 export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
   const reduceMotion = useReducedMotion();
+  const toastRef = useRef<HTMLDivElement>(null);
+  // Usually the Export button; read once, on the first render.
+  const openerRef = useRef(document.activeElement);
   const [leaving, setLeaving] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -86,7 +92,13 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
     if (!leaving) return;
     const timer = window.setTimeout(
       () => {
-        if (!window.matchMedia(TOUCH_QUERY).matches) {
+        const active = document.activeElement;
+        const focusUnmoved =
+          active === null ||
+          active === document.body ||
+          active === openerRef.current ||
+          toastRef.current?.contains(active);
+        if (focusUnmoved && !window.matchMedia(TOUCH_QUERY).matches) {
           returnFocusRef?.current?.focus();
         }
         onDismiss();
@@ -104,6 +116,7 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
   // context would otherwise trap z-50 beneath the sticky header.
   return createPortal(
     <div
+      ref={toastRef}
       role="status"
       aria-live="polite"
       data-non-print="true"

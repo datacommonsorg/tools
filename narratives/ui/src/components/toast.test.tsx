@@ -200,4 +200,29 @@ describe('Toast', () => {
     expect(document.activeElement).not.toBe(prompt);
     prompt.remove();
   });
+
+  it('leaves focus where the user moved it', () => {
+    // Test: Focus after self-dismissal once the user has moved on.
+    // Situation: After the toast appears, the user opens a dialog that takes
+    //            focus, and the toast then times out.
+    // Expectation: Focus stays in the dialog instead of jumping to
+    //              returnFocusRef behind it.
+    const prompt = document.createElement('textarea');
+    const dialogClose = document.createElement('button');
+    document.body.append(prompt, dialogClose);
+    render(
+      <Toast
+        message="PDF downloaded"
+        onDismiss={vi.fn()}
+        returnFocusRef={{ current: prompt }}
+      />,
+    );
+
+    act(() => dialogClose.focus());
+    act(() => vi.advanceTimersByTime(VISIBLE_MS));
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(document.activeElement).toBe(dialogClose);
+    prompt.remove();
+    dialogClose.remove();
+  });
 });
