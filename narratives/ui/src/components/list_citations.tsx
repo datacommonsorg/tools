@@ -18,8 +18,11 @@
  * @fileoverview Renders an answer's citations: provider, dataset, range, link.
  */
 
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
-import { citationAnchorId, displayCitationNumber } from "./chip_citation";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
+import {
+  citationAnchorId,
+  displayCitationNumber,
+} from "@/src/components/chip_citation";
 
 /**
  * Figma node 3427-16738 (section heading) + 3427-16739 ("Body" with the

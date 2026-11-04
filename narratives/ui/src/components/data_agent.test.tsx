@@ -29,18 +29,18 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ChatSessionContext,
-  type ChatSessionContextValue,
-} from '@/src/hooks/chat_session_context';
-import type { ChatTurn } from '@/src/hooks/use_sse_chat';
-import {
   COMPOSER_DISCLAIMER_TEXT,
   DataAgent,
   HANDOFF_MS,
   TurnView,
-} from './data_agent';
-import { DISCLAIMER_TEXT } from './note_disclaimer';
-import { ANSWER_SETTLE_MAX_MS } from './panel_answer';
+} from '@/src/components/data_agent';
+import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
+import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
+import {
+  ChatSessionContext,
+  type ChatSessionContextValue,
+} from '@/src/hooks/chat_session_context';
+import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 
 class NoopResizeObserver {
   observe = vi.fn();

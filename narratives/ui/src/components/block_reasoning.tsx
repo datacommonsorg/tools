@@ -21,13 +21,13 @@
 import { useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDownIcon } from "./icons";
+import { ChevronDownIcon } from "@/src/components/icons";
 import { getInstanceConfig } from "@/src/config/instance_config";
-import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
+import type { ThoughtEvent, TurnStatus } from "@/src/hooks/use_sse_chat";
 import {
   calculateStreamDurationMs,
   rehypeStreamWords,
-} from "../utils/rehype_stream_words";
+} from "@/src/utils/rehype_stream_words";
 
 /**
  * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).

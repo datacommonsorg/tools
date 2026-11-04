@@ -16,8 +16,8 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ResponseCard } from "./card_response";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import { ResponseCard } from "@/src/components/card_response";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
 
 /**
  * The table work only holds together if react-markdown really does hand each

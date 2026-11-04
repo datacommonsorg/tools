@@ -24,26 +24,26 @@ import {
   type ChatTurn,
   getTurnCharts,
 } from "@/src/hooks/use_sse_chat";
-import { ChartTile } from "./tile_chart";
-import { DisclaimerNote } from "./note_disclaimer";
+import { ChartTile } from "@/src/components/tile_chart";
+import { DisclaimerNote } from "@/src/components/note_disclaimer";
 import {
   ProvenanceInspector,
   isProvenanceDebugEnabled,
-} from "./panel_debug_provenance";
-import { ExportIcon } from "./icons";
-import { ExportPdfButton } from "./button_export_pdf";
-import { FollowUpQuestions } from "./questions_follow_up";
-import { ResponseCard } from "./card_response";
-import { Tooltip } from "./tooltip";
-import { CitationNumberingProvider } from "./chip_citation";
-import { CitationsList } from "./list_citations";
+} from "@/src/components/panel_debug_provenance";
+import { ExportIcon } from "@/src/components/icons";
+import { ExportPdfButton } from "@/src/components/button_export_pdf";
+import { FollowUpQuestions } from "@/src/components/questions_follow_up";
+import { ResponseCard } from "@/src/components/card_response";
+import { Tooltip } from "@/src/components/tooltip";
+import { CitationNumberingProvider } from "@/src/components/chip_citation";
+import { CitationsList } from "@/src/components/list_citations";
 import { downloadPdf } from "@/src/utils/download_pdf";
 import {
   calculateStreamDurationMs,
   countWords,
 } from "@/src/utils/rehype_stream_words";
-import { Toast } from "./toast";
-import { CardHeader } from "./card_header";
+import { Toast } from "@/src/components/toast";
+import { CardHeader } from "@/src/components/card_header";
 
 /**
  * Wraps the full answer in a "Side panel" card (Figma node 3427:16726):

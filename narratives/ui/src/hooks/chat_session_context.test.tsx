@@ -21,8 +21,11 @@
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatSessionProvider, useChatSession } from './chat_session_context';
-import { INTERRUPTED_TURN_ERROR } from './use_sse_chat';
+import {
+  ChatSessionProvider,
+  useChatSession,
+} from '@/src/hooks/chat_session_context';
+import { INTERRUPTED_TURN_ERROR } from '@/src/hooks/use_sse_chat';
 
 /** The keys earlier builds wrote the transcript to. */
 const LEGACY_KEYS = ['cdc:chat:v1', 'cdc:chat:v2'];

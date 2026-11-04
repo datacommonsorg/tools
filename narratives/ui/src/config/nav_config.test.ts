@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { resolveNavItems } from './nav_config';
+import { resolveNavItems } from '@/src/config/nav_config';
 
 describe('resolveNavItems', () => {
   it('removes the header menu entirely for an empty array', () => {

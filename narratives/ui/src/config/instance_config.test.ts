@@ -24,7 +24,7 @@ import {
   getInstanceConfig,
   resetInstanceConfigForTests,
   sanitizeUrl,
-} from './instance_config';
+} from '@/src/config/instance_config';
 
 const writeSlot = (text: string): void => {
   document.head.innerHTML = '';

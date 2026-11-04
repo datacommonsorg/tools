@@ -27,7 +27,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { App } from './app';
+import { App } from '@/src/app';
 
 /** The landing prompt's accessible name. */
 const LANDING_PROMPT = 'Ask a question to explore relevant statistical data';

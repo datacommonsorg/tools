@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { inspectTurn } from "./inspect_turn";
-import type { ToolCallEvent } from "../hooks/use_sse_chat";
+import { inspectTurn } from "@/src/utils/inspect_turn";
+import type { ToolCallEvent } from "@/src/hooks/use_sse_chat";
 
 const METADATA_RESULT = JSON.stringify({
   status: "SUCCESS",

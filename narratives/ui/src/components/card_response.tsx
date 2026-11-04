@@ -35,7 +35,7 @@ import {
   CitationChip,
   HideCitationsProvider,
   renderWithCitations,
-} from "./chip_citation";
+} from "@/src/components/chip_citation";
 import {
   analyzeMarkdownTable,
   citationsIn,

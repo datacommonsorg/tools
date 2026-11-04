@@ -20,12 +20,12 @@
 
 import { ArrowRight, X } from 'lucide-react';
 import { type ReactNode, useEffect } from 'react';
+import { NewChatIcon } from '@/src/components/icons';
+import { Tooltip } from '@/src/components/tooltip';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import { resolveNavItems } from '@/src/config/nav_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
-import { NewChatIcon } from './icons';
-import { Tooltip } from './tooltip';
 
 /**
  * The navigation surface below the `lg` breakpoint, where the header's

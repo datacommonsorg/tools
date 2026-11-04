@@ -18,7 +18,7 @@
  * @fileoverview Renders the AI-generated-content disclaimer note.
  */
 
-import { GeminiInfoIcon } from './icons';
+import { GeminiInfoIcon } from '@/src/components/icons';
 
 interface DisclaimerNoteProps {
   text?: string;

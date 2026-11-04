@@ -20,8 +20,8 @@
  * `<script id="instance-config">` on the first call to {@link getInstanceConfig}.
  */
 
+import { withBaseUrl } from '@/src/config/base_url';
 import type { MetricsConfig, MetricsTab } from '@/src/types/metrics';
-import { withBaseUrl } from './base_url';
 
 export interface NavLink {
   label: string;

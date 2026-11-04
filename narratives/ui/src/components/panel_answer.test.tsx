@@ -21,9 +21,12 @@
 
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  ANSWER_SETTLE_MAX_MS,
+  AnswerPanel,
+} from '@/src/components/panel_answer';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
-import { ANSWER_SETTLE_MAX_MS, AnswerPanel } from './panel_answer';
 
 const LINE_CHART: ChartItem = {
   vizType: 'line',

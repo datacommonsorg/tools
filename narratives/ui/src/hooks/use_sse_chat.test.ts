@@ -28,7 +28,7 @@ import {
   type RawAnswerBlock,
   type TurnStatus,
   type WireTurn,
-} from "./use_sse_chat";
+} from "@/src/hooks/use_sse_chat";
 
 /** Represents the JSON body that the hook posts to the agent. */
 interface WireRequest {

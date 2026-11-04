@@ -15,8 +15,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { citationLead, citationUrlLabel } from "./list_citations";
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
+import {
+  citationLead,
+  citationUrlLabel,
+} from "@/src/components/list_citations";
+import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
 
 describe("citationUrlLabel", () => {
   it("drops the scheme and any trailing slash", () => {

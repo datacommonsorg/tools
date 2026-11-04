@@ -15,7 +15,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { type Box, place } from './tooltip';
+import { type Box, place } from '@/src/components/tooltip';
 
 const VIEWPORT = { width: 1000, height: 800 };
 

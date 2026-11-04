@@ -29,13 +29,13 @@ import {
 } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MenuDrawer } from '@/src/components/drawer_menu';
+import { Header } from '@/src/components/header';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 import {
   ChatSessionProvider,
   useChatSession,
 } from '@/src/hooks/chat_session_context';
-import { MenuDrawer } from './drawer_menu';
-import { Header } from './header';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
   const slot = document.createElement('script');

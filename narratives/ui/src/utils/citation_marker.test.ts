@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createCitationMarkerPattern,
   parseCitationNumbers,
-} from './citation_marker';
+} from '@/src/utils/citation_marker';
 
 /** Parses the numbers of every citation marker in `text`, one array per marker. */
 function parseMarkers(text: string): number[][] {

@@ -19,12 +19,12 @@
  * wordmark, and primary navigation links.
  */
 
+import { MenuIcon } from '@/src/components/icons';
+import { Tooltip } from '@/src/components/tooltip';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import { resolveNavItems } from '@/src/config/nav_config';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
-import { MenuIcon } from './icons';
-import { Tooltip } from './tooltip';
 
 /** Renders the instance logo, wordmark, and primary navigation links. */
 export function Header() {

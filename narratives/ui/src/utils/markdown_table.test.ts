@@ -20,7 +20,7 @@ import {
   citationsIn,
   type MarkdownNode,
   textOf,
-} from './markdown_table';
+} from '@/src/utils/markdown_table';
 
 function text(value: string): MarkdownNode {
   return { type: 'text', value };
