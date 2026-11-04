@@ -13,7 +13,7 @@
 # limitations under the License.
 """Tests for config loading, prompt rendering, and keys.
 
-Covers seven configuration behaviors in `config`:
+Covers eight configuration behaviors in `config`:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts, including when no configuration is loaded.
@@ -37,6 +37,8 @@ Covers seven configuration behaviors in `config`:
    resolved, and the timestamp `pin_current_datetime` pins for its context.
 7. `get_chat_config` applying `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` to the
    loaded `chat` section, or to the defaults when none is loaded.
+8. `get_debug_report_mode` applying `DEBUG_REPORT` to the loaded `debug`
+   section, or to the defaults when none is loaded.
 """
 
 import asyncio
@@ -53,12 +55,14 @@ from narratives_agent.config_model import (
     PROMPT_SLOTS,
     AgentConfig,
     ChatConfig,
+    DebugConfig,
     GeminiConfig,
     McpConfig,
     Prompts,
     ThinkingLevels,
 )
 from narratives_agent.settings import (
+    DEBUG_REPORT_ENV,
     ENABLE_CHAT_ENV,
     GEMINI_API_KEY_SECRET_ENV,
     UNAVAILABLE_MESSAGE_ENV,
@@ -1035,6 +1039,58 @@ def test_get_chat_config_applies_the_environment_to_the_loaded_config(
         monkeypatch.setenv(name, value)
 
     assert config.get_chat_config() == expected
+
+
+# --- debug report mode ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("loaded", "env", "expected"),
+    [
+        pytest.param(
+            AgentConfig(debug=DebugConfig(report="on")),
+            {},
+            "on",
+            id="unset keeps configuration",
+        ),
+        pytest.param(
+            AgentConfig(debug=DebugConfig(report="on")),
+            {DEBUG_REPORT_ENV: "off"},
+            "off",
+            id="DEBUG_REPORT=off overrides on",
+        ),
+        pytest.param(
+            AgentConfig(),
+            {DEBUG_REPORT_ENV: "on"},
+            "on",
+            id="DEBUG_REPORT=on overrides off",
+        ),
+        pytest.param(None, {}, "off", id="no configuration"),
+        pytest.param(
+            None,
+            {DEBUG_REPORT_ENV: "flag"},
+            "flag",
+            id="DEBUG_REPORT without configuration",
+        ),
+    ],
+)
+def test_get_debug_report_mode_applies_the_environment_to_the_loaded_config(
+    monkeypatch: pytest.MonkeyPatch,
+    loaded: AgentConfig | None,
+    env: dict[str, str],
+    expected: str,
+) -> None:
+    # Test: Override precedence in `get_debug_report_mode`.
+    # Situation: The loaded configuration sets `debug.report`, or no
+    #   configuration is loaded, and `DEBUG_REPORT` is unset or set.
+    # Expectation: An explicit `DEBUG_REPORT` replaces `debug.report` in
+    #   either direction and an unset one keeps it; without a configuration
+    #   an unset variable gives `"off"`.
+    _with_config(monkeypatch, loaded)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    assert config.get_debug_report_mode() == expected
 
 
 # --- prompt datetime rendering ----------------------------------------------

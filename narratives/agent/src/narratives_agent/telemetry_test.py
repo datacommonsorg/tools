@@ -733,3 +733,24 @@ def test_turn_telemetry_finish_stdout_is_unchanged_with_call_records(
     }
     assert "calls" not in record["tokens"]
     assert "calls" not in record
+
+
+def test_turn_telemetry_elapsed_ms_matches_duration_ms_after_finish(
+    turn_records: list[str],
+) -> None:
+    # Test: Public `elapsed_ms()` accessor on `TurnTelemetry`.
+    # Situation: `elapsed_ms()` is called before `finish()` and after
+    #   `finish()`.
+    # Expectation: `elapsed_ms()` returns a non-negative float before
+    #   `finish()`, and matches the `duration_ms` recorded in the `chat_turn`
+    #   log line identically after `finish()`.
+    turn = telemetry.TurnTelemetry()
+    elapsed_before = turn.elapsed_ms()
+    assert elapsed_before >= 0.0
+
+    turn.finish(telemetry.TerminalState.COMPLETE)
+
+    elapsed_after = turn.elapsed_ms()
+    (message,) = turn_records
+    record = json.loads(message)
+    assert elapsed_after == record["duration_ms"]
