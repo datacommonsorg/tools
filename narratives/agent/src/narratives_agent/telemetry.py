@@ -341,6 +341,23 @@ class TokenCounts:
     total: int
 
 
+@dataclass(frozen=True)
+class TokenCallRecord:
+    """Holds the token counts and attribution of one Gemini call.
+
+    Attributes:
+        phase: Pipeline phase or Gemini role name (for example, "discovery").
+        model: The model name that answered the call.
+        round: 1-based discovery round number, or None for non-round calls.
+        counts: The token counts reported for the call.
+    """
+
+    phase: str
+    model: str
+    round: int | None
+    counts: TokenCounts
+
+
 @dataclass
 class TokenUsage:
     """Accumulates Gemini token counts across all model calls in a turn.
@@ -350,19 +367,34 @@ class TokenUsage:
         candidates_token_count: Total candidate output tokens across the turn.
         thoughts_token_count: Total reasoning thought tokens across the turn.
         total_token_count: Total tokens reported across the turn.
+        calls: The list of per-call token records for attributed calls.
     """
 
     prompt_token_count: int = 0
     candidates_token_count: int = 0
     thoughts_token_count: int = 0
     total_token_count: int = 0
+    calls: list[TokenCallRecord] = field(default_factory=list)
 
-    def add(self, counts: TokenCounts | None) -> None:
+    def add(
+        self,
+        counts: TokenCounts | None,
+        *,
+        phase: str = "",
+        model: str = "",
+        round: int | None = None,
+    ) -> None:
         """Adds one call's token counts to the totals; `None` adds nothing.
+
+        When `phase` and `model` are non-empty, a `TokenCallRecord` is appended
+        to `calls`.
 
         Args:
             counts: The token counts from one Gemini call, or `None` when the
                 call reported no usage metadata.
+            phase: Optional phase or role name attributing the call.
+            model: Optional model name answering the call.
+            round: Optional 1-based discovery round number.
         """
         if counts is None:
             return
@@ -370,9 +402,18 @@ class TokenUsage:
         self.candidates_token_count += counts.candidates
         self.thoughts_token_count += counts.thoughts
         self.total_token_count += counts.total
+        if phase and model:
+            self.calls.append(
+                TokenCallRecord(
+                    phase=phase,
+                    model=model,
+                    round=round,
+                    counts=counts,
+                )
+            )
 
 
-def _compute_elapsed_ms(start: float) -> float:
+def compute_elapsed_ms(start: float) -> float:
     """Computes the milliseconds elapsed since a `time.monotonic()` timestamp.
 
     Args:
@@ -460,7 +501,7 @@ class TurnTelemetry:
             # repeated phases accumulate into the phase's total duration.
             self.phase_durations_ms[name] = round(
                 self.phase_durations_ms.get(name, 0.0)
-                + _compute_elapsed_ms(start),
+                + compute_elapsed_ms(start),
                 2,
             )
             span.end()
@@ -491,7 +532,7 @@ class TurnTelemetry:
         if self._finished:
             return
         self._finished = True
-        duration_ms = _compute_elapsed_ms(self._start)
+        duration_ms = compute_elapsed_ms(self._start)
         tool_call_count = sum(self.tool_calls.values())
         tokens: dict[str, int] = {
             "prompt_token_count": self.tokens.prompt_token_count,
@@ -556,9 +597,11 @@ __all__ = [
     "SERVICE_NAME",
     "ErrorType",
     "TerminalState",
+    "TokenCallRecord",
     "TokenCounts",
     "TokenUsage",
     "TurnTelemetry",
+    "compute_elapsed_ms",
     "configure_telemetry",
     "flush_telemetry",
     "format_span",

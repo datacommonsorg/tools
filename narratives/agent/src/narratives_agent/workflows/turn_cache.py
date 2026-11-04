@@ -67,10 +67,13 @@ class CachedTable:
         table_id: Turn-scoped identifier (`t<n>` for fetched tables, `s<n>` for
             derived tables).
         table: The immutable `ObservationTable`.
+        source_selected_explicitly: Whether the fetch request passed an explicit
+            source override.
     """
 
     table_id: str
     table: ObservationTable
+    source_selected_explicitly: bool = False
 
 
 @dataclass

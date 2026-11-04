@@ -39,9 +39,11 @@ async def test_follow_ups_request_the_low_thinking_level(
     #   rejects `MINIMAL` with a 400 error. This call catches that error and
     #   returns no questions, so the failure would be silent.
     levels: list[types.ThinkingLevel | None] = []
+    phases: list[str | None] = []
 
     async def request(**kwargs: Any) -> GeminiResponse:
         levels.append(kwargs.get("thinking_level"))
+        phases.append(kwargs.get("token_phase"))
         raise GeminiError("stubbed", is_retryable=False)
 
     monkeypatch.setattr(follow_up, "async_gemini_request", request)
@@ -53,6 +55,7 @@ async def test_follow_ups_request_the_low_thinking_level(
     )
 
     assert levels == [types.ThinkingLevel.LOW]
+    assert phases == ["follow_up"]
 
 
 @pytest.mark.asyncio
