@@ -36,6 +36,7 @@ import {
 } from '@/src/components/data_agent';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
+import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { CLOSE_REASONING_LABEL, RETRY_LABEL } from '@/src/config/copy_chat';
 import { DEFAULT_UNAVAILABLE_MESSAGE } from '@/src/config/runtime_config';
 import {
@@ -50,7 +51,10 @@ class NoopResizeObserver {
   disconnect = vi.fn();
 }
 
+let originalUrl = '';
+
 beforeEach(() => {
+  originalUrl = window.location.href;
   vi.stubGlobal('ResizeObserver', NoopResizeObserver);
 });
 
@@ -59,6 +63,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  window.history.replaceState(null, '', originalUrl);
 });
 
 /** Returns the surface over a settled chat state holding `turns`. */
@@ -598,5 +603,80 @@ describe('DataAgent skeleton handoff', () => {
     expect(answer.classList.contains('invisible')).toBe(false);
     expect(answer.getAttribute('aria-hidden')).toBeNull();
     expect(skeleton.classList.contains('opacity-0')).toBe(true);
+  });
+
+  it('renders a single DebugPanel for an unanswered settled turn under ?debug', () => {
+    // Test: Debug panel rendering on unanswered settled turns in TurnView.
+    // Situation: A refused turn rendered under ?debug=1.
+    // Expectation: Exactly one DebugPanel trigger button renders.
+    window.history.replaceState(null, '', '/?debug=1');
+    renderTurns([
+      {
+        userMessage: 'How much does a latte cost in Seattle?',
+        status: 'refused',
+        refusalMessage: 'Request outside scope.',
+        toolCalls: [],
+        thoughts: [],
+        text: '',
+        blocks: [],
+        provenance: [],
+      },
+    ]);
+
+    const debugButtons = screen.getAllByLabelText(
+      DEBUG_PANEL_COPY.openButtonLabel,
+    );
+    expect(debugButtons).toHaveLength(1);
+  });
+
+  it('renders exactly one DebugPanel on an answered settled turn without duplication', () => {
+    // Test: No duplicate DebugPanel trigger when showAnswer is true.
+    // Situation: An answered completed turn rendered under ?debug=1.
+    // Expectation: Exactly one DebugPanel trigger button renders (from AnswerPanel, not duplicated by TurnView).
+    window.history.replaceState(null, '', '/?debug=1');
+    renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'done',
+        toolCalls: [],
+        thoughts: [],
+        text: 'France has about 68 million people.',
+        blocks: [
+          {
+            index: 0,
+            type: 'text',
+            markdown: 'France has about 68 million people.',
+          },
+        ],
+        provenance: [],
+      },
+    ]);
+
+    const debugButtons = screen.getAllByLabelText(
+      DEBUG_PANEL_COPY.openButtonLabel,
+    );
+    expect(debugButtons).toHaveLength(1);
+  });
+
+  it('omits DebugPanel on an in-progress streaming turn under ?debug', () => {
+    // Test: Debug panel gating during active turn streaming.
+    // Situation: An in-progress turn with status 'discovery' rendered under ?debug=1.
+    // Expectation: No DebugPanel trigger button renders.
+    window.history.replaceState(null, '', '/?debug=1');
+    renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'discovery',
+        toolCalls: [],
+        thoughts: [],
+        text: 'Generating...',
+        blocks: [],
+        provenance: [],
+      },
+    ]);
+
+    expect(
+      screen.queryByLabelText(DEBUG_PANEL_COPY.openButtonLabel),
+    ).toBeNull();
   });
 });

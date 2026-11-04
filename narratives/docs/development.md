@@ -99,7 +99,9 @@ against an already-deployed Cloud Run backend.
    (`ENABLE_CHAT=false pnpm dev:agent`, optionally with
    `UNAVAILABLE_MESSAGE`) and reload the page.
 
-4. Open `http://localhost:3000` in your browser.
+4. Open `http://localhost:3000` in your browser. Opening
+   `http://localhost:3000/?debug` enables the per-turn debug drawer and JSON
+   export on settled turns.
 
 #### Optional: Verify the local agent API directly
 

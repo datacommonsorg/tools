@@ -15,8 +15,8 @@
  */
 
 /**
- * @fileoverview Debug panel: the icon button and the slide-over showing which
- * variables and data sources an answer used.
+ * @fileoverview Debug panel: the icon button and the tabbed slide-over showing
+ * turn details, provenance, trajectory thoughts, tool calls, and response blocks.
  */
 
 import {
@@ -26,11 +26,15 @@ import {
   m,
   useReducedMotion,
 } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BugReportIcon } from '@/src/components/icons';
 import { DebugPanelBody } from '@/src/components/panel_debug/body_debug';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
+import {
+  buildTurnDebugReport,
+  isDebugUrlEnabled,
+} from '@/src/components/panel_debug/report_debug';
 import { EASE_OUT } from '@/src/config/motion';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 
@@ -39,6 +43,23 @@ const DRAWER_TRANSITION_SECONDS = 0.25;
 
 /** Duration of the backdrop scrim's fade transition, in seconds. */
 const SCRIM_TRANSITION_SECONDS = 0.2;
+
+/** Milliseconds before the copy confirmation or failure notice resets. */
+const COPY_STATUS_RESET_MS = 2_000;
+
+type CopyStatus = 'idle' | 'copied' | 'failed';
+
+const COPY_BUTTON_LABELS: Record<CopyStatus, string> = {
+  idle: DEBUG_PANEL_COPY.copyJsonButtonLabel,
+  copied: DEBUG_PANEL_COPY.copiedStatus,
+  failed: DEBUG_PANEL_COPY.copyFailedStatus,
+};
+
+const COPY_LIVE_MESSAGES: Record<CopyStatus, string> = {
+  idle: '',
+  copied: DEBUG_PANEL_COPY.copiedStatus,
+  failed: DEBUG_PANEL_COPY.copyFailedStatus,
+};
 
 const SCRIM_MOTION_PROPS = {
   initial: { opacity: 0 },
@@ -119,13 +140,13 @@ const trapDialogFocus = (
 };
 
 /**
- * Reports whether the debug panel is enabled, that is, whether the page was
- * opened with `?debug=provenance`. Evaluated per render (not at module load)
- * so it reacts to client-side navigation and stays safe under SSR and tests.
+ * Reports whether the debug panel is enabled, that is, whether the page URL
+ * carries an enabling `?debug` parameter. Evaluated per render (not at module
+ * load) so it reacts to client-side navigation and stays safe under SSR and
+ * tests.
  */
 export const isDebugPanelEnabled = (): boolean =>
-  typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).get('debug') === 'provenance';
+  typeof window !== 'undefined' && isDebugUrlEnabled(window.location.search);
 
 interface DebugPanelProps {
   turn: ChatTurn;
@@ -133,7 +154,6 @@ interface DebugPanelProps {
 
 /**
  * The icon button that opens the debug panel, plus the slide-over it opens.
- * Renders nothing for a turn without tool calls.
  *
  * Rendered as an overlay drawer rather than inline because tool-call arguments
  * and multi-kilobyte raw responses would push the answer off screen. Out of
@@ -148,17 +168,54 @@ interface DebugPanelProps {
 export const DebugPanel = ({ turn }: DebugPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle');
+  const copyTimerRef = useRef<number | null>(null);
   const shouldReduceMotion = Boolean(useReducedMotion());
   const triggerButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
-  const hasToolCalls = turn.toolCalls.length > 0;
+  const prevTurnRef = useRef(turn);
+
+  const clearCopyTimer = useCallback(() => {
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = null;
+    }
+  }, []);
+
+  const showCopyStatus = useCallback(
+    (status: CopyStatus) => {
+      clearCopyTimer();
+      setCopyStatus(status);
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopyStatus('idle');
+        copyTimerRef.current = null;
+      }, COPY_STATUS_RESET_MS);
+    },
+    [clearCopyTimer],
+  );
+
+  useEffect(() => {
+    return () => {
+      clearCopyTimer();
+    };
+  }, [clearCopyTimer]);
+
+  useEffect(() => {
+    if (prevTurnRef.current !== turn) {
+      prevTurnRef.current = turn;
+      clearCopyTimer();
+      setCopyStatus('idle');
+    }
+  }, [turn, clearCopyTimer]);
 
   // Move focus into the dialog on open, trap Tab inside it, close on Escape,
   // and restore focus to the trigger when closing if it remains connected.
   useEffect(() => {
-    if (!isOpen || !hasToolCalls) {
+    if (!isOpen) {
+      clearCopyTimer();
+      setCopyStatus('idle');
       if (wasOpenRef.current && triggerButtonRef.current?.isConnected) {
         triggerButtonRef.current.focus();
       }
@@ -183,15 +240,25 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [hasToolCalls, isOpen]);
-
-  if (!hasToolCalls) {
-    return null;
-  }
+  }, [isOpen, clearCopyTimer]);
 
   const openDrawer = () => {
     setHasOpened(true);
     setIsOpen(true);
+  };
+
+  const handleCopyJson = async () => {
+    if (typeof navigator.clipboard?.writeText !== 'function') {
+      showCopyStatus('failed');
+      return;
+    }
+    try {
+      const report = buildTurnDebugReport(turn);
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      showCopyStatus('copied');
+    } catch {
+      showCopyStatus('failed');
+    }
   };
 
   const drawerPortal =
@@ -222,27 +289,39 @@ export const DebugPanel = ({ turn }: DebugPanelProps) => {
                 >
                   <header className="flex items-start justify-between gap-3 p-4 border-b border-outline shrink-0">
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <h3 className="m-0 text-title-medium text-on-surface">
+                      <h3 className="text-body-large-emphasized text-on-surface">
                         {DEBUG_PANEL_COPY.title}
                       </h3>
-                      <p className="m-0 text-body-medium text-on-surface-variant truncate">
+                      <p className="text-body-medium text-on-surface-variant truncate">
                         {turn.userMessage}
                       </p>
                     </div>
-                    <button
-                      ref={closeButtonRef}
-                      type="button"
-                      onClick={() => setIsOpen(false)}
-                      aria-label={DEBUG_PANEL_COPY.closeButtonLabel}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant text-title-medium"
-                    >
-                      <span aria-hidden="true">
-                        {DEBUG_PANEL_COPY.closeButtonGlyph}
-                      </span>
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleCopyJson}
+                        className="min-h-11 px-3 py-1.5 rounded-full border border-border bg-surface text-label-large text-on-surface hover:bg-button-hover transition-colors inline-flex items-center justify-center"
+                      >
+                        {COPY_BUTTON_LABELS[copyStatus]}
+                      </button>
+                      <button
+                        ref={closeButtonRef}
+                        type="button"
+                        onClick={() => setIsOpen(false)}
+                        aria-label={DEBUG_PANEL_COPY.closeButtonLabel}
+                        className="w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-button-hover transition-colors text-on-surface-variant text-body-large-emphasized"
+                      >
+                        <span aria-hidden="true">
+                          {DEBUG_PANEL_COPY.closeButtonGlyph}
+                        </span>
+                      </button>
+                    </div>
+                    <div aria-live="polite" className="sr-only">
+                      {COPY_LIVE_MESSAGES[copyStatus]}
+                    </div>
                   </header>
 
-                  <div className="flex-1 overflow-y-auto p-4">
+                  <div className="flex-1 min-h-0 flex flex-col">
                     <DebugPanelBody turn={turn} />
                   </div>
                 </m.aside>
