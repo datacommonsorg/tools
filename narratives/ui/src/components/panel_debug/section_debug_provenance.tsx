@@ -19,6 +19,7 @@
  * an answer's figures.
  */
 
+import { Link } from '@/src/components/link';
 import {
   DEBUG_FACET_DETAIL_LABELS,
   DEBUG_SECTION_HEADINGS,
@@ -85,15 +86,13 @@ export const ProvenanceSection = ({ facets }: ProvenanceSectionProps) => {
             {facet.url && (
               // Provenance URLs can contain very long query strings; keep the
               // link on one line and expose the full URL via href and title.
-              <a
+              <Link
                 href={facet.url}
-                target="_blank"
-                rel="noreferrer"
                 title={facet.url}
                 className="text-body-medium block text-theme-primary truncate"
               >
                 {facet.url}
-              </a>
+              </Link>
             )}
           </li>
         ))}

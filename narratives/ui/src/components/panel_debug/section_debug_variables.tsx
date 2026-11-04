@@ -44,7 +44,7 @@ export const VariablesSection = ({ variables }: VariablesSectionProps) => {
       <ul className="m-0 p-0 list-none flex flex-col gap-1">
         {variables.map((variable) => (
           <li key={variable.dcid} className="text-body-medium">
-            <span className="font-mono-plex">{variable.dcid}</span>
+            <span className="font-mono">{variable.dcid}</span>
             {variable.name && (
               <span className="text-on-surface-variant">
                 {VARIABLE_NAME_SEPARATOR}

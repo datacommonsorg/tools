@@ -44,7 +44,7 @@ export const ChartsSection = ({ charts }: ChartsSectionProps) => {
         {charts.map((chart, index) => (
           <li key={index} className="flex flex-col text-body-medium">
             <span>{chart.title}</span>
-            <span className="text-on-surface-variant font-mono-plex wrap-anywhere">
+            <span className="text-on-surface-variant font-mono wrap-anywhere">
               {chart.variables.join(', ')}
               {chart.places.length > 0 &&
                 formatChartPlacesSuffix(chart.places.length)}

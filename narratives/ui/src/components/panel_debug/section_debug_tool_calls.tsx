@@ -65,7 +65,7 @@ export const ToolCallsSection = ({ toolCalls }: ToolCallsSectionProps) => {
           return (
             <li key={index} className="flex flex-col gap-1">
               <span className="text-body-medium">
-                <span className="font-mono-plex">{call.name}</span>
+                <span className="font-mono">{call.name}</span>
                 {call.status === 'error' && (
                   <span className="text-error-strong">
                     {TOOL_CALL_ERROR_MARKER}
@@ -79,8 +79,9 @@ export const ToolCallsSection = ({ toolCalls }: ToolCallsSectionProps) => {
                 <>
                   <button
                     type="button"
+                    aria-expanded={isResultOpen}
                     onClick={() => toggleResult(index)}
-                    className="self-start text-label-large cursor-pointer bg-transparent p-0 text-theme-primary"
+                    className="self-start min-h-11 inline-flex items-center text-label-large cursor-pointer bg-transparent p-0 text-theme-primary"
                   >
                     {formatRawResponseToggleLabel(
                       isResultOpen,
