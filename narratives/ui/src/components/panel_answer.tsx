@@ -316,14 +316,15 @@ export function AnswerPanel({
         <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
       )}
     </div>
-    {/* Follow-up questions: agent-generated, self-contained. Hidden when the
-        agent returned none (no static fallback), and until the text has
-        finished revealing, like the body's non-text children.
+    {/* The agent generates the follow-up questions with each answer. They are
+        hidden when the agent returns none, since there is no static fallback,
+        and they wait until the text has finished revealing, as the body's
+        other non-text children do.
 
-        Kept outside the card, which is what the PDF export clones: they are
-        buttons that ask a NEW question, an invitation to keep browsing rather
-        than part of the answer. Marked non-print so browser printing drops
-        them too. */}
+        They sit outside the card because the PDF export clones the card, and
+        each question asks something new rather than being part of this
+        answer. The non-print marker keeps browser printing from showing them
+        as well. */}
     {turn.status === "done" &&
       isRevealed &&
       (turn.followUps?.length ?? 0) > 0 && (

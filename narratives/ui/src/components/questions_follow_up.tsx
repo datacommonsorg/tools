@@ -45,7 +45,7 @@ export function FollowUpQuestions({
             <button
               type="button"
               onClick={() => onAsk?.(q)}
-              className="block py-1 text-left cursor-pointer hover:underline"
+              className="block py-1 text-left hover:underline"
             >
               {q}
             </button>

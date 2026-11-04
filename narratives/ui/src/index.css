@@ -96,9 +96,8 @@
   --color-on-surface: var(--theme-text, #1B1C1D);
   --color-on-surface-variant: var(--theme-text-muted, #444746);
   --color-muted: #575B5F;
-  /* AI orange: marks AI-generated content, e.g. the disclaimer under each
-     answer. */
-  --color-ai: #C17B4A;
+  /* AI orange: the color of the AI disclaimer under each answer. */
+  --color-ai-disclaimer: #C17B4A;
   --color-subtle: #747775;
   --color-placeholder: #8E918F;
 

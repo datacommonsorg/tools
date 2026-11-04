@@ -25,8 +25,8 @@ interface DisclaimerNoteProps {
 }
 
 /**
- * The approved AI-content wording under each answer. The composer footer in
- * data_agent.tsx carries its own, shorter wording on purpose.
+ * The AI-content wording under each answer. The prompt box in data_agent.tsx
+ * has its own wording (COMPOSER_DISCLAIMER_TEXT).
  */
 export const DISCLAIMER_TEXT =
   'Generated with Gemini using data from the Data Commons Knowledge Graph. Think of this report as a starting point for your research, not a definitive final record. While visualizations cite verified third-party datasets, AI can make mistakes—always verify calculations and key findings using the linked primary sources.';
@@ -41,8 +41,8 @@ export function DisclaimerNote({
       aria-label="Disclaimer"
     >
       <hr className="border-border" />
-      <div className="flex items-start gap-2.5 pt-2.5 text-ai">
-        <GeminiInfoIcon size="xs" className="mt-1" />
+      <div className="flex items-start gap-2.5 pt-2.5 text-ai-disclaimer">
+        <GeminiInfoIcon size="xs" className="mt-0.5" />
         <p className="text-body-medium">{text}</p>
       </div>
     </section>
