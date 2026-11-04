@@ -20,29 +20,16 @@
 
 import { GeminiInfoIcon } from '@/src/components/icons';
 
-/**
- * Figma node 3427-16777 "Disclaimer" → 3427-16778 "DisclaimerNote".
- * Thin divider + info icon + body text.
- * Token "ts5" (the \_ space character) maps to color #F9F9F9, used only
- * inside the text — we collapse it back to a regular space.
- */
-
-const COLOR_TEXT = '#5C5F5E';
-const COLOR_DIVIDER = 'var(--color-border)';
-const FONT_STACK =
-  '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
-
 interface DisclaimerNoteProps {
   text?: string;
 }
 
 /**
- * The approved AI-content wording. Exported because the composer footer in
- * data_agent.tsx shows the same disclaimer — when the two were separate
- * literals one of them was updated and the other was not.
+ * The AI-content wording under each answer. The prompt box in data_agent.tsx
+ * has its own wording (COMPOSER_DISCLAIMER_TEXT).
  */
 export const DISCLAIMER_TEXT =
-  'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
+  'Generated with Gemini using data from the Data Commons Knowledge Graph. Think of this report as a starting point for your research, not a definitive final record. While visualizations cite verified third-party datasets, AI can make mistakes—always verify calculations and key findings using the linked primary sources.';
 
 /** Small AI-generated-content disclaimer shown under each answer. */
 export function DisclaimerNote({
@@ -50,25 +37,13 @@ export function DisclaimerNote({
 }: DisclaimerNoteProps) {
   return (
     <section
-      className="flex flex-col gap-1.5"
-      style={{ alignSelf: 'stretch' }}
+      className="flex flex-col gap-1.5 self-stretch"
       aria-label="Disclaimer"
     >
-      <hr style={{ border: 0, borderTop: `1px solid ${COLOR_DIVIDER}` }} />
-      <div className="flex items-start gap-2.5 pt-2.5">
-        <GeminiInfoIcon size="xs" style={{ flexShrink: 0, marginTop: 4 }} />
-        <p
-          className="m-0"
-          style={{
-            fontFamily: FONT_STACK,
-            fontSize: 16,
-            lineHeight: '24px',
-            fontWeight: 400,
-            color: COLOR_TEXT,
-          }}
-        >
-          {text}
-        </p>
+      <hr className="border-border" />
+      <div className="flex items-start gap-2.5 pt-2.5 text-ai-disclaimer">
+        <GeminiInfoIcon size="xs" className="mt-0.5" />
+        <p className="text-body-medium">{text}</p>
       </div>
     </section>
   );

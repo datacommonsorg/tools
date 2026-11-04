@@ -311,24 +311,27 @@ export function AnswerPanel({
         {turn.status === "done" && isRevealed && (
           <ExportPdfButton onExport={onExport} busy={exporting} />
         )}
-
-        {/* 6. Follow-up questions: agent-generated, self-contained. Hidden
-            when the agent returned none (no static fallback).
-
-            Marked non-print: they are buttons that ask a NEW question, so they
-            are an invitation to keep browsing rather than part of the answer
-            being exported. In a saved PDF they read as unanswered questions
-            belonging to the document, which is the opposite of their meaning. */}
-        {turn.status === "done" && (turn.followUps?.length ?? 0) > 0 && (
-          <div data-non-print="true">
-            <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
-          </div>
-        )}
       </div>
       {exported && (
         <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
       )}
     </div>
+    {/* The agent generates the follow-up questions with each answer. They are
+        hidden when the agent returns none, since there is no static fallback,
+        and they wait until the text has finished revealing, as the body's
+        other non-text children do.
+
+        They sit outside the card because the PDF export clones the card, and
+        each question asks something new rather than being part of this
+        answer. The non-print marker keeps browser printing from showing them
+        as well. */}
+    {turn.status === "done" &&
+      isRevealed &&
+      (turn.followUps?.length ?? 0) > 0 && (
+        <div data-non-print="true" className="px-4 sm:px-6 mb-6">
+          <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
+        </div>
+      )}
     </CitationNumberingProvider>
   );
 }

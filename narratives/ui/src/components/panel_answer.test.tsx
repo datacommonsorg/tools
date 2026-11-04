@@ -367,4 +367,27 @@ describe('AnswerPanel', () => {
       screen.queryAllByRole('button', { name: 'Export PDF' }).length,
     ).toBeGreaterThan(0);
   });
+
+  it('hides the follow-up questions until the reveal ends', () => {
+    // Test: Follow-ups during the reveal.
+    // Situation: A finished text-only turn with one follow-up question mounts
+    //   mid-stream, so its text reveals at once.
+    // Expectation: The follow-up question does not render while the text
+    //   reveals, and renders once the reveal duration passes.
+    vi.useFakeTimers();
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'France has about 68 million.' }],
+      { followUps: ['How has it changed since 2000?'] },
+    );
+    render(<AnswerPanel turn={turn} isStreaming />);
+    const followUp = { name: 'How has it changed since 2000?' };
+
+    expect(screen.queryByRole('button', followUp)).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
+    });
+
+    expect(screen.getByRole('button', followUp)).not.toBeNull();
+  });
 });

@@ -23,7 +23,6 @@ import { InitialView } from "@/src/components/view_initial";
 import { SkeletonCard } from "@/src/components/card_skeleton";
 import { ReasoningBlock } from "@/src/components/block_reasoning";
 import { AnswerPanel } from "@/src/components/panel_answer";
-import { DISCLAIMER_TEXT } from "@/src/components/note_disclaimer";
 import { PromptInput } from "@/src/components/input_prompt";
 import {
   assignCitationNumbers,
@@ -42,6 +41,12 @@ const PIN_TOP_OFFSET_PX = 8;
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
 const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
+/**
+ * The AI-content wording under the prompt box. Each answer has its own wording
+ * (DISCLAIMER_TEXT in note_disclaimer.tsx).
+ */
+export const COMPOSER_DISCLAIMER_TEXT =
+  "Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.";
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -205,7 +210,7 @@ export function DataAgent() {
             onStop={stop}
           />
           <div className="text-center text-caption text-muted max-w-xl">
-            {DISCLAIMER_TEXT}
+            {COMPOSER_DISCLAIMER_TEXT}
           </div>
         </div>
       </div>
