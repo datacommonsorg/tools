@@ -36,6 +36,8 @@ export const DEBUG_PANEL_COPY = {
   notRecordedFallback: 'Not recorded',
   unnamedSource: 'Unnamed source',
   serverTurnDuration: 'Server turn duration',
+  yes: 'Yes',
+  no: 'No',
 } as const;
 
 /** User-facing labels for timing milestones. */
@@ -65,9 +67,12 @@ export const DEBUG_TAB_LABELS = {
   overview: 'Overview',
   data: 'Data',
   trajectory: 'Trajectory',
+  analysis: 'Analysis',
+  synthesis: 'Synthesis',
   response: 'Response',
   timing: 'Timing',
   tokens: 'Tokens',
+  configuration: 'Configuration',
 } as const;
 
 /** Headings of the panel's body sections. */
@@ -84,6 +89,16 @@ export const DEBUG_SECTION_HEADINGS = {
   followUps: 'Follow-up suggestions',
   submissionTime: 'Submission time',
   milestones: 'Milestones',
+  analysisSummary: 'Analysis summary',
+  acceptedSpecification: 'Accepted specification',
+  unavailableReport: 'Unavailable report',
+  analysisDigest: 'Analysis digest',
+  synthesisPrompt: 'Synthesis prompt',
+  synthesisRawOutput: 'Raw synthesis output',
+  synthesisThoughts: 'Synthesis thoughts',
+  buildInfo: 'Build info',
+  roleConfigs: 'Role configurations',
+  promptHashes: 'Prompt hashes',
 } as const;
 
 /** Empty-state messages for debug tabs. */
@@ -96,6 +111,41 @@ export const DEBUG_EMPTY_STATE_MESSAGES = {
   citations: 'No citations were recorded for this turn.',
   followUps: 'No follow-up suggestions were recorded for this turn.',
   timing: 'No client timings were recorded for this turn.',
+  analysis: 'No analysis specification or results were recorded for this turn.',
+  synthesis: 'No synthesis prompt or output was recorded for this turn.',
+  roleConfigs: 'No role configurations were recorded for this turn.',
+  promptHashes: 'No prompt hashes were recorded for this turn.',
+} as const;
+
+/** Field labels on analysis and diagnostic views. */
+export const DEBUG_ANALYSIS_LABELS = {
+  specificationOrigin: 'Specification origin',
+  scriptsExecuted: 'Scripts executed',
+  processingRetries: 'Processing retries',
+  round: 'Round',
+  reason: 'Reason',
+  validationErrors: 'Validation errors',
+  stepId: 'Step ID',
+  script: 'Script',
+  refusalReason: 'Refusal reason',
+  message: 'Message',
+  inputTableIds: 'Input tables',
+  alternativeSources: 'Alternative sources',
+  coverageRatio: 'Coverage ratio',
+  contributingPlaces: 'Places contributing',
+  referenceDate: 'Reference date',
+  missingPlaces: 'Missing places',
+  mixedVintages: 'Mixed vintages',
+  timeoutSeconds: 'Timeout duration',
+} as const;
+
+/** Field labels on the configuration view. */
+export const DEBUG_CONFIG_LABELS = {
+  buildSha: 'Build SHA',
+  role: 'Role',
+  model: 'Model',
+  temperature: 'Temperature',
+  thinkingLevel: 'Thinking level',
 } as const;
 
 /** Fallback provenance name for a facet without a title or label. */
@@ -209,3 +259,45 @@ export const formatOutcomeResponseNote = (
       return hasBlocks ? null : 'This turn completed without answer blocks.';
   }
 };
+
+/** Formats the heading for a single discovery round in the trajectory tab. */
+export const formatDiscoveryRoundHeading = (round: number): string =>
+  `Discovery round ${round}`;
+
+/** Returns the rejected specifications section heading. */
+export const formatRejectedSpecsHeading = (count: number): string =>
+  `Rejected specifications (${count})`;
+
+/** Returns the diagnostics section heading. */
+export const formatDiagnosticsHeading = (count: number): string =>
+  `Processing diagnostics (${count})`;
+
+/** Formats character count metadata. */
+export const formatCharacterCount = (chars: number): string =>
+  `${chars.toLocaleString()} characters`;
+
+/** Formats the server truncation notice reporting captured vs total characters. */
+export const formatServerTruncationNotice = (
+  captured: number,
+  total: number,
+): string =>
+  `Server capped: showing ${captured.toLocaleString()} of ${total.toLocaleString()} characters`;
+
+/** Formats the toggle button label between preview and full text. */
+export const formatToggleFullTextLabel = (
+  isExpanded: boolean,
+  target: string,
+): string => (isExpanded ? 'Show preview' : `Show full ${target}`);
+
+/** Formats the copy button label for full text. */
+export const formatCopyFullTextLabel = (target: string): string =>
+  `Copy full ${target}`;
+
+/** Target labels for synthesis preview and copy actions. */
+export const DEBUG_SYNTHESIS_TARGETS = {
+  prompt: 'prompt',
+  output: 'output',
+} as const;
+
+/** Formats a diagnostic timeout duration in seconds. */
+export const formatTimeoutSeconds = (seconds: number): string => `${seconds}s`;
