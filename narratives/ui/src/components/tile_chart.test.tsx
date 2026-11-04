@@ -22,13 +22,13 @@
 
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChartItem } from '@/src/hooks/use_sse_chat';
-import type { DataCommonsComponentTagName } from '@/src/utils/datacommons_component';
 import {
   ChartTile,
   getDcComponentAttributes,
   getDcComponentTag,
-} from './tile_chart';
+} from '@/src/components/tile_chart';
+import type { ChartItem } from '@/src/hooks/use_sse_chat';
+import type { DataCommonsComponentTagName } from '@/src/utils/datacommons_component';
 
 const GDP = 'Amount_EconomicActivity_GrossDomesticProduct_Nominal';
 

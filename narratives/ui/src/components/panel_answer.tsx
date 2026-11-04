@@ -31,26 +31,26 @@ import {
   type ChatTurn,
   getTurnCharts,
 } from "@/src/hooks/use_sse_chat";
-import { ChartTile } from "./tile_chart";
-import { DisclaimerNote } from "./note_disclaimer";
+import { ChartTile } from "@/src/components/tile_chart";
+import { DisclaimerNote } from "@/src/components/note_disclaimer";
 import {
   ProvenanceInspector,
   isProvenanceDebugEnabled,
-} from "./panel_debug_provenance";
-import { ExportIcon } from "./icons";
-import { ExportPdfButton } from "./button_export_pdf";
-import { FollowUpQuestions } from "./questions_follow_up";
-import { ResponseCard } from "./card_response";
-import { Tooltip } from "./tooltip";
-import { CitationNumberingProvider } from "./chip_citation";
-import { CitationsList } from "./list_citations";
+} from "@/src/components/panel_debug_provenance";
+import { ExportIcon } from "@/src/components/icons";
+import { ExportPdfButton } from "@/src/components/button_export_pdf";
+import { FollowUpQuestions } from "@/src/components/questions_follow_up";
+import { ResponseCard } from "@/src/components/card_response";
+import { Tooltip } from "@/src/components/tooltip";
+import { CitationNumberingProvider } from "@/src/components/chip_citation";
+import { CitationsList } from "@/src/components/list_citations";
 import { downloadPdf } from "@/src/utils/download_pdf";
 import {
   calculateStreamDurationMs,
   countWords,
 } from "@/src/utils/rehype_stream_words";
-import { Toast } from "./toast";
-import { CardHeader } from "./card_header";
+import { Toast } from "@/src/components/toast";
+import { CardHeader } from "@/src/components/card_header";
 
 /**
  * Wraps the full answer in a "Side panel" card (Figma node 3427:16726):
@@ -323,19 +323,6 @@ export function AnswerPanel({
         {turn.status === "done" && isRevealed && (
           <ExportPdfButton onExport={onExport} busy={exporting} />
         )}
-
-        {/* 6. Follow-up questions: agent-generated, self-contained. Hidden
-            when the agent returned none (no static fallback).
-
-            Marked non-print: they are buttons that ask a NEW question, so they
-            are an invitation to keep browsing rather than part of the answer
-            being exported. In a saved PDF they read as unanswered questions
-            belonging to the document, which is the opposite of their meaning. */}
-        {turn.status === "done" && (turn.followUps?.length ?? 0) > 0 && (
-          <div data-non-print="true">
-            <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
-          </div>
-        )}
       </div>
       {exportedAt !== null && (
         <Toast
@@ -346,6 +333,22 @@ export function AnswerPanel({
         />
       )}
     </div>
+    {/* The agent generates the follow-up questions with each answer. They are
+        hidden when the agent returns none, since there is no static fallback,
+        and they wait until the text has finished revealing, as the body's
+        other non-text children do.
+
+        They sit outside the card because the PDF export clones the card, and
+        each question asks something new rather than being part of this
+        answer. The non-print marker keeps browser printing from showing them
+        as well. */}
+    {turn.status === "done" &&
+      isRevealed &&
+      (turn.followUps?.length ?? 0) > 0 && (
+        <div data-non-print="true" className="px-4 sm:px-6 mb-6">
+          <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
+        </div>
+      )}
     </CitationNumberingProvider>
   );
 }

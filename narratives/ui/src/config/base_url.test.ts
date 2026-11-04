@@ -24,7 +24,7 @@ import {
   normalizeBasePath,
   trimTrailingSlashes,
   withBaseUrl,
-} from './base_url';
+} from '@/src/config/base_url';
 
 afterEach(() => {
   vi.unstubAllEnvs();

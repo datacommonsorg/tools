@@ -23,8 +23,8 @@ import type { ReactNode } from "react";
 import {
   splitFormattedNumbers,
   type FormattedNumber,
-} from "../utils/format_number";
-import { Tooltip } from "./tooltip";
+} from "@/src/utils/format_number";
+import { Tooltip } from "@/src/components/tooltip";
 
 /**
  * A number the renderer shortened, with the original on hover.

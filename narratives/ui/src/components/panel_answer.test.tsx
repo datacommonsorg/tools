@@ -27,10 +27,13 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  ANSWER_SETTLE_MAX_MS,
+  AnswerPanel,
+} from '@/src/components/panel_answer';
+import { EXIT_MS, VISIBLE_MS } from '@/src/components/toast';
 import type { ChartItem, ChatTurn } from '@/src/hooks/use_sse_chat';
 import { calculateStreamDurationMs } from '@/src/utils/rehype_stream_words';
-import { ANSWER_SETTLE_MAX_MS, AnswerPanel } from './panel_answer';
-import { EXIT_MS, VISIBLE_MS } from './toast';
 
 vi.mock('@/src/utils/download_pdf', () => ({
   downloadPdf: vi.fn().mockResolvedValue(undefined),
@@ -409,5 +412,28 @@ describe('AnswerPanel', () => {
     expect(
       screen.queryAllByRole('button', { name: 'Export PDF' }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('hides the follow-up questions until the reveal ends', () => {
+    // Test: Follow-ups during the reveal.
+    // Situation: A finished text-only turn with one follow-up question mounts
+    //   mid-stream, so its text reveals at once.
+    // Expectation: The follow-up question does not render while the text
+    //   reveals, and renders once the reveal duration passes.
+    vi.useFakeTimers();
+    const turn = buildTurnWithBlocks(
+      [{ index: 0, type: 'text', markdown: 'France has about 68 million.' }],
+      { followUps: ['How has it changed since 2000?'] },
+    );
+    render(<AnswerPanel turn={turn} isStreaming />);
+    const followUp = { name: 'How has it changed since 2000?' };
+
+    expect(screen.queryByRole('button', followUp)).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
+    });
+
+    expect(screen.getByRole('button', followUp)).not.toBeNull();
   });
 });

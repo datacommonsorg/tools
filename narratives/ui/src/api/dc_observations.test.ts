@@ -13,7 +13,7 @@ import {
   pivotPointToRowsByPlace,
   pivotSeriesToRows,
   type SeriesResponse,
-} from './dc_observations';
+} from '@/src/api/dc_observations';
 
 describe('fetchSeries / fetchPoint', () => {
   afterEach(() => vi.unstubAllGlobals());

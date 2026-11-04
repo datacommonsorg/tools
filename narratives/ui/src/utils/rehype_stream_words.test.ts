@@ -23,7 +23,7 @@ import {
   calculateStreamDurationMs,
   rehypeStreamWords,
   type StreamNode,
-} from './rehype_stream_words';
+} from '@/src/utils/rehype_stream_words';
 
 const text = (value: string): StreamNode => ({ type: 'text', value });
 const element = (tagName: string, children: StreamNode[]): StreamNode => ({

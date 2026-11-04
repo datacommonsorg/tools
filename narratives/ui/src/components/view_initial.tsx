@@ -19,10 +19,10 @@
  */
 
 import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
-import { SuggestionChip } from "./chip_suggestion";
-import { PromptInput } from "./input_prompt";
+import { SuggestionChip } from "@/src/components/chip_suggestion";
+import { PromptInput } from "@/src/components/input_prompt";
 import { getInstanceConfig } from "@/src/config/instance_config";
-import { EASE_OUT } from "../config/motion";
+import { EASE_OUT } from "@/src/config/motion";
 
 // Intro cascade: each child fades up in turn; the chip row cascades its own
 // chips when its turn comes.

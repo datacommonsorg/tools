@@ -17,7 +17,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { resetInstanceConfigForTests } from "@/src/config/instance_config";
-import { InitialView } from "./view_initial";
+import { InitialView } from "@/src/components/view_initial";
 
 const LINE_HEIGHT = 24;
 

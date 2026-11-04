@@ -96,6 +96,8 @@
   --color-on-surface: var(--theme-text, #1B1C1D);
   --color-on-surface-variant: var(--theme-text-muted, #444746);
   --color-muted: #575B5F;
+  /* AI orange: the color of the AI disclaimer under each answer. */
+  --color-ai-disclaimer: #C17B4A;
   --color-subtle: #747775;
   --color-placeholder: #8E918F;
 
@@ -359,6 +361,15 @@ select:not(:disabled) {
   font-size: var(--static-body-medium-size, 14px);
   font-style: normal;
   font-weight: 400;
+  line-height: var(--static-body-medium-line-height, 20px);
+  letter-spacing: 0;
+}
+
+.text-body-medium-emphasized {
+  font-family: var(--static-body-medium-font, "Google Sans Text");
+  font-size: var(--static-body-medium-size, 14px);
+  font-style: normal;
+  font-weight: 500;
   line-height: var(--static-body-medium-line-height, 20px);
   letter-spacing: 0;
 }

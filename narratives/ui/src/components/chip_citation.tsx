@@ -24,8 +24,8 @@ import {
   createCitationMarkerPattern,
   parseCitationNumbers,
 } from "@/src/utils/citation_marker";
-import { renderNumbers } from "./value_numeric";
-import { Tooltip } from "./tooltip";
+import { renderNumbers } from "@/src/components/value_numeric";
+import { Tooltip } from "@/src/components/tooltip";
 
 /**
  * Small inline pill that renders [N] inside the markdown body as a

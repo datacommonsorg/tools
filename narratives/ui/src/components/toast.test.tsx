@@ -28,7 +28,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EXIT_MS, RESUME_MS, Toast, VISIBLE_MS } from './toast';
+import { EXIT_MS, RESUME_MS, Toast, VISIBLE_MS } from '@/src/components/toast';
 
 // Motion caches the media query after its first read, so stub the hook rather
 // than matchMedia to flip reduced motion per test.

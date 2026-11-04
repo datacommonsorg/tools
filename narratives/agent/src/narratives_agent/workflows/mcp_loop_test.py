@@ -1029,10 +1029,11 @@ async def test_the_model_is_told_the_budget_after_unproductive_rounds(
     #   every round without fetching anything, so no round is productive.
     # Expectation: The request of the fifth round (four unproductive rounds
     #   behind it, two remaining) ends with the previous round's function
-    #   responses followed by the reminder; the reminder is absent from the
-    #   earlier requests and present once in the final one, as part of the
-    #   history; and the loop still ends truncated at the cap, because six
-    #   unproductive rounds are short of the server's limit.
+    #   responses followed by the reminder as a separate user message; the
+    #   reminder is absent from the earlier requests and present once in the
+    #   final one, as part of the history; and the loop still ends truncated
+    #   at the cap, because six unproductive rounds are short of the server's
+    #   limit.
     _ = calls
     monkeypatch.setattr(mcp_loop, "MAX_ITERATIONS", 6)
     sent = model_answers(*[_make_tool_turn("search_indicators")] * 6)
@@ -1059,11 +1060,42 @@ async def test_the_model_is_told_the_budget_after_unproductive_rounds(
         1,
         1,
     ]
-    last = sent[4][-1]
-    assert isinstance(last, dict)
-    assert last["role"] == "user"
-    assert "functionResponse" in last["parts"][0]
-    assert last["parts"][-1] == {"text": reminder}
+    responses, last = sent[4][-2:]
+    assert isinstance(responses, dict)
+    assert responses["role"] == "user"
+    assert all("functionResponse" in part for part in responses["parts"])
+    assert last == {"role": "user", "parts": [{"text": reminder}]}
+
+
+@pytest.mark.asyncio
+async def test_the_progress_reminder_follows_a_prose_reminder(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[str],
+    model_answers: Callable[..., list[list[Message]]],
+    telemetry: TurnTelemetry,
+) -> None:
+    # Test: The progress reminder after a prose reply.
+    # Situation: The model searches on three rounds without fetching and
+    #   answers the fourth in prose, so four rounds are unproductive and the
+    #   last message of the history is the prose reminder.
+    # Expectation: The request of the fifth round ends with the prose
+    #   reminder and then the progress reminder, each as its own user
+    #   message.
+    _ = calls
+    monkeypatch.setattr(mcp_loop, "MAX_ITERATIONS", 5)
+    sent = model_answers(
+        *[_make_tool_turn("search_indicators")] * 3,
+        _make_text_turn("Prose."),
+        _make_tool_turn("search_indicators"),
+    )
+
+    await _run_loop(telemetry)
+
+    reminder = mcp_loop._PROGRESS_REMINDER.format(rounds=4, left=1)
+    assert sent[4][-2:] == [
+        {"role": "user", "parts": [{"text": mcp_loop._PROSE_REMINDER}]},
+        {"role": "user", "parts": [{"text": reminder}]},
+    ]
 
 
 @pytest.mark.asyncio

@@ -106,7 +106,7 @@
           "options": {
             "patterns": [
               {
-                "group": ["../**"],
+                "group": ["./**", "../**"],
                 "message": "Relative imports are not allowed."
               }
             ]
@@ -146,11 +146,23 @@
   "overrides": [
     {
       "includes": ["**/*.config.*"],
-      "linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off",
+            "noRestrictedImports": "off"
+          }
+        }
+      }
     },
     {
       "includes": ["scripts/**"],
-      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+      "linter": {
+        "rules": {
+          "style": { "noRestrictedImports": "off" },
+          "suspicious": { "noConsole": "off" }
+        }
+      }
     },
     {
       "includes": ["ui/src/types/*.d.ts"],

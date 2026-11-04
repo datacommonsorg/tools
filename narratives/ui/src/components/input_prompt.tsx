@@ -22,9 +22,9 @@
  */
 
 import { type RefObject, useEffect, useRef, useState } from 'react';
+import { SendIcon } from '@/src/components/icons';
+import { Tooltip } from '@/src/components/tooltip';
 import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
-import { SendIcon } from './icons';
-import { Tooltip } from './tooltip';
 
 /** Streaming placeholder: a raised `⋅` walks across the last two dots. */
 const THINKING_FRAMES = ['Thinking...', 'Thinking.⋅.', 'Thinking..⋅'];

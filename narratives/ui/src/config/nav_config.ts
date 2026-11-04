@@ -18,7 +18,7 @@
  * @fileoverview Resolves the instance navigation entries into header tabs.
  */
 
-import type { NavLink } from './instance_config';
+import type { NavLink } from '@/src/config/instance_config';
 
 export interface NavItem {
   id: string;
