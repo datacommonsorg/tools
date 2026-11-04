@@ -31,17 +31,13 @@ import {
   afterAll,
   afterEach,
   beforeAll,
-  beforeEach,
   describe,
   expect,
   it,
   vi,
 } from 'vitest';
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
-import {
-  DebugPanel,
-  isDebugPanelEnabled,
-} from '@/src/components/panel_debug/panel_debug';
+import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import type { ChatTurn, ToolCallEvent } from '@/src/hooks/use_sse_chat';
 
 const FETCH_CALL: ToolCallEvent = {
@@ -473,13 +469,38 @@ describe('DebugPanel', () => {
 
     expect(writeTextSpy).toHaveBeenCalledTimes(1);
     const copiedPayload = writeTextSpy.mock.calls[0][0];
-    expect(JSON.parse(copiedPayload).userMessage).toBe(turn.userMessage);
+    const parsedReport = JSON.parse(copiedPayload);
+    expect(parsedReport.userMessage).toBe(turn.userMessage);
+    expect(parsedReport.serverReport).toBeNull();
 
     await waitFor(() => {
       const liveRegion = document.querySelector('[aria-live="polite"]');
       expect(liveRegion).not.toBeNull();
       expect(liveRegion?.textContent).toBe('Copied');
     });
+  });
+
+  it('copies the JSON turn debug report including serverReport when present', () => {
+    // Test: Copy JSON clipboard includes lossless serverReport.
+    // Situation: Turn carries a rawServerReport with custom payload.
+    // Expectation: navigator.clipboard.writeText receives JSON with matching serverReport.
+    setReducedMotionPreference(true);
+    const writeTextSpy = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: { writeText: writeTextSpy },
+    });
+
+    const rawReport = { turn_id: 't-99', custom_metric: 42 };
+    const turn = buildFinishedTurn({ rawServerReport: rawReport });
+    openInspector(turn);
+
+    const copyButton = getCopyJsonButton();
+    fireEvent.click(copyButton);
+
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    const copiedPayload = writeTextSpy.mock.calls[0][0];
+    expect(JSON.parse(copiedPayload).serverReport).toEqual(rawReport);
   });
 
   it('handles clipboard write rejection gracefully with Copy failed status', async () => {
@@ -579,48 +600,5 @@ describe('DebugPanel', () => {
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
       timingTab.getAttribute('id'),
     );
-  });
-});
-
-describe('isDebugPanelEnabled', () => {
-  let originalUrl = '';
-
-  beforeEach(() => {
-    originalUrl = window.location.href;
-  });
-
-  afterEach(() => {
-    window.history.replaceState(null, '', originalUrl);
-  });
-
-  it('is enabled by ?debug, ?debug=true, and ?debug=1', () => {
-    // Test: Enabling debug query parameter variations.
-    // Situation: The page URL carries ?debug, ?debug=true, or ?debug=1.
-    // Expectation: isDebugPanelEnabled returns true.
-    window.history.replaceState(null, '', '/?debug');
-    expect(isDebugPanelEnabled()).toBe(true);
-
-    window.history.replaceState(null, '', '/?debug=true');
-    expect(isDebugPanelEnabled()).toBe(true);
-
-    window.history.replaceState(null, '', '/?debug=1');
-    expect(isDebugPanelEnabled()).toBe(true);
-  });
-
-  it('is disabled by legacy ?debug=provenance, false, 0, or absent parameter', () => {
-    // Test: Non-enabling debug query parameter values.
-    // Situation: The page URL carries ?debug=provenance, ?debug=false, or no debug param.
-    // Expectation: isDebugPanelEnabled returns false.
-    window.history.replaceState(null, '', '/?debug=provenance');
-    expect(isDebugPanelEnabled()).toBe(false);
-
-    window.history.replaceState(null, '', '/?debug=false');
-    expect(isDebugPanelEnabled()).toBe(false);
-
-    window.history.replaceState(null, '', '/?debug=0');
-    expect(isDebugPanelEnabled()).toBe(false);
-
-    window.history.replaceState(null, '', '/');
-    expect(isDebugPanelEnabled()).toBe(false);
   });
 });

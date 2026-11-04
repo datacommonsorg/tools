@@ -33,16 +33,14 @@ import { CitationNumberingProvider } from '@/src/components/chip_citation';
 import { ExportIcon } from '@/src/components/icons';
 import { CitationsList } from '@/src/components/list_citations';
 import { DisclaimerNote } from '@/src/components/note_disclaimer';
-import {
-  DebugPanel,
-  isDebugPanelEnabled,
-} from '@/src/components/panel_debug/panel_debug';
+import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import { isTurnSettled } from '@/src/components/panel_debug/report_debug';
 import { FollowUpQuestions } from '@/src/components/questions_follow_up';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
 import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
+import { useDebugMode } from '@/src/hooks/use_debug_mode';
 import {
   type AnswerBlock,
   type ChartItem,
@@ -188,6 +186,7 @@ export function AnswerPanel({
     if (!isSettling) onSettledRef.current?.();
   }, [isSettling]);
   const isRevealed = phase === 'revealed';
+  const isDebugEnabled = useDebugMode(isRevealed && isTurnSettled(turn));
   /**
    * `turn.provenance` is the sources that actually supplied the answer's
    * numbers. The backend decides membership from which facet each observation
@@ -249,9 +248,11 @@ export function AnswerPanel({
           settle, since the reveal can end before a slow chart draws. This
           matches the filled "Export PDF" button below. */}
         <CardHeader title={turn.userMessage}>
-          {isRevealed && isTurnSettled(turn) && isDebugPanelEnabled() && (
-            <DebugPanel turn={turn} />
-          )}
+          {isRevealed &&
+            isTurnSettled(turn) &&
+            (isDebugEnabled || turn.serverReport !== undefined) && (
+              <DebugPanel turn={turn} />
+            )}
           {turn.status === 'done' && isRevealed && areChartsSettled && (
             <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
           )}

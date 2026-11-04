@@ -6,7 +6,7 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANCELED_TURN_ERROR,
   DEFAULT_REFUSAL_MESSAGE,
@@ -42,6 +42,7 @@ interface WireRequest {
   idempotency_key: string;
   turns: WireTurn[];
   compacted_summary: string | null;
+  debug?: boolean;
 }
 
 /** Parses a posted body once into its declared shape. */
@@ -924,12 +925,101 @@ describe('applyEvent', () => {
       expect(turn.terminalReason).toBeUndefined();
     }
   });
+
+  it('decodes thought round and tool_call round and duration_ms', () => {
+    // Test: Decoding round and duration_ms on thought and tool_call events.
+    // Situation: A thought frame arrives with round=2, and a tool_call frame with round=2 and duration_ms=120.5.
+    // Expectation: turn.thoughts and turn.toolCalls preserve round and duration_ms.
+    const thoughtEvt: ChatStreamEvent = {
+      event: 'thought',
+      data: { thought: 'Searching data', phase: 'discovery', round: 2 },
+    };
+    const toolCallEvt: ChatStreamEvent = {
+      event: 'content',
+      data: {
+        tool_call: {
+          name: 'fetch_observations',
+          arguments: { variable_dcid: 'Count_Person' },
+          status: 'success',
+          round: 2,
+          duration_ms: 120.5,
+        },
+      },
+    };
+    const turn = [thoughtEvt, toolCallEvt].reduce(applyEvent, blankTurn());
+    expect(turn.thoughts[0]).toEqual({
+      text: 'Searching data',
+      phase: 'discovery',
+      round: 2,
+    });
+    expect(turn.toolCalls[0]).toEqual({
+      name: 'fetch_observations',
+      arguments: { variable_dcid: 'Count_Person' },
+      status: 'success',
+      round: 2,
+      duration_ms: 120.5,
+    });
+  });
+
+  it('decodes a valid debug_report frame into serverReport and rawServerReport', () => {
+    // Test: Decoding debug_report frame.
+    // Situation: A valid debug_report frame arrives.
+    // Expectation: turn.serverReport is populated with parsed report, rawServerReport preserves the wire data.
+    const rawReport = {
+      turn_id: 't123',
+      terminal_state: 'complete',
+      duration_ms: 500,
+      tokens: {
+        prompt_token_count: 10,
+        candidates_token_count: 5,
+        thoughts_token_count: 2,
+        total_token_count: 17,
+        calls: [],
+      },
+    };
+    const evt: ChatStreamEvent = {
+      event: 'debug_report',
+      data: rawReport,
+    };
+    const turn = applyEvent(blankTurn(), evt);
+    expect(turn.serverReport).toBeDefined();
+    expect(turn.serverReport?.turnId).toBe('t123');
+    expect(turn.serverReport?.terminalState).toBe('complete');
+    expect(turn.rawServerReport).toEqual(rawReport);
+  });
+
+  it('ignores a malformed debug_report frame with a warning', () => {
+    // Test: Error handling for malformed debug_report frame.
+    // Situation: A debug_report frame arrives with empty turn_id.
+    // Expectation: Warning is logged, turn.serverReport remains undefined.
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const evt: ChatStreamEvent = {
+      event: 'debug_report',
+      data: { turn_id: '', terminal_state: 'complete' },
+    };
+    const initialTurn = blankTurn();
+    const turn = applyEvent(initialTurn, evt);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Ignoring a malformed debug_report frame.',
+    );
+    expect(turn.serverReport).toBeUndefined();
+    expect(turn.rawServerReport).toBeUndefined();
+    expect(turn).toBe(initialTurn);
+  });
 });
 
 describe('useSseChat', () => {
+  let originalUrl = '';
+
+  beforeEach(() => {
+    originalUrl = window.location.href;
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    window.history.replaceState(null, '', originalUrl);
   });
 
   /** Renders the hook over local turn state and stubs fetch with the body. */
@@ -1665,6 +1755,64 @@ describe('useSseChat', () => {
       await sent;
     });
     expect(result.current.turns[0].clientTimings?.totalMs).toBe(65);
+  });
+
+  it('includes debug: true in request body when ?debug is active in URL', async () => {
+    // Test: Sending debug: true flag in chat request.
+    // Situation: window.location has ?debug=1.
+    // Expectation: POST request body contains "debug": true.
+    window.history.replaceState(null, '', '/?debug=1');
+    const { result, fetchMock } = renderChat([
+      frame('terminal', { state: 'complete', ...TERMINAL_FIELDS }),
+    ]);
+    await act(async () => {
+      await result.current.chat.send('What is the population of France?');
+    });
+    expect(requestBody(fetchMock, 0).debug).toBe(true);
+  });
+
+  it('omits debug in request body when ?debug is absent from URL', async () => {
+    // Test: Omitting debug flag when ?debug is inactive.
+    // Situation: window.location has no debug parameter.
+    // Expectation: POST request body does not have "debug" property.
+    window.history.replaceState(null, '', '/');
+    const { result, fetchMock } = renderChat([
+      frame('terminal', { state: 'complete', ...TERMINAL_FIELDS }),
+    ]);
+    await act(async () => {
+      await result.current.chat.send('What is the population of France?');
+    });
+    expect(requestBody(fetchMock, 0).debug).toBeUndefined();
+  });
+
+  it('stores serverReport when debug_report frame is streamed', async () => {
+    // Test: Streaming debug_report frame in useSseChat.
+    // Situation: Stream emits content, terminal, and debug_report frames.
+    // Expectation: Settled turn holds serverReport and rawServerReport.
+    const rawReport = {
+      turn_id: 't456',
+      terminal_state: 'complete',
+      duration_ms: 100,
+      tokens: {
+        prompt_token_count: 1,
+        candidates_token_count: 1,
+        thoughts_token_count: 0,
+        total_token_count: 2,
+        calls: [],
+      },
+    };
+    const { result } = renderChat([
+      frame('content', buildTextBlock('Hello'), 1),
+      frame('terminal', { state: 'complete', ...TERMINAL_FIELDS }, 2),
+      frame('debug_report', rawReport, 3),
+    ]);
+    await act(async () => {
+      await result.current.chat.send('Hello');
+    });
+    await waitFor(() => {
+      expect(result.current.turns[0].serverReport?.turnId).toBe('t456');
+      expect(result.current.turns[0].rawServerReport).toEqual(rawReport);
+    });
   });
 });
 
