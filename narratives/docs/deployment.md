@@ -214,6 +214,11 @@ When required tools are missing, the agent logs a warning on every chat turn
 and continues the turn with the tools the server provides, and
 `deploy/smoke.sh` fails its capability check.
 
+The `/agent/health` response also reports `debug_report` (`"off"`, `"flag"`, or
+`"on"`), the effective turn debug report mode: `DEBUG_REPORT` when it is set,
+and otherwise `debug.report` in `agent-config.json` (see
+[Turn debug reports](#turn-debug-reports-debug_report-and-build_sha)).
+
 ## Customizing your instance
 
 All visual and behavioral customization lives in `config/`:
@@ -472,6 +477,44 @@ screening before the `classify` Gemini call:
 
 When `MODEL_ARMOR_TEMPLATE` is unset, Model Armor screening is skipped. When
 set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
+
+### Turn debug reports (`DEBUG_REPORT` and `BUILD_SHA`)
+
+The agent can emit a typed `debug_report` SSE frame at the end of each chat
+turn to expose operational telemetry, timings, token counts, cached tables,
+tool calls, rejected specifications, and prompt hashes.
+
+The report mode is set by `debug.report` (default `"off"`) in
+`config/agent-config.json`:
+
+```json
+{
+  "debug": {
+    "report": "flag"
+  }
+}
+```
+
+- `off`: reports are never emitted.
+- `flag`: reports are emitted only when the chat request sets `"debug": true`
+  (typically via the `?debug` URL parameter in the browser).
+- `on`: reports are emitted on every turn and the UI debug drawer opens
+  without requiring `?debug`. Because the report carries prompts and
+  configuration details, `on` exposes them to every browser.
+
+The agent reads this value at startup, so apply a change with
+`./deploy.sh --config-only --restart`. A `debug` value that is not an object,
+or a `debug.report` that is not one of the three modes, is logged as an error
+and turns the report off.
+
+The `DEBUG_REPORT` environment variable overrides `debug.report` when set, in
+either direction, and takes effect without a configuration sync. Setting
+`DEBUG_REPORT=off` turns the report off regardless of `debug.report`, so
+remove the variable to return control to `agent-config.json`.
+
+- `BUILD_SHA`: Optional commit or build identifier (supplied at build time with
+  `--build-arg BUILD_SHA=...` or as a runtime environment variable) surfaced in
+  debug reports to identify the deployed revision.
 
 ### Tearing down a deployment
 

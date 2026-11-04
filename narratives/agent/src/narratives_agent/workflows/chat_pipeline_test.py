@@ -80,6 +80,7 @@ from narratives_agent.config_model import (
     DEFAULT_UNAVAILABLE_MESSAGE,
     AgentConfig,
     ChatConfig,
+    DebugConfig,
     Prompts,
 )
 from narratives_agent.gemini.client import (
@@ -92,10 +93,15 @@ from narratives_agent.gemini.schemas import QueryClassification
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.mcp import capabilities
 from narratives_agent.mcp import client as mcp_client
-from narratives_agent.settings import ENABLE_CHAT_ENV, UNAVAILABLE_MESSAGE_ENV
+from narratives_agent.settings import (
+    DEBUG_REPORT_ENV,
+    ENABLE_CHAT_ENV,
+    UNAVAILABLE_MESSAGE_ENV,
+)
 from narratives_agent.telemetry import (
     ErrorType,
     TerminalState,
+    TokenCounts,
     TokenUsage,
     TurnTelemetry,
 )
@@ -380,9 +386,10 @@ def _use_config(
     """Makes every configuration read of the turn return `loaded`.
 
     `run_turn` reads the configuration through `chat_pipeline.load_config`
-    and resolves chat availability through `config.get_chat_config`, which
-    calls `config.load_config`, so both names are replaced; replacing one
-    would let the other read the developer's local configuration.
+    and resolves chat availability and the debug report mode through
+    `config.get_chat_config` and `config.get_debug_report_mode`, which call
+    `config.load_config`, so both names are replaced; replacing one would
+    let the other read the developer's local configuration.
     """
     monkeypatch.setattr(chat_pipeline, "load_config", lambda: loaded)
     monkeypatch.setattr(config, "load_config", lambda: loaded)
@@ -2777,3 +2784,491 @@ async def test_run_synthesis_phase_capture_on_abort_and_stream_failure(
     assert capture_error.raw_output is None
     assert capture_error.rendered_prompt is not None
     assert "What is the population of France?" in capture_error.rendered_prompt
+
+
+@pytest.mark.parametrize(
+    ("debug_report_env", "request_debug", "should_emit"),
+    [
+        ("off", False, False),
+        ("off", True, False),
+        ("flag", False, False),
+        ("flag", True, True),
+        ("on", False, True),
+        ("on", True, True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_debug_report_gating_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    debug_report_env: str,
+    request_debug: bool,
+    should_emit: bool,
+) -> None:
+    # Test: Debug report frame emission gating matrix.
+    # Situation: Combinations of DEBUG_REPORT environment setting and the
+    #   per-request debug flag.
+    # Expectation: DebugReportFrame is emitted if and only if should_emit is
+    #   True; when emitted, it is the last frame of the stream.
+    monkeypatch.setenv("DEBUG_REPORT", debug_report_env)
+
+    await chat_pipeline.run_turn(
+        _TRANSCRIPT, turn.emit, request_debug=request_debug
+    )
+
+    event_names = turn.list_event_names()
+    assert ("debug_report" in event_names) is should_emit
+    if should_emit:
+        assert turn.events[-1][0] == "debug_report"
+
+
+@pytest.mark.parametrize(
+    ("env", "should_emit"),
+    [
+        pytest.param({}, True, id="configuration on"),
+        pytest.param({DEBUG_REPORT_ENV: "off"}, False, id="DEBUG_REPORT=off"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_debug_report_mode_from_the_config(
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    env: dict[str, str],
+    should_emit: bool,
+) -> None:
+    # Test: Debug report gating by `debug.report` in the configuration.
+    # Situation: The loaded configuration sets `debug.report` to `"on"`, and
+    #   `DEBUG_REPORT` is unset or `"off"`; the request does not ask for the
+    #   report.
+    # Expectation: The configured mode emits the frame when the variable is
+    #   unset, and `DEBUG_REPORT=off` suppresses it.
+    _use_config(
+        monkeypatch,
+        AgentConfig(
+            prompts=Prompts(discovery="Gather data.", synthesis="Write prose."),
+            debug=DebugConfig(report="on"),
+        ),
+    )
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit, request_debug=False)
+
+    assert ("debug_report" in turn.list_event_names()) is should_emit
+
+
+@pytest.mark.asyncio
+async def test_complete_turn_emits_debug_report_as_very_last_frame(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Emission order and complete debug report payload on a finished turn.
+    # Situation: DEBUG_REPORT="on" and BUILD_SHA is set; discovery loop emits a
+    #   thought and tool call, and synthesis streams a thought.
+    # Expectation: debug_report is the very last frame after follow_ups,
+    #   carrying follow-up tokens, follow_ups phase duration, used_table_ids,
+    #   discovery and synthesis thoughts, tool calls, accepted specification
+    #   and digest with specification_origin == "model", synthesis prompt and
+    #   raw output, role_configs, prompt_hashes, and build_sha.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    monkeypatch.setenv("BUILD_SHA", "test-build-sha-1234")
+
+    async def run_loop_with_thought(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        *,
+        thought_callback: ThoughtCallback,
+        **_: object,
+    ) -> DiscoveryResult:
+        thought_callback("Looking up France.", 1)
+        return await _run_accepted_loop(cache)
+
+    async def stream_with_thought() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("thought", "Thinking about France.")
+        yield StreamChunk("text", _ANSWER)
+
+    async def start_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_with_thought()
+
+    async def generate_follow_ups_with_tokens(
+        query: str, topics: list[str], config: AgentConfig, usage: TokenUsage
+    ) -> list[str]:
+        usage.add(
+            TokenCounts(prompt=10, candidates=5, thoughts=0, total=15),
+            phase="follow_ups",
+            model="gemini-follow",
+        )
+        return list(_FOLLOW_UPS) if topics else []
+
+    monkeypatch.setattr(
+        chat_pipeline, "execute_discovery_loop", run_loop_with_thought
+    )
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", start_synthesis)
+    monkeypatch.setattr(
+        chat_pipeline,
+        "generate_follow_up_questions",
+        generate_follow_ups_with_tokens,
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-2][0] == "follow_ups"
+
+    report = turn.events[-1][1]
+    assert report["terminal_state"] == "complete"
+    assert report["terminal_reason"] is None
+    assert report["is_clarification"] is False
+    assert report["build_sha"] == "test-build-sha-1234"
+    tables = report["tables"]
+    assert isinstance(tables, list)
+    assert [
+        t["table_id"]
+        for t in tables
+        if isinstance(t, dict) and t.get("used_in_answer")
+    ] == ["t1"]
+    assert report["specification_origin"] == "model"
+    assert report["specification"] is not None
+
+    assert report["thoughts"] == [
+        {"phase": "discovery", "text": "Looking up France.", "round": 1},
+        {
+            "phase": "synthesis",
+            "text": "Thinking about France.",
+            "round": None,
+        },
+    ]
+
+    tool_calls = report["tool_calls"]
+    assert isinstance(tool_calls, list)
+    assert len(tool_calls) == 1
+    call = tool_calls[0]
+    assert isinstance(call, dict)
+    assert call["name"] == "fetch_observations"
+
+    prompt_data = report["synthesis_prompt"]
+    assert isinstance(prompt_data, dict)
+    assert isinstance(prompt_data["text"], str)
+    assert _QUESTION in prompt_data["text"]
+
+    raw_data = report["synthesis_raw_output"]
+    assert isinstance(raw_data, dict)
+    assert isinstance(raw_data["text"], str)
+    assert _ANSWER in raw_data["text"]
+
+    durations = report["phase_durations_ms"]
+    assert isinstance(durations, dict)
+    assert "follow_ups" in durations
+
+    duration_ms = report["duration_ms"]
+    assert isinstance(duration_ms, (int, float))
+    assert duration_ms > 0
+
+    tokens = report["tokens"]
+    assert isinstance(tokens, dict)
+    total_token_count = tokens["total_token_count"]
+    assert isinstance(total_token_count, int)
+    assert total_token_count >= 15
+    calls = tokens.get("calls")
+    assert isinstance(calls, list)
+    follow_up_calls = [
+        c
+        for c in calls
+        if isinstance(c, dict) and c.get("phase") == "follow_ups"
+    ]
+    assert len(follow_up_calls) == 1
+    assert follow_up_calls[0]["total_token_count"] == 15
+    assert follow_up_calls[0]["model"] == "gemini-follow"
+
+    role_configs = report["role_configs"]
+    assert isinstance(role_configs, list)
+    assert len(role_configs) > 0
+
+    prompt_hashes = report["prompt_hashes"]
+    assert isinstance(prompt_hashes, dict)
+    assert len(prompt_hashes) > 0
+
+
+@pytest.mark.asyncio
+async def test_default_specification_sets_origin_default_in_debug_report(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Specification origin when default specification runs on fallback.
+    # Situation: The discovery loop ends without a specification or digest,
+    #   so the turn resolves from the default specification over the cache.
+    # Expectation: debug_report carries specification_origin == "default".
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+
+    async def run_empty_loop(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        **_: object,
+    ) -> DiscoveryResult:
+        cache.store_fetched(_make_table("t1"))
+        return DiscoveryResult(tool_calls=[dict(_TOOL_CALL)])
+
+    monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", run_empty_loop)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    report = turn.events[-1][1]
+    assert report["terminal_state"] == "complete"
+    assert report["specification_origin"] == "default"
+    assert report["specification"] is not None
+
+
+@pytest.mark.asyncio
+async def test_clarification_turn_emits_debug_report_as_final_frame(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Debug report emission on a clarification turn.
+    # Situation: The classifier returns Clarification with DEBUG_REPORT="on".
+    # Expectation: debug_report is emitted as the final frame after the
+    #   complete terminal frame, with terminal_state == "complete",
+    #   is_clarification == True, and terminal_reason is None.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+
+    async def clarify_classify(*args: object, **_: object) -> Clarification:
+        return Clarification(_CLARIFICATION_QUESTION, _CLASSIFICATION)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", clarify_classify)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-2][0] == "terminal"
+
+    report = turn.events[-1][1]
+    assert report["terminal_state"] == "complete"
+    assert report["is_clarification"] is True
+    assert report["terminal_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_refused_turn_emits_debug_report_after_terminal_refused(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Debug report emission on a refused turn.
+    # Situation: The query is classified as adversarial with DEBUG_REPORT="on".
+    # Expectation: debug_report is emitted after TerminalRefusedFrame with
+    #   terminal_state == "refused" and matching terminal_reason.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+
+    async def refuse_classify(*args: object, **_: object) -> Admitted:
+        raise TurnRefusedError(
+            RefusedReason.ADVERSARIAL, "We cannot service that request."
+        )
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", refuse_classify)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-2][0] == "terminal"
+
+    report = turn.events[-1][1]
+    assert report["terminal_state"] == "refused"
+    assert report["terminal_reason"] == RefusedReason.ADVERSARIAL
+
+
+@pytest.mark.asyncio
+async def test_aborted_discovery_preserves_partial_tool_calls_and_thoughts(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Preservation of partial thoughts and tool calls when discovery
+    #   aborts.
+    # Situation: Discovery loop emits a thought, records a tool call, and
+    #   then raises McpLoopError with DEBUG_REPORT="on".
+    # Expectation: debug_report is emitted after TerminalErrorFrame with
+    #   terminal_state == "error", reason == "mcp_timeout", and preserving
+    #   the partial thought and tool call.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+
+    async def aborting_loop(
+        transcript: Transcript,
+        config: AgentConfig,
+        tools: Sequence[mcp_client.McpTool],
+        telemetry: TurnTelemetry,
+        cache: TurnCache,
+        *,
+        thought_callback: ThoughtCallback,
+        result: DiscoveryResult | None = None,
+        **_: object,
+    ) -> DiscoveryResult:
+        thought_callback("Checking observations.", 1)
+        if result is not None:
+            result.tool_calls.append(dict(_TOOL_CALL))
+        raise McpLoopError(
+            ErrorType.MCP_TIMEOUT,
+            "Discovery timed out",
+            is_retryable=True,
+            result=result,
+        )
+
+    monkeypatch.setattr(chat_pipeline, "execute_discovery_loop", aborting_loop)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-2][0] == "terminal"
+
+    report = turn.events[-1][1]
+    assert report["terminal_state"] == "error"
+    assert report["terminal_reason"] == ErrorType.MCP_TIMEOUT
+
+    thoughts = report["thoughts"]
+    assert isinstance(thoughts, list)
+    assert len(thoughts) == 1
+    thought = thoughts[0]
+    assert isinstance(thought, dict)
+    assert thought["phase"] == "discovery"
+    assert thought["text"] == "Checking observations."
+
+    tool_calls = report["tool_calls"]
+    assert isinstance(tool_calls, list)
+    assert len(tool_calls) == 1
+    call = tool_calls[0]
+    assert isinstance(call, dict)
+    assert call["name"] == "fetch_observations"
+
+
+@pytest.mark.asyncio
+async def test_aborted_synthesis_preserves_prompt_and_raw_output(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Preservation of synthesis prompt and raw output when synthesis
+    #   returns no prose.
+    # Situation: Synthesis stream yields a chart block fence only and no
+    #   prose (SYNTHESIS_EMPTY) with DEBUG_REPORT="on".
+    # Expectation: debug_report is emitted after TerminalErrorFrame with
+    #   terminal_state == "error", reason == "synthesis_empty", and preserving
+    #   synthesis_prompt and synthesis_raw_output.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    rejected_chart = '```chart\n{"viz_type": "unknown"}\n```'
+
+    async def stream_empty_prose() -> AsyncGenerator[StreamChunk]:
+        yield StreamChunk("text", rejected_chart)
+
+    async def start_empty_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_empty_prose()
+
+    monkeypatch.setattr(
+        chat_pipeline, "async_gemini_stream", start_empty_synthesis
+    )
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.events[-1][0] == "debug_report"
+    assert turn.events[-2][0] == "terminal"
+
+    report = turn.events[-1][1]
+    assert report["terminal_state"] == "error"
+    assert report["terminal_reason"] == ErrorType.SYNTHESIS_EMPTY
+
+    prompt_data = report["synthesis_prompt"]
+    assert isinstance(prompt_data, dict)
+    assert isinstance(prompt_data["text"], str)
+    assert _QUESTION in prompt_data["text"]
+
+    raw_data = report["synthesis_raw_output"]
+    assert isinstance(raw_data, dict)
+    assert isinstance(raw_data["text"], str)
+    assert rejected_chart in raw_data["text"]
+
+
+@pytest.mark.asyncio
+async def test_chat_disabled_emits_no_debug_report_even_when_debug_report_on(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Chat disabled exclusion rule for debug report emission.
+    # Situation: ENABLE_CHAT is false while DEBUG_REPORT is "on".
+    # Expectation: Only TerminalErrorFrame is emitted; no debug_report frame.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    monkeypatch.setenv("ENABLE_CHAT", "false")
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert "debug_report" not in turn.list_event_names()
+    assert turn.events == [
+        (
+            "terminal",
+            {
+                "state": TerminalState.ERROR,
+                "idempotency_key": _IDEMPOTENCY_KEY,
+                "error": DEFAULT_UNAVAILABLE_MESSAGE,
+                "reason": ErrorType.CHAT_DISABLED,
+                "is_retryable": False,
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_canceled_turn_emits_no_debug_report_even_when_debug_report_on(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Turn cancellation exclusion rule for debug report emission.
+    # Situation: Turn is canceled mid-stream during synthesis while
+    #   DEBUG_REPORT is "on".
+    # Expectation: asyncio.CancelledError is raised, and no debug_report frame
+    #   is emitted.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    synthesis_started = asyncio.Event()
+
+    async def stream_chunks() -> AsyncGenerator[StreamChunk]:
+        synthesis_started.set()
+        await asyncio.Event().wait()
+        yield StreamChunk("text", "")
+
+    async def wait_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
+        return stream_chunks()
+
+    monkeypatch.setattr(chat_pipeline, "async_gemini_stream", wait_synthesis)
+    task = asyncio.create_task(chat_pipeline.run_turn(_TRANSCRIPT, turn.emit))
+    async with asyncio.timeout(1):
+        await synthesis_started.wait()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert "debug_report" not in turn.list_event_names()
+
+
+@pytest.mark.asyncio
+async def test_canceled_turn_during_follow_ups_emits_no_debug_report(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: Turn cancellation during follow-ups exclusion rule.
+    # Situation: Turn is canceled after terminal completion while
+    #   generating follow-ups with DEBUG_REPORT="on".
+    # Expectation: asyncio.CancelledError is raised, and no debug_report frame
+    #   is emitted.
+    monkeypatch.setenv("DEBUG_REPORT", "on")
+    follow_ups_started = asyncio.Event()
+
+    async def wait_follow_ups(
+        query: str, topics: list[str], config: AgentConfig, usage: TokenUsage
+    ) -> list[str]:
+        follow_ups_started.set()
+        await asyncio.Event().wait()
+        return []
+
+    monkeypatch.setattr(
+        chat_pipeline, "generate_follow_up_questions", wait_follow_ups
+    )
+    task = asyncio.create_task(chat_pipeline.run_turn(_TRANSCRIPT, turn.emit))
+    async with asyncio.timeout(1):
+        await follow_ups_started.wait()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert "debug_report" not in turn.list_event_names()

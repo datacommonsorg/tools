@@ -51,7 +51,6 @@ from narratives_agent.workflows.specification import (
     AnalysisSpecification,
     UnavailableReport,
 )
-from narratives_agent.workflows.sse_frames import ThoughtPhase
 from narratives_agent.workflows.turn_cache import (
     DERIVED_TABLE_PREFIX,
     CachedTable,
@@ -77,6 +76,7 @@ __all__ = [
     "DebugTokenUsage",
     "SourceSelection",
     "SpecificationOrigin",
+    "ThoughtPhase",
     "build_debug_diagnostic",
     "build_debug_report",
     "should_emit_debug_report",
@@ -89,6 +89,7 @@ MAX_DEBUG_TEXT_CHARS = 32_000
 type DebugTerminalState = Literal["complete", "refused", "error"]
 type SourceSelection = Literal["chosen", "server_default", "derived"]
 type SpecificationOrigin = Literal["model", "default"]
+type ThoughtPhase = Literal["discovery", "synthesis"]
 
 
 @dataclass(frozen=True, kw_only=True)

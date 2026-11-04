@@ -29,13 +29,15 @@ import json
 import pytest
 
 from narratives_agent.analytics.provenance import Source
-from narratives_agent.telemetry import ErrorType
+from narratives_agent.telemetry import ErrorType, TurnTelemetry
 from narratives_agent.workflows.blocks import ChartBlock, TextBlock
 from narratives_agent.workflows.charts import PlaceList, ResolvedLineChart
 from narratives_agent.workflows.classify import RefusedReason
+from narratives_agent.workflows.debug_report import build_debug_report
 from narratives_agent.workflows.sse_frames import (
     BlockContentFrame,
     DataStatusFrame,
+    DebugReportFrame,
     EventName,
     FollowUpsFrame,
     SourcesFrame,
@@ -387,3 +389,20 @@ def test_an_unsigned_complete_frame_carries_no_window_keys() -> None:
         "terminal",
         '{"state": "complete", "idempotency_key": "key-4"}',
     )
+
+
+def test_a_debug_report_frame_serializes_to_event_and_report_dictionary() -> (
+    None
+):
+    # Test: Wire form of a `debug_report` frame.
+    # Situation: A debug report frame carrying a built debug report is
+    #   serialized.
+    # Expectation: The event is "debug_report" and the payload matches
+    #   report.to_dict().
+    report = build_debug_report(
+        telemetry=TurnTelemetry(turn_id="turn-debug-123"),
+        terminal_state="complete",
+    )
+    frame = DebugReportFrame(report=report)
+
+    assert _serialize(frame) == ("debug_report", json.dumps(report.to_dict()))
