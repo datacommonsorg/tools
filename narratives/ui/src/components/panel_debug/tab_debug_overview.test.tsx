@@ -23,6 +23,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TurnDebugReport } from '@/src/components/panel_debug/report_debug';
 import { OverviewTab } from '@/src/components/panel_debug/tab_debug_overview';
+import type { ServerDebugReport } from '@/src/types/debug_report';
 
 /** Builds a fresh TurnDebugReport with default values and optional overrides. */
 const makeReport = (
@@ -41,6 +42,67 @@ const makeReport = (
     compactedSummary: null,
   },
   serverReport: null,
+  ...overrides,
+});
+
+/** Builds a fresh ServerDebugReport for testing overview server enrichment. */
+const makeServerReport = (
+  overrides: Partial<ServerDebugReport> = {},
+): ServerDebugReport => ({
+  turnId: 'turn-server-789',
+  terminalState: 'complete',
+  terminalReason: 'authoritative_done',
+  isClarification: false,
+  pattern: 'comparison',
+  durationMs: 1250,
+  phaseDurationsMs: { discovery: 1000, synthesis: 250 },
+  nestedPhases: {},
+  mcpIterations: 3,
+  scripts: ['ranking'],
+  processingRetries: 2,
+  chartsEmitted: 4,
+  chartsRejected: 1,
+  tokens: {
+    promptTokenCount: 5000,
+    candidatesTokenCount: 1200,
+    thoughtsTokenCount: 300,
+    totalTokenCount: 6500,
+    calls: [],
+  },
+  tables: [
+    {
+      tableId: 't0',
+      usedInAnswer: true,
+      variableDcid: 'Count_Person',
+      variableName: 'Population',
+      unit: null,
+      scalingFactor: null,
+      measurementMethod: null,
+      observationPeriod: null,
+      parentPlaceDcid: null,
+      childPlaceType: null,
+      placesWithDataCount: 1,
+      places: [],
+      facetId: null,
+      sourceSelection: 'chosen',
+      source: null,
+      dateRange: null,
+      rowCount: 10,
+    },
+  ],
+  thoughts: [],
+  toolCalls: [],
+  rejectedSpecifications: [],
+  diagnostics: [],
+  specification: null,
+  specificationOrigin: null,
+  unavailable: null,
+  digest: null,
+  synthesisPrompt: null,
+  synthesisRawOutput: null,
+  roleConfigs: [],
+  promptHashes: {},
+  buildSha: 'sha-123',
   ...overrides,
 });
 
@@ -252,5 +314,45 @@ describe('OverviewTab', () => {
       screen.getByText('Previous turns discussed population.'),
     ).toBeDefined();
     expect(screen.getByText(/"country\/USA": "United States"/)).toBeDefined();
+  });
+
+  it('renders server turn identifiers, outcome fields, and summary counts when serverReport is provided', () => {
+    // Test: Server report enrichment on Overview tab.
+    // Situation: OverviewTab is passed a valid serverReport.
+    // Expectation: Server turn ID, server terminal state, clarification, query pattern,
+    // and server counts (cached tables, MCP iterations, processing retries, charts emitted/rejected, total tokens) are rendered.
+    const serverReport = makeServerReport({
+      isClarification: true,
+      pattern: 'correlation',
+    });
+    render(<OverviewTab report={makeReport()} serverReport={serverReport} />);
+
+    expect(screen.getByText('turn-server-789')).toBeDefined();
+    expect(screen.getByText('complete')).toBeDefined();
+    expect(screen.getByText('correlation')).toBeDefined();
+    expect(screen.getByText('3')).toBeDefined(); // MCP iterations
+    expect(screen.getByText('4 / 1')).toBeDefined(); // Charts emitted / rejected
+    expect(screen.getByText('6,500')).toBeDefined(); // Total tokens
+  });
+
+  it('prefers serverReport.terminalReason over outcome.reason when both are present', () => {
+    // Test: Prefer serverReport terminalReason.
+    // Situation: outcome has reason='client_reason' while serverReport has terminalReason='authoritative_server_reason'.
+    // Expectation: 'authoritative_server_reason' is rendered instead of 'client_reason'.
+    const report = makeReport({
+      outcome: {
+        kind: 'done',
+        reason: 'client_reason',
+        truncated: false,
+      },
+    });
+    const serverReport = makeServerReport({
+      terminalReason: 'authoritative_server_reason',
+    });
+
+    render(<OverviewTab report={report} serverReport={serverReport} />);
+
+    expect(screen.getByText('authoritative_server_reason')).toBeDefined();
+    expect(screen.queryByText('client_reason')).toBeNull();
   });
 });

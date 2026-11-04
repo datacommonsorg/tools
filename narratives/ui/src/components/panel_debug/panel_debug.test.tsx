@@ -39,6 +39,7 @@ import {
 import { DEBUG_PANEL_COPY } from '@/src/components/panel_debug/copy_debug';
 import { DebugPanel } from '@/src/components/panel_debug/panel_debug';
 import type { ChatTurn, ToolCallEvent } from '@/src/hooks/use_sse_chat';
+import { parseServerDebugReport } from '@/src/types/debug_report';
 
 const FETCH_CALL: ToolCallEvent = {
   name: 'fetch_observations',
@@ -562,7 +563,7 @@ describe('DebugPanel', () => {
 
   it('switches tabs and updates tabpanel attributes on tab click', () => {
     // Test: Tab switching in DebugPanelBody.
-    // Situation: The user clicks the Provenance, Trajectory, Response, and Timing tabs.
+    // Situation: The user clicks the Data, Trajectory, Response, Timing, and Tokens tabs.
     // Expectation: active tab updates, tabpanel id updates, and corresponding tab content renders.
     openInspector(
       buildFinishedTurn({
@@ -570,15 +571,32 @@ describe('DebugPanel', () => {
           submittedAt: '2026-11-04T12:00:00.000Z',
           totalMs: 400,
         },
+        serverReport:
+          parseServerDebugReport({
+            turn_id: 'turn-d3b-test',
+            terminal_state: 'complete',
+            duration_ms: 450,
+            tokens: { total_token_count: 130 },
+            tables: [
+              {
+                table_id: 't0_panel_test',
+                used_in_answer: true,
+                variable_dcid: 'Count_Person',
+                variable_name: 'Total population',
+                row_count: 1,
+              },
+            ],
+          }) ?? undefined,
       }),
     );
 
-    const provenanceTab = screen.getByRole('tab', { name: /Provenance/ });
-    fireEvent.click(provenanceTab);
-    expect(provenanceTab.getAttribute('aria-selected')).toBe('true');
+    const dataTab = screen.getByRole('tab', { name: /Data/ });
+    fireEvent.click(dataTab);
+    expect(dataTab.getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
-      provenanceTab.getAttribute('id'),
+      dataTab.getAttribute('id'),
     );
+    expect(screen.getByText('t0_panel_test')).toBeDefined();
 
     const trajectoryTab = screen.getByRole('tab', { name: /Trajectory/ });
     fireEvent.click(trajectoryTab);
@@ -600,5 +618,13 @@ describe('DebugPanel', () => {
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
       timingTab.getAttribute('id'),
     );
+
+    const tokensTab = screen.getByRole('tab', { name: /Tokens/ });
+    fireEvent.click(tokensTab);
+    expect(tokensTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(
+      tokensTab.getAttribute('id'),
+    );
+    expect(screen.getByText('Token totals')).toBeDefined();
   });
 });
