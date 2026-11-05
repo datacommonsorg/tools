@@ -408,12 +408,16 @@ describe('AnswerPanel', () => {
     act(() => {
       vi.advanceTimersByTime(CHART_POLL_MS);
     });
-    expect(card?.getAttribute('aria-busy')).toBe('true');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'true',
+    );
 
     act(() => {
       vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
     });
-    expect(card?.getAttribute('aria-busy')).toBe('false');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'false',
+    );
   });
 
   it('hides non-text children and the export controls until the reveal ends', () => {

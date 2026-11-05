@@ -366,16 +366,21 @@ describe('ChartTile', () => {
       <ChartTile config={{ shouldRender: true, charts: [LINE_CHART] }} />,
     );
     const card = container.querySelector('.dc-chart-card');
-    expect(card?.getAttribute('aria-busy')).toBe('true');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'true',
+    );
     expect(card?.querySelector('[role="status"]')?.textContent).toBe(
       'Loading chart',
     );
+    expect(card?.querySelector('[aria-busy] [role="status"]')).toBeNull();
 
     drawChart(container, 'datacommons-line');
     act(() => {
       vi.advanceTimersByTime(CHART_POLL_MS);
     });
-    expect(card?.getAttribute('aria-busy')).toBe('false');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'false',
+    );
     expect(card?.querySelector('[role="status"]')).toBeNull();
   });
 
@@ -396,10 +401,14 @@ describe('ChartTile', () => {
     act(() => {
       vi.advanceTimersByTime(CHART_POLL_MS);
     });
-    expect(card?.getAttribute('aria-busy')).toBe('true');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'true',
+    );
 
     rerender(<ChartTile config={config} />);
-    expect(card?.getAttribute('aria-busy')).toBe('false');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'false',
+    );
   });
 
   it('reports settled at once when it renders nothing', () => {

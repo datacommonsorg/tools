@@ -225,9 +225,12 @@ function ChartCard({
       className={`dc-chart-card relative${isLoading ? ` ${pendingHeightClass}` : ''}`}
       ref={cardRef}
       style={hidden ? { display: 'none' } : undefined}
-      aria-busy={showSkeleton}
     >
-      <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
+      {/* Busy marks only the chart: a live region inside a busy element may
+          go unannounced, so the status below stays outside it. */}
+      <div aria-busy={showSkeleton}>
+        <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
+      </div>
       {showSkeleton && (
         <span role="status" className="sr-only">
           Loading chart
