@@ -5,7 +5,7 @@ import {
   DataCommonsComponent,
   type DataCommonsComponentTagName,
   dcChartRenderState,
-} from './datacommons_component';
+} from '@/src/utils/datacommons_component';
 
 /**
  * Builds a stand-in for a mounted `<datacommons-*>` element whose open shadow

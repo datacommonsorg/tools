@@ -16,7 +16,10 @@
 
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DISCLAIMER_TEXT, DisclaimerNote } from './note_disclaimer';
+import {
+  DISCLAIMER_TEXT,
+  DisclaimerNote,
+} from '@/src/components/note_disclaimer';
 
 afterEach(cleanup);
 

@@ -18,8 +18,11 @@
  * @fileoverview Renders an answer's citations: provider, dataset, range, link.
  */
 
-import type { ProvenanceItem } from "../hooks/use_sse_chat";
-import { citationAnchorId, displayCitationNumber } from "./chip_citation";
+import {
+  citationAnchorId,
+  displayCitationNumber,
+} from '@/src/components/chip_citation';
+import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 
 /**
  * Figma node 3427-16738 (section heading) + 3427-16739 ("Body" with the
@@ -29,17 +32,17 @@ import { citationAnchorId, displayCitationNumber } from "./chip_citation";
  * so two answers citing one source do not both claim the same anchor.
  */
 
-const COLOR_TITLE = "var(--color-on-surface)";
-const COLOR_BODY = "var(--color-on-surface)";
-const COLOR_LINK = "var(--color-theme-primary)";
+const COLOR_TITLE = 'var(--color-on-surface)';
+const COLOR_BODY = 'var(--color-on-surface)';
+const COLOR_LINK = 'var(--color-theme-primary)';
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
 /** The attribution every citation carries. */
-const PROCESSING_NOTE = "with minor processing by Data Commons";
+const PROCESSING_NOTE = 'with minor processing by Data Commons';
 
 /** Section heading. */
-const CITATIONS_HEADING = "Citations";
+const CITATIONS_HEADING = 'Citations';
 
 interface CitationsListProps {
   sources: ProvenanceItem[];
@@ -51,7 +54,7 @@ interface CitationsListProps {
 
 /** Strips the scheme and any trailing slash, so the link reads as a reference. */
 export function citationUrlLabel(url: string): string {
-  return url.replace(/^[a-z]+:\/\//i, "").replace(/\/+$/, "");
+  return url.replace(/^[a-z]+:\/\//i, '').replace(/\/+$/, '');
 }
 
 /**
@@ -61,12 +64,12 @@ export function citationUrlLabel(url: string): string {
 export function citationLead(source: ProvenanceItem): string {
   const url = source.url.trim();
   const parts = [source.provider, source.dataset || source.name]
-    .map((part) => part?.trim() ?? "")
+    .map((part) => part?.trim() ?? '')
     // A name that fell back to the URL is already shown by the link itself.
-    .filter((part) => part !== "" && part !== url);
+    .filter((part) => part !== '' && part !== url);
   // The two fields are often the same string; saying it twice reads as a bug.
   const unique = parts.filter((part, index) => parts.indexOf(part) === index);
-  const lead = unique.join(", ");
+  const lead = unique.join(', ');
   if (!source.dateRange) return lead;
   return lead ? `${lead} (${source.dateRange})` : `(${source.dateRange})`;
 }
@@ -89,7 +92,7 @@ export function CitationsList({
         style={{
           fontFamily: '"Google Sans", "Google Sans Text", sans-serif',
           fontSize: 22,
-          lineHeight: "28px",
+          lineHeight: '28px',
           color: COLOR_TITLE,
           fontWeight: 500,
           margin: 0,
@@ -103,7 +106,7 @@ export function CitationsList({
         style={{
           fontFamily: FONT_STACK,
           fontSize: 16,
-          lineHeight: "24px",
+          lineHeight: '24px',
           fontWeight: 500,
           color: COLOR_BODY,
         }}
@@ -124,8 +127,8 @@ export function CitationsList({
               <span
                 style={{
                   minWidth: 0,
-                  overflowWrap: "anywhere",
-                  wordBreak: "break-word",
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
                 }}
               >
                 {lead && `${lead} `}(
@@ -138,7 +141,7 @@ export function CitationsList({
                 >
                   {citationUrlLabel(source.url)}
                 </a>
-                ){", "}
+                ){', '}
                 {PROCESSING_NOTE}
               </span>
             </li>

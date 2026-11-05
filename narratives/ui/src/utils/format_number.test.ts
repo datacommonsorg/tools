@@ -21,7 +21,7 @@ import {
   isNumericText,
   isYearText,
   splitFormattedNumbers,
-} from './format_number';
+} from '@/src/utils/format_number';
 
 /** The display string, or the token itself when nothing was changed. */
 function shown(raw: string): string {

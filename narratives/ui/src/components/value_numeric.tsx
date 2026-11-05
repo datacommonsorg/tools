@@ -19,12 +19,12 @@
  * on hover.
  */
 
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
+import { Tooltip } from '@/src/components/tooltip';
 import {
-  splitFormattedNumbers,
   type FormattedNumber,
-} from "../utils/format_number";
-import { Tooltip } from "./tooltip";
+  splitFormattedNumbers,
+} from '@/src/utils/format_number';
 
 /**
  * A number the renderer shortened, with the original on hover.
@@ -38,10 +38,10 @@ export function NumericValue({ value }: { value: FormattedNumber }) {
       <span
         className="dc-numeric whitespace-nowrap tabular-nums"
         style={{
-          cursor: "help",
-          textDecoration: "underline dotted",
+          cursor: 'help',
+          textDecoration: 'underline dotted',
           textDecorationColor:
-            "color-mix(in srgb, currentColor 35%, transparent)",
+            'color-mix(in srgb, currentColor 35%, transparent)',
           textUnderlineOffset: 3,
         }}
       >
@@ -64,13 +64,13 @@ export function NumericValue({ value }: { value: FormattedNumber }) {
  * its citation markers, so the runs become siblings in one array and would
  * otherwise reuse each other's keys.
  */
-export function renderNumbers(text: string, keyPrefix = "n"): ReactNode[] {
+export function renderNumbers(text: string, keyPrefix = 'n'): ReactNode[] {
   const segments = splitFormattedNumbers(text);
-  if (segments.length === 1 && typeof segments[0] === "string") {
+  if (segments.length === 1 && typeof segments[0] === 'string') {
     return [segments[0]];
   }
   return segments.map((segment, index) =>
-    typeof segment === "string" ? (
+    typeof segment === 'string' ? (
       segment
     ) : (
       <NumericValue key={`${keyPrefix}-${index}`} value={segment} />

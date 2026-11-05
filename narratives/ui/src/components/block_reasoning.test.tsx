@@ -20,8 +20,8 @@
 
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ReasoningBlock } from '@/src/components/block_reasoning';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
-import { ReasoningBlock } from './block_reasoning';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
   const slot = document.createElement('script');

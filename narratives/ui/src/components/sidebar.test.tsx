@@ -27,11 +27,11 @@ import {
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Sidebar } from '@/src/components/sidebar';
 import {
   ChatSessionProvider,
   useChatSession,
 } from '@/src/hooks/chat_session_context';
-import { Sidebar } from './sidebar';
 
 /** Renders the rail inside the same chat session as the hook under test. */
 const wrapper = ({ children }: { children: ReactNode }) => (

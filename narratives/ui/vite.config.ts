@@ -1,15 +1,16 @@
 /// <reference types="vite/client" />
 /// <reference types="vitest" />
+
+import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
-import {normalizeBasePath} from './src/config/base_url';
+import { defineConfig, loadEnv } from 'vite';
+import { normalizeBasePath } from './src/config/base_url';
 
 // Dev-proxy default for a local agent.
 const DEFAULT_AGENT_URL = 'http://localhost:5001';
 
-export default defineConfig(({mode}) => {
+export default defineConfig(({ mode }) => {
   const envDir = path.resolve(__dirname, '..');
   // Load environment variables from narratives/.env.local
   const env = loadEnv(mode, envDir, '');
@@ -26,7 +27,7 @@ export default defineConfig(({mode}) => {
     target: agentTarget,
     changeOrigin: true,
     ...(env.AGENT_STRIP_PREFIX === 'true'
-      ? {rewrite: (urlPath: string) => urlPath.replace(/^\/agent/, '')}
+      ? { rewrite: (urlPath: string) => urlPath.replace(/^\/agent/, '') }
       : {}),
   };
   return {

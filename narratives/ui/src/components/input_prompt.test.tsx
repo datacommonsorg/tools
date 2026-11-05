@@ -22,7 +22,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PromptInput } from './input_prompt';
+import { PromptInput } from '@/src/components/input_prompt';
 
 afterEach(cleanup);
 

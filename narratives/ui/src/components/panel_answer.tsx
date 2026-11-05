@@ -18,32 +18,39 @@
  * @fileoverview Renders a completed answer as a side-panel card: markdown body, sources, charts, disclaimer, export, and follow-ups.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { ExportPdfButton } from '@/src/components/button_export_pdf';
+import { CardHeader } from '@/src/components/card_header';
+import { ResponseCard } from '@/src/components/card_response';
+import { CitationNumberingProvider } from '@/src/components/chip_citation';
+import { ExportIcon } from '@/src/components/icons';
+import { CitationsList } from '@/src/components/list_citations';
+import { DisclaimerNote } from '@/src/components/note_disclaimer';
+import {
+  isProvenanceDebugEnabled,
+  ProvenanceInspector,
+} from '@/src/components/panel_debug_provenance';
+import { FollowUpQuestions } from '@/src/components/questions_follow_up';
+import { ChartTile } from '@/src/components/tile_chart';
+import { Toast } from '@/src/components/toast';
+import { Tooltip } from '@/src/components/tooltip';
 import {
   type AnswerBlock,
   type ChatTurn,
   getTurnCharts,
-} from "@/src/hooks/use_sse_chat";
-import { ChartTile } from "./tile_chart";
-import { DisclaimerNote } from "./note_disclaimer";
-import {
-  ProvenanceInspector,
-  isProvenanceDebugEnabled,
-} from "./panel_debug_provenance";
-import { ExportIcon } from "./icons";
-import { ExportPdfButton } from "./button_export_pdf";
-import { FollowUpQuestions } from "./questions_follow_up";
-import { ResponseCard } from "./card_response";
-import { Tooltip } from "./tooltip";
-import { CitationNumberingProvider } from "./chip_citation";
-import { CitationsList } from "./list_citations";
-import { downloadPdf } from "@/src/utils/download_pdf";
+} from '@/src/hooks/use_sse_chat';
+import { downloadPdf } from '@/src/utils/download_pdf';
 import {
   calculateStreamDurationMs,
   countWords,
-} from "@/src/utils/rehype_stream_words";
-import { Toast } from "./toast";
-import { CardHeader } from "./card_header";
+} from '@/src/utils/rehype_stream_words';
 
 /**
  * Wraps the full answer in a "Side panel" card (Figma node 3427:16726):
@@ -72,6 +79,8 @@ interface AnswerPanelProps {
    * settled, so the caller can keep it hidden until its layout is final.
    */
   onSettled?: () => void;
+  /** The follow-up prompt, which takes focus when the export toast closes. */
+  promptTextareaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 /**
@@ -82,7 +91,7 @@ interface AnswerPanelProps {
  * `revealing`: the text is revealing word by word, charts show their skeleton,
  * and everything else is hidden. `revealed`: everything is shown.
  */
-type RevealPhase = "settling" | "revealing" | "revealed";
+type RevealPhase = 'settling' | 'revealing' | 'revealed';
 
 /**
  * Returns the phase a panel mounts in. It settles first only when a caller
@@ -93,13 +102,13 @@ function getInitialPhase(
   shouldReveal: boolean,
   isAwaited: boolean,
 ): RevealPhase {
-  if (isAwaited) return "settling";
-  if (shouldReveal) return "revealing";
-  return "revealed";
+  if (isAwaited) return 'settling';
+  if (shouldReveal) return 'revealing';
+  return 'revealed';
 }
 
 /** Media query for the user's reduced-motion preference. */
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 /**
  * Longest the panel waits for its charts to settle before revealing anyway,
@@ -107,7 +116,7 @@ const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
  */
 export const ANSWER_SETTLE_MAX_MS = 2000;
 
-const COLOR_BORDER = "var(--color-border)";
+const COLOR_BORDER = 'var(--color-border)';
 /**
  * Per Figma 3427-16728 the content body fills the narrative surface — light gray in the
  * neutral theme, tinted blue (#F5FAFF) in the Base DC one.
@@ -118,9 +127,9 @@ const COLOR_BORDER = "var(--color-border)";
  * --color-surface-soft the card rendered blue while streaming and then flipped
  * to gray the moment the content replaced the skeleton.
  */
-const COLOR_BODY_BG = "var(--color-surface-narrative)";
-const COLOR_TONAL_CONTAINER = "var(--color-theme-container)";
-const COLOR_TONAL_CONTENT = "var(--color-on-theme-container)";
+const COLOR_BODY_BG = 'var(--color-surface-narrative)';
+const COLOR_TONAL_CONTAINER = 'var(--color-theme-container)';
+const COLOR_TONAL_CONTENT = 'var(--color-on-theme-container)';
 const FONT_LABEL =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
@@ -132,6 +141,7 @@ export function AnswerPanel({
   citationNumbers,
   turnIndex,
   onSettled,
+  promptTextareaRef,
 }: AnswerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const hasCharts = getTurnCharts(turn).length > 0;
@@ -166,11 +176,11 @@ export function AnswerPanel({
   }, []);
   // True at once for a turn with no chart blocks.
   const areChartsSettled = turn.blocks.every(
-    (block) => block.type !== "chart" || settledChartIndices.has(block.index),
+    (block) => block.type !== 'chart' || settledChartIndices.has(block.index),
   );
   useEffect(() => {
-    if (phase !== "settling") return;
-    const nextPhase: RevealPhase = shouldReveal ? "revealing" : "revealed";
+    if (phase !== 'settling') return;
+    const nextPhase: RevealPhase = shouldReveal ? 'revealing' : 'revealed';
     if (areChartsSettled) {
       setPhase(nextPhase);
       return;
@@ -182,19 +192,19 @@ export function AnswerPanel({
     return () => window.clearTimeout(timer);
   }, [phase, areChartsSettled, shouldReveal]);
   useEffect(() => {
-    if (phase !== "revealing" || streamMs === undefined) return;
-    const timer = window.setTimeout(() => setPhase("revealed"), streamMs);
+    if (phase !== 'revealing' || streamMs === undefined) return;
+    const timer = window.setTimeout(() => setPhase('revealed'), streamMs);
     return () => window.clearTimeout(timer);
   }, [phase, streamMs]);
   // Held in a ref so an inline arrow from the caller does not re-fire the
   // effect; `isSettling` changes at most once, so the call happens once.
   const onSettledRef = useRef(onSettled);
   onSettledRef.current = onSettled;
-  const isSettling = phase === "settling";
+  const isSettling = phase === 'settling';
   useEffect(() => {
     if (!isSettling) onSettledRef.current?.();
   }, [isSettling]);
-  const isRevealed = phase === "revealed";
+  const isRevealed = phase === 'revealed';
   /**
    * `turn.provenance` is the sources that actually supplied the answer's
    * numbers. The backend decides membership from which facet each observation
@@ -214,7 +224,9 @@ export function AnswerPanel({
   // are the same action in two placements, so they share a busy flag and a
   // single confirmation rather than each raising their own.
   const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState(false);
+  // When the last export finished; keys the toast so a repeat export remounts
+  // it with a fresh dismiss timer.
+  const [exportedAt, setExportedAt] = useState<number | null>(null);
   // Memoized: a fresh object re-renders every chip on any state change here,
   // including the export flags above.
   const numbering = useMemo(
@@ -227,7 +239,7 @@ export function AnswerPanel({
     setExporting(true);
     try {
       await downloadPdf(panelRef.current, turn.userMessage);
-      setExported(true);
+      setExportedAt(Date.now());
     } finally {
       setExporting(false);
     }
@@ -235,101 +247,112 @@ export function AnswerPanel({
 
   return (
     <CitationNumberingProvider value={numbering}>
-    <div
-      ref={panelRef}
-      className="self-start shrink-0 w-full max-w-4xl flex flex-col overflow-hidden"
-      style={{
-        border: `1px solid ${COLOR_BORDER}`,
-        borderRadius: 16,
-        // Outer takes the body color so the rounded corners of the
-        // body section match the card. Toolbar paints white on top.
-        background: COLOR_BODY_BG,
-      }}
-    >
-      {/* Toolbar header, shared with SkeletonCard. Only expose the toolbar
+      <div
+        ref={panelRef}
+        className="self-start shrink-0 w-full max-w-4xl flex flex-col overflow-hidden"
+        style={{
+          border: `1px solid ${COLOR_BORDER}`,
+          borderRadius: 16,
+          // Outer takes the body color so the rounded corners of the
+          // body section match the card. Toolbar paints white on top.
+          background: COLOR_BODY_BG,
+        }}
+      >
+        {/* Toolbar header, shared with SkeletonCard. Only expose the toolbar
           pill once the turn is fully streamed — otherwise clicking it while
           the ChartTile's DataCommons web component is still hydrating
           produces a PDF missing the chart. This matches the filled "Export
           PDF" button below, which also waits for status === "done". */}
-      <CardHeader title={turn.userMessage}>
-        {turn.status === "done" && isRevealed && (
-          <>
-            {/* Opens the provenance slide-over. Only under ?debug=provenance,
+        <CardHeader title={turn.userMessage}>
+          {turn.status === 'done' && isRevealed && (
+            <>
+              {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
-            {isProvenanceDebugEnabled() && <ProvenanceInspector turn={turn} />}
-            <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
-          </>
-        )}
-      </CardHeader>
+              {isProvenanceDebugEnabled() && (
+                <ProvenanceInspector turn={turn} />
+              )}
+              <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
+            </>
+          )}
+        </CardHeader>
 
-      {/* Content body: everything after and between the text blocks stays
+        {/* Content body: everything after and between the text blocks stays
           hidden until the text has finished revealing, except chart tiles,
           which hold their space behind a skeleton so no gap shows. */}
-      <div
-        className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:duration-300${
-          isRevealed ? "" : " motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0"
-        }`}
-        style={{
-          gap: 16,
-          background: COLOR_BODY_BG,
-        }}
-      >
-        {/* 1. The answer: text and chart blocks in emission order. */}
-        <AnswerBlocks
-          turn={turn}
-          phase={phase}
-          streamMs={streamMs}
-          onChartSettled={markChartSettled}
-        />
+        <div
+          className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:duration-300${
+            isRevealed
+              ? ''
+              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0'
+          }`}
+          style={{
+            gap: 16,
+            background: COLOR_BODY_BG,
+          }}
+        >
+          {/* 1. The answer: text and chart blocks in emission order. */}
+          <AnswerBlocks
+            turn={turn}
+            phase={phase}
+            streamMs={streamMs}
+            onChartSettled={markChartSettled}
+          />
 
-        {/* 2. Truncation notice: the agent ran out of research steps, so
+          {/* 2. Truncation notice: the agent ran out of research steps, so
             this answer rests on less data than it meant to gather. Not styled
             as an error: the answer is usable, just less complete. */}
-        {turn.truncated && (
-          <p
-            className="m-0 text-body-medium text-on-surface-variant"
-            role="status"
-          >
-            This answer may be incomplete — the agent reached its limit on
-            research steps before it finished gathering data.
-          </p>
-        )}
+          {turn.truncated && (
+            <p
+              className="m-0 text-body-medium text-on-surface-variant"
+              role="status"
+            >
+              This answer may be incomplete — the agent reached its limit on
+              research steps before it finished gathering data.
+            </p>
+          )}
 
-        {/* 3. Citations: at the end of the document, above the disclaimer,
+          {/* 3. Citations: at the end of the document, above the disclaimer,
             where a reader who has finished the answer looks for them. */}
-        {hasCitations && (
-          <CitationsList
-            sources={turn.provenance}
-            numbers={citationNumbers}
-            turnIndex={turnIndex}
+          {hasCitations && (
+            <CitationsList
+              sources={turn.provenance}
+              numbers={citationNumbers}
+              turnIndex={turnIndex}
+            />
+          )}
+
+          {/* 4. Disclaimer */}
+          {(hasCharts || hasCitations) && <DisclaimerNote />}
+
+          {/* 5. Export PDF (filled, in-content) */}
+          {turn.status === 'done' && isRevealed && (
+            <ExportPdfButton onExport={onExport} busy={exporting} />
+          )}
+        </div>
+        {exportedAt !== null && (
+          <Toast
+            key={exportedAt}
+            message="PDF downloaded"
+            onDismiss={() => setExportedAt(null)}
+            returnFocusRef={promptTextareaRef}
           />
         )}
+      </div>
+      {/* The agent generates the follow-up questions with each answer. They are
+        hidden when the agent returns none, since there is no static fallback,
+        and they wait until the text has finished revealing, as the body's
+        other non-text children do.
 
-        {/* 4. Disclaimer */}
-        {(hasCharts || hasCitations) && <DisclaimerNote />}
-
-        {/* 5. Export PDF (filled, in-content) */}
-        {turn.status === "done" && isRevealed && (
-          <ExportPdfButton onExport={onExport} busy={exporting} />
-        )}
-
-        {/* 6. Follow-up questions: agent-generated, self-contained. Hidden
-            when the agent returned none (no static fallback).
-
-            Marked non-print: they are buttons that ask a NEW question, so they
-            are an invitation to keep browsing rather than part of the answer
-            being exported. In a saved PDF they read as unanswered questions
-            belonging to the document, which is the opposite of their meaning. */}
-        {turn.status === "done" && (turn.followUps?.length ?? 0) > 0 && (
-          <div data-non-print="true">
+        They sit outside the card because the PDF export clones the card, and
+        each question asks something new rather than being part of this
+        answer. */}
+      {turn.status === 'done' &&
+        isRevealed &&
+        (turn.followUps?.length ?? 0) > 0 && (
+          <div className="px-4 sm:px-6 mb-6">
             <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
           </div>
         )}
-      </div>
-      {exported && (
-        <Toast message="PDF downloaded" onDismiss={() => setExported(false)} />
-      )}
-    </div>
     </CitationNumberingProvider>
   );
 }
@@ -367,13 +390,13 @@ function AnswerBlocks({
   return (
     <>
       {blocks.map((block) => {
-        if (block.type === "chart") {
+        if (block.type === 'chart') {
           return (
             <ChartTile
               key={block.index}
               config={{ shouldRender: true, charts: [block.chart] }}
               onSettled={() => onChartSettled(block.index)}
-              shouldHoldSkeleton={phase !== "revealed"}
+              shouldHoldSkeleton={phase !== 'revealed'}
             />
           );
         }
@@ -385,7 +408,7 @@ function AnswerBlocks({
             body={block.markdown}
             streamMs={revealWindow?.durationMs}
             streamStartMs={revealWindow?.startMs}
-            revealing={phase === "revealing"}
+            revealing={phase === 'revealing'}
             sources={turn.provenance}
             bare
           />
@@ -405,14 +428,14 @@ function scheduleTextReveal(
   totalMs: number,
 ): Map<number, TextRevealWindow> {
   const wordCounts = blocks.map((block) =>
-    block.type === "text" ? countWords(block.markdown) : 0,
+    block.type === 'text' ? countWords(block.markdown) : 0,
   );
   const totalWords = wordCounts.reduce((sum, count) => sum + count, 0);
   const msPerWord = totalMs / Math.max(totalWords, 1);
   const schedule = new Map<number, TextRevealWindow>();
   let wordsBefore = 0;
   blocks.forEach((block, position) => {
-    if (block.type !== "text") return;
+    if (block.type !== 'text') return;
     const words = wordCounts[position];
     schedule.set(block.index, {
       startMs: wordsBefore * msPerWord,
@@ -438,29 +461,28 @@ function ToolbarExportPdfPill({
 }) {
   return (
     <Tooltip label="Download this answer as a PDF">
-    <button
-      type="button"
-      onClick={onExport}
-      disabled={busy}
-      data-non-print="true"
-      className="inline-flex items-center cursor-pointer hover:opacity-90"
-      style={{
-        background: COLOR_TONAL_CONTAINER,
-        color: COLOR_TONAL_CONTENT,
-        border: 0,
-        borderRadius: 999,
-        padding: "6px 16px",
-        gap: 8,
-        fontFamily: FONT_LABEL,
-        fontSize: 14,
-        lineHeight: "20px",
-        fontWeight: 500,
-      }}
-      aria-label="Export PDF"
-    >
-      <ExportIcon size="xs" />
-      <span>Export PDF</span>
-    </button>
+      <button
+        type="button"
+        onClick={onExport}
+        disabled={busy}
+        className="inline-flex items-center cursor-pointer hover:opacity-90"
+        style={{
+          background: COLOR_TONAL_CONTAINER,
+          color: COLOR_TONAL_CONTENT,
+          border: 0,
+          borderRadius: 999,
+          padding: '6px 16px',
+          gap: 8,
+          fontFamily: FONT_LABEL,
+          fontSize: 14,
+          lineHeight: '20px',
+          fontWeight: 500,
+        }}
+        aria-label="Export PDF"
+      >
+        <ExportIcon size="xs" />
+        <span>Export PDF</span>
+      </button>
     </Tooltip>
   );
 }

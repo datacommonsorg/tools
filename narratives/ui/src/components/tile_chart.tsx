@@ -18,16 +18,16 @@
  * @fileoverview Renders a Data Commons web-component chart (line/bar/map/ranking/…) from an agent chart config.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { ChartConfig, ChartItem } from "@/src/hooks/use_sse_chat";
+import type { ChartConfig, ChartItem } from '@/src/hooks/use_sse_chat';
 import {
   API_ROOT,
   DataCommonsComponent,
   type DataCommonsComponentAttributes,
   type DataCommonsComponentTagName,
   useDcChartEmptyNotice,
-} from "@/src/utils/datacommons_component";
+} from '@/src/utils/datacommons_component';
 
 /**
  * Chart renderer for chat answers.
@@ -69,8 +69,8 @@ const MAX_CHARTS = 3;
  */
 const PENDING_HEIGHT_CLASS: Partial<
   Record<DataCommonsComponentTagName, string>
-> = { "datacommons-highlight": "min-h-30" };
-const DEFAULT_PENDING_HEIGHT_CLASS = "min-h-90";
+> = { 'datacommons-highlight': 'min-h-30' };
+const DEFAULT_PENDING_HEIGHT_CLASS = 'min-h-90';
 
 /** Renders the agent's chart directive as a responsive grid of DC charts. */
 export function ChartTile({
@@ -134,10 +134,10 @@ export function ChartTile({
       /* No top margin: the answer card's own flex gap already spaces this. */
       className="dc-charts-container"
       style={{
-        display: "grid",
+        display: 'grid',
         gridTemplateColumns: isGrid
-          ? "repeat(auto-fit, minmax(min(100%, 320px), 1fr))"
-          : "1fr",
+          ? 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))'
+          : '1fr',
         gap: 24,
       }}
     >
@@ -166,17 +166,19 @@ function selectRenderableCharts(config: ChartConfig): ChartItem[] {
     return [];
   }
 
-  return charts
-    .slice(0, MAX_CHARTS)
-    .filter((chart) => chart.variableDcids && chart.variableDcids.length > 0)
-    // Each DC component needs SOME place anchor: either explicit places
-    // or a parent + child type. Drop entries the agent under-specified
-    // rather than letting the component crash.
-    .filter(
-      (chart) =>
-        (chart.placeDcids && chart.placeDcids.length > 0) ||
-        (chart.parentPlace && chart.childPlaceType),
-    );
+  return (
+    charts
+      .slice(0, MAX_CHARTS)
+      .filter((chart) => chart.variableDcids && chart.variableDcids.length > 0)
+      // Each DC component needs SOME place anchor: either explicit places
+      // or a parent + child type. Drop entries the agent under-specified
+      // rather than letting the component crash.
+      .filter(
+        (chart) =>
+          (chart.placeDcids && chart.placeDcids.length > 0) ||
+          (chart.parentPlace && chart.childPlaceType),
+      )
+  );
 }
 
 /**
@@ -220,9 +222,9 @@ function ChartCard({
   // once shown, the skeleton fades out over the drawn chart.
   return (
     <div
-      className={`dc-chart-card relative${isLoading ? ` ${pendingHeightClass}` : ""}`}
+      className={`dc-chart-card relative${isLoading ? ` ${pendingHeightClass}` : ''}`}
       ref={cardRef}
-      style={hidden ? { display: "none" } : undefined}
+      style={hidden ? { display: 'none' } : undefined}
       aria-busy={showSkeleton}
     >
       <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
@@ -234,7 +236,7 @@ function ChartCard({
       <div
         aria-hidden="true"
         className={`absolute inset-0 z-10 rounded-chart bg-surface pointer-events-none motion-safe:transition-[opacity,visibility] motion-safe:duration-500 ease-out${
-          showSkeleton ? "" : " opacity-0 invisible"
+          showSkeleton ? '' : ' opacity-0 invisible'
         }`}
       >
         {/* A light-blue band sweeps top to bottom; under reduced motion it
@@ -254,22 +256,21 @@ function ChartCard({
  * renderer (single variable + single place is always valid).
  */
 export function getDcComponentTag(
-  viz: ChartItem["vizType"],
+  viz: ChartItem['vizType'],
 ): DataCommonsComponentTagName {
   switch (viz) {
-    case "bar":
-      return "datacommons-bar";
-    case "map":
-      return "datacommons-map";
-    case "ranking":
-      return "datacommons-ranking";
-    case "highlight":
-      return "datacommons-highlight";
-    case "scatter":
-      return "datacommons-scatter";
-    case "line":
+    case 'bar':
+      return 'datacommons-bar';
+    case 'map':
+      return 'datacommons-map';
+    case 'ranking':
+      return 'datacommons-ranking';
+    case 'highlight':
+      return 'datacommons-highlight';
+    case 'scatter':
+      return 'datacommons-scatter';
     default:
-      return "datacommons-line";
+      return 'datacommons-line';
   }
 }
 
@@ -277,12 +278,12 @@ export function getDcComponentTag(
  * The chart kinds whose web component reads the per-capita variable list from
  * `perCapita`. Scatter reads it from `usePerCapita`.
  */
-const PER_CAPITA_KINDS: ReadonlySet<ChartItem["vizType"]> = new Set([
-  "bar",
-  "line",
-  "map",
-  "ranking",
-  "highlight",
+const PER_CAPITA_KINDS: ReadonlySet<ChartItem['vizType']> = new Set([
+  'bar',
+  'line',
+  'map',
+  'ranking',
+  'highlight',
 ]);
 
 /**
@@ -298,14 +299,14 @@ export function getDcComponentAttributes(
 ): DataCommonsComponentAttributes {
   const variableDcids = chart.variableDcids;
   const attrs: DataCommonsComponentAttributes = {
-    header: chart.title ?? "",
-    variables: variableDcids.join(" "),
+    header: chart.title ?? '',
+    variables: variableDcids.join(' '),
   };
   if (chart.placeDcids && chart.placeDcids.length > 0) {
     // Some DC components key on `places`, others on the singular `place`
     // (highlight). Emit both so the component reads the one it uses and
     // ignores the other.
-    attrs.places = chart.placeDcids.join(" ");
+    attrs.places = chart.placeDcids.join(' ');
     attrs.place = chart.placeDcids[0];
   }
   if (chart.parentPlace) attrs.parentPlace = chart.parentPlace;
@@ -317,25 +318,23 @@ export function getDcComponentAttributes(
     attrs.variable = variableDcids[0];
   }
   if (chart.perCapita && variableDcids.length > 0) {
-    if (chart.vizType === "scatter") {
-      attrs.usePerCapita = variableDcids.join(" ");
+    if (chart.vizType === 'scatter') {
+      attrs.usePerCapita = variableDcids.join(' ');
     } else if (PER_CAPITA_KINDS.has(chart.vizType)) {
-      attrs.perCapita = variableDcids.join(" ");
+      attrs.perCapita = variableDcids.join(' ');
     }
   }
   if (chart.facetIds && variableDcids.length > 0) {
     const facets = chart.facetIds;
-    if (chart.vizType === "highlight") {
+    if (chart.vizType === 'highlight') {
       const facetId = facets[variableDcids[0]];
       if (facetId) {
         attrs.facetId = facetId;
       }
-    } else if (
-      variableDcids.every((variable) => Boolean(facets[variable]))
-    ) {
+    } else if (variableDcids.every((variable) => Boolean(facets[variable]))) {
       attrs.facetIds = variableDcids
         .map((variable) => facets[variable])
-        .join(" ");
+        .join(' ');
     } else if (variableDcids.some((variable) => Boolean(facets[variable]))) {
       attrs.facetMapping = JSON.stringify(facets);
     }

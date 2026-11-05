@@ -18,10 +18,10 @@
  * @fileoverview Renders the desktop left rail: the new-chat control.
  */
 
+import { NewChatIcon } from '@/src/components/icons';
+import { Tooltip } from '@/src/components/tooltip';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import { useHashRoute } from '@/src/hooks/use_hash_route';
-import { NewChatIcon } from './icons';
-import { Tooltip } from './tooltip';
 
 /**
  * The left rail itself stays visible across all tabs (same width, same fill)

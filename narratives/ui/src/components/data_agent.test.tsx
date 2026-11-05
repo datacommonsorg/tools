@@ -29,12 +29,18 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  COMPOSER_DISCLAIMER_TEXT,
+  DataAgent,
+  HANDOFF_MS,
+  TurnView,
+} from '@/src/components/data_agent';
+import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
+import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
+import {
   ChatSessionContext,
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
 import type { ChatTurn } from '@/src/hooks/use_sse_chat';
-import { DataAgent, HANDOFF_MS, TurnView } from './data_agent';
-import { ANSWER_SETTLE_MAX_MS } from './panel_answer';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -211,6 +217,35 @@ describe('DataAgent New chat', () => {
       name: 'Ask a question to explore relevant statistical data',
     });
     expect((prompt as HTMLTextAreaElement).value).toBe('');
+  });
+});
+
+describe('DataAgent prompt box disclaimer', () => {
+  it('shows the short wording under the prompt box, not the answer note', () => {
+    // Test: The disclaimer under the follow-up prompt box.
+    // Situation: The chat holds an answered turn, so the sticky prompt box
+    //            renders with its disclaimer.
+    // Expectation: The prompt box disclaimer holds exactly the short wording,
+    //              and the long answer wording is neither under the prompt
+    //              box nor merged into the short one.
+    renderTurns([
+      {
+        userMessage: 'What is the population of France?',
+        status: 'done',
+        toolCalls: [],
+        thoughts: [],
+        text: 'About 68 million.',
+        blocks: [{ index: 0, type: 'text', markdown: 'About 68 million.' }],
+        provenance: [],
+      },
+    ]);
+
+    const composerNote = screen.getByText(COMPOSER_DISCLAIMER_TEXT);
+    expect(composerNote.textContent).toBe(COMPOSER_DISCLAIMER_TEXT);
+    expect(COMPOSER_DISCLAIMER_TEXT).not.toContain(DISCLAIMER_TEXT);
+    expect(DISCLAIMER_TEXT).not.toContain(COMPOSER_DISCLAIMER_TEXT);
+    const promptBox = composerNote.parentElement;
+    expect(promptBox?.textContent).not.toContain(DISCLAIMER_TEXT);
   });
 });
 

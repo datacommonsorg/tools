@@ -19,7 +19,7 @@
  */
 
 import { useState } from 'react';
-import { CardHeader } from './card_header';
+import { CardHeader } from '@/src/components/card_header';
 
 const PARAGRAPHS = 3;
 const LINES_PER_PARAGRAPH = 4;

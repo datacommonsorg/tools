@@ -19,16 +19,16 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { DataAgent } from './components/data_agent';
-import { MenuDrawer } from './components/drawer_menu';
-import { Header } from './components/header';
-import { MetricsPage } from './components/metrics_page';
-import { Sidebar } from './components/sidebar';
+import { DataAgent } from '@/src/components/data_agent';
+import { MenuDrawer } from '@/src/components/drawer_menu';
+import { Header } from '@/src/components/header';
+import { MetricsPage } from '@/src/components/metrics_page';
+import { Sidebar } from '@/src/components/sidebar';
 import {
   ChatSessionProvider,
   useChatSession,
-} from './hooks/chat_session_context';
-import { useHashRoute } from './hooks/use_hash_route';
+} from '@/src/hooks/chat_session_context';
+import { useHashRoute } from '@/src/hooks/use_hash_route';
 
 /** The main views; every route other than `metrics` shows the Data Agent. */
 type View = 'agent' | 'metrics';

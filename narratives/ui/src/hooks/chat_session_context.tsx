@@ -31,7 +31,7 @@ import {
   type ChatTurn,
   type UseSseChatResult,
   useSseChat,
-} from './use_sse_chat';
+} from '@/src/hooks/use_sse_chat';
 
 /** Keys earlier builds wrote the transcript to. */
 const LEGACY_STORAGE_KEYS = ['cdc:chat:v1', 'cdc:chat:v2'];

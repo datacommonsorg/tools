@@ -18,11 +18,17 @@
  * @fileoverview Renders the empty-state landing view: heading, prompt box, and suggestion chips.
  */
 
-import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
-import { SuggestionChip } from "./chip_suggestion";
-import { PromptInput } from "./input_prompt";
-import { getInstanceConfig } from "@/src/config/instance_config";
-import { EASE_OUT } from "../config/motion";
+import {
+  domAnimation,
+  LazyMotion,
+  m,
+  useReducedMotion,
+  type Variants,
+} from 'motion/react';
+import { SuggestionChip } from '@/src/components/chip_suggestion';
+import { PromptInput } from '@/src/components/input_prompt';
+import { getInstanceConfig } from '@/src/config/instance_config';
+import { EASE_OUT } from '@/src/config/motion';
 
 // Intro cascade: each child fades up in turn; the chip row cascades its own
 // chips when its turn comes.
@@ -33,10 +39,16 @@ const FADE_UP_OFFSET_PX = 12;
 /** Duration of each element's fade-up, in seconds. */
 const FADE_UP_DURATION_S = 0.4;
 
-const cascade: Variants = { show: { transition: { staggerChildren: CASCADE_STAGGER_S } } };
+const cascade: Variants = {
+  show: { transition: { staggerChildren: CASCADE_STAGGER_S } },
+};
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: FADE_UP_OFFSET_PX },
-  show: { opacity: 1, y: 0, transition: { duration: FADE_UP_DURATION_S, ease: EASE_OUT } },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: FADE_UP_DURATION_S, ease: EASE_OUT },
+  },
 };
 
 interface InitialViewProps {
@@ -58,13 +70,19 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
       <m.div
         variants={cascade}
         // Reduced motion: no initial/animate, so everything renders at rest.
-        {...(!reduceMotion && { initial: "hidden", animate: "show" })}
-        className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative">
-
-        <m.h1 variants={fadeUp} className="text-display-small-gradient mb-1 tracking-tight text-center">
+        {...(!reduceMotion && { initial: 'hidden', animate: 'show' })}
+        className="flex-1 flex flex-col items-center justify-start sm:justify-center w-full max-w-5xl mx-auto px-4 lg:px-12 pt-8 sm:pt-0 pb-8 sm:pb-24 relative"
+      >
+        <m.h1
+          variants={fadeUp}
+          className="text-display-small-gradient mb-1 tracking-tight text-center"
+        >
           {headline}
         </m.h1>
-        <m.p variants={fadeUp} className="text-label-large text-subtle mb-8 text-center">
+        <m.p
+          variants={fadeUp}
+          className="text-label-large text-subtle mb-8 text-center"
+        >
           {tagline}
         </m.p>
 
@@ -80,7 +98,10 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
         {/* Place suggestion chips inline on narrow screens so they are not
             clipped by the virtual keyboard, and dock them to the bottom of the
             hero container on wider screens. */}
-        <m.div variants={cascade} className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6">
+        <m.div
+          variants={cascade}
+          className="static sm:absolute sm:bottom-6 sm:left-0 sm:right-0 mt-8 sm:mt-0 w-full flex flex-wrap justify-center gap-3 sm:gap-4 px-2 sm:px-6"
+        >
           {suggestions.map((text, index) => (
             <m.div key={index} variants={fadeUp}>
               <SuggestionChip
@@ -97,7 +118,6 @@ export function InitialView({ query, setQuery, onSend }: InitialViewProps) {
             </m.div>
           ))}
         </m.div>
-
       </m.div>
     </LazyMotion>
   );

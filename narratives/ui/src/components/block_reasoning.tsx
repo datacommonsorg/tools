@@ -18,16 +18,16 @@
  * @fileoverview Renders the agent's collapsible reasoning/thoughts block for a turn.
  */
 
-import { useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { ChevronDownIcon } from "./icons";
-import { getInstanceConfig } from "@/src/config/instance_config";
-import type { ThoughtEvent, TurnStatus } from "../hooks/use_sse_chat";
+import { useState } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { ChevronDownIcon } from '@/src/components/icons';
+import { getInstanceConfig } from '@/src/config/instance_config';
+import type { ThoughtEvent, TurnStatus } from '@/src/hooks/use_sse_chat';
 import {
   calculateStreamDurationMs,
   rehypeStreamWords,
-} from "../utils/rehype_stream_words";
+} from '@/src/utils/rehype_stream_words';
 
 /**
  * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
@@ -62,12 +62,12 @@ interface HastNode {
  */
 function isBoldOnlyParagraph(node?: HastNode): boolean {
   const kids = (node?.children ?? []).filter(
-    (child) => !(child.type === "text" && !(child.value ?? "").trim()),
+    (child) => !(child.type === 'text' && !(child.value ?? '').trim()),
   );
   return (
     kids.length === 1 &&
-    kids[0].type === "element" &&
-    kids[0].tagName === "strong"
+    kids[0].type === 'element' &&
+    kids[0].tagName === 'strong'
   );
 }
 
@@ -89,9 +89,13 @@ const REASONING_COMPONENTS: Components = {
     isBoldOnlyParagraph(node as unknown as HastNode) ? (
       <ReasoningHeading>{children}</ReasoningHeading>
     ) : (
-      <p className="text-on-surface-variant italic text-sm leading-5.5">{children}</p>
+      <p className="text-on-surface-variant italic text-sm leading-5.5">
+        {children}
+      </p>
     ),
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  strong: ({ children }) => (
+    <strong className="font-semibold">{children}</strong>
+  ),
   ul: ({ children }) => (
     <ul className="list-disc space-y-0.5 pl-9.5 text-on-surface-variant italic text-sm leading-5.5">
       {children}
@@ -140,11 +144,11 @@ interface ReasoningBlockProps {
   status?: TurnStatus;
 }
 
-const PLACEHOLDER_CLASSIFY = "Reviewing your question…";
+const PLACEHOLDER_CLASSIFY = 'Reviewing your question…';
 const PLACEHOLDER_STREAMING =
-  "Searching Data Commons for relevant indicators and observations…";
+  'Searching Data Commons for relevant indicators and observations…';
 const PLACEHOLDER_DONE =
-  "Analyzed the query and retrieved relevant data from Data Commons.";
+  'Analyzed the query and retrieved relevant data from Data Commons.';
 
 /**
  * Header label is derived from the turn status. The server's `status` events
@@ -153,18 +157,18 @@ const PLACEHOLDER_DONE =
  * UI-side copy for each phase.
  */
 function getPhaseLabel(streaming: boolean, status?: TurnStatus): string {
-  if (!streaming) return "Reasoning details";
+  if (!streaming) return 'Reasoning details';
   switch (status) {
-    case "classify":
-      return "Understanding your question…";
-    case "discovery":
-      return "Querying data tools…";
-    case "processing":
-      return "Analyzing data…";
-    case "synthesis":
-      return "Synthesizing answer…";
+    case 'classify':
+      return 'Understanding your question…';
+    case 'discovery':
+      return 'Querying data tools…';
+    case 'processing':
+      return 'Analyzing data…';
+    case 'synthesis':
+      return 'Synthesizing answer…';
     default:
-      return "Thinking…";
+      return 'Thinking…';
   }
 }
 
@@ -182,9 +186,9 @@ function placeholderText(
   status?: TurnStatus,
 ): string {
   if (streaming) {
-    return status === "classify" ? PLACEHOLDER_CLASSIFY : PLACEHOLDER_STREAMING;
+    return status === 'classify' ? PLACEHOLDER_CLASSIFY : PLACEHOLDER_STREAMING;
   }
-  return done ? PLACEHOLDER_DONE : "";
+  return done ? PLACEHOLDER_DONE : '';
 }
 
 /** Collapsible "Reasoning" block: sparkle header plus the streamed thinking text. */
@@ -219,7 +223,7 @@ export function ReasoningBlock({
           {label}
           <ChevronDownIcon
             className={`text-on-surface-variant transition-transform duration-150 ${
-              open ? "rotate-180" : "rotate-0"
+              open ? 'rotate-180' : 'rotate-0'
             }`}
           />
         </span>
@@ -230,33 +234,33 @@ export function ReasoningBlock({
       <div
         inert={!open}
         className={`grid motion-safe:transition-[grid-template-rows,opacity] duration-200 ease-out ${
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
       >
         <div className="overflow-hidden min-h-0">
-        {/* Indented so the reasoning reads as an aside to the answer; the
+          {/* Indented so the reasoning reads as an aside to the answer; the
             paragraphs and lists add the muted italic. The bottom padding keeps
             the last dot's pulse inside the clipping wrapper above. */}
-        <div className="mt-2 ml-2.25 pb-1 reasoning-markdown">
-          {thoughts.length > 0 ? (
-            thoughts.map((thought, i) => (
-              // Thoughts only ever append, so the index is a stable key.
+          <div className="mt-2 ml-2.25 pb-1 reasoning-markdown">
+            {thoughts.length > 0 ? (
+              thoughts.map((thought, i) => (
+                // Thoughts only ever append, so the index is a stable key.
+                <Thought
+                  key={i}
+                  text={thought.text}
+                  animate={streaming}
+                  isLatest={i === thoughts.length - 1}
+                />
+              ))
+            ) : (
               <Thought
-                key={i}
-                text={thought.text}
+                key="placeholder"
+                text={placeholder}
                 animate={streaming}
-                isLatest={i === thoughts.length - 1}
+                isLatest
               />
-            ))
-          ) : (
-            <Thought
-              key="placeholder"
-              text={placeholder}
-              animate={streaming}
-              isLatest
-            />
-          )}
-        </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -269,12 +273,12 @@ export function ReasoningBlock({
  * clipping inner wrapper, so the dot is not cut off.
  */
 const THOUGHT_CLASS = [
-  "relative grid grid-rows-[1fr] pt-2 pb-3 pl-5.5",
-  "border-l-2 border-border",
+  'relative grid grid-rows-[1fr] pt-2 pb-3 pl-5.5',
+  'border-l-2 border-border',
   // Dot centered on the 2px bar at its bottom end.
-  "after:absolute after:bottom-0 after:-left-px after:-translate-x-1/2",
-  "after:size-2 after:rounded-full",
-].join(" ");
+  'after:absolute after:bottom-0 after:-left-px after:-translate-x-1/2',
+  'after:size-2 after:rounded-full',
+].join(' ');
 
 interface ThoughtProps {
   text: string;
@@ -295,13 +299,13 @@ function Thought({ text, animate, isLatest }: ThoughtProps) {
   );
   const streamClass =
     streamMs === undefined
-      ? ""
-      : " markdown-stream motion-safe:animate-thought-expand";
+      ? ''
+      : ' markdown-stream motion-safe:animate-thought-expand';
   // The latest thought's dot pulses in the theme tint while the turn streams.
   const dotClass =
     animate && isLatest
-      ? " after:bg-theme-container motion-safe:after:animate-dot-pulse"
-      : " after:bg-border";
+      ? ' after:bg-theme-container motion-safe:after:animate-dot-pulse'
+      : ' after:bg-border';
   const className = `${THOUGHT_CLASS}${streamClass}${dotClass}`;
   return (
     <div className={className}>
@@ -349,4 +353,3 @@ function SparkleIcon() {
     />
   );
 }
-
