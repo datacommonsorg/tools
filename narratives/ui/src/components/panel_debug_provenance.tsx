@@ -19,10 +19,10 @@
  * data sources an answer used.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { type ChatTurn, getTurnCharts } from "@/src/hooks/use_sse_chat";
-import { inspectTurn } from "@/src/utils/inspect_turn";
-import { InspectIcon } from "@/src/components/icons";
+import { useEffect, useRef, useState } from 'react';
+import { InspectIcon } from '@/src/components/icons';
+import { type ChatTurn, getTurnCharts } from '@/src/hooks/use_sse_chat';
+import { inspectTurn } from '@/src/utils/inspect_turn';
 
 /**
  * Reports whether the provenance inspector is enabled — i.e. the page was
@@ -30,13 +30,19 @@ import { InspectIcon } from "@/src/components/icons";
  * it reacts to client-side navigation and stays safe under SSR/tests.
  */
 export const isProvenanceDebugEnabled = () =>
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("debug") === "provenance";
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('debug') === 'provenance';
 
 const MONO = '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 
 /** Section wrapper: a small uppercase label above its content. */
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-1.5">
       <h4 className="m-0 text-label-large uppercase tracking-wide text-on-surface-variant">
@@ -49,7 +55,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 
 /** One key/value pair on a facet's detail line. */
 function Detail({ label, value }: { label: string; value?: string | number }) {
-  if (value === undefined || value === "") return null;
+  if (value === undefined || value === '') return null;
   return (
     <span className="text-body-medium text-on-surface-variant">
       {label} <span style={{ fontFamily: MONO }}>{value}</span>
@@ -60,7 +66,11 @@ function Detail({ label, value }: { label: string; value?: string | number }) {
 /** The inspector's contents, without any chrome. */
 function InspectorBody({ turn }: { turn: ChatTurn }) {
   const [openResult, setOpenResult] = useState<number | null>(null);
-  const inspection = inspectTurn(turn.toolCalls, getTurnCharts(turn), turn.provenance);
+  const inspection = inspectTurn(
+    turn.toolCalls,
+    getTurnCharts(turn),
+    turn.provenance,
+  );
   const usedFacets = inspection.facets.filter((facet) => facet.used);
 
   return (
@@ -77,10 +87,10 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
               <li
                 key={facet.facetId}
                 className="flex flex-col gap-0.5 pl-3"
-                style={{ borderLeft: "3px solid var(--color-theme-primary)" }}
+                style={{ borderLeft: '3px solid var(--color-theme-primary)' }}
               >
                 <span className="text-body-medium">
-                  <strong>{facet.provenance ?? "(unnamed source)"}</strong>
+                  <strong>{facet.provenance ?? '(unnamed source)'}</strong>
                 </span>
                 <span className="flex flex-wrap gap-x-4 gap-y-0.5">
                   <Detail label="coverage" value={facet.dateRange} />
@@ -101,10 +111,10 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                     title={facet.url}
                     className="text-body-medium block"
                     style={{
-                      color: "var(--color-theme-primary)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      color: 'var(--color-theme-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {facet.url}
@@ -123,12 +133,18 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
               <li key={variable.dcid} className="text-body-medium">
                 <span style={{ fontFamily: MONO }}>{variable.dcid}</span>
                 {variable.name && (
-                  <span className="text-on-surface-variant"> — {variable.name}</span>
+                  <span className="text-on-surface-variant">
+                    {' '}
+                    — {variable.name}
+                  </span>
                 )}
                 {!variable.fetched && (
                   // Found while searching, but no numbers pulled from it. Say
                   // what it is rather than what it isn't.
-                  <span className="text-on-surface-variant"> (resolved during search)</span>
+                  <span className="text-on-surface-variant">
+                    {' '}
+                    (resolved during search)
+                  </span>
                 )}
               </li>
             ))}
@@ -140,9 +156,9 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
         <Section label={`Places (${inspection.places.length})`}>
           <p
             className="m-0 text-body-medium"
-            style={{ fontFamily: MONO, wordBreak: "break-word" }}
+            style={{ fontFamily: MONO, wordBreak: 'break-word' }}
           >
-            {inspection.places.join(", ")}
+            {inspection.places.join(', ')}
           </p>
         </Section>
       )}
@@ -155,10 +171,11 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                 <span>{chart.title}</span>
                 <span
                   className="text-on-surface-variant"
-                  style={{ fontFamily: MONO, wordBreak: "break-word" }}
+                  style={{ fontFamily: MONO, wordBreak: 'break-word' }}
                 >
-                  {chart.variables.join(", ")}
-                  {chart.places.length > 0 && ` @ ${chart.places.length} place(s)`}
+                  {chart.variables.join(', ')}
+                  {chart.places.length > 0 &&
+                    ` @ ${chart.places.length} place(s)`}
                 </span>
               </li>
             ))}
@@ -175,18 +192,21 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
               <li key={index} className="flex flex-col gap-1">
                 <span className="text-body-medium">
                   <span style={{ fontFamily: MONO }}>{call.name}</span>
-                  {call.status === "error" && (
-                    <span style={{ color: "var(--color-error-strong)" }}> · error</span>
+                  {call.status === 'error' && (
+                    <span style={{ color: 'var(--color-error-strong)' }}>
+                      {' '}
+                      · error
+                    </span>
                   )}
                 </span>
                 <pre
                   className="m-0 p-2 rounded text-body-medium"
                   style={{
                     fontFamily: MONO,
-                    background: "var(--color-surface-soft)",
-                    overflowX: "auto",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
+                    background: 'var(--color-surface-soft)',
+                    overflowX: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
                   }}
                 >
                   {JSON.stringify(call.arguments, null, 2)}
@@ -195,11 +215,13 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                   <>
                     <button
                       type="button"
-                      onClick={() => setOpenResult(openResult === index ? null : index)}
+                      onClick={() =>
+                        setOpenResult(openResult === index ? null : index)
+                      }
                       className="self-start text-label-large cursor-pointer bg-transparent p-0"
-                      style={{ color: "var(--color-theme-primary)", border: 0 }}
+                      style={{ color: 'var(--color-theme-primary)', border: 0 }}
                     >
-                      {openResult === index ? "Hide" : "Show"} raw response (
+                      {openResult === index ? 'Hide' : 'Show'} raw response (
                       {call.result.length.toLocaleString()} chars)
                     </button>
                     {openResult === index && (
@@ -207,11 +229,11 @@ function InspectorBody({ turn }: { turn: ChatTurn }) {
                         className="m-0 p-2 rounded text-body-medium"
                         style={{
                           fontFamily: MONO,
-                          background: "var(--color-surface-soft)",
+                          background: 'var(--color-surface-soft)',
                           maxHeight: 300,
-                          overflow: "auto",
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
+                          overflow: 'auto',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
                         }}
                       >
                         {call.result}
@@ -248,11 +270,11 @@ export function ProvenanceInspector({ turn }: { turn: ChatTurn }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === 'Escape') setOpen(false);
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener('keydown', onKey);
     closeRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
   const hasAnything = turn.toolCalls.length > 0;
@@ -284,11 +306,13 @@ export function ProvenanceInspector({ turn }: { turn: ChatTurn }) {
             aria-modal="true"
             aria-label="Provenance inspector"
             className="fixed top-0 right-0 h-full z-40 bg-surface border-l border-outline shadow-lg flex flex-col"
-            style={{ width: "min(560px, 100vw)" }}
+            style={{ width: 'min(560px, 100vw)' }}
           >
             <header className="flex items-start justify-between gap-3 p-4 border-b border-outline shrink-0">
               <div className="flex flex-col gap-0.5 min-w-0">
-                <h3 className="m-0 text-title-medium text-on-surface">Provenance inspector</h3>
+                <h3 className="m-0 text-title-medium text-on-surface">
+                  Provenance inspector
+                </h3>
                 <p className="m-0 text-body-medium text-on-surface-variant truncate">
                   {turn.userMessage}
                 </p>

@@ -9,37 +9,7 @@
 
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "package.json",
-      "ui/**",
-      "scripts/**",
-      "!ui/src/components/block_reasoning.tsx",
-      "!ui/src/components/card_response.test.tsx",
-      "!ui/src/components/card_response.tsx",
-      "!ui/src/components/chip_citation.test.ts",
-      "!ui/src/components/chip_citation.tsx",
-      "!ui/src/components/data_agent.tsx",
-      "!ui/src/components/icons.tsx",
-      "!ui/src/components/list_citations.test.ts",
-      "!ui/src/components/list_citations.tsx",
-      "!ui/src/components/panel_answer.tsx",
-      "!ui/src/components/panel_debug_provenance.tsx",
-      "!ui/src/components/tile_chart.tsx",
-      "!ui/src/components/tooltip.tsx",
-      "!ui/src/components/value_numeric.tsx",
-      "!ui/src/components/view_initial.test.tsx",
-      "!ui/src/components/view_initial.tsx",
-      "!ui/src/hooks/use_sse_chat.test.ts",
-      "!ui/src/hooks/use_sse_chat.ts",
-      "!ui/src/index.css",
-      "!ui/src/main.tsx",
-      "!ui/src/utils/download_pdf.ts",
-      "!ui/src/utils/format_number.ts",
-      "!ui/src/utils/inspect_turn.test.ts",
-      "!ui/src/utils/inspect_turn.ts",
-      "!ui/src/utils/markdown_table.ts",
-      "!ui/vite.config.ts"
-    ]
+    "includes": ["package.json", "ui/**", "scripts/**"]
   },
 
   "formatter": {

@@ -21,7 +21,7 @@
  * ring while it holds focus.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { SendIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
 import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
@@ -39,6 +39,8 @@ interface PromptInputProps {
   /** While true the textarea is locked and the button becomes a stop control. */
   isStreaming?: boolean;
   onStop?: () => void;
+  /** Lets the caller focus the textarea, e.g. when a toast above it closes. */
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 /**
@@ -53,8 +55,10 @@ export function PromptInput({
   onSubmit,
   isStreaming = false,
   onStop,
+  textareaRef: externalTextareaRef,
 }: PromptInputProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const ownTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = externalTextareaRef ?? ownTextareaRef;
   const { isExpanded, isScrolling } = useTextareaAutosize(textareaRef, value);
   // The placeholder is a pseudo-element CSS cannot animate per character, so
   // a timer steps through the frames; under reduced motion it holds at the

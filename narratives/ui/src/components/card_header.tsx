@@ -34,10 +34,8 @@ interface CardHeaderProps {
 export function CardHeader({ title, children }: CardHeaderProps) {
   return (
     <div className="flex items-center gap-3 py-2 pr-2 pl-5 border-b border-border bg-surface">
-      {/* On screen this is a one-line card title, so it truncates. In the
-          exported PDF it is the document's heading and has to be readable in
-          full, so the print rules in index.css undo the truncation and size
-          it up — hence the hook class rather than styling it twice. */}
+      {/* One line on screen; utils/download_pdf.ts finds this class and shows
+          the full question as the PDF's heading. */}
       <span
         className="flex-1 truncate print-question text-label-large text-on-surface"
         title={title}

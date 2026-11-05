@@ -2,18 +2,17 @@
  * @fileoverview Downloads an answer panel as a PDF file, without a print dialog.
  */
 
-
 /** The Data Commons chart web components. */
 const CHART_HOSTS = [
-  "datacommons-line",
-  "datacommons-bar",
-  "datacommons-ranking",
-  "datacommons-map",
-  "datacommons-highlight",
-  "datacommons-gauge",
-  "datacommons-pie",
-  "datacommons-scatter",
-].join(",");
+  'datacommons-line',
+  'datacommons-bar',
+  'datacommons-ranking',
+  'datacommons-map',
+  'datacommons-highlight',
+  'datacommons-gauge',
+  'datacommons-pie',
+  'datacommons-scatter',
+].join(',');
 
 /** A4 at 96dpi, less ~12mm margins — the width the export is laid out at. */
 const PAGE_WIDTH_PX = 717;
@@ -71,25 +70,84 @@ const CHART_POLL_MS = 250;
  * what lets the chart survive being lifted into the light DOM.
  */
 const STYLE_PROPS = [
-  "display", "position", "top", "left", "right", "bottom", "float", "clear",
-  "width", "height", "min-width", "min-height", "max-width", "max-height",
-  "margin-top", "margin-right", "margin-bottom", "margin-left",
-  "padding-top", "padding-right", "padding-bottom", "padding-left",
-  "box-sizing", "overflow", "flex-direction", "flex-wrap", "justify-content",
-  "align-items", "align-self", "flex-grow", "flex-shrink", "flex-basis", "gap",
-  "grid-template-columns", "grid-template-rows",
-  "color", "background-color", "opacity", "visibility",
-  "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
-  "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
-  "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
-  "border-radius",
-  "font-family", "font-size", "font-weight", "font-style", "line-height",
-  "letter-spacing", "text-align", "text-decoration", "text-transform",
-  "white-space", "vertical-align",
+  'display',
+  'position',
+  'top',
+  'left',
+  'right',
+  'bottom',
+  'float',
+  'clear',
+  'width',
+  'height',
+  'min-width',
+  'min-height',
+  'max-width',
+  'max-height',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  'box-sizing',
+  'overflow',
+  'flex-direction',
+  'flex-wrap',
+  'justify-content',
+  'align-items',
+  'align-self',
+  'flex-grow',
+  'flex-shrink',
+  'flex-basis',
+  'gap',
+  'grid-template-columns',
+  'grid-template-rows',
+  'color',
+  'background-color',
+  'opacity',
+  'visibility',
+  'border-top-width',
+  'border-right-width',
+  'border-bottom-width',
+  'border-left-width',
+  'border-top-color',
+  'border-right-color',
+  'border-bottom-color',
+  'border-left-color',
+  'border-top-style',
+  'border-right-style',
+  'border-bottom-style',
+  'border-left-style',
+  'border-radius',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'font-style',
+  'line-height',
+  'letter-spacing',
+  'text-align',
+  'text-decoration',
+  'text-transform',
+  'white-space',
+  'vertical-align',
   // SVG paint and geometry.
-  "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-opacity",
-  "stroke-dasharray", "stroke-linecap", "stroke-linejoin",
-  "text-anchor", "dominant-baseline", "shape-rendering", "transform", "transform-origin",
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'stroke',
+  'stroke-width',
+  'stroke-opacity',
+  'stroke-dasharray',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'text-anchor',
+  'dominant-baseline',
+  'shape-rendering',
+  'transform',
+  'transform-origin',
 ];
 
 /** True when a chart host has finished drawing a real chart. */
@@ -98,10 +156,10 @@ function chartIsDrawn(host: Element): boolean {
   if (!root) return false;
   // A loading spinner also renders a small <svg>, so size is the discriminator:
   // the icon is ~16-22px, an actual chart is hundreds of px wide.
-  const drawn = Array.from(root.querySelectorAll("svg")).some(
+  const drawn = Array.from(root.querySelectorAll('svg')).some(
     (svg) => svg.getBoundingClientRect().width > 150,
   );
-  return drawn && !/Loading/i.test(root.textContent ?? "");
+  return drawn && !/Loading/i.test(root.textContent ?? '');
 }
 
 /**
@@ -118,7 +176,10 @@ function whenChartsDrawn(root: HTMLElement): Promise<void> {
   return new Promise((resolve) => {
     const started = Date.now();
     const timer = window.setInterval(() => {
-      if (hosts.every(chartIsDrawn) || Date.now() - started > CHART_TIMEOUT_MS) {
+      if (
+        hosts.every(chartIsDrawn) ||
+        Date.now() - started > CHART_TIMEOUT_MS
+      ) {
         window.clearInterval(timer);
         resolve();
       }
@@ -135,8 +196,8 @@ function whenChartsDrawn(root: HTMLElement): Promise<void> {
  */
 function cloneWithComputedStyles(source: Element): Element {
   const copy = source.cloneNode(true) as Element;
-  const sourceNodes = [source, ...Array.from(source.querySelectorAll("*"))];
-  const copyNodes = [copy, ...Array.from(copy.querySelectorAll("*"))];
+  const sourceNodes = [source, ...Array.from(source.querySelectorAll('*'))];
+  const copyNodes = [copy, ...Array.from(copy.querySelectorAll('*'))];
 
   for (let i = 0; i < sourceNodes.length && i < copyNodes.length; i++) {
     const computed = window.getComputedStyle(sourceNodes[i]);
@@ -149,7 +210,7 @@ function cloneWithComputedStyles(source: Element): Element {
       // black blob.
       if (value) declarations.push(`${prop}:${value}`);
     }
-    copyNodes[i].setAttribute("style", declarations.join(";"));
+    copyNodes[i].setAttribute('style', declarations.join(';'));
   }
   return copy;
 }
@@ -169,7 +230,8 @@ function inlineCharts(clone: HTMLElement, original: HTMLElement) {
   originalHosts.forEach((host, index) => {
     const target = cloneHosts[index];
     if (!target) return;
-    const root = (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+    const root = (host as Element & { shadowRoot: ShadowRoot | null })
+      .shadowRoot;
     const content = root?.firstElementChild;
 
     // Two boxes: an outer one that flows in the document and reserves the
@@ -178,14 +240,14 @@ function inlineCharts(clone: HTMLElement, original: HTMLElement) {
     // it happens to occupy on screen -- roughly half the card in the
     // two-column grid -- and scaling the SVG is lossless, so this fills the
     // page without asking the component to re-render.
-    const box = document.createElement("div");
-    box.style.width = "100%";
-    box.style.overflow = "visible";
+    const box = document.createElement('div');
+    box.style.width = '100%';
+    box.style.overflow = 'visible';
 
-    const inner = document.createElement("div");
-    inner.dataset.chartInner = "true";
+    const inner = document.createElement('div');
+    inner.dataset.chartInner = 'true';
     inner.style.width = `${Math.round(host.getBoundingClientRect().width)}px`;
-    inner.style.transformOrigin = "top left";
+    inner.style.transformOrigin = 'top left';
     box.appendChild(inner);
 
     if (content) {
@@ -194,17 +256,17 @@ function inlineCharts(clone: HTMLElement, original: HTMLElement) {
       // half by a container that clips on screen. Nothing here relies on CSS
       // clipping for correctness -- the charts clip their plot area with SVG
       // clipPath, which this does not touch.
-      drawn.querySelectorAll<HTMLElement>("*").forEach((el) => {
-        if (el.style.overflow === "hidden") el.style.overflow = "visible";
+      drawn.querySelectorAll<HTMLElement>('*').forEach((el) => {
+        if (el.style.overflow === 'hidden') el.style.overflow = 'visible';
       });
       inner.appendChild(drawn);
     } else {
       // A chart that never drew. Say so in the document rather than leaving a
       // silent gap the reader cannot interpret.
-      inner.style.width = "100%";
-      inner.textContent = "[chart unavailable]";
-      inner.style.color = "#5C5F5E";
-      inner.style.fontStyle = "italic";
+      inner.style.width = '100%';
+      inner.textContent = '[chart unavailable]';
+      inner.style.color = '#5C5F5E';
+      inner.style.fontStyle = 'italic';
     }
     target.replaceWith(box);
   });
@@ -218,7 +280,7 @@ function inlineCharts(clone: HTMLElement, original: HTMLElement) {
  * which exists while the clone is detached.
  */
 function scaleChartsToWidth(stage: HTMLElement) {
-  stage.querySelectorAll<HTMLElement>("[data-chart-inner]").forEach((inner) => {
+  stage.querySelectorAll<HTMLElement>('[data-chart-inner]').forEach((inner) => {
     const box = inner.parentElement;
     if (!box) return;
     const available = box.clientWidth;
@@ -246,7 +308,7 @@ function applyChartScale(inner: HTMLElement, box: HTMLElement, factor: number) {
   // A chart held back by the height cap is narrower than its card. Center it,
   // rather than leaving it pinned left against a ragged gutter.
   const slack = box.clientWidth - inner.offsetWidth * factor;
-  inner.style.marginLeft = slack > 1 ? `${Math.round(slack / 2)}px` : "0";
+  inner.style.marginLeft = slack > 1 ? `${Math.round(slack / 2)}px` : '0';
 }
 
 /**
@@ -263,9 +325,9 @@ function applyChartScale(inner: HTMLElement, box: HTMLElement, factor: number) {
  */
 function fitCardsToPage(stage: HTMLElement, pageHeight: number) {
   const maxHeight = pageHeight * MAX_CARD_PAGE_FILL - CARD_HEIGHT_SLACK_PX;
-  stage.querySelectorAll<HTMLElement>(".dc-chart-card").forEach((card) => {
+  stage.querySelectorAll<HTMLElement>('.dc-chart-card').forEach((card) => {
     const inners = Array.from(
-      card.querySelectorAll<HTMLElement>("[data-chart-inner]"),
+      card.querySelectorAll<HTMLElement>('[data-chart-inner]'),
     );
     if (inners.length === 0) return;
     const chartHeight = inners.reduce(
@@ -348,7 +410,7 @@ export function chartScaleFactor(available: number, natural: number): number {
 function unbreakableBands(clone: HTMLElement): Band[] {
   const origin = clone.getBoundingClientRect().top;
   const bands: Band[] = [];
-  clone.querySelectorAll<HTMLElement>(".dc-chart-card, table").forEach((el) => {
+  clone.querySelectorAll<HTMLElement>('.dc-chart-card, table').forEach((el) => {
     const rect = el.getBoundingClientRect();
     if (rect.height <= 0) return;
     bands.push({
@@ -357,6 +419,12 @@ function unbreakableBands(clone: HTMLElement): Band[] {
     });
   });
   return bands.sort((a, b) => a.top - b.top);
+}
+
+/** A vertical span of the canvas, in canvas pixels. */
+export interface Band {
+  top: number;
+  bottom: number;
 }
 
 /**
@@ -377,11 +445,6 @@ function unbreakableBands(clone: HTMLElement): Band[] {
  * of the page precisely so it cannot. What is left here is for tables, which
  * have no scale factor to give.
  */
-export interface Band {
-  top: number;
-  bottom: number;
-}
-
 export function pageBreak(
   offset: number,
   pageHeight: number,
@@ -405,10 +468,10 @@ export function pageBreak(
 function fileNameFor(question: string): string {
   const slug = question
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
     .slice(0, 60);
-  return `${slug || "data-commons-answer"}.pdf`;
+  return `${slug || 'data-commons-answer'}.pdf`;
 }
 
 /**
@@ -420,8 +483,7 @@ function fileNameFor(question: string): string {
  * selectable text layer.
  *
  * Elements marked `data-non-print` are dropped, so the exported document is
- * the question and the answer without the follow-up questions or the UI
- * affordances around them — the same rule the print stylesheet applies.
+ * the question and the answer without the UI affordances around them.
  */
 export async function downloadPdf(
   target: HTMLElement | null,
@@ -429,11 +491,8 @@ export async function downloadPdf(
 ): Promise<void> {
   if (!target || !target.isConnected) return;
 
-  // Nothing here may touch the live panel's layout. An earlier version laid it
-  // out at page width first, so the chart components would redraw to fit; that
-  // worked, but the card visibly jumped 832px -> 717px and back on every
-  // export. The page-width layout happens entirely on the detached copy now,
-  // and the charts are scaled to fit there instead of re-rendering.
+  // Leave the live panel's layout untouched so the card does not jump on
+  // export: the page-width layout and chart scaling happen on the copy.
   await whenChartsDrawn(target);
   await renderToPdf(target, question);
 }
@@ -446,81 +505,84 @@ export async function downloadPdf(
  * importing them tripled the initial bundle for a button most sessions never
  * press. Vite splits them into their own chunk, fetched on first export.
  */
-async function renderToPdf(target: HTMLElement, question: string): Promise<void> {
+async function renderToPdf(
+  target: HTMLElement,
+  question: string,
+): Promise<void> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
-    import("jspdf"),
+    import('html2canvas'),
+    import('jspdf'),
   ]);
 
   // Lay the copy out at page width off-screen. It has to be rendered (not
   // display:none) for getComputedStyle and html2canvas to measure it, so it is
   // positioned far off-canvas instead of hidden.
-  const stage = document.createElement("div");
-  stage.style.position = "fixed";
-  stage.style.left = "-10000px";
-  stage.style.top = "0";
+  const stage = document.createElement('div');
+  stage.style.position = 'fixed';
+  stage.style.left = '-10000px';
+  stage.style.top = '0';
   stage.style.width = `${PAGE_WIDTH_PX}px`;
-  stage.style.background = "#ffffff";
-  stage.style.zIndex = "-1";
+  stage.style.background = '#ffffff';
+  stage.style.zIndex = '-1';
 
   const clone = target.cloneNode(true) as HTMLElement;
   clone.style.width = `${PAGE_WIDTH_PX}px`;
   clone.style.maxWidth = `${PAGE_WIDTH_PX}px`;
-  clone.style.border = "0";
-  clone.style.borderRadius = "0";
-  clone.style.overflow = "visible";
-  clone.style.background = "#ffffff";
+  clone.style.border = '0';
+  clone.style.borderRadius = '0';
+  clone.style.overflow = 'visible';
+  clone.style.background = '#ffffff';
 
   // Drop everything the printed document should not carry: the export buttons,
-  // the provenance icon, the follow-up questions.
-  clone.querySelectorAll('[data-non-print="true"]').forEach((el) => el.remove());
-
-  // Remove hover styling for print layout.
-  clone.querySelectorAll<HTMLElement>(".dc-numeric").forEach((n) => {
-    n.style.textDecoration = "none";
-    n.style.cursor = "auto";
+  // the provenance icon.
+  clone.querySelectorAll('[data-non-print="true"]').forEach((el) => {
+    el.remove();
   });
 
-  // The question is the document's heading.
-  //
-  // index.css restyles it for print, but that rule lives in @media print and
-  // this path never enters print media -- so the clone inherited the on-screen
-  // one-line truncated title and the heading came out sliced in half. Applied
-  // here instead, to the same element the print rule targets.
-  clone.querySelectorAll<HTMLElement>(".print-question").forEach((q) => {
-    q.style.whiteSpace = "normal";
-    q.style.textOverflow = "clip";
-    q.style.overflow = "visible";
-    q.style.fontSize = "18px";
-    q.style.lineHeight = "26px";
-    q.style.fontWeight = "700";
-    q.style.color = "#000000";
+  // Remove hover styling for print layout.
+  clone.querySelectorAll<HTMLElement>('.dc-numeric').forEach((numeric) => {
+    numeric.style.textDecoration = 'none';
+    numeric.style.cursor = 'auto';
+  });
+
+  // The question is the document's heading: undo its on-screen one-line
+  // truncation so a long question is not cut off.
+  clone.querySelectorAll<HTMLElement>('.print-question').forEach((heading) => {
+    heading.style.whiteSpace = 'normal';
+    heading.style.textOverflow = 'clip';
+    heading.style.overflow = 'visible';
+    heading.style.fontSize = '18px';
+    heading.style.lineHeight = '26px';
+    heading.style.fontWeight = '700';
+    heading.style.color = '#000000';
     // The row it sits in is sized for one line on screen; let it grow.
-    const row = q.parentElement;
+    const row = heading.parentElement;
     if (row) {
-      row.style.height = "auto";
-      row.style.minHeight = "0";
-      row.style.alignItems = "flex-start";
-      row.style.padding = "0 0 12px 0";
-      row.style.background = "#ffffff";
-      row.style.borderBottom = "0";
+      row.style.height = 'auto';
+      row.style.minHeight = '0';
+      row.style.alignItems = 'flex-start';
+      row.style.padding = '0 0 12px 0';
+      row.style.background = '#ffffff';
+      row.style.borderBottom = '0';
     }
   });
 
   // Chart cards clip their contents on screen to keep rounded corners tidy.
   // In a document there is no viewport to fit, so let them grow instead --
   // otherwise the legend and the source row are cut off mid-line.
-  clone.querySelectorAll<HTMLElement>(".dc-chart-card").forEach((card) => {
-    card.style.height = "auto";
-    card.style.maxHeight = "none";
-    card.style.overflow = "visible";
-    card.style.width = "100%";
-    card.style.maxWidth = "100%";
-    card.style.marginBottom = "16px";
+  clone.querySelectorAll<HTMLElement>('.dc-chart-card').forEach((card) => {
+    card.style.height = 'auto';
+    card.style.maxHeight = 'none';
+    card.style.overflow = 'visible';
+    card.style.width = '100%';
+    card.style.maxWidth = '100%';
+    card.style.marginBottom = '16px';
   });
-  clone.querySelectorAll<HTMLElement>(".dc-charts-container").forEach((grid) => {
-    grid.style.display = "block";
-  });
+  clone
+    .querySelectorAll<HTMLElement>('.dc-charts-container')
+    .forEach((grid) => {
+      grid.style.display = 'block';
+    });
 
   inlineCharts(clone, target);
 
@@ -532,13 +594,17 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
   try {
     const canvas = await html2canvas(clone, {
       scale: CANVAS_SCALE,
-      backgroundColor: "#ffffff",
+      backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
       windowWidth: PAGE_WIDTH_PX,
     });
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+    });
     // How many canvas pixels fit on one page, at the scale the image is placed.
     const pxPerMm = canvas.width / A4_CONTENT_WIDTH_MM;
     const pageHeightPx = Math.floor(A4_CONTENT_HEIGHT_MM * pxPerMm);
@@ -549,22 +615,32 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
     while (offset < canvas.height) {
       const sliceHeight = pageBreak(offset, pageHeightPx, canvas.height, bands);
       if (sliceHeight <= 0) break;
-      const slice = document.createElement("canvas");
+      const slice = document.createElement('canvas');
       slice.width = canvas.width;
       slice.height = sliceHeight;
-      const ctx = slice.getContext("2d");
+      const ctx = slice.getContext('2d');
       if (!ctx) break;
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, slice.width, slice.height);
-      ctx.drawImage(canvas, 0, offset, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+      ctx.drawImage(
+        canvas,
+        0,
+        offset,
+        canvas.width,
+        sliceHeight,
+        0,
+        0,
+        canvas.width,
+        sliceHeight,
+      );
 
       if (!first) pdf.addPage();
       pdf.addImage(
         // JPEG, not PNG: the same three pages came to ~18MB as PNG, which is
         // not a file anyone wants to receive. At this quality the difference
         // is not visible on chart labels.
-        slice.toDataURL("image/jpeg", JPEG_QUALITY),
-        "JPEG",
+        slice.toDataURL('image/jpeg', JPEG_QUALITY),
+        'JPEG',
         MARGIN_MM,
         MARGIN_MM,
         A4_CONTENT_WIDTH_MM,

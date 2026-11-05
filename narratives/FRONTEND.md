@@ -41,8 +41,7 @@ styles.
 - **Import through the `@/` alias, never a relative path:**
   `@/src/hooks/use_sse_chat`, not `./use_sse_chat` or `../hooks/use_sse_chat`.
   This is stricter than [`CODING_GUIDELINES.md`](../CODING_GUIDELINES.md)
-  §3.1, which bans only `../`. Biome's `noRestrictedImports` enforces it in
-  every file that `biome.json` does not exclude.
+  §3.1, which bans only `../`. Biome's `noRestrictedImports` enforces it.
 - Config files (`*.config.*`) and `scripts/**` are exempt. Vite loads
   `ui/vite.config.ts` before the alias exists, and scripts run directly in
   Node, where `@/` is not defined.

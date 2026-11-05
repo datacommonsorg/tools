@@ -3,19 +3,23 @@
  * data sources the answer was actually built on.
  */
 
-import type { ChartItem, ProvenanceItem, ToolCallEvent } from "@/src/hooks/use_sse_chat";
+import type {
+  ChartItem,
+  ProvenanceItem,
+  ToolCallEvent,
+} from '@/src/hooks/use_sse_chat';
 
 /**
  * Tools that fetch observations and pin a source: server-side fetch functions
  * and MCP observation tools.
  */
 const OBSERVATION_TOOLS = new Set([
-  "fetch_observations",
-  "fetch_child_observations",
-  "fetch_multi_entity_observations",
-  "get_observations",
-  "get_child_observations",
-  "get_multi_entity_observations",
+  'fetch_observations',
+  'fetch_child_observations',
+  'fetch_multi_entity_observations',
+  'get_observations',
+  'get_child_observations',
+  'get_multi_entity_observations',
 ]);
 
 /** A statistical variable the turn touched. */
@@ -32,11 +36,11 @@ export interface VariableUse {
 /** How a facet came to supply the numbers, if it did. */
 export type FacetUse =
   /** Offered by a metadata call but never returned any data. */
-  | "unused"
+  | 'unused'
   /** The agent pinned it with source_override. */
-  | "chosen"
+  | 'chosen'
   /** The server returned it because the agent pinned nothing. */
-  | "server-default";
+  | 'server-default';
 
 /**
  * One source ("facet") for a variable. get_variable_metadata reports every
@@ -63,6 +67,7 @@ export interface FacetInfo {
   use: FacetUse;
 }
 
+/** What one turn used, as returned by {@link inspectTurn}. */
 export interface TurnInspection {
   variables: VariableUse[];
   /** Place DCIDs referenced by observation calls, deduplicated. */
@@ -81,11 +86,15 @@ export interface TurnInspection {
 }
 
 /** Parses a tool result, tolerating anything that is not the JSON we expect. */
-function parseResult(result: string | undefined): Record<string, unknown> | null {
+function parseResult(
+  result: string | undefined,
+): Record<string, unknown> | null {
   if (!result) return null;
   try {
     const parsed = JSON.parse(result);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     // Error strings and truncated payloads land here. Not exceptional.
     return null;
@@ -94,19 +103,21 @@ function parseResult(result: string | undefined): Record<string, unknown> | null
 
 /** Reads a string-keyed record off an unknown value, or null. */
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
+  return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
 function asString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 /** Collects the DCIDs an argument names, whether it is a string or a list. */
 function dcidsFrom(value: unknown): string[] {
-  if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === 'string');
+  }
   // get_multi_entity_observations takes a role -> DCID[] map.
   const record = asRecord(value);
   if (record) return Object.values(record).flatMap(dcidsFrom);
@@ -125,7 +136,7 @@ function collectFacets(calls: ToolCallEvent[]): Map<string, FacetInfo> {
   const facets = new Map<string, FacetInfo>();
 
   for (const call of calls) {
-    if (call.name !== "get_variable_metadata") continue;
+    if (call.name !== 'get_variable_metadata') continue;
     const payload = parseResult(call.result);
     if (!payload) continue;
 
@@ -134,7 +145,7 @@ function collectFacets(calls: ToolCallEvent[]): Map<string, FacetInfo> {
 
     for (const [variableDcid, rawVariable] of Object.entries(variables)) {
       const variable = asRecord(rawVariable);
-      const list = Array.isArray(variable?.facets) ? variable!.facets : [];
+      const list = Array.isArray(variable?.facets) ? variable.facets : [];
       for (const rawFacet of list) {
         const facet = asRecord(rawFacet);
         const facetId = asString(facet?.id);
@@ -162,12 +173,18 @@ function collectFacets(calls: ToolCallEvent[]): Map<string, FacetInfo> {
           provenance: asString(props.isPartOf) ?? asString(props.source),
           license: asString(props.licenseType),
           url: asString(props.url) ?? asString(props.descriptionUrl),
-          obsCount: typeof facet.obsCount === "number" ? facet.obsCount : undefined,
-          dateRange: start && end ? (start === end ? start : `${start}–${end}`) : start ?? end,
+          obsCount:
+            typeof facet.obsCount === 'number' ? facet.obsCount : undefined,
+          dateRange:
+            start && end
+              ? start === end
+                ? start
+                : `${start}–${end}`
+              : (start ?? end),
           unit: asString(facetProps.unit),
           forVariables: [variableDcid],
           used: false,
-          use: "unused",
+          use: 'unused',
         });
       }
     }
@@ -184,7 +201,7 @@ function collectNames(calls: ToolCallEvent[]): Map<string, string> {
     if (!payload) continue;
 
     // Search results carry a flat mapping, in either spelling.
-    for (const key of ["dcidNameMappings", "dcid_name_mappings"]) {
+    for (const key of ['dcidNameMappings', 'dcid_name_mappings']) {
       const mapping = asRecord(payload[key]);
       if (!mapping) continue;
       for (const [dcid, name] of Object.entries(mapping)) {
@@ -226,7 +243,9 @@ function collectNames(calls: ToolCallEvent[]): Map<string, string> {
  * `source_metadata.source_id`, using the literal "unknown" for an empty
  * result.
  */
-function getServedFacetId(payload: Record<string, unknown> | null): string | undefined {
+function getServedFacetId(
+  payload: Record<string, unknown> | null,
+): string | undefined {
   if (!payload) return undefined;
   const summaryId = asString(payload.facet_id);
   if (summaryId) return summaryId;
@@ -234,7 +253,7 @@ function getServedFacetId(payload: Record<string, unknown> | null): string | und
     asRecord(payload.sourceMetadata) ?? asRecord(payload.source_metadata);
   if (!metadata) return undefined;
   const id = asString(metadata.sourceId) ?? asString(metadata.source_id);
-  return id && id !== "unknown" ? id : undefined;
+  return id && id !== 'unknown' ? id : undefined;
 }
 
 /** Matches the trailing `(dcid)` of a summary's `name (dcid)` place label. */
@@ -291,19 +310,21 @@ export function inspectTurn(
     const args = call.arguments ?? {};
     const isObservation = OBSERVATION_TOOLS.has(call.name);
 
-    for (const key of ["variable_dcid", "variable_dcids"]) {
-      for (const dcid of dcidsFrom(args[key])) noteVariable(dcid, call.name, isObservation);
+    for (const key of ['variable_dcid', 'variable_dcids']) {
+      for (const dcid of dcidsFrom(args[key])) {
+        noteVariable(dcid, call.name, isObservation);
+      }
     }
 
     if (isObservation) {
       const payload = parseResult(call.result);
       for (const key of [
-        "place_dcid",
-        "place_dcids",
-        "parent_place_dcid",
-        "parent_entity_dcid",
-        "entity_dcids",
-        "entities",
+        'place_dcid',
+        'place_dcids',
+        'parent_place_dcid',
+        'parent_entity_dcid',
+        'entity_dcids',
+        'entities',
       ]) {
         for (const dcid of dcidsFrom(args[key])) places.add(dcid);
       }
@@ -317,23 +338,28 @@ export function inspectTurn(
       // two ever disagree, the served id is the one the numbers came from.
       const served = getServedFacetId(payload) ?? override;
       if (served) {
-        const use: FacetUse = override ? "chosen" : "server-default";
+        const use: FacetUse = override ? 'chosen' : 'server-default';
         const known = facets.get(served);
         if (known) {
           known.used = true;
           // "chosen" wins: one deliberate pick outranks a later fallback.
-          if (known.use !== "chosen") known.use = use;
+          if (known.use !== 'chosen') known.use = use;
         } else {
           // No metadata call described this facet, so it has an id and nothing
           // else. Still worth showing -- it is where the numbers came from.
-          facets.set(served, { facetId: served, forVariables: [], used: true, use });
+          facets.set(served, {
+            facetId: served,
+            forVariables: [],
+            used: true,
+            use,
+          });
         }
       }
     }
   }
 
   const chartSummaries = (charts ?? []).map((chart) => ({
-    title: chart.title ?? "(untitled)",
+    title: chart.title ?? '(untitled)',
     variables: chart.variableDcids ?? [],
     places: chart.placeDcids ?? [],
   }));
@@ -342,7 +368,9 @@ export function inspectTurn(
     variables: [...variables.values()],
     places: [...places],
     // Used facets first: those are what the answer rests on.
-    facets: [...facets.values()].sort((a, b) => Number(b.used) - Number(a.used)),
+    facets: [...facets.values()].sort(
+      (a, b) => Number(b.used) - Number(a.used),
+    ),
     sourceChosenExplicitly,
     charts: chartSummaries,
   };
