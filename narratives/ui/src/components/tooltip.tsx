@@ -270,7 +270,6 @@ export function Tooltip({
             // interactive content should have an accessible role.
             aria-hidden={!isRich}
             role={isRich ? "tooltip" : undefined}
-            data-non-print="true"
             className={
               isRich
                 ? "dc-tooltip-rich"

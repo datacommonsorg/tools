@@ -459,7 +459,6 @@ function ToolbarExportPdfPill({
       type="button"
       onClick={onExport}
       disabled={busy}
-      data-non-print="true"
       className="inline-flex items-center cursor-pointer hover:opacity-90"
       style={{
         background: COLOR_TONAL_CONTAINER,

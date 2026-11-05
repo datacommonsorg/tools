@@ -137,7 +137,6 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
       ref={toastRef}
       role="status"
       aria-live="polite"
-      data-non-print="true"
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
       onFocus={() => setIsFocused(true)}
