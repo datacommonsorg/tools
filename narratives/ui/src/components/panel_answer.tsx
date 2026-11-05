@@ -34,9 +34,9 @@ import {
 import { ChartTile } from "@/src/components/tile_chart";
 import { DisclaimerNote } from "@/src/components/note_disclaimer";
 import {
-  ProvenanceInspector,
-  isProvenanceDebugEnabled,
-} from "@/src/components/panel_debug_provenance";
+  DebugPanel,
+  isDebugPanelEnabled,
+} from "@/src/components/panel_debug/panel_debug";
 import { ExportIcon } from "@/src/components/icons";
 import { ExportPdfButton } from "@/src/components/button_export_pdf";
 import { FollowUpQuestions } from "@/src/components/questions_follow_up";
@@ -268,7 +268,7 @@ export function AnswerPanel({
           <>
             {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
-            {isProvenanceDebugEnabled() && <ProvenanceInspector turn={turn} />}
+            {isDebugPanelEnabled() && <DebugPanel turn={turn} />}
             <ToolbarExportPdfPill onExport={onExport} busy={exporting} />
           </>
         )}
