@@ -340,12 +340,11 @@ export function AnswerPanel({
 
         They sit outside the card because the PDF export clones the card, and
         each question asks something new rather than being part of this
-        answer. The non-print marker keeps browser printing from showing them
-        as well. */}
+        answer. */}
     {turn.status === "done" &&
       isRevealed &&
       (turn.followUps?.length ?? 0) > 0 && (
-        <div data-non-print="true" className="px-4 sm:px-6 mb-6">
+        <div className="px-4 sm:px-6 mb-6">
           <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
         </div>
       )}
@@ -460,7 +459,6 @@ function ToolbarExportPdfPill({
       type="button"
       onClick={onExport}
       disabled={busy}
-      data-non-print="true"
       className="inline-flex items-center cursor-pointer hover:opacity-90"
       style={{
         background: COLOR_TONAL_CONTAINER,
