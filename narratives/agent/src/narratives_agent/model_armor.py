@@ -54,7 +54,8 @@ _MATCH_FOUND = "MATCH_FOUND"
 _DEFAULT_MATCH_LABEL = "model_armor"
 
 _TEMPLATE_PATTERN = re.compile(
-    r"^projects/[^/]+/locations/(?P<location>[^/]+)/templates/[^/]+$"
+    r"^projects/[A-Za-z0-9._:-]+/locations/(?P<location>[a-z0-9-]+)"
+    r"/templates/[A-Za-z0-9._-]+$"
 )
 
 
