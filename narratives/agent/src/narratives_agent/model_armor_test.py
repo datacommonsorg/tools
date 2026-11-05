@@ -18,6 +18,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+import google.auth.exceptions
 import httpx
 import pytest
 from google.auth.credentials import Credentials
@@ -44,11 +45,14 @@ class _StubCredentials(Credentials):
         token: str | None = "test-access-token",
         expired: bool = False,
         quota_project_id: str | None = None,
+        *,
+        populate_on_refresh: bool = True,
     ) -> None:
         super().__init__()  # type: ignore[no-untyped-call]
         self.token = token
         self._expired = expired
         self._quota_project_id = quota_project_id
+        self._populate_on_refresh = populate_on_refresh
         self.refresh_calls = 0
 
     @property
@@ -58,7 +62,8 @@ class _StubCredentials(Credentials):
     def refresh(self, request: Any) -> None:
         self.refresh_calls += 1
         self._expired = False
-        self.token = f"refreshed-token-{self.refresh_calls}"
+        if self._populate_on_refresh:
+            self.token = f"refreshed-token-{self.refresh_calls}"
 
 
 @pytest.fixture
@@ -348,6 +353,54 @@ async def test_upstream_errors_fail_open_without_logging_query(
         result = await model_armor.screen_user_prompt(_QUERY)
 
     assert result is None
+    assert expected_log in caplog.text
+    assert _QUERY not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("creds_loader", "expected_log"),
+    [
+        pytest.param(
+            lambda: (_ for _ in ()).throw(
+                google.auth.exceptions.DefaultCredentialsError("no ADC")  # type: ignore[no-untyped-call]
+            ),
+            "DefaultCredentialsError",
+            id="default-credentials-error",
+        ),
+        pytest.param(
+            lambda: _StubCredentials(
+                token=None, expired=False, populate_on_refresh=False
+            ),
+            "RuntimeError",
+            id="missing-access-token",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_auth_errors_fail_open_without_http_or_logging_query(
+    monkeypatch: pytest.MonkeyPatch,
+    install_transport: Callable[
+        [Callable[[httpx.Request], httpx.Response]], list[httpx.Request]
+    ],
+    caplog: pytest.LogCaptureFixture,
+    creds_loader: Callable[[], Credentials],
+    expected_log: str,
+) -> None:
+    # Test: Fail-open error handling on ADC credential failures.
+    # Situation: Loading or building ADC headers raises `GoogleAuthError` or
+    #   `RuntimeError`.
+    # Expectation: `screen_user_prompt` logs a warning with the exception type
+    #   (without leaking the user query text), makes no HTTP request, and
+    #   returns `None`.
+    monkeypatch.setenv(MODEL_ARMOR_TEMPLATE_ENV, _TEMPLATE)
+    monkeypatch.setattr(model_armor, "_load_credentials", creds_loader)
+    requests = install_transport(lambda req: httpx.Response(200, json={}))
+
+    with caplog.at_level(logging.WARNING, logger=model_armor.logger.name):
+        result = await model_armor.screen_user_prompt(_QUERY)
+
+    assert result is None
+    assert requests == []
     assert expected_log in caplog.text
     assert _QUERY not in caplog.text
 
