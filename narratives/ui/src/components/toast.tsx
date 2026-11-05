@@ -58,38 +58,56 @@ interface ToastProps {
  * message, close action at the trailing edge. Fades and slides up in, then
  * back down out before `onDismiss` unmounts it — whether it timed out or the
  * close button was pressed. The countdown pauses while the pointer is over the
- * toast or it holds focus, and resumes at {@link RESUME_MS} once both have
- * left.
+ * toast or it holds focus, then resumes with whatever is left of
+ * {@link VISIBLE_MS}, but never less than {@link RESUME_MS}. Escape dismisses
+ * it while paused.
  *
  * Deliberately self-dismissing rather than a queue: the only caller is the PDF
  * export, one message at a time. `role="status"` rather than `alert` — this
  * confirms something the user asked for, so it should not interrupt them.
+ *
+ * Give each notification its own React `key`: the toast does not reset its
+ * countdown or exit state when `message` changes in place.
  */
 export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
-  const reduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotion();
   const toastRef = useRef<HTMLDivElement>(null);
   // Usually the Export button; read once, on the first render.
   const openerRef = useRef(document.activeElement);
-  const [leaving, setLeaving] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const paused = hovered || focused;
-  const wasPausedRef = useRef(false);
+  const mountedAtRef = useRef<number | null>(null);
+  // Callers pass an inline arrow; a ref keeps a parent re-render from
+  // restarting the exit timer below.
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const isPaused = isHovered || isFocused;
 
   useEffect(() => {
-    if (paused) {
-      wasPausedRef.current = true;
-      return;
-    }
-    const delay = wasPausedRef.current ? RESUME_MS : VISIBLE_MS;
-    const timer = window.setTimeout(() => setLeaving(true), delay);
+    mountedAtRef.current ??= Date.now();
+    if (isLeaving || isPaused) return;
+    const elapsed = Date.now() - mountedAtRef.current;
+    const delay = Math.max(RESUME_MS, VISIBLE_MS - elapsed);
+    const timer = window.setTimeout(() => setIsLeaving(true), delay);
     return () => window.clearTimeout(timer);
-  }, [paused]);
+  }, [isLeaving, isPaused]);
+
+  // Paused, the toast would otherwise stay up for as long as the pointer rests
+  // on it (WCAG 2.2 SC 1.4.13).
+  useEffect(() => {
+    if (!isPaused || isLeaving) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsLeaving(true);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isPaused, isLeaving]);
 
   // Stay mounted until the exit animation has played. A timer rather than
   // `animationend`, which never fires when reduced motion skips the animation.
   useEffect(() => {
-    if (!leaving) return;
+    if (!isLeaving) return;
     const timer = window.setTimeout(
       () => {
         const active = document.activeElement;
@@ -101,14 +119,14 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
         if (focusUnmoved && !window.matchMedia(TOUCH_QUERY).matches) {
           returnFocusRef?.current?.focus();
         }
-        onDismiss();
+        onDismissRef.current();
       },
-      reduceMotion ? 0 : EXIT_MS,
+      shouldReduceMotion ? 0 : EXIT_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [leaving, onDismiss, reduceMotion, returnFocusRef]);
+  }, [isLeaving, shouldReduceMotion, returnFocusRef]);
 
-  const animation = leaving
+  const animation = isLeaving
     ? 'motion-safe:animate-exit'
     : 'motion-safe:animate-enter';
 
@@ -120,10 +138,14 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
       role="status"
       aria-live="polite"
       data-non-print="true"
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setIsFocused(false);
+        }
+      }}
       className={`fixed bottom-2 left-2 right-2 sm:bottom-6 sm:left-auto sm:right-6 sm:min-w-72 sm:max-w-xl z-50 flex items-center gap-2 py-1.5 px-4 rounded bg-inverse-surface text-on-inverse-surface text-body-medium shadow-lg ${animation}`}
     >
       <span className="py-2">{message}</span>
@@ -132,7 +154,7 @@ export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
       <button
         type="button"
         aria-label="Close"
-        onClick={() => setLeaving(true)}
+        onClick={() => setIsLeaving(true)}
         className="ml-auto -mr-3 -my-1.5 w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-on-inverse-surface/10 transition-colors"
       >
         <X className="size-5" aria-hidden="true" />

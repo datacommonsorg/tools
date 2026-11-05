@@ -43,6 +43,9 @@ describe('Toast', () => {
 
   afterEach(() => {
     cleanup();
+    // Tests append raw nodes (a stand-in prompt, a dialog button) that
+    // cleanup() does not unmount; clear them even when an assertion failed.
+    document.body.replaceChildren();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -127,6 +130,59 @@ describe('Toast', () => {
     expect(toast.className).toContain('motion-safe:animate-exit');
   });
 
+  it('keeps the rest of VISIBLE_MS after a brief hover', () => {
+    // Test: A pointer crossing the toast early.
+    // Situation: The pointer enters at 200ms and leaves at 300ms.
+    // Expectation: The toast still stays up for the full VISIBLE_MS rather
+    //              than leaving RESUME_MS after the pointer.
+    render(<Toast message="PDF downloaded" onDismiss={vi.fn()} />);
+    const toast = screen.getByRole('status');
+
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.pointerEnter(toast);
+    act(() => vi.advanceTimersByTime(100));
+    fireEvent.pointerLeave(toast);
+    act(() => vi.advanceTimersByTime(VISIBLE_MS - 300 - 1));
+    expect(toast.className).toContain('motion-safe:animate-enter');
+    act(() => vi.advanceTimersByTime(1));
+    expect(toast.className).toContain('motion-safe:animate-exit');
+  });
+
+  it('dismisses on Escape while paused', () => {
+    // Test: Escape dismissal.
+    // Situation: The pointer rests on the toast, holding it open, and the
+    //            user presses Escape.
+    // Expectation: The toast exits without the pointer having to move.
+    const onDismiss = vi.fn();
+    render(<Toast message="PDF downloaded" onDismiss={onDismiss} />);
+    const toast = screen.getByRole('status');
+
+    fireEvent.pointerEnter(toast);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(toast.className).toContain('motion-safe:animate-exit');
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restart the exit when the parent re-renders', () => {
+    // Test: Exit timing under a new onDismiss identity.
+    // Situation: The caller re-renders mid-exit with a fresh inline onDismiss.
+    // Expectation: The toast still dismisses EXIT_MS after it started leaving,
+    //              calling the latest onDismiss.
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(
+      <Toast message="PDF downloaded" onDismiss={first} />,
+    );
+
+    act(() => vi.advanceTimersByTime(VISIBLE_MS));
+    act(() => vi.advanceTimersByTime(EXIT_MS / 2));
+    rerender(<Toast message="PDF downloaded" onDismiss={second} />);
+    act(() => vi.advanceTimersByTime(EXIT_MS / 2));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it('holds while focused and returns focus when closed', () => {
     // Test: Keyboard dismissal.
     // Situation: A keyboard user focuses Close, waits past VISIBLE_MS, then
@@ -153,7 +209,6 @@ describe('Toast', () => {
     act(() => vi.advanceTimersByTime(EXIT_MS));
     expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(prompt);
-    prompt.remove();
   });
 
   it('moves focus to returnFocusRef when it times out', () => {
@@ -173,7 +228,6 @@ describe('Toast', () => {
     act(() => vi.advanceTimersByTime(VISIBLE_MS));
     act(() => vi.advanceTimersByTime(EXIT_MS));
     expect(document.activeElement).toBe(prompt);
-    prompt.remove();
   });
 
   it('leaves focus alone on touch devices', () => {
@@ -198,7 +252,6 @@ describe('Toast', () => {
     act(() => vi.advanceTimersByTime(VISIBLE_MS));
     act(() => vi.advanceTimersByTime(EXIT_MS));
     expect(document.activeElement).not.toBe(prompt);
-    prompt.remove();
   });
 
   it('leaves focus where the user moved it', () => {
@@ -222,7 +275,5 @@ describe('Toast', () => {
     act(() => vi.advanceTimersByTime(VISIBLE_MS));
     act(() => vi.advanceTimersByTime(EXIT_MS));
     expect(document.activeElement).toBe(dialogClose);
-    prompt.remove();
-    dialogClose.remove();
   });
 });
