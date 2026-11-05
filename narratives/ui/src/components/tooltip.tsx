@@ -21,16 +21,16 @@
 
 import {
   cloneElement,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
-  type ReactElement,
-  type ReactNode,
-  type Ref,
-} from "react";
-import { createPortal } from "react-dom";
+} from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Material 3 Tooltips (https://m3.material.io/components/tooltips/overview).
@@ -72,7 +72,8 @@ const WARM_MS = 400;
 /** When the last tooltip closed — drives the {@link WARM_MS} grace period. */
 let lastHiddenAt = 0;
 
-export type Placement = "top" | "bottom" | "left" | "right";
+/** The side of its anchor that a tooltip opens on. */
+export type Placement = 'top' | 'bottom' | 'left' | 'right';
 
 /** The part of a DOMRect the placement maths actually reads. */
 export interface Box {
@@ -84,6 +85,7 @@ export interface Box {
   height: number;
 }
 
+/** Props for {@link Tooltip}. */
 export interface TooltipProps {
   /** The label to show for plain tooltips, or supporting body text for rich tooltips. */
   label?: string;
@@ -100,7 +102,7 @@ export interface TooltipProps {
   /** Optional custom rich content for M3 Rich Tooltips. */
   content?: ReactNode;
   /** Tooltip variant: "plain" (default for short labels) or "rich". Auto-inferred if title, actionLabel, or content is provided. */
-  variant?: "plain" | "rich";
+  variant?: 'plain' | 'rich';
   /** Preferred side. Flips to the opposite side when there is no room. */
   placement?: Placement;
   /** The trigger. Must be a host element (button, a, …) so it can take a ref. */
@@ -126,9 +128,9 @@ export function Tooltip({
   children,
 }: TooltipProps) {
   const isRich =
-    variant === "rich" ||
+    variant === 'rich' ||
     Boolean(title || actionLabel || secondaryActionLabel || content);
-  const preferredSide: Placement = placement ?? (isRich ? "bottom" : "top");
+  const preferredSide: Placement = placement ?? (isRich ? 'bottom' : 'top');
 
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<Coords | null>(null);
@@ -159,6 +161,7 @@ export function Tooltip({
   // Position after the tooltip has been laid out, so its real measured size
   // decides whether the preferred side fits. Runs before paint, so the
   // tooltip is never visible at the wrong spot.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: label, title and content change the tooltip's size, so it is placed again when they change.
   useLayoutEffect(() => {
     if (!open) return;
     const anchor = anchorRef.current;
@@ -179,7 +182,7 @@ export function Tooltip({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") hide();
+      if (e.key === 'Escape') hide();
     };
     const onDocPointerDown = (e: PointerEvent) => {
       if (
@@ -191,18 +194,18 @@ export function Tooltip({
       }
       hide();
     };
-    window.addEventListener("scroll", hide, true);
-    window.addEventListener("resize", hide);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    window.addEventListener('keydown', onKey);
     if (isRich) {
-      document.addEventListener("pointerdown", onDocPointerDown);
+      document.addEventListener('pointerdown', onDocPointerDown);
     }
     return () => {
-      window.removeEventListener("scroll", hide, true);
-      window.removeEventListener("resize", hide);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('resize', hide);
+      window.removeEventListener('keydown', onKey);
       if (isRich) {
-        document.removeEventListener("pointerdown", onDocPointerDown);
+        document.removeEventListener('pointerdown', onDocPointerDown);
       }
     };
   }, [open, hide, isRich]);
@@ -225,7 +228,7 @@ export function Tooltip({
       callHandler(childProps.onPointerEnter, e);
       // Touch would leave the tooltip stuck open with no hover-out; the
       // control's own aria-label carries the same text for that case.
-      if (e.pointerType !== "touch") show();
+      if (e.pointerType !== 'touch') show();
     },
     onPointerLeave: (e: React.PointerEvent) => {
       callHandler(childProps.onPointerLeave, e);
@@ -248,7 +251,7 @@ export function Tooltip({
       callHandler(childProps.onFocus, e);
       // Only keyboard focus. Showing on click-focus duplicates a tooltip the
       // pointer already triggered, and leaves it up after the click.
-      if (e.target.matches(":focus-visible")) show();
+      if (e.target.matches(':focus-visible')) show();
     },
     onBlur: (e: React.FocusEvent<HTMLElement>) => {
       callHandler(childProps.onBlur, e);
@@ -257,7 +260,7 @@ export function Tooltip({
   } as Record<string, unknown>);
 
   const isMultiline =
-    !isRich && ((label?.length ?? 0) > 36 || Boolean(label?.includes("\n")));
+    !isRich && ((label?.length ?? 0) > 36 || Boolean(label?.includes('\n')));
 
   return (
     <>
@@ -269,11 +272,11 @@ export function Tooltip({
             // Screen readers announce trigger aria-label, but rich tooltips with
             // interactive content should have an accessible role.
             aria-hidden={!isRich}
-            role={isRich ? "tooltip" : undefined}
+            role={isRich ? 'tooltip' : undefined}
             className={
               isRich
-                ? "dc-tooltip-rich"
-                : `dc-tooltip${isMultiline ? " dc-tooltip-multiline" : ""}`
+                ? 'dc-tooltip-rich'
+                : `dc-tooltip${isMultiline ? ' dc-tooltip-multiline' : ''}`
             }
             onPointerEnter={
               isRich
@@ -291,16 +294,18 @@ export function Tooltip({
                 : undefined
             }
             style={{
-              position: "fixed",
+              position: 'fixed',
               top: coords?.top ?? 0,
               left: coords?.left ?? 0,
               // Hidden for the single frame between mount and measurement.
-              visibility: coords ? "visible" : "hidden",
+              visibility: coords ? 'visible' : 'hidden',
             }}
           >
             {isRich ? (
               <>
-                {title && <div className="dc-tooltip-rich-subhead">{title}</div>}
+                {title && (
+                  <div className="dc-tooltip-rich-subhead">{title}</div>
+                )}
                 {label && <div className="dc-tooltip-rich-body">{label}</div>}
                 {content}
                 {(actionLabel || secondaryActionLabel) && (
@@ -350,23 +355,19 @@ export function Tooltip({
  * Flips to the opposite side when the preferred one would be clipped, then
  * clamps along the cross axis so a tooltip on an edge control stays on screen.
  */
-export function place(
-  anchor: Box,
-  tip: Box,
-  preferred: Placement,
-): Coords {
-  const side = fit(anchor, tip, preferred);
-  const vertical = side === "top" || side === "bottom";
+export function place(anchor: Box, tip: Box, preferred: Placement): Coords {
+  const side = pickSide(anchor, tip, preferred);
+  const vertical = side === 'top' || side === 'bottom';
 
   const top = vertical
-    ? side === "top"
+    ? side === 'top'
       ? anchor.top - tip.height - OFFSET
       : anchor.bottom + OFFSET
     : anchor.top + anchor.height / 2 - tip.height / 2;
 
   const left = vertical
     ? anchor.left + anchor.width / 2 - tip.width / 2
-    : side === "left"
+    : side === 'left'
       ? anchor.left - tip.width - OFFSET
       : anchor.right + OFFSET;
 
@@ -377,7 +378,7 @@ export function place(
 }
 
 /** Returns the preferred side, or its opposite when that side has no room. */
-function fit(anchor: Box, tip: Box, preferred: Placement): Placement {
+function pickSide(anchor: Box, tip: Box, preferred: Placement): Placement {
   const room: Record<Placement, number> = {
     top: anchor.top,
     bottom: window.innerHeight - anchor.bottom,
@@ -385,13 +386,13 @@ function fit(anchor: Box, tip: Box, preferred: Placement): Placement {
     right: window.innerWidth - anchor.right,
   };
   const opposite: Record<Placement, Placement> = {
-    top: "bottom",
-    bottom: "top",
-    left: "right",
-    right: "left",
+    top: 'bottom',
+    bottom: 'top',
+    left: 'right',
+    right: 'left',
   };
   const needed =
-    (preferred === "top" || preferred === "bottom" ? tip.height : tip.width) +
+    (preferred === 'top' || preferred === 'bottom' ? tip.height : tip.width) +
     OFFSET;
   if (room[preferred] >= needed) return preferred;
   const other = opposite[preferred];
@@ -408,15 +409,15 @@ function clamp(value: number, size: number, viewport: number): number {
 
 /** Invokes a cloned child's original handler, when it had one. */
 function callHandler(handler: unknown, event: unknown) {
-  if (typeof handler === "function") {
+  if (typeof handler === 'function') {
     (handler as (e: unknown) => void)(event);
   }
 }
 
 /** Forwards the node to a ref the child already carried, in either form. */
 function applyRef(ref: Ref<HTMLElement> | undefined, node: HTMLElement | null) {
-  if (typeof ref === "function") ref(node);
-  else if (ref && typeof ref === "object") {
+  if (typeof ref === 'function') ref(node);
+  else if (ref && typeof ref === 'object') {
     (ref as { current: HTMLElement | null }).current = node;
   }
 }

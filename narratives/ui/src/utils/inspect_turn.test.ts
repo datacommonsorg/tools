@@ -6,57 +6,60 @@
  * rather than as an empty panel in the UI.
  */
 
-import { describe, expect, it } from "vitest";
-import { inspectTurn } from "@/src/utils/inspect_turn";
-import type { ToolCallEvent } from "@/src/hooks/use_sse_chat";
+import { describe, expect, it } from 'vitest';
+import type { ToolCallEvent } from '@/src/hooks/use_sse_chat';
+import { inspectTurn } from '@/src/utils/inspect_turn';
 
 const METADATA_RESULT = JSON.stringify({
-  status: "SUCCESS",
+  status: 'SUCCESS',
   variables: {
     Count_Person: {
-      id: "Count_Person",
-      name: "Total population",
+      id: 'Count_Person',
+      name: 'Total population',
       facets: [
         {
-          id: "16450972571663981028",
-          provenanceId: "dc/base/IndiaCensus",
+          id: '16450972571663981028',
+          provenanceId: 'dc/base/IndiaCensus',
           obsCount: 1,
-          dateRange: { start: "2011", end: "2011" },
+          dateRange: { start: '2011', end: '2011' },
           properties: {},
         },
         {
-          id: "16633743049422531122",
-          provenanceId: "dc/base/NITI",
+          id: '16633743049422531122',
+          provenanceId: 'dc/base/NITI',
           obsCount: 16,
-          dateRange: { start: "2011", end: "2026" },
-          properties: { unit: "Person" },
+          dateRange: { start: '2011', end: '2026' },
+          properties: { unit: 'Person' },
         },
       ],
     },
   },
   provenances: {
-    "dc/base/IndiaCensus": {
+    'dc/base/IndiaCensus': {
       properties: {
-        isPartOf: "India Census Tables",
-        source: "Census of India",
-        url: "https://censusindia.gov.in/",
-        licenseType: "PublicDomain",
+        isPartOf: 'India Census Tables',
+        source: 'Census of India',
+        url: 'https://censusindia.gov.in/',
+        licenseType: 'PublicDomain',
       },
     },
-    "dc/base/NITI": {
+    'dc/base/NITI': {
       properties: {
-        isPartOf: "NITI India Population Projection",
-        url: "https://ndap.niti.gov.in/dataset/7208",
-        licenseType: "PublicDomain",
+        isPartOf: 'NITI India Population Projection',
+        url: 'https://ndap.niti.gov.in/dataset/7208',
+        licenseType: 'PublicDomain',
       },
     },
   },
 });
 
 const SEARCH_RESULT = JSON.stringify({
-  status: "SUCCESS",
-  dcidNameMappings: { Count_Person: "Total population", "country/IND": "India" },
-  variables: [{ dcid: "Count_Person", placesWithData: ["country/IND"] }],
+  status: 'SUCCESS',
+  dcidNameMappings: {
+    Count_Person: 'Total population',
+    'country/IND': 'India',
+  },
+  variables: [{ dcid: 'Count_Person', placesWithData: ['country/IND'] }],
 });
 
 /**
@@ -65,16 +68,16 @@ const SEARCH_RESULT = JSON.stringify({
  * the server picked NITI on its own, and reported which one it picked.
  */
 const OBSERVATION_RESULT = JSON.stringify({
-  variable: { dcid: "Count_Person", name: "Total population" },
+  variable: { dcid: 'Count_Person', name: 'Total population' },
   sourceMetadata: {
-    sourceId: "16633743049422531122",
-    measurementMethod: "NITIIndiaProjection",
-    provenanceUrl: "https://ndap.niti.gov.in/dataset/7208",
+    sourceId: '16633743049422531122',
+    measurementMethod: 'NITIIndiaProjection',
+    provenanceUrl: 'https://ndap.niti.gov.in/dataset/7208',
   },
   alternativeSources: [
-    { sourceMetadata: { sourceId: "16450972571663981028" } },
+    { sourceMetadata: { sourceId: '16450972571663981028' } },
   ],
-  data: { columns: ["date", "value"], rows: [["2011", 1210854977]] },
+  data: { columns: ['date', 'value'], rows: [['2011', 1210854977]] },
 });
 
 /**
@@ -83,49 +86,65 @@ const OBSERVATION_RESULT = JSON.stringify({
  * listed as `name (dcid)` labels.
  */
 const FETCH_SUMMARY = JSON.stringify({
-  table_id: "t1",
-  variable_dcid: "Count_Person",
-  variable_name: "Total population",
+  table_id: 't1',
+  variable_dcid: 'Count_Person',
+  variable_name: 'Total population',
   observation_count: 128,
   places_with_data_count: 2,
-  places_with_data: ["India (country/IND)", "China (country/CHN)"],
+  places_with_data: ['India (country/IND)', 'China (country/CHN)'],
   places_without_data_count: 0,
   places_without_data: [],
-  date_range: ["1960", "2023"],
-  source: { name: "NITI India Population Projection", url: "https://ndap.niti.gov.in/dataset/7208" },
-  facet_id: "16633743049422531122",
-  unit: "Person",
+  date_range: ['1960', '2023'],
+  source: {
+    name: 'NITI India Population Projection',
+    url: 'https://ndap.niti.gov.in/dataset/7208',
+  },
+  facet_id: '16633743049422531122',
+  unit: 'Person',
   scaling_factor: null,
-  measurement_method: "NITIIndiaProjection",
-  observation_period: "P1Y",
-  alternative_sources: [{ source_id: "16450972571663981028" }],
+  measurement_method: 'NITIIndiaProjection',
+  observation_period: 'P1Y',
+  alternative_sources: [{ source_id: '16450972571663981028' }],
   value_range: [445954579, 1428627663],
   sample_rows: [
-    { place_dcid: "country/IND", place_name: "India", date: "2023", value: 1428627663, facet_id: "16633743049422531122" },
+    {
+      place_dcid: 'country/IND',
+      place_name: 'India',
+      date: '2023',
+      value: 1428627663,
+      facet_id: '16633743049422531122',
+    },
   ],
 });
 
 const calls = (...items: ToolCallEvent[]) => items;
 
-describe("inspectTurn", () => {
-  it("joins a chosen source_override to its dataset name, license and coverage", () => {
+describe('inspectTurn', () => {
+  it('joins a chosen source_override to its dataset name, license and coverage', () => {
     const out = inspectTurn(
       calls(
-        { name: "search_indicators", arguments: { query: "population" }, result: SEARCH_RESULT },
         {
-          name: "get_variable_metadata",
-          arguments: { variable_dcids: ["Count_Person"], entity_dcids: ["country/IND"] },
+          name: 'search_indicators',
+          arguments: { query: 'population' },
+          result: SEARCH_RESULT,
+        },
+        {
+          name: 'get_variable_metadata',
+          arguments: {
+            variable_dcids: ['Count_Person'],
+            entity_dcids: ['country/IND'],
+          },
           result: METADATA_RESULT,
         },
         {
-          name: "get_child_observations",
+          name: 'get_child_observations',
           arguments: {
-            variable_dcid: "Count_Person",
-            parent_place_dcid: "country/IND",
-            child_place_type: "State",
-            source_override: "16633743049422531122",
+            variable_dcid: 'Count_Person',
+            parent_place_dcid: 'country/IND',
+            child_place_type: 'State',
+            source_override: '16633743049422531122',
           },
-          result: "{}",
+          result: '{}',
         },
       ),
     );
@@ -135,44 +154,61 @@ describe("inspectTurn", () => {
     // Used facet sorts first, so the answer's actual source leads.
     const used = out.facets[0];
     expect(used.used).toBe(true);
-    expect(used.use).toBe("chosen");
-    expect(used.facetId).toBe("16633743049422531122");
-    expect(used.provenance).toBe("NITI India Population Projection");
-    expect(used.license).toBe("PublicDomain");
+    expect(used.use).toBe('chosen');
+    expect(used.facetId).toBe('16633743049422531122');
+    expect(used.provenance).toBe('NITI India Population Projection');
+    expect(used.license).toBe('PublicDomain');
     expect(used.obsCount).toBe(16);
-    expect(used.dateRange).toBe("2011–2026");
-    expect(used.unit).toBe("Person");
+    expect(used.dateRange).toBe('2011–2026');
+    expect(used.unit).toBe('Person');
 
     // The rejected candidate is still listed, so a reviewer can see the choice.
-    const unused = out.facets.find((f) => f.facetId === "16450972571663981028");
+    const unused = out.facets.find((f) => f.facetId === '16450972571663981028');
     expect(unused?.used).toBe(false);
-    expect(unused?.use).toBe("unused");
-    expect(unused?.provenance).toBe("India Census Tables");
+    expect(unused?.use).toBe('unused');
+    expect(unused?.provenance).toBe('India Census Tables');
   });
 
-  it("prefers the dataset (isPartOf) over the publisher (source)", () => {
+  it('prefers the dataset (isPartOf) over the publisher (source)', () => {
     const out = inspectTurn(
-      calls({ name: "get_variable_metadata", arguments: {}, result: METADATA_RESULT }),
+      calls({
+        name: 'get_variable_metadata',
+        arguments: {},
+        result: METADATA_RESULT,
+      }),
     );
-    const census = out.facets.find((f) => f.facetId === "16450972571663981028");
-    expect(census?.provenance).toBe("India Census Tables");
-    expect(census?.provenance).not.toBe("Census of India");
+    const census = out.facets.find((f) => f.facetId === '16450972571663981028');
+    expect(census?.provenance).toBe('India Census Tables');
+    expect(census?.provenance).not.toBe('Census of India');
   });
 
-  it("collapses a single-year range instead of repeating it", () => {
+  it('collapses a single-year range instead of repeating it', () => {
     const out = inspectTurn(
-      calls({ name: "get_variable_metadata", arguments: {}, result: METADATA_RESULT }),
+      calls({
+        name: 'get_variable_metadata',
+        arguments: {},
+        result: METADATA_RESULT,
+      }),
     );
-    expect(out.facets.find((f) => f.facetId === "16450972571663981028")?.dateRange).toBe("2011");
+    expect(
+      out.facets.find((f) => f.facetId === '16450972571663981028')?.dateRange,
+    ).toBe('2011');
   });
 
-  it("names the source the server picked when the agent pinned none", () => {
+  it('names the source the server picked when the agent pinned none', () => {
     const out = inspectTurn(
       calls(
-        { name: "get_variable_metadata", arguments: {}, result: METADATA_RESULT },
         {
-          name: "get_observations",
-          arguments: { variable_dcid: "Count_Person", place_dcid: "country/IND" },
+          name: 'get_variable_metadata',
+          arguments: {},
+          result: METADATA_RESULT,
+        },
+        {
+          name: 'get_observations',
+          arguments: {
+            variable_dcid: 'Count_Person',
+            place_dcid: 'country/IND',
+          },
           result: OBSERVATION_RESULT,
         },
       ),
@@ -181,132 +217,153 @@ describe("inspectTurn", () => {
     // Nobody chose -- but the numbers still came from somewhere, and the panel
     // has to say where. Before this, every candidate read as unused.
     expect(out.sourceChosenExplicitly).toBe(false);
-    const served = out.facets.find((f) => f.facetId === "16633743049422531122");
+    const served = out.facets.find((f) => f.facetId === '16633743049422531122');
     expect(served?.used).toBe(true);
-    expect(served?.use).toBe("server-default");
-    expect(served?.provenance).toBe("NITI India Population Projection");
+    expect(served?.use).toBe('server-default');
+    expect(served?.provenance).toBe('NITI India Population Projection');
 
-    const other = out.facets.find((f) => f.facetId === "16450972571663981028");
-    expect(other?.use).toBe("unused");
+    const other = out.facets.find((f) => f.facetId === '16450972571663981028');
+    expect(other?.use).toBe('unused');
   });
 
-  it("shows a server-picked source that no metadata call described", () => {
+  it('shows a server-picked source that no metadata call described', () => {
     const out = inspectTurn(
       calls({
-        name: "get_observations",
-        arguments: { variable_dcid: "Count_Person", place_dcid: "country/IND" },
+        name: 'get_observations',
+        arguments: { variable_dcid: 'Count_Person', place_dcid: 'country/IND' },
         result: OBSERVATION_RESULT,
       }),
     );
     expect(out.facets).toHaveLength(1);
-    expect(out.facets[0].facetId).toBe("16633743049422531122");
-    expect(out.facets[0].use).toBe("server-default");
+    expect(out.facets[0].facetId).toBe('16633743049422531122');
+    expect(out.facets[0].use).toBe('server-default');
     // No metadata call, so there is an id and nothing else to show with it.
     expect(out.facets[0].provenance).toBeUndefined();
   });
 
-  it("does not downgrade a chosen source when a later call falls back to it", () => {
+  it('does not downgrade a chosen source when a later call falls back to it', () => {
     const out = inspectTurn(
       calls(
-        { name: "get_variable_metadata", arguments: {}, result: METADATA_RESULT },
         {
-          name: "get_observations",
+          name: 'get_variable_metadata',
+          arguments: {},
+          result: METADATA_RESULT,
+        },
+        {
+          name: 'get_observations',
           arguments: {
-            variable_dcid: "Count_Person",
-            place_dcid: "country/IND",
-            source_override: "16633743049422531122",
+            variable_dcid: 'Count_Person',
+            place_dcid: 'country/IND',
+            source_override: '16633743049422531122',
           },
           result: OBSERVATION_RESULT,
         },
         // Same facet, this time unpinned. One deliberate pick outranks it.
         {
-          name: "get_observations",
-          arguments: { variable_dcid: "Count_Person", place_dcid: "country/CHN" },
+          name: 'get_observations',
+          arguments: {
+            variable_dcid: 'Count_Person',
+            place_dcid: 'country/CHN',
+          },
           result: OBSERVATION_RESULT,
         },
       ),
     );
-    expect(out.facets[0].use).toBe("chosen");
+    expect(out.facets[0].use).toBe('chosen');
   });
 
-  it("reads the 1.2.1 snake_case spelling of the served source", () => {
+  it('reads the 1.2.1 snake_case spelling of the served source', () => {
     const out = inspectTurn(
       calls({
-        name: "get_observations",
-        arguments: { variable_dcid: "Count_Person", place_dcid: "country/IND" },
-        result: JSON.stringify({ source_metadata: { source_id: "12345" } }),
+        name: 'get_observations',
+        arguments: { variable_dcid: 'Count_Person', place_dcid: 'country/IND' },
+        result: JSON.stringify({ source_metadata: { source_id: '12345' } }),
       }),
     );
-    expect(out.facets[0]?.facetId).toBe("12345");
-    expect(out.facets[0]?.use).toBe("server-default");
+    expect(out.facets[0]?.facetId).toBe('12345');
+    expect(out.facets[0]?.use).toBe('server-default');
   });
 
-  it("ignores the literal \"unknown\" source id an empty result carries", () => {
+  it('ignores the literal "unknown" source id an empty result carries', () => {
     const out = inspectTurn(
       calls({
-        name: "get_observations",
-        arguments: { variable_dcid: "Count_Person", place_dcid: "country/IND" },
-        result: JSON.stringify({ sourceMetadata: { sourceId: "unknown" }, data: {} }),
+        name: 'get_observations',
+        arguments: { variable_dcid: 'Count_Person', place_dcid: 'country/IND' },
+        result: JSON.stringify({
+          sourceMetadata: { sourceId: 'unknown' },
+          data: {},
+        }),
       }),
     );
     expect(out.facets).toHaveLength(0);
   });
 
-  it("flags when no source was chosen, so the server picked", () => {
+  it('flags when no source was chosen, so the server picked', () => {
     const out = inspectTurn(
       calls({
-        name: "get_observations",
-        arguments: { variable_dcid: "Count_Person", place_dcid: "country/IND" },
-        result: "{}",
+        name: 'get_observations',
+        arguments: { variable_dcid: 'Count_Person', place_dcid: 'country/IND' },
+        result: '{}',
       }),
     );
     expect(out.sourceChosenExplicitly).toBe(false);
   });
 
-  it("names variables from a search result and marks which were fetched", () => {
+  it('names variables from a search result and marks which were fetched', () => {
     const out = inspectTurn(
       calls(
-        { name: "search_indicators", arguments: { query: "population" }, result: SEARCH_RESULT },
         {
-          name: "get_observations",
-          arguments: { variable_dcid: "Count_Person", place_dcid: "country/IND" },
-          result: "{}",
+          name: 'search_indicators',
+          arguments: { query: 'population' },
+          result: SEARCH_RESULT,
+        },
+        {
+          name: 'get_observations',
+          arguments: {
+            variable_dcid: 'Count_Person',
+            place_dcid: 'country/IND',
+          },
+          result: '{}',
         },
       ),
     );
-    const variable = out.variables.find((v) => v.dcid === "Count_Person");
-    expect(variable?.name).toBe("Total population");
+    const variable = out.variables.find((v) => v.dcid === 'Count_Person');
+    expect(variable?.name).toBe('Total population');
     expect(variable?.fetched).toBe(true);
     // Only calls that actually name the DCID count. search_indicators takes a
     // free-text query, so it supplies the display name but is not a reference.
-    expect(variable?.referencedBy).toEqual(["get_observations"]);
-    expect(out.places).toEqual(["country/IND"]);
+    expect(variable?.referencedBy).toEqual(['get_observations']);
+    expect(out.places).toEqual(['country/IND']);
   });
 
-  it("does not mark a variable fetched when only searched", () => {
+  it('does not mark a variable fetched when only searched', () => {
     const out = inspectTurn(
-      calls({ name: "search_indicators", arguments: { query: "x" }, result: SEARCH_RESULT }),
+      calls({
+        name: 'search_indicators',
+        arguments: { query: 'x' },
+        result: SEARCH_RESULT,
+      }),
     );
     // Search results name variables but the loop only records ones passed as
     // arguments, so nothing is fetched and nothing is invented.
     expect(out.variables.every((v) => !v.fetched)).toBe(true);
   });
 
-  it("flattens the multi-entity role map into places", () => {
+  it('flattens the multi-entity role map into places', () => {
     const out = inspectTurn(
       calls({
-        name: "get_multi_entity_observations",
+        name: 'get_multi_entity_observations',
         arguments: {
-          variable_dcid: "Amount_ODA",
-          entities: { donor: ["country/DEU"], recipient: ["country/KEN"] },
+          variable_dcid: 'Amount_ODA',
+          entities: { donor: ['country/DEU'], recipient: ['country/KEN'] },
         },
-        result: "{}",
+        result: '{}',
       }),
     );
-    expect(out.places.sort()).toEqual(["country/DEU", "country/KEN"]);
+    expect(out.places.sort()).toEqual(['country/DEU', 'country/KEN']);
   });
 
-  it("lists the parent place of a multi-entity cohort expansion", () => {
+  it('lists the parent place of a multi-entity cohort expansion', () => {
     // Test: Places of a multi-entity fetch that expands a role into children.
     // Situation: A `fetch_multi_entity_observations` call expands the
     //   `recipient` role into the countries of `Earth`, and its compact
@@ -315,21 +372,21 @@ describe("inspectTurn", () => {
     //   listed.
     const out = inspectTurn(
       calls({
-        name: "fetch_multi_entity_observations",
+        name: 'fetch_multi_entity_observations',
         arguments: {
-          variable_dcid: "Amount_ODA",
-          entities: { donor: ["country/DEU"] },
-          parent_entity_property: "recipient",
-          parent_entity_dcid: "Earth",
-          child_entity_type: "Country",
+          variable_dcid: 'Amount_ODA',
+          entities: { donor: ['country/DEU'] },
+          parent_entity_property: 'recipient',
+          parent_entity_dcid: 'Earth',
+          child_entity_type: 'Country',
         },
         result: JSON.stringify({ table_id: null, row_count: 0 }),
       }),
     );
-    expect(out.places.sort()).toEqual(["Earth", "country/DEU"]);
+    expect(out.places.sort()).toEqual(['Earth', 'country/DEU']);
   });
 
-  it("reads the served facet, the name, and the places from a fetch summary", () => {
+  it('reads the served facet, the name, and the places from a fetch summary', () => {
     // Test: Inspection of the server-side fetch functions.
     // Situation: A `fetch_observations` call names two places and returns
     //   the table summary the agent streams, which carries `facet_id`,
@@ -340,25 +397,32 @@ describe("inspectTurn", () => {
     //   server's default with its metadata joined.
     const out = inspectTurn(
       calls(
-        { name: "get_variable_metadata", arguments: {}, result: METADATA_RESULT },
         {
-          name: "fetch_observations",
-          arguments: { variable_dcid: "Count_Person", place_dcids: ["country/IND", "country/CHN"] },
+          name: 'get_variable_metadata',
+          arguments: {},
+          result: METADATA_RESULT,
+        },
+        {
+          name: 'fetch_observations',
+          arguments: {
+            variable_dcid: 'Count_Person',
+            place_dcids: ['country/IND', 'country/CHN'],
+          },
           result: FETCH_SUMMARY,
         },
       ),
     );
 
-    const variable = out.variables.find((v) => v.dcid === "Count_Person");
+    const variable = out.variables.find((v) => v.dcid === 'Count_Person');
     expect(variable?.fetched).toBe(true);
-    expect(variable?.name).toBe("Total population");
-    expect(variable?.referencedBy).toEqual(["fetch_observations"]);
-    expect(out.places.sort()).toEqual(["country/CHN", "country/IND"]);
+    expect(variable?.name).toBe('Total population');
+    expect(variable?.referencedBy).toEqual(['fetch_observations']);
+    expect(out.places.sort()).toEqual(['country/CHN', 'country/IND']);
     expect(out.sourceChosenExplicitly).toBe(false);
-    const served = out.facets.find((f) => f.facetId === "16633743049422531122");
+    const served = out.facets.find((f) => f.facetId === '16633743049422531122');
     expect(served?.used).toBe(true);
-    expect(served?.use).toBe("server-default");
-    expect(served?.provenance).toBe("NITI India Population Projection");
+    expect(served?.use).toBe('server-default');
+    expect(served?.provenance).toBe('NITI India Population Projection');
   });
 
   it("lists the places a cohort fetch returned and the cohort's parent", () => {
@@ -371,98 +435,117 @@ describe("inspectTurn", () => {
     const out = inspectTurn(
       calls(
         {
-          name: "fetch_child_observations",
+          name: 'fetch_child_observations',
           arguments: {
-            variable_dcid: "Count_Person",
-            parent_place_dcid: "country/IND",
-            child_place_type: "State",
+            variable_dcid: 'Count_Person',
+            parent_place_dcid: 'country/IND',
+            child_place_type: 'State',
           },
           result: FETCH_SUMMARY,
         },
         {
-          name: "fetch_child_observations",
+          name: 'fetch_child_observations',
           arguments: {
-            variable_dcid: "Median_Income",
-            parent_place_dcid: "country/IND",
-            child_place_type: "State",
-            source_override: "999",
+            variable_dcid: 'Median_Income',
+            parent_place_dcid: 'country/IND',
+            child_place_type: 'State',
+            source_override: '999',
           },
           result: JSON.stringify({
-            table_id: "t2",
-            variable_dcid: "Median_Income",
-            places_with_data: ["wikidataId/Q1159", "wikidataId/Q1445"],
-            facet_id: "999",
+            table_id: 't2',
+            variable_dcid: 'Median_Income',
+            places_with_data: ['wikidataId/Q1159', 'wikidataId/Q1445'],
+            facet_id: '999',
           }),
         },
       ),
     );
 
     expect(out.places).toEqual([
-      "country/IND",
-      "country/CHN",
-      "wikidataId/Q1159",
-      "wikidataId/Q1445",
+      'country/IND',
+      'country/CHN',
+      'wikidataId/Q1159',
+      'wikidataId/Q1445',
     ]);
     expect(out.sourceChosenExplicitly).toBe(true);
-    expect(out.facets.find((f) => f.facetId === "999")?.use).toBe("chosen");
+    expect(out.facets.find((f) => f.facetId === '999')?.use).toBe('chosen');
   });
 
-  it("shows a source_override that no metadata call described", () => {
+  it('shows a source_override that no metadata call described', () => {
     const out = inspectTurn(
       calls({
-        name: "get_observations",
-        arguments: { variable_dcid: "V", place_dcid: "P", source_override: "999" },
-        result: "{}",
+        name: 'get_observations',
+        arguments: {
+          variable_dcid: 'V',
+          place_dcid: 'P',
+          source_override: '999',
+        },
+        result: '{}',
       }),
     );
-    const facet = out.facets.find((f) => f.facetId === "999");
+    const facet = out.facets.find((f) => f.facetId === '999');
     expect(facet?.used).toBe(true);
     expect(facet?.provenance).toBeUndefined();
   });
 
-  it("survives an error string or malformed result", () => {
+  it('survives an error string or malformed result', () => {
     expect(() =>
       inspectTurn(
         calls(
-          { name: "get_observations", arguments: { variable_dcid: "V" }, result: "Unknown tool: x" },
-          { name: "get_variable_metadata", arguments: {}, result: undefined },
-          { name: "search_indicators", arguments: {}, result: "[1,2,3]" },
+          {
+            name: 'get_observations',
+            arguments: { variable_dcid: 'V' },
+            result: 'Unknown tool: x',
+          },
+          { name: 'get_variable_metadata', arguments: {}, result: undefined },
+          { name: 'search_indicators', arguments: {}, result: '[1,2,3]' },
         ),
       ),
     ).not.toThrow();
   });
 
-  it("handles no tool calls at all", () => {
+  it('handles no tool calls at all', () => {
     const out = inspectTurn([]);
     expect(out.variables).toEqual([]);
     expect(out.facets).toEqual([]);
     expect(out.sourceChosenExplicitly).toBe(false);
   });
 
-  it("summarizes the charts the turn renders", () => {
+  it('summarizes the charts the turn renders', () => {
     // Test: The chart summaries of an inspection.
     // Situation: The turn renders a bar chart over one place and a ranking
     //   chart over a cohort, which names no place DCIDs.
     // Expectation: Each chart is summarized by title, variables, and places,
     //   with an empty place list for the cohort chart.
-    const out = inspectTurn([], [
-      {
-        vizType: "bar",
-        title: "Population across states",
-        variableDcids: ["Count_Person"],
-        placeDcids: ["wikidataId/Q1498"],
-      },
-      {
-        vizType: "ranking",
-        title: "Median income by state",
-        variableDcids: ["Median_Income_Household"],
-        parentPlace: "country/USA",
-        childPlaceType: "State",
-      },
-    ]);
+    const out = inspectTurn(
+      [],
+      [
+        {
+          vizType: 'bar',
+          title: 'Population across states',
+          variableDcids: ['Count_Person'],
+          placeDcids: ['wikidataId/Q1498'],
+        },
+        {
+          vizType: 'ranking',
+          title: 'Median income by state',
+          variableDcids: ['Median_Income_Household'],
+          parentPlace: 'country/USA',
+          childPlaceType: 'State',
+        },
+      ],
+    );
     expect(out.charts).toEqual([
-      { title: "Population across states", variables: ["Count_Person"], places: ["wikidataId/Q1498"] },
-      { title: "Median income by state", variables: ["Median_Income_Household"], places: [] },
+      {
+        title: 'Population across states',
+        variables: ['Count_Person'],
+        places: ['wikidataId/Q1498'],
+      },
+      {
+        title: 'Median income by state',
+        variables: ['Median_Income_Household'],
+        places: [],
+      },
     ]);
   });
 });

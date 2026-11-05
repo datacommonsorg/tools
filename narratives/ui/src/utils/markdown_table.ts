@@ -22,12 +22,12 @@
 import {
   createCitationMarkerPattern,
   parseCitationNumbers,
-} from "@/src/utils/citation_marker";
+} from '@/src/utils/citation_marker';
 import {
   isNeutralText,
   isNumericText,
   isYearText,
-} from "@/src/utils/format_number";
+} from '@/src/utils/format_number';
 
 /**
  * The part of an HTML AST node this module reads. Declared locally rather
@@ -55,17 +55,16 @@ export interface TableAnalysis {
 
 /** Concatenates every text node under `node`. */
 export function textOf(node: MarkdownNode | undefined): string {
-  if (!node) return "";
-  if (typeof node.value === "string") return node.value;
-  return (node.children ?? []).map(textOf).join("");
+  if (!node) return '';
+  if (typeof node.value === 'string') return node.value;
+  return (node.children ?? []).map(textOf).join('');
 }
 
 /** The citation numbers in `text`, in the order they appear. */
 export function citationsIn(text: string): number[] {
   const pattern = createCitationMarkerPattern();
   const out: number[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
+  for (const match of text.matchAll(pattern)) {
     out.push(...parseCitationNumbers(match[1]));
   }
   return out;
@@ -73,27 +72,27 @@ export function citationsIn(text: string): number[] {
 
 /** True when `node` is an element with the given tag. */
 function isTag(node: MarkdownNode, tagName: string): boolean {
-  return node.type === "element" && node.tagName === tagName;
+  return node.type === 'element' && node.tagName === tagName;
 }
 
 /** The cells of every row in a table section, flattened past thead/tbody. */
 function rowsOf(
   node: MarkdownNode,
-  section: "thead" | "tbody",
+  section: 'thead' | 'tbody',
 ): MarkdownNode[][] {
   const rows: MarkdownNode[][] = [];
   const collect = (row: MarkdownNode) => {
-    if (!isTag(row, "tr")) return;
+    if (!isTag(row, 'tr')) return;
     rows.push(
       (row.children ?? []).filter(
-        (cell) => isTag(cell, "td") || isTag(cell, "th"),
+        (cell) => isTag(cell, 'td') || isTag(cell, 'th'),
       ),
     );
   };
   for (const child of node.children ?? []) {
     if (isTag(child, section)) (child.children ?? []).forEach(collect);
     // A bare <tr> under <table> has no header semantics, so it is a body row.
-    else if (section === "tbody" && isTag(child, "tr")) collect(child);
+    else if (section === 'tbody' && isTag(child, 'tr')) collect(child);
   }
   return rows;
 }
@@ -109,29 +108,29 @@ export function analyzeMarkdownTable(
   const hoistedCitations = new Map<number, number[]>();
   if (!node) return { numericColumns, hoistedCitations };
 
-  const bodyRows = rowsOf(node, "tbody");
+  const bodyRows = rowsOf(node, 'tbody');
   if (bodyRows.length === 0) return { numericColumns, hoistedCitations };
   const columnCount = Math.max(...bodyRows.map((row) => row.length));
 
   for (let column = 0; column < columnCount; column++) {
     const cells = bodyRows
       .map((row) => textOf(row[column]))
-      .filter((text) => text.trim() !== "");
+      .filter((text) => text.trim() !== '');
     if (cells.length === 0) continue;
 
     // Citations first: the markers have to come off before the rest of the
     // cell can be judged a number.
     const values = cells.map((text) =>
-      text.replace(createCitationMarkerPattern(), "").trim(),
+      text.replace(createCitationMarkerPattern(), '').trim(),
     );
     const citations = cells
       .filter((_, i) => !isNeutralText(values[i]))
       .map(citationsIn);
-    const key = citations[0]?.join(",") ?? "";
+    const key = citations[0]?.join(',') ?? '';
     if (
       citations.length > 0 &&
-      key !== "" &&
-      citations.every((list) => list.join(",") === key)
+      key !== '' &&
+      citations.every((list) => list.join(',') === key)
     ) {
       hoistedCitations.set(column, [...new Set(citations[0])]);
     }

@@ -20,31 +20,31 @@
 
 import {
   Children,
+  type CSSProperties,
   cloneElement,
   createContext,
   isValidElement,
-  useContext,
-  useMemo,
-  type CSSProperties,
   type ReactElement,
   type ReactNode,
-} from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+  useContext,
+  useMemo,
+} from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   CitationChip,
   HideCitationsProvider,
   renderWithCitations,
-} from "@/src/components/chip_citation";
+} from '@/src/components/chip_citation';
+import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 import {
   analyzeMarkdownTable,
   citationsIn,
-  textOf,
   type MarkdownNode,
   type TableAnalysis,
-} from "@/src/utils/markdown_table";
-import { rehypeStreamWords } from "@/src/utils/rehype_stream_words";
-import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
+  textOf,
+} from '@/src/utils/markdown_table';
+import { rehypeStreamWords } from '@/src/utils/rehype_stream_words';
 
 interface ResponseCardProps {
   title: string;
@@ -68,7 +68,7 @@ interface ResponseCardProps {
   revealing?: boolean;
 }
 
-const LINK_COLOR = "var(--color-theme-primary)";
+const LINK_COLOR = 'var(--color-theme-primary)';
 
 /** Renders the agent's answer text as markdown, with citation chips. */
 export function ResponseCard({
@@ -82,8 +82,8 @@ export function ResponseCard({
 }: ResponseCardProps) {
   const markdown = (
     <div
-      className={`${bare ? "" : "px-[56px] py-6 text-on-surface "}markdown-body${
-        revealing ? " markdown-stream" : ""
+      className={`${bare ? '' : 'px-[56px] py-6 text-on-surface '}markdown-body${
+        revealing ? ' markdown-stream' : ''
       }`}
     >
       <ReactMarkdownInner
@@ -128,116 +128,113 @@ function ReactMarkdownInner({
   // reveal.
   const components = useMemo(
     (): Components => ({
-            // Word spans added by rehypeStreamWords. Citations and numbers
-            // inside them render as in any other text.
-            span: ({ children, className, style }) => (
-              <StreamSpan className={className} style={style} sources={sources}>
-                {children}
-              </StreamSpan>
-            ),
-            p: ({ children }) => (
-              <p className="text-body-large mb-3 last:mb-0">
-                {renderWithCitations(children, sources)}
-              </p>
-            ),
-            h1: ({ children }) => (
-              <h1 className="text-2xl font-medium mt-4 mb-2">
-                {renderWithCitations(children, sources)}
-              </h1>
-            ),
-            h2: ({ children }) => (
-              <h2 className="text-xl font-medium mt-4 mb-2">
-                {renderWithCitations(children, sources)}
-              </h2>
-            ),
-            h3: ({ children }) => (
-              <h3 className="text-lg font-medium mt-3 mb-2">
-                {renderWithCitations(children, sources)}
-              </h3>
-            ),
-            h4: ({ children }) => (
-              <h4 className="text-base font-medium mt-3 mb-2">
-                {renderWithCitations(children, sources)}
-              </h4>
-            ),
-            em: ({ children }) => (
-              <em className="italic">{renderWithCitations(children, sources)}</em>
-            ),
-            ul: ({ children }) => (
-              <ul className="list-disc pl-6 mb-3 space-y-1">{children}</ul>
-            ),
-            ol: ({ children }) => (
-              <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
-            ),
-            // `style` on li, blockquote, table and hr carries their stream
-            // delay, so a bullet or a rule waits for the text it belongs to.
-            li: ({ children, style }) => (
-              <li className="leading-relaxed" style={style}>
-                {renderWithCitations(children, sources)}
-              </li>
-            ),
-            a: ({ children, href }) => (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-                style={{ color: LINK_COLOR }}
-              >
-                <PlainTextContext.Provider value={true}>
-                  {children}
-                </PlainTextContext.Provider>
-              </a>
-            ),
-            code: ({ children, ...props }) => {
-              const inline = !(
-                "className" in (props as Record<string, unknown>) &&
-                /language-/.test(
-                  ((props as Record<string, unknown>).className as string) ||
-                    "",
-                )
-              );
-              const plain = (
-                <PlainTextContext.Provider value={true}>
-                  {children}
-                </PlainTextContext.Provider>
-              );
-              return inline ? (
-                <code className="px-1 py-0.5 rounded bg-surface-muted text-[0.92em] font-mono">
-                  {plain}
-                </code>
-              ) : (
-                <code className="font-mono">{plain}</code>
-              );
-            },
-            pre: ({ children }) => (
-              <pre className="bg-surface-soft border border-outline rounded-md p-3 overflow-auto text-sm mb-3">
-                {children}
-              </pre>
-            ),
-            blockquote: ({ children, style }) => (
-              <blockquote
-                className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3"
-                style={style}
-              >
-                {renderWithCitations(children, sources)}
-              </blockquote>
-            ),
-            table: (props) => <MarkdownTable {...props} />,
-            thead: ({ children }) => (
-              <thead className="bg-surface-soft">{children}</thead>
-            ),
-            tr: (props) => <MarkdownRow {...props} />,
-            th: (props) => <HeaderCell {...props} sources={sources} />,
-            td: (props) => <DataCell {...props} sources={sources} />,
-            strong: ({ children }) => (
-              <strong className="font-semibold">
-                {renderWithCitations(children, sources)}
-              </strong>
-            ),
-            hr: ({ style }) => (
-              <hr className="my-4 border-outline" style={style} />
-            ),
+      // Word spans added by rehypeStreamWords. Citations and numbers
+      // inside them render as in any other text.
+      span: ({ children, className, style }) => (
+        <StreamSpan className={className} style={style} sources={sources}>
+          {children}
+        </StreamSpan>
+      ),
+      p: ({ children }) => (
+        <p className="text-body-large mb-3 last:mb-0">
+          {renderWithCitations(children, sources)}
+        </p>
+      ),
+      h1: ({ children }) => (
+        <h1 className="text-2xl font-medium mt-4 mb-2">
+          {renderWithCitations(children, sources)}
+        </h1>
+      ),
+      h2: ({ children }) => (
+        <h2 className="text-xl font-medium mt-4 mb-2">
+          {renderWithCitations(children, sources)}
+        </h2>
+      ),
+      h3: ({ children }) => (
+        <h3 className="text-lg font-medium mt-3 mb-2">
+          {renderWithCitations(children, sources)}
+        </h3>
+      ),
+      h4: ({ children }) => (
+        <h4 className="text-base font-medium mt-3 mb-2">
+          {renderWithCitations(children, sources)}
+        </h4>
+      ),
+      em: ({ children }) => (
+        <em className="italic">{renderWithCitations(children, sources)}</em>
+      ),
+      ul: ({ children }) => (
+        <ul className="list-disc pl-6 mb-3 space-y-1">{children}</ul>
+      ),
+      ol: ({ children }) => (
+        <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>
+      ),
+      // `style` on li, blockquote, table and hr carries their stream
+      // delay, so a bullet or a rule waits for the text it belongs to.
+      li: ({ children, style }) => (
+        <li className="leading-relaxed" style={style}>
+          {renderWithCitations(children, sources)}
+        </li>
+      ),
+      a: ({ children, href }) => (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:underline"
+          style={{ color: LINK_COLOR }}
+        >
+          <PlainTextContext.Provider value={true}>
+            {children}
+          </PlainTextContext.Provider>
+        </a>
+      ),
+      code: ({ children, ...props }) => {
+        const inline = !(
+          'className' in (props as Record<string, unknown>) &&
+          /language-/.test(
+            ((props as Record<string, unknown>).className as string) || '',
+          )
+        );
+        const plain = (
+          <PlainTextContext.Provider value={true}>
+            {children}
+          </PlainTextContext.Provider>
+        );
+        return inline ? (
+          <code className="px-1 py-0.5 rounded bg-surface-muted text-[0.92em] font-mono">
+            {plain}
+          </code>
+        ) : (
+          <code className="font-mono">{plain}</code>
+        );
+      },
+      pre: ({ children }) => (
+        <pre className="bg-surface-soft border border-outline rounded-md p-3 overflow-auto text-sm mb-3">
+          {children}
+        </pre>
+      ),
+      blockquote: ({ children, style }) => (
+        <blockquote
+          className="border-l-4 border-outline pl-4 italic text-on-surface-variant mb-3"
+          style={style}
+        >
+          {renderWithCitations(children, sources)}
+        </blockquote>
+      ),
+      table: (props) => <MarkdownTable {...props} />,
+      thead: ({ children }) => (
+        <thead className="bg-surface-soft">{children}</thead>
+      ),
+      tr: (props) => <MarkdownRow {...props} />,
+      th: (props) => <HeaderCell {...props} sources={sources} />,
+      td: (props) => <DataCell {...props} sources={sources} />,
+      strong: ({ children }) => (
+        <strong className="font-semibold">
+          {renderWithCitations(children, sources)}
+        </strong>
+      ),
+      hr: ({ style }) => <hr className="my-4 border-outline" style={style} />,
     }),
     [sources],
   );
@@ -341,10 +338,10 @@ function MarkdownRow({ children }: MarkdownCellProps) {
 function cellAlignment(
   style: CSSProperties | undefined,
   numeric: boolean,
-  fallback: CSSProperties["textAlign"],
-): CSSProperties["textAlign"] {
+  fallback: CSSProperties['textAlign'],
+): CSSProperties['textAlign'] {
   if (style?.textAlign) return style.textAlign;
-  return numeric ? "right" : fallback;
+  return numeric ? 'right' : fallback;
 }
 
 /**
@@ -369,11 +366,14 @@ function HeaderCell({
   return (
     <th
       className="border border-outline px-3 py-2 font-medium"
-      style={{ ...style, textAlign: cellAlignment(style, numeric, "left") }}
+      style={{ ...style, textAlign: cellAlignment(style, numeric, 'left') }}
     >
       {renderWithCitations(children, sources)}
       {toAppend.map((n) => (
-        <span key={n}> <CitationChip n={n} sources={sources} /></span>
+        <span key={n}>
+          {' '}
+          <CitationChip n={n} sources={sources} />
+        </span>
       ))}
     </th>
   );
@@ -391,7 +391,7 @@ function DataCell({ children, colIndex, style, sources }: MarkdownCellProps) {
   return (
     <td
       className={`border border-outline px-3 py-2${
-        numeric ? " tabular-nums" : ""
+        numeric ? ' tabular-nums' : ''
       }`}
       style={{ ...style, textAlign: cellAlignment(style, numeric, undefined) }}
     >

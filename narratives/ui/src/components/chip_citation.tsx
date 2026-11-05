@@ -18,14 +18,14 @@
  * @fileoverview Renders an inline numbered citation chip.
  */
 
-import { createContext, useContext, type ReactNode } from "react";
-import type { ProvenanceItem } from "@/src/hooks/use_sse_chat";
+import { createContext, type ReactNode, useContext } from 'react';
+import { Tooltip } from '@/src/components/tooltip';
+import { renderNumbers } from '@/src/components/value_numeric';
+import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 import {
   createCitationMarkerPattern,
   parseCitationNumbers,
-} from "@/src/utils/citation_marker";
-import { renderNumbers } from "@/src/components/value_numeric";
-import { Tooltip } from "@/src/components/tooltip";
+} from '@/src/utils/citation_marker';
 
 /**
  * Small inline pill that renders [N] inside the markdown body as a
@@ -38,7 +38,7 @@ import { Tooltip } from "@/src/components/tooltip";
  * disagree.
  */
 
-const COLOR = "var(--color-theme-primary)";
+const COLOR = 'var(--color-theme-primary)';
 
 /** How one answer's citations are labelled and anchored on the page. */
 export interface CitationNumbering {
@@ -128,24 +128,24 @@ export function CitationChip({
   const label = sourceLabel(n, sources);
   return (
     <Tooltip label={label}>
-    <a
-      href={`#${anchor}`}
-      onClick={(e) => {
-        // Smooth scroll instead of jumping abruptly
-        const target = document.getElementById(anchor);
-        if (target) {
-          e.preventDefault();
-          target.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }}
-      className="font-medium no-underline hover:underline"
-      style={{ color: COLOR, fontWeight: 500 }}
-      // The number alone tells a screen-reader user nothing about where the
-      // claim came from; the visible tooltip's text belongs here too.
-      aria-label={citationAriaLabel(n, shown, sources)}
-    >
-      [{shown}]
-    </a>
+      <a
+        href={`#${anchor}`}
+        onClick={(e) => {
+          // Smooth scroll instead of jumping abruptly
+          const target = document.getElementById(anchor);
+          if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }}
+        className="font-medium no-underline hover:underline"
+        style={{ color: COLOR, fontWeight: 500 }}
+        // The number alone tells a screen-reader user nothing about where the
+        // claim came from; the visible tooltip's text belongs here too.
+        aria-label={citationAriaLabel(n, shown, sources)}
+      >
+        [{shown}]
+      </a>
     </Tooltip>
   );
 }
@@ -190,7 +190,7 @@ function ChildWithCitations({
   sources?: ProvenanceItem[];
 }) {
   const hidden = useContext(HideCitationsContext);
-  if (typeof children !== "string") {
+  if (typeof children !== 'string') {
     return <>{children}</>;
   }
   return <>{splitWithCitations(children, sources, hidden)}</>;
@@ -210,16 +210,15 @@ export function splitWithCitations(
   const pattern = createCitationMarkerPattern();
   const out: ReactNode[] = [];
   let last = 0;
-  let match: RegExpExecArray | null;
   let i = 0;
-  while ((match = pattern.exec(s)) !== null) {
+  for (const match of s.matchAll(pattern)) {
     if (match.index > last) {
       out.push(...renderNumbers(s.slice(last, match.index), `n${last}`));
     }
     if (!hideCitations) {
       parseCitationNumbers(match[1]).forEach((n, position) => {
         if (position > 0) {
-          out.push(" ");
+          out.push(' ');
         }
         out.push(<CitationChip key={`c-${i++}`} n={n} sources={sources} />);
       });
