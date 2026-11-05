@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import google.auth
+import google.auth.exceptions
 import httpx
 from google.auth.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -118,7 +119,7 @@ def _load_credentials() -> Credentials:
     """Loads Application Default Credentials scoped for Google Cloud APIs."""
     credentials, _ = google.auth.default(scopes=[_CLOUD_PLATFORM_SCOPE])
     if not isinstance(credentials, Credentials):
-        raise TypeError("ADC did not return google.auth Credentials")
+        raise RuntimeError("ADC did not return google.auth Credentials")
     return credentials
 
 
@@ -249,7 +250,12 @@ async def screen_user_prompt(query: str) -> str | None:
             error.response.status_code,
         )
         return None
-    except Exception as error:
+    except (
+        httpx.RequestError,
+        google.auth.exceptions.GoogleAuthError,
+        ValueError,
+        RuntimeError,
+    ) as error:
         logger.warning(
             "Model Armor request failed (%s); proceeding without screening",
             type(error).__name__,
