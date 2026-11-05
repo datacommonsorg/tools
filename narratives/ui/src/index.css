@@ -451,12 +451,11 @@ select:not(:disabled) {
  * elements default to `display: inline`, which does NOT constrain width —
  * so on narrow viewports the chart's SVG keeps its wider intrinsic size
  * and overflows the card's right edge (then gets clipped by
- * body{overflow-x:hidden}, so the right edge of the chart and the title
+ * body{overflow-x:clip}, so the right edge of the chart and the title
  * appear cropped). Force the host elements to fill — and never exceed —
  * their card width so the component's ResizeObserver redraws the chart at
  * the actual viewport width. `min-width: 0` lets the card shrink below the
- * SVG's intrinsic width inside the flex/grid layout. This mirrors the
- * print rules below, which only apply under body[data-print-target].
+ * SVG's intrinsic width inside the flex/grid layout.
  * ──────────────────────────────────────────────────────────────────── */
 .dc-charts-container {
   min-width: 0;
@@ -484,96 +483,11 @@ select:not(:disabled) {
   border-radius: var(--radius-chart);
 }
 
-/* ────────────────────────────────────────────────────────────────────
- * Print stylesheet: when the Export PDF action fires (see
- * utils/print_element.ts), `body[data-print-target]` is set and the
- * selected answer panel is tagged with `data-print-active`. We then
- * hide every other element on the page via visibility, so the user gets
- * a clean PDF of just THAT one Q&A — not the rest of the conversation
- * and not the chrome (sidebar / header / input bar / other turns).
- *
- * `visibility: hidden` (instead of `display: none`) lets the active
- * subtree keep its ancestors' layout intact, which avoids breaking the
- * absolute/flex containers around it during the print render pass.
- * ──────────────────────────────────────────────────────────────────── */
 @media print {
   /* Nothing to hover on paper — see the same rule applied to the PDF clone in
      utils/download_pdf.ts. */
   .dc-numeric {
     text-decoration: none !important;
-  }
-  body[data-print-target] {
-    background: #ffffff !important;
-  }
-  /* Hide every body descendant that is NOT on the path to the active panel
-     and NOT inside the active subtree. The JS in utils/print_element.ts has
-     marked the path with `data-print-ancestor`; the active panel itself
-     carries `data-print-active`. */
-  body[data-print-target]
-    *:not([data-print-ancestor]):not([data-print-active]):not(
-      [data-print-active] *
-    ) {
-    display: none !important;
-  }
-  /* Even inside the active subtree, hide elements explicitly marked
-     non-printable — e.g. the "Export PDF" buttons themselves, which are
-     UI affordances, not document content. */
-  body[data-print-target] [data-non-print="true"] {
-    display: none !important;
-  }
-  /* The question becomes the document's heading.
-     On screen it is a truncated one-line card title; `truncate` sets
-     white-space: nowrap and text-overflow: ellipsis, which the generic
-     overflow reset below does NOT undo -- so without this a long question was
-     exported cut off mid-sentence. Sized up and given room to breathe so the
-     PDF opens with the question it answers, which is what the export is for. */
-  body[data-print-target] [data-print-active] .print-question {
-    white-space: normal !important;
-    text-overflow: clip !important;
-    overflow: visible !important;
-    font-size: 18px !important;
-    line-height: 26px !important;
-    font-weight: 700 !important;
-    color: #000000 !important;
-    padding-bottom: 4px;
-  }
-
-  /* Strip card chrome on the active panel so the printed page reads as a
-     clean document, not a UI screenshot. `overflow: visible` is critical:
-     the panel sets `overflow-hidden` on screen to clip rounded corners,
-     but during print that crops content past the first viewport (charts,
-     follow-ups, anything tall). */
-  body[data-print-target] [data-print-active] {
-    box-shadow: none !important;
-    border: 0 !important;
-    background: #ffffff !important;
-    overflow: visible !important;
-    height: auto !important;
-    max-height: none !important;
-  }
-  /* Same overflow guarantee for everything inside the active panel — the
-     content body wrapper, ResponseCard etc. all need to let their content
-     flow across page breaks rather than clip to their on-screen frames.
-     Chart cards are exempt: they keep `overflow: hidden` so the Recharts
-     SVG renders within its rounded-corner frame instead of bleeding past
-     the card edges. */
-  body[data-print-target]
-    [data-print-active] *:not(.dc-chart-card):not(.dc-chart-card *) {
-    overflow: visible !important;
-    max-height: none !important;
-  }
-  /* Ancestors collapse to plain containers — drop their scroll, padding
-     constraints, and fixed heights so the active panel is the page. */
-  body[data-print-target] [data-print-ancestor] {
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #ffffff !important;
-    position: static !important;
-    inset: auto !important;
-    display: block !important;
   }
   /* Avoid splitting a chart card or table across pages where possible */
   .dc-chart-card,
@@ -583,116 +497,6 @@ select:not(:disabled) {
   .markdown-body h3 {
     break-inside: avoid;
   }
-  /* Force charts into a single-column stack and clamp every card and the
-     DC web component inside it to the print page width. On screen the
-     container is a 2-column auto-fit grid and each card stretches to its
-     natural column width — in a PDF that's wider than one print page and
-     the chart's SVG (sized in CSS pixels by the DC component) ends up
-     clipped at the right margin. */
-  body[data-print-target] .dc-charts-container {
-    display: block !important;
-    grid-template-columns: 1fr !important;
-  }
-  body[data-print-target] .dc-chart-card {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-bottom: 16px !important;
-    page-break-inside: avoid !important;
-    /* Clip anything past the card edge — DC bar/ranking charts size their
-       x-axis labels for the on-screen width and even after the resize
-       nudge the longest place labels can still overhang the page margin.
-       Better a few labels truncated at the card edge than the layout
-       breaking out onto the next page sideways. */
-    overflow: hidden !important;
-  }
-  /* DC web components themselves: force them to fill the card width.
-     The element's clientWidth is what ResizeObserver inside the DC
-     component reads — combined with the beforeprint resize event
-     dispatched in utils/print_element.ts, this prompts the chart to
-     redraw at print-page width before the browser snapshots. */
-  body[data-print-target] .dc-chart-card datacommons-line,
-  body[data-print-target] .dc-chart-card datacommons-bar,
-  body[data-print-target] .dc-chart-card datacommons-ranking,
-  body[data-print-target] .dc-chart-card datacommons-map,
-  body[data-print-target] .dc-chart-card datacommons-highlight,
-  body[data-print-target] .dc-chart-card datacommons-gauge,
-  body[data-print-target] .dc-chart-card datacommons-pie,
-  body[data-print-target] .dc-chart-card datacommons-scatter {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-  }
-  /* Any SVG inside the DC component scales to its parent. Setting both
-     width AND height to 100% (rather than height:auto) forces the SVG to
-     fit fully inside the card frame — DC bar charts in particular have
-     labels positioned outside their core viewBox, and height:auto lets
-     those labels push the SVG taller than the card. */
-  body[data-print-target] .dc-chart-card svg {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-    max-height: 100% !important;
-    overflow: hidden !important;
-  }
-  /* Last resort for bar-chart x-axis tick labels that stick out past the
-     SVG viewBox: rotate them so they read vertically (DC components
-     don't expose a prop for this). Targets the standard d3 axis text
-     class produced by DC components. */
-  body[data-print-target] .dc-chart-card datacommons-bar .x.axis text,
-  body[data-print-target] .dc-chart-card datacommons-bar g.x text,
-  body[data-print-target] .dc-chart-card datacommons-bar .axis-label,
-  body[data-print-target] .dc-chart-card datacommons-ranking .x.axis text,
-  body[data-print-target] .dc-chart-card datacommons-ranking g.x text {
-    font-size: 10px !important;
-  }
-}
-
-/*
- * Print preflight: lay the answer out at print-page width while still on
- * screen, so the charts can finish redrawing BEFORE the print snapshot.
- *
- * The Data Commons chart components re-render from their host element's
- * clientWidth, and that render is asynchronous -- it passes through a
- * "Loading..." state. window.print() snapshots synchronously, so a chart that
- * was still loading when the page switched to print width was captured as
- * "Loading..." and shipped in the PDF that way. Dispatching a resize on
- * beforeprint, as we used to rely on alone, starts that redraw but cannot wait
- * for it.
- *
- * utils/print_element.ts sets this attribute first, waits for the charts to
- * settle, and only then prints -- by which point the print layout is the width
- * they have already drawn at, so nothing needs to re-render again.
- *
- * Deliberately OUTSIDE @media print: the whole point is that it applies on
- * screen. It stays set through the print itself, so the widths do not change
- * underneath the snapshot.
- */
-body[data-print-preflight] [data-print-active] {
-  width: var(--print-page-width, 717px) !important;
-  max-width: var(--print-page-width, 717px) !important;
-}
-body[data-print-preflight] .dc-charts-container {
-  display: block !important;
-  grid-template-columns: 1fr !important;
-}
-body[data-print-preflight] .dc-chart-card {
-  width: 100% !important;
-  max-width: 100% !important;
-}
-body[data-print-preflight] .dc-chart-card datacommons-line,
-body[data-print-preflight] .dc-chart-card datacommons-bar,
-body[data-print-preflight] .dc-chart-card datacommons-ranking,
-body[data-print-preflight] .dc-chart-card datacommons-map,
-body[data-print-preflight] .dc-chart-card datacommons-highlight,
-body[data-print-preflight] .dc-chart-card datacommons-gauge,
-body[data-print-preflight] .dc-chart-card datacommons-pie,
-body[data-print-preflight] .dc-chart-card datacommons-scatter {
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
 }
 
 /* Answer reveal — the text arrives word by word in reading order, each word

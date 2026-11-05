@@ -420,8 +420,7 @@ function fileNameFor(question: string): string {
  * selectable text layer.
  *
  * Elements marked `data-non-print` are dropped, so the exported document is
- * the question and the answer without the follow-up questions or the UI
- * affordances around them — the same rule the print stylesheet applies.
+ * the question and the answer without the UI affordances around them.
  */
 export async function downloadPdf(
   target: HTMLElement | null,
@@ -429,11 +428,8 @@ export async function downloadPdf(
 ): Promise<void> {
   if (!target || !target.isConnected) return;
 
-  // Nothing here may touch the live panel's layout. An earlier version laid it
-  // out at page width first, so the chart components would redraw to fit; that
-  // worked, but the card visibly jumped 832px -> 717px and back on every
-  // export. The page-width layout happens entirely on the detached copy now,
-  // and the charts are scaled to fit there instead of re-rendering.
+  // Leave the live panel's layout untouched so the card does not jump on
+  // export: the page-width layout and chart scaling happen on the copy.
   await whenChartsDrawn(target);
   await renderToPdf(target, question);
 }
@@ -472,7 +468,7 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
   clone.style.background = "#ffffff";
 
   // Drop everything the printed document should not carry: the export buttons,
-  // the provenance icon, the follow-up questions.
+  // the provenance icon.
   clone.querySelectorAll('[data-non-print="true"]').forEach((el) => el.remove());
 
   // Remove hover styling for print layout.
@@ -481,12 +477,8 @@ async function renderToPdf(target: HTMLElement, question: string): Promise<void>
     n.style.cursor = "auto";
   });
 
-  // The question is the document's heading.
-  //
-  // index.css restyles it for print, but that rule lives in @media print and
-  // this path never enters print media -- so the clone inherited the on-screen
-  // one-line truncated title and the heading came out sliced in half. Applied
-  // here instead, to the same element the print rule targets.
+  // The question is the document's heading: undo its on-screen one-line
+  // truncation so a long question is not cut off.
   clone.querySelectorAll<HTMLElement>(".print-question").forEach((q) => {
     q.style.whiteSpace = "normal";
     q.style.textOverflow = "clip";

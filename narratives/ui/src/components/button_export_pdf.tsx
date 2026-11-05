@@ -15,7 +15,7 @@
  */
 
 /**
- * @fileoverview Renders a button that exports the answer panel to PDF via the browser print flow.
+ * @fileoverview Renders a button that exports the answer panel to PDF.
  */
 
 import { useRef } from 'react';
@@ -33,7 +33,7 @@ const COLOR_TEXT = 'var(--color-on-theme-container)';
 const FONT_STACK =
   '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
 
-/** Tonal "Export PDF" pill that prints the enclosing answer panel to PDF. */
+/** Tonal "Export PDF" pill that exports the enclosing answer panel to PDF. */
 export function ExportPdfButton({
   onExport,
   busy = false,
