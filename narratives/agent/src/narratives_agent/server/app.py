@@ -81,8 +81,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     bucket surfaces as a `config_missing` error on every turn instead of being
     masked by the configuration shipped with the image.
 
-    The MCP client's pooled HTTP client is opened on first use and closed here
-    at shutdown.
+    The Model Armor and MCP clients' pooled HTTP clients are opened on first
+    use and closed here at shutdown.
 
     Telemetry is configured here rather than when the module is imported, so
     importing the application in a test or a tool installs no global tracer
