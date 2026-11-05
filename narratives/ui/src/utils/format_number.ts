@@ -31,9 +31,9 @@ const COMPACT_FROM = 1_000_000;
 
 /** Compact units, largest first — a value takes the first one it clears. */
 const COMPACT_UNITS = [
-  { value: 1e12, suffix: "T" },
-  { value: 1e9, suffix: "B" },
-  { value: 1e6, suffix: "M" },
+  { value: 1e12, suffix: 'T' },
+  { value: 1e9, suffix: 'B' },
+  { value: 1e6, suffix: 'M' },
 ] as const;
 
 /** A number the renderer shortened, and the value it shortened. */
@@ -70,18 +70,18 @@ function isWordish(char: string | undefined): boolean {
 
 /** Inserts thousands separators into the integer part of a decimal string. */
 function group(value: string): string {
-  const negative = value.startsWith("-");
+  const negative = value.startsWith('-');
   const digits = negative ? value.slice(1) : value;
-  const dot = digits.indexOf(".");
+  const dot = digits.indexOf('.');
   const whole = dot === -1 ? digits : digits.slice(0, dot);
-  const rest = dot === -1 ? "" : digits.slice(dot);
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return (negative ? "-" : "") + grouped + rest;
+  const rest = dot === -1 ? '' : digits.slice(dot);
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (negative ? '-' : '') + grouped + rest;
 }
 
 /** Drops the trailing zeros `toFixed` adds, and the point left behind. */
 function trimZeros(value: string): string {
-  return value.includes(".") ? value.replace(/\.?0+$/, "") : value;
+  return value.includes('.') ? value.replace(/\.?0+$/, '') : value;
 }
 
 /**
@@ -91,11 +91,11 @@ function trimZeros(value: string): string {
  * `2023` is never rewritten as `2,023` or `2.02K`.
  */
 export function formatNumericToken(raw: string): FormattedNumber | null {
-  const plain = raw.replace(/,/g, "");
+  const plain = raw.replace(/,/g, '');
   const value = Number(plain);
   if (!Number.isFinite(value)) return null;
 
-  const full = raw.includes(",") ? raw : group(raw);
+  const full = raw.includes(',') ? raw : group(raw);
   const magnitude = Math.abs(value);
 
   if (magnitude >= COMPACT_FROM) {
@@ -107,7 +107,7 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
     return display === raw ? null : { display, full };
   }
 
-  const point = plain.indexOf(".");
+  const point = plain.indexOf('.');
   const decimals = point === -1 ? 0 : plain.length - point - 1;
   // Cap, don't pad: 84.5 stays 84.5 rather than becoming 84.50.
   if (decimals <= DISPLAY_DECIMALS) return null;
@@ -117,10 +117,10 @@ export function formatNumericToken(raw: string): FormattedNumber | null {
   // exact zero is excluded: it rounds away because it *is* zero, so it falls
   // through and is capped like any other figure.
   if (Number(fixed) === 0 && value !== 0) {
-    return { display: value > 0 ? "< 0.01" : "> -0.01", full };
+    return { display: value > 0 ? '< 0.01' : '> -0.01', full };
   }
 
-  const display = raw.includes(",") ? group(fixed) : fixed;
+  const display = raw.includes(',') ? group(fixed) : fixed;
   return display === raw ? null : { display, full };
 }
 

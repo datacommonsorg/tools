@@ -25,18 +25,18 @@ import {
   useMemo,
   useRef,
   useState,
-} from "react";
-import { InitialView } from "@/src/components/view_initial";
-import { SkeletonCard } from "@/src/components/card_skeleton";
-import { ReasoningBlock } from "@/src/components/block_reasoning";
-import { AnswerPanel } from "@/src/components/panel_answer";
-import { PromptInput } from "@/src/components/input_prompt";
+} from 'react';
+import { ReasoningBlock } from '@/src/components/block_reasoning';
+import { SkeletonCard } from '@/src/components/card_skeleton';
+import { PromptInput } from '@/src/components/input_prompt';
+import { AnswerPanel } from '@/src/components/panel_answer';
+import { InitialView } from '@/src/components/view_initial';
+import { useChatSession } from '@/src/hooks/chat_session_context';
 import {
   assignCitationNumbers,
   type ChatTurn,
   hasAnswer,
-} from "@/src/hooks/use_sse_chat";
-import { useChatSession } from "@/src/hooks/chat_session_context";
+} from '@/src/hooks/use_sse_chat';
 
 /** How long the scroll to a new question glides. */
 const PIN_GLIDE_MS = 400;
@@ -47,20 +47,20 @@ const PIN_TOP_OFFSET_PX = 8;
 /** Must match the duration in `--animate-stream-in` (ui/src/index.css). */
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
-const COLUMN = "w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8";
+const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
 /**
  * The AI-content wording under the prompt box. Each answer has its own wording
  * (DISCLAIMER_TEXT in note_disclaimer.tsx).
  */
 export const COMPOSER_DISCLAIMER_TEXT =
-  "Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.";
+  'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
  * prompt input with send/stop controls, and pins each new question to the top.
  */
 export function DataAgent() {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const { turns, isStreaming, send, stop } = useChatSession();
   // Citation labels belong to the thread, not to one answer, so they are
   // worked out here, where every turn is in view.
@@ -72,7 +72,7 @@ export function DataAgent() {
   const [hadConversation, setHadConversation] = useState(showConversation);
   if (showConversation !== hadConversation) {
     setHadConversation(showConversation);
-    if (!showConversation) setQuery("");
+    if (!showConversation) setQuery('');
   }
   // Track the turn count we last reacted to so we only scroll when a NEW
   // turn is added (e.g. follow-up question click) — not on every re-render
@@ -86,7 +86,7 @@ export function DataAgent() {
   const handleSend = async (override?: string) => {
     const message = (override ?? query).trim();
     if (!message || isStreaming) return;
-    setQuery("");
+    setQuery('');
     await send(message);
   };
 
@@ -106,10 +106,13 @@ export function DataAgent() {
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
       // <main> is the scroll container (see App).
-      const scroller = document.querySelector("main");
+      const scroller = document.querySelector('main');
       if (!scroller) return;
       const from = scroller.scrollTop;
-      const glideMs = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PIN_GLIDE_MS;
+      const glideMs = window.matchMedia('(prefers-reduced-motion: reduce)')
+        .matches
+        ? 0
+        : PIN_GLIDE_MS;
       const scrollToLatest = (elapsed: number) => {
         const target = document.querySelector<HTMLElement>(
           `[data-turn-index="${targetIndex}"]`,
@@ -124,11 +127,16 @@ export function DataAgent() {
         }
         // Walked past a static <main>: offsets are body-relative.
         if (!node) top -= scroller.offsetTop;
-        top -= document.querySelector<HTMLElement>("main > header")?.offsetHeight ?? 0;
+        top -=
+          document.querySelector<HTMLElement>('main > header')?.offsetHeight ??
+          0;
         // Ease-out cubic. The target is re-read every frame, so the glide
         // lands on the bubble even if the layout above it is still settling.
         const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
-        scroller.scrollTo(0, from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress);
+        scroller.scrollTo(
+          0,
+          from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress,
+        );
       };
       // Glide there, then hold on every animation frame for PIN_HOLD_MS so late
       // layout shifts from the previous turn's AnswerPanel (e.g. Data Commons
@@ -139,8 +147,8 @@ export function DataAgent() {
       const onUserScroll = () => {
         canceled = true;
       };
-      window.addEventListener("wheel", onUserScroll, { passive: true });
-      window.addEventListener("touchmove", onUserScroll, { passive: true });
+      window.addEventListener('wheel', onUserScroll, { passive: true });
+      window.addEventListener('touchmove', onUserScroll, { passive: true });
       const tick = () => {
         if (canceled) return;
         const elapsed = performance.now() - start;
@@ -150,8 +158,8 @@ export function DataAgent() {
       requestAnimationFrame(tick);
       // Tidy listeners after the pin window closes.
       window.setTimeout(() => {
-        window.removeEventListener("wheel", onUserScroll);
-        window.removeEventListener("touchmove", onUserScroll);
+        window.removeEventListener('wheel', onUserScroll);
+        window.removeEventListener('touchmove', onUserScroll);
       }, PIN_HOLD_MS + 100);
     }
   }, [turns.length]);
@@ -159,11 +167,11 @@ export function DataAgent() {
   // Exposes the sticky header + prompt height as --chrome-h for TurnView.
   useEffect(() => {
     const prompt = promptRef.current;
-    const header = document.querySelector<HTMLElement>("main > header");
+    const header = document.querySelector<HTMLElement>('main > header');
     if (!prompt) return;
     const observer = new ResizeObserver(() =>
       prompt.parentElement?.style.setProperty(
-        "--chrome-h",
+        '--chrome-h',
         `${prompt.offsetHeight + (header?.offsetHeight ?? 0)}px`,
       ),
     );
@@ -174,11 +182,7 @@ export function DataAgent() {
 
   if (!showConversation) {
     return (
-      <InitialView
-        query={query}
-        setQuery={setQuery}
-        onSend={handleSend}
-      />
+      <InitialView query={query} setQuery={setQuery} onSend={handleSend} />
     );
   }
 
@@ -209,7 +213,9 @@ export function DataAgent() {
           className="pointer-events-none absolute left-0 right-0 bottom-full h-4 bg-linear-to-t from-surface to-transparent"
         />
         {/* Relative so the prompt's shadow paints over the fade. */}
-        <div className={`${COLUMN} relative flex flex-col items-center gap-3 pb-4 sm:pb-6`}>
+        <div
+          className={`${COLUMN} relative flex flex-col items-center gap-3 pb-4 sm:pb-6`}
+        >
           <PromptInput
             value={query}
             placeholder="Ask a follow-up question"
@@ -258,13 +264,13 @@ export function TurnView({
   const showAnswer =
     hasAnswer(turn) &&
     !turn.stopped &&
-    (turn.status === "done" || turn.status === "error");
+    (turn.status === 'done' || turn.status === 'error');
   const showSkeleton =
     !showAnswer &&
     !turn.stopped &&
-    (turn.status === "discovery" ||
-      turn.status === "processing" ||
-      turn.status === "synthesis");
+    (turn.status === 'discovery' ||
+      turn.status === 'processing' ||
+      turn.status === 'synthesis');
   // Keep a shown skeleton under the answer until the crossfade ends.
   const [hadSkeleton, setHadSkeleton] = useState(false);
   if (showSkeleton && !hadSkeleton) setHadSkeleton(true);
@@ -286,19 +292,19 @@ export function TurnView({
   // the skeleton in the same grid cell stays the only thing shown.
   let answerClassName: string | undefined;
   if (isAnswerSettling) {
-    answerClassName = "invisible";
+    answerClassName = 'invisible';
   } else if (hadSkeleton) {
-    answerClassName = "motion-safe:animate-stream-in";
+    answerClassName = 'motion-safe:animate-stream-in';
   }
   const className = [
-    "shrink-0 flex flex-col gap-6",
+    'shrink-0 flex flex-col gap-6',
     COLUMN,
-    "motion-safe:*:animate-enter",
+    'motion-safe:*:animate-enter',
     // Viewport minus sticky chrome and the list's pb-6.
-    isLast && "min-h-[calc(100dvh-var(--chrome-h,0px)-1.5rem)]",
+    isLast && 'min-h-[calc(100dvh-var(--chrome-h,0px)-1.5rem)]',
   ]
     .filter(Boolean)
-    .join(" ");
+    .join(' ');
 
   return (
     // The last turn fills the viewport between header and prompt, so its
@@ -312,7 +318,7 @@ export function TurnView({
       <div
         data-turn-index={index}
         className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-5 py-3 sm:py-2.5 rounded-card text-body-large shadow-sm bg-user-msg text-on-surface leading-7! break-words${
-          index > 0 ? " mt-3" : ""
+          index > 0 ? ' mt-3' : ''
         }`}
       >
         {turn.userMessage}
@@ -328,12 +334,14 @@ export function TurnView({
           Suppressed when the turn was stopped or refused, and `done` is gated
           on evidence of a data call so clarification turns do not render the
           completed data-retrieval placeholder. */}
-      {!turn.stopped && turn.status !== "refused" && (
+      {!turn.stopped && turn.status !== 'refused' && (
         <ReasoningBlock
           thoughts={turn.thoughts}
-          streaming={isStreaming && turn.status !== "done" && turn.status !== "error"}
+          streaming={
+            isStreaming && turn.status !== 'done' && turn.status !== 'error'
+          }
           done={
-            turn.status === "done" &&
+            turn.status === 'done' &&
             (turn.thoughts.length > 0 ||
               turn.toolCalls.length > 0 ||
               turn.provenance.length > 0)
@@ -359,7 +367,7 @@ export function TurnView({
             <div
               aria-hidden={isHandingOff}
               className={`motion-safe:transition-opacity ease-out${
-                isHandingOff ? " opacity-0" : ""
+                isHandingOff ? ' opacity-0' : ''
               }`}
               style={{ transitionDuration: `${HANDOFF_MS}ms` }}
             >
@@ -394,7 +402,7 @@ export function TurnView({
       )}
 
       {/* Refusal notice for unserviceable or safety-blocked requests. */}
-      {turn.status === "refused" && turn.refusalMessage && (
+      {turn.status === 'refused' && turn.refusalMessage && (
         <div
           role="note"
           data-testid="turn-refusal-notice"
@@ -405,7 +413,7 @@ export function TurnView({
       )}
 
       {/* Error */}
-      {turn.status === "error" && turn.error && (
+      {turn.status === 'error' && turn.error && (
         <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large max-w-4xl">
           {turn.error}
         </div>

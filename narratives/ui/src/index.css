@@ -1,5 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Roboto:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /*
  * Design tokens for the application.
@@ -9,38 +9,65 @@
  * in index.html.
  */
 @theme {
-  --font-sans: var(--theme-font-body, "Google Sans Text", "Inter", system-ui, sans-serif);
-  --font-display: var(--theme-font, "Google Sans", "Roboto", system-ui, sans-serif);
+  --font-sans: var(
+    --theme-font-body,
+    'Google Sans Text',
+    'Inter',
+    system-ui,
+    sans-serif
+  );
+  --font-display: var(
+    --theme-font,
+    'Google Sans',
+    'Roboto',
+    system-ui,
+    sans-serif
+  );
 
-  --color-theme-primary: var(--theme-primary, #0B57D0);
+  --color-theme-primary: var(--theme-primary, #0b57d0);
   /* Selected-item pills and active tabs tint the theme primary at 14% opacity
      when no explicit container color is set. */
   --color-theme-container: var(
     --theme-container,
     color-mix(in srgb, var(--color-theme-primary) 14%, white)
   );
-  --color-on-theme-container: var(--theme-on-container, var(--color-theme-primary));
-  --color-theme-gradient-start: var(--theme-gradient-start, #0B57D0);
-  --color-theme-gradient-end: var(--theme-gradient-end, #0B57D0);
+  --color-on-theme-container: var(
+    --theme-on-container,
+    var(--color-theme-primary)
+  );
+  --color-theme-gradient-start: var(--theme-gradient-start, #0b57d0);
+  --color-theme-gradient-end: var(--theme-gradient-end, #0b57d0);
 
   /* Prompt input glow ring gradient */
-  --color-theme-gradient-border-stop-1: var(--theme-gradient-border-stop-1, #0B57D0);
-  --color-theme-gradient-border-stop-2: var(--theme-gradient-border-stop-2, #0B84D0);
-  --color-theme-gradient-border-stop-3: var(--theme-gradient-border-stop-3, #0BACD0);
-  --color-theme-gradient-border-stop-4: var(--theme-gradient-border-stop-4, #8CB8FF);
+  --color-theme-gradient-border-stop-1: var(
+    --theme-gradient-border-stop-1,
+    #0b57d0
+  );
+  --color-theme-gradient-border-stop-2: var(
+    --theme-gradient-border-stop-2,
+    #0b84d0
+  );
+  --color-theme-gradient-border-stop-3: var(
+    --theme-gradient-border-stop-3,
+    #0bacd0
+  );
+  --color-theme-gradient-border-stop-4: var(
+    --theme-gradient-border-stop-4,
+    #8cb8ff
+  );
 
   /* Surfaces */
   --color-surface: var(--theme-background, #ffffff);
-  --color-surface-soft: var(--theme-surface, #F9F9F9);
+  --color-surface-soft: var(--theme-surface, #f9f9f9);
   --color-surface-muted: #f3f4f6;
   --color-surface-blue: #f0f4f9;
   /* Subtle tint behind the reasoning card so it reads as distinct from the
      main answer body. */
-  --color-surface-narrative: var(--theme-surface-narrative, #F5FAFF);
-  --color-skeleton-bar: var(--theme-skeleton-bar, #EFEDED);
+  --color-surface-narrative: var(--theme-surface-narrative, #f5faff);
+  --color-skeleton-bar: var(--theme-skeleton-bar, #efeded);
   /* Inline-code chip behind `code` in the reasoning aside. */
-  --color-code-surface: var(--theme-code-surface, #F2F2F2);
-  --color-user-msg: var(--theme-user-msg, #EAEEF5);
+  --color-code-surface: var(--theme-code-surface, #f2f2f2);
+  --color-user-msg: var(--theme-user-msg, #eaeef5);
   /* Active navigation indicator and label color, defaulting to the primary
      text color when unconfigured. */
   --color-nav-active: var(--theme-nav-active, var(--color-on-surface));
@@ -64,10 +91,10 @@
   --container-prompt: 720px;
 
   /* Lines / borders */
-  --color-line: #C4C7C5;
+  --color-line: #c4c7c5;
   /* Card borders and divider rules; themeable so an instance can move them
      with its palette instead of leaving a gray rule on a tinted surface. */
-  --color-border: var(--theme-border, #E3E3E3);
+  --color-border: var(--theme-border, #e3e3e3);
   --color-outline: #e5e7eb;
   --color-outline-variant: #f3f4f6;
   --color-divider: #d1d5db;
@@ -90,20 +117,20 @@
   /* Inverse surface — the M3 role for UI that sits *over* the page rather
      than in it (m3.material.io/components/tooltips). */
   --color-inverse-surface: #313033;
-  --color-on-inverse-surface: #F4EFF4;
+  --color-on-inverse-surface: #f4eff4;
 
   /* Text — primary */
-  --color-on-surface: var(--theme-text, #1B1C1D);
+  --color-on-surface: var(--theme-text, #1b1c1d);
   --color-on-surface-variant: var(--theme-text-muted, #444746);
-  --color-muted: #575B5F;
+  --color-muted: #575b5f;
   /* AI orange: the color of the AI disclaimer under each answer. */
-  --color-ai-disclaimer: #C17B4A;
+  --color-ai-disclaimer: #c17b4a;
   --color-subtle: #747775;
-  --color-placeholder: #8E918F;
+  --color-placeholder: #8e918f;
 
   /* Text — table */
-  --color-table-data: #191C1B;
-  --color-table-header: #3F4946;
+  --color-table-data: #191c1b;
+  --color-table-header: #3f4946;
   --color-table-body: #212529;
 
   /* Motion — content entering the page: a short fade up on the M3 standard
@@ -170,36 +197,37 @@
 :root {
   --logo-height: var(--theme-logo-height, 28px);
 
-  --static-display-small-font: var(--font-display, "Google Sans");
+  --static-display-small-font: var(--font-display, 'Google Sans');
   --static-display-small-size: 32px;
   --static-display-small-line-height: 36px;
 
-  --static-title-large-font: var(--font-display, "Google Sans");
+  --static-title-large-font: var(--font-display, 'Google Sans');
   --static-title-large-size: 22px;
   --static-title-large-line-height: 28px;
 
-  --static-body-large-font: var(--font-sans, "Google Sans Text");
+  --static-body-large-font: var(--font-sans, 'Google Sans Text');
   --static-body-large-size: 16px;
   --static-body-large-line-height: 24px;
 
-  --static-body-medium-font: var(--font-sans, "Google Sans Text");
+  --static-body-medium-font: var(--font-sans, 'Google Sans Text');
   --static-body-medium-size: 14px;
   --static-body-medium-line-height: 20px;
 
-  --static-label-large-font: var(--font-sans, "Google Sans Text");
+  --static-label-large-font: var(--font-sans, 'Google Sans Text');
   --static-label-large-size: 14px;
   --static-label-large-line-height: 20px;
 
-  --static-label-small-font: var(--font-sans, "Google Sans Text");
+  --static-label-small-font: var(--font-sans, 'Google Sans Text');
   --static-label-small-size: 11px;
   --static-label-small-line-height: 16px;
 
-  --static-caption-font: var(--font-sans, "Google Sans Text");
+  --static-caption-font: var(--font-sans, 'Google Sans Text');
   --static-caption-size: 12px;
   --static-caption-line-height: 16px;
 }
 
-html, body {
+html,
+body {
   font-family: var(--font-sans);
   background-color: var(--theme-background, #ffffff);
   color: var(--color-on-surface);
@@ -224,7 +252,7 @@ html, body {
  * no href is not interactive.
  */
 button:not(:disabled),
-[role="button"]:not([aria-disabled="true"]),
+[role='button']:not([aria-disabled='true']),
 a[href],
 summary,
 label[for],
@@ -263,7 +291,7 @@ select:not(:disabled) {
      angle. Absolutely positioned because a square that size in flow would
      stretch the box. */
   &::before {
-    content: "";
+    content: '';
     position: absolute;
     top: 50%;
     left: 50%;
@@ -289,39 +317,52 @@ select:not(:disabled) {
 }
 
 .no-scrollbar::-webkit-scrollbar {
-    display: none;
+  display: none;
 }
 .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 /* Floating rounded thumb: transparent track, thumb inset from the edges. */
 .thin-scrollbar::-webkit-scrollbar {
-    width: 10px;
+  width: 10px;
 }
 .thin-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 .thin-scrollbar::-webkit-scrollbar-thumb {
-    background-color: color-mix(in srgb, var(--color-on-surface-variant) 40%, transparent);
-    border: 3px solid transparent;  /* gap around the pill */
-    background-clip: padding-box;
-    border-radius: 9999px;
+  background-color: color-mix(
+    in srgb,
+    var(--color-on-surface-variant) 40%,
+    transparent
+  );
+  border: 3px solid transparent; /* gap around the pill */
+  background-clip: padding-box;
+  border-radius: 9999px;
 }
 .thin-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--color-on-surface-variant) 60%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--color-on-surface-variant) 60%,
+    transparent
+  );
 }
 /* Firefox only: Chrome 121+ ignores ::-webkit-scrollbar once these are set. */
 @supports not selector(::-webkit-scrollbar) {
-    .thin-scrollbar {
-        scrollbar-width: thin;
-        scrollbar-color: color-mix(in srgb, var(--color-on-surface-variant) 40%, transparent) transparent;
-    }
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(
+        in srgb,
+        var(--color-on-surface-variant) 40%,
+        transparent
+      )
+      transparent;
+  }
 }
 
 .text-display-small {
-  font-family: var(--static-display-small-font, "Google Sans");
+  font-family: var(--static-display-small-font, 'Google Sans');
   font-size: var(--static-display-small-size, 32px);
   font-style: normal;
   font-weight: 500;
@@ -330,7 +371,7 @@ select:not(:disabled) {
 }
 
 .text-title-large-emphasized {
-  font-family: var(--static-title-large-font, "Google Sans");
+  font-family: var(--static-title-large-font, 'Google Sans');
   font-size: var(--static-title-large-size, 22px);
   font-style: normal;
   font-weight: 500;
@@ -339,7 +380,7 @@ select:not(:disabled) {
 }
 
 .text-body-large {
-  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-family: var(--static-body-large-font, 'Google Sans Text');
   font-size: var(--static-body-large-size, 16px);
   font-style: normal;
   font-weight: 400;
@@ -348,7 +389,7 @@ select:not(:disabled) {
 }
 
 .text-body-large-emphasized {
-  font-family: var(--static-body-large-font, "Google Sans Text");
+  font-family: var(--static-body-large-font, 'Google Sans Text');
   font-size: var(--static-body-large-size, 16px);
   font-style: normal;
   font-weight: 500;
@@ -357,7 +398,7 @@ select:not(:disabled) {
 }
 
 .text-body-medium {
-  font-family: var(--static-body-medium-font, "Google Sans Text");
+  font-family: var(--static-body-medium-font, 'Google Sans Text');
   font-size: var(--static-body-medium-size, 14px);
   font-style: normal;
   font-weight: 400;
@@ -366,7 +407,7 @@ select:not(:disabled) {
 }
 
 .text-body-medium-emphasized {
-  font-family: var(--static-body-medium-font, "Google Sans Text");
+  font-family: var(--static-body-medium-font, 'Google Sans Text');
   font-size: var(--static-body-medium-size, 14px);
   font-style: normal;
   font-weight: 500;
@@ -375,7 +416,7 @@ select:not(:disabled) {
 }
 
 .text-label-large {
-  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-family: var(--static-label-large-font, 'Google Sans Text');
   font-size: var(--static-label-large-size, 14px);
   font-style: normal;
   font-weight: 500;
@@ -384,7 +425,7 @@ select:not(:disabled) {
 }
 
 .text-label-large-emphasized {
-  font-family: var(--static-label-large-font, "Google Sans Text");
+  font-family: var(--static-label-large-font, 'Google Sans Text');
   font-size: var(--static-label-large-size, 14px);
   font-style: normal;
   font-weight: 700;
@@ -393,7 +434,7 @@ select:not(:disabled) {
 }
 
 .text-label-small {
-  font-family: var(--static-label-small-font, "Google Sans Text");
+  font-family: var(--static-label-small-font, 'Google Sans Text');
   font-size: var(--static-label-small-size, 11px);
   font-style: normal;
   font-weight: 500;
@@ -402,7 +443,7 @@ select:not(:disabled) {
 }
 
 .text-caption {
-  font-family: var(--static-caption-font, "Google Sans Text");
+  font-family: var(--static-caption-font, 'Google Sans Text');
   font-size: var(--static-caption-size, 12px);
   font-style: normal;
   font-weight: 400;
@@ -411,13 +452,17 @@ select:not(:disabled) {
 }
 
 .text-display-small-gradient {
-  font-family: var(--static-display-small-font, "Google Sans");
+  font-family: var(--static-display-small-font, 'Google Sans');
   font-size: var(--static-display-small-size, 32px);
   font-style: normal;
   font-weight: 500;
   line-height: var(--static-display-small-line-height, 36px);
   letter-spacing: 0;
-  background: linear-gradient(4deg, var(--color-theme-gradient-start) 0%, var(--color-theme-gradient-end) 100%);
+  background: linear-gradient(
+    4deg,
+    var(--color-theme-gradient-start) 0%,
+    var(--color-theme-gradient-end) 100%
+  );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -515,7 +560,6 @@ select:not(:disabled) {
   }
 }
 
-
 /* ==========================================================================
    Material Design 3 Tooltips (https://m3.material.io/components/tooltips/overview)
    ========================================================================== */
@@ -538,17 +582,25 @@ select:not(:disabled) {
   padding: 4px 8px;
   border-radius: 4px;
   background: var(--color-inverse-surface, #313033);
-  color: var(--color-on-inverse-surface, #F4EFF4);
-  font-family: var(--font-sans, "Google Sans Text", "Roboto", system-ui, sans-serif);
+  color: var(--color-on-inverse-surface, #f4eff4);
+  font-family: var(
+    --font-sans,
+    'Google Sans Text',
+    'Roboto',
+    system-ui,
+    sans-serif
+  );
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   letter-spacing: 0.2px;
   text-align: start;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 1px 3px 1px rgba(0, 0, 0, 0.15);
   white-space: nowrap;
   overflow-wrap: anywhere;
-  animation: dc-tooltip-in 150ms cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  animation: dc-tooltip-in 150ms cubic-bezier(0.05, 0.7, 0.1, 1);
   transform-origin: center;
 }
 
@@ -573,15 +625,23 @@ select:not(:disabled) {
   box-sizing: border-box;
   padding: 12px 16px 8px 16px;
   border-radius: 12px;
-  background: var(--color-surface, #FFFFFF);
-  color: var(--color-on-surface, #1D1B20);
-  border: 1px solid var(--color-border, #E3E3E3);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
-  font-family: var(--font-sans, "Google Sans Text", "Roboto", system-ui, sans-serif);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-on-surface, #1d1b20);
+  border: 1px solid var(--color-border, #e3e3e3);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  font-family: var(
+    --font-sans,
+    'Google Sans Text',
+    'Roboto',
+    system-ui,
+    sans-serif
+  );
   text-align: start;
   white-space: normal;
   pointer-events: auto;
-  animation: dc-tooltip-in 150ms cubic-bezier(0.05, 0.7, 0.1, 1.0);
+  animation: dc-tooltip-in 150ms cubic-bezier(0.05, 0.7, 0.1, 1);
   transform-origin: center;
 }
 
@@ -590,7 +650,7 @@ select:not(:disabled) {
   line-height: 20px;
   font-weight: 500;
   letter-spacing: 0.1px;
-  color: var(--color-on-surface, #1D1B20);
+  color: var(--color-on-surface, #1d1b20);
   margin-bottom: 4px;
 }
 
@@ -620,7 +680,7 @@ select:not(:disabled) {
   line-height: 16px;
   font-weight: 500;
   letter-spacing: 0.1px;
-  color: var(--color-theme-primary, #0B57D0);
+  color: var(--color-theme-primary, #0b57d0);
   cursor: pointer;
   transition: background-color 150ms;
 }

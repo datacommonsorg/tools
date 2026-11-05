@@ -2,15 +2,15 @@
  * @fileoverview Provides the SSE chat hook: streams agent responses and reduces events into chat turns.
  */
 
-import { useCallback, useRef, useState } from "react";
-import { withBaseUrl } from "@/src/config/base_url";
+import { useCallback, useRef, useState } from 'react';
+import { withBaseUrl } from '@/src/config/base_url';
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
-const SSE_EVENT_SEPARATOR = "\n\n";
+const SSE_EVENT_SEPARATOR = '\n\n';
 /** SSE framing: the event name line is prefixed with `event:`. */
-const SSE_EVENT_NAME_PREFIX = "event:";
+const SSE_EVENT_NAME_PREFIX = 'event:';
 /** SSE framing: payload lines are prefixed with `data:`. */
-const SSE_EVENT_DATA_PREFIX = "data:";
+const SSE_EVENT_DATA_PREFIX = 'data:';
 /** Specifies the base-36 radix used for the random suffix of a fallback idempotency key. */
 const FALLBACK_KEY_RADIX = 36;
 /** Specifies how many random characters are kept after the leading "0." in a fallback idempotency key. */
@@ -23,7 +23,7 @@ const FALLBACK_KEY_RANDOM_CHARS = 8;
 export interface ToolCallEvent {
   name: string;
   arguments: Record<string, unknown>;
-  status?: "success" | "error";
+  status?: 'success' | 'error';
   /**
    * The tool's raw response, as the MCP server returned it. The agent has
    * always sent this and the reducer used to discard it; it is kept now because
@@ -37,7 +37,7 @@ export interface ToolCallEvent {
 /** A reasoning snippet emitted while the agent works, tagged by pipeline phase. */
 export interface ThoughtEvent {
   text: string;
-  phase: "discovery" | "synthesis";
+  phase: 'discovery' | 'synthesis';
 }
 
 /**
@@ -46,13 +46,13 @@ export interface ThoughtEvent {
  */
 export interface ChartItem {
   vizType:
-    | "line"
-    | "bar"
-    | "map"
-    | "ranking"
-    | "highlight"
-    | "scatter"
-    | "slider";
+    | 'line'
+    | 'bar'
+    | 'map'
+    | 'ranking'
+    | 'highlight'
+    | 'scatter'
+    | 'slider';
   title?: string;
   variableDcids: string[];
   placeDcids?: string[];
@@ -71,7 +71,7 @@ export interface ChartItem {
   /** Show the lowest places of a ranking instead of the highest. */
   showLowest?: boolean;
   /** Sort order of a bar chart's places. */
-  sort?: "ascending" | "descending";
+  sort?: 'ascending' | 'descending';
 }
 
 /**
@@ -91,7 +91,7 @@ export interface ChartConfig {
  * rename only requires updating the mapper.
  */
 interface RawChartItem {
-  viz_type: ChartItem["vizType"];
+  viz_type: ChartItem['vizType'];
   title?: string;
   variable_dcids: string[];
   place_dcids?: string[];
@@ -104,20 +104,20 @@ interface RawChartItem {
   ranking_count?: number;
   show_highest_lowest?: boolean;
   show_lowest?: boolean;
-  sort?: ChartItem["sort"];
+  sort?: ChartItem['sort'];
 }
 
 /**
  * The chart kinds `serialize_resolved_chart` in `workflows/charts.py` emits.
  * A chart block of any other kind is dropped.
  */
-const CHART_VIZ_TYPES: ReadonlySet<string> = new Set<ChartItem["vizType"]>([
-  "line",
-  "bar",
-  "map",
-  "ranking",
-  "scatter",
-  "highlight",
+const CHART_VIZ_TYPES: ReadonlySet<string> = new Set<ChartItem['vizType']>([
+  'line',
+  'bar',
+  'map',
+  'ranking',
+  'scatter',
+  'highlight',
 ]);
 
 /**
@@ -126,11 +126,11 @@ const CHART_VIZ_TYPES: ReadonlySet<string> = new Set<ChartItem["vizType"]>([
  * malformed mapping is treated as absent.
  */
 function readFacetIds(value: unknown): Record<string, string> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined;
   }
   const entries = Object.entries(value).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
+    (entry): entry is [string, string] => typeof entry[1] === 'string',
   );
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
@@ -160,8 +160,8 @@ function mapRawChartItem(raw: RawChartItem): ChartItem {
  * or a chart resolved against the turn's cached tables.
  */
 export type RawAnswerBlock =
-  | { type: "text"; markdown: string }
-  | { type: "chart"; chart: RawChartItem };
+  | { type: 'text'; markdown: string }
+  | { type: 'chart'; chart: RawChartItem };
 
 /**
  * One block of an answer in the UI's domain shape, rendered in order. `index`
@@ -170,13 +170,13 @@ export type RawAnswerBlock =
  * produce duplicate or invalid React keys.
  */
 export type AnswerBlock =
-  | { index: number; type: "text"; markdown: string }
-  | { index: number; type: "chart"; chart: ChartItem };
+  | { index: number; type: 'text'; markdown: string }
+  | { index: number; type: 'chart'; chart: ChartItem };
 
 /** Returns the charts a turn renders: the charts of its chart blocks, in order. */
 export function getTurnCharts(turn: ChatTurn): ChartItem[] {
   return turn.blocks.flatMap((block) =>
-    block.type === "chart" ? [block.chart] : [],
+    block.type === 'chart' ? [block.chart] : [],
   );
 }
 
@@ -186,7 +186,7 @@ export function getTurnCharts(turn: ChatTurn): ChartItem[] {
  * failed turn.
  */
 export function hasAnswer(turn: ChatTurn): boolean {
-  return turn.text !== "";
+  return turn.text !== '';
 }
 
 /** A source attribution (display name + link) surfaced with an answer. */
@@ -219,20 +219,20 @@ export interface ProvenanceItem {
  * the multi-turn window.
  */
 export type TurnStatus =
-  | "idle"
-  | "classify"
-  | "discovery"
-  | "processing"
-  | "synthesis"
-  | "done"
-  | "refused"
-  | "error";
+  | 'idle'
+  | 'classify'
+  | 'discovery'
+  | 'processing'
+  | 'synthesis'
+  | 'done'
+  | 'refused'
+  | 'error';
 
 /** Statuses a turn keeps once it has ended; Stop leaves such a turn alone. */
 const SETTLED_STATUSES: ReadonlySet<TurnStatus> = new Set([
-  "done",
-  "refused",
-  "error",
+  'done',
+  'refused',
+  'error',
 ]);
 
 /**
@@ -240,7 +240,7 @@ const SETTLED_STATUSES: ReadonlySet<TurnStatus> = new Set([
  * terminal event because the connection dropped or the page closed mid-stream.
  */
 export const INTERRUPTED_TURN_ERROR =
-  "The connection was interrupted before the response finished.";
+  'The connection was interrupted before the response finished.';
 
 /**
  * Defines the error message shown when the agent rejects the signed
@@ -248,13 +248,13 @@ export const INTERRUPTED_TURN_ERROR =
  * signature is cleared, so the next question starts without earlier context.
  */
 export const TRANSCRIPT_REJECTED_ERROR =
-  "The conversation history could not be verified, so earlier context was cleared. Please ask again.";
+  'The conversation history could not be verified, so earlier context was cleared. Please ask again.';
 
 /** Defines the default notice message shown when a turn is refused without a server message. */
-export const DEFAULT_REFUSAL_MESSAGE = "The request was declined.";
+export const DEFAULT_REFUSAL_MESSAGE = 'The request was declined.';
 
 /** Identifies the HTTP 400 body the agent returns for an unverifiable transcript. */
-const TRANSCRIPT_INVALID_REASON = "transcript_invalid";
+const TRANSCRIPT_INVALID_REASON = 'transcript_invalid';
 
 /**
  * Records the places, variables, and date range of one data query or chart, in
@@ -326,7 +326,7 @@ export interface ChatTurn {
 }
 
 /** Identifies the terminal state of a turn as reported by its `terminal` event. */
-type TerminalState = "complete" | "error" | "refused" | "canceled";
+type TerminalState = 'complete' | 'error' | 'refused' | 'canceled';
 
 /**
  * Represents the payload of a `content` event, which carries one content field
@@ -386,40 +386,38 @@ export interface WireTurn {
 /** Represents one decoded event from `/agent/chat/stream`, discriminated by its `event:` name. */
 export type ChatStreamEvent =
   | {
-      event: "status";
+      event: 'status';
       data: {
-        phase: "classify" | "discovery" | "processing" | "synthesis";
+        phase: 'classify' | 'discovery' | 'processing' | 'synthesis';
         message?: string;
       };
     }
-  | { event: "thought"; data: { thought: string; phase?: ThoughtEvent["phase"] } }
-  | { event: "content"; data: ContentPayload }
-  | { event: "terminal"; data: TerminalPayload }
-  | { event: "follow_ups"; data: { follow_up_questions: string[] } }
-  | { event: "heartbeat"; data: Record<string, never> };
+  | {
+      event: 'thought';
+      data: { thought: string; phase?: ThoughtEvent['phase'] };
+    }
+  | { event: 'content'; data: ContentPayload }
+  | { event: 'terminal'; data: TerminalPayload }
+  | { event: 'follow_ups'; data: { follow_up_questions: string[] } }
+  | { event: 'heartbeat'; data: Record<string, never> };
 
-const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set<ChatStreamEvent["event"]>([
-  "status",
-  "thought",
-  "content",
-  "terminal",
-  "follow_ups",
-  "heartbeat",
-]);
+const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set<
+  ChatStreamEvent['event']
+>(['status', 'thought', 'content', 'terminal', 'follow_ups', 'heartbeat']);
 
 const newTurn = (userMessage: string, idempotencyKey: string): ChatTurn => ({
   userMessage,
-  status: "idle",
+  status: 'idle',
   toolCalls: [],
   thoughts: [],
-  text: "",
+  text: '',
   blocks: [],
   provenance: [],
   idempotencyKey,
 });
 
 /** The separator between text blocks in the signed answer text. */
-const TEXT_BLOCK_SEPARATOR = "\n\n";
+const TEXT_BLOCK_SEPARATOR = '\n\n';
 
 /** Represents a turn that carries everything needed to send it back as signed context. */
 type SignedTurn = ChatTurn & {
@@ -432,7 +430,7 @@ type SignedTurn = ChatTurn & {
 /** Reports whether a turn is a completed turn the agent signed. */
 function isSignedTurn(turn: ChatTurn): turn is SignedTurn {
   return (
-    turn.status === "done" &&
+    turn.status === 'done' &&
     !turn.stopped &&
     Boolean(turn.hmac) &&
     turn.idempotencyKey !== undefined &&
@@ -559,10 +557,10 @@ async function isTranscriptRejection(resp: Response): Promise<boolean> {
   if (resp.status !== 400) return false;
   try {
     const body: unknown = await resp.json();
-    if (typeof body !== "object" || body === null) return false;
+    if (typeof body !== 'object' || body === null) return false;
     const detail: unknown = (body as { detail?: unknown }).detail;
     return (
-      typeof detail === "object" &&
+      typeof detail === 'object' &&
       detail !== null &&
       (detail as { reason?: unknown }).reason === TRANSCRIPT_INVALID_REASON
     );
@@ -573,7 +571,7 @@ async function isTranscriptRejection(resp: Response): Promise<boolean> {
 
 /** Returns a fresh idempotency key for one submission. */
 function newIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
   }
   // `crypto.randomUUID` exists only in secure contexts (HTTPS or localhost),
@@ -591,9 +589,9 @@ function newIdempotencyKey(): string {
  * them without interrupting the stream.
  */
 function decodeFrame(frame: string): ChatStreamEvent | null {
-  let event = "message";
+  let event = 'message';
   const dataLines: string[] = [];
-  for (const line of frame.split("\n")) {
+  for (const line of frame.split('\n')) {
     // Only `event:` and `data:` lines are used. Other lines, such as `id:`
     // fields and `:` comments, are ignored.
     if (line.startsWith(SSE_EVENT_NAME_PREFIX)) {
@@ -605,13 +603,13 @@ function decodeFrame(frame: string): ChatStreamEvent | null {
   if (!CHAT_STREAM_EVENTS.has(event) || dataLines.length === 0) return null;
   let data: unknown;
   try {
-    data = JSON.parse(dataLines.join("\n"));
+    data = JSON.parse(dataLines.join('\n'));
   } catch {
     data = undefined;
   }
   // Every event's payload is an object; the reducer reads fields off it.
-  if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    console.warn("Skipping malformed SSE payload:", dataLines.join("\n"));
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    console.warn('Skipping malformed SSE payload:', dataLines.join('\n'));
     return null;
   }
   return { event, data } as ChatStreamEvent;
@@ -619,7 +617,7 @@ function decodeFrame(frame: string): ChatStreamEvent | null {
 
 /** Converts CRLF and CR line endings to LF. */
 function normalizeLineEndings(text: string): string {
-  return text.replace(/\r\n?/g, "\n");
+  return text.replace(/\r\n?/g, '\n');
 }
 
 /**
@@ -639,7 +637,7 @@ export async function* parseSseStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): AsyncGenerator<ChatStreamEvent, void, unknown> {
   const decoder = new TextDecoder();
-  let buffer = "";
+  let buffer = '';
   // Set when a chunk ends in CR, which is held back until the next chunk
   // shows whether it is the first half of a CRLF pair.
   let pendingCr = false;
@@ -648,8 +646,8 @@ export async function* parseSseStream(
       const { value, done } = await reader.read();
       if (done) break;
       let chunk = decoder.decode(value, { stream: true });
-      if (pendingCr) chunk = "\r" + chunk;
-      pendingCr = chunk.endsWith("\r");
+      if (pendingCr) chunk = '\r' + chunk;
+      pendingCr = chunk.endsWith('\r');
       if (pendingCr) chunk = chunk.slice(0, -1);
       // A separator that straddles the previous chunk and this one starts in
       // the last character of the existing buffer, so the search starts
@@ -708,7 +706,7 @@ export interface UseSseChatProps {
  */
 export function useSseChat(props: UseSseChatProps): UseSseChatResult {
   const {
-    endpoint = withBaseUrl("/agent/chat/stream"),
+    endpoint = withBaseUrl('/agent/chat/stream'),
     turns,
     setTurns,
   } = props;
@@ -728,7 +726,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       prev.map((turn) =>
         turn.idempotencyKey === inFlight.idempotencyKey &&
         !SETTLED_STATUSES.has(turn.status)
-          ? { ...turn, status: "done", stopped: true }
+          ? { ...turn, status: 'done', stopped: true }
           : turn,
       ),
     );
@@ -772,8 +770,8 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       let streamStarted = false;
       try {
         const resp = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message,
             ...transcript,
@@ -790,7 +788,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           setTurns((prev) =>
             prev.map((turn) =>
               turn.idempotencyKey === idempotencyKey
-                ? { ...turn, status: "error", error: TRANSCRIPT_REJECTED_ERROR }
+                ? { ...turn, status: 'error', error: TRANSCRIPT_REJECTED_ERROR }
                 : withoutSignature(turn),
             ),
           );
@@ -799,7 +797,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         }
         if (!resp.ok || !resp.body) {
           const errText = `HTTP ${resp.status} ${resp.statusText}`;
-          patch((turn) => ({ ...turn, status: "error", error: errText }));
+          patch((turn) => ({ ...turn, status: 'error', error: errText }));
           setError(errText);
           return;
         }
@@ -810,16 +808,16 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           if (controller.signal.aborted) return;
           // Heartbeat frames carry no state changes, so skipping them avoids
           // an unnecessary re-render.
-          if (evt.event === "heartbeat") continue;
+          if (evt.event === 'heartbeat') continue;
           patch((turn) => applyEvent(turn, evt));
-          if (evt.event === "terminal") {
+          if (evt.event === 'terminal') {
             const payload = evt.data;
             terminal = payload;
-            if (payload.state === "complete") {
+            if (payload.state === 'complete') {
               setTurns((prev) =>
                 applySignedWindow(prev, idempotencyKey, payload),
               );
-            } else if (payload.state !== "refused") {
+            } else if (payload.state !== 'refused') {
               setError(terminalError(payload));
             }
           }
@@ -829,7 +827,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
         if (!terminal && !controller.signal.aborted) {
           patch((turn) => ({
             ...turn,
-            status: "error",
+            status: 'error',
             error: INTERRUPTED_TURN_ERROR,
           }));
           setError(INTERRUPTED_TURN_ERROR);
@@ -845,7 +843,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           : e instanceof Error
             ? e.message
             : String(e);
-        patch((turn) => ({ ...turn, status: "error", error: msg }));
+        patch((turn) => ({ ...turn, status: 'error', error: msg }));
         setError(msg);
       } finally {
         if (!controller.signal.aborted) {
@@ -863,10 +861,10 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
 /** Returns the message shown for a terminal event that ends the turn in `error`. */
 function terminalError(terminal: TerminalPayload): string {
   if (terminal.error) return terminal.error;
-  if (terminal.state === "canceled") {
-    return "The response was canceled before it finished.";
+  if (terminal.state === 'canceled') {
+    return 'The response was canceled before it finished.';
   }
-  return "The response failed. Please try again.";
+  return 'The response failed. Please try again.';
 }
 
 /**
@@ -875,17 +873,17 @@ function terminalError(terminal: TerminalPayload): string {
  * terminal outcome rather than a request failure.
  */
 function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
-  if (terminal.state === "complete") {
-    return { ...turn, status: "done" };
+  if (terminal.state === 'complete') {
+    return { ...turn, status: 'done' };
   }
-  if (terminal.state === "refused") {
+  if (terminal.state === 'refused') {
     return {
       ...turn,
-      status: "refused",
+      status: 'refused',
       refusalMessage: terminal.message || DEFAULT_REFUSAL_MESSAGE,
     };
   }
-  return { ...turn, status: "error", error: terminalError(terminal) };
+  return { ...turn, status: 'error', error: terminalError(terminal) };
 }
 
 /**
@@ -899,36 +897,36 @@ function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
 function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
   const blocks = turn.blocks;
   const index = blocks.length;
-  if (raw.type === "chart") {
+  if (raw.type === 'chart') {
     if (
-      typeof raw.chart !== "object" ||
+      typeof raw.chart !== 'object' ||
       raw.chart === null ||
       !CHART_VIZ_TYPES.has(raw.chart.viz_type) ||
       !Array.isArray(raw.chart.variable_dcids) ||
       raw.chart.variable_dcids.length === 0 ||
       !raw.chart.variable_dcids.every(
-        (dcid: unknown) => typeof dcid === "string" && dcid.length > 0,
+        (dcid: unknown) => typeof dcid === 'string' && dcid.length > 0,
       )
     ) {
-      console.warn("Ignoring a malformed chart block.");
+      console.warn('Ignoring a malformed chart block.');
       return turn;
     }
     const block: AnswerBlock = {
       index,
-      type: "chart",
+      type: 'chart',
       chart: mapRawChartItem(raw.chart),
     };
     return { ...turn, blocks: [...blocks, block] };
   }
   if (
-    raw.type !== "text" ||
-    typeof raw.markdown !== "string" ||
+    raw.type !== 'text' ||
+    typeof raw.markdown !== 'string' ||
     raw.markdown.length === 0
   ) {
-    console.warn("Ignoring a malformed or empty answer block.");
+    console.warn('Ignoring a malformed or empty answer block.');
     return turn;
   }
-  const block: AnswerBlock = { index, type: "text", markdown: raw.markdown };
+  const block: AnswerBlock = { index, type: 'text', markdown: raw.markdown };
   const text = turn.text
     ? turn.text + TEXT_BLOCK_SEPARATOR + raw.markdown
     : raw.markdown;
@@ -938,7 +936,7 @@ function applyBlock(turn: ChatTurn, raw: RawAnswerBlock): ChatTurn {
 /** Applies one `content` payload to the turn state. */
 function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
   let next = turn;
-  if (content.block && typeof content.block === "object") {
+  if (content.block && typeof content.block === 'object') {
     next = applyBlock(next, content.block);
   }
   if (content.tool_call) {
@@ -966,33 +964,33 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
 /** Applies one typed SSE event to the turn state. */
 export function applyEvent(turn: ChatTurn, evt: ChatStreamEvent): ChatTurn {
   switch (evt.event) {
-    case "status":
+    case 'status':
       if (
-        evt.data.phase === "classify" ||
-        evt.data.phase === "discovery" ||
-        evt.data.phase === "processing" ||
-        evt.data.phase === "synthesis"
+        evt.data.phase === 'classify' ||
+        evt.data.phase === 'discovery' ||
+        evt.data.phase === 'processing' ||
+        evt.data.phase === 'synthesis'
       ) {
         return { ...turn, status: evt.data.phase };
       }
       return turn;
-    case "thought":
+    case 'thought':
       return {
         ...turn,
         thoughts: [
           ...turn.thoughts,
-          { text: evt.data.thought, phase: evt.data.phase ?? "synthesis" },
+          { text: evt.data.thought, phase: evt.data.phase ?? 'synthesis' },
         ],
       };
-    case "content":
+    case 'content':
       return applyContent(turn, evt.data);
-    case "terminal":
+    case 'terminal':
       return applyTerminal(turn, evt.data);
-    case "follow_ups":
+    case 'follow_ups':
       return Array.isArray(evt.data.follow_up_questions)
         ? { ...turn, followUps: evt.data.follow_up_questions }
         : turn;
-    case "heartbeat":
+    case 'heartbeat':
       return turn;
   }
 }
