@@ -14,10 +14,11 @@
 """Runs the classify phase, the admission step of the agent loop.
 
 Applies the deterministic regex pre-filter in `prefilter.py` to reject prompt
-injections and exploit payloads before any model call, then requests a
-structured `QueryClassification` from Gemini at temperature zero to refuse
-adversarial or off-domain queries, return a clarification question, or admit
-the query with its analytical pattern.
+injections and exploit payloads before any external call, optionally screens
+the query against Google Cloud Model Armor (`model_armor.py`), and then
+requests a structured `QueryClassification` from Gemini at temperature zero to
+refuse adversarial or off-domain queries, return a clarification question, or
+admit the query with its analytical pattern.
 """
 
 import asyncio
@@ -35,6 +36,7 @@ from narratives_agent.gemini.client import (
     async_gemini_request,
 )
 from narratives_agent.gemini.schemas import QueryClassification
+from narratives_agent.model_armor import screen_user_prompt
 from narratives_agent.telemetry import TurnTelemetry
 from narratives_agent.workflows.mcp_loop import MCP_HISTORY_RESPONSE_CHARS
 from narratives_agent.workflows.messages import (
@@ -205,14 +207,20 @@ async def classify_query(
         or `Admitted` when the turn continues into the discovery phase.
 
     Raises:
-        TurnRefusedError: If the pre-filter matches or the classifier marks
-            the query unserviceable.
+        TurnRefusedError: If the pre-filter or Model Armor matches, or the
+            classifier marks the query unserviceable.
         GeminiBlockedError: If Gemini blocks the classification call.
     """
     family = prefilter_match(transcript.current_query)
     if family is not None:
         logger.warning("Pre-filter matched %s; refusing turn", family)
         raise TurnRefusedError(RefusedReason.ADVERSARIAL, REFUSED_MESSAGE)
+    model_armor_match = await screen_user_prompt(transcript.current_query)
+    if model_armor_match is not None:
+        logger.warning(
+            "Model Armor matched %s; refusing turn", model_armor_match
+        )
+        raise TurnRefusedError(RefusedReason.SAFETY_BLOCKED, REFUSED_MESSAGE)
     classification = await _request_classification(
         transcript, config, telemetry
     )

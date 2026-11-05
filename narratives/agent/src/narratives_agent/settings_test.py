@@ -78,6 +78,12 @@ def _read_settings(
             "europe-west4",
             id="location",
         ),
+        pytest.param(
+            "MODEL_ARMOR_TEMPLATE",
+            " projects/p/locations/us-central1/templates/t\n",
+            "projects/p/locations/us-central1/templates/t",
+            id="model-armor-template",
+        ),
         pytest.param("AGENT_PORT", " 6001 ", 6001, id="int"),
         pytest.param(
             "STATIC_ROOT", " /srv/ui/dist ", Path("/srv/ui/dist"), id="path"

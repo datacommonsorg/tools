@@ -175,6 +175,44 @@ async def test_a_prefilter_match_refuses_without_a_model_call(
 
 
 @pytest.mark.asyncio
+async def test_a_model_armor_match_refuses_without_a_model_call(
+    monkeypatch: pytest.MonkeyPatch,
+    model: Callable[..., list[Any]],
+    telemetry: TurnTelemetry,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Test: Model Armor refusal in `classify_query`.
+    # Situation: The query passes the regex pre-filter, and `screen_user_prompt`
+    #   returns `"pi_and_jailbreak"`.
+    # Expectation: `TurnRefusedError` is raised with reason `safety_blocked`
+    #   and `REFUSED_MESSAGE`, no Gemini classifier call is made, and the
+    #   warning log records the matched filter name without the query text.
+    requests = model(_verdict())
+    screened_queries: list[str] = []
+
+    async def _fake_screen(query: str) -> str | None:
+        screened_queries.append(query)
+        return "pi_and_jailbreak"
+
+    monkeypatch.setattr(classify, "screen_user_prompt", _fake_screen)
+    query = "My SSN is 123-45-6789, what is the population of France?"
+
+    with (
+        caplog.at_level(logging.WARNING, logger=classify.logger.name),
+        pytest.raises(classify.TurnRefusedError) as raised,
+    ):
+        await classify.classify_query(_transcript(query), _CONFIG, telemetry)
+
+    assert screened_queries == [query]
+    assert raised.value.reason == classify.RefusedReason.SAFETY_BLOCKED
+    assert str(raised.value) == REFUSED_MESSAGE
+    assert requests == []
+    (record,) = caplog.records
+    assert "pi_and_jailbreak" in record.getMessage()
+    assert "123-45-6789" not in record.getMessage()
+
+
+@pytest.mark.asyncio
 async def test_an_adversarial_verdict_refuses_with_the_fixed_message(
     model: Callable[..., list[Any]], telemetry: TurnTelemetry
 ) -> None:

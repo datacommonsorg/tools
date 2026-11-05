@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from narratives_agent import telemetry
+from narratives_agent import model_armor, telemetry
 from narratives_agent.config import bootstrap_config_from_url
 from narratives_agent.gcp_auth import init_dc_api_key
 from narratives_agent.mcp import client as mcp_client
@@ -95,6 +95,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     try:
         yield
     finally:
+        await model_armor.aclose()
         await mcp_client.aclose()
         telemetry.flush_telemetry()
 

@@ -106,7 +106,10 @@ agent loop in five steps:
 1. **Query classification (`classify`):** Before any tool is called, a
    deterministic pre-filter screens out prompt injection, persona overrides,
    secret exfiltration, jailbreak phrases, and injection payloads without a
-   model call. One structured Gemini call on `gemini.classify_model`
+   model call. When `MODEL_ARMOR_TEMPLATE` is configured, the user query is
+   then screened against Google Cloud Model Armor (`model_armor.py`) before
+   calling Gemini; a match ends the turn as `refused` with reason
+   `safety_blocked`. One structured Gemini call on `gemini.classify_model`
    (`gemini-3.5-flash-lite` by default) then produces one of three outcomes:
    - **Refused:** Ends the turn in a single `terminal` frame
      `{state: "refused", idempotency_key, reason, message}` with no `error` key
