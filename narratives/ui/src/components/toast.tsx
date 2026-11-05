@@ -18,84 +18,148 @@
  * @fileoverview Material 3 snackbar shown after an action completes.
  */
 
-import { useEffect } from 'react';
+import { X } from 'lucide-react';
+import { useReducedMotion } from 'motion/react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
-const COLOR_SURFACE = '#322F35';
-const COLOR_TEXT = '#F5EFF7';
-const FONT_STACK =
-  '"Google Sans Text", "Google Sans", Inter, system-ui, sans-serif';
+/** How long the snackbar stays up when left alone. */
+export const VISIBLE_MS = 4000;
 
-/** How long the snackbar stays up. M3 guidance is 4-10s for a short message. */
-const VISIBLE_MS = 5000;
+/** Countdown left after a hover or focus pause, long enough to move away. */
+export const RESUME_MS = 1000;
+
+/** Duration of `--animate-exit` in index.css; toast.test.tsx checks they match. */
+export const EXIT_MS = 200;
+
+/**
+ * Touch-first devices skip the focus return: focusing a text field there opens
+ * the on-screen keyboard, unasked, after a toast the user may not have touched.
+ */
+const TOUCH_QUERY = '(pointer: coarse)';
 
 interface ToastProps {
   message: string;
-  /** Optional trailing action, e.g. "Open file". */
-  actionLabel?: string;
-  onAction?: () => void;
   onDismiss: () => void;
+  /**
+   * Takes focus once the toast has closed, by timeout or the close button, so
+   * the user lands back on the next action rather than on `<body>`. Only when
+   * focus has not moved on: it must still be where it was when the toast
+   * appeared, on `<body>`, or inside the toast — never pulled out of a dialog
+   * or field the user has since moved to. Skipped on touch-first devices; see
+   * {@link TOUCH_QUERY}.
+   */
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 /**
- * A single snackbar, pinned bottom-center above the prompt box.
+ * A single snackbar, pinned bottom-right above the page (tooltips still layer
+ * over it), styled after the MUI Snackbar: inverse surface, left-aligned
+ * message, close action at the trailing edge. Fades and slides up in, then
+ * back down out before `onDismiss` unmounts it — whether it timed out or the
+ * close button was pressed. The countdown pauses while the pointer is over the
+ * toast or it holds focus, then resumes with whatever is left of
+ * {@link VISIBLE_MS}, but never less than {@link RESUME_MS}. Escape dismisses
+ * it while paused.
  *
  * Deliberately self-dismissing rather than a queue: the only caller is the PDF
  * export, one message at a time. `role="status"` rather than `alert` — this
  * confirms something the user asked for, so it should not interrupt them.
+ *
+ * Give each notification its own React `key`: the toast does not reset its
+ * countdown or exit state when `message` changes in place.
  */
-export function Toast({
-  message,
-  actionLabel,
-  onAction,
-  onDismiss,
-}: ToastProps) {
-  useEffect(() => {
-    const timer = window.setTimeout(onDismiss, VISIBLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [onDismiss]);
+export function Toast({ message, onDismiss, returnFocusRef }: ToastProps) {
+  const shouldReduceMotion = useReducedMotion();
+  const toastRef = useRef<HTMLDivElement>(null);
+  // Usually the Export button; read once, on the first render.
+  const openerRef = useRef(document.activeElement);
+  const mountedAtRef = useRef<number | null>(null);
+  // Callers pass an inline arrow; a ref keeps a parent re-render from
+  // restarting the exit timer below.
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const isPaused = isHovered || isFocused;
 
-  return (
+  useEffect(() => {
+    mountedAtRef.current ??= Date.now();
+    if (isLeaving || isPaused) return;
+    const elapsed = Date.now() - mountedAtRef.current;
+    const delay = Math.max(RESUME_MS, VISIBLE_MS - elapsed);
+    const timer = window.setTimeout(() => setIsLeaving(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [isLeaving, isPaused]);
+
+  // Paused, the toast would otherwise stay up for as long as the pointer rests
+  // on it (WCAG 2.2 SC 1.4.13).
+  useEffect(() => {
+    if (!isPaused || isLeaving) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsLeaving(true);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isPaused, isLeaving]);
+
+  // Stay mounted until the exit animation has played. A timer rather than
+  // `animationend`, which never fires when reduced motion skips the animation.
+  useEffect(() => {
+    if (!isLeaving) return;
+    const timer = window.setTimeout(
+      () => {
+        const active = document.activeElement;
+        const focusUnmoved =
+          active === null ||
+          active === document.body ||
+          active === openerRef.current ||
+          toastRef.current?.contains(active);
+        if (focusUnmoved && !window.matchMedia(TOUCH_QUERY).matches) {
+          returnFocusRef?.current?.focus();
+        }
+        onDismissRef.current();
+      },
+      shouldReduceMotion ? 0 : EXIT_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [isLeaving, shouldReduceMotion, returnFocusRef]);
+
+  const animation = isLeaving
+    ? 'motion-safe:animate-exit'
+    : 'motion-safe:animate-enter';
+
+  // Portalled to body: the caller sits inside the answer panel, whose stacking
+  // context would otherwise trap z-50 beneath the sticky header.
+  return createPortal(
     <div
+      ref={toastRef}
       role="status"
       aria-live="polite"
       data-non-print="true"
-      className="fixed left-1/2 bottom-24 z-50 flex items-center shadow-lg"
-      style={{
-        transform: 'translateX(-50%)',
-        background: COLOR_SURFACE,
-        color: COLOR_TEXT,
-        borderRadius: 4,
-        padding: actionLabel ? '6px 8px 6px 16px' : '14px 16px',
-        gap: 8,
-        minHeight: 48,
-        maxWidth: 'min(560px, calc(100vw - 32px))',
-        fontFamily: FONT_STACK,
-        fontSize: 14,
-        lineHeight: '20px',
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setIsFocused(false);
+        }
       }}
+      className={`fixed bottom-2 left-2 right-2 sm:bottom-6 sm:left-auto sm:right-6 sm:min-w-72 sm:max-w-xl z-50 flex items-center gap-2 py-1.5 px-4 rounded bg-inverse-surface text-on-inverse-surface text-body-medium shadow-lg ${animation}`}
     >
-      <span className="flex-1">{message}</span>
-      {actionLabel && (
-        <button
-          type="button"
-          onClick={() => {
-            onAction?.();
-            onDismiss();
-          }}
-          style={{
-            background: 'transparent',
-            border: 0,
-            color: '#D0BCFF',
-            fontFamily: FONT_STACK,
-            fontSize: 14,
-            fontWeight: 500,
-            padding: '10px 12px',
-            borderRadius: 4,
-          }}
-        >
-          {actionLabel}
-        </button>
-      )}
-    </div>
+      <span className="py-2">{message}</span>
+      {/* 44px hit area per FRONTEND.md; the negative margins keep the bar at
+          MUI's 48px height and align the glyph with the trailing padding. */}
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={() => setIsLeaving(true)}
+        className="ml-auto -mr-3 -my-1.5 w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-on-inverse-surface/10 transition-colors"
+      >
+        <X className="size-5" aria-hidden="true" />
+      </button>
+    </div>,
+    document.body,
   );
 }

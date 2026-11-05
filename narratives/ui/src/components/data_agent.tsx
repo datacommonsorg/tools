@@ -18,7 +18,14 @@
  * @fileoverview Data Agent chat surface: prompt input, streaming turns, stop control, and follow-up handling.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { InitialView } from "@/src/components/view_initial";
 import { SkeletonCard } from "@/src/components/card_skeleton";
 import { ReasoningBlock } from "@/src/components/block_reasoning";
@@ -59,6 +66,7 @@ export function DataAgent() {
   // worked out here, where every turn is in view.
   const citationNumbers = useMemo(() => assignCitationNumbers(turns), [turns]);
   const promptRef = useRef<HTMLDivElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const showConversation = turns.length > 0;
   // New chat leaves the conversation, and the unsent draft goes with it.
   const [hadConversation, setHadConversation] = useState(showConversation);
@@ -188,6 +196,7 @@ export function DataAgent() {
             isLast={i === turns.length - 1}
             isStreaming={isStreaming && i === turns.length - 1}
             onAsk={(question) => send(question)}
+            promptTextareaRef={promptTextareaRef}
           />
         ))}
       </div>
@@ -208,6 +217,7 @@ export function DataAgent() {
             onSubmit={() => handleSend()}
             isStreaming={isStreaming}
             onStop={stop}
+            textareaRef={promptTextareaRef}
           />
           <div className="text-center text-caption text-muted max-w-xl">
             {COMPOSER_DISCLAIMER_TEXT}
@@ -228,6 +238,8 @@ interface TurnViewProps {
   isLast: boolean;
   isStreaming: boolean;
   onAsk?: (question: string) => void;
+  /** The follow-up prompt, which takes focus when this turn's toast closes. */
+  promptTextareaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
 /** One conversation turn: the user's bubble plus the streamed agent response. */
@@ -238,6 +250,7 @@ export function TurnView({
   isLast,
   isStreaming,
   onAsk,
+  promptTextareaRef,
 }: TurnViewProps) {
   // The answer stays behind the skeleton until the turn ends (`done` or
   // `error`), so the whole answer reveals at once in reading order. A turn
@@ -365,6 +378,7 @@ export function TurnView({
                 citationNumbers={citationNumbers}
                 turnIndex={index}
                 onSettled={isAnswerSettling ? markAnswerSettled : undefined}
+                promptTextareaRef={promptTextareaRef}
               />
             </div>
           )}
