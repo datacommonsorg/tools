@@ -1488,13 +1488,13 @@ def _build_window_cohort(
         provenance=Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
         rows=tuple(
             WindowRow(
-                place,
-                place.upper(),
-                "2020",
-                "2024",
-                from_value,
-                to_value,
-                to_value - from_value,
+                place_dcid=place,
+                place_name=place.upper(),
+                from_date="2020",
+                to_date="2024",
+                from_value=from_value,
+                to_value=to_value,
+                value=to_value - from_value,
             )
             for place, from_value, to_value in values
         ),

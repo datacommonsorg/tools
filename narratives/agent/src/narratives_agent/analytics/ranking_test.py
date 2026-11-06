@@ -770,8 +770,24 @@ def test_a_window_cohort_ranks_into_window_entries() -> None:
         scaling_factor=None,
         provenance=Provenance(sources=(_SOURCE,)),
         rows=(
-            WindowRow("a", "A", "2020", "2024", 10.0, 15.0, 5.0),
-            WindowRow("b", "B", "2020", "2024", 20.0, 18.0, -2.0),
+            WindowRow(
+                place_dcid="a",
+                place_name="A",
+                from_date="2020",
+                to_date="2024",
+                from_value=10.0,
+                to_value=15.0,
+                value=5.0,
+            ),
+            WindowRow(
+                place_dcid="b",
+                place_name="B",
+                from_date="2020",
+                to_date="2024",
+                from_value=20.0,
+                to_value=18.0,
+                value=-2.0,
+            ),
         ),
         place_names={"a": "A", "b": "B"},
         coverage=CoverageReport(

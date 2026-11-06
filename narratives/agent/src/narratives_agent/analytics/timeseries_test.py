@@ -1409,8 +1409,24 @@ def test_a_span_window_ends_late_and_starts_early() -> None:
     cohort = _expect_cohort(reduce_series(table, "absolute_change"))
     assert cohort.reference_date == "2019..2024"
     assert cohort.rows == (
-        WindowRow("a", "A", "2019", "2024", 1.0, 6.0, 5.0),
-        WindowRow("b", "B", "2019", "2024", 0.0, 5.0, 5.0),
+        WindowRow(
+            place_dcid="a",
+            place_name="A",
+            from_date="2019",
+            to_date="2024",
+            from_value=1.0,
+            to_value=6.0,
+            value=5.0,
+        ),
+        WindowRow(
+            place_dcid="b",
+            place_name="B",
+            from_date="2019",
+            to_date="2024",
+            from_value=0.0,
+            to_value=5.0,
+            value=5.0,
+        ),
     )
     assert cohort.coverage.missing_places == ("c",)
 
