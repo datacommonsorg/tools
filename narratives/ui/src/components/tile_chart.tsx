@@ -181,6 +181,14 @@ function selectRenderableCharts(config: ChartConfig): ChartItem[] {
   );
 }
 
+interface ChartCardProps {
+  chart: ChartItem;
+  hidden: boolean;
+  shouldHoldSkeleton: boolean;
+  onEmpty: () => void;
+  onSettled: () => void;
+}
+
 /**
  * Renders one chart as a Data Commons web component inside the card wrapper.
  *
@@ -195,13 +203,7 @@ function ChartCard({
   shouldHoldSkeleton,
   onEmpty,
   onSettled,
-}: {
-  chart: ChartItem;
-  hidden: boolean;
-  shouldHoldSkeleton: boolean;
-  onEmpty: () => void;
-  onSettled: () => void;
-}) {
+}: ChartCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const tag = getDcComponentTag(chart.vizType);
@@ -227,26 +229,32 @@ function ChartCard({
       style={hidden ? { display: 'none' } : undefined}
     >
       {/* Busy marks only the chart: a live region inside a busy element may
-          go unannounced, so the status below stays outside it. */}
-      <div aria-busy={showSkeleton}>
+          go unannounced, so the status below stays outside it. Both follow
+          the chart's own load, not the held skeleton: the overlay is
+          aria-hidden, so a drawn chart is readable beneath it. */}
+      <div aria-busy={isLoading}>
         <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
       </div>
-      {showSkeleton && (
+      {isLoading && (
         <span role="status" className="sr-only">
           Loading chart
         </span>
       )}
       <div
         aria-hidden="true"
-        className={`absolute inset-0 z-10 rounded-chart bg-surface pointer-events-none motion-safe:transition-[opacity,visibility] motion-safe:duration-500 ease-out${
+        className={`absolute inset-0 z-10 rounded-chart bg-surface pointer-events-none motion-safe:transition-[opacity,visibility] motion-safe:duration-300 ease-out${
           showSkeleton ? '' : ' opacity-0 invisible'
         }`}
       >
         {/* A light-blue band sweeps top to bottom; under reduced motion it
-            stays parked off-canvas. It keeps running through the fade-out,
-            and `invisible` stops painting it once the fade ends. */}
+            stays parked off-canvas. The sweep stops once the skeleton
+            releases, so nothing keeps animating behind the faded overlay. */}
         <div className="relative size-full overflow-clip border border-border rounded-chart bg-surface">
-          <div className="absolute inset-0 -translate-y-full bg-linear-to-b from-transparent via-surface-blue to-transparent motion-safe:animate-shimmer" />
+          <div
+            className={`absolute inset-0 -translate-y-full bg-linear-to-b from-transparent via-surface-blue to-transparent${
+              showSkeleton ? ' motion-safe:animate-shimmer' : ''
+            }`}
+          />
         </div>
       </div>
     </div>

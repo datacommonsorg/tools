@@ -261,10 +261,11 @@ export function AnswerPanel({
         {/* Toolbar header, shared with SkeletonCard. Only expose the toolbar
           pill once the turn is fully streamed — otherwise clicking it while
           the ChartTile's DataCommons web component is still hydrating
-          produces a PDF missing the chart. This matches the filled "Export
-          PDF" button below, which also waits for status === "done". */}
+          produces a PDF missing the chart. It also waits for every chart to
+          settle, since the reveal can end before a slow chart draws. This
+          matches the filled "Export PDF" button below. */}
         <CardHeader title={turn.userMessage}>
-          {turn.status === 'done' && isRevealed && (
+          {turn.status === 'done' && isRevealed && areChartsSettled && (
             <>
               {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
@@ -325,7 +326,7 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {turn.status === 'done' && isRevealed && (
+          {turn.status === 'done' && isRevealed && areChartsSettled && (
             <ExportPdfButton onExport={onExport} busy={exporting} />
           )}
         </div>

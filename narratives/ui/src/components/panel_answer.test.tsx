@@ -394,30 +394,58 @@ describe('AnswerPanel', () => {
     // Test: The chart skeleton during the reveal.
     // Situation: A panel mounts mid-stream with a long paragraph and a chart
     //   block whose chart draws before the text has finished revealing.
-    // Expectation: The chart card stays busy behind its skeleton while the
-    //   text reveals, and is released once the reveal duration passes.
+    // Expectation: The chart card's skeleton overlay stays visible while the
+    //   text reveals, and hides once the reveal duration passes.
     vi.useFakeTimers();
     const turn = buildTurnWithBlocks([
       { index: 0, type: 'text', markdown: 'France grew. '.repeat(100) },
       { index: 1, type: 'chart', chart: LINE_CHART },
     ]);
     const { container } = render(<AnswerPanel turn={turn} isStreaming />);
-    const card = container.querySelector('.dc-chart-card');
+    const overlay = container.querySelector(
+      '.dc-chart-card > [aria-hidden="true"]',
+    );
 
     drawLineChart(container);
     act(() => {
       vi.advanceTimersByTime(CHART_POLL_MS);
     });
-    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
-      'true',
-    );
+    expect(overlay?.className).not.toContain('invisible');
 
     act(() => {
       vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
     });
-    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
-      'false',
+    expect(overlay?.className).toContain('invisible');
+  });
+
+  it('withholds the export controls until its charts settle', () => {
+    // Test: Export gating on charts.
+    // Situation: A panel mounts mid-stream with a chart that has not drawn;
+    //   the settle cap passes and the text reveal ends before it draws.
+    // Expectation: No Export PDF control renders until the chart draws.
+    vi.useFakeTimers();
+    const turn = buildTurnWithBlocks(INTERLEAVED_BLOCKS);
+    const { container } = render(
+      <AnswerPanel turn={turn} isStreaming onSettled={vi.fn()} />,
     );
+
+    act(() => {
+      vi.advanceTimersByTime(ANSWER_SETTLE_MAX_MS);
+    });
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
+    });
+    expect(
+      screen.queryAllByRole('button', { name: 'Export PDF' }),
+    ).toHaveLength(0);
+
+    drawLineChart(container);
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+    expect(
+      screen.queryAllByRole('button', { name: 'Export PDF' }).length,
+    ).toBeGreaterThan(0);
   });
 
   it('hides non-text children and the export controls until the reveal ends', () => {
