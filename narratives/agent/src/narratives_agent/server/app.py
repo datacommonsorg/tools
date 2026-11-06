@@ -20,7 +20,7 @@ both in the container and in local development.
 
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -92,12 +92,11 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     init_dc_api_key()
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
-    try:
+    async with AsyncExitStack() as stack:
+        stack.callback(telemetry.flush_telemetry)
+        stack.push_async_callback(mcp_client.aclose)
+        stack.push_async_callback(model_armor.aclose)
         yield
-    finally:
-        await model_armor.aclose()
-        await mcp_client.aclose()
-        telemetry.flush_telemetry()
 
 
 def create_app() -> FastAPI:

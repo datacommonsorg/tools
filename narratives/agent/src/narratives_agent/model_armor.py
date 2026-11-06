@@ -30,14 +30,16 @@ import logging
 import re
 import threading
 from dataclasses import dataclass
-from typing import Any
 
 import google.auth
 import google.auth.exceptions
 import httpx
+import requests
 from google.auth.credentials import Credentials
 from google.auth.transport.requests import Request
+from pydantic import BaseModel, ConfigDict, Field
 
+from narratives_agent.json_value import JsonValue
 from narratives_agent.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,7 @@ _CONNECT_TIMEOUT_SECONDS = 2.0
 _MAX_IDLE_CONNECTIONS = 16
 
 _MATCH_FOUND = "MATCH_FOUND"
+_INVOCATION_SUCCESS = "SUCCESS"
 _DEFAULT_MATCH_LABEL = "model_armor"
 
 _TEMPLATE_PATTERN = re.compile(
@@ -125,8 +128,9 @@ def _load_credentials() -> Credentials:
 
 
 def _refresh_credentials(credentials: Credentials) -> None:
-    """Refreshes `credentials` synchronously using a transport request."""
-    credentials.refresh(Request())  # type: ignore[no-untyped-call]
+    """Refreshes `credentials` synchronously using a scoped session."""
+    with requests.Session() as session:
+        credentials.refresh(Request(session))  # type: ignore[no-untyped-call]
 
 
 def _build_auth_headers(credentials: Credentials) -> dict[str, str]:
@@ -193,7 +197,27 @@ def _sanitize_prompt_url(template: str) -> str | None:
     )
 
 
-def _has_match_found(node: object) -> bool:
+class _SanitizationResult(BaseModel):
+    """Subset of Model Armor's `SanitizationResult` inspected by the agent."""
+
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    filter_match_state: str = Field(default="", alias="filterMatchState")
+    invocation_result: str = Field(default="", alias="invocationResult")
+    filter_results: dict[str, JsonValue] = Field(
+        default_factory=dict, alias="filterResults"
+    )
+
+
+class _SanitizePromptResponse(BaseModel):
+    """Top-level response payload from `:sanitizeUserPrompt`."""
+
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    sanitization_result: _SanitizationResult = Field(alias="sanitizationResult")
+
+
+def _has_match_found(node: JsonValue) -> bool:
     """Returns whether `node` or any nested dict reports `MATCH_FOUND`."""
     if not isinstance(node, dict):
         return False
@@ -202,17 +226,15 @@ def _has_match_found(node: object) -> bool:
     return any(_has_match_found(child) for child in node.values())
 
 
-def _extract_matched_filters(sanitization_result: dict[str, Any]) -> str:
+def _extract_matched_filters(sanitization_result: _SanitizationResult) -> str:
     """Returns a comma-separated summary of the filters that matched."""
-    filter_results = sanitization_result.get("filterResults")
-    if isinstance(filter_results, dict):
-        matched = [
-            str(name)
-            for name, entry in filter_results.items()
-            if _has_match_found(entry)
-        ]
-        if matched:
-            return ", ".join(matched)
+    matched = [
+        name
+        for name, entry in sanitization_result.filter_results.items()
+        if _has_match_found(entry)
+    ]
+    if matched:
+        return ", ".join(matched)
     return _DEFAULT_MATCH_LABEL
 
 
@@ -236,14 +258,15 @@ async def screen_user_prompt(query: str) -> str | None:
         return None
 
     try:
-        headers = await _get_auth_headers()
-        response = await _http_client().post(
-            url,
-            headers=headers,
-            json={"userPromptData": {"text": query}},
-        )
+        async with asyncio.timeout(_REQUEST_TIMEOUT_SECONDS):
+            headers = await _get_auth_headers()
+            response = await _http_client().post(
+                url,
+                headers=headers,
+                json={"userPromptData": {"text": query}},
+            )
         response.raise_for_status()
-        payload: object = response.json()
+        parsed = _SanitizePromptResponse.model_validate(response.json())
     except httpx.HTTPStatusError as error:
         logger.warning(
             "Model Armor request failed (HTTP %d); proceeding without "
@@ -252,6 +275,7 @@ async def screen_user_prompt(query: str) -> str | None:
         )
         return None
     except (
+        TimeoutError,
         httpx.RequestError,
         google.auth.exceptions.GoogleAuthError,
         ValueError,
@@ -263,20 +287,12 @@ async def screen_user_prompt(query: str) -> str | None:
         )
         return None
 
-    if not isinstance(payload, dict):
+    sanitization_result = parsed.sanitization_result
+    if sanitization_result.invocation_result not in ("", _INVOCATION_SUCCESS):
         logger.warning(
-            "Model Armor response is not a JSON object; proceeding without "
-            "screening"
+            "Model Armor sanitization returned invocationResult=%r",
+            sanitization_result.invocation_result,
         )
-        return None
-    sanitization_result = payload.get("sanitizationResult")
-    if not isinstance(sanitization_result, dict):
-        logger.warning(
-            "Model Armor response missing sanitizationResult; proceeding "
-            "without screening"
-        )
-        return None
-
-    if sanitization_result.get("filterMatchState") == _MATCH_FOUND:
+    if sanitization_result.filter_match_state == _MATCH_FOUND:
         return _extract_matched_filters(sanitization_result)
     return None

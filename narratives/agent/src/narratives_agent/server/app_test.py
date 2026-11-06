@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from narratives_agent import telemetry
+from narratives_agent import model_armor, telemetry
 from narratives_agent.mcp.capabilities import Capabilities
 from narratives_agent.server import app as server_app
 from narratives_agent.server.app import create_app
@@ -223,21 +223,30 @@ def test_startup_fails_on_kubernetes_without_a_signing_secret(
 def test_lifespan_flushes_telemetry_at_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Test: Buffered telemetry is written when the application stops.
-    # Situation: The config bootstrap is stubbed, `flush_telemetry` is stubbed
-    #   to record its calls, and the application starts and then shuts down.
-    # Expectation: `flush_telemetry` is not called while the application
-    #   runs and is called once at shutdown.
-    flushes: list[None] = []
+    # Test: Pooled clients are closed and buffered telemetry is written when
+    #   the application stops.
+    # Situation: The config bootstrap is stubbed, `model_armor.aclose` and
+    #   `flush_telemetry` are stubbed to record their calls, and the
+    #   application starts and then shuts down.
+    # Expectation: Neither shutdown callback runs while the application
+    #   serves requests, and both run at shutdown.
+    shutdown_events: list[str] = []
+
+    async def _close_model_armor() -> None:
+        shutdown_events.append("model_armor")
+
     monkeypatch.setattr(server_app, "bootstrap_config_from_url", lambda: None)
+    monkeypatch.setattr(model_armor, "aclose", _close_model_armor)
     monkeypatch.setattr(
-        telemetry, "flush_telemetry", lambda: flushes.append(None)
+        telemetry,
+        "flush_telemetry",
+        lambda: shutdown_events.append("telemetry"),
     )
 
     with TestClient(create_app()):
-        assert flushes == []
+        assert shutdown_events == []
 
-    assert flushes == [None]
+    assert shutdown_events == ["model_armor", "telemetry"]
 
 
 @pytest.mark.parametrize(
