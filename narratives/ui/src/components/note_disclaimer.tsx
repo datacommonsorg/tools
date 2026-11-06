@@ -29,7 +29,7 @@ interface DisclaimerNoteProps {
  * has its own wording (COMPOSER_DISCLAIMER_TEXT).
  */
 export const DISCLAIMER_TEXT =
-  'Generated with Gemini using data from the Data Commons Knowledge Graph. Think of this report as a starting point for your research, not a definitive final record. While visualizations cite verified third-party datasets, AI can make mistakes—always verify calculations and key findings using the linked primary sources.';
+  'These data trends were synthesized by Gemini using the Data Commons Knowledge Graph for preliminary research purposes. Please verify findings against cited source records.';
 
 /** Small AI-generated-content disclaimer shown under each answer. */
 export function DisclaimerNote({

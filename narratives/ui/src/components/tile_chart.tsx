@@ -52,12 +52,32 @@ interface ChartTileProps {
    * mount when the tile renders nothing.
    */
   onSettled?: () => void;
+  /**
+   * Keeps every card behind its skeleton even once its chart has drawn, for
+   * while the surrounding answer is still revealing.
+   */
+  shouldHoldSkeleton?: boolean;
 }
 
 const MAX_CHARTS = 3;
 
+/**
+ * Space a card holds while its chart loads, so the layout does not jump when
+ * the chart draws. Highlight is a single number; every other kind is a plot.
+ * Approximations of the drawn heights: a chart that draws taller or shorter
+ * still shifts the layout by the difference.
+ */
+const PENDING_HEIGHT_CLASS: Partial<
+  Record<DataCommonsComponentTagName, string>
+> = { 'datacommons-highlight': 'min-h-30' };
+const DEFAULT_PENDING_HEIGHT_CLASS = 'min-h-90';
+
 /** Renders the agent's chart directive as a responsive grid of DC charts. */
-export function ChartTile({ config, onSettled }: ChartTileProps) {
+export function ChartTile({
+  config,
+  onSettled,
+  shouldHoldSkeleton = false,
+}: ChartTileProps) {
   // Charts that reported no data of their own after mounting. The agent
   // already withholds chart configs when its tool calls returned no
   // observations, but each DC component runs its own fetch against the place
@@ -126,6 +146,7 @@ export function ChartTile({ config, onSettled }: ChartTileProps) {
           key={index}
           chart={chart}
           hidden={emptyIndices.has(index)}
+          shouldHoldSkeleton={shouldHoldSkeleton}
           onEmpty={() => markEmpty(index)}
           onSettled={() => markSettled(index)}
         />
@@ -160,6 +181,14 @@ function selectRenderableCharts(config: ChartConfig): ChartItem[] {
   );
 }
 
+interface ChartCardProps {
+  chart: ChartItem;
+  hidden: boolean;
+  shouldHoldSkeleton: boolean;
+  onEmpty: () => void;
+  onSettled: () => void;
+}
+
 /**
  * Renders one chart as a Data Commons web component inside the card wrapper.
  *
@@ -171,30 +200,63 @@ function selectRenderableCharts(config: ChartConfig): ChartItem[] {
 function ChartCard({
   chart,
   hidden,
+  shouldHoldSkeleton,
   onEmpty,
   onSettled,
-}: {
-  chart: ChartItem;
-  hidden: boolean;
-  onEmpty: () => void;
-  onSettled: () => void;
-}) {
+}: ChartCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const tag = getDcComponentTag(chart.vizType);
   const attrs = getDcComponentAttributes(chart);
-  useDcChartEmptyNotice(cardRef, tag, onEmpty, onSettled);
+  useDcChartEmptyNotice(cardRef, tag, onEmpty, () => {
+    setIsLoading(false);
+    onSettled();
+  });
+  const pendingHeightClass =
+    PENDING_HEIGHT_CLASS[tag] ?? DEFAULT_PENDING_HEIGHT_CLASS;
+  const showSkeleton = isLoading || shouldHoldSkeleton;
   // The DC web component renders its own bordered card (Source caption,
   // chart, footer with "About this data" + "API code"). Wrapping it in
   // another bordered div produced a double-border look. We keep just a
   // semantic wrapper so the grid layout and print-CSS hooks
-  // (.dc-chart-card) still target the card.
+  // (.dc-chart-card) still target the card. While the chart loads, a skeleton
+  // covers its half-drawn interior and the card holds the space it will fill;
+  // once shown, the skeleton fades out over the drawn chart.
   return (
     <div
-      className="dc-chart-card"
+      className={`dc-chart-card relative${isLoading ? ` ${pendingHeightClass}` : ''}`}
       ref={cardRef}
       style={hidden ? { display: 'none' } : undefined}
     >
-      <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
+      {/* Busy marks only the chart: a live region inside a busy element may
+          go unannounced, so the status below stays outside it. Both follow
+          the chart's own load, not the held skeleton: the overlay is
+          aria-hidden, so a drawn chart is readable beneath it. */}
+      <div aria-busy={isLoading}>
+        <DataCommonsComponent tag={tag} apiroot={API_ROOT} {...attrs} />
+      </div>
+      {isLoading && (
+        <span role="status" className="sr-only">
+          Loading chart
+        </span>
+      )}
+      <div
+        aria-hidden="true"
+        className={`absolute inset-0 z-10 rounded-chart bg-surface pointer-events-none motion-safe:transition-[opacity,visibility] motion-safe:duration-300 ease-out${
+          showSkeleton ? '' : ' opacity-0 invisible'
+        }`}
+      >
+        {/* A light-blue band sweeps top to bottom; under reduced motion it
+            stays parked off-canvas. The sweep stops once the skeleton
+            releases, so nothing keeps animating behind the faded overlay. */}
+        <div className="relative size-full overflow-clip border border-border rounded-chart bg-surface">
+          <div
+            className={`absolute inset-0 -translate-y-full bg-linear-to-b from-transparent via-surface-blue to-transparent${
+              showSkeleton ? ' motion-safe:animate-shimmer' : ''
+            }`}
+          />
+        </div>
+      </div>
     </div>
   );
 }

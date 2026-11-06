@@ -17,6 +17,7 @@ Covers cohort statistics, focal-place benchmarks, extrema ties, small and
 constant cohorts, population-weighted means, and refusal propagation.
 """
 
+import dataclasses
 import functools
 import math
 import random
@@ -31,7 +32,7 @@ from narratives_agent.analytics.alignment import (
     AlignmentRefusal,
     align_cohort,
 )
-from narratives_agent.analytics.digest import ScriptResult
+from narratives_agent.analytics.digest import CoverageReport, ScriptResult
 from narratives_agent.analytics.distribution import summarize_distribution
 from narratives_agent.analytics.metrics import (
     DistributionFocalEntry,
@@ -43,6 +44,62 @@ from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 
 _SOURCE = Source(name="Wikidata", url="https://wikidata")
 _CENSUS = Source(name="Census", url="https://census")
+
+
+@dataclass(frozen=True)
+class _SpanningRow:
+    """A test-local `CohortRow` holding one place's value over a window."""
+
+    place_dcid: str
+    place_name: str
+    value: float
+
+
+@dataclass(frozen=True)
+class _SpanningCohort:
+    """A test-local `Cohort` whose reference date is a date window."""
+
+    variable_dcid: str
+    variable_name: str
+    metric_label: str
+    reference_date: str
+    unit: str | None
+    scaling_factor: float | None
+    provenance: Provenance
+    rows: tuple[_SpanningRow, ...]
+    place_names: dict[str, str]
+    coverage: CoverageReport
+    caveats: tuple[str, ...] = ()
+
+
+def _build_spanning_cohort(
+    values: Sequence[tuple[str, float]],
+) -> _SpanningCohort:
+    """Builds the change in population from 2020 to 2024 per `(place, value)`.
+
+    The cohort also requests place `z`, which has no value.
+    """
+    places = [place for place, _ in values]
+    return _SpanningCohort(
+        variable_dcid="Count_Person",
+        variable_name="Total population",
+        metric_label="change in Total population",
+        reference_date="2020..2024",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+        rows=tuple(
+            _SpanningRow(place, place.upper(), value) for place, value in values
+        ),
+        place_names={place: place.upper() for place in [*places, "z"]},
+        coverage=CoverageReport(
+            contributing_places=len(values),
+            requested_places=len(values) + 1,
+            coverage_ratio=len(values) / (len(values) + 1),
+            reference_date="2020..2024",
+            missing_places=("z",),
+        ),
+    )
 
 
 def _build_table(
@@ -1332,3 +1389,155 @@ def test_generated_summaries_report_the_weighted_mean_when_due() -> None:
             assert (
                 metrics.min.value <= metrics.weighted_mean <= metrics.max.value
             )
+
+
+def test_a_window_cohort_is_summarized_by_its_figure_label() -> None:
+    # Test: Summarizing a `Cohort` whose reference date is a date window.
+    # Situation: The change in population from 2020 to 2024 for places `a`
+    #   (1), `b` (2), and `c` (6), with focal places `a` and the missing `z`.
+    # Expectation: The metrics carry the window and the exact summary
+    #   figures; the result names the variable by its display name; the
+    #   focal caveat and the methodology name the figure label and read the
+    #   window as `"from 2020 to 2024"`.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 2.0), ("c", 6.0)])
+    result = summarize_distribution(spanning, focal_places=["a", "z"])
+    metrics = result.metrics
+    assert isinstance(metrics, DistributionMetrics)
+    assert metrics.reference_date == "2020..2024"
+    assert (metrics.cohort_size, metrics.mean, metrics.median) == (3, 3.0, 2.0)
+    assert metrics.min == PlaceValue(place_dcid="a", place_name="A", value=1.0)
+    assert metrics.max == PlaceValue(place_dcid="c", place_name="C", value=6.0)
+    assert metrics.missing_focal_places == ("z",)
+    assert result.variable_names == {"Count_Person": "Total population"}
+    assert result.coverage == spanning.coverage
+    assert result.caveats == (
+        "Z has no value for change in Total population in the cohort from "
+        "2020 to 2024, so no benchmark is available.",
+    )
+    assert result.provenance.methodology == (
+        "Distribution of change in Total population across 3 places from "
+        "2020 to 2024: mean, median, minimum, maximum, the gap from minimum "
+        "to maximum (max_minus_min), sample standard deviation, quartiles "
+        "and deciles by linear interpolation, and adjusted Fisher-Pearson "
+        "sample skewness; focal places are compared with the cohort mean, "
+        "median, and percentile."
+    )
+
+
+def test_a_window_cohort_of_one_place_names_its_figure_label() -> None:
+    # Test: The one-place caveat for a date-window cohort.
+    # Situation: The change in population from 2020 to 2024 for `a` alone.
+    # Expectation: The caveat names the figure label and the window.
+    result = summarize_distribution(_build_spanning_cohort([("a", 4.0)]))
+    assert result.caveats == (
+        "Only one place (A) reported a value for change in Total population "
+        "from 2020 to 2024; dispersion, quantiles, and z-scores require at "
+        "least 2 places and skewness at least 3, so they are not computed.",
+    )
+
+
+def test_a_constant_window_cohort_names_its_figure_label() -> None:
+    # Test: The constant-value caveat for a date-window cohort.
+    # Situation: The change in population from 2020 to 2024 is 3 for each
+    #   of `a`, `b`, and `c`.
+    # Expectation: The caveat names the figure label and the window.
+    result = summarize_distribution(
+        _build_spanning_cohort([("a", 3.0), ("b", 3.0), ("c", 3.0)])
+    )
+    assert result.caveats == (
+        "Every place reports the same value for change in Total population "
+        "from 2020 to 2024, so skewness and z-scores are undefined.",
+    )
+
+
+def test_a_window_cohort_refuses_a_single_target_date() -> None:
+    # Test: A `target_date` passed with a date-window cohort.
+    # Situation: The 2020 to 2024 window cohort summarized with
+    #   `target_date="2024"`.
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage, with a caveat stating that the cohort spans the window.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 2.0)])
+    refused = summarize_distribution(spanning, target_date="2024")
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == spanning.coverage
+    assert refused.caveats == (
+        "The cohort spans from 2020 to 2024, so it cannot be summarized on "
+        "the single target date 2024.",
+    )
+
+
+def test_a_window_cohort_refuses_weights() -> None:
+    # Test: Weights passed with a date-window cohort.
+    # Situation: The 2020 to 2024 window cohort summarized with a weights
+    #   table observed on 2024.
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage, with a caveat stating that the cohort spans the window
+    #   and cannot be weighted on a single date.
+    spanning = _build_spanning_cohort([("a", 1.0), ("b", 2.0)])
+    weights = _build_weights([("a", "2024", 1.0), ("b", "2024", 1.0)])
+    refused = summarize_distribution(spanning, weights=weights)
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == spanning.coverage
+    assert refused.caveats == (
+        "The cohort spans from 2020 to 2024, so its mean cannot be weighted "
+        "by Weight population on a single date.",
+    )
+
+
+@pytest.mark.parametrize(
+    "is_cohort_a_window", [False, True], ids=["single-date", "window"]
+)
+def test_window_weights_are_refused(is_cohort_a_window: bool) -> None:
+    # Test: A weights cohort whose reference date is a date window.
+    # Situation: Weights of the change in weight population from 2020 to
+    #   2024, passed with a cohort aligned to 2024 or with the 2020 to 2024
+    #   window cohort.
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage, with a caveat that reads the weights' window as
+    #   `"from 2020 to 2024"` and states that weights must be observed on a
+    #   single date.
+    weights = dataclasses.replace(
+        _build_spanning_cohort([("a", 1.0), ("b", 1.0)]),
+        variable_dcid="Count_Person_Weight",
+        variable_name="Weight population",
+        metric_label="change in Weight population",
+    )
+    cohort: AlignedCohort | _SpanningCohort
+    if is_cohort_a_window:
+        cohort = _build_spanning_cohort([("a", 1.0), ("b", 2.0)])
+    else:
+        aligned = align_cohort(
+            _build_table([("a", "2024", 1.0), ("b", "2024", 2.0)])
+        )
+        assert isinstance(aligned, AlignedCohort)
+        cohort = aligned
+    refused = summarize_distribution(cohort, weights=weights)
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == cohort.coverage
+    assert refused.caveats == (
+        "The weights for Weight population span from 2020 to 2024, so they "
+        "cannot weight the mean; weights must be observed on a single date.",
+    )
+
+
+def test_summarize_distribution_records_per_variable_provenance() -> None:
+    # Test: Per-variable provenance on `summarize_distribution` without and
+    #   with population weights from a second source.
+    # Situation: The five-place cohort citing `_SOURCE` (`f1`) is summarized
+    #   alone, and then with `weights` citing `_CENSUS` (`f2`).
+    # Expectation: The unweighted result maps `Count_Person` to `_SOURCE`;
+    #   the weighted result also maps `Count_Person_Weight` to `_CENSUS`.
+    cohort = _build_five_place_cohort()
+    unweighted = summarize_distribution(cohort)
+    assert unweighted.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+    }
+
+    weights = _build_weights([(place, "2022", 1.0) for place in "abcde"])
+    weighted = summarize_distribution(cohort, weights=weights)
+    assert weighted.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+        "Count_Person_Weight": Provenance(
+            sources=(_CENSUS,), facet_ids=("f2",)
+        ),
+    }

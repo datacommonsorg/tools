@@ -26,7 +26,10 @@ from collections.abc import Sequence
 import pytest
 
 from narratives_agent.analytics.alignment import AlignedCohort, align_cohort
-from narratives_agent.analytics.composition import compute_composition
+from narratives_agent.analytics.composition import (
+    CompositionInput,
+    compute_composition,
+)
 from narratives_agent.analytics.digest import ScriptResult
 from narratives_agent.analytics.metrics import (
     CompositionComponent,
@@ -37,7 +40,6 @@ from narratives_agent.analytics.metrics import (
     StageTransition,
 )
 from narratives_agent.analytics.provenance import Provenance, Source
-from narratives_agent.analytics.script_inputs import CohortInput
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 
 _SOURCES = {
@@ -1134,7 +1136,7 @@ class _CompositionCase:
     complete_ratio: float
     first_place_sum: float
     components: tuple[ObservationTable, ...]
-    total: CohortInput | None
+    total: CompositionInput | None
     result: ScriptResult
 
 
@@ -1225,7 +1227,7 @@ def _align_to_2022(table: ObservationTable) -> AlignedCohort | None:
 
 def _build_total_inputs(
     kind: str | None, sums: Sequence[float], places: Sequence[str]
-) -> list[CohortInput | None]:
+) -> list[CompositionInput | None]:
     """Returns no total, or the total of `kind` as a table and a cohort."""
     if kind is None:
         return [None]
@@ -1560,3 +1562,29 @@ def test_generated_cases_match_pre_aligned_cohorts() -> None:
             assert by_cohort.coverage == aligned_components[0].coverage
         else:
             assert by_cohort == case.result
+
+
+def test_compute_composition_records_per_variable_provenance() -> None:
+    # Test: Per-variable provenance on `compute_composition` with components
+    #   and an explicit `total` from different sources.
+    # Situation: Two component tables from source 1 are combined with an
+    #   explicit `total` table from source 2.
+    # Expectation: `result.provenance.sources` lists the total's source and
+    #   then the components', and `result.variable_provenance` maps each
+    #   component DCID to source 1 and the total DCID to source 2.
+    part_a = _build_table("Part_A", [("a", "2022", 30.0)], source_id=1)
+    part_b = _build_table("Part_B", [("a", "2022", 70.0)], source_id=1)
+    total = _build_table("Total_Pop", [("a", "2022", 100.0)], source_id=2)
+
+    result = compute_composition([part_a, part_b], total=total)
+
+    assert result.status == "ok"
+    assert result.provenance.sources == (
+        total.provenance.sources[0],
+        part_a.provenance.sources[0],
+    )
+    assert result.variable_provenance == {
+        "Part_A": part_a.provenance,
+        "Part_B": part_b.provenance,
+        "Total_Pop": total.provenance,
+    }

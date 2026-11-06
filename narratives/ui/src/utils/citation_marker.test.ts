@@ -51,6 +51,21 @@ describe('createCitationMarkerPattern', () => {
     }
   });
 
+  it('allows horizontal whitespace only inside a marker', () => {
+    // Test: Whitespace around the commas of a composite marker.
+    // Situation: Composite markers whose numbers are separated by a space, a
+    //   tab, and a space on both sides of the comma, and markers with a line
+    //   break before or after the comma.
+    // Expectation: The horizontal-whitespace markers match; the markers with
+    //   a line break do not.
+    expect(parseMarkers('[1, 2]')).toEqual([[1, 2]]);
+    expect(parseMarkers('[1,\t2]')).toEqual([[1, 2]]);
+    expect(parseMarkers('[2 , 3]')).toEqual([[2, 3]]);
+    for (const text of ['[1,\n2]', '[1\n, 2]', '[1,\r\n2]']) {
+      expect(parseMarkers(text)).toEqual([]);
+    }
+  });
+
   it('returns a fresh pattern on every call', () => {
     // Test: Isolation of the global pattern's state.
     // Situation: One pattern is advanced by a match before another is

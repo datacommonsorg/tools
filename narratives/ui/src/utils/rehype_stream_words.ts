@@ -18,12 +18,23 @@
  * @fileoverview Provides the rehype plugin that staggers an answer's words so it reveals in reading order.
  */
 
+import { CITATION_MARKER_PATTERN_SOURCE } from '@/src/utils/citation_marker';
+
 /** Specifies the reveal time given to each word of an answer. */
 const MS_PER_WORD = 20;
 /** Specifies the longest a reveal runs, however long the answer is. */
 const MAX_STREAM_MS = 3000;
 /** Class of the span wrapped around each word; styled in index.css. */
 export const STREAM_WORD_CLASS = 'stream-word';
+/**
+ * Matches a whitespace run or a word run. A word run is a maximal sequence of
+ * citation markers and non-whitespace characters; the marker alternative comes
+ * first so the spaces inside `[1, 2]` stay in the word.
+ */
+const STREAM_TOKEN_PATTERN = new RegExp(
+  String.raw`(?:${CITATION_MARKER_PATTERN_SOURCE}|\S)+|\s+`,
+  'g',
+);
 /**
  * Elements that draw something of their own (a bullet, a grid, a rule), so
  * they wait for their first word rather than showing ahead of their text.
@@ -44,9 +55,28 @@ export interface StreamNode {
   children?: StreamNode[];
 }
 
-/** Returns the number of whitespace-separated words in `text`. */
+/**
+ * Splits `text` into alternating whitespace runs and word runs whose
+ * concatenation is `text`. A citation marker and the non-whitespace attached
+ * to it, as in `[1, 2].`, form one word run.
+ */
+function splitStreamTokens(text: string): string[] {
+  // `match` with a global pattern scans from index 0 and resets `lastIndex`,
+  // so the shared pattern carries no state between calls.
+  return text.match(STREAM_TOKEN_PATTERN) ?? [];
+}
+
+/** Returns true when `token` is a whitespace run. */
+function isWhitespace(token: string): boolean {
+  return token.trim() === '';
+}
+
+/**
+ * Returns the number of words in `text`, split as {@link rehypeStreamWords}
+ * splits them, so a citation marker such as `[1, 2]` counts as one word.
+ */
 export function countWords(text: string): number {
-  return text.split(/\s+/).filter(Boolean).length;
+  return splitStreamTokens(text).filter((token) => !isWhitespace(token)).length;
 }
 
 /** Returns how long the reveal of `text` runs, in milliseconds. */
@@ -75,20 +105,17 @@ export function rehypeStreamWords(durationMs: number, startMs = 0) {
           walk(child);
           return [child];
         }
-        return (child.value ?? '')
-          .split(/(\s+)/)
-          .filter(Boolean)
-          .map((part): StreamNode => {
-            if (!part.trim()) return { type: 'text', value: part };
-            const word: StreamNode = {
-              type: 'element',
-              tagName: 'span',
-              properties: { className: [STREAM_WORD_CLASS] },
-              children: [{ type: 'text', value: part }],
-            };
-            timed.push([word, words++]);
-            return word;
-          });
+        return splitStreamTokens(child.value ?? '').map((part): StreamNode => {
+          if (isWhitespace(part)) return { type: 'text', value: part };
+          const word: StreamNode = {
+            type: 'element',
+            tagName: 'span',
+            properties: { className: [STREAM_WORD_CLASS] },
+            children: [{ type: 'text', value: part }],
+          };
+          timed.push([word, words++]);
+          return word;
+        });
       });
     };
     walk(tree);

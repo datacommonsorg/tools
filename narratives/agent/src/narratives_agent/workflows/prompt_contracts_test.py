@@ -261,3 +261,38 @@ def test_synthesis_contract_matches_chart_specification_grammar() -> None:
         "TABLE INVENTORY",
     ):
         assert section_name in guidance
+
+
+def test_synthesis_contract_instructs_per_variable_citations() -> None:
+    # Test: Per-variable citation rules in `contracts/synthesis.md`.
+    # Situation: The `### Citations` section of
+    #   `load_prompt_contract("synthesis")` is inspected.
+    # Expectation: It holds the rule that a figure computed from more than
+    #   one variable carries the whole `cite:` marker and the rule that a
+    #   figure reporting one variable's own value carries that variable's
+    #   `cite by variable:` marker, and no longer holds the superseded rule
+    #   that every figure of a composite step carries the whole marker.
+    contract = load_prompt_contract("synthesis")
+    _, found, remainder = contract.partition("### Citations\n")
+    assert found
+    citations, _, _ = remainder.partition("\n### ")
+    flattened = " ".join(citations.split())
+
+    assert (
+        "A figure computed from more than one variable (a mean or median "
+        "over places selected by another variable, a difference, a ratio, a "
+        "share, a correlation, a weighted mean, or any value of a derived "
+        "variable such as a per-capita rate) carries the step's whole "
+        "`cite:` marker"
+    ) in flattened
+    assert (
+        "When a step lists `cite by variable:`, a figure that reports one "
+        "variable's own value, such as a single place's observed value or "
+        "that variable's own mean, median, or range across all of the step's "
+        "places, carries that variable's marker instead."
+    ) in flattened
+    assert (
+        "each group's Var_A mean, such as **10.2%** [1, 2], and the gap of "
+        "**2.1** [1, 2] between the group means carry both."
+    ) in flattened
+    assert "so every source that contributed is cited" not in flattened

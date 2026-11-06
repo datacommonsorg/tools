@@ -153,13 +153,17 @@ agent loop in five steps:
    precision), the numbered sources, the missing-data notes, the pattern's
    directive, and a table inventory naming each cached table's variable, unit,
    places, and dates; externally sourced text (variable names, source names, and
-   missing-data notes) stays in typed fields until the message is rendered. The
-   model writes markdown and places each chart where it belongs as a fenced
-   block tagged `chart` holding one specification: the chart kind (`line`,
-   `bar`, `map`, `ranking`, `scatter`, or `highlight`), the table ids it draws
-   from, a title, and the places (an explicit subset, the table's cohort, or a
-   `top_n` or `bottom_n` slice), with an optional unit and, on single-date
-   charts, an optional date.
+   missing-data notes) stays in typed fields until the message is rendered. Each
+   sourced digest step carries a step-level `cite:` marker and, when a
+   multi-variable step draws from distinct sources per variable, a
+   `cite by variable:` breakdown so single-variable figures cite their own
+   source while cross-variable figures cite the combined sources. The model
+   writes markdown and places each chart where it belongs as a fenced block
+   tagged `chart` holding one specification: the chart kind (`line`, `bar`,
+   `map`, `ranking`, `scatter`, or `highlight`), the table ids it draws from, a
+   title, and the places (an explicit subset, the table's cohort, or a `top_n`
+   or `bottom_n` slice), with an optional unit and, on single-date charts, an
+   optional date.
    The server splits the stream at paragraph boundaries and at the closing fence
    of each chart block, and emits one `content {block}` frame per completed
    paragraph and per chart that resolves. Resolution is set membership against
