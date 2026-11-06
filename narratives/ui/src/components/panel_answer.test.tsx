@@ -49,8 +49,12 @@ const LINE_CHART: ChartItem = {
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
 
-/** Class that hides the body's non-text children while the text reveals. */
-const HIDE_NON_TEXT_CLASS = 'motion-safe:[&>:not(.markdown-body)]:opacity-0';
+/**
+ * Class that hides the body's non-text children, other than chart tiles,
+ * while the text reveals.
+ */
+const HIDE_NON_TEXT_CLASS =
+  'motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0';
 
 /** Builds a finished turn whose answer arrived as the given blocks. */
 const buildTurnWithBlocks = (
@@ -381,6 +385,64 @@ describe('AnswerPanel', () => {
 
     expect(container.querySelector('.markdown-stream')).toBeNull();
     expect(getBody(container).className).not.toContain(HIDE_NON_TEXT_CLASS);
+    expect(
+      screen.queryAllByRole('button', { name: 'Export PDF' }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('holds a drawn chart behind its skeleton until the reveal ends', () => {
+    // Test: The chart skeleton during the reveal.
+    // Situation: A panel mounts mid-stream with a long paragraph and a chart
+    //   block whose chart draws before the text has finished revealing.
+    // Expectation: The chart card's skeleton overlay stays visible while the
+    //   text reveals, and hides once the reveal duration passes.
+    vi.useFakeTimers();
+    const turn = buildTurnWithBlocks([
+      { index: 0, type: 'text', markdown: 'France grew. '.repeat(100) },
+      { index: 1, type: 'chart', chart: LINE_CHART },
+    ]);
+    const { container } = render(<AnswerPanel turn={turn} isStreaming />);
+    const overlay = container.querySelector(
+      '.dc-chart-card > [aria-hidden="true"]',
+    );
+
+    drawLineChart(container);
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+    expect(overlay?.className).not.toContain('invisible');
+
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
+    });
+    expect(overlay?.className).toContain('invisible');
+  });
+
+  it('withholds the export controls until its charts settle', () => {
+    // Test: Export gating on charts.
+    // Situation: A panel mounts mid-stream with a chart that has not drawn;
+    //   the settle cap passes and the text reveal ends before it draws.
+    // Expectation: No Export PDF control renders until the chart draws.
+    vi.useFakeTimers();
+    const turn = buildTurnWithBlocks(INTERLEAVED_BLOCKS);
+    const { container } = render(
+      <AnswerPanel turn={turn} isStreaming onSettled={vi.fn()} />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(ANSWER_SETTLE_MAX_MS);
+    });
+    act(() => {
+      vi.advanceTimersByTime(calculateStreamDurationMs(turn.text));
+    });
+    expect(
+      screen.queryAllByRole('button', { name: 'Export PDF' }),
+    ).toHaveLength(0);
+
+    drawLineChart(container);
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
     expect(
       screen.queryAllByRole('button', { name: 'Export PDF' }).length,
     ).toBeGreaterThan(0);

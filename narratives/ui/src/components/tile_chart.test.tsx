@@ -356,6 +356,65 @@ describe('ChartTile', () => {
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
+  it('holds the card busy behind a skeleton until its chart draws', () => {
+    // Test: The card's loading state.
+    // Situation: A one-item line chart that draws after one poll.
+    // Expectation: The card is busy and announces loading before the chart
+    //   draws, and does neither once it does.
+    vi.useFakeTimers();
+    const { container } = render(
+      <ChartTile config={{ shouldRender: true, charts: [LINE_CHART] }} />,
+    );
+    const card = container.querySelector('.dc-chart-card');
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'true',
+    );
+    expect(card?.querySelector('[role="status"]')?.textContent).toBe(
+      'Loading chart',
+    );
+    expect(card?.querySelector('[aria-busy] [role="status"]')).toBeNull();
+
+    drawChart(container, 'datacommons-line');
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'false',
+    );
+    expect(card?.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('keeps a drawn chart behind its skeleton while held', () => {
+    // Test: Holding the skeleton.
+    // Situation: A one-item line chart that draws while `shouldHoldSkeleton`
+    //   is set, then the hold is released.
+    // Expectation: Once drawn, the chart is no longer busy and the status is
+    //   gone, but the skeleton overlay stays visible and sweeping while held;
+    //   once released, the overlay hides and stops sweeping.
+    vi.useFakeTimers();
+    const config = { shouldRender: true, charts: [LINE_CHART] };
+    const { container, rerender } = render(
+      <ChartTile config={config} shouldHoldSkeleton />,
+    );
+    const card = container.querySelector('.dc-chart-card');
+    const overlay = card?.querySelector('[aria-hidden="true"]');
+
+    drawChart(container, 'datacommons-line');
+    act(() => {
+      vi.advanceTimersByTime(CHART_POLL_MS);
+    });
+    expect(card?.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+      'false',
+    );
+    expect(card?.querySelector('[role="status"]')).toBeNull();
+    expect(overlay?.className).not.toContain('invisible');
+    expect(overlay?.querySelector('[class*="animate-shimmer"]')).not.toBeNull();
+
+    rerender(<ChartTile config={config} />);
+    expect(overlay?.className).toContain('invisible');
+    expect(overlay?.querySelector('[class*="animate-shimmer"]')).toBeNull();
+  });
+
   it('reports settled at once when it renders nothing', () => {
     // Test: The settle report of an empty tile.
     // Situation: A configuration whose only chart has no place anchor, so

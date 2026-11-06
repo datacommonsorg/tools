@@ -88,8 +88,8 @@ interface AnswerPanelProps {
  * its charts to finish loading. Charts that settle within
  * {@link ANSWER_SETTLE_MAX_MS} move nothing once the panel is shown; a chart
  * that draws or reports no data after the cap can still change its height.
- * `revealing`: the text is revealing word by word and everything else is
- * hidden. `revealed`: everything is shown.
+ * `revealing`: the text is revealing word by word, charts show their skeleton,
+ * and everything else is hidden. `revealed`: everything is shown.
  */
 type RevealPhase = 'settling' | 'revealing' | 'revealed';
 
@@ -261,10 +261,11 @@ export function AnswerPanel({
         {/* Toolbar header, shared with SkeletonCard. Only expose the toolbar
           pill once the turn is fully streamed — otherwise clicking it while
           the ChartTile's DataCommons web component is still hydrating
-          produces a PDF missing the chart. This matches the filled "Export
-          PDF" button below, which also waits for status === "done". */}
+          produces a PDF missing the chart. It also waits for every chart to
+          settle, since the reveal can end before a slow chart draws. This
+          matches the filled "Export PDF" button below. */}
         <CardHeader title={turn.userMessage}>
-          {turn.status === 'done' && isRevealed && (
+          {turn.status === 'done' && isRevealed && areChartsSettled && (
             <>
               {/* Opens the provenance slide-over. Only under ?debug=provenance,
                 so end users never see it. */}
@@ -277,10 +278,13 @@ export function AnswerPanel({
         </CardHeader>
 
         {/* Content body: everything after and between the text blocks stays
-          hidden until the text has finished revealing. */}
+          hidden until the text has finished revealing, except chart tiles,
+          which hold their space behind a skeleton so no gap shows. */}
         <div
-          className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body)]:transition-opacity motion-safe:[&>:not(.markdown-body)]:duration-300${
-            isRevealed ? '' : ' motion-safe:[&>:not(.markdown-body)]:opacity-0'
+          className={`flex flex-col p-4 sm:p-6 motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:transition-opacity motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:duration-300${
+            isRevealed
+              ? ''
+              : ' motion-safe:[&>:not(.markdown-body,.dc-charts-container)]:opacity-0'
           }`}
           style={{
             gap: 16,
@@ -322,7 +326,7 @@ export function AnswerPanel({
           {(hasCharts || hasCitations) && <DisclaimerNote />}
 
           {/* 5. Export PDF (filled, in-content) */}
-          {turn.status === 'done' && isRevealed && (
+          {turn.status === 'done' && isRevealed && areChartsSettled && (
             <ExportPdfButton onExport={onExport} busy={exporting} />
           )}
         </div>
@@ -393,6 +397,7 @@ function AnswerBlocks({
               key={block.index}
               config={{ shouldRender: true, charts: [block.chart] }}
               onSettled={() => onChartSettled(block.index)}
+              shouldHoldSkeleton={phase !== 'revealed'}
             />
           );
         }
