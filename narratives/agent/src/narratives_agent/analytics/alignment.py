@@ -13,14 +13,17 @@
 # limitations under the License.
 """Aligns a cohort to one reference date and checks unit compatibility.
 
-`align_cohort` selects the most recent date on which enough places report a
-value and returns one row per contributing place with coverage metadata.
+`CohortRow` and `Cohort` are the structural interfaces of a cohort that
+holds one value per place, which the cohort scripts accept. `align_cohort`
+selects the most recent date on which enough places report a value and
+returns one row per contributing place with coverage metadata.
 `find_unit_mismatch` reports a unit or scaling conflict across tables and
 cohorts before they are combined or compared.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from narratives_agent.analytics.digest import (
     AlignmentRefusalReason,
@@ -41,6 +44,8 @@ __all__ = [
     "DEFAULT_MIN_COVERAGE",
     "AlignedCohort",
     "AlignmentRefusal",
+    "Cohort",
+    "CohortRow",
     "UnitMismatch",
     "align_cohort",
     "find_unit_mismatch",
@@ -56,9 +61,102 @@ DEFAULT_MIN_COVERAGE: float = 0.5
 _UNSCALED = 1.0
 
 
+@runtime_checkable
+class CohortRow(Protocol):
+    """One place's value in a cohort.
+
+    The members are read-only properties so that frozen dataclasses, such
+    as `ObservationRow`, satisfy the protocol.
+    """
+
+    @property
+    def place_dcid(self) -> str:
+        """DCID of the place."""
+        ...
+
+    @property
+    def place_name(self) -> str:
+        """Display name of the place."""
+        ...
+
+    @property
+    def value(self) -> float:
+        """The place's finite value for the cohort figure."""
+        ...
+
+
+@runtime_checkable
+class Cohort(Protocol):
+    """A cohort holding one value per place at its reference date.
+
+    A cohort is either observed on a single date, as an `AlignedCohort` is,
+    or describes a date window, in which case `reference_date` is
+    `start..end` (`is_window_reference_date`). A cohort has at least one row.
+    The members are read-only properties so that frozen dataclasses satisfy
+    the protocol.
+    """
+
+    @property
+    def variable_dcid(self) -> str:
+        """DCID of the variable the values are computed from."""
+        ...
+
+    @property
+    def variable_name(self) -> str:
+        """Display name of that variable."""
+        ...
+
+    @property
+    def metric_label(self) -> str:
+        """Name of the cohort figure as it appears in prose."""
+        ...
+
+    @property
+    def reference_date(self) -> str:
+        """The single observation date or the `start..end` date window."""
+        ...
+
+    @property
+    def unit(self) -> str | None:
+        """Unit of the values, when known."""
+        ...
+
+    @property
+    def scaling_factor(self) -> float | None:
+        """Scaling factor of the values, when known."""
+        ...
+
+    @property
+    def provenance(self) -> Provenance:
+        """Provenance of the values."""
+        ...
+
+    @property
+    def rows(self) -> Sequence[CohortRow]:
+        """One row per contributing place, sorted by place DCID; never empty."""
+        ...
+
+    @property
+    def place_names(self) -> Mapping[str, str]:
+        """Display names of the cohort's places."""
+        ...
+
+    @property
+    def coverage(self) -> CoverageReport:
+        """How many of the cohort's places contributed."""
+        ...
+
+    @property
+    def caveats(self) -> tuple[str, ...]:
+        """Qualifications to state with the values."""
+        ...
+
+
 @dataclass(frozen=True)
 class AlignedCohort:
     """One value per place, all observed on `reference_date`.
+
+    Satisfies `Cohort`, with `metric_label` equal to `variable_name`.
 
     Attributes:
         variable_dcid: The variable the values measure.
@@ -93,6 +191,11 @@ class AlignedCohort:
         """Rejects a cohort without rows."""
         if not self.rows:
             raise ValueError("An aligned cohort must have at least one row.")
+
+    @property
+    def metric_label(self) -> str:
+        """Name of the cohort figure as it appears in prose."""
+        return self.variable_name
 
 
 @dataclass(frozen=True)
@@ -456,7 +559,7 @@ def _normalize_scaling(scaling_factor: float | None) -> float:
 
 
 def find_unit_mismatch(
-    *items: ObservationTable | AlignedCohort,
+    *items: ObservationTable | Cohort,
 ) -> UnitMismatch | None:
     """Reports why tables or cohorts cannot be combined or compared.
 

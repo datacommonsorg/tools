@@ -54,14 +54,14 @@ from narratives_agent.analytics.metrics import (
 )
 from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
-    CohortInput,
     build_invalid_parameters_refusal,
     build_refusal,
     resolve_target_places,
     validate_place_dcids,
 )
+from narratives_agent.analytics.tables import ObservationTable
 
-__all__ = ["compute_composition"]
+__all__ = ["CompositionInput", "compute_composition"]
 
 _SCRIPT_NAME: Literal["compute_composition"] = "compute_composition"
 # Maximum ratio of a place's component sum to its total (1 + 1e-6). It absorbs
@@ -73,6 +73,9 @@ _MAX_EXACT_INTEGER = 2.0**53
 # Stage transitions need a stage to move from and a stage to move to.
 _MIN_STAGES = 2
 
+# A composition input: a table, or a cohort aligned to a single date. A
+# composition compares every input on one shared observation date.
+type CompositionInput = AlignedCohort | ObservationTable
 # Maps each observation date to a place-to-value lookup for one input.
 type _ValuesByDate = dict[str, dict[str, float]]
 
@@ -90,7 +93,7 @@ class _AlignedInputs:
 
 
 def _index_values_by_date(
-    item: CohortInput, target_places: frozenset[str]
+    item: CompositionInput, target_places: frozenset[str]
 ) -> _ValuesByDate:
     """Indexes an input's values by date and place within `target_places`.
 
@@ -149,7 +152,7 @@ def _select_shared_reference_date(
 
 
 def _has_mixed_vintages(
-    inputs: Sequence[CohortInput],
+    inputs: Sequence[CompositionInput],
     indexes: Sequence[_ValuesByDate],
     target_places: frozenset[str],
 ) -> bool:
@@ -252,7 +255,7 @@ def _compute_retention_ratio(
 def _build_composition_place(
     place: str,
     place_name: str,
-    components: Sequence[CohortInput],
+    components: Sequence[CompositionInput],
     values: Sequence[float],
     component_sum: float,
     total_value: float | None,
@@ -286,7 +289,7 @@ def _build_composition_place(
 def _build_stages_place(
     place: str,
     place_name: str,
-    stages: Sequence[CohortInput],
+    stages: Sequence[CompositionInput],
     values: Sequence[float],
     total_value: float | None,
 ) -> StagesPlace:
@@ -338,7 +341,7 @@ def _build_stages_place(
 
 
 def _validate_distinct_variables(
-    all_inputs: Sequence[CohortInput],
+    all_inputs: Sequence[CompositionInput],
 ) -> str | None:
     """Returns an error if any variable DCID appears more than once."""
     repeated_dcids = [
@@ -358,7 +361,7 @@ def _validate_distinct_variables(
 
 
 def _validate_aligned_reference_dates(
-    all_inputs: Sequence[CohortInput], *, target_date: str | None
+    all_inputs: Sequence[CompositionInput], *, target_date: str | None
 ) -> str | None:
     """Returns an error if pre-aligned inputs disagree on the date."""
     aligned_dates = [
@@ -390,8 +393,8 @@ def _validate_aligned_reference_dates(
 
 
 def _validate_composition_parameters(
-    all_inputs: tuple[CohortInput, ...],
-    components: Sequence[CohortInput],
+    all_inputs: tuple[CompositionInput, ...],
+    components: Sequence[CompositionInput],
     *,
     mode: CompositionMode,
     places: Sequence[str] | None,
@@ -454,9 +457,9 @@ def _validate_composition_parameters(
 
 
 def _resolve_composition_places(
-    all_inputs: Sequence[CohortInput],
+    all_inputs: Sequence[CompositionInput],
     *,
-    total: CohortInput | None,
+    total: CompositionInput | None,
     places: Sequence[str] | None,
 ) -> tuple[str, ...]:
     """Resolves the target places in report order."""
@@ -491,7 +494,7 @@ def _resolve_reference_date(
 
 
 def _build_coverage_report(
-    all_inputs: Sequence[CohortInput],
+    all_inputs: Sequence[CompositionInput],
     indexes: Sequence[_ValuesByDate],
     target_places: tuple[str, ...],
     complete_places: tuple[str, ...],
@@ -515,7 +518,9 @@ def _build_coverage_report(
     )
 
 
-def _merge_place_names(all_inputs: Sequence[CohortInput]) -> dict[str, str]:
+def _merge_place_names(
+    all_inputs: Sequence[CompositionInput],
+) -> dict[str, str]:
     """Merges place display names across `all_inputs` in input order."""
     place_names: dict[str, str] = {}
     for item in all_inputs:
@@ -564,9 +569,9 @@ def _build_insufficient_coverage_message(
 
 
 def _align_composition_inputs(
-    all_inputs: tuple[CohortInput, ...],
+    all_inputs: tuple[CompositionInput, ...],
     *,
-    total: CohortInput | None,
+    total: CompositionInput | None,
     places: Sequence[str] | None,
     target_date: str | None,
     min_coverage: float,
@@ -673,10 +678,10 @@ def _evaluate_composition_place(
     place: str,
     place_name: str,
     reference_date: str,
-    components: Sequence[CohortInput],
+    components: Sequence[CompositionInput],
     values: Sequence[float],
     *,
-    total: CohortInput | None,
+    total: CompositionInput | None,
     total_value: float | None,
 ) -> CompositionPlace | tuple[RefusalReason, str]:
     """Builds a `CompositionPlace`, or returns `(reason, caveat)` to refuse."""
@@ -726,10 +731,10 @@ def _evaluate_composition_place(
 
 def _evaluate_composition_places(
     aligned: _AlignedInputs,
-    all_inputs: tuple[CohortInput, ...],
-    components: Sequence[CohortInput],
+    all_inputs: tuple[CompositionInput, ...],
+    components: Sequence[CompositionInput],
     *,
-    total: CohortInput | None,
+    total: CompositionInput | None,
     step_id: str,
 ) -> tuple[CompositionPlace, ...] | RefusedScriptResult:
     """Checks non-negativity and disjointness and builds `CompositionPlace`s."""
@@ -766,10 +771,10 @@ def _evaluate_composition_places(
 
 def _evaluate_stages_places(
     aligned: _AlignedInputs,
-    all_inputs: tuple[CohortInput, ...],
-    components: Sequence[CohortInput],
+    all_inputs: tuple[CompositionInput, ...],
+    components: Sequence[CompositionInput],
     *,
-    total: CohortInput | None,
+    total: CompositionInput | None,
     step_id: str,
 ) -> tuple[StagesPlace, ...] | RefusedScriptResult:
     """Checks stage deltas for overflow and builds `StagesPlace` entries."""
@@ -879,9 +884,9 @@ def _build_composition_caveats(
 
 
 def _describe_methodology(
-    components: Sequence[CohortInput],
+    components: Sequence[CompositionInput],
     *,
-    total: CohortInput | None,
+    total: CompositionInput | None,
     mode: CompositionMode,
     reference_date: str,
     place_count: int,
@@ -912,9 +917,9 @@ def _describe_methodology(
 
 
 def compute_composition(
-    components: Sequence[CohortInput],
+    components: Sequence[CompositionInput],
     *,
-    total: CohortInput | None = None,
+    total: CompositionInput | None = None,
     mode: CompositionMode = "composition",
     places: Sequence[str] | None = None,
     target_date: str | None = None,
@@ -973,7 +978,7 @@ def compute_composition(
         given as `target_date`, or fixed by aligned inputs, fall below
         `min_coverage`.
     """
-    all_inputs: tuple[CohortInput, ...] = (
+    all_inputs: tuple[CompositionInput, ...] = (
         (total, *components) if total is not None else tuple(components)
     )
     parameter_refusal = _validate_composition_parameters(

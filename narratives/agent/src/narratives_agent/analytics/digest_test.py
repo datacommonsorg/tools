@@ -509,6 +509,29 @@ def test_coverage_describe_handles_one_place_and_no_reference_date(
 
 
 @pytest.mark.parametrize(
+    "missing_places",
+    [(), ("geoId/01", "geoId/02")],
+    ids=["no-missing-places", "with-missing-places"],
+)
+def test_coverage_describe_reads_a_window_reference_date(
+    missing_places: tuple[str, ...],
+) -> None:
+    # Test: `CoverageReport.describe()` on a date-window reference date.
+    # Situation: A coverage report of 210 of 246 places whose reference date
+    #   is the window `2020..2024`, with no missing places and with two.
+    # Expectation: The window reads `"from 2020 to 2024"` in place of
+    #   `"on <date>"`, and the missing places do not change the wording.
+    coverage = CoverageReport(
+        contributing_places=210,
+        requested_places=246,
+        coverage_ratio=210 / 246,
+        reference_date="2020..2024",
+        missing_places=missing_places,
+    )
+    assert coverage.describe() == "210 of 246 places from 2020 to 2024"
+
+
+@pytest.mark.parametrize(
     "url",
     ["https://wdi.example", ""],
     ids=["url-equals-name", "empty-url"],

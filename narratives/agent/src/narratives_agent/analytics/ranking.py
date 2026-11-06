@@ -11,11 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Ranks the places of an aligned cohort.
+"""Ranks the places of a cohort.
 
-`rank_cohort` aligns a cohort to a single reference date, assigns standard
-competition ranks, and reports top and bottom tails, focal place ranks and
-percentiles, and cohort coverage.
+`rank_cohort` aligns a table to a single date when given one, then ranks the
+cohort at its reference date with standard competition ranks and reports top
+and bottom tails, focal place ranks and percentiles, and cohort coverage.
 """
 
 from collections import Counter
@@ -24,11 +24,12 @@ from typing import Literal
 
 from narratives_agent.analytics.alignment import (
     DEFAULT_MIN_COVERAGE,
-    AlignedCohort,
+    CohortRow,
 )
 from narratives_agent.analytics.digest import (
     PERCENT_SCALE,
     OkScriptResult,
+    RefusedScriptResult,
     ScriptResult,
 )
 from narratives_agent.analytics.metrics import (
@@ -38,15 +39,13 @@ from narratives_agent.analytics.metrics import (
 )
 from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
+    CohortInput,
     build_invalid_parameters_refusal,
     describe_missing_focal_places,
     resolve_aligned_cohort,
     validate_place_dcids,
 )
-from narratives_agent.analytics.tables import (
-    ObservationRow,
-    ObservationTable,
-)
+from narratives_agent.analytics.tables import format_reference_date_phrase
 
 __all__ = [
     "DEFAULT_MAX_ENTRIES_PER_END",
@@ -60,7 +59,7 @@ DEFAULT_MAX_ENTRIES_PER_END = 10
 
 def _build_sort_key(
     direction: RankingDirection,
-) -> Callable[[ObservationRow], tuple[float, str]]:
+) -> Callable[[CohortRow], tuple[float, str]]:
     """Returns the key that orders rows in `direction`, ties by DCID."""
     if direction == "desc":
         return lambda row: (-row.value, row.place_dcid)
@@ -116,7 +115,7 @@ def compute_cohort_percentiles(values: Sequence[float]) -> dict[float, float]:
 
 
 def _build_rank_entry(
-    row: ObservationRow,
+    row: CohortRow,
     ranks: dict[float, int],
     percentiles: dict[float, float],
     tie_counts: Counter[float],
@@ -133,7 +132,7 @@ def _build_rank_entry(
 
 
 def _describe_tie_cut(
-    listed: Sequence[ObservationRow],
+    listed: Sequence[CohortRow],
     label: str,
     ranks: dict[float, int],
     tie_counts: Counter[float],
@@ -169,8 +168,8 @@ def _validate_parameters(
 
 
 def _select_ends(
-    rows: Sequence[ObservationRow], direction: RankingDirection, size: int
-) -> tuple[list[ObservationRow], list[ObservationRow]]:
+    rows: Sequence[CohortRow], direction: RankingDirection, size: int
+) -> tuple[list[CohortRow], list[CohortRow]]:
     """Returns the `size` leading rows and the `size` trailing rows.
 
     Both lists order ties by DCID, and the trailing rows run from the far
@@ -189,7 +188,7 @@ def _select_ends(
 
 
 def rank_cohort(
-    cohort_or_table: AlignedCohort | ObservationTable,
+    cohort_or_table: CohortInput,
     *,
     max_entries_per_end: int = DEFAULT_MAX_ENTRIES_PER_END,
     direction: RankingDirection = "desc",
@@ -201,10 +200,12 @@ def rank_cohort(
     """Ranks the places of a cohort at its reference date.
 
     Args:
-        cohort_or_table: An aligned cohort, or a table to align first with
-            `target_date` and `min_coverage`. An aligned cohort already has
-            a reference date: `min_coverage` is then unused and not
-            checked, and a `target_date` other than that date is refused.
+        cohort_or_table: A cohort, or a table to align first with
+            `target_date` and `min_coverage`. A cohort already has a
+            reference date: `min_coverage` is then unused and not checked,
+            and a `target_date` other than that date is refused, as is any
+            `target_date` for a cohort whose reference date is a date
+            window.
         max_entries_per_end: The most entries listed at each end of the
             ranking, in `top_n` and in `bottom_n`; must be at least 1. Each
             end lists fewer when the cohort has fewer places.
@@ -224,12 +225,12 @@ def rank_cohort(
         `place_name`, `value`, and `percentile`. A caveat notes an end that
         leaves out places tied with its last entry. The result is refused
         with `invalid_parameters` when `max_entries_per_end` is below 1,
-        `target_date` is not a valid date or differs from an aligned
-        cohort's reference date, `min_coverage` is outside `[0.0, 1.0]` for
-        a table, or `focal_places` is a string or holds an invalid DCID,
-        carrying the cohort's coverage and caveats when an aligned cohort
-        was passed; and with the alignment's reason when the cohort cannot
-        be aligned.
+        `target_date` is not a valid date, differs from a cohort's reference
+        date, or is given for a date-window cohort, `min_coverage` is
+        outside `[0.0, 1.0]` for a table, or `focal_places` is a string or
+        holds an invalid DCID, carrying the cohort's coverage and caveats
+        when a cohort was passed; and with the alignment's reason when the
+        table cannot be aligned.
     """
     error = _validate_parameters(max_entries_per_end, focal_places)
     if error is not None:
@@ -237,7 +238,7 @@ def rank_cohort(
             cohort_or_table, script=_SCRIPT_NAME, step_id=step_id, caveat=error
         )
     # `min_coverage` applies only to alignment, so it is not checked for a
-    # cohort that is already aligned.
+    # cohort.
     aligned = resolve_aligned_cohort(
         cohort_or_table,
         script=_SCRIPT_NAME,
@@ -246,7 +247,7 @@ def rank_cohort(
         min_coverage=min_coverage,
         operation="ranked",
     )
-    if not isinstance(aligned, AlignedCohort):
+    if isinstance(aligned, RefusedScriptResult):
         return aligned
 
     values = [row.value for row in aligned.rows]
@@ -283,9 +284,9 @@ def rank_cohort(
     provenance = merge_provenance(
         aligned.provenance,
         methodology=(
-            f"Ranked {len(aligned.rows)} places by {aligned.variable_name} "
-            f"on {aligned.reference_date} in {order} order; places with "
-            "the same value share a rank."
+            f"Ranked {len(aligned.rows)} places by {aligned.metric_label} "
+            f"{format_reference_date_phrase(aligned.reference_date)} in "
+            f"{order} order; places with the same value share a rank."
         ),
     )
     return OkScriptResult(

@@ -28,9 +28,11 @@ from narratives_agent.analytics.tables import (
     ObservationRow,
     ObservationTable,
     clean_display_name,
+    format_reference_date_phrase,
     is_inverted_date_range,
     is_valid_dcid,
     is_valid_observation_date,
+    is_window_reference_date,
     is_within_date_range,
 )
 
@@ -227,3 +229,73 @@ def test_date_range_bounds_compare_at_the_coarser_granularity(
     #   match or are in order at their shared prefix length, and `False`
     #   otherwise.
     assert is_within_date_range(date, start, end) is expected
+
+
+@pytest.mark.parametrize(
+    "reference_date",
+    ["2020..2024", "2020-01..2020-06", "2020-02-28..2020-02-29"],
+    ids=["annual", "monthly", "daily"],
+)
+def test_is_window_reference_date_accepts_ordered_same_precision_windows(
+    reference_date: str,
+) -> None:
+    # Test: `is_window_reference_date` on well-formed windows.
+    # Situation: Annual, monthly, and daily windows whose start comes
+    #   strictly before their end at the same precision.
+    # Expectation: Each is a window.
+    assert is_window_reference_date(reference_date) is True
+
+
+@pytest.mark.parametrize(
+    "reference_date",
+    [
+        "2024",
+        "",
+        "..",
+        "2020..2022..2024",
+        "2020-13..2021-01",
+        "2020..2024-01",
+        "2020..2020",
+        "2024..2020",
+    ],
+    ids=[
+        "single-date",
+        "empty",
+        "separator-only",
+        "three-parts",
+        "malformed-start",
+        "mixed-precision",
+        "equal-endpoints",
+        "reversed-endpoints",
+    ],
+)
+def test_is_window_reference_date_rejects_other_shapes(
+    reference_date: str,
+) -> None:
+    # Test: `is_window_reference_date` on strings that are not windows.
+    # Situation: A single date, an empty string, a bare separator, three
+    #   dates, a malformed month, mixed precisions, equal endpoints, and
+    #   reversed endpoints.
+    # Expectation: None is a window.
+    assert is_window_reference_date(reference_date) is False
+
+
+@pytest.mark.parametrize(
+    ("reference_date", "expected"),
+    [
+        ("2020..2024", "from 2020 to 2024"),
+        ("2020-01..2020-06", "from 2020-01 to 2020-06"),
+        ("2024", "on 2024"),
+        ("2024..2020", "on 2024..2020"),
+    ],
+    ids=["annual-window", "monthly-window", "single-date", "not-a-window"],
+)
+def test_format_reference_date_phrase_reads_windows_and_single_dates(
+    reference_date: str, expected: str
+) -> None:
+    # Test: `format_reference_date_phrase` wording.
+    # Situation: Two windows, a single date, and a reversed window that
+    #   `is_window_reference_date` rejects.
+    # Expectation: Windows read `"from <start> to <end>"`; any other
+    #   reference date reads `"on <reference_date>"` unchanged.
+    assert format_reference_date_phrase(reference_date) == expected

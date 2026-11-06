@@ -14,9 +14,10 @@
 """Observation table domain types and identifier/date validators.
 
 Defines the immutable `ObservationRow` and `ObservationTable` records that
-every analytics script consumes, together with the display-name sanitizer and
+every analytics script consumes, together with the display-name sanitizer,
 DCID, observation-date, and date-range validators shared across the domain and
-MCP adapter layers.
+MCP adapter layers, and the predicate and prose formatter for cohort reference
+dates that span a date window.
 """
 
 import calendar
@@ -34,18 +35,24 @@ from narratives_agent.analytics.provenance import (
 __all__ = [
     "MAX_DCID_CHARS",
     "MAX_NAME_CHARS",
+    "WINDOW_DATE_SEPARATOR",
     "ObservationRow",
     "ObservationTable",
     "clean_display_name",
+    "format_reference_date_phrase",
     "is_inverted_date_range",
     "is_valid_dcid",
     "is_valid_observation_date",
+    "is_window_reference_date",
     "is_within_date_range",
 ]
 
 # Validated DCIDs and sanitized display names are capped at these lengths.
 MAX_DCID_CHARS = 256
 MAX_NAME_CHARS = 200
+# Joins the start and end dates of a date-window reference date, as in
+# `2020..2024`.
+WINDOW_DATE_SEPARATOR = ".."
 
 # A DCID is non-empty printable ASCII without whitespace or control characters.
 _DCID_PATTERN = re.compile(r"^[!-~]+$")
@@ -195,6 +202,39 @@ def is_valid_observation_date(date: str) -> bool:
         if not 1 <= parts[2] <= month_days:
             return False
     return True
+
+
+def is_window_reference_date(reference_date: str) -> bool:
+    """Returns whether `reference_date` is a `start..end` date window.
+
+    A window joins two valid observation dates of the same precision with
+    `WINDOW_DATE_SEPARATOR`, and its start comes strictly before its end, so
+    `2020..2024` and `2020-01..2020-06` are windows while `2024`,
+    `2020..2024-01`, `2020..2020`, and `2024..2020` are not.
+    """
+    parts = reference_date.split(WINDOW_DATE_SEPARATOR)
+    if len(parts) != 2:
+        return False
+    start_date, end_date = parts
+    return (
+        is_valid_observation_date(start_date)
+        and is_valid_observation_date(end_date)
+        and len(start_date) == len(end_date)
+        and start_date < end_date
+    )
+
+
+def format_reference_date_phrase(reference_date: str) -> str:
+    """Formats a cohort's reference date as a prepositional phrase for prose.
+
+    Returns `"from <start> to <end>"` for a date window
+    (`is_window_reference_date`) and `"on <reference_date>"` for any other
+    reference date, so a single-date cohort reads `"on 2024"`.
+    """
+    if is_window_reference_date(reference_date):
+        start_date, end_date = reference_date.split(WINDOW_DATE_SEPARATOR)
+        return f"from {start_date} to {end_date}"
+    return f"on {reference_date}"
 
 
 def is_inverted_date_range(start: str, end: str) -> bool:
