@@ -57,6 +57,8 @@ __all__ = [
 PERCENT_SCALE = 100.0
 # A caveat lists place names up to this many and counts the rest.
 PLACE_NAME_CAP = 5
+# Prefix of the per-variable citation breakdown line in prompt rendering.
+_CITE_BY_VARIABLE_PREFIX = "cite by variable:"
 
 type ResultStatus = Literal["ok", "refused"]
 # Why `align_cohort` could not align a table.
@@ -226,12 +228,20 @@ class _ScriptResultBase:
         variable_names: Mapping from variable DCID to display name.
         provenance: Source citations, facet IDs, and methodology for the
             result.
+        variable_provenance: Mapping from each variable DCID in `variables` to
+            the merged `Provenance` of the inputs for that variable (`sources`
+            and `facet_ids`, with `methodology=None`).
         unit: Measurement unit shared by the input observations, if known.
         scaling_factor: Scaling factor shared by the input observations, if
             known.
         coverage: Cohort coverage summary for cross-sectional scripts.
         caveats: Methodological notes to include in the synthesis prompt, such
             as an undefined growth rate or alignment across mixed vintages.
+
+    Raises:
+        ValueError: If `variable_provenance` keys do not match `variables`, or
+            if any source in `variable_provenance` is absent from
+            `provenance.sources`.
     """
 
     step_id: str
@@ -239,10 +249,41 @@ class _ScriptResultBase:
     variables: tuple[str, ...]
     variable_names: dict[str, str]
     provenance: Provenance
+    variable_provenance: dict[str, Provenance]
     unit: str | None = None
     scaling_factor: float | None = None
     coverage: CoverageReport | None = None
     caveats: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        expected_variables = set(self.variables)
+        actual_variables = set(self.variable_provenance)
+        if actual_variables != expected_variables:
+            missing = sorted(expected_variables - actual_variables)
+            extra = sorted(actual_variables - expected_variables)
+            details: list[str] = []
+            if missing:
+                details.append(f"missing {', '.join(missing)}")
+            if extra:
+                details.append(f"unexpected {', '.join(extra)}")
+            raise ValueError(
+                "variable_provenance keys must match variables "
+                f"({'; '.join(details)})."
+            )
+        step_sources = set(self.provenance.sources)
+        unlisted_dcids = [
+            dcid
+            for dcid in self.variables
+            if any(
+                source not in step_sources
+                for source in self.variable_provenance[dcid].sources
+            )
+        ]
+        if unlisted_dcids:
+            raise ValueError(
+                "variable_provenance contains sources absent from "
+                f"provenance.sources for: {', '.join(unlisted_dcids)}."
+            )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -255,7 +296,8 @@ class OkScriptResult(_ScriptResultBase):
         refusal_reason: Always `None`.
 
     Raises:
-        ValueError: If `metrics` belongs to a different script.
+        ValueError: If `variable_provenance` violates `_ScriptResultBase`
+            invariants or `metrics` belongs to a different script.
     """
 
     metrics: ScriptMetrics
@@ -263,6 +305,7 @@ class OkScriptResult(_ScriptResultBase):
     refusal_reason: None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if self.metrics.script != self.script:
             raise ValueError(
                 f"Script {self.script!r} cannot carry "
@@ -283,6 +326,10 @@ class RefusedScriptResult(_ScriptResultBase):
         refusal_reason: Machine-readable reason the computation was refused.
         status: Always `"refused"`.
         metrics: Always `None`.
+
+    Raises:
+        ValueError: If `variable_provenance` violates `_ScriptResultBase`
+            invariants.
     """
 
     refusal_reason: RefusalReason
@@ -310,6 +357,7 @@ def _result_to_dict(result: ScriptResult) -> JsonObject:
         "scaling_factor": json_safe(result.scaling_factor),
         "coverage": json_safe(result.coverage),
         "provenance": json_safe(result.provenance),
+        "variable_provenance": json_safe(result.variable_provenance),
         "metrics": json_safe(result.metrics),
         "caveats": json_safe(result.caveats),
     }
@@ -414,6 +462,24 @@ class AnalysisDigest:
             "missing_notes": json_safe(self.missing_notes),
         }
 
+    def _label_variable_citations(self, result: ScriptResult) -> str | None:
+        """Returns the per-variable citations of `result`, or None.
+
+        Labels each variable in `variables` order as `"<dcid> [n]"`, joined
+        with `"; "`. Returns the labels only when two or more variables carry
+        at least two distinct non-empty labels; otherwise None.
+        """
+        if len(result.variables) < 2:
+            return None
+        labeled: list[tuple[str, str]] = []
+        for dcid in result.variables:
+            label = self.citation_label(result.variable_provenance[dcid])
+            if label:
+                labeled.append((dcid, label))
+        if len({label for _, label in labeled}) < 2:
+            return None
+        return "; ".join(f"{dcid} {label}" for dcid, label in labeled)
+
     def _list_result_lines(self) -> list[str]:
         """Returns every result's prompt lines, each block then a blank line."""
         lines: list[str] = []
@@ -422,6 +488,7 @@ class AnalysisDigest:
                 _format_result(
                     result,
                     citation_label=self.citation_label(result.provenance),
+                    variable_citations=self._label_variable_citations(result),
                 )
             )
             lines.append("")
@@ -444,11 +511,13 @@ class AnalysisDigest:
         """Renders the digest as compact, human-readable text for synthesis.
 
         Formats each `ScriptResult` as a block containing a step header, a
-        metadata line (unit, scaling factor, coverage, and citation label),
-        methodology, a single-line JSON metrics object with floats rounded to
-        display precision, and any caveats. Appends the numbered `"Sources:"`
-        and `"Missing data:"` sections at the end. Only prompt text is
-        rounded; `to_dict` preserves full floating-point precision.
+        metadata line (unit, scaling factor, coverage, and citation label), an
+        optional `cite by variable:` line when a multi-variable step cites
+        distinct sources per variable, methodology, a single-line JSON metrics
+        object with floats rounded to display precision, and any caveats.
+        Appends the numbered `"Sources:"` and `"Missing data:"` sections at the
+        end. Only prompt text is rounded; `to_dict` preserves full
+        floating-point precision.
         """
         lines = self._list_result_lines()
         if self.sources:
@@ -463,7 +532,12 @@ class AnalysisDigest:
         return "\n".join(lines).rstrip("\n")
 
 
-def _format_result(result: ScriptResult, *, citation_label: str) -> list[str]:
+def _format_result(
+    result: ScriptResult,
+    *,
+    citation_label: str,
+    variable_citations: str | None,
+) -> list[str]:
     """Formats one `ScriptResult` as lines of text for `format_for_prompt`."""
     variables = ", ".join(
         f"{result.variable_names.get(dcid, dcid)} ({dcid})"
@@ -486,6 +560,8 @@ def _format_result(result: ScriptResult, *, citation_label: str) -> list[str]:
         details.append(f"cite: {citation_label}")
     if details:
         lines.append("  " + "; ".join(details))
+    if variable_citations is not None:
+        lines.append(f"  {_CITE_BY_VARIABLE_PREFIX} {variable_citations}")
     if result.provenance.methodology:
         lines.append(f"  method: {result.provenance.methodology}")
     if result.status == "ok":

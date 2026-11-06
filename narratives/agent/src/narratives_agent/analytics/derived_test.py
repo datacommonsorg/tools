@@ -1445,3 +1445,33 @@ def test_derived_metric_invariants_across_deterministic_grid() -> None:
                         _assert_outcome_matches_oracle_coverage_and_caveats(
                             outcome, oracle
                         )
+
+
+def test_derivation_keeps_per_variable_and_merged_table_provenance() -> None:
+    # Test: Per-variable provenance on `derive_observation_table` and
+    #   `compute_derived_metric` versus merged provenance on the derived table.
+    # Situation: Both entry points combine a count table from `_WDI` (`f1`)
+    #   with a population table from `_CENSUS` (`f2`).
+    # Expectation: `result.provenance.sources` is `(_WDI, _CENSUS)`;
+    #   `result.variable_provenance` maps `Count_Case` to `_WDI` (`f1`) and
+    #   `Count_Person` to `_CENSUS` (`f2`); and the derived table keeps the
+    #   merged sources, so downstream steps on it cite both.
+    count = _build_count_table()
+    population = _build_population_table()
+    outcome = derive_observation_table(
+        count, population, operation="per_capita", step_id="s1"
+    )
+    direct = compute_derived_metric(
+        count, population, operation="per_capita", step_id="s1"
+    )
+
+    expected = {
+        "Count_Case": Provenance(sources=(_WDI,), facet_ids=("f1",)),
+        "Count_Person": Provenance(sources=(_CENSUS,), facet_ids=("f2",)),
+    }
+    assert outcome.result.provenance.sources == (_WDI, _CENSUS)
+    assert outcome.result.variable_provenance == expected
+    assert direct.variable_provenance == expected
+    assert outcome.table is not None
+    assert outcome.table.provenance.sources == (_WDI, _CENSUS)
+    assert outcome.table.provenance.facet_ids == ("f1", "f2")

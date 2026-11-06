@@ -232,6 +232,40 @@
       "Count_Person_Female": "Female population",
       "Count_Person_Male": "Male population"
     },
+    "variable_provenance": {
+      "Count_Person_Female": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Count_Person_Male": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person_Male",
       "Count_Person_Female"
@@ -397,6 +431,56 @@
       "Count_Student_Secondary": "Secondary students",
       "Count_Student_Tertiary": "Tertiary students"
     },
+    "variable_provenance": {
+      "Count_Student_Primary": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Student_Secondary": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Student_Tertiary": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Student_Primary",
       "Count_Student_Secondary",
@@ -529,6 +613,56 @@
       "Count_Person_Female": "Female population",
       "Count_Person_Male": "Male population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Person_Female": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Count_Person_Male": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person",
       "Count_Person_Male",
@@ -631,6 +765,33 @@
     "variable_names": {
       "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
     },
+    "variable_provenance": {
+      "derived_Count_Case_per_capita_Count_Person": {
+        "facet_ids": [
+          "18369491376878146239",
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          },
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "derived_Count_Case_per_capita_Count_Person"
     ]
@@ -722,6 +883,33 @@
     "unit": null,
     "variable_names": {
       "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+    },
+    "variable_provenance": {
+      "derived_Count_Case_per_capita_Count_Person": {
+        "facet_ids": [
+          "18369491376878146239",
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          },
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
     },
     "variables": [
       "derived_Count_Case_per_capita_Count_Person"
@@ -851,6 +1039,33 @@
     "variable_names": {
       "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
     },
+    "variable_provenance": {
+      "derived_Count_Case_per_capita_Count_Person": {
+        "facet_ids": [
+          "18369491376878146239",
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          },
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "derived_Count_Case_per_capita_Count_Person"
     ]
@@ -939,6 +1154,40 @@
     "variable_names": {
       "Count_Person": "Total population",
       "Count_Person_Female": "Female population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Person_Female": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person",
@@ -1048,6 +1297,40 @@
           "Count_Case": "Reported cases",
           "Count_Person": "Total population"
         },
+        "variable_provenance": {
+          "Count_Case": {
+            "facet_ids": [
+              "18369491376878146239"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "datatopics.worldbank.org",
+                "provider": null,
+                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              }
+            ]
+          },
+          "Count_Person": {
+            "facet_ids": [
+              "12850099660527362240"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "wikidata.org",
+                "provider": null,
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              }
+            ]
+          }
+        },
         "variables": [
           "Count_Case",
           "Count_Person"
@@ -1140,6 +1423,33 @@
         "unit": null,
         "variable_names": {
           "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+        },
+        "variable_provenance": {
+          "derived_Count_Case_per_capita_Count_Person": {
+            "facet_ids": [
+              "18369491376878146239",
+              "12850099660527362240"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "datatopics.worldbank.org",
+                "provider": null,
+                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              },
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "wikidata.org",
+                "provider": null,
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              }
+            ]
+          }
         },
         "variables": [
           "derived_Count_Case_per_capita_Count_Person"
@@ -1240,6 +1550,33 @@
         "unit": null,
         "variable_names": {
           "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
+        },
+        "variable_provenance": {
+          "derived_Count_Case_per_capita_Count_Person": {
+            "facet_ids": [
+              "18369491376878146239",
+              "12850099660527362240"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "datatopics.worldbank.org",
+                "provider": null,
+                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              },
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "wikidata.org",
+                "provider": null,
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              }
+            ]
+          }
         },
         "variables": [
           "derived_Count_Case_per_capita_Count_Person"
@@ -1369,6 +1706,33 @@
         "variable_names": {
           "derived_Count_Case_per_capita_Count_Person": "Reported cases per 100,000 people"
         },
+        "variable_provenance": {
+          "derived_Count_Case_per_capita_Count_Person": {
+            "facet_ids": [
+              "18369491376878146239",
+              "12850099660527362240"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "datatopics.worldbank.org",
+                "provider": null,
+                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              },
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "wikidata.org",
+                "provider": null,
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              }
+            ]
+          }
+        },
         "variables": [
           "derived_Count_Case_per_capita_Count_Person"
         ]
@@ -1393,7 +1757,7 @@
       }
     ]
   },
-  "derived_digest_prompt": "Step s1: compute_derived_metric on Reported cases (Count_Case), Total population (Count_Person)\n  coverage: 2 of 2 places; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.\n  metrics: {\"derived_variable_dcid\":\"derived_Count_Case_per_capita_Count_Person\",\"derived_variable_name\":\"Reported cases per 100,000 people\",\"operation\":\"per_capita\",\"scale\":100000,\"observation_count\":6,\"place_count\":2,\"date_range\":[\"2020\",\"2022\"],\"value_range\":[10,40],\"sample_rows\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2020\",\"value\":40,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2021\",\"value\":33.33,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2022\",\"value\":25,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2021\",\"value\":20,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2022\",\"value\":30,\"facet_id\":null}],\"missing_places\":[]}\n\nStep s2: rank_cohort on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":2,\"cohort_size\":2,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50}],\"bottom_n\":[{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50},{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100}],\"focal_entries\":[],\"missing_focal_places\":[]}\n\nStep s3: summarize_distribution on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.\n  metrics: {\"reference_date\":\"2022\",\"cohort_size\":2,\"mean\":27.5,\"median\":27.5,\"min\":{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25},\"max\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"max_minus_min\":5,\"stdev\":3.54,\"q25\":26.25,\"q50\":27.5,\"q75\":28.75,\"iqr\":2.5,\"deciles\":{\"p10\":25.5,\"p20\":26,\"p30\":26.5,\"p40\":27,\"p50\":27.5,\"p60\":28,\"p70\":28.5,\"p80\":29,\"p90\":29.5},\"skewness\":null,\"weighted_mean\":null,\"weight_variable_dcid\":null,\"weighted_place_count\":null,\"focal_entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"diff_from_median\":2.5,\"pct_of_median\":109.09,\"diff_from_mean\":2.5,\"z_score\":0.707,\"percentile\":100}],\"missing_focal_places\":[]}\n  caveat: Skewness requires at least 3 places, so it is not computed for this cohort of two.\n\nStep s4: analyze_timeseries on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":2,\"series\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":10,\"end_date\":\"2022\",\"end_value\":30,\"min_date\":\"2020\",\"min_value\":10,\"max_date\":\"2022\",\"max_value\":30,\"local_extrema\":[],\"absolute_change\":20,\"percent_change\":200,\"cagr\":73.21,\"max_period_increase\":{\"from_date\":\"2020\",\"to_date\":\"2021\",\"from_value\":10,\"to_value\":20,\"absolute_change\":10,\"percent_change\":100},\"max_period_decrease\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":40,\"end_date\":\"2022\",\"end_value\":25,\"min_date\":\"2022\",\"min_value\":25,\"max_date\":\"2020\",\"max_value\":40,\"local_extrema\":[],\"absolute_change\":-15,\"percent_change\":-37.5,\"cagr\":-20.94,\"max_period_increase\":null,\"max_period_decrease\":{\"from_date\":\"2021\",\"to_date\":\"2022\",\"from_value\":33.33,\"to_value\":25,\"absolute_change\":-8.33,\"percent_change\":-25}}],\"missing_places\":[],\"cross_place_comparison\":{\"reference_date\":\"2022\",\"entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25}],\"spread\":5,\"leader\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"deltas_from_leader\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"absolute_delta\":-5,\"percent_delta\":-16.67}]}}\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)",
+  "derived_digest_prompt": "Step s1: compute_derived_metric on Reported cases (Count_Case), Total population (Count_Person)\n  coverage: 2 of 2 places; cite: [1, 2]\n  cite by variable: Count_Case [1]; Count_Person [2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date.\n  metrics: {\"derived_variable_dcid\":\"derived_Count_Case_per_capita_Count_Person\",\"derived_variable_name\":\"Reported cases per 100,000 people\",\"operation\":\"per_capita\",\"scale\":100000,\"observation_count\":6,\"place_count\":2,\"date_range\":[\"2020\",\"2022\"],\"value_range\":[10,40],\"sample_rows\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2020\",\"value\":40,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2021\",\"value\":33.33,\"facet_id\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"date\":\"2022\",\"value\":25,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2021\",\"value\":20,\"facet_id\":null},{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"date\":\"2022\",\"value\":30,\"facet_id\":null}],\"missing_places\":[]}\n\nStep s2: rank_cohort on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Ranked 2 places by Reported cases per 100,000 people on 2022 in descending order; places with the same value share a rank.\n  metrics: {\"reference_date\":\"2022\",\"direction\":\"desc\",\"max_entries_per_end\":2,\"cohort_size\":2,\"top_n\":[{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100},{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50}],\"bottom_n\":[{\"rank\":2,\"is_tied\":false,\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25,\"percentile\":50},{\"rank\":1,\"is_tied\":false,\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"percentile\":100}],\"focal_entries\":[],\"missing_focal_places\":[]}\n\nStep s3: summarize_distribution on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  coverage: 2 of 2 places on 2022; cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Distribution of Reported cases per 100,000 people across 2 places on 2022: mean, median, minimum, maximum, the gap from minimum to maximum (max_minus_min), sample standard deviation, and quartiles and deciles by linear interpolation; focal places are compared with the cohort mean, median, and percentile.\n  metrics: {\"reference_date\":\"2022\",\"cohort_size\":2,\"mean\":27.5,\"median\":27.5,\"min\":{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25},\"max\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"max_minus_min\":5,\"stdev\":3.54,\"q25\":26.25,\"q50\":27.5,\"q75\":28.75,\"iqr\":2.5,\"deciles\":{\"p10\":25.5,\"p20\":26,\"p30\":26.5,\"p40\":27,\"p50\":27.5,\"p60\":28,\"p70\":28.5,\"p80\":29,\"p90\":29.5},\"skewness\":null,\"weighted_mean\":null,\"weight_variable_dcid\":null,\"weighted_place_count\":null,\"focal_entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30,\"diff_from_median\":2.5,\"pct_of_median\":109.09,\"diff_from_mean\":2.5,\"z_score\":0.707,\"percentile\":100}],\"missing_focal_places\":[]}\n  caveat: Skewness requires at least 3 places, so it is not computed for this cohort of two.\n\nStep s4: analyze_timeseries on Reported cases per 100,000 people (derived_Count_Case_per_capita_Count_Person)\n  cite: [1, 2]\n  method: Reported cases (Count_Case) divided by Total population (Count_Person) and multiplied by 100,000; pairs with a zero or negative denominator are skipped. Observations are joined on place and date; Start-to-end change, extrema, largest period-over-period changes, and compound annual growth rate computed per place over the observed series.\n  metrics: {\"place_count\":2,\"series\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":10,\"end_date\":\"2022\",\"end_value\":30,\"min_date\":\"2020\",\"min_value\":10,\"max_date\":\"2022\",\"max_value\":30,\"local_extrema\":[],\"absolute_change\":20,\"percent_change\":200,\"cagr\":73.21,\"max_period_increase\":{\"from_date\":\"2020\",\"to_date\":\"2021\",\"from_value\":10,\"to_value\":20,\"absolute_change\":10,\"percent_change\":100},\"max_period_decrease\":null},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"point_count\":3,\"start_date\":\"2020\",\"start_value\":40,\"end_date\":\"2022\",\"end_value\":25,\"min_date\":\"2022\",\"min_value\":25,\"max_date\":\"2020\",\"max_value\":40,\"local_extrema\":[],\"absolute_change\":-15,\"percent_change\":-37.5,\"cagr\":-20.94,\"max_period_increase\":null,\"max_period_decrease\":{\"from_date\":\"2021\",\"to_date\":\"2022\",\"from_value\":33.33,\"to_value\":25,\"absolute_change\":-8.33,\"percent_change\":-25}}],\"missing_places\":[],\"cross_place_comparison\":{\"reference_date\":\"2022\",\"entries\":[{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"value\":25}],\"spread\":5,\"leader\":{\"place_dcid\":\"country/FRA\",\"place_name\":\"France\",\"value\":30},\"deltas_from_leader\":[{\"place_dcid\":\"country/DEU\",\"place_name\":\"Germany\",\"absolute_delta\":-5,\"percent_delta\":-16.67}]}}\n\nSources:\n[1] datatopics.worldbank.org (https://datatopics.worldbank.org/world-development-indicators/)\n[2] wikidata.org (https://www.wikidata.org/wiki/Wikidata:Main_Page)",
   "derived_pct_change": {
     "caveats": [],
     "coverage": {
@@ -1469,6 +1833,40 @@
     "variable_names": {
       "Count_Person_Female": "Female population",
       "Count_Person_Male": "Male population"
+    },
+    "variable_provenance": {
+      "Count_Person_Female": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Count_Person_Male": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person_Male",
@@ -1573,6 +1971,40 @@
     "variable_names": {
       "Count_Case": "Reported cases",
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Case": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Person": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Case",
@@ -1754,6 +2186,24 @@
         "variable_names": {
           "Count_Person": "Total population"
         },
+        "variable_provenance": {
+          "Count_Person": {
+            "facet_ids": [
+              "18369491376878146239"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "datatopics.worldbank.org",
+                "provider": null,
+                "url": "https://datatopics.worldbank.org/world-development-indicators/"
+              }
+            ]
+          }
+        },
         "variables": [
           "Count_Person"
         ]
@@ -1858,6 +2308,24 @@
         "variable_names": {
           "Count_Person": "Total population"
         },
+        "variable_provenance": {
+          "Count_Person": {
+            "facet_ids": [
+              "12850099660527362240"
+            ],
+            "methodology": null,
+            "sources": [
+              {
+                "dataset": null,
+                "date_range": null,
+                "license": null,
+                "name": "wikidata.org",
+                "provider": null,
+                "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+              }
+            ]
+          }
+        },
         "variables": [
           "Count_Person"
         ]
@@ -1960,6 +2428,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2039,6 +2525,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -2137,6 +2641,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2224,6 +2746,40 @@
     "variable_names": {
       "Count_Person": "Total population",
       "Median_Income_Person": "Median income"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Median_Income_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Median_Income_Person",
@@ -2339,6 +2895,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2424,6 +2998,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2478,6 +3070,72 @@
       "Count_Person_Male": "Male population",
       "Count_Person_Urban": "Urban population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Person_Female": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Count_Person_Male": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Count_Person_Urban": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person",
       "Count_Person_Male",
@@ -2531,6 +3189,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2566,6 +3242,40 @@
     "variable_names": {
       "Amount_Consumption_Households": "Household consumption",
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variable_provenance": {
+      "Amount_Consumption_Households": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
@@ -2603,6 +3313,40 @@
     "variable_names": {
       "Amount_Debt_Government": "Government debt",
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variable_provenance": {
+      "Amount_Debt_Government": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
@@ -2661,6 +3405,40 @@
       "Count_Case": "Reported cases",
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Case": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Count_Person": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Case",
       "Count_Person"
@@ -2698,6 +3476,40 @@
       "Amount_Consumption_Households": "Household consumption",
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
     },
+    "variable_provenance": {
+      "Amount_Consumption_Households": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
       "Amount_Consumption_Households"
@@ -2734,6 +3546,40 @@
     "variable_names": {
       "Amount_Debt_Government": "Government debt",
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal": "Nominal GDP"
+    },
+    "variable_provenance": {
+      "Amount_Debt_Government": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Amount_EconomicActivity_GrossDomesticProduction_Nominal": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Amount_EconomicActivity_GrossDomesticProduction_Nominal",
@@ -2786,6 +3632,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2835,6 +3699,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -2907,6 +3789,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -2941,6 +3841,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -3001,6 +3919,40 @@
     "variable_names": {
       "Count_Person": "Total population",
       "Percent_Person_WithDiabetes": "Diabetes prevalence"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      },
+      "Percent_Person_WithDiabetes": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Percent_Person_WithDiabetes",
@@ -3121,6 +4073,40 @@
     "variable_names": {
       "Median_Income_Household": "Median household income",
       "Percent_Person_WithDiabetes": "Diabetes prevalence"
+    },
+    "variable_provenance": {
+      "Median_Income_Household": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      },
+      "Percent_Person_WithDiabetes": {
+        "facet_ids": [
+          "12850099660527362240"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "wikidata.org",
+            "provider": null,
+            "url": "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+          }
+        ]
+      }
     },
     "variables": [
       "Percent_Person_WithDiabetes",
@@ -3385,6 +4371,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -3445,6 +4449,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -3528,6 +4550,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -3621,6 +4661,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -3741,6 +4799,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -3808,6 +4884,24 @@
     "variable_names": {
       "Count_Person": "Total population"
     },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
+    },
     "variables": [
       "Count_Person"
     ]
@@ -3867,6 +4961,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"
@@ -3935,6 +5047,24 @@
     "unit": null,
     "variable_names": {
       "Count_Person": "Total population"
+    },
+    "variable_provenance": {
+      "Count_Person": {
+        "facet_ids": [
+          "18369491376878146239"
+        ],
+        "methodology": null,
+        "sources": [
+          {
+            "dataset": null,
+            "date_range": null,
+            "license": null,
+            "name": "datatopics.worldbank.org",
+            "provider": null,
+            "url": "https://datatopics.worldbank.org/world-development-indicators/"
+          }
+        ]
+      }
     },
     "variables": [
       "Count_Person"

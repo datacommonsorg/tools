@@ -37,7 +37,7 @@ from narratives_agent.analytics.digest import (
     format_place_names,
 )
 from narratives_agent.analytics.metrics import ScriptName
-from narratives_agent.analytics.provenance import merge_provenance
+from narratives_agent.analytics.provenance import Provenance, merge_provenance
 from narratives_agent.analytics.tables import (
     ObservationTable,
     format_reference_date_phrase,
@@ -49,6 +49,7 @@ __all__ = [
     "CohortInput",
     "build_invalid_parameters_refusal",
     "build_refusal",
+    "collect_variable_provenance",
     "describe_missing_focal_places",
     "resolve_aligned_cohort",
     "resolve_target_places",
@@ -72,6 +73,33 @@ def _normalize_inputs(
     if isinstance(cohort_or_table, (Cohort, ObservationTable)):
         return (cohort_or_table,)
     return tuple(cohort_or_table)
+
+
+def collect_variable_provenance(
+    cohort_or_table: CohortInput | Sequence[CohortInput],
+) -> dict[str, Provenance]:
+    """Collects per-variable `Provenance` in first-appearance DCID order.
+
+    Args:
+        cohort_or_table: A single cohort or table, or a sequence of them.
+
+    Returns:
+        A mapping from each distinct `variable_dcid` (in order of first
+        appearance) to the merged `Provenance` of all inputs with that DCID,
+        with `methodology=None`.
+    """
+    inputs = _normalize_inputs(cohort_or_table)
+    by_variable: dict[str, list[Provenance]] = {}
+    for item in inputs:
+        by_variable.setdefault(item.variable_dcid, []).append(item.provenance)
+    result: dict[str, Provenance] = {}
+    for dcid, provenances in by_variable.items():
+        merged = merge_provenance(*provenances)
+        result[dcid] = Provenance(
+            sources=merged.sources,
+            facet_ids=merged.facet_ids,
+        )
+    return result
 
 
 def resolve_target_places(cohort_or_table: CohortInput) -> tuple[str, ...]:
@@ -207,6 +235,7 @@ def build_refusal(
         scaling_factor=resolved_scaling_factor,
         coverage=coverage,
         provenance=provenance,
+        variable_provenance=collect_variable_provenance(inputs),
         caveats=(*cohort_caveats, caveat, *extra_caveats),
     )
 

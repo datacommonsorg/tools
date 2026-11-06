@@ -53,6 +53,7 @@ from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
     build_invalid_parameters_refusal,
     build_refusal,
+    collect_variable_provenance,
     validate_place_dcids,
 )
 from narratives_agent.analytics.tables import (
@@ -723,6 +724,7 @@ def analyze_timeseries(
         unit=table.unit,
         scaling_factor=table.scaling_factor,
         provenance=provenance,
+        variable_provenance=collect_variable_provenance(table),
         metrics=TimeseriesMetrics(
             place_count=len(summaries),
             series=tuple(summaries),

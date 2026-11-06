@@ -1740,6 +1740,7 @@ def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
         variables=("Count_Unemployment",),
         variable_names={"Count_Unemployment": "Unemployment"},
         provenance=Provenance(),
+        variable_provenance={"Count_Unemployment": Provenance()},
         refusal_reason="no_observations",
     )
     digest = AnalysisDigest.from_results(

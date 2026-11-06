@@ -47,6 +47,7 @@ from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
     build_invalid_parameters_refusal,
     build_refusal,
+    collect_variable_provenance,
     resolve_target_places,
     validate_place_dcids,
 )
@@ -681,6 +682,7 @@ def _build_derived_outcome(
         scaling_factor=scaling_factor,
         coverage=coverage,
         provenance=provenance,
+        variable_provenance=collect_variable_provenance((left, right)),
         metrics=DerivedMetrics(
             derived_variable_dcid=variable_dcid,
             derived_variable_name=variable_name,

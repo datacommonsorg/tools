@@ -67,6 +67,17 @@ from narratives_agent.analytics.tables import (
 
 _INCOME_SOURCE = Source(name="census.gov", url="https://census.gov")
 _HEALTH_SOURCE = Source(name="cdc.gov", url="https://cdc.gov")
+# Each variable's own provenance in the `_build_table` fixtures.
+_EXPECTED_RELATION_VARIABLE_PROVENANCE = {
+    "Percent_Person_WithDiabetes": Provenance(
+        sources=(_HEALTH_SOURCE,),
+        facet_ids=("Percent_Person_WithDiabetes",),
+    ),
+    "Median_Income_Household": Provenance(
+        sources=(_INCOME_SOURCE,),
+        facet_ids=("Median_Income_Household",),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -908,6 +919,9 @@ def test_helper_preconditions_raise_value_error(
             scaling_factor=None,
             coverage=None,
             provenance=aligned_by.provenance,
+            variable_provenance={
+                "Median_Income_Household": aligned_by.provenance
+            },
             caveats=("Forced refusal.",),
         ),
     )
@@ -1454,3 +1468,37 @@ def test_a_window_cohort_overflow_caveat_names_the_figure_label() -> None:
         "Some summary statistics for change in Diabetes prevalence exceeded "
         "the floating-point range and are reported as None."
     ) in extreme.caveats
+
+
+def test_relate_cohorts_maps_each_variable_to_its_own_source() -> None:
+    # Test: Per-variable provenance of a relation over two sources.
+    # Situation: `relate_cohorts` pairs a diabetes table citing
+    #   `_HEALTH_SOURCE` with an income table citing `_INCOME_SOURCE`.
+    # Expectation: `provenance.sources` holds both sources, while
+    #   `variable_provenance` maps each variable DCID to its own source and
+    #   facet ID only.
+    values = {"a": 1.0, "b": 2.0, "c": 3.0, "d": 4.0}
+
+    result = relate_cohorts(
+        _build_diabetes_table(values), _build_income_table(values), n=1
+    )
+
+    assert result.provenance.sources == (_HEALTH_SOURCE, _INCOME_SOURCE)
+    assert result.variable_provenance == _EXPECTED_RELATION_VARIABLE_PROVENANCE
+
+
+def test_a_refused_relation_maps_each_variable_to_its_own_source() -> None:
+    # Test: Per-variable provenance of a refused relation.
+    # Situation: `relate_cohorts` is given cohorts that share one place, so
+    #   it refuses with `invalid_parameters`.
+    # Expectation: The refusal maps each variable DCID to its own source and
+    #   facet ID.
+    refused = relate_cohorts(
+        _build_diabetes_table({"a": 1.0}),
+        _build_income_table({"a": 10.0}),
+    )
+
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.variable_provenance == (
+        _EXPECTED_RELATION_VARIABLE_PROVENANCE
+    )

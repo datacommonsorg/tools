@@ -46,11 +46,12 @@ from narratives_agent.analytics.metrics import (
     DistributionMetrics,
     PlaceValue,
 )
-from narratives_agent.analytics.provenance import Provenance, merge_provenance
+from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.ranking import compute_cohort_percentiles
 from narratives_agent.analytics.script_inputs import (
     CohortInput,
     build_invalid_parameters_refusal,
+    collect_variable_provenance,
     describe_missing_focal_places,
     resolve_aligned_cohort,
     validate_place_dcids,
@@ -517,23 +518,27 @@ def _benchmark_focal_places(
 def _list_reported_variables(
     aligned: Cohort,
     reported_weights: CohortInput | None,
-) -> tuple[tuple[str, ...], dict[str, str], tuple[Provenance, ...]]:
-    """Returns the variables, their names, and their provenance to report.
+) -> tuple[
+    tuple[str, ...],
+    dict[str, str],
+    tuple[CohortInput, ...],
+]:
+    """Returns the variables, their names, and the inputs to report.
 
     The weights variable is reported only when the weighted mean is, and
     only once (under the cohort's name) when it is the cohort's own
     variable.
     """
-    sources = (
+    reported_inputs = (
         (aligned,) if reported_weights is None else (aligned, reported_weights)
     )
     variable_names: dict[str, str] = {}
-    for source in sources:
-        variable_names.setdefault(source.variable_dcid, source.variable_name)
+    for item in reported_inputs:
+        variable_names.setdefault(item.variable_dcid, item.variable_name)
     return (
         tuple(variable_names),
         variable_names,
-        tuple(source.provenance for source in sources),
+        reported_inputs,
     )
 
 
@@ -691,7 +696,7 @@ def summarize_distribution(
         *(weighting.caveats if weighting is not None else ()),
         *((focal.caveat,) if focal.caveat is not None else ()),
     ]
-    variables, variable_names, provenance_items = _list_reported_variables(
+    variables, variable_names, reported_inputs = _list_reported_variables(
         aligned, reported_weights
     )
     methodology = _describe_methodology(
@@ -712,7 +717,11 @@ def summarize_distribution(
         unit=aligned.unit,
         scaling_factor=aligned.scaling_factor,
         coverage=aligned.coverage,
-        provenance=merge_provenance(*provenance_items, methodology=methodology),
+        provenance=merge_provenance(
+            *(item.provenance for item in reported_inputs),
+            methodology=methodology,
+        ),
+        variable_provenance=collect_variable_provenance(reported_inputs),
         metrics=DistributionMetrics(
             reference_date=aligned.reference_date,
             cohort_size=len(values),

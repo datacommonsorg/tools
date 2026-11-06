@@ -14,7 +14,7 @@
 """Tests for the shared script input checks in `analytics.script_inputs`."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 
@@ -27,6 +27,7 @@ from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.script_inputs import (
     build_invalid_parameters_refusal,
     build_refusal,
+    collect_variable_provenance,
     describe_missing_focal_places,
     resolve_aligned_cohort,
     resolve_target_places,
@@ -532,3 +533,93 @@ def test_describe_missing_focal_places_reads_a_window_cohort() -> None:
         "C has no value for change in Total population in the ranked cohort "
         "from 2020 to 2024, so no rank is available."
     )
+
+
+def _build_variable_table(
+    variable_dcid: str, source_id: int
+) -> ObservationTable:
+    """Builds a one-row table of `variable_dcid` citing source `source_id`."""
+    return _build_table(
+        [("a", "2022", 1.0)],
+        variable_dcid=variable_dcid,
+        variable_name=f"Name of {variable_dcid}",
+        source_id=source_id,
+    )
+
+
+def test_collect_variable_provenance_drops_methodology() -> None:
+    # Test: The methodology of a collected provenance.
+    # Situation: One table whose provenance carries a methodology string.
+    # Expectation: The variable maps to the table's sources and facet IDs
+    #   with no methodology.
+    table = _build_variable_table("Var_A", 1)
+    with_methodology = replace(
+        table,
+        provenance=replace(table.provenance, methodology="Derived."),
+    )
+
+    assert collect_variable_provenance(with_methodology) == {
+        "Var_A": table.provenance,
+    }
+
+
+def test_collect_variable_provenance_keeps_first_appearance_order() -> None:
+    # Test: Distinct variables in the collected mapping.
+    # Situation: A table of `Var_B` citing source 2, then a table of `Var_A`
+    #   citing source 1.
+    # Expectation: The mapping lists `Var_B` then `Var_A`, each with its own
+    #   table's provenance.
+    table_b = _build_variable_table("Var_B", 2)
+    table_a = _build_variable_table("Var_A", 1)
+
+    collected = collect_variable_provenance((table_b, table_a))
+
+    assert list(collected) == ["Var_B", "Var_A"]
+    assert collected == {
+        "Var_B": table_b.provenance,
+        "Var_A": table_a.provenance,
+    }
+
+
+def test_collect_variable_provenance_merges_inputs_of_one_variable() -> None:
+    # Test: Inputs that share a variable DCID.
+    # Situation: Two tables of `Var_A`, citing sources 1 and 2.
+    # Expectation: `Var_A` maps to both sources and both facet IDs, in input
+    #   order, with no methodology.
+    merged = collect_variable_provenance(
+        (_build_variable_table("Var_A", 1), _build_variable_table("Var_A", 2))
+    )
+
+    assert merged == {
+        "Var_A": Provenance(
+            sources=(
+                Source(name="Source 1", url="https://source-1"),
+                Source(name="Source 2", url="https://source-2"),
+            ),
+            facet_ids=("f1", "f2"),
+        ),
+    }
+
+
+def test_build_refusal_maps_each_variable_to_its_own_source() -> None:
+    # Test: The per-variable provenance of a refusal.
+    # Situation: `build_refusal` is given a table of `Var_A` citing source 1
+    #   and a table of `Var_B` citing source 2.
+    # Expectation: The refusal maps each variable to its own table's
+    #   provenance.
+    table_a = _build_variable_table("Var_A", 1)
+    table_b = _build_variable_table("Var_B", 2)
+
+    refused = build_refusal(
+        (table_a, table_b),
+        script="relate_cohorts",
+        step_id="s1",
+        reason="no_observations",
+        coverage=None,
+        caveat="No shared places.",
+    )
+
+    assert refused.variable_provenance == {
+        "Var_A": table_a.provenance,
+        "Var_B": table_b.provenance,
+    }
