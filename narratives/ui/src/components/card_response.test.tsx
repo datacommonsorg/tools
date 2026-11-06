@@ -29,6 +29,11 @@ const SOURCES: ProvenanceItem[] = [
   { name: 'World Development Indicators', url: 'https://worldbank.org/wdi' },
 ];
 
+const TWO_SOURCES: ProvenanceItem[] = [
+  { name: 'CDC PLACES', url: 'https://www.cdc.gov/places' },
+  { name: 'American Community Survey', url: 'https://www.census.gov/acs' },
+];
+
 const TABLE = `
 | Year | Life Expectancy (Years) |
 | --- | --- |
@@ -39,6 +44,31 @@ const TABLE = `
 
 function renderMarkdown(body: string) {
   return render(<ResponseCard title="q" body={body} sources={SOURCES} bare />);
+}
+
+/**
+ * Renders `body` with word streaming on (`streamMs`), citing the two sources
+ * in `TWO_SOURCES`. `revealing` is passed through to `ResponseCard`;
+ * `undefined` keeps its default.
+ */
+function renderStreamingMarkdown(body: string, revealing?: boolean) {
+  return render(
+    <ResponseCard
+      title="q"
+      body={body}
+      sources={TWO_SOURCES}
+      bare
+      streamMs={300}
+      revealing={revealing}
+    />,
+  );
+}
+
+/** Returns the `href` of every anchor under `root`, in document order. */
+function getAnchorHrefs(root: Element): (string | null)[] {
+  return Array.from(root.querySelectorAll('a')).map((anchor) =>
+    anchor.getAttribute('href'),
+  );
 }
 
 afterEach(cleanup);
@@ -240,5 +270,113 @@ describe('ResponseCard streaming plain text', () => {
 
     expect(container.querySelector('.markdown-stream')).toBeNull();
     expect(container.querySelector('.stream-word')).not.toBeNull();
+  });
+});
+
+describe('ResponseCard streaming composite citations', () => {
+  it.each([
+    ['while revealing', undefined],
+    ['after the reveal', false],
+  ])('links each source of a composite marker in prose %s', (_, revealing) => {
+    // Test: A composite marker in streamed prose.
+    // Situation: A bold figure followed by `[1, 2].`, every word wrapped in a
+    //   stream span, with `revealing` left at its default or set to false.
+    // Expectation: Two links, to sources 1 and 2, each named for its source,
+    //   separated by one space and followed by the period.
+    const { container } = renderStreamingMarkdown(
+      '**64.25%** [1, 2].',
+      revealing,
+    );
+    const paragraph = container.querySelector('p');
+
+    expect(container.querySelector('.stream-word')).not.toBeNull();
+    expect(paragraph).not.toBeNull();
+    expect(getAnchorHrefs(container)).toEqual([
+      '#citation-0-1',
+      '#citation-0-2',
+    ]);
+    expect(paragraph?.textContent).toBe('64.25% [1] [2].');
+    expect(
+      screen.getByRole('link', { name: 'Source 1: CDC PLACES' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Source 2: American Community Survey' }),
+    ).toBeTruthy();
+  });
+
+  it('links only the sources a composite marker can cite', () => {
+    // Test: A composite marker naming a source past the provenance list.
+    // Situation: `[1, 9]` is streamed against two sources.
+    // Expectation: `[1]` is a link and `[9]` is plain text.
+    const { container } = renderStreamingMarkdown('The rate rose [1, 9].');
+
+    expect(container.querySelector('.stream-word')).not.toBeNull();
+    expect(getAnchorHrefs(container)).toEqual(['#citation-0-1']);
+    expect(container.querySelector('p')?.textContent).toBe(
+      'The rate rose [1] [9].',
+    );
+  });
+
+  it.each([
+    ['bare', '9.47 [1, 2]', '10.12 [1, 2]'],
+    ['bold', '**64.25% [1, 2]**', '**71.5% [1, 2]**'],
+  ])('hoists a composite marker off a %s value column', (_, firstCell, secondCell) => {
+    // Test: A table column whose every cell cites the same two sources.
+    // Situation: Each value cell ends in `[1, 2]`, streamed word by word.
+    // Expectation: The header links to sources 1 and 2, the value cells are
+    //   right-aligned with tabular numerals, and no body cell keeps the
+    //   marker or a fragment of it.
+    const { container } = renderStreamingMarkdown(`
+| County | Diabetes rate |
+| --- | --- |
+| Coos | ${firstCell} |
+| Grafton | ${secondCell} |
+`);
+    const header = container.querySelectorAll('thead th')[1];
+    const bodyCells = Array.from(
+      container.querySelectorAll<HTMLTableCellElement>('tbody td'),
+    );
+    const valueCells = bodyCells.filter((_, index) => index % 2 === 1);
+
+    expect(container.querySelector('.stream-word')).not.toBeNull();
+    expect(getAnchorHrefs(header)).toEqual(['#citation-0-1', '#citation-0-2']);
+    for (const cell of valueCells) {
+      expect(cell.style.textAlign).toBe('right');
+      expect(cell.classList.contains('tabular-nums')).toBe(true);
+    }
+    for (const cell of bodyCells) {
+      for (const fragment of ['[1]', '[2]', '[1,', '2]']) {
+        expect(cell.textContent).not.toContain(fragment);
+      }
+    }
+  });
+
+  it('leaves composite markers in code as written', () => {
+    // Test: Code is not formatted as prose.
+    // Situation: `[1, 2]` sits in inline code and in a code block, and a
+    //   bracket expression spans several lines of the code block.
+    // Expectation: The code reads exactly as written and holds no links.
+    const { container } = renderStreamingMarkdown(
+      'Use `x[1, 2]` here.\n\n```\ny = x[1, 2]\nz = [\n  1,\n  2\n]\n```',
+    );
+    const codeElements = Array.from(container.querySelectorAll('code'));
+
+    expect(codeElements.map((codeElement) => codeElement.textContent)).toEqual([
+      'x[1, 2]',
+      'y = x[1, 2]\nz = [\n  1,\n  2\n]\n',
+    ]);
+    expect(container.querySelectorAll('code a')).toHaveLength(0);
+  });
+
+  it('leaves a composite marker in link text as written', () => {
+    // Test: Link text is not formatted as prose.
+    // Situation: The text of a markdown link contains `[1, 2]`.
+    // Expectation: The link is the only anchor and its text is unchanged.
+    const { container } = renderStreamingMarkdown(
+      '[see [1, 2]](https://example.com)',
+    );
+
+    expect(getAnchorHrefs(container)).toEqual(['https://example.com']);
+    expect(container.querySelector('a')?.textContent).toBe('see [1, 2]');
   });
 });
