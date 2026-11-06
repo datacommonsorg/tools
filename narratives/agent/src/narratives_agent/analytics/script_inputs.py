@@ -14,16 +14,18 @@
 """Checks the inputs the analytical scripts share and builds their refusals.
 
 Holds the place-list check, the refused-result builders, the resolution of a
-cohort-or-table argument into an aligned cohort, and the caveat for focal
-places missing from a cohort, so every script applies them identically.
+cohort-or-table argument into a cohort, and the caveat for focal places
+missing from a cohort, so every script applies them identically.
 """
 
 from collections.abc import Sequence
 from enum import Enum
+from typing import overload
 
 from narratives_agent.analytics.alignment import (
     AlignedCohort,
     AlignmentRefusal,
+    Cohort,
     align_cohort,
     validate_alignment_parameters,
 )
@@ -36,7 +38,12 @@ from narratives_agent.analytics.digest import (
 )
 from narratives_agent.analytics.metrics import ScriptName
 from narratives_agent.analytics.provenance import merge_provenance
-from narratives_agent.analytics.tables import ObservationTable, is_valid_dcid
+from narratives_agent.analytics.tables import (
+    ObservationTable,
+    format_reference_date_phrase,
+    is_valid_dcid,
+    is_window_reference_date,
+)
 
 __all__ = [
     "CohortInput",
@@ -48,7 +55,7 @@ __all__ = [
     "validate_place_dcids",
 ]
 
-type CohortInput = AlignedCohort | ObservationTable
+type CohortInput = Cohort | ObservationTable
 
 
 class _Default(Enum):
@@ -62,22 +69,21 @@ def _normalize_inputs(
     cohort_or_table: CohortInput | Sequence[CohortInput],
 ) -> tuple[CohortInput, ...]:
     """Returns one or more script inputs as a tuple."""
-    if isinstance(cohort_or_table, (AlignedCohort, ObservationTable)):
+    if isinstance(cohort_or_table, (Cohort, ObservationTable)):
         return (cohort_or_table,)
     return tuple(cohort_or_table)
 
 
 def resolve_target_places(cohort_or_table: CohortInput) -> tuple[str, ...]:
-    """Returns the target places of a table or an aligned cohort.
+    """Returns the target places of a table or a cohort.
 
     Args:
-        cohort_or_table: The table or aligned cohort to inspect.
+        cohort_or_table: The table or cohort to inspect.
 
     Returns:
         For a table, its deduplicated `requested_places` when present and
-        its `places_with_data` otherwise; for an aligned cohort, its
-        contributing places followed by its missing places, deduplicated in
-        order.
+        its `places_with_data` otherwise; for a cohort, its contributing
+        places followed by its missing places, deduplicated in order.
     """
     if isinstance(cohort_or_table, ObservationTable):
         if cohort_or_table.requested_places:
@@ -161,15 +167,15 @@ def build_refusal(
             `_FROM_FIRST_INPUT` to use the first input's scaling factor.
 
     Returns:
-        A `RefusedScriptResult`. Any refused aligned cohort keeps its own
-        caveats, which qualify its coverage, ahead of `caveat`.
+        A `RefusedScriptResult`. Any refused cohort keeps its own caveats,
+        which qualify its coverage, ahead of `caveat`.
     """
     inputs = _normalize_inputs(cohort_or_table)
     cohort_caveats = tuple(
         dict.fromkeys(
             cohort_caveat
             for item in inputs
-            if isinstance(item, AlignedCohort)
+            if isinstance(item, Cohort)
             for cohort_caveat in item.caveats
         )
     )
@@ -229,13 +235,13 @@ def build_invalid_parameters_refusal(
 
     Returns:
         A `RefusedScriptResult` with reason `invalid_parameters`, carrying
-        the coverage when the aligned inputs agree on one coverage report,
-        and no coverage when no input is aligned or aligned inputs carry
-        different coverage reports.
+        the coverage when the cohort inputs agree on one coverage report,
+        and no coverage when no input is a cohort or the cohort inputs
+        carry different coverage reports.
     """
     inputs = _normalize_inputs(cohort_or_table)
     aligned_coverages = {
-        item.coverage for item in inputs if isinstance(item, AlignedCohort)
+        item.coverage for item in inputs if isinstance(item, Cohort)
     }
     return build_refusal(
         inputs,
@@ -253,6 +259,7 @@ def build_invalid_parameters_refusal(
     )
 
 
+@overload
 def resolve_aligned_cohort(
     cohort_or_table: AlignedCohort | ObservationTable,
     *,
@@ -262,31 +269,60 @@ def resolve_aligned_cohort(
     min_coverage: float,
     operation: str,
     should_check_min_coverage: bool = False,
-) -> AlignedCohort | RefusedScriptResult:
-    """Returns the aligned cohort a script analyzes, or the script's refusal.
+) -> AlignedCohort | RefusedScriptResult: ...
+
+
+@overload
+def resolve_aligned_cohort(
+    cohort_or_table: CohortInput,
+    *,
+    script: ScriptName,
+    step_id: str,
+    target_date: str | None,
+    min_coverage: float,
+    operation: str,
+    should_check_min_coverage: bool = False,
+) -> Cohort | RefusedScriptResult: ...
+
+
+def resolve_aligned_cohort(
+    cohort_or_table: CohortInput,
+    *,
+    script: ScriptName,
+    step_id: str,
+    target_date: str | None,
+    min_coverage: float,
+    operation: str,
+    should_check_min_coverage: bool = False,
+) -> Cohort | RefusedScriptResult:
+    """Returns the cohort a script analyzes, or the script's refusal.
+
+    A table is aligned into an `AlignedCohort`, so a caller that passes an
+    `AlignedCohort` or a table receives an `AlignedCohort` on success.
 
     Args:
-        cohort_or_table: An aligned cohort, used as given, or a table,
-            aligned with `target_date` and `min_coverage`.
+        cohort_or_table: A cohort, used as given, or a table, aligned with
+            `target_date` and `min_coverage`.
         script: Name of the calling script, for a refusal.
         step_id: Identifier of the analysis step, for a refusal.
         target_date: The requested reference date, or None for the latest.
         min_coverage: The alignment coverage threshold for a table.
         operation: Past participle naming what the script does with the
             cohort (for example, `"ranked"`), used in the caveat for a
-            `target_date` other than an aligned cohort's reference date.
-        should_check_min_coverage: Whether `min_coverage` is checked for an
-            aligned cohort, for a script that uses it beyond alignment. It
-            is always checked for a table.
+            `target_date` other than a cohort's reference date.
+        should_check_min_coverage: Whether `min_coverage` is checked for a
+            cohort, for a script that uses it beyond alignment. It is always
+            checked for a table.
 
     Returns:
-        The aligned cohort, or a refusal with `invalid_parameters` when
-        `target_date` is not a valid date or differs from an aligned
-        cohort's reference date, or `min_coverage` is checked and outside
+        The cohort, or a refusal with `invalid_parameters` when
+        `target_date` is not a valid date, differs from a single-date
+        cohort's reference date, or is given for a cohort whose reference
+        date is a date window, or when `min_coverage` is checked and outside
         `[0.0, 1.0]`; or with the alignment's reason when the table cannot
-        be aligned. A refusal of an aligned cohort carries its coverage.
+        be aligned. A refusal of a cohort carries its coverage.
     """
-    if isinstance(cohort_or_table, AlignedCohort):
+    if isinstance(cohort_or_table, Cohort):
         error = (
             validate_alignment_parameters(
                 target_date=target_date, min_coverage=min_coverage
@@ -294,15 +330,21 @@ def resolve_aligned_cohort(
             if should_check_min_coverage
             else validate_alignment_parameters(target_date=target_date)
         )
-        if error is None and target_date not in (
-            None,
-            cohort_or_table.reference_date,
-        ):
-            error = (
-                f"The cohort is aligned to {cohort_or_table.reference_date}, "
-                f"so it cannot be {operation} on the target date "
-                f"{target_date}."
-            )
+        if error is None and target_date is not None:
+            reference_date = cohort_or_table.reference_date
+            if is_window_reference_date(reference_date):
+                error = (
+                    "The cohort spans "
+                    f"{format_reference_date_phrase(reference_date)}, so it "
+                    f"cannot be {operation} on the single target date "
+                    f"{target_date}."
+                )
+            elif target_date != reference_date:
+                error = (
+                    f"The cohort is aligned to {reference_date}, so it "
+                    f"cannot be {operation} on the target date "
+                    f"{target_date}."
+                )
         if error is not None:
             return build_invalid_parameters_refusal(
                 cohort_or_table, script=script, step_id=step_id, caveat=error
@@ -331,7 +373,7 @@ def resolve_aligned_cohort(
 
 
 def describe_missing_focal_places(
-    aligned: AlignedCohort,
+    aligned: Cohort,
     missing_focal: Sequence[str],
     *,
     cohort_label: str,
@@ -340,7 +382,8 @@ def describe_missing_focal_places(
     """States which focal places have no value in the analyzed cohort.
 
     Args:
-        aligned: The analyzed cohort.
+        aligned: The analyzed cohort; the caveat names its `metric_label`
+            and its reference date phrase (`format_reference_date_phrase`).
         missing_focal: The focal places with no value in it, in request
             order; the caveat names a few and counts the rest.
         cohort_label: How the caveat refers to the cohort (for example,
@@ -356,6 +399,7 @@ def describe_missing_focal_places(
     )
     return (
         f"{names} {conjugate_have(len(missing_focal))} no value for "
-        f"{aligned.variable_name} in the {cohort_label} on "
-        f"{aligned.reference_date}, so no {unavailable_figure} is available."
+        f"{aligned.metric_label} in the {cohort_label} "
+        f"{format_reference_date_phrase(aligned.reference_date)}, so no "
+        f"{unavailable_figure} is available."
     )

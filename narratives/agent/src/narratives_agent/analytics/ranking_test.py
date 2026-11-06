@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import pytest
 
 from narratives_agent.analytics.alignment import AlignedCohort, align_cohort
-from narratives_agent.analytics.digest import ScriptResult
+from narratives_agent.analytics.digest import CoverageReport, ScriptResult
 from narratives_agent.analytics.metrics import (
     RankEntry,
     RankingDirection,
@@ -43,6 +43,59 @@ from narratives_agent.analytics.tables import (
 )
 
 _SOURCE = Source(name="Wikidata", url="https://wikidata")
+
+
+@dataclass(frozen=True)
+class _SpanningRow:
+    """A test-local `CohortRow` holding one place's value over a window."""
+
+    place_dcid: str
+    place_name: str
+    value: float
+
+
+@dataclass(frozen=True)
+class _SpanningCohort:
+    """A test-local `Cohort` whose reference date is a date window."""
+
+    variable_dcid: str
+    variable_name: str
+    metric_label: str
+    reference_date: str
+    unit: str | None
+    scaling_factor: float | None
+    provenance: Provenance
+    rows: tuple[_SpanningRow, ...]
+    place_names: dict[str, str]
+    coverage: CoverageReport
+    caveats: tuple[str, ...] = ()
+
+
+def _build_spanning_cohort() -> _SpanningCohort:
+    """Builds the change in population from 2020 to 2024 for three places."""
+    return _SpanningCohort(
+        variable_dcid="Count_Person",
+        variable_name="Total population",
+        metric_label="change in Total population",
+        reference_date="2020..2024",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+        rows=(
+            _SpanningRow("a", "A", 5.0),
+            _SpanningRow("b", "B", -2.0),
+            _SpanningRow("c", "C", 9.0),
+        ),
+        place_names={"a": "A", "b": "B", "c": "C", "d": "D"},
+        coverage=CoverageReport(
+            contributing_places=3,
+            requested_places=4,
+            coverage_ratio=0.75,
+            reference_date="2020..2024",
+            missing_places=("d",),
+        ),
+        caveats=("3 of 4 places from 2020 to 2024 reported a change.",),
+    )
 
 
 def _table(
@@ -636,3 +689,53 @@ def test_cohort_percentiles_of_no_values_are_rejected() -> None:
     # Expectation: `ValueError` rather than an empty mapping.
     with pytest.raises(ValueError, match="at least one value"):
         compute_cohort_percentiles([])
+
+
+def test_a_window_cohort_is_ranked_by_its_figure_label() -> None:
+    # Test: Ranking a `Cohort` whose reference date is a date window.
+    # Situation: The change in population from 2020 to 2024 for places `a`
+    #   (5), `b` (-2), and `c` (9), with `d` missing, ranked with focal
+    #   places `b` and `d`.
+    # Expectation: The places rank `c`, `a`, `b`; the metrics carry the
+    #   window as the reference date; the result names the variable by its
+    #   display name; the focal caveat and the methodology name the figure
+    #   label and read the window as `"from 2020 to 2024"`.
+    spanning = _build_spanning_cohort()
+    result = rank_cohort(spanning, focal_places=["b", "d"])
+    metrics = result.metrics
+    assert isinstance(metrics, RankingMetrics)
+    assert metrics.reference_date == "2020..2024"
+    assert metrics.top_n == (
+        _build_rank_entry(1, False, "c", 9.0, 100.0),
+        _build_rank_entry(2, False, "a", 5.0, 2 / 3 * 100.0),
+        _build_rank_entry(3, False, "b", -2.0, 1 / 3 * 100.0),
+    )
+    assert metrics.missing_focal_places == ("d",)
+    assert result.variable_names == {"Count_Person": "Total population"}
+    assert result.coverage == spanning.coverage
+    assert result.caveats == (
+        *spanning.caveats,
+        "D has no value for change in Total population in the ranked cohort "
+        "from 2020 to 2024, so no rank is available.",
+    )
+    assert result.provenance.methodology == (
+        "Ranked 3 places by change in Total population from 2020 to 2024 in "
+        "descending order; places with the same value share a rank."
+    )
+
+
+def test_a_window_cohort_refuses_a_single_target_date() -> None:
+    # Test: A `target_date` passed with a date-window cohort.
+    # Situation: The 2020 to 2024 window cohort ranked with
+    #   `target_date="2024"`.
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage and caveats, followed by the reason.
+    spanning = _build_spanning_cohort()
+    refused = rank_cohort(spanning, target_date="2024")
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == spanning.coverage
+    assert refused.caveats == (
+        *spanning.caveats,
+        "The cohort spans from 2020 to 2024, so it cannot be ranked on the "
+        "single target date 2024.",
+    )

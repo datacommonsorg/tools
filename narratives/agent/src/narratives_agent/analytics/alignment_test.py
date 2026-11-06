@@ -30,6 +30,8 @@ import pytest
 from narratives_agent.analytics.alignment import (
     AlignedCohort,
     AlignmentRefusal,
+    Cohort,
+    CohortRow,
     UnitMismatch,
     align_cohort,
     find_unit_mismatch,
@@ -37,8 +39,62 @@ from narratives_agent.analytics.alignment import (
     select_reference_date,
     validate_alignment_parameters,
 )
+from narratives_agent.analytics.digest import CoverageReport
 from narratives_agent.analytics.provenance import Provenance, Source
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
+
+
+@dataclasses.dataclass(frozen=True)
+class _SpanningRow:
+    """A test-local `CohortRow` holding one place's value over a window."""
+
+    place_dcid: str
+    place_name: str
+    value: float
+
+
+@dataclasses.dataclass(frozen=True)
+class _SpanningCohort:
+    """A test-local `Cohort` whose reference date is a date window."""
+
+    variable_dcid: str
+    variable_name: str
+    metric_label: str
+    reference_date: str
+    unit: str | None
+    scaling_factor: float | None
+    provenance: Provenance
+    rows: tuple[_SpanningRow, ...]
+    place_names: dict[str, str]
+    coverage: CoverageReport
+    caveats: tuple[str, ...] = ()
+
+
+def _build_spanning_cohort(
+    *,
+    variable_dcid: str = "Count_Person",
+    variable_name: str = "Total population",
+    unit: str | None = "Person",
+    scaling_factor: float | None = None,
+) -> _SpanningCohort:
+    """Builds a one-place cohort of the change from 2020 to 2024."""
+    return _SpanningCohort(
+        variable_dcid=variable_dcid,
+        variable_name=variable_name,
+        metric_label=f"change in {variable_name}",
+        reference_date="2020..2024",
+        unit=unit,
+        scaling_factor=scaling_factor,
+        provenance=Provenance(sources=(Source(name="s", url="u"),)),
+        rows=(_SpanningRow("a", "A", 5.0),),
+        place_names={"a": "A"},
+        coverage=CoverageReport(
+            contributing_places=1,
+            requested_places=1,
+            coverage_ratio=1.0,
+            reference_date="2020..2024",
+        ),
+    )
 
 
 def _table(
@@ -569,3 +625,83 @@ def test_scaling_factors_are_compared_with_absent_read_as_one() -> None:
         "scaling factor of 1; Urban population (Count_Person_Urban) reports "
         "a scaling factor of 1000000.",
     )
+
+
+def test_observation_rows_and_aligned_cohorts_satisfy_the_protocols() -> None:
+    # Test: Structural conformance to `CohortRow` and `Cohort`.
+    # Situation: An `ObservationRow` and an `AlignedCohort`, and a test-local
+    #   frozen row and cohort, checked at runtime and assigned to
+    #   protocol-typed names for the static check.
+    # Expectation: The rows are `CohortRow` instances and the cohorts are
+    #   `Cohort` instances.
+    aligned = align_cohort(_table([("a", "2022", 1.0)]))
+    assert isinstance(aligned, AlignedCohort)
+    row: CohortRow = aligned.rows[0]
+    cohort: Cohort = aligned
+    spanning: Cohort = _build_spanning_cohort()
+    assert isinstance(row, CohortRow)
+    assert isinstance(spanning.rows[0], CohortRow)
+    assert isinstance(cohort, Cohort)
+    assert isinstance(spanning, Cohort)
+
+
+def test_an_observation_table_is_not_a_cohort() -> None:
+    # Test: The runtime check that separates tables from cohorts.
+    # Situation: An `ObservationTable`, which has no figure label, reference
+    #   date, coverage, or caveats.
+    # Expectation: It is not a `Cohort` instance.
+    assert not isinstance(_table([("a", "2022", 1.0)]), Cohort)
+
+
+def test_an_aligned_cohort_labels_its_figure_with_the_variable_name() -> None:
+    # Test: `AlignedCohort.metric_label`.
+    # Situation: A cohort aligned from a table of `Total population`.
+    # Expectation: The figure is named by the variable's display name.
+    aligned = align_cohort(_table([("a", "2022", 1.0)]))
+    assert isinstance(aligned, AlignedCohort)
+    assert aligned.metric_label == aligned.variable_name == "Total population"
+
+
+@pytest.mark.parametrize(
+    ("other", "expected"),
+    [
+        (_table([], unit=" person "), None),
+        (
+            _build_spanning_cohort(
+                variable_dcid="Median_Income",
+                variable_name="Median income",
+                unit="USDollar",
+            ),
+            UnitMismatch(
+                "unit_mismatch",
+                "Units differ: Total population (Count_Person) reports "
+                "Person; Median income (Median_Income) reports USDollar.",
+            ),
+        ),
+        (
+            _build_spanning_cohort(
+                variable_dcid="Count_Household",
+                variable_name="Households",
+                scaling_factor=1000.0,
+            ),
+            UnitMismatch(
+                "scaling_mismatch",
+                "Scaling factors differ: Total population (Count_Person) "
+                "reports a scaling factor of 1; Households (Count_Household) "
+                "reports a scaling factor of 1000.",
+            ),
+        ),
+    ],
+    ids=["matching-unit", "other-unit", "other-scaling"],
+)
+def test_find_unit_mismatch_compares_any_cohort_input(
+    other: ObservationTable | Cohort, expected: UnitMismatch | None
+) -> None:
+    # Test: `find_unit_mismatch` across `Cohort` implementations.
+    # Situation: A date-window cohort in `Person` checked against a table in
+    #   ` person `, a window cohort in `USDollar`, or a window cohort in
+    #   `Person` scaled by 1000.
+    # Expectation: The matching unit is compatible; the other unit is a
+    #   `unit_mismatch` and the other scaling factor a `scaling_mismatch`,
+    #   each naming both inputs' variables.
+    assert find_unit_mismatch(_build_spanning_cohort(), other) == expected

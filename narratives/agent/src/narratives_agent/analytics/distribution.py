@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Summarizes the distribution of an aligned cohort and benchmarks places.
+"""Summarizes the distribution of a cohort and benchmarks places.
 
 Computes central tendency, extrema, dispersion, quantiles, skewness, an
 optional weighted mean, and focal-place benchmarks (`z_score`, `percentile`)
@@ -27,8 +27,9 @@ from typing import Literal
 
 from narratives_agent.analytics.alignment import (
     DEFAULT_MIN_COVERAGE,
-    AlignedCohort,
     AlignmentRefusal,
+    Cohort,
+    CohortRow,
     align_cohort,
     has_adequate_coverage,
 )
@@ -48,14 +49,16 @@ from narratives_agent.analytics.metrics import (
 from narratives_agent.analytics.provenance import Provenance, merge_provenance
 from narratives_agent.analytics.ranking import compute_cohort_percentiles
 from narratives_agent.analytics.script_inputs import (
+    CohortInput,
     build_invalid_parameters_refusal,
     describe_missing_focal_places,
     resolve_aligned_cohort,
     validate_place_dcids,
 )
 from narratives_agent.analytics.tables import (
-    ObservationRow,
     ObservationTable,
+    format_reference_date_phrase,
+    is_window_reference_date,
 )
 
 __all__ = ["summarize_distribution"]
@@ -120,17 +123,46 @@ class _FocalBenchmarks:
 
 
 def _check_weights_date(
-    aligned: AlignedCohort,
-    weights: AlignedCohort | ObservationTable | None,
+    aligned: Cohort,
+    weights: CohortInput | None,
     step_id: str,
 ) -> RefusedScriptResult | None:
-    """Refuses a weights cohort aligned to another date, or returns None.
+    """Refuses weights that do not share the cohort's date, or returns None.
 
-    A weights table is aligned to the cohort's reference date later, so
-    only a weights cohort can disagree with it.
+    Weights are observed on a single date, so a weights cohort whose
+    reference date is a date window is refused, as are any weights for a
+    cohort whose reference date is a date window. A weights table is aligned
+    to a single-date cohort's reference date later, so otherwise only a
+    weights cohort can disagree with it.
     """
+    if isinstance(weights, Cohort) and is_window_reference_date(
+        weights.reference_date
+    ):
+        return build_invalid_parameters_refusal(
+            aligned,
+            script=_SCRIPT_NAME,
+            step_id=step_id,
+            caveat=(
+                f"The weights for {weights.variable_name} span "
+                f"{format_reference_date_phrase(weights.reference_date)}, "
+                "so they cannot weight the mean; weights must be observed "
+                "on a single date."
+            ),
+        )
+    if weights is not None and is_window_reference_date(aligned.reference_date):
+        return build_invalid_parameters_refusal(
+            aligned,
+            script=_SCRIPT_NAME,
+            step_id=step_id,
+            caveat=(
+                "The cohort spans "
+                f"{format_reference_date_phrase(aligned.reference_date)}, "
+                "so its mean cannot be weighted by "
+                f"{weights.variable_name} on a single date."
+            ),
+        )
     if (
-        isinstance(weights, AlignedCohort)
+        isinstance(weights, Cohort)
         and weights.reference_date != aligned.reference_date
     ):
         return build_invalid_parameters_refusal(
@@ -147,7 +179,7 @@ def _check_weights_date(
 
 
 def _find_extremum(
-    rows: Sequence[ObservationRow], *, is_largest: bool
+    rows: Sequence[CohortRow], *, is_largest: bool
 ) -> PlaceValue:
     """Returns the row with the smallest or largest value, ties by DCID."""
     row = min(
@@ -228,7 +260,7 @@ def _compute_bracketed_quantiles(
 
 
 def _compute_spread(
-    values: Sequence[float], mean: float, aligned: AlignedCohort
+    values: Sequence[float], mean: float, aligned: Cohort
 ) -> _Spread:
     """Computes the dispersion, quantiles, and skewness of sorted `values`.
 
@@ -248,8 +280,8 @@ def _compute_spread(
             skewness=None,
             caveats=(
                 f"Only one place ({aligned.rows[0].place_name}) reported a "
-                f"value for "
-                f"{aligned.variable_name} on {aligned.reference_date}; "
+                f"value for {aligned.metric_label} "
+                f"{format_reference_date_phrase(aligned.reference_date)}; "
                 "dispersion, quantiles, and z-scores require at least "
                 f"{_MIN_PLACES_FOR_DISPERSION} places and skewness at least "
                 f"{_MIN_PLACES_FOR_SKEWNESS}, so they are not computed.",
@@ -268,9 +300,9 @@ def _compute_spread(
     caveats: tuple[str, ...] = ()
     if stdev == 0.0:
         caveats = (
-            f"Every place reports the same value for {aligned.variable_name} "
-            f"on {aligned.reference_date}, so skewness and z-scores are "
-            "undefined.",
+            f"Every place reports the same value for {aligned.metric_label} "
+            f"{format_reference_date_phrase(aligned.reference_date)}, so "
+            "skewness and z-scores are undefined.",
         )
     elif cohort_size >= _MIN_PLACES_FOR_SKEWNESS:
         skewness = _compute_sample_skewness(values, mean, stdev)
@@ -307,7 +339,7 @@ def _count_required_places(cohort_size: int, min_coverage: float) -> int:
 
 
 def _collect_weights_by_place(
-    weights: AlignedCohort | ObservationTable, reference_date: str
+    weights: CohortInput, reference_date: str
 ) -> dict[str, float]:
     """Returns each place's weight on `reference_date`.
 
@@ -328,8 +360,8 @@ def _collect_weights_by_place(
 
 
 def _compute_weighted_mean(
-    aligned: AlignedCohort,
-    weights: AlignedCohort | ObservationTable,
+    aligned: Cohort,
+    weights: CohortInput,
     min_coverage: float,
 ) -> _Weighting:
     """Weights the cohort mean by `weights`, or explains why it is omitted.
@@ -413,7 +445,7 @@ def _compute_percent_of_median(value: float, median: float) -> float | None:
 
 
 def _build_focal_entry(
-    row: ObservationRow,
+    row: CohortRow,
     *,
     mean: float,
     median: float,
@@ -438,7 +470,7 @@ def _build_focal_entry(
 
 
 def _benchmark_focal_places(
-    aligned: AlignedCohort,
+    aligned: Cohort,
     focal_places: Sequence[str],
     *,
     values: Sequence[float],
@@ -483,8 +515,8 @@ def _benchmark_focal_places(
 
 
 def _list_reported_variables(
-    aligned: AlignedCohort,
-    reported_weights: AlignedCohort | ObservationTable | None,
+    aligned: Cohort,
+    reported_weights: CohortInput | None,
 ) -> tuple[tuple[str, ...], dict[str, str], tuple[Provenance, ...]]:
     """Returns the variables, their names, and their provenance to report.
 
@@ -506,7 +538,7 @@ def _list_reported_variables(
 
 
 def _describe_methodology(
-    aligned: AlignedCohort,
+    aligned: Cohort,
     spread: _Spread,
     *,
     weight_variable_name: str | None,
@@ -538,8 +570,9 @@ def _describe_methodology(
             "maximum (max_minus_min)"
         )
     methodology = (
-        f"Distribution of {aligned.variable_name} across {cohort_size} "
-        f"{place_noun} on {aligned.reference_date}: {summary_terms}"
+        f"Distribution of {aligned.metric_label} across {cohort_size} "
+        f"{place_noun} {format_reference_date_phrase(aligned.reference_date)}"
+        f": {summary_terms}"
     )
     if weight_variable_name is not None:
         methodology += (
@@ -554,9 +587,9 @@ def _describe_methodology(
 
 
 def summarize_distribution(
-    cohort_or_table: AlignedCohort | ObservationTable,
+    cohort_or_table: CohortInput,
     *,
-    weights: AlignedCohort | ObservationTable | None = None,
+    weights: CohortInput | None = None,
     focal_places: Sequence[str] = (),
     target_date: str | None = None,
     min_coverage: float = DEFAULT_MIN_COVERAGE,
@@ -565,14 +598,16 @@ def summarize_distribution(
     """Summarizes the spread of a cohort's values at its reference date.
 
     Args:
-        cohort_or_table: An aligned cohort, or a table to align first with
-            `target_date` and `min_coverage`. An aligned cohort already has
-            a reference date: a `target_date` other than that date is
-            refused, and `min_coverage` is unused and not checked unless
-            `weights` is given.
+        cohort_or_table: A cohort, or a table to align first with
+            `target_date` and `min_coverage`. A cohort already has a
+            reference date: a `target_date` other than that date is
+            refused, as is any `target_date` for a cohort whose reference
+            date is a date window, and `min_coverage` is unused and not
+            checked unless `weights` is given.
         weights: A second variable, such as population, to weight the mean
             by. A table is aligned to the cohort's reference date; a cohort
-            must already be aligned to that date.
+            must already be aligned to that date. Weights are refused for a
+            cohort whose reference date is a date window.
         focal_places: Places to benchmark against the cohort, in the order
             to report them.
         target_date: Passed to `align_cohort` when a table is given.
@@ -596,20 +631,21 @@ def summarize_distribution(
         `None` when no weights are given or when negative or insufficient
         weights cause it to be omitted; each omitted figure carries a caveat.
         The result is refused with `invalid_parameters` when `target_date` is
-        not a valid date or differs from an aligned cohort's reference date,
-        `min_coverage` is outside `[0.0, 1.0]` for a table or when `weights`
-        is given, `focal_places` is a string or holds an invalid DCID, or a
-        weights cohort is aligned to another date, carrying the cohort's
-        coverage and caveats once it is aligned; and with the alignment's
-        reason when the cohort cannot be aligned.
+        not a valid date, differs from a cohort's reference date, or is
+        given for a date-window cohort, `min_coverage` is outside
+        `[0.0, 1.0]` for a table or when `weights` is given, `focal_places`
+        is a string or holds an invalid DCID, a weights cohort is aligned to
+        another date, or weights are given for a date-window cohort,
+        carrying the cohort's coverage and caveats once it is resolved; and
+        with the alignment's reason when the table cannot be aligned.
     """
     error = validate_place_dcids(focal_places, parameter_name="focal_places")
     if error is not None:
         return build_invalid_parameters_refusal(
             cohort_or_table, script=_SCRIPT_NAME, step_id=step_id, caveat=error
         )
-    # Once the cohort is aligned, `min_coverage` is only the weight coverage
-    # threshold, so it is checked for an aligned cohort only with weights.
+    # Once the cohort is resolved, `min_coverage` is only the weight coverage
+    # threshold, so it is checked for a cohort only with weights.
     aligned = resolve_aligned_cohort(
         cohort_or_table,
         script=_SCRIPT_NAME,
@@ -619,7 +655,7 @@ def summarize_distribution(
         operation="summarized",
         should_check_min_coverage=weights is not None,
     )
-    if not isinstance(aligned, AlignedCohort):
+    if isinstance(aligned, RefusedScriptResult):
         return aligned
     weights_refusal = _check_weights_date(aligned, weights, step_id)
     if weights_refusal is not None:

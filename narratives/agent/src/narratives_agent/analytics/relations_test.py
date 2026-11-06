@@ -31,6 +31,7 @@ from narratives_agent.analytics import relations
 from narratives_agent.analytics.alignment import AlignedCohort, align_cohort
 from narratives_agent.analytics.digest import (
     AnalysisDigest,
+    CoverageReport,
     RefusedScriptResult,
     ScriptResult,
 )
@@ -66,6 +67,84 @@ from narratives_agent.analytics.tables import (
 
 _INCOME_SOURCE = Source(name="census.gov", url="https://census.gov")
 _HEALTH_SOURCE = Source(name="cdc.gov", url="https://cdc.gov")
+
+
+@dataclass(frozen=True)
+class _SpanningRow:
+    """A test-local `CohortRow` holding one place's value over a window."""
+
+    place_dcid: str
+    place_name: str
+    value: float
+
+
+@dataclass(frozen=True)
+class _SpanningCohort:
+    """A test-local `Cohort` whose reference date is a date window."""
+
+    variable_dcid: str
+    variable_name: str
+    metric_label: str
+    reference_date: str
+    unit: str | None
+    scaling_factor: float | None
+    provenance: Provenance
+    rows: tuple[_SpanningRow, ...]
+    place_names: dict[str, str]
+    coverage: CoverageReport
+    caveats: tuple[str, ...] = ()
+
+
+def _build_spanning_cohort(
+    variable: tuple[str, str],
+    values: Mapping[str, float],
+    *,
+    reference_date: str,
+    source: Source = _HEALTH_SOURCE,
+) -> _SpanningCohort:
+    """Builds the change in a variable over `reference_date` per place."""
+    variable_dcid, variable_name = variable
+    return _SpanningCohort(
+        variable_dcid=variable_dcid,
+        variable_name=variable_name,
+        metric_label=f"change in {variable_name}",
+        reference_date=reference_date,
+        unit=None,
+        scaling_factor=None,
+        provenance=Provenance(sources=(source,), facet_ids=(variable_dcid,)),
+        rows=tuple(
+            _SpanningRow(place, place.upper(), value)
+            for place, value in sorted(values.items())
+        ),
+        place_names={place: place.upper() for place in values},
+        coverage=CoverageReport(
+            contributing_places=len(values),
+            requested_places=len(values),
+            coverage_ratio=1.0,
+            reference_date=reference_date,
+        ),
+    )
+
+
+def _build_diabetes_change(
+    values: Mapping[str, float],
+) -> _SpanningCohort:
+    """Builds the change in diabetes prevalence from 2020 to 2024."""
+    return _build_spanning_cohort(
+        ("Percent_Person_WithDiabetes", "Diabetes prevalence"),
+        values,
+        reference_date="2020..2024",
+    )
+
+
+def _build_income_change(values: Mapping[str, float]) -> _SpanningCohort:
+    """Builds the change in median income from 2018 to 2022."""
+    return _build_spanning_cohort(
+        ("Median_Income_Household", "Median income"),
+        values,
+        reference_date="2018..2022",
+        source=_INCOME_SOURCE,
+    )
 
 
 def _build_table(
@@ -1204,3 +1283,174 @@ def test_generated_relations_match_for_tables_and_aligned_cohorts() -> None:
             n=case.n,
             min_coverage=case.min_coverage,
         )
+
+
+def test_two_window_cohorts_are_related_by_their_figure_labels() -> None:
+    # Test: Relating two `Cohort` inputs whose reference dates are date windows.
+    # Situation: The change in diabetes prevalence from 2020 to 2024 for `a`
+    #   to `d` and `x`, and the change in median income from 2018 to 2022
+    #   for `a` to `d` and `y`, with income falling from `a` to `d`.
+    # Expectation: The shared places rank `a`, `b` highest and `d`, `c`
+    #   lowest by income change, with the target summaries and their
+    #   difference; the metrics carry both windows; the result names the
+    #   variables by their display names; the date caveat, the dropped-place
+    #   caveat, and the methodology name each figure label and read each
+    #   window as `"from <start> to <end>"`.
+    diabetes = _build_diabetes_change(
+        {"a": 1.0, "b": 2.0, "c": 3.0, "d": 4.0, "x": 9.0}
+    )
+    income = _build_income_change(
+        {"a": 40.0, "b": 30.0, "c": 20.0, "d": 10.0, "y": 5.0}
+    )
+    result = relate_cohorts(diabetes, income, n=2)
+    metrics = _extract_metrics(result)
+    assert (metrics.target_reference_date, metrics.by_reference_date) == (
+        "2020..2024",
+        "2018..2022",
+    )
+    assert _collect_place_dcids(metrics.highest_by) == ["a", "b"]
+    assert _collect_place_dcids(metrics.lowest_by) == ["d", "c"]
+    assert metrics.highest_by_summary == GroupSummary(
+        count=2, target_mean=1.5, target_median=1.5
+    )
+    assert metrics.lowest_by_summary == GroupSummary(
+        count=2, target_mean=3.5, target_median=3.5
+    )
+    assert metrics.target_mean_difference == -2.0
+    assert result.variable_names == {
+        "Percent_Person_WithDiabetes": "Diabetes prevalence",
+        "Median_Income_Household": "Median income",
+    }
+    assert result.caveats == (
+        "Change in Diabetes prevalence is compared from 2020 to 2024 and "
+        "change in Median income from 2018 to 2022, the reference date of "
+        "each cohort.",
+        "Only places with a value for both variables are compared: 1 place "
+        "with a value for change in Diabetes prevalence has no value for "
+        "change in Median income from 2018 to 2022 (X); 1 place with a value "
+        "for change in Median income has no value for change in Diabetes "
+        "prevalence from 2020 to 2024 (Y).",
+    )
+    assert result.provenance.methodology == (
+        "Paired the 4 places with a value for both change in Diabetes "
+        "prevalence from 2020 to 2024 and change in Median income from 2018 "
+        "to 2022, ranked them by change in Median income in descending order "
+        "with places of the same value sharing a rank, and summarized change "
+        "in Diabetes prevalence over the 2 places with the highest and the 2 "
+        "with the lowest change in Median income."
+    )
+
+
+def test_a_window_cohort_is_related_to_a_single_date_cohort() -> None:
+    # Test: Relating a date-window cohort to an `AlignedCohort`.
+    # Situation: The change in diabetes prevalence from 2020 to 2024 paired
+    #   with median income aligned to 2022 for the same four places.
+    # Expectation: The date caveat and the methodology read the window as
+    #   `"from 2020 to 2024"` and the single date as `"on 2022"`.
+    diabetes = _build_diabetes_change({"a": 1.0, "b": 2.0, "c": 3.0, "d": 4.0})
+    income = align_cohort(
+        _build_income_table({"a": 40.0, "b": 30.0, "c": 20.0, "d": 10.0})
+    )
+    assert isinstance(income, AlignedCohort)
+    result = relate_cohorts(diabetes, income, n=1)
+    _extract_metrics(result)
+    assert result.caveats == (
+        "Change in Diabetes prevalence is compared from 2020 to 2024 and "
+        "Median income on 2022, the reference date of each cohort.",
+    )
+    assert result.provenance.methodology == (
+        "Paired the 4 places with a value for both change in Diabetes "
+        "prevalence from 2020 to 2024 and Median income on 2022, ranked them "
+        "by Median income in descending order with places of the same value "
+        "sharing a rank, and summarized change in Diabetes prevalence over "
+        "the 1 places with the highest and the 1 with the lowest Median "
+        "income."
+    )
+
+
+@pytest.mark.parametrize(
+    ("target_date", "by_date", "side", "message"),
+    [
+        (
+            "2024",
+            None,
+            "target",
+            "The target cohort (change in Diabetes prevalence) spans from "
+            "2020 to 2024, so it cannot be paired on the single target date "
+            "2024.",
+        ),
+        (
+            None,
+            "2022",
+            "by",
+            "The by cohort (change in Median income) spans from 2018 to 2022, "
+            "so it cannot be paired on the single by date 2022.",
+        ),
+        (
+            "latest",
+            None,
+            "target",
+            "The target date 'latest' is not a year, a year and month, or a "
+            "full date.",
+        ),
+    ],
+    ids=["valid-target-date", "valid-by-date", "malformed-target-date"],
+)
+def test_window_cohorts_refuse_single_dates(
+    target_date: str | None,
+    by_date: str | None,
+    side: str,
+    message: str,
+) -> None:
+    # Test: `target_date` and `by_date` passed with date-window cohorts.
+    # Situation: The two window cohorts paired with a valid `target_date`,
+    #   a valid `by_date`, or a malformed `target_date`.
+    # Expectation: A `PairingRefusal` with `invalid_parameters` on the side
+    #   given the date, carrying that cohort's coverage; a valid date
+    #   reports that the cohort spans its window, and the malformed date
+    #   reports the date format.
+    diabetes = _build_diabetes_change({"a": 1.0, "b": 2.0})
+    income = _build_income_change({"a": 40.0, "b": 30.0})
+    refusal = pair_cohorts(
+        diabetes, income, target_date=target_date, by_date=by_date
+    )
+    assert isinstance(refusal, PairingRefusal)
+    assert refusal.reason == "invalid_parameters"
+    assert refusal.side == side
+    assert refusal.coverage == (
+        diabetes.coverage if side == "target" else income.coverage
+    )
+    assert refusal.caveats == (message,)
+
+
+def test_window_cohorts_sharing_one_place_name_their_figure_labels() -> None:
+    # Test: The too-few-places refusal for date-window cohorts.
+    # Situation: Two window cohorts sharing only place `a`.
+    # Expectation: The refusal names each figure label with its window.
+    one_shared = relate_cohorts(
+        _build_diabetes_change({"a": 1.0}), _build_income_change({"a": 40.0})
+    )
+    assert one_shared.refusal_reason == "invalid_parameters"
+    assert one_shared.caveats[-1] == (
+        "Only 1 place has a value for both change in Diabetes prevalence "
+        "from 2020 to 2024 and change in Median income from 2018 to 2022; "
+        "two groups need at least 2."
+    )
+
+
+def test_a_window_cohort_overflow_caveat_names_the_figure_label() -> None:
+    # Test: The non-finite summary caveat for a date-window target.
+    # Situation: A diabetes change of 1e308 and -1e308 across four places,
+    #   related to a window income cohort with `n=2`.
+    # Expectation: The overflow caveat names the target figure label.
+    extreme = relate_cohorts(
+        _build_diabetes_change(
+            {"a": 1e308, "b": 1e308, "c": -1e308, "d": -1e308}
+        ),
+        _build_income_change({"a": 40.0, "b": 30.0, "c": 20.0, "d": 10.0}),
+        n=2,
+    )
+    assert (
+        "Some summary statistics for change in Diabetes prevalence exceeded "
+        "the floating-point range and are reported as None."
+    ) in extreme.caveats

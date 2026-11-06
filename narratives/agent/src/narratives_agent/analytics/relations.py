@@ -13,8 +13,8 @@
 # limitations under the License.
 """Relates two cohort variables across the places both cover.
 
-`pair_cohorts` aligns each variable on its own reference date and joins the
-two aligned cohorts on place, producing the `PairedCohort` that every
+`pair_cohorts` resolves each variable to a cohort on its own reference date
+and joins the two cohorts on place, producing the `PairedCohort` that every
 reduction relating two variables starts from. `relate_cohorts` ranks the
 shared places by one variable and summarizes the other over the places with
 the highest and the lowest values.
@@ -28,8 +28,9 @@ from typing import Literal
 
 from narratives_agent.analytics.alignment import (
     DEFAULT_MIN_COVERAGE,
-    AlignedCohort,
     AlignmentRefusal,
+    Cohort,
+    CohortRow,
     align_cohort,
     has_adequate_coverage,
     validate_alignment_parameters,
@@ -63,7 +64,9 @@ from narratives_agent.analytics.script_inputs import (
 )
 from narratives_agent.analytics.tables import (
     ObservationTable,
+    format_reference_date_phrase,
     is_valid_observation_date,
+    is_window_reference_date,
 )
 
 __all__ = [
@@ -125,13 +128,12 @@ class PairedPlace:
 
 @dataclass(frozen=True)
 class PairedCohort:
-    """Two aligned cohorts joined on the places both cover.
+    """Two cohorts joined on the places both cover.
 
     Attributes:
-        target: The aligned cohort of the variable being summarized, which
-            carries its variable, name, unit, scaling factor, and reference
-            date.
-        by: The aligned cohort of the variable the places are ordered by.
+        target: The cohort of the variable being summarized, which carries
+            its variable, name, unit, scaling factor, and reference date.
+        by: The cohort of the variable the places are ordered by.
         places: The shared places with both values, sorted by place DCID;
             never empty.
         target_only_places: The places of `target` with no `by` value,
@@ -144,8 +146,8 @@ class PairedCohort:
         ValueError: If `places` is empty.
     """
 
-    target: AlignedCohort
-    by: AlignedCohort
+    target: Cohort
+    by: Cohort
     places: tuple[PairedPlace, ...]
     target_only_places: tuple[str, ...]
     by_only_places: tuple[str, ...]
@@ -190,28 +192,26 @@ class PairingRefusal:
 
 
 def _collect_aligned_caveats(*items: CohortInput) -> tuple[str, ...]:
-    """Returns the deduplicated caveats of any aligned cohort in `items`."""
+    """Returns the deduplicated caveats of any cohort in `items`."""
     return tuple(
         dict.fromkeys(
             caveat
             for item in items
-            if isinstance(item, AlignedCohort)
+            if isinstance(item, Cohort)
             for caveat in item.caveats
         )
     )
 
 
 def _resolve_agreed_coverage(*items: CohortInput) -> CoverageReport | None:
-    """Returns the coverage when all aligned inputs agree on one report."""
-    coverages = {
-        item.coverage for item in items if isinstance(item, AlignedCohort)
-    }
+    """Returns the coverage when all cohort inputs agree on one report."""
+    coverages = {item.coverage for item in items if isinstance(item, Cohort)}
     return next(iter(coverages)) if len(coverages) == 1 else None
 
 
 def _has_explicit_target_places(item: CohortInput) -> bool:
     """Returns whether `item` carries an explicit target-place list."""
-    if isinstance(item, AlignedCohort):
+    if isinstance(item, Cohort):
         return True
     return bool(item.requested_places)
 
@@ -253,9 +253,12 @@ def _resolve_place_names(
     return resolved
 
 
-def _format_cohort_label(cohort: AlignedCohort) -> str:
-    """Names a cohort's variable with its reference date."""
-    return f"{cohort.variable_name} on {cohort.reference_date}"
+def _format_cohort_label(cohort: Cohort) -> str:
+    """Names a cohort's figure with its reference date phrase."""
+    return (
+        f"{cohort.metric_label} "
+        f"{format_reference_date_phrase(cohort.reference_date)}"
+    )
 
 
 def _validate_pairing_parameters(
@@ -309,8 +312,13 @@ def _align_cohort_side(
     min_coverage: float,
     side: PairingSide,
     prior_caveats: Sequence[str] = (),
-) -> AlignedCohort | PairingRefusal:
-    """Aligns one input on its own date; an aligned cohort passes through."""
+) -> Cohort | PairingRefusal:
+    """Aligns one input on its own date; a cohort passes through.
+
+    A cohort is refused when `date` differs from its single reference date,
+    and when any `date` is given for a cohort whose reference date is a
+    date window.
+    """
     if date is not None and not is_valid_observation_date(date):
         return PairingRefusal(
             reason="invalid_parameters",
@@ -320,24 +328,31 @@ def _align_cohort_side(
                 "or a full date.",
             ),
             side=side,
-            coverage=(
-                item.coverage if isinstance(item, AlignedCohort) else None
-            ),
+            coverage=(item.coverage if isinstance(item, Cohort) else None),
         )
-    if isinstance(item, AlignedCohort):
-        if date is not None and date != item.reference_date:
-            return PairingRefusal(
-                reason="invalid_parameters",
-                caveats=(
-                    *prior_caveats,
-                    f"The {side} cohort ({item.variable_name}) is aligned to "
-                    f"{item.reference_date}, so it cannot be paired on the "
-                    f"{side} date {date}.",
-                ),
-                side=side,
-                coverage=item.coverage,
+    if isinstance(item, Cohort):
+        # `date` is a valid observation date here, so it never equals a
+        # date-window reference date.
+        if date is None or date == item.reference_date:
+            return item
+        if is_window_reference_date(item.reference_date):
+            mismatch = (
+                f"The {side} cohort ({item.metric_label}) spans "
+                f"{format_reference_date_phrase(item.reference_date)}, so it "
+                f"cannot be paired on the single {side} date {date}."
             )
-        return item
+        else:
+            mismatch = (
+                f"The {side} cohort ({item.metric_label}) is aligned to "
+                f"{item.reference_date}, so it cannot be paired on the "
+                f"{side} date {date}."
+            )
+        return PairingRefusal(
+            reason="invalid_parameters",
+            caveats=(*prior_caveats, mismatch),
+            side=side,
+            coverage=item.coverage,
+        )
     table = _resolve_table_requested_places(item, other)
     aligned = align_cohort(table, target_date=date, min_coverage=min_coverage)
     if isinstance(aligned, AlignmentRefusal):
@@ -355,12 +370,12 @@ def _align_cohort_side(
 
 
 def _build_paired_cohort(
-    aligned_target: AlignedCohort,
-    aligned_by: AlignedCohort,
+    aligned_target: Cohort,
+    aligned_by: Cohort,
     *,
     min_coverage: float,
 ) -> PairedCohort | PairingRefusal:
-    """Joins two aligned cohorts on shared places and checks coverage."""
+    """Joins two cohorts on shared places and checks coverage."""
     target_rows = {row.place_dcid: row for row in aligned_target.rows}
     by_rows = {row.place_dcid: row for row in aligned_by.rows}
     shared = sorted(target_rows.keys() & by_rows.keys())
@@ -426,14 +441,16 @@ def pair_cohorts(
 
     A table is aligned with `align_cohort` on its own date argument; when a
     table omits `requested_places` and the other input carries an explicit
-    target-place list, that list is used as the fallback. An aligned cohort
-    is used as it is when its date argument is None or matches its
-    `reference_date`. The join keeps the places with a value in both cohorts.
+    target-place list, that list is used as the fallback. A cohort is used
+    as it is when its date argument is None or matches its single
+    `reference_date`; a cohort whose reference date is a date window is
+    used only when its date argument is None. The join keeps the places
+    with a value in both cohorts.
     It must hold at least `min_coverage` of each cohort's places, so swapping
     `target` and `by` never changes whether a pair passes.
 
     Args:
-        target: The variable to summarize, as a table or an aligned cohort.
+        target: The variable to summarize, as a table or a cohort.
         by: The variable to order the places by, in the same forms.
         target_date: Optional reference date for `target`.
         by_date: Optional reference date for `by`.
@@ -444,11 +461,11 @@ def pair_cohorts(
         The paired cohort, or a `PairingRefusal`: with `invalid_parameters`
         when `min_coverage` is outside `[0.0, 1.0]`, `target` and `by`
         measure the same variable, a date is not a valid observation date, or
-        a date differs from an aligned input's `reference_date`; with the
-        alignment's reason when a side cannot be aligned; with
-        `no_observations` when the two cohorts share no place; and with
-        `insufficient_coverage` when the shared places are fewer than
-        `min_coverage` of either cohort.
+        a date differs from a cohort input's `reference_date` or is given
+        for a date-window cohort; with the alignment's reason when a side
+        cannot be aligned; with `no_observations` when the two cohorts share
+        no place; and with `insufficient_coverage` when the shared places
+        are fewer than `min_coverage` of either cohort.
 
     Raises:
         ValueError: Never raised directly; invalid parameters are returned as
@@ -523,10 +540,73 @@ def _build_pairing_refusal_result(
         caveat=refusal.caveats[-1],
     )
     # `build_refusal` only collects caveats from inputs that were already
-    # `AlignedCohort` instances at the boundary, whereas `refusal.caveats`
+    # `Cohort` instances at the boundary, whereas `refusal.caveats`
     # also carries caveats from any `ObservationTable` aligned during pairing
     # in `(target, by)` order.
     return replace(result, caveats=refusal.caveats)
+
+
+@dataclass(frozen=True)
+class _SharedPlacesCohort:
+    """A cohort restricted to the rows of the places a pairing shares.
+
+    Every `Cohort` member other than `rows` is read from `cohort`, so
+    ranking the restricted cohort reports the same variable, reference
+    date, coverage, and caveats as `cohort`.
+    """
+
+    cohort: Cohort
+    rows: tuple[CohortRow, ...]
+
+    @property
+    def variable_dcid(self) -> str:
+        """DCID of the variable the values are computed from."""
+        return self.cohort.variable_dcid
+
+    @property
+    def variable_name(self) -> str:
+        """Display name of that variable."""
+        return self.cohort.variable_name
+
+    @property
+    def metric_label(self) -> str:
+        """Name of the cohort figure as it appears in prose."""
+        return self.cohort.metric_label
+
+    @property
+    def reference_date(self) -> str:
+        """The single observation date or the `start..end` date window."""
+        return self.cohort.reference_date
+
+    @property
+    def unit(self) -> str | None:
+        """Unit of the values, when known."""
+        return self.cohort.unit
+
+    @property
+    def scaling_factor(self) -> float | None:
+        """Scaling factor of the values, when known."""
+        return self.cohort.scaling_factor
+
+    @property
+    def provenance(self) -> Provenance:
+        """Provenance of the values."""
+        return self.cohort.provenance
+
+    @property
+    def place_names(self) -> Mapping[str, str]:
+        """Display names of the cohort's places."""
+        return self.cohort.place_names
+
+    @property
+    def coverage(self) -> CoverageReport:
+        """How many of the cohort's places contributed."""
+        return self.cohort.coverage
+
+    @property
+    def caveats(self) -> tuple[str, ...]:
+        """Qualifications to state with the values."""
+        return self.cohort.caveats
 
 
 def _rank_shared_places(
@@ -537,7 +617,7 @@ def _rank_shared_places(
     Raises:
         ValueError: If `paired` has fewer than `MIN_SHARED_PLACES` shared
             places.
-        RuntimeError: If `rank_cohort` refuses the aligned shared places.
+        RuntimeError: If `rank_cohort` refuses the shared places.
     """
     shared = len(paired.places)
     if shared < MIN_SHARED_PLACES:
@@ -552,8 +632,8 @@ def _rank_shared_places(
     # highest group, and because the group size is at most half the shared
     # places, enough places remain.
     ranking = rank_cohort(
-        replace(
-            paired.by,
+        _SharedPlacesCohort(
+            cohort=paired.by,
             rows=tuple(
                 row for row in paired.by.rows if row.place_dcid in shared_places
             ),
@@ -563,7 +643,7 @@ def _rank_shared_places(
     )
     if not isinstance(ranking.metrics, RankingMetrics):
         raise RuntimeError(
-            f"Ranking {shared} aligned places refused unexpectedly: "
+            f"Ranking {shared} shared places refused unexpectedly: "
             f"{ranking.refusal_reason}."
         )
     return ranking.metrics
@@ -681,15 +761,15 @@ def _compute_mean_difference(
 
 
 def _describe_dropped_places(
-    cohort: AlignedCohort,
-    other: AlignedCohort,
+    cohort: Cohort,
+    other: Cohort,
     dropped: tuple[str, ...],
     place_names: Mapping[str, str],
 ) -> str:
     """Counts the places of `cohort` that `other` lacks, naming examples.
 
-    The clause names `other`'s reference date, because a dropped place can
-    hold values for that variable on other dates.
+    The clause names `other`'s reference date phrase, because a dropped
+    place can hold values for that variable on other dates.
 
     Raises:
         ValueError: If `dropped` is empty.
@@ -702,9 +782,18 @@ def _describe_dropped_places(
     noun = "place" if len(dropped) == 1 else "places"
     verb = conjugate_have(len(dropped))
     return (
-        f"{len(dropped)} {noun} with a value for {cohort.variable_name} "
+        f"{len(dropped)} {noun} with a value for {cohort.metric_label} "
         f"{verb} no value for {_format_cohort_label(other)} ({listed})"
     )
+
+
+def _capitalize_first(text: str) -> str:
+    """Upper-cases the first character of `text` and leaves the rest as is.
+
+    `str.capitalize` is not used because it lower-cases the remaining
+    characters, which would alter acronyms and proper nouns in a label.
+    """
+    return text[:1].upper() + text[1:]
 
 
 def _build_pairing_caveats(paired: PairedCohort) -> list[str]:
@@ -713,9 +802,11 @@ def _build_pairing_caveats(paired: PairedCohort) -> list[str]:
     caveats: list[str] = []
     if target.reference_date != by.reference_date:
         caveats.append(
-            f"{target.variable_name} is compared on {target.reference_date} "
-            f"and {by.variable_name} on {by.reference_date}, the reference "
-            "date of each cohort."
+            f"{_capitalize_first(target.metric_label)} is compared "
+            f"{format_reference_date_phrase(target.reference_date)} and "
+            f"{by.metric_label} "
+            f"{format_reference_date_phrase(by.reference_date)}, the "
+            "reference date of each cohort."
         )
     place_names = _resolve_place_names(target, by)
     clauses = [
@@ -766,7 +857,7 @@ def _build_relation_caveats(
     )
     if has_non_finite_summary:
         caveats.append(
-            f"Some summary statistics for {paired.target.variable_name} "
+            f"Some summary statistics for {paired.target.metric_label} "
             "exceeded the floating-point range and are reported as None."
         )
     return tuple(caveats)
@@ -775,8 +866,8 @@ def _build_relation_caveats(
 def _describe_methodology(paired: PairedCohort, *, group_size: int) -> str:
     """Returns the methodology sentence for `relate_cohorts`."""
     shared = len(paired.places)
-    target_name = paired.target.variable_name
-    by_name = paired.by.variable_name
+    target_name = paired.target.metric_label
+    by_name = paired.by.metric_label
     return (
         f"Paired the {shared} places with a value for both "
         f"{_format_cohort_label(paired.target)} and "
@@ -871,7 +962,7 @@ def relate_cohorts(
     rate.
 
     Args:
-        target: The variable to summarize, as a table or an aligned cohort.
+        target: The variable to summarize, as a table or a cohort.
         by: The variable to order the places by, in the same forms.
         n: The requested size of each group; must be an integer of at least
             1.
@@ -896,8 +987,7 @@ def relate_cohorts(
         cannot be paired.
 
     Raises:
-        RuntimeError: If ranking the aligned shared places fails
-            unexpectedly.
+        RuntimeError: If ranking the shared places fails unexpectedly.
     """
     parameter_refusal = _validate_relation_parameters(
         target, by, n=n, step_id=step_id

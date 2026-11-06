@@ -26,7 +26,10 @@ from collections.abc import Sequence
 import pytest
 
 from narratives_agent.analytics.alignment import AlignedCohort, align_cohort
-from narratives_agent.analytics.composition import compute_composition
+from narratives_agent.analytics.composition import (
+    CompositionInput,
+    compute_composition,
+)
 from narratives_agent.analytics.digest import ScriptResult
 from narratives_agent.analytics.metrics import (
     CompositionComponent,
@@ -37,7 +40,6 @@ from narratives_agent.analytics.metrics import (
     StageTransition,
 )
 from narratives_agent.analytics.provenance import Provenance, Source
-from narratives_agent.analytics.script_inputs import CohortInput
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
 
 _SOURCES = {
@@ -1134,7 +1136,7 @@ class _CompositionCase:
     complete_ratio: float
     first_place_sum: float
     components: tuple[ObservationTable, ...]
-    total: CohortInput | None
+    total: CompositionInput | None
     result: ScriptResult
 
 
@@ -1225,7 +1227,7 @@ def _align_to_2022(table: ObservationTable) -> AlignedCohort | None:
 
 def _build_total_inputs(
     kind: str | None, sums: Sequence[float], places: Sequence[str]
-) -> list[CohortInput | None]:
+) -> list[CompositionInput | None]:
     """Returns no total, or the total of `kind` as a table and a cohort."""
     if kind is None:
         return [None]
