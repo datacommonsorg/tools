@@ -129,11 +129,26 @@ def _check_weights_date(
 ) -> RefusedScriptResult | None:
     """Refuses weights that do not share the cohort's date, or returns None.
 
-    Weights are observed on a single date, so any weights for a cohort whose
-    reference date is a date window are refused. A weights table is aligned
+    Weights are observed on a single date, so a weights cohort whose
+    reference date is a date window is refused, as are any weights for a
+    cohort whose reference date is a date window. A weights table is aligned
     to a single-date cohort's reference date later, so otherwise only a
     weights cohort can disagree with it.
     """
+    if isinstance(weights, Cohort) and is_window_reference_date(
+        weights.reference_date
+    ):
+        return build_invalid_parameters_refusal(
+            aligned,
+            script=_SCRIPT_NAME,
+            step_id=step_id,
+            caveat=(
+                f"The weights for {weights.variable_name} span "
+                f"{format_reference_date_phrase(weights.reference_date)}, "
+                "so they cannot weight the mean; weights must be observed "
+                "on a single date."
+            ),
+        )
     if weights is not None and is_window_reference_date(aligned.reference_date):
         return build_invalid_parameters_refusal(
             aligned,

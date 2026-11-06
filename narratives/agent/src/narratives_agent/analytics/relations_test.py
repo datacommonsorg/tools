@@ -1322,7 +1322,7 @@ def test_two_window_cohorts_are_related_by_their_figure_labels() -> None:
         "Median_Income_Household": "Median income",
     }
     assert result.caveats == (
-        "change in Diabetes prevalence is compared from 2020 to 2024 and "
+        "Change in Diabetes prevalence is compared from 2020 to 2024 and "
         "change in Median income from 2018 to 2022, the reference date of "
         "each cohort.",
         "Only places with a value for both variables are compared: 1 place "
@@ -1355,7 +1355,7 @@ def test_a_window_cohort_is_related_to_a_single_date_cohort() -> None:
     result = relate_cohorts(diabetes, income, n=1)
     _extract_metrics(result)
     assert result.caveats == (
-        "change in Diabetes prevalence is compared from 2020 to 2024 and "
+        "Change in Diabetes prevalence is compared from 2020 to 2024 and "
         "Median income on 2022, the reference date of each cohort.",
     )
     assert result.provenance.methodology == (

@@ -17,6 +17,7 @@ Covers cohort statistics, focal-place benchmarks, extrema ties, small and
 constant cohorts, population-weighted means, and refusal propagation.
 """
 
+import dataclasses
 import functools
 import math
 import random
@@ -1480,4 +1481,40 @@ def test_a_window_cohort_refuses_weights() -> None:
     assert refused.caveats == (
         "The cohort spans from 2020 to 2024, so its mean cannot be weighted "
         "by Weight population on a single date.",
+    )
+
+
+@pytest.mark.parametrize(
+    "is_cohort_a_window", [False, True], ids=["single-date", "window"]
+)
+def test_window_weights_are_refused(is_cohort_a_window: bool) -> None:
+    # Test: A weights cohort whose reference date is a date window.
+    # Situation: Weights of the change in weight population from 2020 to
+    #   2024, passed with a cohort aligned to 2024 or with the 2020 to 2024
+    #   window cohort.
+    # Expectation: An `invalid_parameters` refusal carrying the cohort's
+    #   coverage, with a caveat that reads the weights' window as
+    #   `"from 2020 to 2024"` and states that weights must be observed on a
+    #   single date.
+    weights = dataclasses.replace(
+        _build_spanning_cohort([("a", 1.0), ("b", 1.0)]),
+        variable_dcid="Count_Person_Weight",
+        variable_name="Weight population",
+        metric_label="change in Weight population",
+    )
+    cohort: AlignedCohort | _SpanningCohort
+    if is_cohort_a_window:
+        cohort = _build_spanning_cohort([("a", 1.0), ("b", 2.0)])
+    else:
+        aligned = align_cohort(
+            _build_table([("a", "2024", 1.0), ("b", "2024", 2.0)])
+        )
+        assert isinstance(aligned, AlignedCohort)
+        cohort = aligned
+    refused = summarize_distribution(cohort, weights=weights)
+    assert refused.refusal_reason == "invalid_parameters"
+    assert refused.coverage == cohort.coverage
+    assert refused.caveats == (
+        "The weights for Weight population span from 2020 to 2024, so they "
+        "cannot weight the mean; weights must be observed on a single date.",
     )

@@ -787,13 +787,22 @@ def _describe_dropped_places(
     )
 
 
+def _capitalize_first(text: str) -> str:
+    """Upper-cases the first character of `text` and leaves the rest as is.
+
+    `str.capitalize` is not used because it lower-cases the remaining
+    characters, which would alter acronyms and proper nouns in a label.
+    """
+    return text[:1].upper() + text[1:]
+
+
 def _build_pairing_caveats(paired: PairedCohort) -> list[str]:
     """States the reference dates when they differ, and the dropped places."""
     target, by = paired.target, paired.by
     caveats: list[str] = []
     if target.reference_date != by.reference_date:
         caveats.append(
-            f"{target.metric_label} is compared "
+            f"{_capitalize_first(target.metric_label)} is compared "
             f"{format_reference_date_phrase(target.reference_date)} and "
             f"{by.metric_label} "
             f"{format_reference_date_phrase(by.reference_date)}, the "
