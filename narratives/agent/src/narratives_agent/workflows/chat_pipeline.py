@@ -36,7 +36,7 @@ from dataclasses import dataclass, field, replace
 from narratives_agent.analytics.digest import AnalysisDigest
 from narratives_agent.analytics.provenance import Source
 from narratives_agent.analytics.tables import ObservationTable
-from narratives_agent.config import load_config
+from narratives_agent.config import load_config, pin_current_datetime
 from narratives_agent.config_model import AgentConfig, GeminiRole
 from narratives_agent.gemini.client import (
     GeminiBlockedError,
@@ -839,45 +839,51 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
             )
             return
         config = _load_turn_config()
-        emit(StatusFrame(phase="classify", message=CLASSIFY_STATUS))
-        with telemetry.phase("classify"):
-            admission = await classify_query(transcript, config, telemetry)
-        telemetry.pattern = (
-            admission.classification.pattern
-            if admission.classification is not None
-            else _UNCLASSIFIED_PATTERN
-        )
-        ctx = TurnContext(
-            transcript, config, telemetry, emit, admission.classification
-        )
-        if isinstance(admission, Clarification):
-            window = await run_clarification(ctx, admission.question)
+        # Every prompt of the turn renders `{{CURRENT_DATETIME}}` as one
+        # timestamp, isolated from concurrent turns.
+        with pin_current_datetime():
+            emit(StatusFrame(phase="classify", message=CLASSIFY_STATUS))
+            with telemetry.phase("classify"):
+                admission = await classify_query(transcript, config, telemetry)
+            telemetry.pattern = (
+                admission.classification.pattern
+                if admission.classification is not None
+                else _UNCLASSIFIED_PATTERN
+            )
+            ctx = TurnContext(
+                transcript, config, telemetry, emit, admission.classification
+            )
+            if isinstance(admission, Clarification):
+                window = await run_clarification(ctx, admission.question)
+                state = TerminalState.COMPLETE
+                emit(
+                    TerminalCompleteFrame(
+                        idempotency_key=idempotency_key, window=window
+                    )
+                )
+                return
+            # Processing runs inside discovery are also timed under their own
+            # phase.
+            with telemetry.phase("discovery"):
+                discovery = await run_discovery_phase(ctx)
+            with telemetry.phase("synthesis"):
+                synthesis = await run_synthesis_phase(ctx, discovery)
+            with telemetry.phase("finalize"):
+                window = await _sign_turn(
+                    ctx,
+                    synthesis.text,
+                    lambda: build_state_slots(
+                        discovery.tables, synthesis.charts
+                    ),
+                )
             state = TerminalState.COMPLETE
             emit(
                 TerminalCompleteFrame(
                     idempotency_key=idempotency_key, window=window
                 )
             )
-            return
-        # Processing runs inside discovery are also timed under their own phase.
-        with telemetry.phase("discovery"):
-            discovery = await run_discovery_phase(ctx)
-        with telemetry.phase("synthesis"):
-            synthesis = await run_synthesis_phase(ctx, discovery)
-        with telemetry.phase("finalize"):
-            window = await _sign_turn(
-                ctx,
-                synthesis.text,
-                lambda: build_state_slots(discovery.tables, synthesis.charts),
-            )
-        state = TerminalState.COMPLETE
-        emit(
-            TerminalCompleteFrame(
-                idempotency_key=idempotency_key, window=window
-            )
-        )
-        with telemetry.phase("follow_ups"):
-            await run_followups(ctx, discovery, synthesis.charts)
+            with telemetry.phase("follow_ups"):
+                await run_followups(ctx, discovery, synthesis.charts)
     except TurnRefusedError as refusal:
         state, error_type = TerminalState.REFUSED, refusal.reason
         emit(

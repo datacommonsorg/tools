@@ -21,6 +21,7 @@ from typing import cast
 
 import pytest
 
+from narratives_agent.analytics.alignment import WindowCohort
 from narratives_agent.analytics.composition import compute_composition
 from narratives_agent.analytics.derived import derive_observation_table
 from narratives_agent.analytics.digest import AnalysisDigest, ScriptResult
@@ -29,7 +30,10 @@ from narratives_agent.analytics.provenance import Provenance
 from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.relations import relate_cohorts
 from narratives_agent.analytics.tables import ObservationRow, ObservationTable
-from narratives_agent.analytics.timeseries import analyze_timeseries
+from narratives_agent.analytics.timeseries import (
+    analyze_timeseries,
+    reduce_series,
+)
 from narratives_agent.json_value import JsonObject
 from narratives_agent.workflows.chart_defaults import build_default_charts
 from narratives_agent.workflows.charts import (
@@ -1274,3 +1278,112 @@ def test_a_staggered_single_point_series_charts_as_a_latest_bar() -> None:
         "variable_dcids": ["Count_Person"],
         "place_dcids": ["country/FRA", "country/DEU"],
     }
+
+
+def _make_window_table(
+    table_id: str = "t1", variable_dcid: str = "Count_Person"
+) -> CachedTable:
+    """Builds six states' 2020 and 2024 values; state `n` grows by `n * 10`."""
+    rows = tuple(
+        ObservationRow(place, place, date, value)
+        for index, place in enumerate(_STATES, start=1)
+        for date, value in (
+            ("2020", 100.0 - index * 15.0),
+            ("2024", 100.0 - index * 5.0),
+        )
+    )
+    table = ObservationTable(
+        variable_dcid=variable_dcid,
+        variable_name="Total Population",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(),
+        rows=rows,
+        requested_places=_STATES,
+        place_names={place: place for place in _STATES},
+        parent_place_dcid="country/USA",
+        child_place_type="State",
+    )
+    return CachedTable(table_id=table_id, table=table)
+
+
+def _reduce_window(entry: CachedTable) -> WindowCohort:
+    """Reduces a window table to the change from 2020 to 2024."""
+    window = reduce_series(entry.table, "absolute_change", step_id="s1")
+    assert isinstance(window, WindowCohort)
+    return window
+
+
+def test_the_default_chart_of_a_window_ranking_is_a_line() -> None:
+    # Test: The default chart of a ranking over a date window.
+    # Situation: Six states ranked by their change from 2020 to 2024, with
+    #   three entries per end.
+    # Expectation: The default chart is an undated line of the three states
+    #   the ranking lists first, rather than a ranking of the latest levels.
+    entry = _make_window_table()
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "reduce_series",
+                    "table": "t1",
+                    "metric": "absolute_change",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "rank_cohort",
+                    "table": "s1",
+                    "n": 3,
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        rank_cohort(_reduce_window(entry), max_entries_per_end=3, step_id="s2")
+    )
+    chart = _resolve_default_wire(digest, analysis, _make_cache(entry))
+    assert chart == {
+        "viz_type": "line",
+        "title": "Total Population",
+        "variable_dcids": ["Count_Person"],
+        "place_dcids": [_STATES[5], _STATES[4], _STATES[3]],
+    }
+
+
+def test_no_default_chart_for_a_relation_over_a_date_window() -> None:
+    # Test: The default chart of a relation whose target is a window cohort.
+    # Situation: The change in population from 2020 to 2024 related to the
+    #   2024 income of the same six states.
+    # Expectation: No default chart, because a scatter cannot draw the
+    #   changes over the window.
+    population = _make_window_table()
+    income = _make_cohort("t2", variable_dcid="Median_Income", name="Income")
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "reduce_series",
+                    "table": "t1",
+                    "metric": "absolute_change",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "relate_cohorts",
+                    "target": "s1",
+                    "by": "t2",
+                    "n": 2,
+                },
+            ]
+        }
+    )
+    relation = relate_cohorts(
+        _reduce_window(population), income.table, n=2, step_id="s2"
+    )
+    assert relation.status == "ok"
+    digest = _make_digest(relation)
+    assert (
+        _resolve_default_wire(digest, analysis, _make_cache(population, income))
+        is None
+    )

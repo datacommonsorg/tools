@@ -32,6 +32,7 @@ from narratives_agent.analytics.metrics import (
     CompositionMode,
     DerivedOperation,
     RankingDirection,
+    SeriesMetric,
 )
 from narratives_agent.analytics.ranking import DEFAULT_MAX_ENTRIES_PER_END
 from narratives_agent.analytics.relations import MIN_SHARED_PLACES
@@ -44,7 +45,10 @@ from narratives_agent.analytics.tables import (
 )
 from narratives_agent.gemini.schemas import QueryClassification, QueryPattern
 from narratives_agent.workflows.fetch import build_parameters_schema
-from narratives_agent.workflows.fetch_requests import is_named_place_cohort
+from narratives_agent.workflows.fetch_requests import (
+    NAMED_PLACE_SERIES_LIMIT,
+    is_named_place_cohort,
+)
 from narratives_agent.workflows.turn_cache import (
     DERIVED_TABLE_PREFIX,
     FETCHED_TABLE_PREFIX,
@@ -54,6 +58,10 @@ from narratives_agent.workflows.turn_cache import (
 )
 
 __all__ = [
+    "MAX_COMPOSITION_PLACES",
+    "MAX_FOCAL_PLACES",
+    "MAX_RANK_ENTRIES_PER_END",
+    "MAX_STANDALONE_SERIES_PLACES",
     "REPORT_UNAVAILABLE",
     "SUBMIT_SPECIFICATION",
     "TABLE_REFERENCE_PATTERN",
@@ -63,6 +71,7 @@ __all__ = [
     "ComputeCompositionStep",
     "ComputeDerivedMetricStep",
     "RankCohortStep",
+    "ReduceSeriesStep",
     "RelateCohortsStep",
     "SpecificationStep",
     "StepOutputKind",
@@ -84,6 +93,15 @@ REPORT_UNAVAILABLE = "report_unavailable"
 
 # A specification runs at most this many steps.
 _MAX_SPECIFICATION_STEPS = 6
+# `analyze_timeseries` and `compute_composition` report every place they
+# cover, so each is capped at the named-place series limit; a change across a
+# larger cohort is reduced with `reduce_series` and ranked or summarized.
+MAX_STANDALONE_SERIES_PLACES = NAMED_PLACE_SERIES_LIMIT
+MAX_COMPOSITION_PLACES = NAMED_PLACE_SERIES_LIMIT
+# The most entries a ranking or relation reports at each end.
+MAX_RANK_ENTRIES_PER_END = 25
+# The most focal places a specification or step benchmarks.
+MAX_FOCAL_PLACES = 10
 # A step id is a derived table id (`s1`), the id its derived table is stored
 # under, so it follows the rule `TurnCache.store_derived` enforces.
 _STEP_ID_PATTERN = rf"^{DERIVED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}$"
@@ -112,7 +130,7 @@ _REPORT_UNAVAILABLE_DESCRIPTION = (
 
 _TABLE_DESCRIPTION = (
     "The input table: a fetched table id (t1) or an earlier step's "
-    "output (s1). Used by align_cohort, analyze_timeseries, "
+    "output (s1). Used by align_cohort, reduce_series, analyze_timeseries, "
     "rank_cohort, and summarize_distribution."
 )
 _TARGET_DATE_DESCRIPTION = (
@@ -125,25 +143,38 @@ _MIN_COVERAGE_DESCRIPTION = (
     "compute_derived_metric)."
 )
 _PLACES_DESCRIPTION = (
-    "Place DCIDs to restrict analyze_timeseries, "
-    "compute_composition, or compute_derived_metric to."
+    "Place DCIDs to restrict reduce_series or compute_derived_metric to."
+)
+_SERIES_PLACES_DESCRIPTION = (
+    f"At most {MAX_STANDALONE_SERIES_PLACES} place DCIDs to restrict "
+    "analyze_timeseries to. Required when the table covers more than "
+    f"{MAX_STANDALONE_SERIES_PLACES} places; for a change across a larger "
+    "cohort, use reduce_series followed by rank_cohort or "
+    "summarize_distribution."
+)
+_COMPOSITION_PLACES_DESCRIPTION = (
+    f"At most {MAX_COMPOSITION_PLACES} place DCIDs to restrict "
+    "compute_composition to. Required when the inputs share more than "
+    f"{MAX_COMPOSITION_PLACES} places."
 )
 _FOCAL_PLACES_DESCRIPTION = (
-    "Place DCIDs to report wherever they rank or sit in the "
-    "distribution (rank_cohort, summarize_distribution)."
+    f"At most {MAX_FOCAL_PLACES} place DCIDs to report wherever they rank or "
+    "sit in the distribution (rank_cohort, summarize_distribution)."
 )
 _START_DATE_DESCRIPTION = (
-    "Inclusive window start for analyze_timeseries or compute_derived_metric."
+    "Inclusive window start for reduce_series, analyze_timeseries, or "
+    "compute_derived_metric."
 )
 _END_DATE_DESCRIPTION = (
-    "Inclusive window end for analyze_timeseries or compute_derived_metric."
+    "Inclusive window end for reduce_series, analyze_timeseries, or "
+    "compute_derived_metric."
 )
 
 _TableReference = Annotated[str, Field(pattern=TABLE_REFERENCE_PATTERN)]
 _Coverage = Annotated[float, Field(ge=0.0, le=1.0)]
-# Whether a step makes an aligned cohort, a derived table, or only a result
-# available to later steps.
-type StepOutputKind = Literal["cohort", "table", "result"]
+# Whether a step makes an aligned cohort, a window cohort, a derived table,
+# or only a result available to later steps.
+type StepOutputKind = Literal["cohort", "window_cohort", "table", "result"]
 # Whether a step's inputs accept only a table, or a table or an aligned
 # cohort.
 type _InputKind = Literal["table", "table_or_cohort"]
@@ -212,13 +243,67 @@ class AnalyzeTimeseriesStep(_Step):
     )
     table: _TableReference = Field(description=_TABLE_DESCRIPTION)
     places: list[str] | None = Field(
-        default=None, description=_PLACES_DESCRIPTION
+        default=None,
+        min_length=1,
+        max_length=MAX_STANDALONE_SERIES_PLACES,
+        description=_SERIES_PLACES_DESCRIPTION,
     )
     start_date: str | None = Field(
         default=None, description=_START_DATE_DESCRIPTION
     )
     end_date: str | None = Field(
         default=None, description=_END_DATE_DESCRIPTION
+    )
+
+
+class ReduceSeriesStep(_Step):
+    """Reduces each place's series to one figure over a shared date window.
+
+    Attributes:
+        script: Always `"reduce_series"`.
+        table: The fetched or derived table whose series are reduced.
+        metric: The figure computed for each place.
+        places: The target places, or `None` for the table's places.
+        start_date: The inclusive start of the dates considered, or `None`
+            when they are open at the start.
+        end_date: The inclusive end of the dates considered, or `None` when
+            they are open at the end.
+        min_coverage: The share of the target places that must have a figure
+            over the window.
+    """
+
+    script: Literal["reduce_series"] = Field(
+        description="The analytical script this step runs."
+    )
+    table: _TableReference = Field(description=_TABLE_DESCRIPTION)
+    metric: SeriesMetric = Field(
+        description=(
+            "reduce_series: the figure computed for each place over one "
+            "window the places share. latest_period_change and "
+            "latest_period_percent_change use the latest pair of "
+            "consecutive dates; absolute_change, percent_change, and cagr "
+            "compare the window's two ends (cagr needs at least a year); "
+            "period_mean averages the observations within the window. The "
+            "output is a cohort for rank_cohort, summarize_distribution, or "
+            "relate_cohorts."
+        )
+    )
+    places: list[str] | None = Field(
+        default=None, min_length=1, description=_PLACES_DESCRIPTION
+    )
+    start_date: str | None = Field(
+        default=None, description=_START_DATE_DESCRIPTION
+    )
+    end_date: str | None = Field(
+        default=None, description=_END_DATE_DESCRIPTION
+    )
+    min_coverage: _Coverage = Field(
+        default=DEFAULT_MIN_COVERAGE,
+        description=(
+            "reduce_series: the share of the target places, from 0 to 1 "
+            f"(default {DEFAULT_MIN_COVERAGE}), that must have a figure over "
+            "the window."
+        ),
     )
 
 
@@ -253,13 +338,17 @@ class RankCohortStep(_Step):
     n: int = Field(
         default=DEFAULT_MAX_ENTRIES_PER_END,
         ge=1,
+        le=MAX_RANK_ENTRIES_PER_END,
         description=(
             "rank_cohort: how many places each tail reports (default "
-            f"{DEFAULT_MAX_ENTRIES_PER_END})."
+            f"{DEFAULT_MAX_ENTRIES_PER_END}, at most "
+            f"{MAX_RANK_ENTRIES_PER_END})."
         ),
     )
     focal_places: list[str] = Field(
-        default_factory=list, description=_FOCAL_PLACES_DESCRIPTION
+        default_factory=list,
+        max_length=MAX_FOCAL_PLACES,
+        description=_FOCAL_PLACES_DESCRIPTION,
     )
     target_date: str | None = Field(
         default=None, description=_TARGET_DATE_DESCRIPTION
@@ -297,7 +386,9 @@ class SummarizeDistributionStep(_Step):
         ),
     )
     focal_places: list[str] = Field(
-        default_factory=list, description=_FOCAL_PLACES_DESCRIPTION
+        default_factory=list,
+        max_length=MAX_FOCAL_PLACES,
+        description=_FOCAL_PLACES_DESCRIPTION,
     )
     target_date: str | None = Field(
         default=None, description=_TARGET_DATE_DESCRIPTION
@@ -346,7 +437,10 @@ class ComputeCompositionStep(_Step):
         ),
     )
     places: list[str] | None = Field(
-        default=None, description=_PLACES_DESCRIPTION
+        default=None,
+        min_length=1,
+        max_length=MAX_COMPOSITION_PLACES,
+        description=_COMPOSITION_PLACES_DESCRIPTION,
     )
     target_date: str | None = Field(
         default=None, description=_TARGET_DATE_DESCRIPTION
@@ -467,9 +561,11 @@ class RelateCohortsStep(_Step):
     n: int = Field(
         default=DEFAULT_MAX_ENTRIES_PER_END,
         ge=1,
+        le=MAX_RANK_ENTRIES_PER_END,
         description=(
             "relate_cohorts: how many places each group holds (default "
-            f"{DEFAULT_MAX_ENTRIES_PER_END}), "
+            f"{DEFAULT_MAX_ENTRIES_PER_END}, at most "
+            f"{MAX_RANK_ENTRIES_PER_END}), "
             "at most half of the places both tables cover."
         ),
     )
@@ -501,6 +597,7 @@ class RelateCohortsStep(_Step):
 
 SpecificationStep = Annotated[
     AlignCohortStep
+    | ReduceSeriesStep
     | AnalyzeTimeseriesStep
     | RankCohortStep
     | SummarizeDistributionStep
@@ -549,8 +646,10 @@ class AnalysisSpecification(BaseModel):
     )
     focal_places: list[str] = Field(
         default_factory=list,
+        max_length=MAX_FOCAL_PLACES,
         description=(
-            "Place DCIDs the question is about, reported wherever they rank."
+            f"At most {MAX_FOCAL_PLACES} place DCIDs the question is about, "
+            "reported wherever they rank."
         ),
     )
 
@@ -771,13 +870,15 @@ def get_step_output_kind(step: SpecificationStep) -> StepOutputKind:
         step: The step to inspect.
 
     Returns:
-        `cohort` for `align_cohort`, `table` for `compute_derived_metric`,
-        and `result` for every other script, whose output no later step can
-        read.
+        `cohort` for `align_cohort`, `window_cohort` for `reduce_series`,
+        `table` for `compute_derived_metric`, and `result` for every other
+        script, whose output no later step can read.
     """
     match step:
         case AlignCohortStep():
             return "cohort"
+        case ReduceSeriesStep():
+            return "window_cohort"
         case ComputeDerivedMetricStep():
             return "table"
         case _:
@@ -790,6 +891,7 @@ def _get_input_kind(step: SpecificationStep) -> _InputKind:
         case (
             AlignCohortStep()
             | AnalyzeTimeseriesStep()
+            | ReduceSeriesStep()
             | ComputeDerivedMetricStep()
         ):
             return "table"
@@ -806,8 +908,13 @@ def validate_specification(
     reference patterns, and bounds. This function checks what Pydantic
     cannot: step ids are unique and sequential; every `t<n>` names a cached
     table and every `s<n>` a strictly earlier step whose output the
-    consuming step accepts; every `align_cohort` step is consumed by a later
-    step, because an alignment produces no result of its own; no
+    consuming step accepts, a `reduce_series` window cohort being read only
+    by the `table` of `rank_cohort` or `summarize_distribution` or by
+    `relate_cohorts`, with no single date requested for it; every
+    `align_cohort` and `reduce_series` step is consumed by a later step,
+    because neither produces a result of its own; no
+    `analyze_timeseries` or `compute_composition` step without `places`
+    covers more places than its cap; no
     `relate_cohorts`, `compute_derived_metric`, or `compute_composition`
     step reads one table twice, or two fetched tables of one variable,
     directly or through an alignment; every `compute_derived_metric` scale
@@ -829,7 +936,8 @@ def validate_specification(
     problems = [
         *_validate_step_ids(specification.steps),
         *_validate_references(specification.steps, cache),
-        *_validate_alignments_are_used(specification.steps),
+        *_validate_cohorts_are_used(specification.steps),
+        *_validate_step_place_caps(specification.steps, cache),
         *_validate_distinct_inputs(specification.steps, cache),
         *_validate_derived_parameters(specification.steps),
         *_validate_places(specification),
@@ -912,8 +1020,8 @@ def _validate_reference(
     if kind == "result":
         return (
             f"{label} references {reference}, whose script produces only a "
-            "result; only align_cohort and compute_derived_metric outputs "
-            "can be used as inputs."
+            "result; only align_cohort, reduce_series, and "
+            "compute_derived_metric outputs can be used as inputs."
         )
     if kind == "cohort" and _get_input_kind(step) == "table":
         return (
@@ -921,24 +1029,166 @@ def _validate_reference(
             f"{step.script} needs a full table (t<n> or a "
             "compute_derived_metric output)."
         )
+    if kind == "window_cohort":
+        return _validate_window_cohort_reference(step, field_name, reference)
     return None
 
 
-def _validate_alignments_are_used(
+def _validate_window_cohort_reference(
+    step: SpecificationStep, field_name: str, reference: str
+) -> str | None:
+    """Returns the problem with a reference to a `reduce_series` output.
+
+    A window cohort holds one figure per place over a date window, so only
+    a single-value cohort input reads it: the `table` of `rank_cohort` or
+    `summarize_distribution`, or the `target` or `by` of `relate_cohorts`.
+    The single date of that input must be omitted, because the cohort has
+    none.
+    """
+    label = f"{step.step_id}.{field_name}"
+    date_field: str
+    date: str | None
+    match step:
+        case RankCohortStep() | SummarizeDistributionStep() if (
+            field_name == "table"
+        ):
+            date_field, date = "target_date", step.target_date
+        case RelateCohortsStep() if field_name == "target":
+            date_field, date = "target_date", step.target_date
+        case RelateCohortsStep():
+            date_field, date = "by_date", step.by_date
+        case _:
+            return (
+                f"{label} references the window cohort {reference}; a "
+                "reduce_series output can only be the table of rank_cohort "
+                "or summarize_distribution, or the target or by of "
+                "relate_cohorts."
+            )
+    if date is not None:
+        return (
+            f"{label} references the window cohort {reference}, which spans "
+            f"a date window, so {step.step_id}.{date_field} must be omitted."
+        )
+    return None
+
+
+def _validate_cohorts_are_used(
     steps: Sequence[SpecificationStep],
 ) -> list[str]:
-    """Reports every `align_cohort` step that no step references."""
+    """Reports every cohort-producing step that no step references.
+
+    An `align_cohort` or `reduce_series` step produces a cohort and no
+    result, so an unreferenced one does nothing.
+    """
     referenced = {
         reference for step in steps for _, reference in list_step_inputs(step)
     }
-    return [
-        f"{step.step_id} (align_cohort) is not used by a later step; an "
-        "alignment produces no result on its own, so reference it from "
-        "rank_cohort, summarize_distribution, compute_composition, or "
-        "relate_cohorts, or remove it."
-        for step in steps
-        if isinstance(step, AlignCohortStep) and step.step_id not in referenced
-    ]
+    problems: list[str] = []
+    for step in steps:
+        if step.step_id in referenced:
+            continue
+        if isinstance(step, AlignCohortStep):
+            problems.append(
+                f"{step.step_id} (align_cohort) is not used by a later step; "
+                "an alignment produces no result on its own, so reference it "
+                "from rank_cohort, summarize_distribution, "
+                "compute_composition, or relate_cohorts, or remove it."
+            )
+        elif isinstance(step, ReduceSeriesStep):
+            problems.append(
+                f"{step.step_id} (reduce_series) is not used by a later step; "
+                "a reduction produces no result on its own, so reference it "
+                "from rank_cohort, summarize_distribution, or "
+                "relate_cohorts, or remove it."
+            )
+    return problems
+
+
+def _resolve_known_places(
+    reference: str, known: dict[str, frozenset[str]], cache: TurnCache
+) -> frozenset[str] | None:
+    """Returns the places with data behind a reference, when known.
+
+    A fetched table's places are its places with data; an earlier step's
+    are those recorded in `known`. A missing table is reported by
+    `_validate_references`, so it yields None here.
+    """
+    if reference.startswith(FETCHED_TABLE_PREFIX):
+        entry = cache.get(reference)
+        return (
+            frozenset(entry.table.places_with_data)
+            if entry is not None
+            else None
+        )
+    return known.get(reference)
+
+
+def _validate_step_place_caps(
+    steps: Sequence[SpecificationStep], cache: TurnCache
+) -> list[str]:
+    """Reports every uncapped step whose input covers too many places.
+
+    `analyze_timeseries` and `compute_composition` report every place they
+    cover, so without `places` their input may cover at most
+    `MAX_STANDALONE_SERIES_PLACES` and `MAX_COMPOSITION_PLACES` places. The
+    places of a derived table or an aligned cohort are followed from their
+    inputs. A problem names only the step, its script and table reference,
+    and counts, never a value the model wrote.
+    """
+    known: dict[str, frozenset[str]] = {}
+    problems: list[str] = []
+    for step in steps:
+        match step:
+            case AnalyzeTimeseriesStep() if step.places is None:
+                places = _resolve_known_places(step.table, known, cache)
+                if (
+                    places is not None
+                    and len(places) > MAX_STANDALONE_SERIES_PLACES
+                ):
+                    problems.append(
+                        f"{step.step_id} ({step.script}) on {step.table} "
+                        f"covers {len(places)} places, more than the "
+                        f"{MAX_STANDALONE_SERIES_PLACES} it summarizes "
+                        "without places; for a change across a cohort, use "
+                        "reduce_series followed by rank_cohort or "
+                        "summarize_distribution, or pass at most "
+                        f"{MAX_STANDALONE_SERIES_PLACES} place DCIDs in "
+                        f"{step.step_id}.places."
+                    )
+            case ComputeCompositionStep() if step.places is None:
+                references = [
+                    *step.components,
+                    *((step.total,) if step.total is not None else ()),
+                ]
+                place_sets = [
+                    _resolve_known_places(reference, known, cache)
+                    for reference in references
+                ]
+                known_sets = [item for item in place_sets if item is not None]
+                if len(known_sets) == len(place_sets):
+                    shared = frozenset.intersection(*known_sets)
+                    if len(shared) > MAX_COMPOSITION_PLACES:
+                        problems.append(
+                            f"{step.step_id} ({step.script}) covers "
+                            f"{len(shared)} places, more than the "
+                            f"{MAX_COMPOSITION_PLACES} it breaks down "
+                            "without places; pass at most "
+                            f"{MAX_COMPOSITION_PLACES} place DCIDs in "
+                            f"{step.step_id}.places."
+                        )
+            case ComputeDerivedMetricStep():
+                left = _resolve_known_places(step.left, known, cache)
+                right = _resolve_known_places(step.right, known, cache)
+                if left is not None and right is not None:
+                    derived = left & right
+                    if step.places is not None:
+                        derived &= frozenset(step.places)
+                    known[step.step_id] = derived
+            case AlignCohortStep():
+                aligned = _resolve_known_places(step.table, known, cache)
+                if aligned is not None:
+                    known[step.step_id] = aligned
+    return problems
 
 
 def _validate_distinct_inputs(
@@ -948,8 +1198,8 @@ def _validate_distinct_inputs(
 
     `relate_cohorts`, `compute_derived_metric`, and `compute_composition`
     each refuse two inputs of one variable. Each input is followed through
-    the `align_cohort` step that produced it, so an alignment of `t1` read
-    beside `t1` is caught.
+    the `align_cohort` or `reduce_series` step that produced it, so an
+    alignment or a reduction of `t1` read beside `t1` is caught.
     """
     problems: list[str] = []
     aligned_tables: dict[str, str] = {}
@@ -965,7 +1215,7 @@ def _validate_distinct_inputs(
             )
             if problem is not None:
                 problems.append(problem)
-        if isinstance(step, AlignCohortStep):
+        if isinstance(step, AlignCohortStep | ReduceSeriesStep):
             aligned_tables[step.step_id] = step.table
     return problems
 
@@ -1064,6 +1314,7 @@ def _list_place_fields(
             return (("focal_places", step.focal_places),)
         case (
             AnalyzeTimeseriesStep()
+            | ReduceSeriesStep()
             | ComputeCompositionStep()
             | ComputeDerivedMetricStep()
         ):
@@ -1099,7 +1350,11 @@ def _list_date_fields(
 ) -> tuple[tuple[str, str | None], ...]:
     """Lists a step's date fields, by field name, set or not."""
     match step:
-        case AnalyzeTimeseriesStep() | ComputeDerivedMetricStep():
+        case (
+            AnalyzeTimeseriesStep()
+            | ReduceSeriesStep()
+            | ComputeDerivedMetricStep()
+        ):
             return (
                 ("start_date", step.start_date),
                 ("end_date", step.end_date),
@@ -1132,7 +1387,12 @@ def _validate_dates(steps: Sequence[SpecificationStep]) -> list[str]:
             for field_name in invalid
         )
         if (
-            isinstance(step, AnalyzeTimeseriesStep | ComputeDerivedMetricStep)
+            isinstance(
+                step,
+                AnalyzeTimeseriesStep
+                | ReduceSeriesStep
+                | ComputeDerivedMetricStep,
+            )
             and not invalid
             and step.start_date is not None
             and step.end_date is not None
@@ -1162,10 +1422,14 @@ def _is_fetched_cohort(table: ObservationTable) -> bool:
 
     A child-place fetch is always a cohort, and a named-place fetch is one
     when `is_named_place_cohort` says so for its requested places, the
-    count the fetch itself used to choose its date window.
+    count the fetch itself used to choose its date window, or for its
+    places with data, so a table without requested places that covers more
+    places than `analyze_timeseries` summarizes is ranked instead.
     """
-    return table.child_place_type is not None or is_named_place_cohort(
-        len(table.requested_places)
+    return (
+        table.child_place_type is not None
+        or is_named_place_cohort(len(table.requested_places))
+        or is_named_place_cohort(len(table.places_with_data))
     )
 
 

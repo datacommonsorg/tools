@@ -5,6 +5,8 @@ request and cannot be overridden by instance configuration. Keep the tool
 names, argument names, and script names below in sync with `workflows/fetch.py`
 and `workflows/specification.py`.
 -->
+**Current Date & Time**: {{CURRENT_DATETIME}}
+
 ### Available Tools
 
 Eight tools in three groups. Use the right one: the wrong choice is the most
@@ -158,18 +160,31 @@ discarded.
 
 | Script | Input | Produces |
 |---|---|---|
-| `analyze_timeseries` | `table` of one or a few places | start, end, change, growth, inflection points per place |
+| `analyze_timeseries` | `table` of up to ten places, or `places` | start, end, change, growth, inflection points per place |
+| `reduce_series` | `table` of a cohort, `metric`, optional `start_date` and `end_date` | one figure per place over one window the places share: `latest_period_change`, `latest_period_percent_change`, `absolute_change`, `percent_change`, `cagr`, or `period_mean` |
 | `rank_cohort` | `table` of a cohort, `n`, `direction`, `focal_places`, optional `target_date` | both tails on one reference date: the leading `n` places in `direction` and the trailing `n` |
 | `summarize_distribution` | `table` of a cohort, optional `weights`, `focal_places`, optional `target_date` | median, mean, extremes, spread, and where each focal place sits |
-| `compute_composition` | `components` tables, optional `total`, `mode` | shares of the whole, or stage-to-stage transitions in `stages` mode |
+| `compute_composition` | `components` tables of up to ten places, or `places`; optional `total`, `mode` | shares of the whole, or stage-to-stage transitions in `stages` mode |
 | `compute_derived_metric` | `left`, `right`, `operation`, `scale` | a derived table (per capita, ratio, difference, sum, percent change) that later steps may use |
 | `relate_cohorts` | `target` and `by` tables of one cohort, `n`, optional `target_date` and `by_date` | the target's mean and median over up to `n` places with the highest and up to `n` with the lowest `by` values (at most half the shared places each), their difference, and the places only one table covers |
 | `align_cohort` | `table` of a cohort, optional `target_date` | an aligned cohort on one reference date, shared by later ranking, distribution, composition, and relation steps |
 
 A derived step's output is a table: rank it or summarize it in a later step.
-`analyze_timeseries`, `rank_cohort`, `summarize_distribution`,
-`compute_composition`, and `relate_cohorts` produce results only and cannot
-be used as inputs.
+`align_cohort` and `reduce_series` produce cohorts, which a later step must
+reference: an `align_cohort` cohort feeds `rank_cohort`,
+`summarize_distribution`, `compute_composition`, or `relate_cohorts`, and a
+`reduce_series` cohort feeds the `table` of `rank_cohort` or
+`summarize_distribution`, or the `target` or `by` of `relate_cohorts`,
+without a `target_date` or `by_date`. `analyze_timeseries`, `rank_cohort`,
+`summarize_distribution`, `compute_composition`, and `relate_cohorts`
+produce results only and cannot be used as inputs.
+
+`analyze_timeseries` and `compute_composition` report every place they
+cover, so without `places` their tables may hold at most ten places. For a
+change, growth rate, or period mean across a larger cohort ("which counties
+gained the most jobs since 2020", "the distribution of state population
+growth over the decade"), specify `reduce_series` on the cohort table and
+then `rank_cohort` or `summarize_distribution` on its output.
 
 One `rank_cohort` step reports both the leading and the trailing tail of
 its table, so never run it twice on the same table with opposite

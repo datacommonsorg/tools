@@ -49,6 +49,7 @@ from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.tables import (
     ObservationTable,
     clean_display_name,
+    is_window_reference_date,
 )
 from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.workflows.specification import (
@@ -928,13 +929,15 @@ def _check_shared_axis(
             raise _ChartRejectedError(mismatch.message)
 
 
-def _get_result_reference_date(
+def _get_raw_result_reference_date(
     result: ScriptResult, variable_dcid: str
 ) -> str | None:
-    """Returns the date a result's figures for a variable are aligned to.
+    """Returns a result's reference date for a variable, windows included.
 
     A relation aligns each of its variables on its own date, so its date is
     read per variable from the metrics rather than from one coverage date.
+    The date is a single observation date or, for a result over a
+    `reduce_series` window cohort, a `start..end` date window.
     """
     metrics = result.metrics
     if isinstance(metrics, RelationMetrics):
@@ -955,6 +958,45 @@ def _get_result_reference_date(
     ):
         return metrics.cross_place_comparison.reference_date
     return None
+
+
+def _get_result_reference_date(
+    result: ScriptResult, variable_dcid: str
+) -> str | None:
+    """Returns the single date a result's figures for a variable are at.
+
+    A date window is not a date a chart can be drawn at, so a result over a
+    window cohort has no single reference date.
+    """
+    raw = _get_raw_result_reference_date(result, variable_dcid)
+    if raw is None or is_window_reference_date(raw):
+        return None
+    return raw
+
+
+def _is_window_only_table(entry: CachedTable, context: _ChartContext) -> bool:
+    """Returns whether the digest ranks a table only over date windows.
+
+    True when at least one result over the table's variable has a date
+    window as its reference date and none has a single date, so the
+    digest's ranked places describe a change over a window rather than the
+    values on any one date.
+    """
+    variable_dcid = entry.table.variable_dcid
+    raw_dates = [
+        _get_raw_result_reference_date(result, variable_dcid)
+        for result in _list_bound_results(entry.table_id, context)
+        if variable_dcid in result.variables
+    ]
+    has_window = any(
+        date is not None and is_window_reference_date(date)
+        for date in raw_dates
+    )
+    has_single_date = any(
+        date is not None and not is_window_reference_date(date)
+        for date in raw_dates
+    )
+    return has_window and not has_single_date
 
 
 def _find_reference_date(
@@ -1069,13 +1111,23 @@ def _select_ranked_slice(
 
     Returns:
         The slice's places and the date they were ranked at; no places and
-        None when the table cannot be ranked at the target date.
+        None when the table cannot be ranked at the target date, or when no
+        date is given and the digest ranks the table only over date windows
+        with fewer places than the slice asks for.
     """
     count, is_highest = slice_choice.count, slice_choice.is_highest
     if not use_latest:
         found = _find_digest_slice(entry, context, count, is_highest, date)
         if found is not None:
             return found
+    # A table the digest ranks only over a window is not ranked again by
+    # its values on one date, which would name other places than the prose.
+    if (
+        not use_latest
+        and date is None
+        and _is_window_only_table(entry, context)
+    ):
+        return [], None
     # `rank_cohort` orders `top_n` from the leading end of `direction`, so
     # an ascending ranking's `top_n` starts at the smallest value.
     ranked = rank_cohort(
@@ -1593,6 +1645,43 @@ def _resolve_basics(
     )
 
 
+def _check_window_snapshot(
+    spec: ChartSpecification,
+    tables: Sequence[_ResolvedTable],
+    context: _ChartContext,
+) -> None:
+    """Rejects an undated single-date chart of a window-ranked table.
+
+    A `ranking`, `bar`, `map`, or `scatter` without a date would draw the
+    latest values of a table whose digest figures are changes over a date
+    window, so it needs an explicit date; a window ranking is charted as a
+    `line` of its places. A `highlight` shows one place's value and is not
+    checked.
+
+    Raises:
+        _ChartRejectedError: If such a chart has no date and a charted
+            table is ranked by the digest only over date windows.
+    """
+    if (
+        isinstance(
+            spec,
+            RankingChartSpecification
+            | BarChartSpecification
+            | MapChartSpecification
+            | ScatterChartSpecification,
+        )
+        and spec.date is None
+        and any(
+            _is_window_only_table(item.analysis_entry, context)
+            for item in tables
+        )
+    ):
+        raise _ChartRejectedError(
+            f"a {spec.kind} chart of a table ranked over a date window needs "
+            "a date; chart the window's places as a line"
+        )
+
+
 def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
     """Resolves a specification, or raises `_ChartRejectedError`."""
     tables, per_capita = _resolve_tables(spec, context)
@@ -1607,6 +1696,7 @@ def _resolve(spec: ChartSpecification, context: _ChartContext) -> ResolvedChart:
             variable_dcids=_require_variables(variables),
             scope=_resolve_line_scope(spec, tables, context),
         )
+    _check_window_snapshot(spec, tables, context)
     shared_dates = _list_shared_dates(tables)
     date = _resolve_date(spec, tables, context, shared_dates)
     match spec:

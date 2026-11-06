@@ -63,6 +63,7 @@ from dataclasses import dataclass, field, replace
 
 import pytest
 
+from narratives_agent import config
 from narratives_agent.analytics.digest import (
     AnalysisDigest,
     RefusedScriptResult,
@@ -2232,3 +2233,38 @@ async def test_a_complete_turn_serializes_to_the_recorded_frames(
 
     serialized = [(event, json.dumps(data)) for event, data in turn.events]
     assert serialized == _WIRE_FRAMES
+
+
+@pytest.mark.asyncio
+async def test_every_phase_of_a_turn_reads_one_pinned_timestamp(
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+) -> None:
+    # Test: The timestamp the prompts of one turn render.
+    # Situation: The current time advances on every read, and the first and
+    #   last phases of a turn (classification and follow-ups) each read
+    #   `get_current_datetime`.
+    # Expectation: Both phases read the timestamp pinned when the turn
+    #   started, and a read after the turn sees the time advance again.
+    readings = iter(f"time {index}" for index in range(10))
+    monkeypatch.setattr(
+        config, "_format_current_datetime", lambda: next(readings)
+    )
+    seen: list[str] = []
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        seen.append(config.get_current_datetime())
+        await asyncio.sleep(0)
+        seen.append(config.get_current_datetime())
+        return Admitted(_CLASSIFICATION)
+
+    async def run_follow_ups(*args: object, **_: object) -> None:
+        seen.append(config.get_current_datetime())
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+    monkeypatch.setattr(chat_pipeline, "run_followups", run_follow_ups)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    assert turn.finished == [(TerminalState.COMPLETE, None)]
+    assert seen == ["time 0", "time 0", "time 0"]
+    assert config.get_current_datetime() == "time 1"

@@ -25,6 +25,7 @@ from typing import Literal
 from narratives_agent.analytics.alignment import (
     DEFAULT_MIN_COVERAGE,
     CohortRow,
+    WindowRow,
 )
 from narratives_agent.analytics.digest import (
     PERCENT_SCALE,
@@ -36,6 +37,7 @@ from narratives_agent.analytics.metrics import (
     RankEntry,
     RankingDirection,
     RankingMetrics,
+    WindowRankEntry,
 )
 from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
@@ -121,14 +123,34 @@ def _build_rank_entry(
     percentiles: dict[float, float],
     tie_counts: Counter[float],
 ) -> RankEntry:
-    """Builds the `RankEntry` that describes one ranked place."""
+    """Builds the `RankEntry` that describes one ranked place.
+
+    A row of a window cohort yields a `WindowRankEntry`, which also carries
+    the observations the place's figure was computed from.
+    """
+    rank = ranks[row.value]
+    is_tied = tie_counts[row.value] > 1
+    percentile = percentiles[row.value]
+    if isinstance(row, WindowRow):
+        return WindowRankEntry(
+            rank=rank,
+            is_tied=is_tied,
+            place_dcid=row.place_dcid,
+            place_name=row.place_name,
+            value=row.value,
+            percentile=percentile,
+            from_date=row.from_date,
+            to_date=row.to_date,
+            from_value=row.from_value,
+            to_value=row.to_value,
+        )
     return RankEntry(
-        rank=ranks[row.value],
-        is_tied=tie_counts[row.value] > 1,
+        rank=rank,
+        is_tied=is_tied,
         place_dcid=row.place_dcid,
         place_name=row.place_name,
         value=row.value,
-        percentile=percentiles[row.value],
+        percentile=percentile,
     )
 
 
@@ -223,8 +245,10 @@ def rank_cohort(
         trailing entries, ordered from the far end inward), `focal_entries`
         (in `focal_places` order), and `missing_focal_places`. Each entry is
         a `RankEntry` carrying `rank`, `is_tied`, `place_dcid`,
-        `place_name`, `value`, and `percentile`. A caveat notes an end that
-        leaves out places tied with its last entry. The result is refused
+        `place_name`, `value`, and `percentile`, and for a `WindowCohort`
+        a `WindowRankEntry` that adds `from_date`, `to_date`, `from_value`,
+        and `to_value`. A caveat notes an end that leaves out places tied
+        with its last entry. The result is refused
         with `invalid_parameters` when `max_entries_per_end` is below 1,
         `target_date` is not a valid date, differs from a cohort's reference
         date, or is given for a date-window cohort, `min_coverage` is

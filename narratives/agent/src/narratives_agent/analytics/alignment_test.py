@@ -17,11 +17,13 @@ Covers reference-date selection against the coverage threshold and at its
 boundary, its input guards, mixed vintage detection, the two refusal reasons
 with their coverage figures, explicit target dates and their date precision,
 rows at mixed date precisions, duplicate requested places, message wording,
-validation of the threshold and the target date, and unit and scaling
-compatibility across tables and cohorts.
+validation of the threshold and the target date, unit and scaling
+compatibility across tables and cohorts, and the invariants of window rows
+and window cohorts.
 """
 
 import dataclasses
+import math
 import re
 from collections.abc import Sequence
 
@@ -33,6 +35,8 @@ from narratives_agent.analytics.alignment import (
     Cohort,
     CohortRow,
     UnitMismatch,
+    WindowCohort,
+    WindowRow,
     align_cohort,
     find_unit_mismatch,
     has_adequate_coverage,
@@ -705,3 +709,104 @@ def test_find_unit_mismatch_compares_any_cohort_input(
     #   `unit_mismatch` and the other scaling factor a `scaling_mismatch`,
     #   each naming both inputs' variables.
     assert find_unit_mismatch(_build_spanning_cohort(), other) == expected
+
+
+def _build_window_row(
+    *, value: float = 4.0, from_value: float = 1.0, to_value: float = 5.0
+) -> WindowRow:
+    """Builds the row of a change from 2020 to 2024 for one place."""
+    return WindowRow(
+        place_dcid="a",
+        place_name="A",
+        from_date="2020",
+        to_date="2024",
+        from_value=from_value,
+        to_value=to_value,
+        value=value,
+    )
+
+
+def _build_window_cohort(
+    *,
+    start_date: str = "2020",
+    end_date: str = "2024",
+    rows: tuple[WindowRow, ...] | None = None,
+) -> WindowCohort:
+    """Builds a one-place cohort of the change in population."""
+    return WindowCohort(
+        variable_dcid="Count_Person",
+        variable_name="Total population",
+        metric="absolute_change",
+        start_date=start_date,
+        end_date=end_date,
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(sources=(Source(name="s", url="u"),)),
+        rows=(_build_window_row(),) if rows is None else rows,
+        place_names={"a": "A"},
+        coverage=CoverageReport(
+            contributing_places=1,
+            requested_places=1,
+            coverage_ratio=1.0,
+            reference_date=f"{start_date}..{end_date}",
+        ),
+    )
+
+
+@pytest.mark.parametrize("field_name", ["value", "from_value", "to_value"])
+@pytest.mark.parametrize("number", [math.nan, math.inf])
+def test_a_window_row_rejects_non_finite_numbers(
+    field_name: str, number: float
+) -> None:
+    # Test: The finiteness check of `WindowRow`.
+    # Situation: The figure or one endpoint value is `NaN` or infinite.
+    # Expectation: Construction raises `ValueError` naming the field.
+    with pytest.raises(ValueError, match=f"WindowRow.{field_name}"):
+        _build_window_row(**{field_name: number})
+
+
+def test_a_window_cohort_names_its_window_and_figure() -> None:
+    # Test: The derived properties of `WindowCohort`.
+    # Situation: A cohort of the change in population from 2020 to 2024.
+    # Expectation: The reference date is the `2020..2024` window and the
+    #   figure label names the metric and the variable.
+    cohort = _build_window_cohort()
+    assert cohort.reference_date == "2020..2024"
+    assert cohort.metric_label == "change in Total population"
+
+
+def test_window_rows_and_cohorts_satisfy_the_protocols() -> None:
+    # Test: Structural conformance of the window types.
+    # Situation: A `WindowRow` and a `WindowCohort`, assigned to
+    #   protocol-typed names for the static check.
+    # Expectation: They are `CohortRow` and `Cohort` instances.
+    cohort: Cohort = _build_window_cohort()
+    row: CohortRow = cohort.rows[0]
+    assert isinstance(row, CohortRow)
+    assert isinstance(cohort, Cohort)
+
+
+@pytest.mark.parametrize(
+    ("start_date", "end_date", "rows", "message"),
+    [
+        ("2020", "2024", (), "at least one row"),
+        ("2024", "2024", None, "not 2024..2024"),
+        ("2024", "2020", None, "not 2024..2020"),
+        ("2020", "2024-01", None, "not 2020..2024-01"),
+    ],
+    ids=["no rows", "equal ends", "inverted ends", "mixed precision"],
+)
+def test_a_window_cohort_rejects_an_empty_or_invalid_window(
+    start_date: str,
+    end_date: str,
+    rows: tuple[WindowRow, ...] | None,
+    message: str,
+) -> None:
+    # Test: The construction invariants of `WindowCohort`.
+    # Situation: A cohort with no rows, or with a window whose ends are
+    #   equal, inverted, or of different precisions.
+    # Expectation: Construction raises `ValueError` naming the problem.
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _build_window_cohort(
+            start_date=start_date, end_date=end_date, rows=rows
+        )

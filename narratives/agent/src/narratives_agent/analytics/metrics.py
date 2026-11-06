@@ -22,15 +22,20 @@ Defines `ScriptName`, the per-script metric dataclasses (`TimeseriesMetrics`,
 `StagesPlace`, `RelationEntry`, `GroupSummary`), and the `ScriptMetrics` union.
 Each metrics record names its script in a `script` class variable so
 `OkScriptResult` can enforce at construction time that it carries the metric
-record matching its `script`.
+record matching its `script`. It also defines the window metrics that
+`reduce_series` computes per place (`SeriesMetric`) and the entry subclasses
+(`WindowPlaceValue`, `WindowRankEntry`, `WindowDistributionFocalEntry`) that
+carry the endpoints of a place's date window.
 """
 
+import math
 from dataclasses import dataclass
 from typing import ClassVar, Literal
 
 from narratives_agent.analytics.tables import ObservationRow
 
 __all__ = [
+    "SERIES_METRIC_LABELS",
     "CompositionComponent",
     "CompositionMetrics",
     "CompositionMode",
@@ -54,14 +59,21 @@ __all__ = [
     "RelationMetrics",
     "ScriptMetrics",
     "ScriptName",
+    "SeriesMetric",
     "StageShare",
     "StageTransition",
     "StagesPlace",
     "TimeseriesMetrics",
+    "WindowDistributionFocalEntry",
+    "WindowPlaceValue",
+    "WindowRankEntry",
+    "format_series_metric_label",
+    "validate_finite_values",
 ]
 
 type ScriptName = Literal[
     "align_cohort",
+    "reduce_series",
     "analyze_timeseries",
     "rank_cohort",
     "summarize_distribution",
@@ -69,6 +81,37 @@ type ScriptName = Literal[
     "compute_derived_metric",
     "relate_cohorts",
 ]
+
+# The figure `reduce_series` computes for each place over a date window.
+type SeriesMetric = Literal[
+    "latest_period_change",
+    "latest_period_percent_change",
+    "absolute_change",
+    "percent_change",
+    "cagr",
+    "period_mean",
+]
+
+# Prose prefix of each window metric, completed by the variable's name, as in
+# `"change in Total population"`.
+SERIES_METRIC_LABELS: dict[SeriesMetric, str] = {
+    "latest_period_change": "1-period change in",
+    "latest_period_percent_change": "1-period percentage change in",
+    "absolute_change": "change in",
+    "percent_change": "percentage change in",
+    "cagr": "compound annual growth rate of",
+    "period_mean": "period mean of",
+}
+
+
+def format_series_metric_label(metric: SeriesMetric, variable_name: str) -> str:
+    """Names a window metric of a variable as it appears in prose.
+
+    For example, `absolute_change` of `Total population` reads
+    `"change in Total population"`.
+    """
+    return f"{SERIES_METRIC_LABELS[metric]} {variable_name}"
+
 
 type ExtremumKind = Literal["peak", "trough"]
 type RankingDirection = Literal["desc", "asc"]
@@ -189,6 +232,58 @@ class PlaceValue:
     value: float
 
 
+def validate_finite_values(
+    record: str, place_dcid: str, values: dict[str, float | None]
+) -> None:
+    """Raises `ValueError` naming the first value that is `NaN` or infinite.
+
+    A `None` value is skipped, because it marks a figure that is undefined.
+    It is shared by the window records in `metrics` and `alignment`.
+
+    Args:
+        record: The record's name, prefixed to the field in the message.
+        place_dcid: The place the record describes, named in the message.
+        values: The values to check, by field name.
+    """
+    for name, value in values.items():
+        if value is not None and not math.isfinite(value):
+            raise ValueError(
+                f"{record}.{name} must be finite, not {value} for {place_dcid}."
+            )
+
+
+@dataclass(frozen=True)
+class WindowPlaceValue(PlaceValue):
+    """One place's window figure, with the observations it was computed from.
+
+    Attributes:
+        from_date: Date of the observation that opens the place's window.
+        to_date: Date of the observation that closes the place's window.
+        from_value: Value observed on `from_date`.
+        to_value: Value observed on `to_date`.
+
+    Raises:
+        ValueError: If `value`, `from_value`, or `to_value` is not finite.
+    """
+
+    from_date: str
+    to_date: str
+    from_value: float
+    to_value: float
+
+    def __post_init__(self) -> None:
+        """Rejects a figure or endpoint value that is `NaN` or infinite."""
+        validate_finite_values(
+            "WindowPlaceValue",
+            self.place_dcid,
+            {
+                "value": self.value,
+                "from_value": self.from_value,
+                "to_value": self.to_value,
+            },
+        )
+
+
 @dataclass(frozen=True)
 class LeaderDelta:
     """How a place compares against the leading place on a reference date.
@@ -277,6 +372,38 @@ class RankEntry:
 
 
 @dataclass(frozen=True)
+class WindowRankEntry(RankEntry):
+    """One place's rank by a window figure, with the observations behind it.
+
+    Attributes:
+        from_date: Date of the observation that opens the place's window.
+        to_date: Date of the observation that closes the place's window.
+        from_value: Value observed on `from_date`.
+        to_value: Value observed on `to_date`.
+
+    Raises:
+        ValueError: If `value`, `from_value`, or `to_value` is not finite.
+    """
+
+    from_date: str
+    to_date: str
+    from_value: float
+    to_value: float
+
+    def __post_init__(self) -> None:
+        """Rejects a figure or endpoint value that is `NaN` or infinite."""
+        validate_finite_values(
+            "WindowRankEntry",
+            self.place_dcid,
+            {
+                "value": self.value,
+                "from_value": self.from_value,
+                "to_value": self.to_value,
+            },
+        )
+
+
+@dataclass(frozen=True)
 class RankingMetrics:
     """Metrics produced by `rank_cohort`.
 
@@ -342,6 +469,40 @@ class DistributionFocalEntry:
     diff_from_mean: float
     z_score: float | None
     percentile: float
+
+
+@dataclass(frozen=True)
+class WindowDistributionFocalEntry(DistributionFocalEntry):
+    """One focal place's benchmark by a window figure, with its observations.
+
+    Attributes:
+        from_date: Date of the observation that opens the place's window.
+        to_date: Date of the observation that closes the place's window.
+        from_value: Value observed on `from_date`.
+        to_value: Value observed on `to_date`.
+
+    Raises:
+        ValueError: If `value`, `from_value`, `to_value`, or a `z_score`
+            that is not None is not finite.
+    """
+
+    from_date: str
+    to_date: str
+    from_value: float
+    to_value: float
+
+    def __post_init__(self) -> None:
+        """Rejects a figure, endpoint, or z-score that is `NaN` or infinite."""
+        validate_finite_values(
+            "WindowDistributionFocalEntry",
+            self.place_dcid,
+            {
+                "value": self.value,
+                "from_value": self.from_value,
+                "to_value": self.to_value,
+                "z_score": self.z_score,
+            },
+        )
 
 
 @dataclass(frozen=True)

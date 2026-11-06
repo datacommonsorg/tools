@@ -26,7 +26,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from narratives_agent.analytics.alignment import AlignedCohort
+from narratives_agent.analytics.alignment import (
+    AlignedCohort,
+    Cohort,
+    WindowCohort,
+)
 from narratives_agent.analytics.composition import compute_composition
 from narratives_agent.analytics.derived import derive_observation_table
 from narratives_agent.analytics.digest import (
@@ -45,7 +49,10 @@ from narratives_agent.analytics.ranking import rank_cohort
 from narratives_agent.analytics.relations import relate_cohorts
 from narratives_agent.analytics.script_inputs import resolve_aligned_cohort
 from narratives_agent.analytics.tables import ObservationTable
-from narratives_agent.analytics.timeseries import analyze_timeseries
+from narratives_agent.analytics.timeseries import (
+    analyze_timeseries,
+    reduce_series,
+)
 from narratives_agent.workflows.specification import (
     AlignCohortStep,
     AnalysisSpecification,
@@ -53,6 +60,7 @@ from narratives_agent.workflows.specification import (
     ComputeCompositionStep,
     ComputeDerivedMetricStep,
     RankCohortStep,
+    ReduceSeriesStep,
     RelateCohortsStep,
     SpecificationStep,
     SummarizeDistributionStep,
@@ -78,8 +86,9 @@ _PROCESSING_TIMEOUT_SECONDS = 5.0
 # run queued behind busy workers spends its own budget waiting, so two
 # abandoned runs inside long steps can make concurrent runs time out.
 _PROCESSING_MAX_WORKERS = 2
-# The steps whose script produces only a result. An alignment produces a
-# cohort, and a derived metric produces a table as well as a result.
+# The steps whose script produces only a result. An alignment and a
+# reduction produce a cohort, and a derived metric produces a table as well
+# as a result.
 type _ResultStep = (
     AnalyzeTimeseriesStep
     | RankCohortStep
@@ -231,6 +240,8 @@ class _RunState:
         default_focal_places: The specification's focal places, for the
             steps that name none of their own.
         cohorts: The cohorts aligned by earlier steps, by step id.
+        window_cohorts: The window cohorts reduced by earlier steps, by step
+            id.
         fetched_tables: The fetched tables behind each earlier step's
             cohort or derived table, by step id.
         results: The results of the steps that succeeded, in step order.
@@ -240,17 +251,31 @@ class _RunState:
     tables: dict[str, ObservationTable]
     default_focal_places: list[str]
     cohorts: dict[str, AlignedCohort] = field(default_factory=dict)
+    window_cohorts: dict[str, WindowCohort] = field(default_factory=dict)
     fetched_tables: dict[str, tuple[ObservationTable, ...]] = field(
         default_factory=dict
     )
     results: list[ScriptResult] = field(default_factory=list)
     derived: list[CachedTable] = field(default_factory=list)
 
-    def get_input(self, reference: str) -> ObservationTable | AlignedCohort:
-        """Returns the aligned cohort or table a reference names.
+    def get_input(self, reference: str) -> ObservationTable | Cohort:
+        """Returns the cohort or table a reference names.
 
         `validate_specification` guarantees that every reference names a
         fetched table or the output of an earlier step.
+        """
+        window_cohort = self.window_cohorts.get(reference)
+        if window_cohort is not None:
+            return window_cohort
+        return self.get_composition_input(reference)
+
+    def get_composition_input(
+        self, reference: str
+    ) -> ObservationTable | AlignedCohort:
+        """Returns the aligned cohort or table a composition input names.
+
+        `validate_specification` never lets `compute_composition` read a
+        window cohort, so its inputs are single-date cohorts or tables.
         """
         cohort = self.cohorts.get(reference)
         return cohort if cohort is not None else self.tables[reference]
@@ -345,6 +370,31 @@ def _run_alignment_step(
     return None
 
 
+def _run_reduce_series_step(
+    step: ReduceSeriesStep, state: _RunState
+) -> StepRefusalDiagnostic | None:
+    """Reduces a table's series and records the window cohort for later steps.
+
+    Returns:
+        The diagnostic of a refused reduction, or `None` once the window
+        cohort is recorded.
+    """
+    outcome = reduce_series(
+        state.tables[step.table],
+        step.metric,
+        places=step.places,
+        start_date=step.start_date,
+        end_date=step.end_date,
+        min_coverage=step.min_coverage,
+        step_id=step.step_id,
+    )
+    if isinstance(outcome, RefusedScriptResult):
+        return _build_refusal_diagnostic(step, state, outcome)
+    state.fetched_tables[step.step_id] = state.resolve_fetched_tables(step)
+    state.window_cohorts[step.step_id] = outcome
+    return None
+
+
 def _run_derived_metric_step(
     step: ComputeDerivedMetricStep, state: _RunState
 ) -> StepRefusalDiagnostic | None:
@@ -428,9 +478,12 @@ def _run_result_step(step: _ResultStep, state: _RunState) -> ScriptResult:
             )
         case ComputeCompositionStep():
             return compute_composition(
-                [state.get_input(reference) for reference in step.components],
+                [
+                    state.get_composition_input(reference)
+                    for reference in step.components
+                ],
                 total=(
-                    state.get_input(step.total)
+                    state.get_composition_input(step.total)
                     if step.total is not None
                     else None
                 ),
@@ -454,6 +507,8 @@ def _run_step(
     match step:
         case AlignCohortStep():
             return _run_alignment_step(step, state)
+        case ReduceSeriesStep():
+            return _run_reduce_series_step(step, state)
         case ComputeDerivedMetricStep():
             return _run_derived_metric_step(step, state)
         case _:

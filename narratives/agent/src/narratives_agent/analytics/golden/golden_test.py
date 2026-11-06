@@ -88,6 +88,11 @@ _REQUIRED_CASES = (
     "derived_digest_prompt",
     "relation_two_cohorts",
     "refusal_relation_insufficient_coverage",
+    "reduce_series_window_cohort",
+    "reduce_series_latest_period_percent_change",
+    "ranking_window_cohort",
+    "distribution_window_cohort_end_date_weights",
+    "refusal_reduce_series_short_span",
 )
 
 

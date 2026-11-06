@@ -17,6 +17,8 @@
 holds one value per place, which the cohort scripts accept. `align_cohort`
 selects the most recent date on which enough places report a value and
 returns one row per contributing place with coverage metadata.
+`WindowCohort` holds one figure per place computed over a shared date window
+(by `reduce_series`), with the observations each figure came from.
 `find_unit_mismatch` reports a unit or scaling conflict across tables and
 cohorts before they are combined or compared.
 """
@@ -33,11 +35,18 @@ from narratives_agent.analytics.digest import (
     format_percent,
     format_scaling_factor,
 )
+from narratives_agent.analytics.metrics import (
+    SeriesMetric,
+    format_series_metric_label,
+    validate_finite_values,
+)
 from narratives_agent.analytics.provenance import Provenance
 from narratives_agent.analytics.tables import (
+    WINDOW_DATE_SEPARATOR,
     ObservationRow,
     ObservationTable,
     is_valid_observation_date,
+    is_window_reference_date,
 )
 
 __all__ = [
@@ -47,6 +56,8 @@ __all__ = [
     "Cohort",
     "CohortRow",
     "UnitMismatch",
+    "WindowCohort",
+    "WindowRow",
     "align_cohort",
     "find_unit_mismatch",
     "has_adequate_coverage",
@@ -196,6 +207,109 @@ class AlignedCohort:
     def metric_label(self) -> str:
         """Name of the cohort figure as it appears in prose."""
         return self.variable_name
+
+
+@dataclass(frozen=True)
+class WindowRow:
+    """One place's figure over a date window, with the observations behind it.
+
+    Satisfies `CohortRow`.
+
+    Attributes:
+        place_dcid: DCID of the place.
+        place_name: Display name of the place.
+        from_date: Date of the observation that opens the place's window.
+        to_date: Date of the observation that closes the place's window.
+        from_value: Value observed on `from_date`.
+        to_value: Value observed on `to_date`.
+        value: The window figure, such as the change from `from_value` to
+            `to_value`.
+
+    Raises:
+        ValueError: If `value`, `from_value`, or `to_value` is not finite.
+    """
+
+    place_dcid: str
+    place_name: str
+    from_date: str
+    to_date: str
+    from_value: float
+    to_value: float
+    value: float
+
+    def __post_init__(self) -> None:
+        """Rejects a figure or endpoint value that is `NaN` or infinite."""
+        validate_finite_values(
+            "WindowRow",
+            self.place_dcid,
+            {
+                "value": self.value,
+                "from_value": self.from_value,
+                "to_value": self.to_value,
+            },
+        )
+
+
+@dataclass(frozen=True)
+class WindowCohort:
+    """One figure per place, each computed over the window of the cohort.
+
+    Satisfies `Cohort`. The reference date is the date window
+    `start_date..end_date`, and the figure is named in prose as the metric's
+    label followed by the variable's name (`"change in Total population"`).
+
+    Attributes:
+        variable_dcid: The variable the figures are computed from.
+        variable_name: The variable's display name.
+        metric: The figure computed for each place.
+        start_date: The date that opens the window.
+        end_date: The date that closes the window.
+        unit: The unit of the figures, when known.
+        scaling_factor: The scaling factor of the figures, when known.
+        provenance: The table's provenance with the reduction's methodology.
+        rows: One row per contributing place, sorted by place DCID; never
+            empty.
+        place_names: Display names for the table's places.
+        coverage: How many of the cohort's places contributed.
+        caveats: Qualifications of the figures to state with them.
+
+    Raises:
+        ValueError: If `rows` is empty, or `start_date..end_date` is not a
+            date window (`is_window_reference_date`).
+    """
+
+    variable_dcid: str
+    variable_name: str
+    metric: SeriesMetric
+    start_date: str
+    end_date: str
+    unit: str | None
+    scaling_factor: float | None
+    provenance: Provenance
+    rows: tuple[WindowRow, ...]
+    place_names: dict[str, str]
+    coverage: CoverageReport
+    caveats: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Rejects a cohort without rows or without a valid date window."""
+        if not self.rows:
+            raise ValueError("A window cohort must have at least one row.")
+        if not is_window_reference_date(self.reference_date):
+            raise ValueError(
+                f"A window cohort needs a start date before its end date of "
+                f"the same precision, not {self.reference_date}."
+            )
+
+    @property
+    def reference_date(self) -> str:
+        """The `start..end` date window of the cohort."""
+        return f"{self.start_date}{WINDOW_DATE_SEPARATOR}{self.end_date}"
+
+    @property
+    def metric_label(self) -> str:
+        """Name of the cohort figure as it appears in prose."""
+        return format_series_metric_label(self.metric, self.variable_name)
 
 
 @dataclass(frozen=True)

@@ -34,9 +34,10 @@ Covers six configuration behaviors in `config`:
    empty, or JSON-wrapped secret payloads, and reusing a key another thread
    loaded while the caller waited.
 6. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
-   resolved.
+   resolved, and the timestamp `pin_current_datetime` pins for its context.
 """
 
+import asyncio
 import json
 import os
 from collections.abc import Mapping
@@ -969,3 +970,57 @@ def test_unresolvable_timezone_falls_back_to_utc(
         result = config.get_current_datetime()
     assert result.endswith("UTC")
     assert "Mars/Olympus_Mons" in caplog.text
+
+
+def test_a_pinned_timestamp_is_rendered_until_the_pin_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: `pin_current_datetime` with no value.
+    # Situation: The current time advances on every read; a prompt is
+    #   rendered twice inside the pin and the time is read after it.
+    # Expectation: Both renders name the time pinned on entry, which the
+    #   pin also yields, and the read after the pin sees the time advance.
+    readings = iter(f"time {index}" for index in range(10))
+    monkeypatch.setattr(
+        config, "_format_current_datetime", lambda: next(readings)
+    )
+    _with_config(monkeypatch, None)
+
+    with config.pin_current_datetime() as pinned:
+        first = config.render_prompt("Now: {{CURRENT_DATETIME}}")
+        second = config.render_prompt("Now: {{CURRENT_DATETIME}}")
+
+    assert pinned == "time 0"
+    assert first == second == "Now: time 0"
+    assert config.get_current_datetime() == "time 1"
+
+
+def test_a_pin_is_removed_when_its_block_raises() -> None:
+    # Test: The cleanup of `pin_current_datetime` on an exception.
+    # Situation: A block pins an explicit timestamp and raises.
+    # Expectation: The exception propagates and the timestamp is no longer
+    #   pinned afterward.
+    with (
+        pytest.raises(RuntimeError, match="phase failed"),
+        config.pin_current_datetime("Monday"),
+    ):
+        assert config.get_current_datetime() == "Monday"
+        raise RuntimeError("phase failed")
+
+    assert config.get_current_datetime() != "Monday"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_turns_keep_their_own_pinned_timestamps() -> None:
+    # Test: The isolation of pins across concurrent asyncio tasks.
+    # Situation: Two tasks pin different timestamps and yield to each other
+    #   before reading them back.
+    # Expectation: Each task reads its own timestamp.
+    async def read_pinned(value: str) -> str:
+        with config.pin_current_datetime(value):
+            await asyncio.sleep(0)
+            return config.get_current_datetime()
+
+    readings = await asyncio.gather(read_pinned("first"), read_pinned("second"))
+
+    assert list(readings) == ["first", "second"]

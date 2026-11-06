@@ -16,7 +16,7 @@
 `build_default_charts` projects one chart directly from the primary script
 result of an `AnalysisDigest` when that result defines a chart slice without
 inventing one (`analyze_timeseries`, `rank_cohort`, `compute_composition`, or
-a cohort `relate_cohorts`), and resolves it through
+a cohort `relate_cohorts` on single dates), and resolves it through
 `resolve_chart_specification` so that a default chart passes the same checks
 as a chart the model writes.
 """
@@ -37,7 +37,10 @@ from narratives_agent.analytics.metrics import (
     ScriptMetrics,
     TimeseriesMetrics,
 )
-from narratives_agent.analytics.tables import clean_display_name
+from narratives_agent.analytics.tables import (
+    clean_display_name,
+    is_window_reference_date,
+)
 from narratives_agent.workflows.charts import (
     INVENTORY_PLACE_CAP,
     MIN_LINE_CHART_DATES,
@@ -69,7 +72,8 @@ logger = logging.getLogger(__name__)
 
 # Step input field on `compute_composition` that is not a charted component.
 _AUXILIARY_STEP_INPUTS = frozenset({"total"})
-# Maximum ranked places included in a default bar chart for non-cohort tables.
+# Maximum ranked places included in a default bar chart for non-cohort
+# tables, or in the line chart of a ranking over a date window.
 _DEFAULT_RANKED_PLACE_CAP = 10
 # Fewest places a single-date default chart compares as a bar chart; a
 # single place is shown as a highlight instead.
@@ -215,18 +219,35 @@ def _build_ranking_specification(
     table_ids: Sequence[str],
     has_cohort: bool,
     title: str,
-) -> RankingChartSpecification | BarChartSpecification | None:
+) -> (
+    RankingChartSpecification
+    | BarChartSpecification
+    | LineChartSpecification
+    | None
+):
     """Builds the chart of a `rank_cohort` result from its own slice and date.
 
-    A cohort table is charted as a `ranking` at `metrics.reference_date`,
-    pinned to `bottom_n` for an ascending ranking and to `top_n` when the
-    result slices a larger cohort. Any other table is a `bar` of the places
-    `metrics.top_n` lists first (up to `_DEFAULT_RANKED_PLACE_CAP`) at
+    A ranking over a date window is charted as a `line` of the places
+    `metrics.top_n` lists first (up to `_DEFAULT_RANKED_PLACE_CAP`), so the
+    chart shows the trajectories the ranked changes describe rather than
+    the values on one date. Otherwise a cohort table is charted as a
+    `ranking` at `metrics.reference_date`, pinned to `bottom_n` for an
+    ascending ranking and to `top_n` when the result slices a larger cohort,
+    and any other table is a `bar` of those leading places at
     `metrics.reference_date`, passed directly so resolution does not scan
     earlier digest results.
     """
     if not metrics.top_n:
         return None
+    if is_window_reference_date(metrics.reference_date):
+        return LineChartSpecification(
+            tables=tuple(table_ids),
+            title=title,
+            places=tuple(
+                entry.place_dcid
+                for entry in metrics.top_n[:_DEFAULT_RANKED_PLACE_CAP]
+            ),
+        )
     # `rank_cohort` orders `top_n` from the leading end of `direction`, so
     # `top_n` lists the smallest values first when `direction == "asc"`.
     count = len(metrics.top_n)
@@ -334,13 +355,19 @@ def _build_relation_specification(
 ) -> ScatterChartSpecification | None:
     """Builds the cohort scatter chart of a `relate_cohorts` result.
 
-    Requires two chartable tables drawn across the same cohort. When both
+    Requires two chartable tables drawn across the same cohort, each aligned
+    on a single date: a variable reduced over a date window has no values a
+    scatter can draw, so such a relation has no default chart. When both
     variables were aligned on the same date, the scatter is pinned to that
     date; otherwise `"LATEST"` leaves the resolved date unset so the
     component plots each variable at its own latest date rather than pinning
     `target`'s date onto `by`.
     """
     if len(table_ids) != _SCATTER_TABLE_COUNT or not has_cohort:
+        return None
+    if is_window_reference_date(
+        metrics.target_reference_date
+    ) or is_window_reference_date(metrics.by_reference_date):
         return None
     date = (
         metrics.target_reference_date
@@ -461,8 +488,10 @@ def build_default_charts(
     with `relate_cohorts` results considered before supporting single-table
     steps. Only results whose metrics directly define the chart
     (`analyze_timeseries`, `rank_cohort`, `compute_composition`, and cohort
-    `relate_cohorts`) supply a default chart; distributions, standalone
-    derivations, and non-cohort relations produce none.
+    `relate_cohorts` on single dates) supply a default chart; a ranking over
+    a date window is charted as a `line` of its leading places, and
+    distributions, standalone derivations, non-cohort relations, and
+    relations over a date window produce none.
 
     Args:
         digest: Analysis digest for the turn.

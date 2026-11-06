@@ -32,11 +32,16 @@ from narratives_agent.json_value import JsonObject, JsonValue
 from narratives_agent.workflows.fetch_requests import NAMED_PLACE_SERIES_LIMIT
 from narratives_agent.workflows.specification import (
     _MAX_SPECIFICATION_STEPS,
+    MAX_COMPOSITION_PLACES,
+    MAX_FOCAL_PLACES,
+    MAX_RANK_ENTRIES_PER_END,
+    MAX_STANDALONE_SERIES_PLACES,
     REPORT_UNAVAILABLE,
     SUBMIT_SPECIFICATION,
     AnalysisSpecification,
     ComputeDerivedMetricStep,
     RankCohortStep,
+    ReduceSeriesStep,
     RelateCohortsStep,
     SpecificationStep,
     UnavailableReport,
@@ -141,7 +146,8 @@ def test_step_scripts_match_the_analytics_script_names() -> None:
     # Situation: The `script` literal of each step model, `ScriptName`, and
     #   the scripts the `ScriptMetrics` records declare.
     # Expectation: The step models cover every `ScriptName`, and every
-    #   metrics record's script plus `align_cohort`, which has no metrics.
+    #   metrics record's script plus `align_cohort` and `reduce_series`,
+    #   which produce cohorts rather than metrics.
     step_scripts = {
         get_args(model.model_fields["script"].annotation)[0]
         for model in _STEP_MODELS
@@ -150,7 +156,7 @@ def test_step_scripts_match_the_analytics_script_names() -> None:
         metrics.script for metrics in get_args(ScriptMetrics.__value__)
     }
     assert step_scripts == set(get_args(ScriptName.__value__))
-    assert step_scripts == metrics_scripts | {"align_cohort"}
+    assert step_scripts == metrics_scripts | {"align_cohort", "reduce_series"}
 
 
 def test_the_declarations_name_the_two_functions_and_their_fields() -> None:
@@ -410,6 +416,11 @@ def test_table_id_listing_rejects_a_step_of_another_specification() -> None:
     ("script", "fields", "expected"),
     [
         ("align_cohort", {"table": "t1"}, "cohort"),
+        (
+            "reduce_series",
+            {"table": "t1", "metric": "absolute_change"},
+            "window_cohort",
+        ),
         ("compute_derived_metric", {"left": "t1", "right": "t2"}, "table"),
         ("analyze_timeseries", {"table": "t1"}, "result"),
     ],
@@ -418,8 +429,10 @@ def test_each_step_reports_what_later_steps_can_read(
     script: str, fields: JsonObject, expected: str
 ) -> None:
     # Test: `get_step_output_kind`.
-    # Situation: An alignment, a derived metric, and a series summary.
-    # Expectation: They make a cohort, a table, and only a result available.
+    # Situation: An alignment, a reduction, a derived metric, and a series
+    #   summary.
+    # Expectation: They make a cohort, a window cohort, a table, and only a
+    #   result available.
     (step,) = _build_specification(
         {"step_id": "s1", "script": script, **fields}
     ).steps
@@ -1482,3 +1495,546 @@ def test_the_default_is_none_when_no_table_has_rows() -> None:
     # Expectation: There is no default.
     cache = _build_cache(_build_table("t1", ()))
     assert build_default_specification(None, cache) is None
+
+
+def _build_places(count: int) -> tuple[str, ...]:
+    """Returns `count` distinct place DCIDs."""
+    return tuple(f"geoId/{index:02d}" for index in range(count))
+
+
+def _build_reduction(step_id: str = "s1", table: str = "t1") -> JsonObject:
+    """Builds a `reduce_series` step of the change over the window."""
+    return {
+        "step_id": step_id,
+        "script": "reduce_series",
+        "table": table,
+        "metric": "absolute_change",
+    }
+
+
+def test_a_reduction_validates_with_its_defaults() -> None:
+    # Test: The `reduce_series` step model.
+    # Situation: A reduction naming only its table and metric.
+    # Expectation: It validates into `ReduceSeriesStep` with no places, an
+    #   open window, and the default coverage.
+    (step,) = _build_specification(_build_reduction()).steps
+    assert isinstance(step, ReduceSeriesStep)
+    assert step.metric == "absolute_change"
+    assert (step.places, step.start_date, step.end_date) == (None, None, None)
+    assert step.min_coverage == 0.5
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        {"step_id": "s2", "script": "rank_cohort", "table": "s1"},
+        {"step_id": "s2", "script": "summarize_distribution", "table": "s1"},
+        {
+            "step_id": "s2",
+            "script": "summarize_distribution",
+            "table": "s1",
+            "weights": "t2",
+        },
+        {
+            "step_id": "s2",
+            "script": "relate_cohorts",
+            "target": "s1",
+            "by": "t2",
+        },
+        {
+            "step_id": "s2",
+            "script": "relate_cohorts",
+            "target": "t2",
+            "by": "s1",
+        },
+    ],
+    ids=[
+        "ranking",
+        "distribution",
+        "distribution weighted by a table",
+        "relation target",
+        "relation by",
+    ],
+)
+def test_a_window_cohort_feeds_the_single_value_cohort_inputs(
+    consumer: JsonObject,
+) -> None:
+    # Test: The inputs that accept a `reduce_series` output.
+    # Situation: A reduction of `t1` read by the table of a ranking or a
+    #   distribution, or by either side of a relation to `t2`.
+    # Expectation: No problem is reported.
+    cache = _build_cache(
+        _build_table("t1"), _build_table("t2", variable_dcid="Count_Household")
+    )
+    specification = _build_specification(_build_reduction(), consumer)
+    assert validate_specification(specification, cache) is None
+
+
+@pytest.mark.parametrize(
+    ("consumer", "fragment"),
+    [
+        (
+            {"step_id": "s2", "script": "align_cohort", "table": "s1"},
+            "s2.table references the window cohort s1",
+        ),
+        (
+            _build_reduction("s2", "s1"),
+            "s2.table references the window cohort s1",
+        ),
+        (
+            {"step_id": "s2", "script": "analyze_timeseries", "table": "s1"},
+            "s2.table references the window cohort s1",
+        ),
+        (
+            {
+                "step_id": "s2",
+                "script": "compute_derived_metric",
+                "left": "s1",
+                "right": "t2",
+            },
+            "s2.left references the window cohort s1",
+        ),
+        (
+            {
+                "step_id": "s2",
+                "script": "compute_composition",
+                "components": ["s1", "t2"],
+            },
+            "s2.components references the window cohort s1",
+        ),
+        (
+            {
+                "step_id": "s2",
+                "script": "summarize_distribution",
+                "table": "t2",
+                "weights": "s1",
+            },
+            "s2.weights references the window cohort s1",
+        ),
+    ],
+    ids=[
+        "alignment",
+        "reduction",
+        "series summary",
+        "derived metric",
+        "composition",
+        "distribution weights",
+    ],
+)
+def test_a_window_cohort_is_refused_by_other_inputs(
+    consumer: JsonObject, fragment: str
+) -> None:
+    # Test: The inputs that refuse a `reduce_series` output.
+    # Situation: A reduction of `t1` read by an alignment, another
+    #   reduction, a series summary, a derived metric, a composition, or the
+    #   weights of a distribution.
+    # Expectation: A problem names the step field and the window cohort and
+    #   lists the inputs that accept it; an alignment or reduction that
+    #   reads it is also reported as unused.
+    cache = _build_cache(
+        _build_table("t1"), _build_table("t2", variable_dcid="Count_Household")
+    )
+    problems = validate_specification(
+        _build_specification(_build_reduction(), consumer), cache
+    )
+    assert problems is not None
+    assert problems.splitlines()[0] == (
+        f"{fragment}; a reduce_series output can only be the table of "
+        "rank_cohort or summarize_distribution, or the target or by of "
+        "relate_cohorts."
+    )
+
+
+@pytest.mark.parametrize(
+    ("consumer", "date_field"),
+    [
+        (
+            {
+                "step_id": "s2",
+                "script": "rank_cohort",
+                "table": "s1",
+                "target_date": "2024",
+            },
+            "s2.table references the window cohort s1, which spans a date "
+            "window, so s2.target_date must be omitted.",
+        ),
+        (
+            {
+                "step_id": "s2",
+                "script": "summarize_distribution",
+                "table": "s1",
+                "target_date": "2024",
+            },
+            "s2.table references the window cohort s1, which spans a date "
+            "window, so s2.target_date must be omitted.",
+        ),
+        (
+            {
+                "step_id": "s2",
+                "script": "relate_cohorts",
+                "target": "s1",
+                "by": "t2",
+                "target_date": "2024",
+            },
+            "s2.target references the window cohort s1, which spans a date "
+            "window, so s2.target_date must be omitted.",
+        ),
+        (
+            {
+                "step_id": "s2",
+                "script": "relate_cohorts",
+                "target": "t2",
+                "by": "s1",
+                "by_date": "2024",
+            },
+            "s2.by references the window cohort s1, which spans a date "
+            "window, so s2.by_date must be omitted.",
+        ),
+    ],
+    ids=["ranking", "distribution", "relation target", "relation by"],
+)
+def test_a_window_cohort_input_takes_no_single_date(
+    consumer: JsonObject, date_field: str
+) -> None:
+    # Test: The single date of an input that reads a window cohort.
+    # Situation: A ranking, a distribution, or a relation reads a
+    #   reduction of `t1` and names a single date for that input.
+    # Expectation: The one problem names the input and the date field to
+    #   omit.
+    cache = _build_cache(
+        _build_table("t1"), _build_table("t2", variable_dcid="Count_Household")
+    )
+    problems = validate_specification(
+        _build_specification(_build_reduction(), consumer), cache
+    )
+    assert problems == date_field
+
+
+def test_an_unused_reduction_is_reported() -> None:
+    # Test: A `reduce_series` step no later step reads.
+    # Situation: A reduction of `t1` followed by a ranking of `t1` itself.
+    # Expectation: The one problem names the reduction and the scripts that
+    #   can read it.
+    cache = _build_cache(_build_table("t1"))
+    problems = validate_specification(
+        _build_specification(
+            _build_reduction(),
+            {"step_id": "s2", "script": "rank_cohort", "table": "t1"},
+        ),
+        cache,
+    )
+    assert problems == (
+        "s1 (reduce_series) is not used by a later step; a reduction "
+        "produces no result on its own, so reference it from rank_cohort, "
+        "summarize_distribution, or relate_cohorts, or remove it."
+    )
+
+
+def test_a_reduction_of_a_table_beside_its_own_table_is_reported() -> None:
+    # Test: Distinct inputs followed through a reduction.
+    # Situation: A relation reads a reduction of `t1` as its target and
+    #   `t1` itself as its `by`.
+    # Expectation: The problem names both references as one table.
+    cache = _build_cache(_build_table("t1"))
+    problems = validate_specification(
+        _build_specification(
+            _build_reduction(),
+            {
+                "step_id": "s2",
+                "script": "relate_cohorts",
+                "target": "s1",
+                "by": "t1",
+            },
+        ),
+        cache,
+    )
+    assert problems == (
+        "s2 (relate_cohorts) uses one table as both target and by (s1 and "
+        "t1); name two different tables."
+    )
+
+
+@pytest.mark.parametrize(
+    ("step", "fragment"),
+    [
+        (
+            {
+                "step_id": "s1",
+                "script": "rank_cohort",
+                "table": "t1",
+                "n": MAX_RANK_ENTRIES_PER_END + 1,
+            },
+            "n",
+        ),
+        (
+            {
+                "step_id": "s1",
+                "script": "relate_cohorts",
+                "target": "t1",
+                "by": "t2",
+                "n": MAX_RANK_ENTRIES_PER_END + 1,
+            },
+            "n",
+        ),
+        (
+            {
+                "step_id": "s1",
+                "script": "rank_cohort",
+                "table": "t1",
+                "focal_places": list(_build_places(MAX_FOCAL_PLACES + 1)),
+            },
+            "focal_places",
+        ),
+        (
+            {
+                "step_id": "s1",
+                "script": "summarize_distribution",
+                "table": "t1",
+                "focal_places": list(_build_places(MAX_FOCAL_PLACES + 1)),
+            },
+            "focal_places",
+        ),
+        (
+            {
+                "step_id": "s1",
+                "script": "analyze_timeseries",
+                "table": "t1",
+                "places": list(_build_places(MAX_STANDALONE_SERIES_PLACES + 1)),
+            },
+            "places",
+        ),
+        (
+            {
+                "step_id": "s1",
+                "script": "compute_composition",
+                "components": ["t1", "t2"],
+                "places": list(_build_places(MAX_COMPOSITION_PLACES + 1)),
+            },
+            "places",
+        ),
+        (
+            {
+                "step_id": "s1",
+                "script": "analyze_timeseries",
+                "table": "t1",
+                "places": [],
+            },
+            "places",
+        ),
+        (
+            {**_build_reduction(), "places": []},
+            "places",
+        ),
+    ],
+    ids=[
+        "ranking n",
+        "relation n",
+        "ranking focal places",
+        "distribution focal places",
+        "series places",
+        "composition places",
+        "empty series places",
+        "empty reduction places",
+    ],
+)
+def test_step_lists_and_counts_are_capped_by_the_schema(
+    step: JsonObject, fragment: str
+) -> None:
+    # Test: The schema bounds on step counts and place lists.
+    # Situation: One more entry per end than `MAX_RANK_ENTRIES_PER_END`, one
+    #   more focal place than `MAX_FOCAL_PLACES`, one more place than the
+    #   series or composition cap, or an empty place list.
+    # Expectation: Each raises `ValidationError` naming the field.
+    with pytest.raises(ValidationError) as raised:
+        _build_specification(step)
+    assert fragment in str(raised.value)
+
+
+def test_the_specification_focal_places_are_capped() -> None:
+    # Test: The schema bound on the specification's own focal places.
+    # Situation: One more focal place than `MAX_FOCAL_PLACES`, and exactly
+    #   that many.
+    # Expectation: The first raises `ValidationError` naming the field; the
+    #   second validates.
+    step: JsonObject = {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+    with pytest.raises(ValidationError, match="focal_places"):
+        _build_specification(
+            step, focal_places=list(_build_places(MAX_FOCAL_PLACES + 1))
+        )
+    capped = _build_specification(
+        step, focal_places=list(_build_places(MAX_FOCAL_PLACES))
+    )
+    assert len(capped.focal_places) == MAX_FOCAL_PLACES
+
+
+@pytest.mark.parametrize(
+    ("place_count", "places", "is_valid"),
+    [
+        (MAX_STANDALONE_SERIES_PLACES, None, True),
+        (MAX_STANDALONE_SERIES_PLACES + 1, None, False),
+        (MAX_STANDALONE_SERIES_PLACES + 1, ["geoId/00", "geoId/01"], True),
+    ],
+    ids=["at the cap", "above the cap", "above the cap with places"],
+)
+def test_a_series_summary_without_places_is_capped(
+    place_count: int, places: list[str] | None, is_valid: bool
+) -> None:
+    # Test: The place cap of `analyze_timeseries` against the cache.
+    # Situation: A series summary of `t1`, which covers ten or eleven
+    #   places, without places or with two of them.
+    # Expectation: Ten places, or two named places, pass; eleven places
+    #   without `places` report the count, the cap, and the reduction to
+    #   use instead.
+    cache = _build_cache(_build_table("t1", _build_places(place_count)))
+    step: JsonObject = {
+        "step_id": "s1",
+        "script": "analyze_timeseries",
+        "table": "t1",
+    }
+    if places is not None:
+        step["places"] = list(places)
+    problems = validate_specification(_build_specification(step), cache)
+    if is_valid:
+        assert problems is None
+    else:
+        assert problems == (
+            "s1 (analyze_timeseries) on t1 covers 11 places, more than the "
+            "10 it summarizes without places; for a change across a cohort, "
+            "use reduce_series followed by rank_cohort or "
+            "summarize_distribution, or pass at most 10 place DCIDs in "
+            "s1.places."
+        )
+
+
+def test_the_series_cap_counts_places_with_data() -> None:
+    # Test: The places the series cap counts.
+    # Situation: `t1` requests eleven places and has data for ten.
+    # Expectation: No problem is reported, because the summary covers only
+    #   the places with data.
+    places = _build_places(MAX_STANDALONE_SERIES_PLACES + 1)
+    cache = _build_cache(
+        _build_table("t1", places, places_with_data=places[:-1])
+    )
+    specification = _build_specification(
+        {"step_id": "s1", "script": "analyze_timeseries", "table": "t1"}
+    )
+    assert validate_specification(specification, cache) is None
+
+
+@pytest.mark.parametrize(
+    ("derived_places", "is_valid"),
+    [(None, False), (["geoId/00", "geoId/01"], True)],
+    ids=["all shared places", "named places"],
+)
+def test_the_series_cap_follows_a_derived_table(
+    derived_places: list[str] | None, is_valid: bool
+) -> None:
+    # Test: The place cap of a series summary of a derived table.
+    # Situation: `t1` and `t2` share eleven places, and a series summary
+    #   reads the per-capita table derived from them, restricted to two
+    #   places or not.
+    # Expectation: Without places the derived table covers the eleven shared
+    #   places and the summary is reported; restricted to two it passes.
+    places = _build_places(MAX_STANDALONE_SERIES_PLACES + 1)
+    cache = _build_cache(
+        _build_table("t1", places),
+        _build_table("t2", places, variable_dcid="Count_Household"),
+    )
+    derived: JsonObject = {
+        "step_id": "s1",
+        "script": "compute_derived_metric",
+        "left": "t1",
+        "right": "t2",
+    }
+    if derived_places is not None:
+        derived["places"] = list(derived_places)
+    problems = validate_specification(
+        _build_specification(
+            derived,
+            {"step_id": "s2", "script": "analyze_timeseries", "table": "s1"},
+        ),
+        cache,
+    )
+    if is_valid:
+        assert problems is None
+    else:
+        assert problems is not None
+        assert problems.startswith(
+            "s2 (analyze_timeseries) on s1 covers 11 places"
+        )
+
+
+def test_the_composition_cap_follows_an_alignment() -> None:
+    # Test: The place cap of a composition of aligned inputs.
+    # Situation: `t1` and `t2` share eleven places, and a composition reads
+    #   an alignment of `t1` and the table `t2` without places.
+    # Expectation: The one problem names the step, the shared count, and
+    #   the cap, and repeats no place DCID.
+    places = _build_places(MAX_COMPOSITION_PLACES + 1)
+    cache = _build_cache(
+        _build_table("t1", places),
+        _build_table("t2", places, variable_dcid="Count_Household"),
+    )
+    problems = validate_specification(
+        _build_specification(
+            {"step_id": "s1", "script": "align_cohort", "table": "t1"},
+            {
+                "step_id": "s2",
+                "script": "compute_composition",
+                "components": ["s1", "t2"],
+            },
+        ),
+        cache,
+    )
+    assert problems == (
+        "s2 (compute_composition) covers 11 places, more than the 10 it "
+        "breaks down without places; pass at most 10 place DCIDs in "
+        "s2.places."
+    )
+    assert not any(place in problems for place in places)
+
+
+def test_the_composition_cap_counts_only_shared_places() -> None:
+    # Test: The places the composition cap counts.
+    # Situation: `t1` covers eleven places and `t2` covers ten of them.
+    # Expectation: No problem is reported, because the composition breaks
+    #   down only the ten places every input covers.
+    places = _build_places(MAX_COMPOSITION_PLACES + 1)
+    cache = _build_cache(
+        _build_table("t1", places),
+        _build_table("t2", places[:-1], variable_dcid="Count_Household"),
+    )
+    specification = _build_specification(
+        {
+            "step_id": "s1",
+            "script": "compute_composition",
+            "components": ["t1", "t2"],
+        }
+    )
+    assert validate_specification(specification, cache) is None
+
+
+def test_a_table_with_many_places_with_data_is_a_cohort() -> None:
+    # Test: `_is_fetched_cohort` for a table that requests no places.
+    # Situation: A trend question's default specification over a table that
+    #   requests no places and has data for eleven.
+    # Expectation: The table is ranked rather than summarized as series,
+    #   because its places with data exceed the named-place series limit.
+    places = _build_places(NAMED_PLACE_SERIES_LIMIT + 1)
+    table = ObservationTable(
+        variable_dcid="Count_Person",
+        variable_name="Count_Person",
+        unit="Person",
+        scaling_factor=None,
+        provenance=Provenance(),
+        rows=tuple(
+            ObservationRow(place, place, "2023", 1.0) for place in places
+        ),
+        requested_places=(),
+        place_names={place: place for place in places},
+    )
+    cache = _build_cache(CachedTable(table_id="t1", table=table))
+    specification = build_default_specification(
+        _build_classification("trend_delta"), cache
+    )
+    assert _list_scripts_and_tables(specification) == [("rank_cohort", "t1")]

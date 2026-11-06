@@ -90,17 +90,21 @@ process and PR expectations: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
       (`metadata.py`). Of the agent's subpackages, it may import only
       `analytics/`; it never imports `workflows/` or `gemini/`.
     - `analytics/`: the deterministic analytics library, holding observation
-      tables and provenance models (`tables.py`, `provenance.py`), cohort
-      alignment and unit checks (`alignment.py`), the table summary
+      tables and provenance models (`tables.py`, `provenance.py`), the cohort
+      protocols, cohort alignment, window cohorts, and unit checks
+      (`alignment.py`), the table summary
       (`summarize.py`), the digest and metric types (`digest.py`,
-      `metrics.py`), the analytical scripts (`timeseries.py`, `ranking.py`,
+      `metrics.py`), the analytical scripts (`timeseries.py`, which also
+      reduces series to window cohorts, `ranking.py`,
       `distribution.py`, `composition.py`, `derived.py`, `relations.py`),
       the input checks and refusals they share (`script_inputs.py`), and the
       golden fixture under `golden/` with its regeneration script. It
       imports only the Python standard library, other `analytics/` modules,
       and `json_value.py`.
     - `config.py`: loads `agent-config.json` (or the local `config.json`),
-      layers the prompts, and returns the result as an `AgentConfig`.
+      layers the prompts, and returns the result as an `AgentConfig`; renders
+      prompts with the turn's pinned `{{CURRENT_DATETIME}}`
+      (`pin_current_datetime`).
     - `config_model.py`: the frozen `AgentConfig` dataclasses, the parser
       that applies the defaults, and the per-role Gemini model, temperature,
       and thinking-level settings (`GeminiRole`,

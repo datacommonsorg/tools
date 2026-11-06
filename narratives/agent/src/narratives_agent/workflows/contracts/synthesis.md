@@ -66,6 +66,12 @@ The chart block grammar follows these instructions. Use it as follows.
   variable as its own `ranking` of that cohort, and optionally pair the two
   in a `scatter` across it. Use a `bar` of the named places for a handful
   of places that are not a cohort.
+- When the digest ranks or summarizes a cohort over a multi-period window
+  (its coverage reads "from ... to ..."), chart the trajectories behind it
+  as a `line` of the ranked places, or of a `top_n` or `bottom_n` slice,
+  rather than an undated `ranking`, `bar`, `map`, or `scatter`, which would
+  show the values on one date instead of the change. Pass `date` only on a
+  chart of a single-date snapshot drawn alongside it.
 - Chart the fetched tables the inventory lists, and chart a per-capita
   value by naming the per-capita table the inventory marks chartable. It
   renders per person even when the digest reports the rate per 1,000 or per
