@@ -46,6 +46,13 @@ const LINE_CHART: ChartItem = {
   placeDcids: ['country/FRA'],
 };
 
+const INCOME_CHART: ChartItem = {
+  vizType: 'line',
+  title: 'Median household income, France',
+  variableDcids: ['Median_Income_Household'],
+  placeDcids: ['country/FRA'],
+};
+
 /** How often the chart settle poll reads the component, in milliseconds. */
 const CHART_POLL_MS = 300;
 
@@ -497,5 +504,52 @@ describe('AnswerPanel', () => {
     });
 
     expect(screen.getByRole('button', followUp)).not.toBeNull();
+  });
+
+  it('places back-to-back charts in one shared tile', () => {
+    // Test: Grouping of consecutive chart blocks.
+    // Situation: A finished turn whose blocks are a paragraph followed by
+    //   two chart blocks in a row.
+    // Expectation: Both chart cards render inside a single charts container,
+    //   whose grid sets them side by side.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'text', markdown: 'Rents rise with incomes.' },
+          { index: 1, type: 'chart', chart: LINE_CHART },
+          { index: 2, type: 'chart', chart: INCOME_CHART },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    const tiles = container.querySelectorAll('.dc-charts-container');
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].querySelectorAll('.dc-chart-card')).toHaveLength(2);
+  });
+
+  it('keeps charts separated by text in their own tiles', () => {
+    // Test: Charts that are not consecutive.
+    // Situation: A finished turn whose blocks are a chart, a paragraph, and
+    //   a second chart.
+    // Expectation: Each chart renders in its own charts container, in the
+    //   order the blocks arrived.
+    const { container } = render(
+      <AnswerPanel
+        turn={buildTurnWithBlocks([
+          { index: 0, type: 'chart', chart: LINE_CHART },
+          { index: 1, type: 'text', markdown: 'Incomes rose too.' },
+          { index: 2, type: 'chart', chart: INCOME_CHART },
+        ])}
+        isStreaming={false}
+      />,
+    );
+
+    expect(container.querySelectorAll('.dc-charts-container')).toHaveLength(2);
+    expect(readAnswerParts(container)).toEqual([
+      'chart:Population, France',
+      'text:Incomes rose too.',
+      'chart:Median household income, France',
+    ]);
   });
 });

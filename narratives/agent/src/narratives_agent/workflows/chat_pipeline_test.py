@@ -1783,6 +1783,53 @@ def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
     ]
 
 
+def test_collect_follow_up_topics_leads_with_related_indicators() -> None:
+    # Test: The related indicators discovery left aside, as follow-up topics.
+    # Situation: The specification's `related` list names two left-aside
+    #   indicators, a blank entry, and one that repeats a variable the digest
+    #   computed figures for.
+    # Expectation: The left-aside indicators come first, in their order, the
+    #   blank entry is dropped, and the repeated topic appears only once,
+    #   ahead of the computed variable's own topic.
+    table = _make_table("t1")
+    digest = AnalysisDigest.from_results(
+        (analyze_timeseries(table.table, step_id="s1"),)
+    )
+    computed_topic = chat_pipeline.collect_follow_up_topics(
+        chat_pipeline.DiscoveryPhaseResult(
+            digest=digest, has_data=True, tables=(table,)
+        ),
+        [],
+    )[0]
+    spec = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "analyze_timeseries", "table": "t1"}
+            ],
+            "related": [
+                "maternal mortality",
+                "  ",
+                "births attended by skilled health staff",
+                computed_topic,
+            ],
+        }
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=digest,
+        spec=spec,
+        has_data=True,
+        tables=(table,),
+    )
+
+    topics = chat_pipeline.collect_follow_up_topics(discovery, [])
+
+    assert topics == [
+        "maternal mortality",
+        "births attended by skilled health staff",
+        computed_topic,
+    ]
+
+
 @pytest.mark.asyncio
 async def test_the_classify_phase_opens_the_stream_and_guides_the_turn(
     turn: _Turn,

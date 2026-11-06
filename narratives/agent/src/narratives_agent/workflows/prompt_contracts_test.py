@@ -263,20 +263,84 @@ def test_synthesis_contract_matches_chart_specification_grammar() -> None:
         assert section_name in guidance
 
 
-def test_synthesis_contract_instructs_per_variable_citations() -> None:
-    # Test: Per-variable citation rules in `contracts/synthesis.md`.
-    # Situation: The `### Citations` section of
-    #   `load_prompt_contract("synthesis")` is inspected.
-    # Expectation: It holds the rule that a figure computed from more than
-    #   one variable carries the whole `cite:` marker and the rule that a
-    #   figure reporting one variable's own value carries that variable's
-    #   `cite by variable:` marker, and no longer holds the superseded rule
-    #   that every figure of a composite step carries the whole marker.
-    contract = load_prompt_contract("synthesis")
+def _flattened_citations_section(contract: str) -> str:
+    """Returns the `### Citations` section of `contract`, whitespace-joined."""
     _, found, remainder = contract.partition("### Citations\n")
     assert found
     citations, _, _ = remainder.partition("\n### ")
-    flattened = " ".join(citations.split())
+    return " ".join(citations.split())
+
+
+def test_synthesis_contract_cites_sourced_figures_by_variable() -> None:
+    # Test: Active citation rules in `contracts/synthesis.md`.
+    # Situation: The `### Citations` section of
+    #   `load_prompt_contract("synthesis")`, which the model receives, is
+    #   inspected.
+    # Expectation: A sourced figure that reports one variable's own value
+    #   carries that variable's `cite by variable:` marker, calculated
+    #   figures carry no marker, a single-source list or table is cited
+    #   once, and the rules that cite calculated figures are absent.
+    citations = _flattened_citations_section(load_prompt_contract("synthesis"))
+
+    assert (
+        "When a step lists `cite by variable:`, a sourced figure that reports "
+        "one variable's own value, such as a single place's observed value, "
+        "carries that variable's marker instead."
+    ) in citations
+    assert (
+        "Never attach a marker to a figure the server calculated from the "
+        "sourced values"
+    ) in citations
+    assert (
+        "When every figure in a list or a table comes from the same source, "
+        "cite it once"
+    ) in citations
+    assert "A figure computed from more than one variable" not in citations
+    assert "so every source that contributed is cited" not in citations
+
+
+def test_synthesis_contract_cites_calculation_only_sources_by_name() -> None:
+    # Test: Citation of a source that reaches the answer only through
+    #   calculated figures.
+    # Situation: The `### Citations` section of
+    #   `load_prompt_contract("synthesis")` is inspected.
+    # Expectation: Such a source is cited after its name in the headline and
+    #   in the column header of a table of those figures, with markers from
+    #   the producing steps' `cite:`, and the rule that every listed source
+    #   carries a marker names that placement, so it cannot contradict the
+    #   rule that calculated figures carry none.
+    citations = _flattened_citations_section(load_prompt_contract("synthesis"))
+
+    assert (
+        "When a source reaches the answer only through calculated figures, "
+        "such as the population behind a per-person rate or the series "
+        "behind a ranked change, cite it where the answer names it rather "
+        "than beside a number"
+    ) in citations
+    assert (
+        "Take the markers from the `cite:` of the steps that produced the "
+        "figures."
+    ) in citations
+    assert (
+        "so each should carry at least one marker, beside a sourced figure "
+        "or, by the rule above, after the source's name."
+    ) in citations
+
+
+def test_synthesis_contract_keeps_calculated_figure_citations_disabled() -> (
+    None
+):
+    # Test: Disabled citation rules for calculated figures.
+    # Situation: The raw `contracts/synthesis.md` file is read before its HTML
+    #   comments are stripped.
+    # Expectation: Its `### Citations` section still holds, inside an HTML
+    #   comment, the rules that give a figure computed from more than one
+    #   variable the step's whole `cite:` marker and a single-variable
+    #   summary that variable's marker, so they can be restored.
+    raw = (
+        Path(prompt_contracts.__file__).parent / "contracts" / "synthesis.md"
+    ).read_text(encoding="utf-8")
+    citations = _flattened_citations_section(raw)
 
     assert (
         "A figure computed from more than one variable (a mean or median "
@@ -284,15 +348,12 @@ def test_synthesis_contract_instructs_per_variable_citations() -> None:
         "share, a correlation, a weighted mean, or any value of a derived "
         "variable such as a per-capita rate) carries the step's whole "
         "`cite:` marker"
-    ) in flattened
-    assert (
-        "When a step lists `cite by variable:`, a figure that reports one "
-        "variable's own value, such as a single place's observed value or "
-        "that variable's own mean, median, or range across all of the step's "
-        "places, carries that variable's marker instead."
-    ) in flattened
+    ) in citations
     assert (
         "each group's Var_A mean, such as **10.2%** [1, 2], and the gap of "
         "**2.1** [1, 2] between the group means carry both."
-    ) in flattened
-    assert "so every source that contributed is cited" not in flattened
+    ) in citations
+    assert (
+        "A figure computed from more than one variable"
+        not in strip_prompt_comments(raw)
+    )

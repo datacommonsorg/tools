@@ -618,6 +618,9 @@ class AnalysisSpecification(BaseModel):
             the digest, which holds only computed figures.
         missing: Indicators or dimensions the question asked for that Data
             Commons does not have.
+        related: Related indicators or angles the model left aside, in plain
+            words. They ground the follow-up questions and are never part of
+            the digest.
         focal_places: The places the question is about, reported by the
             ranking and distribution steps that name none of their own.
     """
@@ -642,6 +645,14 @@ class AnalysisSpecification(BaseModel):
         description=(
             "Indicators or dimensions the question asked for that Data "
             "Commons does not have."
+        ),
+    )
+    related: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional related indicators or angles you left aside, in plain "
+            "words such as 'maternal mortality'. They become the reader's "
+            "follow-up questions; never put figures in them."
         ),
     )
     focal_places: list[str] = Field(

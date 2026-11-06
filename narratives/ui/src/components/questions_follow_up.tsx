@@ -21,12 +21,18 @@
 interface FollowUpQuestionsProps {
   questions: string[];
   onAsk?: (question: string) => void;
+  /**
+   * Set when the answer found no data, so the suggestions are alternatives
+   * to the question asked rather than follow-ups to an answer.
+   */
+  noData?: boolean;
 }
 
 /** Clickable follow-up question suggestions shown after a completed answer. */
 export function FollowUpQuestions({
   questions,
   onAsk,
+  noData = false,
 }: FollowUpQuestionsProps) {
   if (!questions || questions.length === 0) return null;
 
@@ -36,7 +42,7 @@ export function FollowUpQuestions({
         id="followups-heading"
         className="pt-3 pb-4 mb-4 border-b border-border text-title-large-emphasized text-on-surface"
       >
-        Follow up questions
+        {noData ? 'Alternative questions' : 'Follow up questions'}
       </h2>
       {/* No gap between items: each button's vertical padding creates the touch target spacing. */}
       <ul className="list-disc flex flex-col text-body-medium-emphasized">

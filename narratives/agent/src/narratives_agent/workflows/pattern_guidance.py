@@ -73,14 +73,18 @@ class Directive:
 _DIRECTIVES: Mapping[QueryPattern, Directive] = {
     "single_point": Directive(
         discovery=(
-            "Fetch the variable for the named place with "
-            "`fetch_observations` and specify `analyze_timeseries` on that "
-            "table."
+            'Choose the indicator and its closest companions as "Choosing '
+            'indicators" describes, fetch them for the named place with '
+            "`fetch_observations` in the same round, and specify "
+            "`analyze_timeseries` on each table."
         ),
         synthesis=(
             "Lead directly with the exact statistical value, its unit of "
             "measurement, its observation date, and the official statistical "
-            "agency that published it."
+            "agency that published it. When the digest also holds the "
+            "indicator's companions, such as its female and male forms, "
+            "report them after the headline as supporting figures, never "
+            "first."
         ),
     ),
     "top_n_ranking": Directive(
@@ -88,14 +92,25 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "Fetch the cohort with `fetch_child_observations` and specify "
             "`rank_cohort` with the question's `n` and `direction`; one "
             "`rank_cohort` step reports both the leading and the trailing "
-            "tail of its table, and a question about one variable needs "
-            "nothing more. When the question ranks a change over a period "
-            "(the largest gains since 2020, the fastest growth over the "
-            "decade), specify `reduce_series` on the cohort table with the "
-            "matching `metric`, such as `absolute_change`, `percent_change`, "
-            "or `cagr`, and `rank_cohort` on its output. When the question "
-            "asks for a second variable "
-            "across places ranked by another, fetch the ranking variable and "
+            'tail of its table. When "Choosing indicators" calls for a '
+            "per-person figure, rank that table: the published rate, or the "
+            "`per_capita` derived table. When the question ranks a change "
+            "over a period (the largest gains since 2020, the fastest growth "
+            "over the decade), specify `reduce_series` on the cohort table "
+            "and `rank_cohort` on its output, with the `metric` the change "
+            "calls for: `percent_change`, `absolute_change` when the "
+            "indicator is itself a percentage, or `cagr` when the question "
+            "asks for a growth rate. Once the cohort table is fetched, "
+            "fetch the "
+            "same variable for the cohort's parent place (the country for "
+            "states, the state for counties, the world for countries) with "
+            "`fetch_observations`, from the same source when it covers that "
+            "place and with `start_date` set to the earliest year the cohort "
+            "table covers, so the answer can compare the leaders with it; "
+            "specify no step on that table, and skip it when the parent "
+            "place has no series. When the question asks for a second "
+            "variable across places ranked by another, fetch the ranking "
+            "variable and "
             "the target variable across the cohort with "
             "`fetch_child_observations` in the same round, then specify "
             "`relate_cohorts` with the target variable as `target`, the "
@@ -103,51 +118,65 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "`rank_cohort` on each table."
         ),
         synthesis=(
-            "State the leading and trailing ranks explicitly with their "
-            "exact values and the shared observation year, and cite the "
-            "official source agency. Chart the ranked cohort as a `ranking` "
-            "with the tail the question asked for; when the ranking covers a "
-            "window from one date to another, state both dates and chart the "
-            "ranked places as a `line` instead. When the digest relates a "
-            "second variable to the ranking, state in prose each group's "
-            "places, its mean and median of the target variable, the "
-            "difference between the two group means, and the places the "
-            "result reports as left out; chart a `ranking` for each "
-            "variable, and optionally pair the two tables in a `scatter`."
+            "Answer only the end of the ranking the question asks for, as "
+            '"Rankings" describes: name the top place and any tie in the '
+            "headline with the shared observation year, or with both dates "
+            "when the ranking covers a window from one date to another, cite "
+            "the official source agency, and give every ranked place in a "
+            "compact table. "
+            "After the table, chart a `line` of the places the headline "
+            "names, with the parent place when its table was fetched, "
+            "not a `ranking`. When the digest relates a "
+            "second variable to the ranking, state in plain words the "
+            "pattern between the two groups and any notable exception, put "
+            "each group's places and figures in a compact table, and name "
+            "the places the result reports as left out; chart a `ranking` "
+            "for each variable, and optionally pair the two tables in a "
+            "`scatter`."
         ),
     ),
     "distribution": Directive(
         discovery=(
             "Fetch the cohort with `fetch_child_observations` and specify "
             "`summarize_distribution` with the place the question names in "
-            "`focal_places`. When the question asks how a change over a "
-            "period is distributed, specify `reduce_series` on the cohort "
-            "table first and `summarize_distribution` on its output."
+            "`focal_places`, and `rank_cohort` on the same table with that "
+            "place in `focal_places`, so the answer can report its rank. "
+            "When the question asks how a change over a period is "
+            "distributed, specify `reduce_series` on the cohort table first "
+            "and run both steps on its output."
         ),
         synthesis=(
-            "Describe the cohort as a whole rather than listing its members: "
-            "report the median, the mean, the minimum and maximum, and the "
-            "spread between them, all at one shared observation year or over "
-            "one shared window, and say where the focal place sits within "
-            "that range."
+            'Compare the focal place with the cohort as "One place among its '
+            'peers" describes: lead with its value, its rank, and its gap '
+            "to the median in one sentence, then the highest and lowest "
+            "places, all at one shared observation year or over one shared "
+            "window, and chart a `bar` of the places the answer names, or a "
+            "`line` of them when the comparison covers a window."
         ),
     ),
     "trend_delta": Directive(
         discovery=(
-            "Fetch the full series with `fetch_observations` and specify "
-            "`analyze_timeseries`, with `start_date` and `end_date` when the "
-            "question bounds the period, for one place or up to ten named "
-            "places. For the change across a larger cohort, fetch it with "
-            "`fetch_child_observations` and specify `reduce_series` with "
-            "`absolute_change`, `percent_change`, or `cagr`, followed by "
-            "`rank_cohort` or `summarize_distribution` on its output."
+            'Choose the indicators as "Choosing indicators" describes: the '
+            "named indicator and its closest companions, or one indicator "
+            "for each angle of a broad concept. Fetch the full series of "
+            "each with `fetch_observations` in the same round and specify "
+            "`analyze_timeseries` on each table, with `start_date` and "
+            "`end_date` when the question bounds the period, for one place "
+            "or up to ten named places. For the change across a larger "
+            "cohort, fetch it with `fetch_child_observations` and specify "
+            "`reduce_series` with `percent_change`, `absolute_change` when "
+            "the indicator is itself a percentage, or `cagr` when the "
+            "question asks for a growth rate, followed by `rank_cohort` or "
+            "`summarize_distribution` on its output."
         ),
         synthesis=(
-            "Report the overall start-to-end change as an absolute delta and "
-            "as a percentage growth or decline, and point out the key "
-            "inflection points across the period. For a cohort ranked by its "
-            "change, name the window's two dates and the leading and "
-            "trailing places, and chart their trajectories as a `line`."
+            "Report the overall change across the period as a percentage "
+            "change, or in percentage points when the indicator is itself "
+            "a percentage, and name the key shifts, such as a peak, a low, "
+            "or the sharpest rise or fall, in plain words. For a cohort "
+            "ranked by its change, name the window's two dates and the "
+            "places at the end of the ranking the question asks for, and "
+            "chart their trajectories as a `line`."
         ),
     ),
     "outliers": Directive(
@@ -161,8 +190,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "and drops."
         ),
         synthesis=(
-            "Identify the largest period-over-period spikes and drops "
-            "explicitly with their exact before and after values."
+            "Identify the sharpest single-period rises and falls with their "
+            "change and the period they occurred in; give the values before "
+            "and after only when they help the reader."
         ),
     ),
     "correlation": Directive(
@@ -180,39 +210,58 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "trajectories of one place."
         ),
         synthesis=(
-            "Pair the two tables in a `scatter` chart. Describe the "
-            "relationship from the figures given: the mean and median of the "
-            "target indicator in the groups with the highest and the lowest "
-            "values of the other, the difference between them, the places "
-            "that rank high or low on both indicators, the ones that "
-            "diverge, and the spread of each. Claim no strength or direction "
-            "of association beyond what those figures show. Open with that "
-            "description, not with a remark about what was or was not "
-            "computed."
+            "Pair the two tables in a `scatter` chart and write the answer "
+            'as "Relationships between two measures" describes. Describe '
+            "the relationship from the figures given: say in plain words how "
+            "the indicators move together and name the leading place, then "
+            "name the notable exception, or the place at the bottom when "
+            "nothing breaks the pattern, without naming any place's ranking "
+            "twice, and leave the exact figures to a compact table. Claim no "
+            "strength or direction of association beyond what those figures "
+            "show, and no cause. Open with that description, not with a "
+            "remark about what was or was not computed."
         ),
     ),
     "composition": Directive(
         discovery=(
-            "Fetch one table per component, and the total when it exists, "
-            "with `fetch_observations` or `fetch_child_observations` over the "
-            "same places and with the same `source_override`, and specify "
-            "`compute_composition` in `composition` mode."
+            "Search for the total and the components, then check them all in "
+            "one `get_variable_metadata` round and choose one facet that "
+            "covers every component with one set of groups that has no gaps "
+            "or overlaps. Fetch the total, when that facet has one, and every "
+            "component in the same round with `fetch_observations` or "
+            "`fetch_child_observations` and `source_override` set to that "
+            "facet, and specify `compute_composition` in `composition` mode "
+            "as soon as the tables have rows."
         ),
         synthesis=(
-            "Report each component's exact percentage share of the total and "
-            "the deltas between components. Do not merely list raw numbers."
+            "Answer the question first, then give every component in a "
+            "compact table, largest first, as "
+            '"Breakdowns of a total" describes. '
+            "Only when the question asks how "
+            "one total splits into parts and the digest holds no composition "
+            "result, lead with what the digest does show for the components, "
+            "never with the total, and close the answer with one short "
+            "sentence noting that shares of the total could not be "
+            "calculated from consistent data."
         ),
     ),
     "sequential_stages": Directive(
         discovery=(
-            "Fetch one table per stage with `fetch_observations` or "
-            "`fetch_child_observations`, in the order the question gives "
-            "them, and specify `compute_composition` in `stages` mode with "
+            "Search for the stages, then check them all in one "
+            "`get_variable_metadata` round and choose one facet that covers "
+            "every stage. Fetch one table per stage in the same round with "
+            "`fetch_observations` or `fetch_child_observations`, in the order "
+            "the question gives them, with `source_override` set to that "
+            "facet, and specify `compute_composition` in `stages` mode with "
             "`components` in that order."
         ),
         synthesis=(
-            "Report each stage's value and its share of the whole, and the "
-            "stage-to-stage ratios and deltas across the ordered tiers."
+            "Report each stage's value and its share of the whole, and how "
+            "much each stage keeps or loses from the one before it. Only "
+            "when the question asks about ordered stages and the digest "
+            "holds no stages result, lead with the stages the digest does "
+            "cover and close the answer with one short sentence noting that "
+            "the stage-to-stage shares could not be calculated."
         ),
     ),
     "clustering": Directive(
@@ -222,24 +271,36 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "`analyze_timeseries` or `rank_cohort` as an exploratory profile."
         ),
         synthesis=(
-            "Present the figures as an exploratory profile, and say plainly "
-            "that no clustering is performed."
+            "Never sort places into groups or label them with tiers of your "
+            'own. Open with the short clause "Caveats and missing data" '
+            'describes, then compare the places as "Comparing several '
+            'places" describes. Never write "clustering" or "compared '
+            'rather than grouped".'
         ),
     ),
     "forecasting": Directive(
         discovery=(
-            "Do not attempt a projection. Fetch the full historical series "
-            "with `fetch_observations` and specify `analyze_timeseries`."
+            "Do not attempt a projection yourself. Search for an official "
+            "projection of the indicator that a source publishes for the "
+            "year asked, and fetch it when one exists. Always fetch the full "
+            "historical series with `fetch_observations` and specify "
+            "`analyze_timeseries`."
         ),
         synthesis=(
-            "Report the trend up to the latest observation, and say plainly "
-            "that no projection is performed."
+            "Never extrapolate or give a figure for a future year that the "
+            "digest does not hold. When it holds a source's official "
+            "projection, report it as that source's projection, then the "
+            "latest figure and the trend. Otherwise open with the short "
+            'clause "Caveats and missing data" describes and report the '
+            "latest figure and the trend in the same sentence. Never write "
+            '"no projection is performed" or "cannot predict".'
         ),
     ),
     "exploratory": Directive(
         discovery=(
-            "Fetch four or five primary indicators spanning the core pillars "
-            "of the requested domain, one table each, with "
+            "Map the core angles of the requested topic and choose one "
+            'indicator for each as "Choosing indicators" describes, up to '
+            "five, one table each, fetched in the same round with "
             "`fetch_observations` or `fetch_child_observations`, and specify "
             "`analyze_timeseries` or `rank_cohort` on each."
         ),
@@ -276,8 +337,12 @@ _COMPARISON_DIRECTIVE = Directive(
         "year."
     ),
     synthesis=(
-        "Present a direct side-by-side comparison of the places and state "
-        "the spread or delta between them as the digest gives it."
+        "Compare the places side by side: state the pattern and the notable "
+        "exception. Put the exact figures in a compact table when the "
+        "comparison covers several indicators or four or more places; for "
+        "one indicator across two or three places, give the figures in the "
+        "sentence and write no table. State the gap between places only "
+        "when the question asks for it."
     ),
 )
 

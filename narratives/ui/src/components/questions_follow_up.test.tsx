@@ -52,4 +52,24 @@ describe('FollowUpQuestions', () => {
     expect(onAsk).toHaveBeenCalledTimes(1);
     expect(onAsk).toHaveBeenCalledWith('How has it changed since 2000?');
   });
+
+  it('labels the questions as follow-ups after an answer with data', () => {
+    // Test: Heading of the suggestions after an answer.
+    // Situation: The answer found data, so noData is left unset.
+    // Expectation: The heading reads "Follow up questions".
+    render(<FollowUpQuestions questions={['What about Germany?']} />);
+    expect(
+      screen.getByRole('heading', { name: 'Follow up questions' }),
+    ).toBeTruthy();
+  });
+
+  it('labels the questions as alternatives when no data was found', () => {
+    // Test: Heading of the suggestions after a no-data answer.
+    // Situation: The answer found no data, so noData is set.
+    // Expectation: The heading reads "Alternative questions".
+    render(<FollowUpQuestions questions={['What about Germany?']} noData />);
+    expect(
+      screen.getByRole('heading', { name: 'Alternative questions' }),
+    ).toBeTruthy();
+  });
 });

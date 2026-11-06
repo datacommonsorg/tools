@@ -719,10 +719,12 @@ def collect_follow_up_topics(
 ) -> list[str]:
     """Returns the topics that ground the follow-up questions.
 
-    The topics are the variables the digest's results computed figures
-    for, each with the places or the child place type it was measured
-    over, then the titles of the charts shown, then the missing-data notes
-    that name a data gap (excluding processing diagnostics and the generic
+    The topics are the related indicators and angles the specification left
+    aside (`related`), first because they broaden the research beyond the
+    answer; then the variables the digest's results computed figures for,
+    each with the places or the child place type it was measured over; then
+    the titles of the charts shown; then the missing-data notes that name a
+    data gap (excluding processing diagnostics and the generic
     no-observations fallback note). Duplicates are dropped in order of
     first appearance.
 
@@ -737,6 +739,10 @@ def collect_follow_up_topics(
     for cached in discovery.tables:
         tables_by_variable.setdefault(cached.table.variable_dcid, cached.table)
     topics: list[str] = []
+    if discovery.spec is not None:
+        topics.extend(
+            topic.strip() for topic in discovery.spec.related if topic.strip()
+        )
     for result in discovery.digest.results:
         if result.status != "ok":
             continue

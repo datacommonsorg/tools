@@ -43,6 +43,7 @@ import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
 import {
   type AnswerBlock,
+  type ChartItem,
   type ChatTurn,
   getTurnCharts,
 } from '@/src/hooks/use_sse_chat';
@@ -351,7 +352,11 @@ export function AnswerPanel({
         isRevealed &&
         (turn.followUps?.length ?? 0) > 0 && (
           <div className="px-4 sm:px-6 mb-6">
-            <FollowUpQuestions questions={turn.followUps ?? []} onAsk={onAsk} />
+            <FollowUpQuestions
+              questions={turn.followUps ?? []}
+              onAsk={onAsk}
+              noData={turn.hasData === false}
+            />
           </div>
         )}
     </CitationNumberingProvider>
@@ -374,10 +379,12 @@ interface TextRevealWindow {
 
 /**
  * Renders a turn's blocks in emission order, as direct children of the
- * panel body: each text block through the Markdown renderer and each chart
- * block through a one-item chart tile that reports when it has settled. The
- * text blocks share one reveal in reading order, and the word animations
- * start only once `phase` is `revealing`.
+ * panel body: each text block through the Markdown renderer, and each run of
+ * consecutive chart blocks through one chart tile, whose grid sets two or
+ * three charts side by side when there is room. A tile reports every chart
+ * in its run as settled once all of them have. The text blocks share one
+ * reveal in reading order, and the word animations start only once `phase`
+ * is `revealing`.
  */
 function AnswerBlocks({
   turn,
@@ -390,17 +397,20 @@ function AnswerBlocks({
     streamMs === undefined ? undefined : scheduleTextReveal(blocks, streamMs);
   return (
     <>
-      {blocks.map((block) => {
-        if (block.type === 'chart') {
+      {groupAnswerBlocks(blocks).map((group) => {
+        if (group.type === 'charts') {
           return (
             <ChartTile
-              key={block.index}
-              config={{ shouldRender: true, charts: [block.chart] }}
-              onSettled={() => onChartSettled(block.index)}
+              key={group.indices[0]}
+              config={{ shouldRender: true, charts: group.charts }}
+              onSettled={() => {
+                for (const index of group.indices) onChartSettled(index);
+              }}
               shouldHoldSkeleton={phase !== 'revealed'}
             />
           );
         }
+        const block = group.block;
         const revealWindow = schedule?.get(block.index);
         return (
           <ResponseCard
@@ -417,6 +427,37 @@ function AnswerBlocks({
       })}
     </>
   );
+}
+
+/** One rendered unit of an answer: a text block, or a run of chart blocks. */
+type AnswerBlockGroup =
+  | { type: 'text'; block: Extract<AnswerBlock, { type: 'text' }> }
+  | { type: 'charts'; charts: ChartItem[]; indices: number[] };
+
+/**
+ * Groups a turn's blocks in order, merging each run of consecutive chart
+ * blocks into one group so that they render in a single chart tile.
+ */
+export function groupAnswerBlocks(blocks: AnswerBlock[]): AnswerBlockGroup[] {
+  const groups: AnswerBlockGroup[] = [];
+  for (const block of blocks) {
+    if (block.type === 'text') {
+      groups.push({ type: 'text', block });
+      continue;
+    }
+    const last = groups.at(-1);
+    if (last?.type === 'charts') {
+      last.charts.push(block.chart);
+      last.indices.push(block.index);
+    } else {
+      groups.push({
+        type: 'charts',
+        charts: [block.chart],
+        indices: [block.index],
+      });
+    }
+  }
+  return groups;
 }
 
 /**

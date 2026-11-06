@@ -481,6 +481,25 @@ describe('applyEvent', () => {
     expect(turn.truncated).toBe(true);
   });
 
+  it('records whether the answer found data', () => {
+    // Test: Recording of data_status.has_data.
+    // Situation: One turn receives has_data false; another receives a
+    //   data_status that omits has_data.
+    // Expectation: The first turn's hasData is false; the second's stays
+    //   undefined, so a missing flag is never read as "no data".
+    const noData = applyEvent(blankTurn(), {
+      event: 'content',
+      data: { data_status: { has_data: false, truncated: false } },
+    });
+    const unknown = applyEvent(blankTurn(), {
+      event: 'content',
+      data: { data_status: { truncated: false } },
+    });
+
+    expect(noData.hasData).toBe(false);
+    expect(unknown.hasData).toBeUndefined();
+  });
+
   it('ignores a block without content', () => {
     // Test: Tolerance of malformed block frames.
     // Situation: A turn receives an empty text block, chart blocks whose

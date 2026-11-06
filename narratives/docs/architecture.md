@@ -165,7 +165,10 @@ agent loop in five steps:
    sourced digest step carries a step-level `cite:` marker and, when a
    multi-variable step draws from distinct sources per variable, a
    `cite by variable:` breakdown so single-variable figures cite their own
-   source while cross-variable figures cite the combined sources. The model
+   source. The synthesis contract shows markers only on figures taken
+   straight from a source; calculated figures, including cross-variable ones,
+   carry none, and the rules that would cite them with the combined sources
+   are kept disabled in an HTML comment in `contracts/synthesis.md`. The model
    writes markdown and places each chart where it belongs as a fenced block
    tagged `chart` holding one specification: the chart kind (`line`, `bar`,
    `map`, `ranking`, `scatter`, or `highlight`), the table ids it draws from, a

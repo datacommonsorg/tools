@@ -148,14 +148,20 @@ def test_the_directive_is_appended_as_a_final_section() -> None:
     )
 
 
-@pytest.mark.parametrize("pattern", ["clustering", "forecasting"])
-def test_unimplemented_patterns_say_so(pattern: str) -> None:
+@pytest.mark.parametrize(
+    ("pattern", "guard"),
+    [
+        ("clustering", "Never sort places into groups"),
+        ("forecasting", "Never extrapolate"),
+    ],
+)
+def test_unimplemented_patterns_say_so(pattern: str, guard: str) -> None:
     # Test: Directives for the methods the agent loop does not perform.
     # Situation: A classification carries `clustering` or `forecasting`.
     # Expectation: The discovery half tells the loop not to attempt the
-    #   method, and the synthesis half tells the answer to say plainly that
-    #   the method is not performed, so the answer does not improvise a
-    #   projection or a clustering.
+    #   method, and the synthesis half forbids improvising groups or
+    #   future figures, so the answer does not invent a projection or a
+    #   clustering.
     discovery = pattern_guidance.build_pattern_directive(
         _make_classification(pattern), "discovery"
     )
@@ -164,7 +170,7 @@ def test_unimplemented_patterns_say_so(pattern: str) -> None:
     )
 
     assert discovery.startswith("Do not attempt")
-    assert "say plainly that no" in synthesis
+    assert guard in synthesis
 
 
 @pytest.mark.parametrize("phase", _PHASES)
