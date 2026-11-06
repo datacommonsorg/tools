@@ -56,6 +56,7 @@ from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
     build_invalid_parameters_refusal,
     build_refusal,
+    collect_variable_provenance,
     resolve_target_places,
     validate_place_dcids,
 )
@@ -1043,6 +1044,7 @@ def compute_composition(
         provenance=merge_provenance(
             *(item.provenance for item in all_inputs), methodology=methodology
         ),
+        variable_provenance=collect_variable_provenance(all_inputs),
         metrics=CompositionMetrics(
             reference_date=aligned.reference_date,
             mode=mode,

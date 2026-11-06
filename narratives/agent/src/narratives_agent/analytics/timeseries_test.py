@@ -187,6 +187,9 @@ def test_multi_decade_series_reports_extrema_shocks_and_exact_growth() -> None:
     assert result.caveats == ()
     assert result.provenance.sources == (_SOURCE,)
     assert result.provenance.methodology is not None
+    assert result.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+    }
 
 
 @pytest.mark.parametrize(
@@ -572,6 +575,9 @@ def test_empty_window_is_refused() -> None:
     assert result.status == "refused"
     assert result.refusal_reason == "no_observations"
     assert result.metrics is None
+    assert result.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+    }
     assert result.caveats == (
         "No observations match the requested places and date window for "
         "Total population.",

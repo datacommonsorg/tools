@@ -200,6 +200,9 @@ def test_tied_values_share_competition_ranks_in_dcid_order() -> None:
         "places with the same value share a rank."
     )
     assert result.provenance.sources == (_SOURCE,)
+    assert result.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+    }
 
 
 def test_ascending_direction_reverses_the_ranks_and_tails() -> None:
@@ -377,6 +380,9 @@ def test_alignment_refusals_propagate_with_their_coverage() -> None:
     )
     assert sparse.status == "refused"
     assert sparse.refusal_reason == "insufficient_coverage"
+    assert sparse.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+    }
     assert sparse.coverage is not None
     assert sparse.coverage.contributing_places == 3
     assert sparse.coverage.requested_places == 10

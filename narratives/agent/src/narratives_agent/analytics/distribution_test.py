@@ -1518,3 +1518,26 @@ def test_window_weights_are_refused(is_cohort_a_window: bool) -> None:
         "The weights for Weight population span from 2020 to 2024, so they "
         "cannot weight the mean; weights must be observed on a single date.",
     )
+
+
+def test_summarize_distribution_records_per_variable_provenance() -> None:
+    # Test: Per-variable provenance on `summarize_distribution` without and
+    #   with population weights from a second source.
+    # Situation: The five-place cohort citing `_SOURCE` (`f1`) is summarized
+    #   alone, and then with `weights` citing `_CENSUS` (`f2`).
+    # Expectation: The unweighted result maps `Count_Person` to `_SOURCE`;
+    #   the weighted result also maps `Count_Person_Weight` to `_CENSUS`.
+    cohort = _build_five_place_cohort()
+    unweighted = summarize_distribution(cohort)
+    assert unweighted.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+    }
+
+    weights = _build_weights([(place, "2022", 1.0) for place in "abcde"])
+    weighted = summarize_distribution(cohort, weights=weights)
+    assert weighted.variable_provenance == {
+        "Count_Person": Provenance(sources=(_SOURCE,), facet_ids=("f1",)),
+        "Count_Person_Weight": Provenance(
+            sources=(_CENSUS,), facet_ids=("f2",)
+        ),
+    }

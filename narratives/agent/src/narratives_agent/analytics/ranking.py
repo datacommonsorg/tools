@@ -41,6 +41,7 @@ from narratives_agent.analytics.provenance import merge_provenance
 from narratives_agent.analytics.script_inputs import (
     CohortInput,
     build_invalid_parameters_refusal,
+    collect_variable_provenance,
     describe_missing_focal_places,
     resolve_aligned_cohort,
     validate_place_dcids,
@@ -298,6 +299,7 @@ def rank_cohort(
         scaling_factor=aligned.scaling_factor,
         coverage=aligned.coverage,
         provenance=provenance,
+        variable_provenance=collect_variable_provenance(aligned),
         metrics=RankingMetrics(
             reference_date=aligned.reference_date,
             direction=direction,

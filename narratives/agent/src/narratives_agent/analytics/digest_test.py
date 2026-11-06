@@ -44,6 +44,7 @@ from narratives_agent.analytics.metrics import (
     TimeseriesMetrics,
 )
 from narratives_agent.analytics.provenance import Provenance, Source
+from narratives_agent.json_value import json_safe
 
 _WDI = Source(
     name="World Development Indicators",
@@ -52,6 +53,10 @@ _WDI = Source(
 _CENSUS = Source(
     name="Census",
     url="https://census.example",
+)
+_WIKIDATA = Source(
+    name="Wikidata",
+    url="https://wikidata.example",
 )
 
 
@@ -104,6 +109,12 @@ def _ok(
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=provenance,
+        variable_provenance={
+            "Count_Person": Provenance(
+                sources=provenance.sources,
+                facet_ids=provenance.facet_ids,
+            )
+        },
         metrics=(
             metrics if metrics is not None else _default_timeseries_metrics()
         ),
@@ -119,6 +130,12 @@ def _refused(step_id: str, provenance: Provenance) -> RefusedScriptResult:
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=provenance,
+        variable_provenance={
+            "Count_Person": Provenance(
+                sources=provenance.sources,
+                facet_ids=provenance.facet_ids,
+            )
+        },
     )
 
 
@@ -157,6 +174,7 @@ def test_ok_result_rejects_metrics_of_another_script() -> None:
             variables=("Count_Person",),
             variable_names={"Count_Person": "Total population"},
             provenance=provenance,
+            variable_provenance={"Count_Person": provenance},
             metrics=_default_timeseries_metrics(),
         )
     with pytest.raises(ValueError, match=r"analyze_timeseries.*RankingMetrics"):
@@ -247,6 +265,7 @@ def test_to_dict_serializes_without_nan_or_infinity() -> None:
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=Provenance(sources=(_WDI,)),
+        variable_provenance={"Count_Person": Provenance(sources=(_WDI,))},
         coverage=coverage,
         metrics=_ranking_metrics(_rank_entry(math.nan, math.inf)),
     )
@@ -299,6 +318,7 @@ def test_format_for_prompt_renders_results_sources_and_missing_notes() -> None:
             sources=(_WDI,),
             methodology="Ranked 9 places on 2022",
         ),
+        variable_provenance={"Count_Person": Provenance(sources=(_WDI,))},
         coverage=coverage,
         metrics=_ranking_metrics(_rank_entry(1.0, 100.0)),
         caveats=("9 of 10 places reported a value.",),
@@ -400,6 +420,7 @@ def test_format_for_prompt_rounds_figures_to_display_precision() -> None:
         variables=("Count_Person",),
         variable_names={"Count_Person": "Total population"},
         provenance=Provenance(sources=(_WDI,)),
+        variable_provenance={"Count_Person": Provenance(sources=(_WDI,))},
         metrics=_ranking_metrics(
             replace(_rank_entry(2.345678, 0.5), is_tied=True)
         ),
@@ -576,3 +597,245 @@ def test_format_place_names_joins_a_few_names_and_counts_the_rest() -> None:
         singular_noun="pair",
         plural_noun="pairs",
     ).endswith("and 1 other pair")
+
+
+def _build_multi_variable_result(
+    variables: tuple[str, ...],
+    variable_provenance: dict[str, Provenance],
+) -> OkScriptResult:
+    """Builds an `analyze_timeseries` result over `variables`.
+
+    The step's sources are the per-variable sources in `variables` order, so
+    citation numbers follow `variables` whatever order `variable_provenance`
+    was built in.
+    """
+    sources = tuple(
+        dict.fromkeys(
+            source
+            for dcid in variables
+            for source in variable_provenance[dcid].sources
+        )
+    )
+    return OkScriptResult(
+        step_id="s1",
+        script="analyze_timeseries",
+        variables=variables,
+        variable_names={dcid: f"Name of {dcid}" for dcid in variables},
+        provenance=Provenance(sources=sources),
+        variable_provenance=variable_provenance,
+        metrics=_default_timeseries_metrics(),
+    )
+
+
+def _extract_cite_by_variable_lines(result: OkScriptResult) -> list[str]:
+    """Returns the `cite by variable:` lines of `result`'s prompt block."""
+    text = AnalysisDigest.from_results((result,)).format_results_for_prompt()
+    return [
+        line
+        for line in text.splitlines()
+        if line.startswith("  cite by variable:")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("variables", "variable_provenance", "expected_lines"),
+    [
+        (
+            ("Var_A",),
+            {"Var_A": Provenance(sources=(_WDI,))},
+            [],
+        ),
+        (
+            ("Var_A", "Var_B"),
+            {
+                "Var_A": Provenance(sources=(_WDI,)),
+                "Var_B": Provenance(sources=(_CENSUS,)),
+            },
+            ["  cite by variable: Var_A [1]; Var_B [2]"],
+        ),
+        (
+            ("Var_A", "Var_B"),
+            {
+                "Var_B": Provenance(sources=(_CENSUS,)),
+                "Var_A": Provenance(sources=(_WDI,)),
+            },
+            ["  cite by variable: Var_A [1]; Var_B [2]"],
+        ),
+        (
+            ("Var_A", "Var_B"),
+            {
+                "Var_A": Provenance(sources=(_WDI,)),
+                "Var_B": Provenance(sources=(_WDI,)),
+            },
+            [],
+        ),
+        (
+            ("Var_A", "Var_B"),
+            {
+                "Var_A": Provenance(sources=(_WDI, _CENSUS)),
+                "Var_B": Provenance(sources=(_WIKIDATA,)),
+            },
+            ["  cite by variable: Var_A [1, 2]; Var_B [3]"],
+        ),
+        (
+            ("Var_A", "Var_B"),
+            {
+                "Var_A": Provenance(sources=(_WDI,)),
+                "Var_B": Provenance(),
+            },
+            [],
+        ),
+        (
+            ("Var_A", "Var_B", "Var_C"),
+            {
+                "Var_A": Provenance(sources=(_WDI,)),
+                "Var_B": Provenance(sources=(_WDI,)),
+                "Var_C": Provenance(sources=(_CENSUS,)),
+            },
+            ["  cite by variable: Var_A [1]; Var_B [1]; Var_C [2]"],
+        ),
+    ],
+    ids=[
+        "single-variable",
+        "distinct-sources",
+        "insertion-order-differs-from-variables",
+        "shared-source",
+        "composite-and-single",
+        "one-unsourced-variable",
+        "three-variables",
+    ],
+)
+def test_cite_by_variable_lists_distinct_citations_in_variables_order(
+    variables: tuple[str, ...],
+    variable_provenance: dict[str, Provenance],
+    expected_lines: list[str],
+) -> None:
+    # Test: When the `cite by variable:` line is emitted, and its contents.
+    # Situation: A step over one variable; two variables with distinct
+    #   sources; the same with `variable_provenance` built in the reverse
+    #   order of `variables`; two variables sharing a source; one variable
+    #   with a composite citation and one with a single source; one sourced
+    #   and one unsourced variable; and three variables, two sharing a
+    #   source.
+    # Expectation: The line lists every variable in `variables` order with
+    #   its own citation only when at least two variables carry distinct
+    #   non-empty citations, and is absent otherwise.
+    result = _build_multi_variable_result(variables, variable_provenance)
+
+    assert _extract_cite_by_variable_lines(result) == expected_lines
+
+
+def test_cite_by_variable_follows_the_cite_line() -> None:
+    # Test: The position of the `cite by variable:` line in a step block.
+    # Situation: A step over two variables with distinct sources.
+    # Expectation: The line directly follows the details line that holds
+    #   `cite: [1, 2]`.
+    result = _build_multi_variable_result(
+        ("Var_A", "Var_B"),
+        {
+            "Var_A": Provenance(sources=(_WDI,)),
+            "Var_B": Provenance(sources=(_CENSUS,)),
+        },
+    )
+
+    lines = (
+        AnalysisDigest.from_results((result,))
+        .format_results_for_prompt()
+        .splitlines()
+    )
+
+    assert lines[1:3] == [
+        "  cite: [1, 2]",
+        "  cite by variable: Var_A [1]; Var_B [2]",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("variable_provenance", "expected_dcid"),
+    [
+        ({"Var_A": Provenance(sources=(_WDI,))}, "Var_B"),
+        (
+            {
+                "Var_A": Provenance(sources=(_WDI,)),
+                "Var_B": Provenance(sources=(_WDI,)),
+                "Var_Extra": Provenance(sources=(_WDI,)),
+            },
+            "Var_Extra",
+        ),
+    ],
+    ids=["missing-key", "extra-key"],
+)
+def test_variable_provenance_keys_must_match_variables(
+    variable_provenance: dict[str, Provenance], expected_dcid: str
+) -> None:
+    # Test: The key check of `variable_provenance`.
+    # Situation: Each case builds an ok and a refused result over `Var_A`
+    #   and `Var_B` whose mapping lacks `Var_B` (missing-key) or adds
+    #   `Var_Extra` (extra-key).
+    # Expectation: Both results raise `ValueError` naming the offending DCID.
+    with pytest.raises(ValueError, match=expected_dcid):
+        OkScriptResult(
+            step_id="s1",
+            script="analyze_timeseries",
+            variables=("Var_A", "Var_B"),
+            variable_names={"Var_A": "A", "Var_B": "B"},
+            provenance=Provenance(sources=(_WDI,)),
+            variable_provenance=variable_provenance,
+            metrics=_default_timeseries_metrics(),
+        )
+    with pytest.raises(ValueError, match=expected_dcid):
+        RefusedScriptResult(
+            step_id="s1",
+            script="analyze_timeseries",
+            refusal_reason="no_observations",
+            variables=("Var_A", "Var_B"),
+            variable_names={"Var_A": "A", "Var_B": "B"},
+            provenance=Provenance(sources=(_WDI,)),
+            variable_provenance=variable_provenance,
+        )
+
+
+def test_variable_provenance_sources_must_be_step_sources() -> None:
+    # Test: The source check of `variable_provenance`.
+    # Situation: A result whose `Var_B` cites a source that the step's
+    #   `provenance.sources` does not list.
+    # Expectation: `ValueError` naming `Var_B` and neither the source's
+    #   name nor its URL.
+    unlisted_source = Source(name="Secret SourceText", url="https://secret.org")
+
+    with pytest.raises(ValueError, match="Var_B") as exc_info:
+        OkScriptResult(
+            step_id="s1",
+            script="analyze_timeseries",
+            variables=("Var_A", "Var_B"),
+            variable_names={"Var_A": "A", "Var_B": "B"},
+            provenance=Provenance(sources=(_WDI,)),
+            variable_provenance={
+                "Var_A": Provenance(sources=(_WDI,)),
+                "Var_B": Provenance(sources=(unlisted_source,)),
+            },
+            metrics=_default_timeseries_metrics(),
+        )
+
+    assert "Secret SourceText" not in str(exc_info.value)
+    assert "secret.org" not in str(exc_info.value)
+
+
+def test_to_dict_serializes_variable_provenance() -> None:
+    # Test: JSON serialization of `variable_provenance`.
+    # Situation: A result over two variables with distinct sources and
+    #   facet IDs.
+    # Expectation: `to_dict()` maps each variable DCID to its serialized
+    #   `Provenance`.
+    result = _build_multi_variable_result(
+        ("Var_A", "Var_B"),
+        {
+            "Var_A": Provenance(sources=(_WDI,), facet_ids=("f1",)),
+            "Var_B": Provenance(sources=(_CENSUS,), facet_ids=("f2",)),
+        },
+    )
+
+    assert result.to_dict()["variable_provenance"] == {
+        "Var_A": json_safe(Provenance(sources=(_WDI,), facet_ids=("f1",))),
+        "Var_B": json_safe(Provenance(sources=(_CENSUS,), facet_ids=("f2",))),
+    }

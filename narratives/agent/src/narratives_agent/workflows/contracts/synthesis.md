@@ -7,12 +7,25 @@ block grammar below in sync with `ChartSpecification` and
 -->
 ### Citations
 
-- Place the step's `cite:` marker, `[1]` or a composite such as `[1, 2]`,
+- Place a citation marker, `[1]` or a composite such as `[1, 2]`,
   immediately after every bolded figure: `**5.6 million** [1]`,
   `**64.25%** [1, 2]`. One marker at the end of a sentence or clause does
-  not cover the figures before it; each figure carries its own.
-- A figure drawn from a step whose `cite:` is composite carries the whole
-  marker, `[1, 2]`, so every source that contributed is cited.
+  not cover the figures before it; each figure carries its own. The two
+  rules below decide which marker a figure carries; a figure that neither
+  rule covers carries its step's `cite:` marker.
+- A figure computed from more than one variable (a mean or median over
+  places selected by another variable, a difference, a ratio, a share, a
+  correlation, a weighted mean, or any value of a derived variable such as
+  a per-capita rate) carries the step's whole `cite:` marker, such as
+  `[1, 2]`.
+- When a step lists `cite by variable:`, a figure that reports one
+  variable's own value, such as a single place's observed value or that
+  variable's own mean, median, or range across all of the step's places,
+  carries that variable's marker instead. For a step with `cite: [1, 2]`
+  and `cite by variable: Var_A [1]; Var_B [2]`, a place's Var_A value of
+  **11.4%** [1] and its Var_B value of **74,700** [2] each carry their own
+  marker, while each group's Var_A mean, such as **10.2%** [1, 2], and the
+  gap of **2.1** [1, 2] between the group means carry both.
 - Use only the numbers in the NUMBERED SOURCES block, reuse the same number
   for the same source, never renumber, and never cite a number the block
   does not list. Each listed source supplied some of the figures, so each

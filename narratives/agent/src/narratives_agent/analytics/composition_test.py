@@ -1562,3 +1562,29 @@ def test_generated_cases_match_pre_aligned_cohorts() -> None:
             assert by_cohort.coverage == aligned_components[0].coverage
         else:
             assert by_cohort == case.result
+
+
+def test_compute_composition_records_per_variable_provenance() -> None:
+    # Test: Per-variable provenance on `compute_composition` with components
+    #   and an explicit `total` from different sources.
+    # Situation: Two component tables from source 1 are combined with an
+    #   explicit `total` table from source 2.
+    # Expectation: `result.provenance.sources` lists the total's source and
+    #   then the components', and `result.variable_provenance` maps each
+    #   component DCID to source 1 and the total DCID to source 2.
+    part_a = _build_table("Part_A", [("a", "2022", 30.0)], source_id=1)
+    part_b = _build_table("Part_B", [("a", "2022", 70.0)], source_id=1)
+    total = _build_table("Total_Pop", [("a", "2022", 100.0)], source_id=2)
+
+    result = compute_composition([part_a, part_b], total=total)
+
+    assert result.status == "ok"
+    assert result.provenance.sources == (
+        total.provenance.sources[0],
+        part_a.provenance.sources[0],
+    )
+    assert result.variable_provenance == {
+        "Part_A": part_a.provenance,
+        "Part_B": part_b.provenance,
+        "Total_Pop": total.provenance,
+    }

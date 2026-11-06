@@ -60,6 +60,7 @@ from narratives_agent.analytics.script_inputs import (
     CohortInput,
     build_invalid_parameters_refusal,
     build_refusal,
+    collect_variable_provenance,
     resolve_target_places,
 )
 from narratives_agent.analytics.tables import (
@@ -908,6 +909,9 @@ def _build_relation_result(
         unit=paired.target.unit,
         scaling_factor=paired.target.scaling_factor,
         provenance=provenance,
+        variable_provenance=collect_variable_provenance(
+            (paired.target, paired.by)
+        ),
         metrics=RelationMetrics(
             target_variable_dcid=paired.target.variable_dcid,
             target_reference_date=paired.target.reference_date,

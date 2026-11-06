@@ -24,6 +24,7 @@ import pytest
 from narratives_agent.analytics.derived import derive_observation_table
 from narratives_agent.analytics.digest import AnalysisDigest, ScriptResult
 from narratives_agent.analytics.provenance import Provenance, Source
+from narratives_agent.analytics.relations import relate_cohorts
 from narratives_agent.analytics.tables import (
     MAX_NAME_CHARS,
     ObservationRow,
@@ -427,3 +428,77 @@ def test_external_metadata_and_urls_are_sanitized_to_single_lines() -> None:
     assert "[1] Euro stat - https://ec.europa.eu/stats?x=1\n" in message
     assert f"[2] {long_url}\n" in message
     assert f"{long_url} - {long_url}" not in message
+
+
+def test_a_multi_variable_step_renders_cite_by_variable() -> None:
+    # Test: Rendering of per-variable citations in the synthesis user message.
+    # Situation: `relate_cohorts` pairs a diabetes table from CDC PLACES with
+    #   an income table from Census ACS across five counties, and the resulting
+    #   digest is rendered into the synthesis user message.
+    # Expectation: `NUMBERED SOURCES` lists `[1]` and `[2]`, and `ANALYSIS
+    #   DIGEST` holds `cite: [1, 2]` on the step's details line and, on the
+    #   next line, a `cite by variable:` line citing
+    #   `Percent_Person_WithDiabetes [1]` and `Median_Income_Household [2]`.
+    cdc = Source(name="CDC PLACES", url="https://www.cdc.gov/places")
+    acs = Source(name="Census ACS", url="https://data.census.gov/")
+    places = tuple(f"geoId/330{index:02d}" for index in range(1, 6))
+    diabetes_base = _make_table(
+        "t1",
+        "Percent_Person_WithDiabetes",
+        name="Diabetes Prevalence",
+        unit="Percent",
+        places=places,
+        dates=("2022",),
+        values={place: float(index + 8) for index, place in enumerate(places)},
+        parent="geoId/33",
+        child_type="County",
+        facet_id="f_cdc",
+    )
+    income_base = _make_table(
+        "t2",
+        "Median_Income_Household",
+        name="Median Household Income",
+        unit="USDollar",
+        places=places,
+        dates=("2022",),
+        values={
+            place: float(90_000 - index * 5_000)
+            for index, place in enumerate(places)
+        },
+        parent="geoId/33",
+        child_type="County",
+        facet_id="f_acs",
+    )
+    diabetes = CachedTable(
+        "t1",
+        replace(
+            diabetes_base.table,
+            provenance=Provenance(sources=(cdc,), facet_ids=("f_cdc",)),
+        ),
+    )
+    income = CachedTable(
+        "t2",
+        replace(
+            income_base.table,
+            provenance=Provenance(sources=(acs,), facet_ids=("f_acs",)),
+        ),
+    )
+
+    relation_result = relate_cohorts(diabetes.table, income.table, step_id="s1")
+    digest = AnalysisDigest.from_results((relation_result,))
+    inputs = build_synthesis_inputs(
+        "Diabetes and income in NH?",
+        digest,
+        None,
+        (diabetes, income),
+        digest.sources,
+    )
+
+    message = render_synthesis_message(inputs)
+
+    assert "[1] CDC PLACES - https://www.cdc.gov/places\n" in message
+    assert "[2] Census ACS - https://data.census.gov/\n" in message
+    assert (
+        "cite: [1, 2]\n  cite by variable: Percent_Person_WithDiabetes [1]; "
+        "Median_Income_Household [2]\n"
+    ) in message
