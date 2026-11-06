@@ -20,13 +20,13 @@ both in the container and in local development.
 
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from narratives_agent import telemetry
+from narratives_agent import model_armor, telemetry
 from narratives_agent.config import bootstrap_config_from_url
 from narratives_agent.gcp_auth import init_dc_api_key
 from narratives_agent.mcp import client as mcp_client
@@ -81,8 +81,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     bucket surfaces as a `config_missing` error on every turn instead of being
     masked by the configuration shipped with the image.
 
-    The MCP client's pooled HTTP client is opened on first use and closed here
-    at shutdown.
+    The Model Armor and MCP clients' pooled HTTP clients are opened on first
+    use and closed here at shutdown.
 
     Telemetry is configured here rather than when the module is imported, so
     importing the application in a test or a tool installs no global tracer
@@ -92,11 +92,11 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     init_dc_api_key()
     telemetry.configure_telemetry()
     bootstrap_config_from_url()
-    try:
+    async with AsyncExitStack() as stack:
+        stack.callback(telemetry.flush_telemetry)
+        stack.push_async_callback(mcp_client.aclose)
+        stack.push_async_callback(model_armor.aclose)
         yield
-    finally:
-        await mcp_client.aclose()
-        telemetry.flush_telemetry()
 
 
 def create_app() -> FastAPI:

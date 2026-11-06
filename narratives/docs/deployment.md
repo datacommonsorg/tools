@@ -422,6 +422,25 @@ loop, or synthesis models.
   set `narratives.enableChat: false` in `deploy/helm_charts/envs/<env>.yaml` in
   the `datacommons-website` repository.
 
+### Screening prompts with Google Cloud Model Armor (optional)
+
+By default, Narratives screens incoming queries with its built-in regex
+pre-filter (`workflows/prefilter.py`) and Gemini's safety filters. To add
+[Google Cloud Model Armor](https://cloud.google.com/security-command-center/docs/model-armor-overview)
+screening before the `classify` Gemini call:
+
+1. Enable the Model Armor API (`modelarmor.googleapis.com`) and create a Model
+   Armor template in your Google Cloud project (for example, in `us-central1`).
+2. Grant `roles/modelarmor.user` to the runtime service account
+   (`<instance>-app` on Cloud Run, or the GKE Workload Identity service
+   account).
+3. Set the `MODEL_ARMOR_TEMPLATE` environment variable on the container to the
+   template's resource path
+   (`projects/<project>/locations/<location>/templates/<template>`).
+
+When `MODEL_ARMOR_TEMPLATE` is unset, Model Armor screening is skipped. When
+set, it works with both `GEMINI_API_KEY` and Vertex AI deployments.
+
 ### Tearing down a deployment
 
 To destroy all Terraform-managed resources for the instance:

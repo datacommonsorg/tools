@@ -26,6 +26,7 @@ license = "Apache-2.0"
 dependencies = [
     "anyio>=4.15",
     "fastapi>=0.141",
+    "google-auth>=2.58",
     "google-cloud-secret-manager>=2.20",
     "google-genai>=1.0",
     "httpx>=0.28",

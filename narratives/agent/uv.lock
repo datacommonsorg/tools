@@ -849,6 +849,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "fastapi" },
+    { name = "google-auth" },
     { name = "google-cloud-secret-manager" },
     { name = "google-genai" },
     { name = "httpx" },
@@ -881,6 +882,7 @@ dev = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.15" },
     { name = "fastapi", specifier = ">=0.141" },
+    { name = "google-auth", specifier = ">=2.58" },
     { name = "google-cloud-secret-manager", specifier = ">=2.20" },
     { name = "google-genai", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.28" },

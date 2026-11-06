@@ -45,6 +45,7 @@ MIN_SECRET_BYTES = 32
 GEMINI_API_KEY_SECRET_ENV = "GEMINI_API_KEY_SECRET"
 DC_API_KEY_ENV = "DC_API_KEY"
 DC_API_KEY_SECRET_ENV = "DC_API_KEY_SECRET"
+MODEL_ARMOR_TEMPLATE_ENV = "MODEL_ARMOR_TEMPLATE"
 TRANSCRIPT_HMAC_SECRET_ENV = "TRANSCRIPT_HMAC_SECRET"
 TRANSCRIPT_HMAC_SECRET_NAME_ENV = "TRANSCRIPT_HMAC_SECRET_NAME"
 
@@ -212,6 +213,12 @@ class Settings(BaseSettings):
     # When true, Gemini calls authenticate with Application Default Credentials
     # against Vertex AI instead of using a Gemini API key.
     google_genai_use_vertexai: _EnvBool = False
+
+    # Resource name of the Google Cloud Model Armor template used to screen
+    # user queries before classification
+    # (`projects/<project>/locations/<location>/templates/<template>`). When
+    # unset, Model Armor screening is skipped.
+    model_armor_template: str = ""
 
     # When false, `/agent/chat/stream` aborts every turn with reason
     # `chat_disabled` before making any Gemini or MCP calls.
