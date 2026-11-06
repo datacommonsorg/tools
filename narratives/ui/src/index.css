@@ -123,8 +123,8 @@
   --color-on-surface: var(--theme-text, #1b1c1d);
   --color-on-surface-variant: var(--theme-text-muted, #444746);
   --color-muted: #575b5f;
-  /* AI orange: the color of the AI disclaimer under each answer. */
-  --color-ai-disclaimer: #c17b4a;
+  /* Neutral 40: the color of the AI disclaimer under each answer. */
+  --color-ai-disclaimer: #5e5e5e;
   --color-subtle: #747775;
   --color-placeholder: #8e918f;
 
