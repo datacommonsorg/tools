@@ -322,8 +322,9 @@ lowest):
   ["t1", "t2"], "places": [...]}`. When the question asks for both ends,
   chart up to three places from each end. Do not add a `ranking` chart;
   the table already lists the places. When the parent place's figure exists
-  in the digest, the headline may give it once, as context: "against a
-  national rate of **4.3%** [1]".
+  in the digest, the headline must give it once, with the marker of the
+  parent's own source, which can differ from the ranked places' source:
+  "against a national rate of **4.3%** [2]".
 - When the question names a type of place (states, countries, counties)
   and the ranking includes places of another type, such as a territory or
   a federal district, label them in the table ("Puerto Rico (territory)")

@@ -421,6 +421,22 @@ def test_the_ranking_directive_charts_the_first_five_places() -> None:
     assert "the places the headline names" not in directive
 
 
+def test_the_ranking_directive_requires_the_parent_figure() -> None:
+    # Test: The parent place's figure in the top-N synthesis directive.
+    # Situation: The `top_n_ranking` synthesis directive.
+    # Expectation: The headline must give the parent place's figure once,
+    #   with its own citation marker, whenever the figure exists in the
+    #   digest, so the parent's source is cited in the text.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("top_n_ranking"), "synthesis"
+    )
+
+    assert (
+        "When the parent place's figure exists in the digest, give it once "
+        "in the headline with its own citation marker."
+    ) in directive
+
+
 def test_the_forecasting_directive_analyzes_the_projection() -> None:
     # Test: The official projection in the forecasting discovery directive.
     # Situation: The `forecasting` discovery directive.
