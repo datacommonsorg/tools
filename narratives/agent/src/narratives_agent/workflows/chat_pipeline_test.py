@@ -1783,14 +1783,14 @@ def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
     ]
 
 
-def test_collect_follow_up_topics_leads_with_related_indicators() -> None:
+def test_collect_follow_up_topics_leads_with_one_related_indicator() -> None:
     # Test: The related indicators discovery left aside, as follow-up topics.
     # Situation: The specification's `related` list names two left-aside
     #   indicators, a blank entry, and one that repeats a variable the digest
     #   computed figures for.
-    # Expectation: The left-aside indicators come first, in their order, the
-    #   blank entry is dropped, and the repeated topic appears only once,
-    #   ahead of the computed variable's own topic.
+    # Expectation: The first related indicator comes first, the computed
+    #   variable's topic next, and the other related indicator after it; the
+    #   blank entry is dropped, and the repeated topic appears only once.
     table = _make_table("t1")
     digest = AnalysisDigest.from_results(
         (analyze_timeseries(table.table, step_id="s1"),)
@@ -1825,8 +1825,8 @@ def test_collect_follow_up_topics_leads_with_related_indicators() -> None:
 
     assert topics == [
         "maternal mortality",
-        "births attended by skilled health staff",
         computed_topic,
+        "births attended by skilled health staff",
     ]
 
 

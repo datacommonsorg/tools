@@ -719,11 +719,12 @@ def collect_follow_up_topics(
 ) -> list[str]:
     """Returns the topics that ground the follow-up questions.
 
-    The topics are the related indicators and angles the specification left
-    aside (`related`), first because they broaden the research beyond the
-    answer; then the variables the digest's results computed figures for,
-    each with the places or the child place type it was measured over; then
-    the titles of the charts shown; then the missing-data notes that name a
+    The topics start with the first related indicator the specification left
+    aside (`related`), so at least one follow-up broadens the research. The
+    variables the digest's results computed figures for come next, each
+    with the places or the child place type it was measured over, because
+    their data is known to exist. Then come the other related indicators,
+    the titles of the charts shown, and the missing-data notes that name a
     data gap (excluding processing diagnostics and the generic
     no-observations fallback note). Duplicates are dropped in order of
     first appearance.
@@ -738,11 +739,12 @@ def collect_follow_up_topics(
     tables_by_variable: dict[str, ObservationTable] = {}
     for cached in discovery.tables:
         tables_by_variable.setdefault(cached.table.variable_dcid, cached.table)
-    topics: list[str] = []
-    if discovery.spec is not None:
-        topics.extend(
-            topic.strip() for topic in discovery.spec.related if topic.strip()
-        )
+    related = (
+        [topic.strip() for topic in discovery.spec.related if topic.strip()]
+        if discovery.spec is not None
+        else []
+    )
+    topics: list[str] = related[:1]
     for result in discovery.digest.results:
         if result.status != "ok":
             continue
@@ -750,6 +752,7 @@ def collect_follow_up_topics(
             name = result.variable_names.get(dcid, dcid)
             scope = _format_topic_scope(tables_by_variable.get(dcid))
             topics.append(f"{name}{scope}")
+    topics.extend(related[1:])
     topics.extend(chart.title for chart in charts if chart.title)
     topics.extend(
         note

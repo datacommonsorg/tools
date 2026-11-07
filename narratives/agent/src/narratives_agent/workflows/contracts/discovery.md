@@ -138,9 +138,10 @@ indicators every time, so choose by this method rather than case by case:
    A population table fetched only for `per_capita` does not count toward
    the five indicators.
 5. In the specification's `findings`, name the angles and the indicators you
-   chose. In its `related` list, name the related angles and indicators you
-   left aside, in plain words (for example, "maternal mortality"); they
-   become the reader's follow-up questions.
+   chose. In its `related` list, name at most five related angles and
+   indicators you left aside, each in plain words with the place it applies
+   to (for example, "maternal mortality in Japan"); they become the
+   reader's follow-up questions.
 
 **Step 2: fetch tables into the server cache.**
 

@@ -94,7 +94,9 @@ restore these two rules in place of the `cite by variable:` rule:
   instead: "France is at its record high", not "France reached 82.98 years
   in 2024" a second time.
 - Follow the headline with two to four bullets, never a dense paragraph of
-  figures. Start each bullet with a bold label naming what it shows, such
+  figures, unless a section below calls for a table instead, as
+  comparisons, rankings, and breakdowns of five or more categories do.
+  Start each bullet with a bold label naming what it shows, such
   as `**Long-term trend:**`, `**Historical peak:**`, `**Recent low and
   peak:**`, `**Sharpest decline:**`, `**Fastest growth:**`,
   `**Highest:**`, `**Lowest:**`, or `**Median and spread:**`, and keep each
