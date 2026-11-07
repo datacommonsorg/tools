@@ -55,7 +55,7 @@ describe('FollowUpQuestions', () => {
 
   it('labels the questions as follow-ups after an answer with data', () => {
     // Test: Heading of the suggestions after an answer.
-    // Situation: The answer found data, so noData is left unset.
+    // Situation: The answer found data, so hasData is left unset.
     // Expectation: The heading reads "Follow up questions".
     render(<FollowUpQuestions questions={['What about Germany?']} />);
     expect(
@@ -65,9 +65,11 @@ describe('FollowUpQuestions', () => {
 
   it('labels the questions as alternatives when no data was found', () => {
     // Test: Heading of the suggestions after a no-data answer.
-    // Situation: The answer found no data, so noData is set.
+    // Situation: The answer found no data, so hasData is false.
     // Expectation: The heading reads "Alternative questions".
-    render(<FollowUpQuestions questions={['What about Germany?']} noData />);
+    render(
+      <FollowUpQuestions questions={['What about Germany?']} hasData={false} />,
+    );
     expect(
       screen.getByRole('heading', { name: 'Alternative questions' }),
     ).toBeTruthy();

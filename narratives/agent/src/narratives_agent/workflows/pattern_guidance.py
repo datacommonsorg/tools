@@ -276,8 +276,9 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "Never sort places into groups or label them with tiers of your "
             'own. Open with the short clause "Caveats and missing data" '
             'describes, then compare the places as "Comparing several '
-            'places" describes. Never write "clustering" or "compared '
-            'rather than grouped".'
+            'places" describes. Never use the word "clustering", and never '
+            "add a separate sentence about how the places were or were not "
+            "grouped."
         ),
     ),
     "forecasting": Directive(

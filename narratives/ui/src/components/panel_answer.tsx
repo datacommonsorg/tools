@@ -355,7 +355,7 @@ export function AnswerPanel({
             <FollowUpQuestions
               questions={turn.followUps ?? []}
               onAsk={onAsk}
-              noData={turn.hasData === false}
+              hasData={turn.hasData !== false}
             />
           </div>
         )}

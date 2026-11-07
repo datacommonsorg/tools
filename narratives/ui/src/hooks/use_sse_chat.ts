@@ -343,8 +343,9 @@ interface ContentPayload {
   tool_call?: ToolCallEvent;
   sources?: ProvenanceItem[];
   /**
-   * Reports the completeness of the data behind the answer; `truncated` is
-   * the flag the UI acts on.
+   * Reports the completeness of the data behind the answer: `truncated`
+   * raises the truncation warning, and `has_data` false labels the
+   * suggestions as alternative questions.
    */
   data_status?: { truncated?: boolean; has_data?: boolean };
 }

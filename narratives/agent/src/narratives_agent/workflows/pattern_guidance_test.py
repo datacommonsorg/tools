@@ -155,7 +155,9 @@ def test_the_directive_is_appended_as_a_final_section() -> None:
         ("forecasting", "Never extrapolate"),
     ],
 )
-def test_unimplemented_patterns_say_so(pattern: str, guard: str) -> None:
+def test_unimplemented_patterns_forbid_improvising(
+    pattern: str, guard: str
+) -> None:
     # Test: Directives for the methods the agent loop does not perform.
     # Situation: A classification carries `clustering` or `forecasting`.
     # Expectation: The discovery half tells the loop not to attempt the
