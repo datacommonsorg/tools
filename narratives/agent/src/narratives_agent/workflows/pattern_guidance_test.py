@@ -148,14 +148,22 @@ def test_the_directive_is_appended_as_a_final_section() -> None:
     )
 
 
-@pytest.mark.parametrize("pattern", ["clustering", "forecasting"])
-def test_unimplemented_patterns_say_so(pattern: str) -> None:
+@pytest.mark.parametrize(
+    ("pattern", "guard"),
+    [
+        ("clustering", "Never sort places into groups"),
+        ("forecasting", "Never extrapolate"),
+    ],
+)
+def test_unimplemented_patterns_forbid_improvising(
+    pattern: str, guard: str
+) -> None:
     # Test: Directives for the methods the agent loop does not perform.
     # Situation: A classification carries `clustering` or `forecasting`.
     # Expectation: The discovery half tells the loop not to attempt the
-    #   method, and the synthesis half tells the answer to say plainly that
-    #   the method is not performed, so the answer does not improvise a
-    #   projection or a clustering.
+    #   method, and the synthesis half forbids improvising groups or
+    #   future figures, so the answer does not invent a projection or a
+    #   clustering.
     discovery = pattern_guidance.build_pattern_directive(
         _make_classification(pattern), "discovery"
     )
@@ -164,7 +172,7 @@ def test_unimplemented_patterns_say_so(pattern: str) -> None:
     )
 
     assert discovery.startswith("Do not attempt")
-    assert "say plainly that no" in synthesis
+    assert guard in synthesis
 
 
 @pytest.mark.parametrize("phase", _PHASES)
@@ -369,6 +377,81 @@ def test_the_ranking_directive_relates_only_a_second_variable() -> None:
 
 
 @pytest.mark.parametrize("phase", _PHASES)
+@pytest.mark.parametrize("pattern", get_args(QueryPattern))
+def test_no_directive_fetches_a_table_without_a_step(
+    pattern: str, phase: DirectivePhase
+) -> None:
+    # Test: Tables fetched with no step.
+    # Situation: The directive of every pattern, for each phase.
+    # Expectation: No directive tells the loop to leave a fetched table
+    #   without a step, because only step results reach the answer.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification(pattern), phase
+    )
+
+    assert "no step" not in directive
+
+
+def test_the_ranking_directive_analyzes_the_parent_place() -> None:
+    # Test: The parent-place benchmark of the top-N discovery directive.
+    # Situation: The `top_n_ranking` discovery directive.
+    # Expectation: The sentence that fetches the parent place's series
+    #   specifies `analyze_timeseries` on that table, so its figure and
+    #   chart reach the answer, and keeps it out of the ranking.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("top_n_ranking"), "discovery"
+    )
+    _, _, parent = directive.partition("Once the cohort table is fetched")
+    parent, _, _ = parent.partition("When the question asks for a second")
+
+    assert "specify `analyze_timeseries` on that table" in parent
+    assert "never include it in the ranking" in parent
+
+
+def test_the_ranking_directive_charts_the_first_five_places() -> None:
+    # Test: The line chart of the top-N synthesis directive.
+    # Situation: The `top_n_ranking` synthesis directive.
+    # Expectation: It charts the first five places in the table, not only
+    #   the places the headline names, which are the top place and its ties.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("top_n_ranking"), "synthesis"
+    )
+
+    assert "chart a `line` of the first five places in the table" in directive
+    assert "the places the headline names" not in directive
+
+
+def test_the_ranking_directive_requires_the_parent_figure() -> None:
+    # Test: The parent place's figure in the top-N synthesis directive.
+    # Situation: The `top_n_ranking` synthesis directive.
+    # Expectation: The headline must give the parent place's figure once,
+    #   with its own citation marker, whenever the figure exists in the
+    #   digest, so the parent's source is cited in the text.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("top_n_ranking"), "synthesis"
+    )
+
+    assert (
+        "When the parent place's figure exists in the digest, give it once "
+        "in the headline with its own citation marker."
+    ) in directive
+
+
+def test_the_forecasting_directive_analyzes_the_projection() -> None:
+    # Test: The official projection in the forecasting discovery directive.
+    # Situation: The `forecasting` discovery directive.
+    # Expectation: It specifies `analyze_timeseries` on the projection as
+    #   well as on the history, so a fetched projection reaches the answer.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("forecasting"), "discovery"
+    )
+
+    assert (
+        "`analyze_timeseries` on it and on the projection when you fetched one"
+    ) in directive
+
+
+@pytest.mark.parametrize("phase", _PHASES)
 def test_the_correlation_directive_relates_and_never_divides(
     phase: DirectivePhase,
 ) -> None:
@@ -384,3 +467,70 @@ def test_the_correlation_directive_relates_and_never_divides(
     if phase == "discovery":
         assert "`relate_cohorts`" in directive
     assert "ratio" not in directive
+
+
+@pytest.mark.parametrize("shape", get_args(GeographicShape))
+def test_a_correlation_without_a_cohort_is_written_as_a_comparison(
+    shape: str,
+) -> None:
+    # Test: The synthesis directive of a correlation over named places.
+    # Situation: A `correlation` classification of each shape, in the
+    #   synthesis phase, when no fetched table covers a cohort.
+    # Expectation: The directive sends the answer to "Comparing several
+    #   places" and never asks for a `scatter` chart, which the chart
+    #   resolver rejects without a cohort; the comparison sentence is still
+    #   appended for the `comparison` shape.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("correlation", shape),
+        "synthesis",
+        has_cohort_table=False,
+    )
+
+    assert directive.startswith(
+        pattern_guidance._NAMED_PLACE_CORRELATION_SYNTHESIS
+    )
+    assert '"Comparing several places"' in directive
+    assert "`scatter`" not in directive
+    comparison = pattern_guidance._COMPARISON_DIRECTIVE.get_phase_text(
+        "synthesis"
+    )
+    assert directive.endswith(comparison) is (shape == "comparison")
+
+
+def test_a_correlation_over_a_cohort_keeps_its_scatter_directive() -> None:
+    # Test: The synthesis directive of a correlation over a cohort.
+    # Situation: A `correlation` classification in the synthesis phase,
+    #   when a fetched table covers a cohort.
+    # Expectation: The directive is the pattern's own synthesis directive,
+    #   which pairs the tables in a `scatter` chart.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("correlation"),
+        "synthesis",
+        has_cohort_table=True,
+    )
+
+    assert directive == pattern_guidance._DIRECTIVES["correlation"].synthesis
+    assert "`scatter`" in directive
+
+
+@pytest.mark.parametrize("phase", _PHASES)
+@pytest.mark.parametrize("pattern", get_args(QueryPattern))
+def test_only_a_correlation_synthesis_depends_on_the_cohort(
+    pattern: str, phase: DirectivePhase
+) -> None:
+    # Test: Which directives the cohort flag changes.
+    # Situation: Every pattern in each phase, built with and without a
+    #   cohort table.
+    # Expectation: The two directives differ only for the `correlation`
+    #   synthesis directive, so no other pattern or phase changes.
+    classification = _make_classification(pattern)
+
+    with_cohort = pattern_guidance.build_pattern_directive(
+        classification, phase, has_cohort_table=True
+    )
+    without_cohort = pattern_guidance.build_pattern_directive(
+        classification, phase, has_cohort_table=False
+    )
+
+    changes = with_cohort != without_cohort
+    assert changes is (pattern == "correlation" and phase == "synthesis")

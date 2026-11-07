@@ -165,7 +165,10 @@ agent loop in five steps:
    sourced digest step carries a step-level `cite:` marker and, when a
    multi-variable step draws from distinct sources per variable, a
    `cite by variable:` breakdown so single-variable figures cite their own
-   source while cross-variable figures cite the combined sources. The model
+   source. The synthesis contract shows markers only on figures taken
+   straight from a source; calculated figures, including cross-variable ones,
+   carry none, and the rules that would cite them with the combined sources
+   are kept disabled in an HTML comment in `contracts/synthesis.md`. The model
    writes markdown and places each chart where it belongs as a fenced block
    tagged `chart` holding one specification: the chart kind (`line`, `bar`,
    `map`, `ranking`, `scatter`, or `highlight`), the table ids it draws from, a
@@ -192,8 +195,11 @@ agent loop in five steps:
    `relate_cohorts` result, which is considered first, or the direct chart of
    `analyze_timeseries`, `rank_cohort`, or `compute_composition`;
    distributions, standalone derivations, non-cohort relations, and
-   relations over a window cohort receive none). A ranking over a window
-   cohort is charted as a `line` of its leading places, and a `ranking`,
+   relations over a window cohort receive none). A ranking of a cohort, or
+   any ranking over a window cohort, is charted as a `line` of its first five
+   places, with the parent place when a step analyzed the parent's series; a
+   single-date cohort ranking falls back to a `ranking` chart when its table
+   has one date, or when the ranking supports a relation. A `ranking`,
    `bar`, `map`, or `scatter` of a table that the digest ranks only over a
    window needs an explicit date, because without one it would draw the
    latest values rather than the change the prose describes. The signed

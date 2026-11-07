@@ -38,7 +38,13 @@ from narratives_agent.workflows.prompt_contracts import (
     compose_system_instruction,
     load_prompt_contract,
 )
-from narratives_agent.workflows.specification import AnalysisSpecification
+from narratives_agent.workflows.specification import (
+    _MAX_SPECIFICATION_STEPS,
+    AnalysisSpecification,
+)
+
+# The step limit as the discovery contract writes it, keyed by its value.
+_STEP_LIMIT_WORDS = {6: "six"}
 
 _CONTRACTS: tuple[ContractName, ...] = get_args(ContractName.__value__)
 
@@ -263,20 +269,84 @@ def test_synthesis_contract_matches_chart_specification_grammar() -> None:
         assert section_name in guidance
 
 
-def test_synthesis_contract_instructs_per_variable_citations() -> None:
-    # Test: Per-variable citation rules in `contracts/synthesis.md`.
-    # Situation: The `### Citations` section of
-    #   `load_prompt_contract("synthesis")` is inspected.
-    # Expectation: It holds the rule that a figure computed from more than
-    #   one variable carries the whole `cite:` marker and the rule that a
-    #   figure reporting one variable's own value carries that variable's
-    #   `cite by variable:` marker, and no longer holds the superseded rule
-    #   that every figure of a composite step carries the whole marker.
-    contract = load_prompt_contract("synthesis")
+def _flattened_citations_section(contract: str) -> str:
+    """Returns the `### Citations` section of `contract`, whitespace-joined."""
     _, found, remainder = contract.partition("### Citations\n")
     assert found
     citations, _, _ = remainder.partition("\n### ")
-    flattened = " ".join(citations.split())
+    return " ".join(citations.split())
+
+
+def test_synthesis_contract_cites_sourced_figures_by_variable() -> None:
+    # Test: Active citation rules in `contracts/synthesis.md`.
+    # Situation: The `### Citations` section of
+    #   `load_prompt_contract("synthesis")`, which the model receives, is
+    #   inspected.
+    # Expectation: A sourced figure that reports one variable's own value
+    #   carries that variable's `cite by variable:` marker, calculated
+    #   figures carry no marker, a single-source list or table is cited
+    #   once, and the rules that cite calculated figures are absent.
+    citations = _flattened_citations_section(load_prompt_contract("synthesis"))
+
+    assert (
+        "When a step lists `cite by variable:`, a sourced figure that reports "
+        "one variable's own value, such as a single place's observed value, "
+        "carries that variable's marker instead."
+    ) in citations
+    assert (
+        "Never attach a marker to a figure the server calculated from the "
+        "sourced values"
+    ) in citations
+    assert (
+        "When every figure in a list or a table comes from the same source, "
+        "cite it once"
+    ) in citations
+    assert "A figure computed from more than one variable" not in citations
+    assert "so every source that contributed is cited" not in citations
+
+
+def test_synthesis_contract_cites_calculation_only_sources_by_name() -> None:
+    # Test: Citation of a source that reaches the answer only through
+    #   calculated figures.
+    # Situation: The `### Citations` section of
+    #   `load_prompt_contract("synthesis")` is inspected.
+    # Expectation: Such a source is cited after its name in the headline and
+    #   in the column header of a table of those figures, with markers from
+    #   the producing steps' `cite:`, and the rule that every listed source
+    #   carries a marker names that placement, so it cannot contradict the
+    #   rule that calculated figures carry none.
+    citations = _flattened_citations_section(load_prompt_contract("synthesis"))
+
+    assert (
+        "When a source reaches the answer only through calculated figures, "
+        "such as the population behind a per-person rate or the series "
+        "behind a ranked change, cite it where the answer names it rather "
+        "than beside a number"
+    ) in citations
+    assert (
+        "Take the markers from the `cite:` of the steps that produced the "
+        "figures."
+    ) in citations
+    assert (
+        "so each should carry at least one marker, beside a sourced figure "
+        "or, by the rule above, after the source's name."
+    ) in citations
+
+
+def test_synthesis_contract_keeps_calculated_figure_citations_disabled() -> (
+    None
+):
+    # Test: Disabled citation rules for calculated figures.
+    # Situation: The raw `contracts/synthesis.md` file is read before its HTML
+    #   comments are stripped.
+    # Expectation: Its `### Citations` section still holds, inside an HTML
+    #   comment, the rules that give a figure computed from more than one
+    #   variable the step's whole `cite:` marker and a single-variable
+    #   summary that variable's marker, so they can be restored.
+    raw = (
+        Path(prompt_contracts.__file__).parent / "contracts" / "synthesis.md"
+    ).read_text(encoding="utf-8")
+    citations = _flattened_citations_section(raw)
 
     assert (
         "A figure computed from more than one variable (a mean or median "
@@ -284,15 +354,87 @@ def test_synthesis_contract_instructs_per_variable_citations() -> None:
         "share, a correlation, a weighted mean, or any value of a derived "
         "variable such as a per-capita rate) carries the step's whole "
         "`cite:` marker"
-    ) in flattened
-    assert (
-        "When a step lists `cite by variable:`, a figure that reports one "
-        "variable's own value, such as a single place's observed value or "
-        "that variable's own mean, median, or range across all of the step's "
-        "places, carries that variable's marker instead."
-    ) in flattened
+    ) in citations
     assert (
         "each group's Var_A mean, such as **10.2%** [1, 2], and the gap of "
         "**2.1** [1, 2] between the group means carry both."
-    ) in flattened
-    assert "so every source that contributed is cited" not in flattened
+    ) in citations
+    assert (
+        "A figure computed from more than one variable"
+        not in strip_prompt_comments(raw)
+    )
+
+
+def test_discovery_contract_requires_a_step_for_every_reported_table() -> None:
+    # Test: The rule that only step results reach the answer.
+    # Situation: The text of every packaged contract, as the model receives
+    #   it.
+    # Expectation: Step 3 states that every table the answer reports,
+    #   compares, or charts must be the input of a step, and neither
+    #   contract tells the loop to leave a fetched table without one.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "Every table the answer reports, compares, or charts must be the "
+        "input of a step."
+    ) in discovery
+    for name in get_args(ContractName.__value__):
+        assert "no step" not in load_prompt_contract(name)
+
+
+def test_discovery_contract_states_the_specification_step_limit() -> None:
+    # Test: The step limit in the discovery contract.
+    # Situation: The discovery contract and `_MAX_SPECIFICATION_STEPS`.
+    # Expectation: Step 3 and the step budget in "Choosing indicators" both
+    #   state the limit the specification model enforces, so changing one
+    #   without the other fails.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+    limit = _STEP_LIMIT_WORDS[_MAX_SPECIFICATION_STEPS]
+
+    assert f"At most {limit} steps." in discovery
+    assert f"Keep within the {limit} steps of Step 3" in discovery
+
+
+def test_synthesis_contract_writes_no_sentence_about_a_scatter_chart() -> None:
+    # Test: The removed scatter disclaimer.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: It does not ask for a fixed sentence after a `scatter`
+    #   chart. The server drops a chart block it cannot draw but keeps the
+    #   prose, so such a sentence described a chart the reader never saw.
+    contract = " ".join(load_prompt_contract("synthesis").split())
+
+    assert "Follow a `scatter` chart with this one sentence" not in contract
+    assert "rather than measuring a statistical or causal link" not in contract
+
+
+def test_synthesis_contract_gives_the_headline_series_no_bullet() -> None:
+    # Test: The layout of an answer that covers several series.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: The series whose figure the headline gives gets no bullet
+    #   of its own, so the first bullet never repeats the headline and an
+    #   answer of five indicators stays within four bullets.
+    contract = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "The series whose figure the headline gives gets no bullet of its own"
+    ) in contract
+    assert (
+        "An answer that covers five indicators then has one in the headline "
+        "and four bullets."
+    ) in contract
+
+
+def test_discovery_contract_keeps_unavailable_indicators_out_of_related() -> (
+    None
+):
+    # Test: What `related` may name.
+    # Situation: The discovery contract the model receives.
+    # Expectation: It forbids listing in `related` an indicator without
+    #   data or one recorded in `missing`, because each `related` entry
+    #   becomes a follow-up question.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "Never list an indicator you found no data for, or one you record in "
+        "`missing`"
+    ) in discovery

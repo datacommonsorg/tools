@@ -18,6 +18,7 @@
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from narratives_agent.config_model import AgentConfig, GeminiRole
@@ -33,11 +34,46 @@ logger = logging.getLogger(__name__)
 
 # Max number of follow-up questions returned to the UI.
 MAX_FOLLOW_UP_QUESTIONS = 3
+# Headings of the two topic lists in the follow-up request; `follow_up.md`
+# refers to them by these names.
+UNUSED_TOPICS_HEADING = "INDICATORS THE ANSWER DID NOT USE"
+REPORTED_TOPICS_HEADING = "INDICATORS THE ANSWER REPORTED"
+# Written in place of an empty topic list.
+_NO_TOPICS = "none"
+
+
+@dataclass(frozen=True)
+class FollowUpTopics:
+    """The topics that ground the follow-up questions, in two lists.
+
+    The follow-up model writes its questions from `unused` first, so that
+    they lead the reader somewhere the answer did not go, and uses
+    `reported` only to fill the remaining questions.
+
+    Attributes:
+        unused: Indicators the answer did not use, such as those discovery
+            left aside, or, on a turn without data, its data-gap notes.
+        reported: Indicators the answer reported, with the places they were
+            measured over, and the titles of the charts shown.
+    """
+
+    unused: tuple[str, ...] = ()
+    reported: tuple[str, ...] = ()
+
+
+def _clean_topics(topics: tuple[str, ...]) -> list[str]:
+    """Returns the non-blank topics, stripped, in their order."""
+    return [topic.strip() for topic in topics if topic.strip()]
+
+
+def _format_topic_list(topics: list[str]) -> str:
+    """Joins a topic list for the request, or names it empty."""
+    return "; ".join(topics) if topics else _NO_TOPICS
 
 
 async def generate_follow_up_questions(
     user_message: str,
-    topics: list[str],
+    topics: FollowUpTopics,
     config: AgentConfig,
     token_usage: TokenUsage | None = None,
 ) -> list[str]:
@@ -52,17 +88,16 @@ async def generate_follow_up_questions(
 
     Args:
         user_message: The user's query.
-        topics: The digest scopes, chart titles, and missing-data notes that
-            ground the questions.
+        topics: The indicators the answer did not use and those it
+            reported, sent to the model as two headed lists.
         config: The agent configuration; `prompts.follow_up` is the system
             instruction and `gemini.follow_up_model` the model.
         token_usage: Optional turn totals that receive the call's token
             counts.
     """
-    topics = [
-        t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()
-    ]
-    if not topics or not user_message:
+    unused = _clean_topics(topics.unused)
+    reported = _clean_topics(topics.reported)
+    if not (unused or reported) or not user_message:
         return []
 
     role = config.resolve_role_config(GeminiRole.FOLLOW_UP)
@@ -76,7 +111,9 @@ async def generate_follow_up_questions(
 
     prompt = f"""The user's original research question is: {user_message}
 
-RELATED TOPICS START: {"; ".join(topics)}. RELATED TOPICS END.
+{UNUSED_TOPICS_HEADING}: {_format_topic_list(unused)}.
+
+{REPORTED_TOPICS_HEADING}: {_format_topic_list(reported)}.
 
 Generate the self-contained follow-up questions now."""
 

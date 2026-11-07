@@ -61,6 +61,7 @@ __all__ = [
     "MAX_COMPOSITION_PLACES",
     "MAX_FOCAL_PLACES",
     "MAX_RANK_ENTRIES_PER_END",
+    "MAX_RELATED_TOPICS",
     "MAX_STANDALONE_SERIES_PLACES",
     "REPORT_UNAVAILABLE",
     "SUBMIT_SPECIFICATION",
@@ -102,6 +103,8 @@ MAX_COMPOSITION_PLACES = NAMED_PLACE_SERIES_LIMIT
 MAX_RANK_ENTRIES_PER_END = 25
 # The most focal places a specification or step benchmarks.
 MAX_FOCAL_PLACES = 10
+# The most related topics a specification names for follow-up questions.
+MAX_RELATED_TOPICS = 5
 # A step id is a derived table id (`s1`), the id its derived table is stored
 # under, so it follows the rule `TurnCache.store_derived` enforces.
 _STEP_ID_PATTERN = rf"^{DERIVED_TABLE_PREFIX}{TABLE_ID_NUMBER_PATTERN}$"
@@ -618,6 +621,9 @@ class AnalysisSpecification(BaseModel):
             the digest, which holds only computed figures.
         missing: Indicators or dimensions the question asked for that Data
             Commons does not have.
+        related: Related indicators or angles the model left aside, in plain
+            words. They ground the follow-up questions and are never part of
+            the digest.
         focal_places: The places the question is about, reported by the
             ranking and distribution steps that name none of their own.
     """
@@ -642,6 +648,18 @@ class AnalysisSpecification(BaseModel):
         description=(
             "Indicators or dimensions the question asked for that Data "
             "Commons does not have."
+        ),
+    )
+    related: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_RELATED_TOPICS,
+        description=(
+            f"Optional: at most {MAX_RELATED_TOPICS} related indicators or "
+            "angles you left aside, each in plain words with the place it "
+            "applies to, such as 'maternal mortality in Japan'. They become "
+            "the reader's follow-up questions; never put figures in them, "
+            "and never list an indicator you found no data for or record "
+            "in `missing`."
         ),
     )
     focal_places: list[str] = Field(

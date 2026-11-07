@@ -42,8 +42,9 @@ functions retrieve observations.
   median over a raw count for ranking.
 - Do not spend later rounds re-running `search_indicators` with synonym
   phrasings of a concept already searched (such as "poverty rate", "percent
-  poverty", and "percentage of people in poverty"). Pick the best candidate
-  DCID from the results you have and fetch it in the next round.
+  poverty", and "percentage of people in poverty"). Pick the candidate DCID
+  from the results you have, as "Choosing indicators" below describes, and
+  fetch it in the next round.
 - Pass `places` when you already know the place; it biases results toward
   variables that have data there and is for indicator discovery only.
   `places` takes place names such as "Texas" or "European Union", never
@@ -63,12 +64,86 @@ functions retrieve observations.
   `get_variable_metadata` only when a fetch comes back empty or with an
   unexpected unit and you need to inspect facets across up to ten
   `entity_dcids`.
+- Exception: a composition or a progression of stages. Its parts must come
+  from one source and one set of groups, so check them before fetching, as
+  "Fetching the parts of a whole" below describes.
 - You have fifteen tool rounds in total, and a round can carry several
   independent calls: search for all needed concepts in one round, fetch in
   the next, and submit the specification as soon as the needed tables have
   rows. The server tells you when four rounds pass without a fetched table
   that has rows, and ends the loop as unavailable after seven such rounds
   if no fetched table has rows at all.
+
+**Choosing indicators.** The same question must lead to the same
+indicators every time, so choose by this method rather than case by case:
+
+1. Map the angles first, then search for each angle in your first round.
+   - A question that names one indicator ("life expectancy in Japan"): the
+     indicator itself plus its closest companions, the same measure split
+     the way it is standardly reported, such as its female and male forms,
+     or its urban and rural forms where that split is the norm.
+   - A question about a broad concept ("women's access to health
+     services"): four angles an expert would use to measure it, or fewer
+     only when the concept has fewer. Measure the concept itself before its
+     consequences: for a question about access, coverage and use of
+     services (such as births attended by skilled staff, family planning,
+     and service coverage) come before outcomes (such as mortality or life
+     expectancy), which take a slot only when one remains.
+   - Search each angle with the place set to the scope the question asks
+     about, such as the world for a global question. Never treat an angle
+     as unavailable, or name it in `missing`, unless its own search came
+     back without a matching indicator.
+2. For each angle, rank the candidate indicators the search returns by
+   these criteria, in order, and take the top one:
+   1. It measures that angle directly (life expectancy, not healthy life
+      expectancy).
+   2. Its overall form (both sexes, all ages) over a subgroup, unless the
+      question names a subgroup; the companions in step 1 are the exception.
+   3. It covers the place and the period the question asks about, with the
+      most recent data.
+   4. For a trend in a money amount, it is adjusted for inflation
+      (constant prices), unless the question asks for nominal values.
+   5. It is a standardized indicator from an official statistical framework
+      or agency, or from the source the answer already uses.
+   6. Only if still tied: the order the search listed them.
+3. Fetch at most five indicators, all in the same round, and fetch a
+   companion only from the same source as its indicator, with
+   `source_override` set to that indicator's facet. The parts of a
+   composition or the stages of a progression count as one indicator. Add
+   no other breakdown (by age, race, or income) unless the question asks
+   for it, and no related indicator outside the angles you mapped.
+   Keep within the six steps of Step 3: every table the answer reports,
+   companions and benchmark places included, needs its own step, and each
+   `per_capita` needs one more. When the tables you planned need more than
+   six steps, drop companions first, then the lowest-ranked angles, and
+   name what you dropped in `related`.
+4. Totals and rates. Decide whether each indicator is reported as a total
+   or per person, by its kind:
+   - Counts that grow with population (crimes, doctors, hospital beds,
+     deaths, cases, public spending): when the question compares or ranks
+     places, use the rate per person (or per 1,000 or 100,000 people).
+     Prefer a rate the source publishes; otherwise fetch the count and a
+     population table for the same places in the same round and specify
+     `compute_derived_metric` with `per_capita`. Keep the total only when
+     the question asks for it.
+   - Totals where both size and intensity matter (emissions, GDP, energy
+     use, national debt): fetch the total and its per-person form,
+     published or computed with `per_capita`, and run the same step on
+     both, so the answer can report each; the pair counts as one
+     indicator.
+   - Indicators that are already rates, shares, medians, or averages
+     (unemployment rate, median income, life expectancy, deaths per
+     100,000): use them as they are; never divide them by population.
+   - Spending as a share of GDP: only when a source publishes it.
+   A population table fetched only for `per_capita` does not count toward
+   the five indicators.
+5. In the specification's `findings`, name the angles and the indicators you
+   chose. In its `related` list, name at most five related angles and
+   indicators you left aside, each in plain words with the place it applies
+   to (for example, "maternal mortality in Japan"); they become the
+   reader's follow-up questions. Never list an indicator you found no data
+   for, or one you record in `missing`: a follow-up question about it would
+   find nothing.
 
 **Step 2: fetch tables into the server cache.**
 
@@ -110,9 +185,25 @@ Pick the fetch by the shape of the question:
      year, leaves out the places that one table covers and the other does
      not, and reports them.
 - Bilateral or flow data (A to B): `fetch_multi_entity_observations`.
-- The components of a composition, the stages of a progression, or the two
-  sides of a derived metric: fetch them together in one round. Each fetch
-  is independent of the others, and the summaries come back together.
+- The two sides of a derived metric: fetch them together in one round. Each
+  fetch is independent of the others, and the summaries come back together.
+- Fetching the parts of a whole (a composition such as an age breakdown or
+  businesses by industry, or the stages of a progression):
+  1. In your first round, search for the total and for the parts.
+  2. In the next round, check the total and every candidate part with
+     `get_variable_metadata`, all in one call, or two calls in the same
+     round when there are more than ten variables. Choose one facet (one
+     source and method) that covers every part for the place, and one set
+     of groups that covers the whole range with no gaps or overlaps (for
+     example, age groups that run from the youngest to the oldest without
+     repeating an age). Do not mix groupings or sources.
+  3. In the next round, fetch the total, when that facet has one, and every
+     part together, all with `source_override` set to that facet's id.
+  4. In the round after the tables are cached with rows, call
+     `submit_specification` with `compute_composition`.
+  5. When no single facet covers every part, use the largest set of parts
+     one facet covers, and record the parts left out in `missing`. Never
+     fill a gap with another source.
 
 Date arguments, shared by the fetch functions:
 
@@ -141,6 +232,10 @@ of their facet ids.
   variables and tables, kept for the turn record and not shown to the
   reader. Never put figures in it; the server computes every figure the
   answer uses. At most six steps.
+- Every table the answer reports, compares, or charts must be the input of
+  a step. Only step results reach the answer: a table that isn't used by
+  any step is dropped, and the answer cannot state, chart, or cite it.
+  Fetch only the tables a step will use.
 - `report_unavailable` ends the loop only when no relevant or closely
   related headline indicator has observations for the requested places,
   after the fallbacks below. Say what you searched, where, why the question

@@ -73,8 +73,11 @@ logger = logging.getLogger(__name__)
 # Step input field on `compute_composition` that is not a charted component.
 _AUXILIARY_STEP_INPUTS = frozenset({"total"})
 # Maximum ranked places included in a default bar chart for non-cohort
-# tables, or in the line chart of a ranking over a date window.
+# tables.
 _DEFAULT_RANKED_PLACE_CAP = 10
+# Maximum ranked places a default ranking line chart draws, besides the
+# parent place, matching "Rankings" in `contracts/synthesis.md`.
+_DEFAULT_RANKING_LINE_PLACE_CAP = 5
 # Fewest places a single-date default chart compares as a bar chart; a
 # single place is shown as a highlight instead.
 _MIN_BAR_CHART_PLACES = 2
@@ -214,66 +217,148 @@ def _build_default_title(
     return ", ".join(dict.fromkeys(names))
 
 
-def _build_ranking_specification(
+@dataclass(frozen=True)
+class _ParentSeries:
+    """The parent place's series a ranking line chart draws with the cohort.
+
+    Attributes:
+        table_id: The fetched table that has the parent place's series.
+        place_dcid: The parent place.
+    """
+
+    table_id: str
+    place_dcid: str
+
+
+def _find_parent_series(
+    analysis: AnalysisSpecification,
+    ranked_table_ids: Sequence[str],
+    tables: TableSource,
+) -> _ParentSeries | None:
+    """Returns the parent place's series a step uses, or None.
+
+    The ranked table must be one fetched cohort table. The parent series is
+    another fetched table of the same variable that a step references and
+    that has data for the cohort's parent place. A per-capita ranking gets
+    none, because a raw parent series cannot share its axis.
+    """
+    if len(ranked_table_ids) != 1:
+        return None
+    ranked_id = ranked_table_ids[0]
+    entry = find_chart_entry(ranked_id, analysis, tables)
+    if entry is None or entry.table_id != ranked_id:
+        return None
+    cohort = get_chart_cohort(entry.table)
+    if cohort is None:
+        return None
+    for table_id in analysis.list_referenced_table_ids():
+        candidate = tables.get(table_id)
+        if (
+            table_id != ranked_id
+            and candidate is not None
+            and candidate.table.variable_dcid == entry.table.variable_dcid
+            and cohort.parent_place in candidate.table.places_with_data
+            and _is_chartable_table_id(analysis, table_id, tables)
+        ):
+            return _ParentSeries(table_id, cohort.parent_place)
+    return None
+
+
+def _build_ranking_line_specification(
+    metrics: RankingMetrics,
+    table_ids: Sequence[str],
+    parent: _ParentSeries | None,
+    title: str,
+) -> LineChartSpecification:
+    """Builds the line chart of a ranking's first places and its parent.
+
+    Draws the first `_DEFAULT_RANKING_LINE_PLACE_CAP` places `metrics.top_n`
+    lists, which are the end of the ranking `direction` asks for, and the
+    parent place when the specification analyzed its series.
+    """
+    places = [
+        entry.place_dcid
+        for entry in metrics.top_n[:_DEFAULT_RANKING_LINE_PLACE_CAP]
+    ]
+    tables = list(table_ids)
+    if parent is not None:
+        places.append(parent.place_dcid)
+        tables.append(parent.table_id)
+    return LineChartSpecification(
+        tables=tuple(tables), title=title, places=tuple(places)
+    )
+
+
+def _build_ranking_specifications(
     metrics: RankingMetrics,
     table_ids: Sequence[str],
     has_cohort: bool,
+    parent: _ParentSeries | None,
     title: str,
-) -> (
-    RankingChartSpecification
-    | BarChartSpecification
-    | LineChartSpecification
-    | None
-):
-    """Builds the chart of a `rank_cohort` result from its own slice and date.
+    prefers_line: bool,
+) -> tuple[
+    RankingChartSpecification | BarChartSpecification | LineChartSpecification,
+    ...,
+]:
+    """Builds the charts of a `rank_cohort` result, most preferred first.
 
-    A ranking over a date window is charted as a `line` of the places
-    `metrics.top_n` lists first (up to `_DEFAULT_RANKED_PLACE_CAP`), so the
-    chart shows the trajectories the ranked changes describe rather than
-    the values on one date. Otherwise a cohort table is charted as a
-    `ranking` at `metrics.reference_date`, pinned to `bottom_n` for an
-    ascending ranking and to `top_n` when the result slices a larger cohort,
-    and any other table is a `bar` of those leading places at
-    `metrics.reference_date`, passed directly so resolution does not scan
-    earlier digest results.
+    A ranking of a cohort, or any ranking over a date window, is charted as
+    a line of its first places and the parent place, as "Rankings" in
+    `contracts/synthesis.md` asks. A single-date cohort ranking falls back to
+    a `ranking` chart when the line cannot be drawn, such as when the table
+    has one date, and uses only the `ranking` chart when `prefers_line` is
+    false, as for a ranking that supports a relation. Any other table is a
+    `bar` of its leading places at `metrics.reference_date`.
     """
     if not metrics.top_n:
-        return None
+        return ()
+    line = _build_ranking_line_specification(metrics, table_ids, parent, title)
     if is_window_reference_date(metrics.reference_date):
-        return LineChartSpecification(
+        return (line,)
+    if has_cohort:
+        ranking = _build_cohort_ranking_specification(metrics, table_ids, title)
+        return (line, ranking) if prefers_line else (ranking,)
+    places = tuple(
+        entry.place_dcid for entry in metrics.top_n[:_DEFAULT_RANKED_PLACE_CAP]
+    )
+    return (
+        BarChartSpecification(
             tables=tuple(table_ids),
             title=title,
-            places=tuple(
-                entry.place_dcid
-                for entry in metrics.top_n[:_DEFAULT_RANKED_PLACE_CAP]
-            ),
-        )
+            places=places,
+            date=metrics.reference_date,
+        ),
+    )
+
+
+def _build_cohort_ranking_specification(
+    metrics: RankingMetrics,
+    table_ids: Sequence[str],
+    title: str,
+) -> RankingChartSpecification:
+    """Builds the `ranking` chart of a single-date cohort ranking.
+
+    The chart is pinned to `metrics.reference_date`, to `bottom_n` for an
+    ascending ranking, and to `top_n` when the result slices a larger
+    cohort, passed directly so resolution does not scan earlier digest
+    results.
+    """
     # `rank_cohort` orders `top_n` from the leading end of `direction`, so
     # `top_n` lists the smallest values first when `direction == "asc"`.
     count = len(metrics.top_n)
-    if has_cohort:
-        if metrics.direction == "asc":
-            return RankingChartSpecification(
-                tables=tuple(table_ids),
-                title=title,
-                date=metrics.reference_date,
-                bottom_n=count,
-            )
-        top_n = count if count < metrics.cohort_size else None
+    if metrics.direction == "asc":
         return RankingChartSpecification(
             tables=tuple(table_ids),
             title=title,
             date=metrics.reference_date,
-            top_n=top_n,
+            bottom_n=count,
         )
-    places = tuple(
-        entry.place_dcid for entry in metrics.top_n[:_DEFAULT_RANKED_PLACE_CAP]
-    )
-    return BarChartSpecification(
+    top_n = count if count < metrics.cohort_size else None
+    return RankingChartSpecification(
         tables=tuple(table_ids),
         title=title,
-        places=places,
         date=metrics.reference_date,
+        top_n=top_n,
     )
 
 
@@ -403,19 +488,15 @@ def _is_chartable_metrics(
 
 
 def _build_default_specification(
-    metrics: _ChartableMetrics,
+    metrics: TimeseriesMetrics | CompositionMetrics | RelationMetrics,
     table_ids: Sequence[str],
     has_cohort: bool,
     title: str,
 ) -> ChartSpecification | None:
-    """Projects a script result's metrics to its default chart specification."""
+    """Projects a non-ranking result's metrics to its default chart."""
     match metrics:
         case TimeseriesMetrics():
             return _build_series_specification(
-                metrics, table_ids, has_cohort, title
-            )
-        case RankingMetrics():
-            return _build_ranking_specification(
                 metrics, table_ids, has_cohort, title
             )
         case CompositionMetrics():
@@ -465,16 +546,28 @@ def _resolve_candidate_charts(
     title = _build_default_title(candidate, table_ids, context)
     if not title:
         return ()
-    spec = _build_default_specification(
-        candidate.metrics,
-        table_ids,
-        context.has_shared_chart_cohort(table_ids),
-        title,
-    )
-    if spec is None:
-        return ()
-    resolved = context.resolve(spec)
-    return () if resolved is None else (resolved,)
+    has_cohort = context.has_shared_chart_cohort(table_ids)
+    metrics = candidate.metrics
+    specs: tuple[ChartSpecification, ...]
+    if isinstance(metrics, RankingMetrics):
+        specs = _build_ranking_specifications(
+            metrics,
+            table_ids,
+            has_cohort,
+            _find_parent_series(analysis, table_ids, context.cache),
+            title,
+            prefers_line="relate_cohorts" not in analysis.list_script_names(),
+        )
+    else:
+        spec = _build_default_specification(
+            metrics, table_ids, has_cohort, title
+        )
+        specs = () if spec is None else (spec,)
+    for spec in specs:
+        resolved = context.resolve(spec)
+        if resolved is not None:
+            return (resolved,)
+    return ()
 
 
 def build_default_charts(
@@ -488,10 +581,11 @@ def build_default_charts(
     with `relate_cohorts` results considered before supporting single-table
     steps. Only results whose metrics directly define the chart
     (`analyze_timeseries`, `rank_cohort`, `compute_composition`, and cohort
-    `relate_cohorts` on single dates) supply a default chart; a ranking over
-    a date window is charted as a `line` of its leading places, and
-    distributions, standalone derivations, non-cohort relations, and
-    relations over a date window produce none.
+    `relate_cohorts` on single dates) supply a default chart. A ranking of a
+    cohort, or any ranking over a date window, is charted as a `line` of its
+    first places and the parent place, as "Rankings" in
+    `contracts/synthesis.md` asks; distributions, standalone derivations,
+    non-cohort relations, and relations over a date window produce none.
 
     Args:
         digest: Analysis digest for the turn.

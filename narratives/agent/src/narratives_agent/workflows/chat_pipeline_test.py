@@ -98,6 +98,7 @@ from narratives_agent.workflows.classify import (
     RefusedReason,
     TurnRefusedError,
 )
+from narratives_agent.workflows.follow_up import FollowUpTopics
 from narratives_agent.workflows.mcp_loop import (
     DiscoveryResult,
     McpLoopError,
@@ -285,7 +286,7 @@ class _Turn:
     synthesis_messages: list[list[JsonObject]] = field(default_factory=list)
     synthesis_instructions: list[str] = field(default_factory=list)
     answer: str = _ANSWER
-    follow_up_topics: list[list[str]] = field(default_factory=list)
+    follow_up_topics: list[FollowUpTopics] = field(default_factory=list)
     loop_classifications: list[QueryClassification | None] = field(
         default_factory=list
     )
@@ -413,13 +414,13 @@ def turn(monkeypatch: pytest.MonkeyPatch) -> _Turn:
 
     async def generate_follow_ups(
         question: str,
-        topics: list[str],
+        topics: FollowUpTopics,
         config: AgentConfig,
         usage: TokenUsage,
     ) -> list[str]:
-        stub.follow_up_topics.append(list(topics))
+        stub.follow_up_topics.append(topics)
         await stub.follow_ups_release.wait()
-        return list(_FOLLOW_UPS) if topics else []
+        return list(_FOLLOW_UPS) if topics.unused or topics.reported else []
 
     monkeypatch.setattr(chat_pipeline, "TurnTelemetry", create_telemetry)
     monkeypatch.setattr(
@@ -664,7 +665,9 @@ async def test_an_unavailable_report_answers_without_data(
     assert "MISSING DATA:" in context
     assert "- " + report.format_note() in context
     assert "NUMBERED SOURCES" not in context
-    assert turn.follow_up_topics == [[report.format_note()]]
+    assert turn.follow_up_topics == [
+        FollowUpTopics(unused=(report.format_note(),))
+    ]
     _, terminal = turn.events[-2]
     assert terminal["state_slots"] == {"scopes": []}
     assert turn.telemetry is not None
@@ -727,7 +730,7 @@ async def test_a_truncated_loop_without_tables_reports_no_data(
     ]
     assert chat_pipeline._NO_OBSERVATIONS_NOTE in turn.get_synthesis_context()
     assert turn.list_charts() == []
-    assert turn.follow_up_topics == [[]]
+    assert turn.follow_up_topics == [FollowUpTopics()]
     assert "follow_ups" not in turn.list_event_names()
     assert turn.finished == [(TerminalState.COMPLETE, None)]
 
@@ -1173,7 +1176,9 @@ async def test_a_chart_block_is_resolved_and_streamed_in_place(
         stored
     ]
     assert turn.follow_up_topics == [
-        ["Total Population in France", "Population of France"]
+        FollowUpTopics(
+            reported=("Total Population in France", "Population of France")
+        )
     ]
     assert turn.telemetry is not None
     assert turn.telemetry.charts_emitted == 1
@@ -1659,7 +1664,7 @@ async def test_a_follow_up_failure_leaves_the_turn_complete(
     #   or the exception text.
     async def fail_follow_ups(
         question: str,
-        topics: list[str],
+        topics: FollowUpTopics,
         config: AgentConfig,
         usage: TokenUsage,
     ) -> list[str]:
@@ -1690,7 +1695,8 @@ def test_collect_follow_up_topics_leaves_processing_diagnostics_out() -> None:
     # Situation: A digest with no results carries a data-gap note, a
     #   step-failure diagnostic, a default-analysis diagnostic, and the
     #   generic no-observations fallback note, and no chart was shown.
-    # Expectation: The data-gap note is the only topic.
+    # Expectation: The turn reported nothing, so the data-gap note is the
+    #   only topic, in the list of indicators the answer did not use.
     digest = AnalysisDigest(
         results=(),
         sources=(),
@@ -1712,7 +1718,9 @@ def test_collect_follow_up_topics_leaves_processing_diagnostics_out() -> None:
 
     topics = chat_pipeline.collect_follow_up_topics(discovery, [])
 
-    assert topics == ["No county breakdown of median income exists."]
+    assert topics == FollowUpTopics(
+        unused=("No county breakdown of median income exists.",)
+    )
 
 
 def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
@@ -1723,8 +1731,9 @@ def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
     #   `RefusedScriptResult`, alongside two resolved charts and two data-gap
     #   notes that repeat earlier topics.
     # Expectation: Named places are capped at three, cohort tables use
-    #   `" by State"`, refused steps are skipped, and duplicate topics across
-    #   results, chart titles, and missing notes are dropped in order.
+    #   `" by State"`, refused steps are skipped, duplicate topics across
+    #   results and chart titles are dropped in order, and the missing notes
+    #   are left out because the turn reported data.
     multi_place = _make_table(
         "t1",
         places=(
@@ -1775,12 +1784,65 @@ def test_collect_follow_up_topics_formats_scopes_and_deduplicates() -> None:
 
     topics = chat_pipeline.collect_follow_up_topics(discovery, charts)
 
-    assert topics == [
-        "Total Population in Deu, Esp, France",
-        "Median_Income by State",
-        "Population Trend",
-        "No county breakdown exists.",
-    ]
+    assert topics == FollowUpTopics(
+        reported=(
+            "Total Population in Deu, Esp, France",
+            "Median_Income by State",
+            "Population Trend",
+        )
+    )
+
+
+def test_collect_follow_up_topics_separates_unused_and_reported() -> None:
+    # Test: The two follow-up topic lists.
+    # Situation: The specification's `related` list names two indicators
+    #   the answer did not use, a blank entry, and one that repeats a
+    #   variable the digest computed figures for; the digest also carries a
+    #   data-gap note.
+    # Expectation: The two unused indicators form the first list, in order,
+    #   without the blank entry; the computed variable appears only in the
+    #   list of reported indicators; and the data-gap note is left out
+    #   because the turn reported data.
+    table = _make_table("t1")
+    digest = AnalysisDigest.from_results(
+        (analyze_timeseries(table.table, step_id="s1"),),
+        missing_notes=("No antenatal care data exists for France.",),
+    )
+    (computed_topic,) = chat_pipeline.collect_follow_up_topics(
+        chat_pipeline.DiscoveryPhaseResult(
+            digest=digest, has_data=True, tables=(table,)
+        ),
+        [],
+    ).reported
+    spec = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {"step_id": "s1", "script": "analyze_timeseries", "table": "t1"}
+            ],
+            "related": [
+                "maternal mortality",
+                "  ",
+                "births attended by skilled health staff",
+                computed_topic,
+            ],
+        }
+    )
+    discovery = chat_pipeline.DiscoveryPhaseResult(
+        digest=digest,
+        spec=spec,
+        has_data=True,
+        tables=(table,),
+    )
+
+    topics = chat_pipeline.collect_follow_up_topics(discovery, [])
+
+    assert topics == FollowUpTopics(
+        unused=(
+            "maternal mortality",
+            "births attended by skilled health staff",
+        ),
+        reported=(computed_topic,),
+    )
 
 
 @pytest.mark.asyncio
@@ -2268,3 +2330,39 @@ async def test_every_phase_of_a_turn_reads_one_pinned_timestamp(
     assert turn.finished == [(TerminalState.COMPLETE, None)]
     assert seen == ["time 0", "time 0", "time 0"]
     assert config.get_current_datetime() == "time 1"
+
+
+@pytest.mark.asyncio
+async def test_a_correlation_over_named_places_is_written_as_a_comparison(
+    turn: _Turn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test: The synthesis directive of a correlation question whose tables
+    #   cover named places.
+    # Situation: The classifier labels the query `correlation`, and the
+    #   specification reads a table of named places with no cohort.
+    # Expectation: The synthesis system instruction ends with the
+    #   named-place directive, which asks for no `scatter` chart, because a
+    #   scatter needs a cohort and its block would be dropped.
+    classification = QueryClassification.model_validate(
+        {
+            "serviceable": True,
+            "pattern": "correlation",
+            "geographic_shape": "multi_entity",
+            "requires_computation": True,
+        }
+    )
+
+    async def classify(*args: object, **_: object) -> Admitted:
+        return Admitted(classification)
+
+    monkeypatch.setattr(chat_pipeline, "classify_query", classify)
+
+    await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
+
+    (instruction,) = turn.synthesis_instructions
+    assert instruction.endswith(
+        build_pattern_directive(
+            classification, "synthesis", has_cohort_table=False
+        )
+    )
+    assert "`scatter`" not in instruction.rpartition("### Analytical")[2]

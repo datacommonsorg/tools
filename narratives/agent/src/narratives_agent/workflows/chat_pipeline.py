@@ -56,6 +56,7 @@ from narratives_agent.workflows.chart_defaults import build_default_charts
 from narratives_agent.workflows.charts import (
     ChartSpecification,
     ResolvedChart,
+    get_chart_cohort,
     resolve_chart_specification,
 )
 from narratives_agent.workflows.classify import (
@@ -64,7 +65,10 @@ from narratives_agent.workflows.classify import (
     TurnRefusedError,
     classify_query,
 )
-from narratives_agent.workflows.follow_up import generate_follow_up_questions
+from narratives_agent.workflows.follow_up import (
+    FollowUpTopics,
+    generate_follow_up_questions,
+)
 from narratives_agent.workflows.mcp_loop import (
     DISCOVERY_STATUS,
     PROCESSING_STATUS,
@@ -567,12 +571,20 @@ async def run_synthesis_phase(
     messages = transcript_contents(
         ctx.transcript, render_synthesis_message(inputs)
     )
+    # A `scatter` chart is drawn only across a cohort, so the synthesis
+    # directive of a correlation question depends on whether one was fetched.
+    has_cohort_table = any(
+        get_chart_cohort(entry.table) is not None for entry in discovery.tables
+    )
     try:
         async with asyncio.timeout(SYNTHESIS_CHUNK_TIMEOUT_SECONDS):
             stream = await async_gemini_stream(
                 messages=messages,
                 system_instruction=compose_system_instruction(
-                    config.prompts.synthesis, "synthesis", ctx.classification
+                    config.prompts.synthesis,
+                    "synthesis",
+                    ctx.classification,
+                    has_cohort_table=has_cohort_table,
                 ),
                 model=role.model,
                 temperature=role.temperature,
@@ -716,42 +728,56 @@ def _format_topic_scope(table: ObservationTable | None) -> str:
 
 def collect_follow_up_topics(
     discovery: DiscoveryPhaseResult, charts: Sequence[ResolvedChart]
-) -> list[str]:
+) -> FollowUpTopics:
     """Returns the topics that ground the follow-up questions.
 
-    The topics are the variables the digest's results computed figures
-    for, each with the places or the child place type it was measured
-    over, then the titles of the charts shown, then the missing-data notes
-    that name a data gap (excluding processing diagnostics and the generic
-    no-observations fallback note). Duplicates are dropped in order of
-    first appearance.
+    `unused` holds the related indicators the specification left aside
+    (`related`), which the answer did not report. `reported` holds the
+    variables the digest's results computed figures for, each with the
+    places or the child place type it was measured over, and the titles of
+    the charts shown. A related indicator that the answer reported is kept
+    only in `reported`. The missing-data notes name data the service does
+    not have, so they become topics only on a turn that reported nothing,
+    where they are all there is; processing diagnostics and the generic
+    no-observations note are never topics. Duplicates are dropped in order
+    of first appearance.
 
     Args:
         discovery: The completed discovery phase result.
         charts: The resolved charts emitted during synthesis.
 
     Returns:
-        Deduplicated follow-up topic strings in first-appearance order.
+        The two deduplicated topic lists, in first-appearance order.
     """
     tables_by_variable: dict[str, ObservationTable] = {}
     for cached in discovery.tables:
         tables_by_variable.setdefault(cached.table.variable_dcid, cached.table)
-    topics: list[str] = []
+    reported: list[str] = []
     for result in discovery.digest.results:
         if result.status != "ok":
             continue
         for dcid in result.variables:
             name = result.variable_names.get(dcid, dcid)
             scope = _format_topic_scope(tables_by_variable.get(dcid))
-            topics.append(f"{name}{scope}")
-    topics.extend(chart.title for chart in charts if chart.title)
-    topics.extend(
-        note
-        for note in discovery.digest.missing_notes
-        if note != _NO_OBSERVATIONS_NOTE
-        and not note.startswith(_DIAGNOSTIC_NOTE_PREFIXES)
+            reported.append(f"{name}{scope}")
+    reported.extend(chart.title for chart in charts if chart.title)
+    reported = list(dict.fromkeys(reported))
+    related = (
+        [topic.strip() for topic in discovery.spec.related if topic.strip()]
+        if discovery.spec is not None
+        else []
     )
-    return list(dict.fromkeys(topics))
+    unused = [topic for topic in related if topic not in reported]
+    if not (reported or unused):
+        unused = [
+            note
+            for note in discovery.digest.missing_notes
+            if note != _NO_OBSERVATIONS_NOTE
+            and not note.startswith(_DIAGNOSTIC_NOTE_PREFIXES)
+        ]
+    return FollowUpTopics(
+        unused=tuple(dict.fromkeys(unused)), reported=tuple(reported)
+    )
 
 
 async def run_followups(

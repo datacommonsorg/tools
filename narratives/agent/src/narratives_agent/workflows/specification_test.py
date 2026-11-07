@@ -35,6 +35,7 @@ from narratives_agent.workflows.specification import (
     MAX_COMPOSITION_PLACES,
     MAX_FOCAL_PLACES,
     MAX_RANK_ENTRIES_PER_END,
+    MAX_RELATED_TOPICS,
     MAX_STANDALONE_SERIES_PLACES,
     REPORT_UNAVAILABLE,
     SUBMIT_SPECIFICATION,
@@ -1865,6 +1866,22 @@ def test_the_specification_focal_places_are_capped() -> None:
         step, focal_places=list(_build_places(MAX_FOCAL_PLACES))
     )
     assert len(capped.focal_places) == MAX_FOCAL_PLACES
+
+
+def test_the_specification_related_topics_are_capped() -> None:
+    # Test: The schema bound on the specification's related topics.
+    # Situation: One more related topic than `MAX_RELATED_TOPICS`, and
+    #   exactly that many.
+    # Expectation: The first raises `ValidationError` naming the field; the
+    #   second validates.
+    step: JsonObject = {"step_id": "s1", "script": "rank_cohort", "table": "t1"}
+    topics: list[JsonValue] = [
+        f"topic {number} in Japan" for number in range(10)
+    ]
+    with pytest.raises(ValidationError, match="related"):
+        _build_specification(step, related=topics[: MAX_RELATED_TOPICS + 1])
+    capped = _build_specification(step, related=topics[:MAX_RELATED_TOPICS])
+    assert len(capped.related) == MAX_RELATED_TOPICS
 
 
 @pytest.mark.parametrize(

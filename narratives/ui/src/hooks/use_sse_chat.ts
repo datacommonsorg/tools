@@ -307,6 +307,12 @@ export interface ChatTurn {
    * needs saying out loud.
    */
   truncated?: boolean;
+  /**
+   * Whether the agent found data for the answer, from `data_status.has_data`.
+   * Undefined until the agent reports it. When false, the suggested questions
+   * are labelled as alternatives rather than follow-ups.
+   */
+  hasData?: boolean;
   /** Holds the key sent with the turn's request, which the agent signs into the turn. */
   idempotencyKey?: string;
   /**
@@ -337,8 +343,9 @@ interface ContentPayload {
   tool_call?: ToolCallEvent;
   sources?: ProvenanceItem[];
   /**
-   * Reports the completeness of the data behind the answer; `truncated` is
-   * the flag the UI acts on.
+   * Reports the completeness of the data behind the answer: `truncated`
+   * raises the truncation warning, and `has_data` false labels the
+   * suggestions as alternative questions.
    */
   data_status?: { truncated?: boolean; has_data?: boolean };
 }
@@ -958,6 +965,9 @@ function applyContent(turn: ChatTurn, content: ContentPayload): ChatTurn {
   // event without data_status cannot quietly clear the warning.
   if (content.data_status?.truncated) {
     next = { ...next, truncated: true };
+  }
+  if (typeof content.data_status?.has_data === 'boolean') {
+    next = { ...next, hasData: content.data_status.has_data };
   }
   return next;
 }
