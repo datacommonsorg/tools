@@ -54,6 +54,10 @@ const COLUMN = 'w-full max-w-4xl mx-auto px-3 sm:px-4 lg:px-8';
  */
 export const COMPOSER_DISCLAIMER_TEXT =
   'Data Commons by Google. Data overviews are synthesized by Gemini. Gemini is AI and can make mistakes; please verify content against primary source data.';
+/** Label of the retry link appended to an error message that has no "try again". */
+export const RETRY_LABEL = 'Try again';
+/** The phrase in an agent error message that becomes the retry link. */
+const RETRY_PHRASE = /try again/i;
 
 /**
  * The main chat surface: renders the empty-state view or the turn list, the
@@ -413,12 +417,51 @@ export function TurnView({
         </div>
       )}
 
-      {/* Error */}
       {turn.status === 'error' && turn.error && (
-        <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large max-w-4xl">
-          {turn.error}
-        </div>
+        <ErrorNotice
+          message={turn.error}
+          onRetry={() => onAsk?.(turn.userMessage)}
+        />
       )}
+    </div>
+  );
+}
+
+interface ErrorNoticeProps {
+  message: string;
+  onRetry: () => void;
+}
+
+/**
+ * A failed turn's error message whose "try again" phrase is a link that asks
+ * the same question again. A message without that phrase gets a trailing
+ * link, so every failed turn can be retried.
+ */
+function ErrorNotice({ message, onRetry }: ErrorNoticeProps) {
+  const match = RETRY_PHRASE.exec(message);
+  const retryLink = (label: string) => (
+    <button
+      type="button"
+      onClick={onRetry}
+      className="underline hover:opacity-80"
+    >
+      {label}
+    </button>
+  );
+  const content = match ? (
+    <>
+      {message.slice(0, match.index)}
+      {retryLink(match[0])}
+      {message.slice(match.index + match[0].length)}
+    </>
+  ) : (
+    <>
+      {message} {retryLink(RETRY_LABEL)}
+    </>
+  );
+  return (
+    <div className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large max-w-4xl">
+      {content}
     </div>
   );
 }

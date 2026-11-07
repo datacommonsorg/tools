@@ -32,6 +32,7 @@ import {
   COMPOSER_DISCLAIMER_TEXT,
   DataAgent,
   HANDOFF_MS,
+  RETRY_LABEL,
   TurnView,
 } from '@/src/components/data_agent';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
@@ -40,7 +41,10 @@ import {
   ChatSessionContext,
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
-import type { ChatTurn } from '@/src/hooks/use_sse_chat';
+import {
+  type ChatTurn,
+  INTERRUPTED_TURN_ERROR,
+} from '@/src/hooks/use_sse_chat';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -59,12 +63,12 @@ afterEach(() => {
 });
 
 /** Returns the surface over a settled chat state holding `turns`. */
-const chatSurface = (turns: ChatTurn[]) => {
+const chatSurface = (turns: ChatTurn[], send = vi.fn()) => {
   const chat: ChatSessionContextValue = {
     turns,
     isStreaming: false,
     error: null,
-    send: vi.fn(),
+    send,
     stop: vi.fn(),
     newChat: vi.fn(),
     isDrawerOpen: false,
@@ -79,7 +83,20 @@ const chatSurface = (turns: ChatTurn[]) => {
 };
 
 /** Renders the surface over a settled chat state holding `turns`. */
-const renderTurns = (turns: ChatTurn[]) => render(chatSurface(turns));
+const renderTurns = (turns: ChatTurn[], send = vi.fn()) =>
+  render(chatSurface(turns, send));
+
+/** Returns a turn that ended in `error` with `error` as its message. */
+const errorTurn = (error: string): ChatTurn => ({
+  userMessage: 'What is the population of France?',
+  status: 'error',
+  error,
+  toolCalls: [],
+  thoughts: [],
+  text: '',
+  blocks: [],
+  provenance: [],
+});
 
 describe('DataAgent refused and clarification turns', () => {
   it('renders a refused turn as a neutral notice card, not an error card', () => {
@@ -185,6 +202,43 @@ describe('DataAgent refused and clarification turns', () => {
     expect(container.querySelector('.max-w-4xl.grid')).toBeNull();
     expect(container.querySelector('.dc-chart-card')).toBeNull();
     expect(container.querySelector('.markdown-body')).toBeNull();
+  });
+});
+
+describe('DataAgent error turns', () => {
+  it('renders the "try again" of an error message as a link that asks the same question again', () => {
+    // Test: Clicking the "try again" phrase of a failed turn.
+    // Situation: The chat holds a turn whose error message contains
+    //            "try again".
+    // Expectation: Only that phrase is a button, and clicking it sends the
+    //              turn's question again.
+    const send = vi.fn();
+    const message =
+      'We are experiencing unusually high traffic. Please try again shortly.';
+    renderTurns([errorTurn(message)], send);
+
+    const retry = screen.getByRole('button', { name: 'try again' });
+    expect(retry.parentElement?.textContent).toBe(message);
+    expect(retry.parentElement?.className).toContain('bg-error-surface');
+    fireEvent.click(retry);
+    expect(send).toHaveBeenCalledWith('What is the population of France?');
+  });
+
+  it('appends a retry link to an error message without "try again"', () => {
+    // Test: Rendering a failed turn whose message has no retry phrase.
+    // Situation: The stream was interrupted, so the turn carries the
+    //            client-side interrupted-stream error.
+    // Expectation: The message is followed by a retry link that sends the
+    //              turn's question again.
+    const send = vi.fn();
+    renderTurns([errorTurn(INTERRUPTED_TURN_ERROR)], send);
+
+    const retry = screen.getByRole('button', { name: RETRY_LABEL });
+    expect(retry.parentElement?.textContent).toBe(
+      `${INTERRUPTED_TURN_ERROR} ${RETRY_LABEL}`,
+    );
+    fireEvent.click(retry);
+    expect(send).toHaveBeenCalledWith('What is the population of France?');
   });
 });
 
