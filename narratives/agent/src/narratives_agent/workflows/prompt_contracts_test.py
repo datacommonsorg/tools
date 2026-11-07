@@ -38,7 +38,13 @@ from narratives_agent.workflows.prompt_contracts import (
     compose_system_instruction,
     load_prompt_contract,
 )
-from narratives_agent.workflows.specification import AnalysisSpecification
+from narratives_agent.workflows.specification import (
+    _MAX_SPECIFICATION_STEPS,
+    AnalysisSpecification,
+)
+
+# The step limit as the discovery contract writes it, keyed by its value.
+_STEP_LIMIT_WORDS = {6: "six"}
 
 _CONTRACTS: tuple[ContractName, ...] = get_args(ContractName.__value__)
 
@@ -357,3 +363,33 @@ def test_synthesis_contract_keeps_calculated_figure_citations_disabled() -> (
         "A figure computed from more than one variable"
         not in strip_prompt_comments(raw)
     )
+
+
+def test_discovery_contract_requires_a_step_for_every_reported_table() -> None:
+    # Test: The rule that only step results reach the answer.
+    # Situation: The text of every packaged contract, as the model receives
+    #   it.
+    # Expectation: Step 3 states that every table the answer reports,
+    #   compares, or charts must be the input of a step, and neither
+    #   contract tells the loop to leave a fetched table without one.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "Every table the answer reports, compares, or charts must be the "
+        "input of a step."
+    ) in discovery
+    for name in get_args(ContractName.__value__):
+        assert "no step" not in load_prompt_contract(name)
+
+
+def test_discovery_contract_states_the_specification_step_limit() -> None:
+    # Test: The step limit in the discovery contract.
+    # Situation: The discovery contract and `_MAX_SPECIFICATION_STEPS`.
+    # Expectation: Step 3 and the step budget in "Choosing indicators" both
+    #   state the limit the specification model enforces, so changing one
+    #   without the other fails.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+    limit = _STEP_LIMIT_WORDS[_MAX_SPECIFICATION_STEPS]
+
+    assert f"At most {limit} steps." in discovery
+    assert f"Keep within the {limit} steps of Step 3" in discovery

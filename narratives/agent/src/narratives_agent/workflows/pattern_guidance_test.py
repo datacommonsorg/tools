@@ -375,6 +375,52 @@ def test_the_ranking_directive_relates_only_a_second_variable() -> None:
 
 
 @pytest.mark.parametrize("phase", _PHASES)
+@pytest.mark.parametrize("pattern", get_args(QueryPattern))
+def test_no_directive_fetches_a_table_without_a_step(
+    pattern: str, phase: DirectivePhase
+) -> None:
+    # Test: Tables fetched with no step.
+    # Situation: The directive of every pattern, for each phase.
+    # Expectation: No directive tells the loop to leave a fetched table
+    #   without a step, because only step results reach the answer.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification(pattern), phase
+    )
+
+    assert "no step" not in directive
+
+
+def test_the_ranking_directive_analyzes_the_parent_place() -> None:
+    # Test: The parent-place benchmark of the top-N discovery directive.
+    # Situation: The `top_n_ranking` discovery directive.
+    # Expectation: The sentence that fetches the parent place's series
+    #   specifies `analyze_timeseries` on that table, so its figure and
+    #   chart reach the answer, and keeps it out of the ranking.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("top_n_ranking"), "discovery"
+    )
+    _, _, parent = directive.partition("Once the cohort table is fetched")
+    parent, _, _ = parent.partition("When the question asks for a second")
+
+    assert "specify `analyze_timeseries` on that table" in parent
+    assert "never include it in the ranking" in parent
+
+
+def test_the_forecasting_directive_analyzes_the_projection() -> None:
+    # Test: The official projection in the forecasting discovery directive.
+    # Situation: The `forecasting` discovery directive.
+    # Expectation: It specifies `analyze_timeseries` on the projection as
+    #   well as on the history, so a fetched projection reaches the answer.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("forecasting"), "discovery"
+    )
+
+    assert (
+        "`analyze_timeseries` on it and on the projection when you fetched one"
+    ) in directive
+
+
+@pytest.mark.parametrize("phase", _PHASES)
 def test_the_correlation_directive_relates_and_never_divides(
     phase: DirectivePhase,
 ) -> None:

@@ -112,6 +112,11 @@ indicators every time, so choose by this method rather than case by case:
    composition or the stages of a progression count as one indicator. Add
    no other breakdown (by age, race, or income) unless the question asks
    for it, and no related indicator outside the angles you mapped.
+   Keep within the six steps of Step 3: every table the answer reports,
+   companions and benchmark places included, needs its own step, and each
+   `per_capita` needs one more. When the tables you planned need more than
+   six steps, drop companions first, then the lowest-ranked angles, and
+   name what you dropped in `related`.
 4. Totals and rates. Decide whether each indicator is reported as a total
    or per person, by its kind:
    - Counts that grow with population (crimes, doctors, hospital beds,
@@ -123,7 +128,8 @@ indicators every time, so choose by this method rather than case by case:
      the question asks for it.
    - Totals where both size and intensity matter (emissions, GDP, energy
      use, national debt): fetch the total and its per-person form,
-     published or computed with `per_capita`; the pair counts as one
+     published or computed with `per_capita`, and run the same step on
+     both, so the answer can report each; the pair counts as one
      indicator.
    - Indicators that are already rates, shares, medians, or averages
      (unemployment rate, median income, life expectancy, deaths per
@@ -223,6 +229,10 @@ of their facet ids.
   variables and tables, kept for the turn record and not shown to the
   reader. Never put figures in it; the server computes every figure the
   answer uses. At most six steps.
+- Every table the answer reports, compares, or charts must be the input of
+  a step. Only step results reach the answer: a table that isn't used by
+  any step is dropped, and the answer cannot state, chart, or cite it.
+  Fetch only the tables a step will use.
 - `report_unavailable` ends the loop only when no relevant or closely
   related headline indicator has observations for the requested places,
   after the fallbacks below. Say what you searched, where, why the question

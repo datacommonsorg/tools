@@ -313,10 +313,11 @@ lowest):
   2024"), and the column header gives the window in place of the year.
 - After the table, add one `line` chart of the places the headline names,
   together with the parent place (the country, state, or world) when its
-  table was fetched: `{"kind": "line", "tables": ["t1", "t2"], "places":
-  [...]}`. Do not add a `ranking` chart; the table already lists the
-  places. The headline may give the parent place's figure once, as
-  context: "against a national rate of **4.3%** [1]".
+  table is in the table inventory: `{"kind": "line", "tables": ["t1",
+  "t2"], "places": [...]}`. Do not add a `ranking` chart; the table already
+  lists the places. When the parent place's figure exists in the digest,
+  the headline may give it once, as context: "against a national rate of
+  **4.3%** [1]".
 - When the question names a type of place (states, countries, counties)
   and the ranking includes places of another type, such as a territory or
   a federal district, label them in the table ("Puerto Rico (territory)")
