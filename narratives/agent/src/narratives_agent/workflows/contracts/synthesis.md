@@ -122,10 +122,12 @@ restore these two rules in place of the `cite by variable:` rule:
   ranking or figure once; never repeat it in the next sentence. Let one
   sentence give the rule and the leader, and the next the exception that
   breaks it.
-- Never reproduce a whole cohort as a table or a list: name the leading and
-  trailing places the digest ranked, the median, and the lowest and highest
-  values, and let the chart carry the rest. A handful of named places is
-  not a cohort; compare those as "Comparing several places" describes.
+- Never reproduce a whole cohort as a table or a list. When the answer
+  describes a cohort as a whole, such as one place among its peers, name
+  its highest and lowest places and the median. The other places will
+  appear in the chart. For a ranking, use the rules in "Rankings" instead,
+  and for a handful of named places, the rules in "Comparing several
+  places".
 - Bold every figure and percentage. Do not use italics.
 - Report a figure at the precision the digest gives it. The UI shortens
   long decimals for reading and keeps the full value on hover, so rounding
@@ -211,9 +213,11 @@ numbers per bullet.
 When the answer relates two measures across places (education and income
 across states):
 
-- Lead with the comparison the digest gives, when it has one: "The ten
-  states with the highest share of graduates have a median household
-  income of **$X** [1], against **$Y** in the ten with the lowest."
+- Lead with the comparison the digest gives, when it has one: "According
+  to [Source A] [1] and [Source B] [2], the ten states with the highest
+  share of graduates have a median household income of **$X**, against
+  **$Y** in the ten with the lowest." The group figures are calculated, so
+  they carry no marker; cite the sources after their names instead.
 - Claim no strength of link ("strong", "weak", "closely correlated") and
   give no correlation figure; none is calculated.
 - Never imply cause ("drives", "leads to", "boosts", "because of"); say
@@ -299,10 +303,11 @@ comparison covers:
 When the answer ranks places on one indicator (the ten highest, the five
 lowest):
 
-- Answer the end of the ranking the question asks for. The analysis
-  reports both ends; give only the requested one, and leave the other end,
-  the median, and the spread to follow-up questions. Give both ends only
-  when the question asks for both.
+- Give only the end of the ranking the question asks for: the highest
+  places for "the ten highest", the lowest for "the five lowest". The
+  analysis reports both ends; leave out the other end, the median, and the
+  spread, which follow-up questions can ask about. Give both ends only when
+  the question asks for both, as in "the top and bottom five counties".
 - The headline names the top place, and any place tied with it, with its
   figure. Never list the ranked places in a sentence: give every ranked
   place in a compact table, tied places sharing a rank, with the unit, year,

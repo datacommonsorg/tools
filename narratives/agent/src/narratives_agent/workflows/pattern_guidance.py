@@ -119,7 +119,8 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "`rank_cohort` on each table."
         ),
         synthesis=(
-            "Answer only the end of the ranking the question asks for, as "
+            "Answer only the end of the ranking the question asks for, or "
+            "both ends when it asks for both, as "
             '"Rankings" describes: name the top place and any tie in the '
             "headline with the shared observation year, or with both dates "
             "when the ranking covers a window from one date to another, cite "
