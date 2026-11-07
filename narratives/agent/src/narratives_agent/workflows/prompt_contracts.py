@@ -77,6 +77,8 @@ def compose_system_instruction(
     guidance: str,
     contract: ContractName,
     classification: QueryClassification | None = None,
+    *,
+    has_cohort_table: bool = True,
 ) -> str:
     """Composes guidance, a code-owned contract, and pattern guidance.
 
@@ -85,6 +87,8 @@ def compose_system_instruction(
         contract: Which packaged contract to append after `guidance`.
         classification: The classify phase's verdict, or `None` when the
             classifier failed.
+        has_cohort_table: Whether a fetched table covers a cohort of child
+            places, passed to `append_pattern_guidance`; synthesis sets it.
 
     Returns:
         The composed system instruction with `guidance` first, the packaged
@@ -97,4 +101,6 @@ def compose_system_instruction(
     """
     contract_text = load_prompt_contract(contract)
     composed = f"{guidance}\n\n{contract_text}" if guidance else contract_text
-    return append_pattern_guidance(composed, classification, contract)
+    return append_pattern_guidance(
+        composed, classification, contract, has_cohort_table=has_cohort_table
+    )

@@ -84,7 +84,10 @@ user's question:
   `"What was California's unemployment rate in 2020?"`). This includes an
   open request about one named indicator, such as `"Tell me about the life
   expectancy in Japan"` or `"Life expectancy in Japan"`: the indicator is
-  named, so it is `"single_point"`, not `"exploratory"`.
+  named, so it is `"single_point"`, not `"exploratory"`. It also includes
+  comparing the values of one or more indicators across a few named places
+  (for example, `"Compare the unemployment rate and the poverty rate in
+  Germany, France, and Italy"`).
 - `"top_n_ranking"`: asks for the highest, lowest, top N, or bottom N
   places on a metric, or for a metric across the top or bottom places of
   another metric (for example, `"Which states have the highest median
@@ -101,8 +104,10 @@ user's question:
   anomalies relative to peers (for example, `"Which counties in Texas have
   unusually high uninsured rates?"`).
 - `"correlation"`: asks how two indicators relate to each other across
-  places or time, or compares two metrics side by side (for example, `"How
-  does educational attainment relate to median income across US states?"`).
+  places or time (for example, `"How does educational attainment relate to
+  median income across US states?"`). A question that compares or shows the
+  values of several indicators for a few named places is `"single_point"`,
+  not `"correlation"`, unless it asks how the indicators relate.
 - `"composition"`: asks how one total splits into its parts or shares
   (for example, `"What is the age breakdown of Japan's population?"` or
   `"How is electricity generation in India split by source?"`). Comparing

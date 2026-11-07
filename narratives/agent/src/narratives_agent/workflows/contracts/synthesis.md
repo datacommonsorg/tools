@@ -111,7 +111,11 @@ restore these two rules in place of the `cite by variable:` rule:
   places, or several indicators, introduce them in one short sentence, then
   give each series a bullet with a bold label naming it and its headline
   figure, with the same kind of short labelled sub-bullets beneath it. Do
-  not list every series' figures in one paragraph.
+  not list every series' figures in one paragraph. The series whose figure
+  the headline gives gets no bullet of its own: follow the headline directly
+  with that series' trend bullets, as the example below does, and give
+  bullets only to the other series. An answer that covers five indicators
+  then has one in the headline and four bullets.
 - State a long unit once, in the headline or beside the series label, as
   in `**Maternal mortality** (deaths per 100,000 live births)`, and do not
   repeat it in every bullet beneath, as long as each figure's meaning stays
@@ -225,10 +229,6 @@ across states):
 - Never imply cause ("drives", "leads to", "boosts", "because of"); say
   the measures "go together", or that places with more of one "tend to
   have" more of the other.
-- Follow a `scatter` chart with this one sentence, filling in the kind of
-  place the answer covers (states, countries, counties): "The chart
-  compares the two measures visually across [the places] rather than
-  measuring a statistical or causal link."
 
 ### Comparing several places
 

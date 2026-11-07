@@ -335,6 +335,18 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
     ),
 }
 
+# Replaces the `correlation` synthesis directive when no fetched table covers
+# a cohort. A `scatter` chart is drawn only across a cohort, so a question
+# about named places is answered with the comparison layout and its charts.
+_NAMED_PLACE_CORRELATION_SYNTHESIS = (
+    'Write the answer as "Comparing several places" describes, with its '
+    "table and charts. Describe the relationship from the figures given: say "
+    "in plain words how the indicators move together across the places and "
+    "name the leading place, then name the notable exception, or the place "
+    "at the bottom when nothing breaks the pattern. Claim no strength or "
+    "direction of association beyond what those figures show, and no cause."
+)
+
 # Appended when the query compares a few named places side by side.
 _COMPARISON_DIRECTIVE = Directive(
     discovery=(
@@ -354,19 +366,33 @@ _COMPARISON_DIRECTIVE = Directive(
 
 
 def build_pattern_directive(
-    classification: QueryClassification, phase: DirectivePhase
+    classification: QueryClassification,
+    phase: DirectivePhase,
+    *,
+    has_cohort_table: bool = True,
 ) -> str:
     """Returns the directive text for a classification and phase.
 
     Args:
         classification: The classify phase's verdict on the query.
         phase: The phase the text is rendered for.
+        has_cohort_table: Whether a fetched table covers a cohort of child
+            places. Only synthesis knows; when it is false, a `correlation`
+            question is written up as a comparison of named places, because
+            a `scatter` chart needs a cohort.
 
     Returns:
         The pattern's directive for the phase, followed by the comparison
         directive for the phase when the query compares several places.
     """
-    directive = _DIRECTIVES[classification.pattern].get_phase_text(phase)
+    if (
+        phase == "synthesis"
+        and classification.pattern == "correlation"
+        and not has_cohort_table
+    ):
+        directive = _NAMED_PLACE_CORRELATION_SYNTHESIS
+    else:
+        directive = _DIRECTIVES[classification.pattern].get_phase_text(phase)
     if classification.geographic_shape == "comparison":
         return f"{directive} {_COMPARISON_DIRECTIVE.get_phase_text(phase)}"
     return directive
@@ -376,6 +402,8 @@ def append_pattern_guidance(
     system_instruction: str,
     classification: QueryClassification | None,
     phase: DirectivePhase,
+    *,
+    has_cohort_table: bool = True,
 ) -> str:
     """Appends the classification's directive to a system instruction.
 
@@ -386,6 +414,8 @@ def append_pattern_guidance(
             classifier failed, in which case the instruction is returned
             unchanged.
         phase: Which half of the directive to append.
+        has_cohort_table: Whether a fetched table covers a cohort of child
+            places, passed to `build_pattern_directive`.
 
     Returns:
         The system instruction with the directive appended as its final
@@ -393,5 +423,7 @@ def append_pattern_guidance(
     """
     if classification is None:
         return system_instruction
-    directive = build_pattern_directive(classification, phase)
+    directive = build_pattern_directive(
+        classification, phase, has_cohort_table=has_cohort_table
+    )
     return f"{system_instruction}\n\n{_DIRECTIVE_HEADING}\n\n{directive}"

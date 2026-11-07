@@ -141,7 +141,9 @@ indicators every time, so choose by this method rather than case by case:
    chose. In its `related` list, name at most five related angles and
    indicators you left aside, each in plain words with the place it applies
    to (for example, "maternal mortality in Japan"); they become the
-   reader's follow-up questions.
+   reader's follow-up questions. Never list an indicator you found no data
+   for, or one you record in `missing`: a follow-up question about it would
+   find nothing.
 
 **Step 2: fetch tables into the server cache.**
 

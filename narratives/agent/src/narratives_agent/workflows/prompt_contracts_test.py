@@ -393,3 +393,48 @@ def test_discovery_contract_states_the_specification_step_limit() -> None:
 
     assert f"At most {limit} steps." in discovery
     assert f"Keep within the {limit} steps of Step 3" in discovery
+
+
+def test_synthesis_contract_writes_no_sentence_about_a_scatter_chart() -> None:
+    # Test: The removed scatter disclaimer.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: It does not ask for a fixed sentence after a `scatter`
+    #   chart. The server drops a chart block it cannot draw but keeps the
+    #   prose, so such a sentence described a chart the reader never saw.
+    contract = " ".join(load_prompt_contract("synthesis").split())
+
+    assert "Follow a `scatter` chart with this one sentence" not in contract
+    assert "rather than measuring a statistical or causal link" not in contract
+
+
+def test_synthesis_contract_gives_the_headline_series_no_bullet() -> None:
+    # Test: The layout of an answer that covers several series.
+    # Situation: The synthesis contract the model receives.
+    # Expectation: The series whose figure the headline gives gets no bullet
+    #   of its own, so the first bullet never repeats the headline and an
+    #   answer of five indicators stays within four bullets.
+    contract = " ".join(load_prompt_contract("synthesis").split())
+
+    assert (
+        "The series whose figure the headline gives gets no bullet of its own"
+    ) in contract
+    assert (
+        "An answer that covers five indicators then has one in the headline "
+        "and four bullets."
+    ) in contract
+
+
+def test_discovery_contract_keeps_unavailable_indicators_out_of_related() -> (
+    None
+):
+    # Test: What `related` may name.
+    # Situation: The discovery contract the model receives.
+    # Expectation: It forbids listing in `related` an indicator without
+    #   data or one recorded in `missing`, because each `related` entry
+    #   becomes a follow-up question.
+    discovery = " ".join(load_prompt_contract("discovery").split())
+
+    assert (
+        "Never list an indicator you found no data for, or one you record in "
+        "`missing`"
+    ) in discovery

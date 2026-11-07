@@ -467,3 +467,70 @@ def test_the_correlation_directive_relates_and_never_divides(
     if phase == "discovery":
         assert "`relate_cohorts`" in directive
     assert "ratio" not in directive
+
+
+@pytest.mark.parametrize("shape", get_args(GeographicShape))
+def test_a_correlation_without_a_cohort_is_written_as_a_comparison(
+    shape: str,
+) -> None:
+    # Test: The synthesis directive of a correlation over named places.
+    # Situation: A `correlation` classification of each shape, in the
+    #   synthesis phase, when no fetched table covers a cohort.
+    # Expectation: The directive sends the answer to "Comparing several
+    #   places" and never asks for a `scatter` chart, which the chart
+    #   resolver rejects without a cohort; the comparison sentence is still
+    #   appended for the `comparison` shape.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("correlation", shape),
+        "synthesis",
+        has_cohort_table=False,
+    )
+
+    assert directive.startswith(
+        pattern_guidance._NAMED_PLACE_CORRELATION_SYNTHESIS
+    )
+    assert '"Comparing several places"' in directive
+    assert "`scatter`" not in directive
+    comparison = pattern_guidance._COMPARISON_DIRECTIVE.get_phase_text(
+        "synthesis"
+    )
+    assert directive.endswith(comparison) is (shape == "comparison")
+
+
+def test_a_correlation_over_a_cohort_keeps_its_scatter_directive() -> None:
+    # Test: The synthesis directive of a correlation over a cohort.
+    # Situation: A `correlation` classification in the synthesis phase,
+    #   when a fetched table covers a cohort.
+    # Expectation: The directive is the pattern's own synthesis directive,
+    #   which pairs the tables in a `scatter` chart.
+    directive = pattern_guidance.build_pattern_directive(
+        _make_classification("correlation"),
+        "synthesis",
+        has_cohort_table=True,
+    )
+
+    assert directive == pattern_guidance._DIRECTIVES["correlation"].synthesis
+    assert "`scatter`" in directive
+
+
+@pytest.mark.parametrize("phase", _PHASES)
+@pytest.mark.parametrize("pattern", get_args(QueryPattern))
+def test_only_a_correlation_synthesis_depends_on_the_cohort(
+    pattern: str, phase: DirectivePhase
+) -> None:
+    # Test: Which directives the cohort flag changes.
+    # Situation: Every pattern in each phase, built with and without a
+    #   cohort table.
+    # Expectation: The two directives differ only for the `correlation`
+    #   synthesis directive, so no other pattern or phase changes.
+    classification = _make_classification(pattern)
+
+    with_cohort = pattern_guidance.build_pattern_directive(
+        classification, phase, has_cohort_table=True
+    )
+    without_cohort = pattern_guidance.build_pattern_directive(
+        classification, phase, has_cohort_table=False
+    )
+
+    changes = with_cohort != without_cohort
+    assert changes is (pattern == "correlation" and phase == "synthesis")

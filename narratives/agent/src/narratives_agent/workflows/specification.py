@@ -657,7 +657,9 @@ class AnalysisSpecification(BaseModel):
             f"Optional: at most {MAX_RELATED_TOPICS} related indicators or "
             "angles you left aside, each in plain words with the place it "
             "applies to, such as 'maternal mortality in Japan'. They become "
-            "the reader's follow-up questions; never put figures in them."
+            "the reader's follow-up questions; never put figures in them, "
+            "and never list an indicator you found no data for or record "
+            "in `missing`."
         ),
     )
     focal_places: list[str] = Field(

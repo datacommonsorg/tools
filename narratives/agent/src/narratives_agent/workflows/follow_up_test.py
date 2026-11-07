@@ -14,6 +14,7 @@
 """Tests for the follow-up question workflow."""
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -47,7 +48,7 @@ async def test_follow_ups_request_the_low_thinking_level(
 
     await follow_up.generate_follow_up_questions(
         "What is the population of California?",
-        ["California population"],
+        follow_up.FollowUpTopics(unused=("California population",)),
         _CONFIG,
     )
 
@@ -75,7 +76,7 @@ async def test_follow_ups_are_skipped_when_the_prompt_is_empty(
     with caplog.at_level("WARNING"):
         questions = await follow_up.generate_follow_up_questions(
             "What is the population of California?",
-            ["California population"],
+            follow_up.FollowUpTopics(unused=("California population",)),
             AgentConfig(),
         )
 
@@ -114,7 +115,7 @@ async def test_a_failed_or_blocked_call_returns_no_questions(
     with caplog.at_level(logging.WARNING, logger=follow_up.logger.name):
         questions = await follow_up.generate_follow_up_questions(
             "What is the population of California?",
-            ["California population"],
+            follow_up.FollowUpTopics(unused=("California population",)),
             _CONFIG,
         )
 
@@ -151,10 +152,96 @@ async def test_an_empty_response_returns_no_questions(
     with caplog.at_level(logging.WARNING, logger=follow_up.logger.name):
         questions = await follow_up.generate_follow_up_questions(
             "What is the population of California?",
-            ["California population"],
+            follow_up.FollowUpTopics(unused=("California population",)),
             _CONFIG,
         )
 
     assert questions == []
     assert [record.levelno for record in caplog.records] == [logging.WARNING]
     assert f"finish reason: {response.finish_reason}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_request_lists_unused_and_reported_indicators_apart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: How the two topic lists reach the follow-up model.
+    # Situation: Follow-up questions are requested with two indicators the
+    #   answer did not use and one it reported.
+    # Expectation: The request names each list under its own heading, in
+    #   order, so the model can tell which indicators the answer covered.
+    prompts: list[str] = []
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        prompts.append(kwargs["messages"][0]["parts"][0]["text"])
+        return GeminiResponse(text='{"questions": []}')
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+
+    await follow_up.generate_follow_up_questions(
+        "What is women's access to healthcare like in India?",
+        follow_up.FollowUpTopics(
+            unused=(
+                "fertility rate in India",
+                "female life expectancy in India",
+            ),
+            reported=("Maternal mortality ratio in India",),
+        ),
+        _CONFIG,
+    )
+
+    (prompt,) = prompts
+    assert (
+        f"{follow_up.UNUSED_TOPICS_HEADING}: fertility rate in India; "
+        "female life expectancy in India."
+    ) in prompt
+    assert (
+        f"{follow_up.REPORTED_TOPICS_HEADING}: Maternal mortality ratio in "
+        "India."
+    ) in prompt
+
+
+@pytest.mark.asyncio
+async def test_an_empty_list_is_named_as_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Test: A request with only reported indicators.
+    # Situation: Follow-up questions are requested with no unused indicator
+    #   and one reported indicator.
+    # Expectation: The model is still called, and the unused list reads
+    #   "none" rather than being left blank.
+    prompts: list[str] = []
+
+    async def request(**kwargs: Any) -> GeminiResponse:
+        prompts.append(kwargs["messages"][0]["parts"][0]["text"])
+        return GeminiResponse(text='{"questions": []}')
+
+    monkeypatch.setattr(follow_up, "async_gemini_request", request)
+
+    await follow_up.generate_follow_up_questions(
+        "What is the population of California?",
+        follow_up.FollowUpTopics(reported=("Total population in California",)),
+        _CONFIG,
+    )
+
+    (prompt,) = prompts
+    assert f"{follow_up.UNUSED_TOPICS_HEADING}: none." in prompt
+
+
+def test_the_follow_up_prompt_names_both_lists() -> None:
+    # Test: Agreement between the request and the default prompt.
+    # Situation: The shipped `defaults/prompts/follow_up.md` is read.
+    # Expectation: It names both list headings the request uses and tells
+    #   the model to start with the indicators the answer did not use.
+    prompt = (
+        Path(__file__).resolve().parents[4]
+        / "defaults"
+        / "prompts"
+        / "follow_up.md"
+    ).read_text(encoding="utf-8")
+
+    assert follow_up.UNUSED_TOPICS_HEADING in prompt
+    assert follow_up.REPORTED_TOPICS_HEADING in prompt
+    assert (
+        "Write one question for each indicator the answer did not use"
+    ) in prompt
