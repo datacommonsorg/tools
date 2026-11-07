@@ -77,7 +77,19 @@ export const API_ROOT: string =
  */
 const SHADOW_STYLES =
   'replaceSync' in CSSStyleSheet.prototype ? new CSSStyleSheet() : null;
-SHADOW_STYLES?.replaceSync('.chart-container { margin-top: 0 !important; }');
+// The ranking tile gets no upstream border, and its grid counts the dialog
+// portals placed ahead of the list as rows, adding a row gap above the title.
+// Its dialog portals also miss the upstream z-index (theme zIndex.dialog), so
+// later chart cards painted over an open dialog.
+SHADOW_STYLES?.replaceSync(`
+  .chart-container { margin-top: 0 !important; }
+  .chart-container.ranking-tile {
+    border: var(--border-primary);
+    border-radius: var(--border-radius-primary);
+  }
+  .ranking-tile { display: block!important }
+  .dialog-container { position: fixed; z-index: 10000; }
+`);
 
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({
