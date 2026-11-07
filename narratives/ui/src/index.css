@@ -101,8 +101,8 @@
 
   /* State — error */
   --color-error: #dc2626;
-  --color-error-strong: #b91c1c;
-  --color-error-surface: #fef2f2;
+  --color-error-strong: #8c1d18;
+  --color-error-surface: #f9dedc;
 
   /* Scrim — click-outside backdrop */
   --color-scrim: #000000;
