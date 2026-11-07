@@ -443,7 +443,7 @@ function ErrorNotice({ message, onRetry }: ErrorNoticeProps) {
     <button
       type="button"
       onClick={onRetry}
-      className="underline cursor-pointer hover:opacity-80"
+      className="underline hover:opacity-80"
     >
       {label}
     </button>
