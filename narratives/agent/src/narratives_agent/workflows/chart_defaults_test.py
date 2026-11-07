@@ -344,10 +344,13 @@ def test_a_single_date_series_window_charts_at_its_summarized_date() -> None:
 
 
 def test_the_default_chart_is_a_ranking_for_an_aligned_cohort() -> None:
-    # Test: The default chart of a ranking over an aligned cohort.
+    # Test: The default chart of a ranking over an aligned cohort with one
+    #   date.
     # Situation: The specification aligns the cohort in `s1` and ranks all
-    #   six states in `s2`, so the primary result's input is a cohort step.
-    # Expectation: A ranking of the full cohort at the reference date.
+    #   six states in `s2`; the table holds only `2023`, so no line can be
+    #   drawn.
+    # Expectation: The floor falls back to a ranking of the full cohort at
+    #   the reference date.
     table = _make_cohort()
     analysis = AnalysisSpecification.model_validate(
         {
@@ -371,14 +374,14 @@ def test_the_default_chart_is_a_ranking_for_an_aligned_cohort() -> None:
     }
 
 
-def test_a_sliced_cohort_ranking_pins_its_top_count_and_date() -> None:
+def test_a_sliced_cohort_ranking_is_a_line_of_its_first_five_places() -> None:
     # Test: The default chart of a cohort ranking that slices a larger
-    #   cohort at a non-latest date.
+    #   cohort, over a table with two years.
     # Situation: `s1` summarizes the cohort's distribution on `2023`, and
     #   `s2` ranks the top five of thirty counties at `2022`.
     # Expectation: The distribution supplies no chart, and `s2` projects a
-    #   cohort ranking with `ranking_count == 5` at `2022` rather than
-    #   inheriting `s1`'s `2023` reference date.
+    #   line of the five highest counties, as "Rankings" asks, rather than
+    #   a `ranking` chart that repeats the answer's table.
     table = _make_table(
         "t1",
         places=_COUNTIES,
@@ -417,15 +420,10 @@ def test_a_sliced_cohort_ranking_pins_its_top_count_and_date() -> None:
     chart = _resolve_default_wire(digest, analysis, _make_cache(table))
 
     assert chart == {
-        "viz_type": "ranking",
+        "viz_type": "line",
         "title": "Total Population",
         "variable_dcids": ["Count_Person"],
-        "parent_place": "geoId/06",
-        "child_place_type": "County",
-        "ranking_count": 5,
-        "show_highest_lowest": False,
-        "show_lowest": False,
-        "date": "2022",
+        "place_dcids": list(reversed(_COUNTIES))[:5],
     }
 
 
@@ -555,10 +553,11 @@ def test_the_per_capita_title_of_an_unnamed_numerator_is_its_dcid(
 
 def test_the_default_chart_follows_a_per_capita_table_to_its_ranking() -> None:
     # Test: The default chart when a ranking consumes a per-capita table.
-    # Situation: A per-capita derivation over a cohort of states, followed
-    #   by a `rank_cohort` step that ranks `s1`.
-    # Expectation: A per-capita cohort ranking from the downstream ranking
-    #   step, drawn at its reference date.
+    # Situation: A per-capita derivation over a cohort of six states with
+    #   two years, followed by a `rank_cohort` step that ranks `s1`.
+    # Expectation: A per-capita line of the first five ranked states from
+    #   the downstream ranking step, with no parent place, since a raw
+    #   parent series cannot share a per-capita axis.
     cache, per_capita, result = _make_per_capita_case(is_cohort=True)
     ranked = rank_cohort(per_capita.table, step_id="s2")
     analysis = AnalysisSpecification.model_validate(
@@ -575,12 +574,10 @@ def test_the_default_chart_follows_a_per_capita_table_to_its_ranking() -> None:
     )
 
     assert chart == {
-        "viz_type": "ranking",
+        "viz_type": "line",
         "title": "Crimes per person",
         "variable_dcids": ["Count_Crime"],
-        "parent_place": "country/USA",
-        "child_place_type": "State",
-        "date": "2023",
+        "place_dcids": list(_STATES[:5]),
         "per_capita": True,
     }
 
@@ -1348,6 +1345,53 @@ def test_the_default_chart_of_a_window_ranking_is_a_line() -> None:
         "title": "Total Population",
         "variable_dcids": ["Count_Person"],
         "place_dcids": [_STATES[5], _STATES[4], _STATES[3]],
+    }
+
+
+def test_a_window_ranking_line_shows_five_places_and_the_parent() -> None:
+    # Test: The place cap and the parent place of a default ranking line.
+    # Situation: Six states ranked by their change from 2020 to 2024, with
+    #   six entries per end, and an `analyze_timeseries` step on `t2`, the
+    #   same variable for the states' parent, the United States.
+    # Expectation: An undated line of the five states the ranking lists
+    #   first and the United States, drawn from both tables.
+    entry = _make_window_table()
+    parent = _make_table("t2", places=("country/USA",), dates=("2020", "2024"))
+    analysis = AnalysisSpecification.model_validate(
+        {
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "script": "reduce_series",
+                    "table": "t1",
+                    "metric": "absolute_change",
+                },
+                {
+                    "step_id": "s2",
+                    "script": "rank_cohort",
+                    "table": "s1",
+                    "n": 6,
+                },
+                {
+                    "step_id": "s3",
+                    "script": "analyze_timeseries",
+                    "table": "t2",
+                },
+            ]
+        }
+    )
+    digest = _make_digest(
+        rank_cohort(_reduce_window(entry), max_entries_per_end=6, step_id="s2"),
+        analyze_timeseries(parent.table, step_id="s3"),
+    )
+
+    chart = _resolve_default_wire(digest, analysis, _make_cache(entry, parent))
+
+    assert chart == {
+        "viz_type": "line",
+        "title": "Total Population",
+        "variable_dcids": ["Count_Person"],
+        "place_dcids": [*reversed(_STATES[1:]), "country/USA"],
     }
 
 

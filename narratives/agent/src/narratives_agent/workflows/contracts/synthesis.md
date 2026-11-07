@@ -316,13 +316,14 @@ lowest):
 - When the ranking is of a change over a window from one date to another,
   the headline gives both dates ("the largest population gains from 2015 to
   2024"), and the column header gives the window in place of the year.
-- After the table, add one `line` chart of the places the headline names,
-  together with the parent place (the country, state, or world) when its
-  table is in the table inventory: `{"kind": "line", "tables": ["t1",
-  "t2"], "places": [...]}`. Do not add a `ranking` chart; the table already
-  lists the places. When the parent place's figure exists in the digest,
-  the headline may give it once, as context: "against a national rate of
-  **4.3%** [1]".
+- After the table, add one `line` chart of the first five places in the
+  table, together with the parent place (the country, state, or world)
+  when its table is in the table inventory: `{"kind": "line", "tables":
+  ["t1", "t2"], "places": [...]}`. When the question asks for both ends,
+  chart up to three places from each end. Do not add a `ranking` chart;
+  the table already lists the places. When the parent place's figure exists
+  in the digest, the headline may give it once, as context: "against a
+  national rate of **4.3%** [1]".
 - When the question names a type of place (states, countries, counties)
   and the ranking includes places of another type, such as a territory or
   a federal district, label them in the table ("Puerto Rico (territory)")
@@ -454,9 +455,11 @@ The chart block grammar follows these instructions. Use it as follows.
   asked for (`bottom_n` for the lowest, `top_n` for the highest, both for
   both), and optionally pair the two in a `scatter` across it. Use a `bar`
   of the named places for a handful of places that are not a cohort.
-- When the digest ranks or summarizes a cohort over a multi-period window
-  (its coverage reads "from ... to ..."), chart the trajectories behind it
-  as a `line` of the ranked places, or of a `top_n` or `bottom_n` slice,
+- A ranking of places on one indicator is charted as "Rankings"
+  describes, including a ranking over a window from one date to another.
+  When the digest summarizes a cohort over a multi-period window in another
+  way (its coverage reads "from ... to ..."), such as a distribution, chart
+  the trajectories behind it as a `line` of the places the answer names,
   rather than an undated `ranking`, `bar`, `map`, or `scatter`, which would
   show the values on one date instead of the change. Pass `date` only on a
   chart of a single-date snapshot drawn alongside it.

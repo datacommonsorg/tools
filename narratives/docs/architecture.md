@@ -195,8 +195,11 @@ agent loop in five steps:
    `relate_cohorts` result, which is considered first, or the direct chart of
    `analyze_timeseries`, `rank_cohort`, or `compute_composition`;
    distributions, standalone derivations, non-cohort relations, and
-   relations over a window cohort receive none). A ranking over a window
-   cohort is charted as a `line` of its leading places, and a `ranking`,
+   relations over a window cohort receive none). A ranking of a cohort, or
+   any ranking over a window cohort, is charted as a `line` of its first five
+   places, with the parent place when a step analyzed the parent's series; a
+   single-date cohort ranking falls back to a `ranking` chart when its table
+   has one date, or when the ranking supports a relation. A `ranking`,
    `bar`, `map`, or `scatter` of a table that the digest ranks only over a
    window needs an explicit date, because without one it would draw the
    latest values rather than the change the prose describes. The signed

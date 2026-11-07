@@ -126,8 +126,8 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "when the ranking covers a window from one date to another, cite "
             "the official source agency, and give every ranked place in a "
             "compact table. "
-            "After the table, chart a `line` of the places the headline "
-            "names, with the parent place when its table is in the table "
+            "After the table, chart a `line` of the first five places in the "
+            "table, with the parent place when its table is in the table "
             "inventory, not a `ranking`. When the digest relates a "
             "second variable to the ranking, state in plain words the "
             "pattern between the two groups and any notable exception, put "
@@ -178,7 +178,7 @@ _DIRECTIVES: Mapping[QueryPattern, Directive] = {
             "or the sharpest rise or fall, in plain words. For a cohort "
             "ranked by its change, name the window's two dates and the "
             "places at the end of the ranking the question asks for, and "
-            "chart their trajectories as a `line`."
+            'chart them as "Rankings" describes.'
         ),
     ),
     "outliers": Directive(
