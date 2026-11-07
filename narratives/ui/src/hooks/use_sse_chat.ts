@@ -4,6 +4,15 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { withBaseUrl } from '@/src/config/base_url';
+import {
+  CANCELED_TURN_ERROR,
+  DEFAULT_REFUSAL_MESSAGE,
+  DEFAULT_TURN_ERROR,
+  formatHttpError,
+  HIGH_TRAFFIC_ERROR,
+  INTERRUPTED_TURN_ERROR,
+  TRANSCRIPT_REJECTED_ERROR,
+} from '@/src/config/copy_chat';
 
 /** SSE framing: events are separated by a blank line (after line-ending normalization). */
 const SSE_EVENT_SEPARATOR = '\n\n';
@@ -235,26 +244,20 @@ const SETTLED_STATUSES: ReadonlySet<TurnStatus> = new Set([
   'error',
 ]);
 
-/**
- * Defines the error message shown when a turn's stream ends without a
- * terminal event because the connection dropped or the page closed mid-stream.
- */
-export const INTERRUPTED_TURN_ERROR =
-  'The connection was interrupted before the response finished.';
-
-/**
- * Defines the error message shown when the agent rejects the signed
- * conversation history, for example after its signing key changed. Every
- * signature is cleared, so the next question starts without earlier context.
- */
-export const TRANSCRIPT_REJECTED_ERROR =
-  'The conversation history could not be verified, so earlier context was cleared. Please ask again.';
-
-/** Defines the default notice message shown when a turn is refused without a server message. */
-export const DEFAULT_REFUSAL_MESSAGE = 'The request was declined.';
-
 /** Identifies the HTTP 400 body the agent returns for an unverifiable transcript. */
 const TRANSCRIPT_INVALID_REASON = 'transcript_invalid';
+
+/** Lowest HTTP client-error status, the start of the 4xx range. */
+const HTTP_CLIENT_ERROR_MIN = 400;
+
+/** Lowest HTTP server-error status, the end of the client-error range. */
+const HTTP_SERVER_ERROR_MIN = 500;
+
+/**
+ * Client-error statuses that can succeed when sent again: a request that timed
+ * out at the server (408) or was rate limited (429).
+ */
+const HTTP_RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
 
 /**
  * Records the places, variables, and date range of one data query or chart, in
@@ -293,6 +296,11 @@ export interface ChatTurn {
   /** Holds self-contained follow-up questions emitted by the agent after the terminal event. */
   followUps?: string[];
   error?: string;
+  /**
+   * Set on an error turn unless the failure is identified as permanent; every
+   * other failure can be retried by sending the same question again.
+   */
+  isRetryable?: boolean;
   /** Holds the refusal notice message when `status === "refused"`. */
   refusalMessage?: string;
   /**
@@ -359,18 +367,20 @@ interface SignedWindowEntry {
 
 /**
  * Represents the payload of a `terminal` event. An `error` event carries a
- * user-safe `error` message and a machine-readable `reason` (for example,
- * `mcp_timeout`). A `refused` event carries a `reason` (for example,
- * `adversarial`, `off_domain`, or `safety_blocked`) and a user-facing
- * `message` with no `error`. A `complete` event for a signed turn also
- * carries the turn's `turn_index`, `hmac`, and `state_slots`, the window's
- * `compacted_summary`, and `window`, which lists every turn the next request
- * must send with its current signature.
+ * user-safe `error` message, a machine-readable `reason` (for example,
+ * `mcp_timeout`), and `is_retryable`, which is false only when the failure is
+ * identified as permanent. A `refused` event carries a `reason` (for example, `adversarial`,
+ * `off_domain`, or `safety_blocked`) and a user-facing `message` with no
+ * `error`. A `complete` event for a signed turn also carries the turn's
+ * `turn_index`, `hmac`, and `state_slots`, the window's `compacted_summary`,
+ * and `window`, which lists every turn the next request must send with its
+ * current signature.
  */
 interface TerminalPayload {
   state: TerminalState;
   error?: string;
   reason?: string;
+  is_retryable?: boolean;
   message?: string;
   idempotency_key: string;
   turn_index?: number;
@@ -747,7 +757,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
       // the turns array. Empty/whitespace-only input is rejected upstream by
       // the prompt component (see data_agent.tsx handleSend), so we don't
       // re-validate the message text here.
-      if (isStreaming) return;
+      if (isStreaming || inFlightRef.current) return;
       const idempotencyKey = newIdempotencyKey();
       setTurns((prev) => [...prev, newTurn(message, idempotencyKey)]);
       setIsStreaming(true);
@@ -796,7 +806,12 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           setTurns((prev) =>
             prev.map((turn) =>
               turn.idempotencyKey === idempotencyKey
-                ? { ...turn, status: 'error', error: TRANSCRIPT_REJECTED_ERROR }
+                ? {
+                    ...turn,
+                    status: 'error',
+                    error: TRANSCRIPT_REJECTED_ERROR,
+                    isRetryable: true,
+                  }
                 : withoutSignature(turn),
             ),
           );
@@ -804,8 +819,23 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           return;
         }
         if (!resp.ok || !resp.body) {
-          const errText = `HTTP ${resp.status} ${resp.statusText}`;
-          patch((turn) => ({ ...turn, status: 'error', error: errText }));
+          // Only a 4xx other than 408 and 429 rejects the request itself, so
+          // sending it again fails the same way; any other response is
+          // retryable.
+          const isRejected =
+            resp.status >= HTTP_CLIENT_ERROR_MIN &&
+            resp.status < HTTP_SERVER_ERROR_MIN &&
+            !HTTP_RETRYABLE_CLIENT_ERRORS.has(resp.status);
+          const isRetryable = !isRejected;
+          const errText = isRetryable
+            ? HIGH_TRAFFIC_ERROR
+            : formatHttpError(resp.status, resp.statusText);
+          patch((turn) => ({
+            ...turn,
+            status: 'error',
+            error: errText,
+            isRetryable,
+          }));
           setError(errText);
           return;
         }
@@ -837,6 +867,7 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
             ...turn,
             status: 'error',
             error: INTERRUPTED_TURN_ERROR,
+            isRetryable: true,
           }));
           setError(INTERRUPTED_TURN_ERROR);
         }
@@ -851,7 +882,12 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
           : e instanceof Error
             ? e.message
             : String(e);
-        patch((turn) => ({ ...turn, status: 'error', error: msg }));
+        patch((turn) => ({
+          ...turn,
+          status: 'error',
+          error: msg,
+          isRetryable: true,
+        }));
         setError(msg);
       } finally {
         if (!controller.signal.aborted) {
@@ -870,9 +906,9 @@ export function useSseChat(props: UseSseChatProps): UseSseChatResult {
 function terminalError(terminal: TerminalPayload): string {
   if (terminal.error) return terminal.error;
   if (terminal.state === 'canceled') {
-    return 'The response was canceled before it finished.';
+    return CANCELED_TURN_ERROR;
   }
-  return 'The response failed. Please try again.';
+  return DEFAULT_TURN_ERROR;
 }
 
 /**
@@ -891,7 +927,13 @@ function applyTerminal(turn: ChatTurn, terminal: TerminalPayload): ChatTurn {
       refusalMessage: terminal.message || DEFAULT_REFUSAL_MESSAGE,
     };
   }
-  return { ...turn, status: 'error', error: terminalError(terminal) };
+  return {
+    ...turn,
+    status: 'error',
+    error: terminalError(terminal),
+    isRetryable:
+      terminal.state === 'canceled' || terminal.is_retryable === true,
+  };
 }
 
 /**

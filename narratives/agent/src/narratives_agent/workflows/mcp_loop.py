@@ -65,6 +65,7 @@ from narratives_agent.workflows.messages import (
     MCP_LOOP_TIMEOUT,
     MCP_MODEL_ERROR,
     MCP_NO_RESPONSE,
+    MCP_TRANSIENT_MODEL_ERROR,
     MCP_UNAVAILABLE,
 )
 from narratives_agent.workflows.messages import (
@@ -181,11 +182,20 @@ class McpLoopError(Exception):
 
     Attributes:
         error_type: The machine-readable error classification for telemetry.
+        is_retryable: False only when the failure is identified as
+            permanent; every other failure is retryable.
     """
 
-    def __init__(self, error_type: ErrorType, message: str) -> None:
+    def __init__(
+        self,
+        error_type: ErrorType,
+        message: str,
+        *,
+        is_retryable: bool,
+    ) -> None:
         super().__init__(message)
         self.error_type = error_type
+        self.is_retryable = is_retryable
 
 
 @dataclass
@@ -557,7 +567,7 @@ async def _run_tool(
         failed = True
     except mcp_client.McpTransportError as error:
         raise McpLoopError(
-            ErrorType.MCP_TRANSPORT_ERROR, MCP_UNAVAILABLE
+            ErrorType.MCP_TRANSPORT_ERROR, MCP_UNAVAILABLE, is_retryable=True
         ) from error
     telemetry.record_tool_call(name)
     return _build_tool_record(name, arguments, result_text, failed)
@@ -905,8 +915,13 @@ async def _request_discovery_turn(
     except GeminiBlockedError:
         raise
     except GeminiError as error:
+        message = (
+            MCP_TRANSIENT_MODEL_ERROR if error.is_retryable else MCP_MODEL_ERROR
+        )
         raise McpLoopError(
-            ErrorType.MCP_MODEL_ERROR, MCP_MODEL_ERROR
+            ErrorType.MCP_MODEL_ERROR,
+            message,
+            is_retryable=error.is_retryable,
         ) from error
     if not response.function_calls and not response.text.strip():
         logger.warning(
@@ -914,7 +929,9 @@ async def _request_discovery_turn(
             "(finish reason: %s)",
             response.finish_reason,
         )
-        raise McpLoopError(ErrorType.MCP_EMPTY_RESPONSE, MCP_NO_RESPONSE)
+        raise McpLoopError(
+            ErrorType.MCP_EMPTY_RESPONSE, MCP_NO_RESPONSE, is_retryable=True
+        )
     return response
 
 
@@ -962,7 +979,7 @@ async def _iterate(
             ],
         )
         raise McpLoopError(
-            ErrorType.MCP_MODEL_ERROR, MCP_MODEL_ERROR
+            ErrorType.MCP_MODEL_ERROR, MCP_MODEL_ERROR, is_retryable=False
         ) from error
     declared = frozenset(
         tool.name for tool in gemini_tools if tool.name is not None
@@ -1122,7 +1139,7 @@ async def execute_discovery_loop(
                 MCP_LOOP_TIMEOUT_SECONDS,
             )
             raise McpLoopError(
-                ErrorType.MCP_TIMEOUT, MCP_LOOP_TIMEOUT
+                ErrorType.MCP_TIMEOUT, MCP_LOOP_TIMEOUT, is_retryable=True
             ) from error
         logger.warning(
             "Discovery loop exceeded %.0f seconds after %d iterations and %d "

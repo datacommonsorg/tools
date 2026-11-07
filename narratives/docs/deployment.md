@@ -393,8 +393,9 @@ Key Metrics dashboard, and shared stories online — for example, during:
 To turn off chat, set the `ENABLE_CHAT` environment variable to `false` (default
 `true`). When `ENABLE_CHAT=false`, `POST /agent/chat/stream` immediately returns
 a terminal error event (`reason: "chat_disabled"`, `"Chat is temporarily
-unavailable. Please try again later."`) before invoking the classifier, MCP tool
-loop, or synthesis models.
+unavailable. Please try again later."`, `is_retryable: false`) before invoking
+the classifier, MCP tool loop, or synthesis models, so the UI shows the message
+without a retry button.
 
 - **Cloud Run:**
 

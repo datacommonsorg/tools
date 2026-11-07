@@ -42,16 +42,21 @@ TRUNCATED_MESSAGE = (
 )
 
 # Error messages carried on `terminal` SSE frames with `state == "error"`.
+# Retryable (`is_retryable == True`) errors each define their own literal so
+# they remain decoupled while sharing the high-traffic notice;
+# non-retryable errors omit any retry prompt (except `CHAT_DISABLED`, which
+# notes later availability without rendering a retry button).
 CHAT_DISABLED = "Chat is temporarily unavailable. Please try again later."
-SYNTHESIS_FAILED = (
-    "We are experiencing unusually high traffic. Please try again shortly."
-)
-MCP_UNAVAILABLE = "The data service is unavailable. Please try again."
-MCP_TOOLS_TIMEOUT = "The data service did not respond. Please try again."
-MCP_MODEL_ERROR = "The data request failed. Please try again."
-MCP_NO_RESPONSE = "The model returned no response. Please try again."
-MCP_LOOP_TIMEOUT = "The data request took too long. Please try again."
-INTERNAL_ERROR = "An internal error occurred. Please try again."
+CONFIG_MISSING = "Backend config not loaded"
+SYNTHESIS_FAILED = "The response could not be generated."
+SYNTHESIS_TRANSIENT_ERROR = "We are experiencing unusually high traffic."
+MCP_UNAVAILABLE = "We are experiencing unusually high traffic."
+MCP_TOOLS_TIMEOUT = "We are experiencing unusually high traffic."
+MCP_MODEL_ERROR = "The data request failed."
+MCP_TRANSIENT_MODEL_ERROR = "We are experiencing unusually high traffic."
+MCP_NO_RESPONSE = "We are experiencing unusually high traffic."
+MCP_LOOP_TIMEOUT = "We are experiencing unusually high traffic."
+INTERNAL_ERROR = "We are experiencing unusually high traffic."
 
 # Default chart titles built by the agent loop. `{variable_name}` is the
 # display name of the fetched numerator the chart normalizes by population.
@@ -60,12 +65,14 @@ PER_CAPITA_CHART_TITLE_TEMPLATE = "{variable_name} per person"
 __all__ = [
     "CHAT_DISABLED",
     "CLASSIFY_STATUS",
+    "CONFIG_MISSING",
     "DISCOVERY_STATUS",
     "INTERNAL_ERROR",
     "MCP_LOOP_TIMEOUT",
     "MCP_MODEL_ERROR",
     "MCP_NO_RESPONSE",
     "MCP_TOOLS_TIMEOUT",
+    "MCP_TRANSIENT_MODEL_ERROR",
     "MCP_UNAVAILABLE",
     "NO_DATA_MESSAGE",
     "OFF_DOMAIN_TEMPLATE",
@@ -74,5 +81,6 @@ __all__ = [
     "REFUSED_MESSAGE",
     "SYNTHESIS_FAILED",
     "SYNTHESIS_STATUS",
+    "SYNTHESIS_TRANSIENT_ERROR",
     "TRUNCATED_MESSAGE",
 ]

@@ -370,7 +370,10 @@ async def test_classifier_receives_conversation_with_capped_answers(
 @pytest.mark.parametrize(
     "reply",
     [
-        pytest.param(GeminiError("HTTP 500: upstream detail"), id="error"),
+        pytest.param(
+            GeminiError("HTTP 500: upstream detail", is_retryable=True),
+            id="error",
+        ),
         pytest.param(GeminiResponse(), id="empty"),
         pytest.param(GeminiResponse(text="{not json"), id="invalid-json"),
         pytest.param(

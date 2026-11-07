@@ -225,7 +225,7 @@ for `heartbeat`) a sequential `id` starting at `1`:
 | `status` | Current step (`classify`, `discovery`, `processing`, or `synthesis`) and status message |
 | `thought` | Model reasoning summary from the `discovery` or `synthesis` step |
 | `content` | Answer block (`{block}` of type `text` or `chart`), tool call details (`{tool_call}`), citations (`{sources}`), or data status (`{data_status}`) |
-| `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason}` on failure |
+| `terminal` | Final turn status (`state: "complete"`, `"refused"`, or `"error"`), plus the signed conversation state on completion, `{reason, message}` (with no `error` key) on refusal, or `{error, reason, is_retryable}` on failure |
 | `follow_ups` | `{follow_up_questions}`, sent after `terminal` when available |
 | `heartbeat` | `{}`, sent every 15 seconds so proxies do not close idle connections |
 
@@ -234,8 +234,12 @@ How the stream ends:
 - **Explicit completion (`terminal`):** Every finished turn sends a single
   `terminal` event with `state: "complete"`, `state: "refused"`, or
   `state: "error"`. A `refused` frame carries `{reason, message}` and no `error`
-  key, and is left unsigned. If the connection drops before a `terminal` event
-  arrives, the UI shows that the response was interrupted.
+  key, and is left unsigned. An `error` frame carries `{error, reason,
+  is_retryable}`, where `is_retryable` is `false` only when the failure is
+  identified as permanent (for example, disabled chat or a request Gemini
+  rejects); every other failure is retryable, and the UI shows a "Try again"
+  button for it. If the connection drops before a `terminal` event arrives, the
+  UI shows that the response was interrupted.
 - **Client disconnect:** If the user closes the tab or stops the request, the
   server cancels any in-progress model calls and logs the turn as `canceled`.
 - **Duplicate protection (`idempotency_key`):** Each request includes a unique

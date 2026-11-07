@@ -48,6 +48,10 @@ Failures are raised as `GeminiError` or one of its subclasses:
 - If a streamed response fails after iteration has started, the generator
   returned by `async_gemini_stream` raises `GeminiStreamError`; a block that
   arrives after that point raises `GeminiBlockedError` from the generator.
+- Every `GeminiError` carries `is_retryable`, which is False only for a
+  failure known to be permanent (an HTTP 4xx rejection other than 408, 429,
+  and 499, missing credentials, an invalid request, or a safety block); every
+  other failure is retryable.
 
 Every failure is logged once by this module, and the API key is removed from
 both the log message and the exception message.
@@ -65,6 +69,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field
+from http import HTTPStatus
 from typing import Any, NamedTuple
 
 import httpx
@@ -181,13 +186,37 @@ _client_lock = threading.Lock()
 _cached_client: tuple[_ClientKey, genai.Client] | None = None
 
 
+# Bounds of the HTTP client-error range, `[400, 500)`, and the server-error
+# range, `[500, 600)`.
+_HTTP_CLIENT_ERROR_MIN = HTTPStatus.BAD_REQUEST
+_HTTP_SERVER_ERROR_MIN = HTTPStatus.INTERNAL_SERVER_ERROR
+_HTTP_SERVER_ERROR_MAX = 600
+# Client-error statuses that can succeed when sent again: a request that timed
+# out at the server, a rate-limited request, and a canceled request (499,
+# which Google APIs report for `CANCELLED`).
+_RETRYABLE_CLIENT_ERRORS = frozenset(
+    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS, 499}
+)
+
+
 class GeminiError(Exception):
     """Raised when a Gemini call fails.
 
     The message is the redacted description of the failure that this module
     logs. It never carries a credential, but it may quote an upstream error
     body, so callers send the user a fixed message rather than this one.
+
+    Attributes:
+        is_retryable: False only when the failure is known to be permanent:
+            Gemini rejected the request with an HTTP 4xx other than 408, 429,
+            and 499, credentials are not configured, the request could not be
+            built, or Gemini blocked the request on a safety rule
+            (`GeminiBlockedError`). Every other failure is retryable.
     """
+
+    def __init__(self, message: str, *, is_retryable: bool) -> None:
+        super().__init__(message)
+        self.is_retryable = is_retryable
 
 
 class GeminiBlockedError(GeminiError):
@@ -199,7 +228,9 @@ class GeminiBlockedError(GeminiError):
     """
 
     def __init__(self, block_reason: str) -> None:
-        super().__init__(f"Gemini request blocked by {block_reason}")
+        super().__init__(
+            f"Gemini request blocked by {block_reason}", is_retryable=False
+        )
         self.block_reason = block_reason
 
 
@@ -259,7 +290,9 @@ async def _get_client(model: str) -> genai.Client:
     settings = get_settings()
     if settings.google_genai_use_vertexai:
         if not settings.google_cloud_project:
-            raise GeminiError(_report_failure(_NO_PROJECT_ERROR, model))
+            raise GeminiError(
+                _report_failure(_NO_PROJECT_ERROR, model), is_retryable=False
+            )
         key = _ClientKey(
             use_vertexai=True,
             project=settings.google_cloud_project,
@@ -268,7 +301,9 @@ async def _get_client(model: str) -> genai.Client:
     else:
         api_key = await asyncio.to_thread(get_gemini_api_key)
         if not api_key:
-            raise GeminiError(_report_failure(_NO_KEY_ERROR, model))
+            raise GeminiError(
+                _report_failure(_NO_KEY_ERROR, model), is_retryable=False
+            )
         key = _ClientKey(use_vertexai=False, api_key=api_key)
 
     with _client_lock:
@@ -300,13 +335,29 @@ def _redact(text: str) -> str:
     return redacted
 
 
+def _is_retryable_error(error: Exception) -> bool:
+    """Reports whether a failed Gemini request can succeed when sent again.
+
+    Only a rejection that Gemini reports with an HTTP 4xx other than 408,
+    429, and 499 (a canceled request) is permanent, such as an invalid model
+    or a bad API key. Every other failure, including network errors,
+    timeouts, and credential refresh failures, is retryable, so an
+    unrecognized failure offers a retry.
+    """
+    if not isinstance(error, errors.APIError):
+        return True
+    if error.code in _RETRYABLE_CLIENT_ERRORS:
+        return True
+    return not (_HTTP_CLIENT_ERROR_MIN <= error.code < _HTTP_SERVER_ERROR_MIN)
+
+
 def _describe_error(error: Exception) -> str:
     """Returns the caller-facing message for a failed Gemini call."""
     if isinstance(error, errors.APIError):
         code = error.code
-        if code == 429:
+        if code == HTTPStatus.TOO_MANY_REQUESTS:
             return "Rate limited (429)"
-        if 500 <= code < 600:
+        if _HTTP_SERVER_ERROR_MIN <= code < _HTTP_SERVER_ERROR_MAX:
             return f"Server error ({code})"
         # Redact before truncating: a cut through the middle of an echoed
         # key would leave a partial key that no longer matches.
@@ -537,8 +588,9 @@ async def _prepare_call(
             include_thoughts,
         )
     except Exception as error:
+        # A request that cannot be built fails the same way when repeated.
         raise GeminiError(
-            _report_failure(_describe_error(error), model)
+            _report_failure(_describe_error(error), model), is_retryable=False
         ) from error
     return _GeminiCall(client, model, contents, config)
 
@@ -744,7 +796,8 @@ async def _async_iterate_stream(
         raise
     except Exception as error:
         raise GeminiStreamError(
-            _report_failure(_describe_error(error), model)
+            _report_failure(_describe_error(error), model),
+            is_retryable=_is_retryable_error(error),
         ) from error
     finally:
         _record_usage(token_usage, stream.usage)
@@ -801,7 +854,8 @@ async def async_gemini_request(
         )
     except Exception as error:
         raise GeminiError(
-            _report_failure(_describe_error(error), model)
+            _report_failure(_describe_error(error), model),
+            is_retryable=_is_retryable_error(error),
         ) from error
     _record_usage(token_usage, _token_counts(response.usage_metadata))
     block_reason = _block_reason(response) or _candidate_block_reason(response)
@@ -879,7 +933,8 @@ async def async_gemini_stream(
         await _close_chunks(chunks)
         if isinstance(error, Exception):
             raise GeminiError(
-                _report_failure(_describe_error(error), model)
+                _report_failure(_describe_error(error), model),
+                is_retryable=_is_retryable_error(error),
             ) from error
         raise
     if first is not None:
@@ -964,7 +1019,8 @@ async def async_gemini_request_with_thought_streaming(
             collector.add(chunk)
     except Exception as error:
         raise GeminiError(
-            _report_failure(_describe_error(error), model)
+            _report_failure(_describe_error(error), model),
+            is_retryable=_is_retryable_error(error),
         ) from error
     finally:
         _record_usage(token_usage, collector.usage)

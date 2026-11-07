@@ -8,6 +8,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  CANCELED_TURN_ERROR,
+  DEFAULT_REFUSAL_MESSAGE,
+  DEFAULT_TURN_ERROR,
+  HIGH_TRAFFIC_ERROR,
+  INTERRUPTED_TURN_ERROR,
+  TRANSCRIPT_REJECTED_ERROR,
+} from '@/src/config/copy_chat';
+import {
   type AnswerBlock,
   applyEvent,
   applySignedWindow,
@@ -16,14 +24,11 @@ import {
   type ChatStreamEvent,
   type ChatTurn,
   type ConversationStateSlots,
-  DEFAULT_REFUSAL_MESSAGE,
   getTurnCharts,
   hasAnswer,
-  INTERRUPTED_TURN_ERROR,
   type ProvenanceItem,
   parseSseStream,
   type RawAnswerBlock,
-  TRANSCRIPT_REJECTED_ERROR,
   type TurnStatus,
   transcriptRequestFields,
   useSseChat,
@@ -723,26 +728,73 @@ describe('applyEvent', () => {
   });
 
   it.each([
-    ['complete', undefined, 'done', undefined],
-    ['error', 'The data request failed.', 'error', 'The data request failed.'],
-    [
-      'canceled',
-      undefined,
-      'error',
-      'The response was canceled before it finished.',
-    ],
-  ] as const)('maps a %s terminal event onto the turn status', (state, error, status, shownError) => {
+    {
+      state: 'complete',
+      error: undefined,
+      isWireRetryable: undefined,
+      status: 'done',
+      shownError: undefined,
+      isExpectedRetryable: undefined,
+    },
+    {
+      state: 'error',
+      error: 'We are experiencing unusually high traffic.',
+      isWireRetryable: true,
+      status: 'error',
+      shownError: 'We are experiencing unusually high traffic.',
+      isExpectedRetryable: true,
+    },
+    {
+      state: 'error',
+      error: 'The response could not be generated.',
+      isWireRetryable: false,
+      status: 'error',
+      shownError: 'The response could not be generated.',
+      isExpectedRetryable: false,
+    },
+    {
+      state: 'error',
+      error: undefined,
+      isWireRetryable: undefined,
+      status: 'error',
+      shownError: DEFAULT_TURN_ERROR,
+      isExpectedRetryable: false,
+    },
+    {
+      state: 'canceled',
+      error: undefined,
+      isWireRetryable: undefined,
+      status: 'error',
+      shownError: CANCELED_TURN_ERROR,
+      isExpectedRetryable: true,
+    },
+  ] as const)('maps a $state terminal event with is_retryable=$isWireRetryable onto the turn status', ({
+    state,
+    error,
+    isWireRetryable,
+    status,
+    shownError,
+    isExpectedRetryable,
+  }) => {
     // Test: Terminal state mapping for complete, error, and canceled.
-    // Situation: A turn receives a terminal event in the given state.
-    // Expectation: `complete` finishes the turn; `error` and `canceled` make
-    //   it an error turn carrying the server's message or a default one.
+    // Situation: A turn receives a terminal event in the given state and
+    //   `is_retryable` flag.
+    // Expectation: `complete` finishes the turn; `error` preserves the server's
+    //   `is_retryable` boolean (defaulting to false when absent); `canceled`
+    //   settles as a retryable error turn.
     const turn = applyEvent(blankTurn(), {
       event: 'terminal',
-      data: { state, error, ...TERMINAL_FIELDS },
+      data: {
+        state,
+        error,
+        is_retryable: isWireRetryable,
+        ...TERMINAL_FIELDS,
+      },
     });
 
     expect(turn.status).toBe(status);
     expect(turn.error).toBe(shownError);
+    expect(turn.isRetryable).toBe(isExpectedRetryable);
     expect(turn.refusalMessage).toBeUndefined();
   });
 
@@ -937,6 +989,7 @@ describe('useSseChat', () => {
     const turns = result.current.turns;
     expect(turns[2].status).toBe('error');
     expect(turns[2].error).toBe(TRANSCRIPT_REJECTED_ERROR);
+    expect(turns[2].isRetryable).toBe(true);
     expect(result.current.chat.error).toBe(TRANSCRIPT_REJECTED_ERROR);
     expect(turns.slice(0, 2).map((turn) => turn.hmac)).toEqual([
       undefined,
@@ -969,6 +1022,119 @@ describe('useSseChat', () => {
     expect(result.current.turns[0].hmac).toBe(sig('0'));
   });
 
+  it.each([
+    {
+      status: 400,
+      statusText: 'Bad Request',
+      expectedError: 'HTTP 400 Bad Request',
+      isRetryable: false,
+    },
+    {
+      status: 413,
+      statusText: 'Content Too Large',
+      expectedError: 'HTTP 413 Content Too Large',
+      isRetryable: false,
+    },
+    {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      expectedError: 'HTTP 422 Unprocessable Entity',
+      isRetryable: false,
+    },
+    {
+      status: 408,
+      statusText: 'Request Timeout',
+      expectedError: HIGH_TRAFFIC_ERROR,
+      isRetryable: true,
+    },
+    {
+      status: 429,
+      statusText: 'Too Many Requests',
+      expectedError: HIGH_TRAFFIC_ERROR,
+      isRetryable: true,
+    },
+    {
+      status: 500,
+      statusText: 'Internal Server Error',
+      expectedError: HIGH_TRAFFIC_ERROR,
+      isRetryable: true,
+    },
+    {
+      status: 503,
+      statusText: 'Service Unavailable',
+      expectedError: HIGH_TRAFFIC_ERROR,
+      isRetryable: true,
+    },
+    {
+      status: 204,
+      statusText: 'No Content',
+      expectedError: HIGH_TRAFFIC_ERROR,
+      isRetryable: true,
+    },
+  ])('sets isRetryable to $isRetryable for HTTP $status $statusText', async ({
+    status,
+    statusText,
+    expectedError,
+    isRetryable,
+  }) => {
+    // Test: Retryability and copy of a response that cannot open the stream.
+    // Situation: The agent, or a proxy in front of it, answers with the given
+    //   status, or with a success status and no body, before the stream opens.
+    // Expectation: Only a 4xx other than 408 and 429 reports the HTTP status
+    //   with `isRetryable` false; any other response shows the high-traffic
+    //   notice with `isRetryable` true.
+    const { result, fetchMock } = renderChat([]);
+    fetchMock.mockResolvedValueOnce({
+      ok: status < 300,
+      status,
+      statusText,
+      body: null,
+      json: async () => ({}),
+    });
+
+    await act(() => result.current.chat.send('And Germany?'));
+
+    const [turn] = result.current.turns;
+    expect(turn.error).toBe(expectedError);
+    expect(turn.isRetryable).toBe(isRetryable);
+  });
+
+  it('ignores a second send while the first request is in flight', () => {
+    // Test: Re-entrancy guard on `send`.
+    // Situation: `send` is called twice in the same tick, as from a double
+    //   click on a retry button, while the first request's fetch is still
+    //   pending.
+    // Expectation: Only one request is sent and only one turn is added.
+    const { result, fetchMock } = renderChat([]);
+    // The fetch never settles, so the first request stays in flight.
+    fetchMock.mockReturnValue(new Promise<never>(() => undefined));
+
+    act(() => {
+      void result.current.chat.send('What is the population of France?');
+      void result.current.chat.send('What is the population of France?');
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.turns).toHaveLength(1);
+  });
+
+  it('marks a failed fetch as a retryable error', async () => {
+    // Test: A request that fails before any response arrives.
+    // Situation: fetch rejects, as when the network is down or the agent is
+    //   unreachable.
+    // Expectation: The turn fails with the browser's message and is
+    //   retryable.
+    const { result, fetchMock } = renderChat([]);
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await act(() => result.current.chat.send('And Germany?'));
+
+    const [turn] = result.current.turns;
+    expect(turn.status).toBe('error');
+    expect(turn.error).toBe('Failed to fetch');
+    expect(turn.isRetryable).toBe(true);
+  });
+
   it('marks a stream that ends without a terminal event as interrupted', async () => {
     // Test: EOF without a terminal event.
     // Situation: The stream delivers a status event and one text block, and
@@ -988,6 +1154,7 @@ describe('useSseChat', () => {
     expect(turn.text).toBe('About 68 million.');
     expect(turn.status).toBe('error');
     expect(turn.error).toBe(INTERRUPTED_TURN_ERROR);
+    expect(turn.isRetryable).toBe(true);
     expect(result.current.chat.error).toBe(INTERRUPTED_TURN_ERROR);
   });
 

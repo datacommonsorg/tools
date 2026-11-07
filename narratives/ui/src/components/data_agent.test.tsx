@@ -32,19 +32,16 @@ import {
   COMPOSER_DISCLAIMER_TEXT,
   DataAgent,
   HANDOFF_MS,
-  RETRY_LABEL,
   TurnView,
 } from '@/src/components/data_agent';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
+import { RETRY_LABEL } from '@/src/config/copy_chat';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
 } from '@/src/hooks/chat_session_context';
-import {
-  type ChatTurn,
-  INTERRUPTED_TURN_ERROR,
-} from '@/src/hooks/use_sse_chat';
+import type { ChatTurn } from '@/src/hooks/use_sse_chat';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -87,10 +84,11 @@ const renderTurns = (turns: ChatTurn[], send = vi.fn()) =>
   render(chatSurface(turns, send));
 
 /** Returns a turn that ended in `error` with `error` as its message. */
-const errorTurn = (error: string): ChatTurn => ({
+const buildErrorTurn = (error: string, isRetryable: boolean): ChatTurn => ({
   userMessage: 'What is the population of France?',
   status: 'error',
   error,
+  isRetryable,
   toolCalls: [],
   thoughts: [],
   text: '',
@@ -206,39 +204,58 @@ describe('DataAgent refused and clarification turns', () => {
 });
 
 describe('DataAgent error turns', () => {
-  it('renders the "try again" of an error message as a link that asks the same question again', () => {
-    // Test: Clicking the "try again" phrase of a failed turn.
-    // Situation: The chat holds a turn whose error message contains
-    //            "try again".
-    // Expectation: Only that phrase is a button, and clicking it sends the
+  it('follows a retryable error with an inline button that resubmits the query', () => {
+    // Test: Retrying a transient failed turn.
+    // Situation: The chat holds a retryable error turn with the high-traffic
+    //            message.
+    // Expectation: The notice renders the message followed inline by the
+    //              "Try again" button, and clicking the button sends the
     //              turn's question again.
     const send = vi.fn();
-    const message =
-      'We are experiencing unusually high traffic. Please try again shortly.';
-    renderTurns([errorTurn(message)], send);
+    const message = 'We are experiencing unusually high traffic.';
+    renderTurns([buildErrorTurn(message, true)], send);
 
-    const retry = screen.getByRole('button', { name: 'try again' });
-    expect(retry.parentElement?.textContent).toBe(message);
-    expect(retry.parentElement?.className).toContain('bg-error-surface');
+    expect(screen.getByTestId('turn-error-notice').textContent).toBe(
+      `${message} ${RETRY_LABEL}`,
+    );
+    const retry = screen.getByRole('button', { name: RETRY_LABEL });
     fireEvent.click(retry);
     expect(send).toHaveBeenCalledWith('What is the population of France?');
   });
 
-  it('appends a retry link to an error message without "try again"', () => {
-    // Test: Rendering a failed turn whose message has no retry phrase.
-    // Situation: The stream was interrupted, so the turn carries the
-    //            client-side interrupted-stream error.
-    // Expectation: The message is followed by a retry link that sends the
-    //              turn's question again.
-    const send = vi.fn();
-    renderTurns([errorTurn(INTERRUPTED_TURN_ERROR)], send);
+  it.each([
+    'The response could not be generated.',
+    'Chat is temporarily unavailable. Please try again later.',
+    'HTTP 422 Unprocessable Entity',
+  ])('shows non-retryable error %j without a retry button', (message) => {
+    // Test: Rendering a failed turn that is not retryable.
+    // Situation: The turn carries `isRetryable: false`, including when its prose
+    //            mentions trying again later (chat disabled).
+    // Expectation: The message is rendered verbatim and no retry button is
+    //              shown.
+    renderTurns([buildErrorTurn(message, false)]);
 
-    const retry = screen.getByRole('button', { name: RETRY_LABEL });
-    expect(retry.parentElement?.textContent).toBe(
-      `${INTERRUPTED_TURN_ERROR} ${RETRY_LABEL}`,
+    screen.getByText(message);
+    expect(screen.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  it('omits the retry button when the turn view has no ask handler', () => {
+    // Test: Rendering a retryable turn without a way to resend it.
+    // Situation: `TurnView` renders a retryable error turn with no `onAsk`.
+    // Expectation: The message is rendered and no retry button is shown, so
+    //              no control renders that does nothing.
+    const message = 'We are experiencing unusually high traffic.';
+    render(
+      <TurnView
+        turn={buildErrorTurn(message, true)}
+        index={0}
+        isLast
+        isStreaming={false}
+      />,
     );
-    fireEvent.click(retry);
-    expect(send).toHaveBeenCalledWith('What is the population of France?');
+
+    expect(screen.getByTestId('turn-error-notice').textContent).toBe(message);
+    expect(screen.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
   });
 });
 

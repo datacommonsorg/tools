@@ -45,6 +45,13 @@ from narratives_agent.workflows.fetch_requests import (
     FetchObservationsRequest,
     FetchRequest,
 )
+from narratives_agent.workflows.messages import (
+    MCP_LOOP_TIMEOUT,
+    MCP_MODEL_ERROR,
+    MCP_NO_RESPONSE,
+    MCP_TRANSIENT_MODEL_ERROR,
+    MCP_UNAVAILABLE,
+)
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
 from narratives_agent.workflows.processing import StepRefusalDiagnostic
 from narratives_agent.workflows.prompt_contracts import load_prompt_contract
@@ -862,24 +869,41 @@ async def test_fetches_of_one_turn_run_one_at_a_time_in_call_order(
 
 
 @pytest.mark.parametrize(
-    ("response", "error_type"),
+    ("response", "error_type", "message", "is_retryable"),
     [
         pytest.param(
-            GeminiError(_UPSTREAM_ERROR),
+            GeminiError(_UPSTREAM_ERROR, is_retryable=True),
             ErrorType.MCP_MODEL_ERROR,
+            MCP_TRANSIENT_MODEL_ERROR,
+            True,
+            id="transient-model-error",
+        ),
+        pytest.param(
+            GeminiError(_UPSTREAM_ERROR, is_retryable=False),
+            ErrorType.MCP_MODEL_ERROR,
+            MCP_MODEL_ERROR,
+            False,
             id="model-error",
         ),
         pytest.param(
-            GeminiResponse(), ErrorType.MCP_EMPTY_RESPONSE, id="empty"
+            GeminiResponse(),
+            ErrorType.MCP_EMPTY_RESPONSE,
+            MCP_NO_RESPONSE,
+            True,
+            id="empty",
         ),
         pytest.param(
             GeminiResponse(finish_reason="MALFORMED_FUNCTION_CALL"),
             ErrorType.MCP_EMPTY_RESPONSE,
+            MCP_NO_RESPONSE,
+            True,
             id="empty-with-finish-reason",
         ),
         pytest.param(
             _make_text_turn("  \n"),
             ErrorType.MCP_EMPTY_RESPONSE,
+            MCP_NO_RESPONSE,
+            True,
             id="blank-text",
         ),
     ],
@@ -888,18 +912,21 @@ async def test_fetches_of_one_turn_run_one_at_a_time_in_call_order(
 async def test_unusable_model_response_fails_closed(
     response: GeminiResponse | Exception,
     error_type: ErrorType,
+    message: str,
+    is_retryable: bool,
     calls: list[str],
     model_answers: Callable[..., list[list[Message]]],
     telemetry: TurnTelemetry,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Test: Fail-closed handling of an unusable model response.
-    # Situation: After one successful tool turn, the model call raises
-    #   `GeminiError`, returns an empty `GeminiResponse`, or returns a
-    #   response whose only text is blank.
-    # Expectation: The loop raises `McpLoopError` with the matching type and
-    #   a message that does not carry the upstream error text, and empty
-    #   responses log their finish reason at WARNING.
+    # Situation: After one successful tool turn, the model call raises a
+    #   transient or non-transient `GeminiError`, returns an empty
+    #   `GeminiResponse`, or returns a response whose only text is blank.
+    # Expectation: The loop raises `McpLoopError` with the matching type,
+    #   message, and `is_retryable` flag, the message does not carry the
+    #   upstream error text, and empty responses log their finish reason at
+    #   WARNING.
     _ = calls
     model_answers(_make_tool_turn("search_indicators"), response)
 
@@ -910,6 +937,8 @@ async def test_unusable_model_response_fails_closed(
         await _run_loop(telemetry)
 
     assert raised.value.error_type == error_type
+    assert str(raised.value) == message
+    assert raised.value.is_retryable is is_retryable
     assert _UPSTREAM_ERROR not in str(raised.value)
     if isinstance(response, GeminiResponse):
         assert f"finish reason: {response.finish_reason}" in caplog.text
@@ -947,6 +976,8 @@ async def test_wall_clock_timeout_before_any_tool_call_fails_closed(
         await _run_loop(telemetry)
 
     assert raised.value.error_type == ErrorType.MCP_TIMEOUT
+    assert str(raised.value) == MCP_LOOP_TIMEOUT
+    assert raised.value.is_retryable is True
     assert canceled.is_set()
 
 
@@ -1252,10 +1283,10 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
     # Situation: The model calls two tools in one turn. The first raises
     #   `McpTransportError` once the second is in flight; the second never
     #   returns on its own.
-    # Expectation: The loop raises `McpLoopError` of type
-    #   `mcp_transport_error`, with a message that does not carry the
-    #   transport detail, and the second call is canceled rather than left
-    #   running.
+    # Expectation: The loop raises a retryable `McpLoopError` of type
+    #   `mcp_transport_error` with the high-traffic message, the message does
+    #   not carry the transport detail, and the second call is canceled rather
+    #   than left running.
     _ = calls
     second_started = asyncio.Event()
     second_canceled = asyncio.Event()
@@ -1279,6 +1310,8 @@ async def test_a_transport_failure_fails_closed_and_cancels_siblings(
         await _run_loop(telemetry)
 
     assert raised.value.error_type == ErrorType.MCP_TRANSPORT_ERROR
+    assert str(raised.value) == MCP_UNAVAILABLE
+    assert raised.value.is_retryable is True
     assert _UPSTREAM_ERROR not in str(raised.value)
     assert second_canceled.is_set()
     assert telemetry.tool_calls == {}
@@ -1718,9 +1751,9 @@ async def test_an_invalid_tool_schema_ends_the_loop_as_a_model_error(
     # Test: A tool schema that is not a valid Gemini schema.
     # Situation: The discovery tool's input schema gives `required` as a
     #   string, which Gemini's `Schema` rejects.
-    # Expectation: The loop raises `McpLoopError` with type
-    #   `mcp_model_error`, as a failed model call does, and sends no model
-    #   request.
+    # Expectation: The loop raises a non-retryable `McpLoopError` with type
+    #   `mcp_model_error` and the non-transient message, as a failed model
+    #   call does, and sends no model request.
     _ = calls
     model_answers()
     tool = mcp_client.McpTool(
@@ -1735,4 +1768,6 @@ async def test_an_invalid_tool_schema_ends_the_loop_as_a_model_error(
         )
 
     assert raised.value.error_type == ErrorType.MCP_MODEL_ERROR
+    assert str(raised.value) == MCP_MODEL_ERROR
+    assert raised.value.is_retryable is False
     assert telemetry.mcp_iterations == 0

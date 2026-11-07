@@ -256,21 +256,28 @@ def test_serialize_source_omits_absent_optional_fields() -> None:
     }
 
 
-def test_an_error_frame_carries_the_error_and_the_reason() -> None:
+@pytest.mark.parametrize("is_retryable", [True, False])
+def test_an_error_frame_carries_the_error_reason_and_retry_flag(
+    is_retryable: bool,
+) -> None:
     # Test: Wire form of the `error` terminal frame.
-    # Situation: A turn ends with a user-safe message and a reason code.
+    # Situation: A turn ends with a user-safe message, reason code, and
+    #   `is_retryable` flag.
     # Expectation: The payload holds `state`, `idempotency_key`, `error`,
-    #   and `reason`, and no signing or refusal keys.
+    #   `reason`, and `is_retryable`, and no signing or refusal keys.
     frame = TerminalErrorFrame(
         idempotency_key=_IDEMPOTENCY_KEY,
-        error="The data request took too long.",
+        error="We are experiencing unusually high traffic.",
         reason=ErrorType.MCP_TIMEOUT,
+        is_retryable=is_retryable,
     )
 
     assert _serialize(frame) == (
         "terminal",
         '{"state": "error", "idempotency_key": "key-4", '
-        '"error": "The data request took too long.", "reason": "mcp_timeout"}',
+        '"error": "We are experiencing unusually high traffic.", '
+        '"reason": "mcp_timeout", '
+        f'"is_retryable": {json.dumps(is_retryable)}}}',
     )
 
 

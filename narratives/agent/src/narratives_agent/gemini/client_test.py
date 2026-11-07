@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
+import google.auth.exceptions
 import httpx
 import pytest
 from google import genai
@@ -312,6 +313,68 @@ async def test_a_timeout_is_reported_as_a_request_timeout(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", _MODES)
+@pytest.mark.parametrize(
+    ("status", "is_retryable"),
+    [
+        (400, False),
+        (401, False),
+        (403, False),
+        (404, False),
+        (408, True),
+        (429, True),
+        (499, True),
+        (500, True),
+        (503, True),
+    ],
+)
+async def test_an_http_error_is_retryable_only_when_transient(
+    gemini: _FakeGemini, mode: str, status: int, is_retryable: bool
+) -> None:
+    # Test: `GeminiError.is_retryable` classification of non-200 responses.
+    # Situation: Gemini answers every entry point with the given HTTP status.
+    # Expectation: `is_retryable` is True for 408, 429, 499 (canceled), and
+    #   5xx, and False for every other 4xx, such as an invalid model (404) or
+    #   bad credentials.
+    gemini.respond(_answer(status, json=_BAD_REQUEST_BODY))
+
+    with pytest.raises(client.GeminiError) as raised:
+        await _call(mode)
+
+    assert raised.value.is_retryable is is_retryable
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _MODES)
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError("refused"),
+        httpx.ReadTimeout("timed out"),
+        # `google.auth` ships no type annotations for its exception classes.
+        google.auth.exceptions.RefreshError(  # type: ignore[no-untyped-call]
+            "metadata server unreachable"
+        ),
+    ],
+    ids=["connect_error", "read_timeout", "auth_refresh_error"],
+)
+async def test_a_failure_without_an_http_status_is_retryable(
+    gemini: _FakeGemini, mode: str, error: Exception
+) -> None:
+    # Test: `GeminiError.is_retryable` for failures that carry no HTTP status.
+    # Situation: The request fails before any response arrives, with a
+    #   connection error, a timeout, or a credential refresh failure.
+    # Expectation: The raised `GeminiError` is retryable, because only an
+    #   HTTP 4xx rejection is known to be permanent.
+    gemini.respond(_raise(error))
+
+    with pytest.raises(client.GeminiError) as raised:
+        await _call(mode)
+
+    assert raised.value.is_retryable is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", _MODES)
 async def test_a_missing_api_key_fails_without_sending_a_request(
     gemini: _FakeGemini,
     caplog: pytest.LogCaptureFixture,
@@ -321,9 +384,10 @@ async def test_a_missing_api_key_fails_without_sending_a_request(
     # Test: API key mode with no key configured.
     # Situation: GOOGLE_GENAI_USE_VERTEXAI is unset and get_gemini_api_key()
     #   returns an empty string.
-    # Expectation: The entry point raises `GeminiError` carrying the
-    #   actionable _NO_KEY_ERROR without building a client or sending a
-    #   request, and logs the failure once at ERROR, naming the model.
+    # Expectation: The entry point raises a non-retryable `GeminiError`
+    #   carrying the actionable _NO_KEY_ERROR without building a client or
+    #   sending a request, and logs the failure once at ERROR, naming the
+    #   model.
     monkeypatch.setattr(client, "get_gemini_api_key", lambda: "")
 
     with (
@@ -333,6 +397,7 @@ async def test_a_missing_api_key_fails_without_sending_a_request(
         await _call(mode)
 
     assert str(raised.value) == client._NO_KEY_ERROR
+    assert raised.value.is_retryable is False
     assert gemini.constructions == []
     assert gemini.sent == []
     assert [record.levelno for record in caplog.records] == [logging.ERROR]
@@ -389,9 +454,9 @@ async def test_vertex_ai_mode_without_a_project_names_the_variable(
     # Test: Vertex AI mode with no project configured.
     # Situation: GOOGLE_GENAI_USE_VERTEXAI is "1" but GOOGLE_CLOUD_PROJECT is
     #   unset.
-    # Expectation: The entry point raises `GeminiError` with a message
-    #   mentioning GOOGLE_CLOUD_PROJECT without instantiating a client, and
-    #   logs the failure once at ERROR, naming the model.
+    # Expectation: The entry point raises a non-retryable `GeminiError` with
+    #   a message mentioning GOOGLE_CLOUD_PROJECT without instantiating a
+    #   client, and logs the failure once at ERROR, naming the model.
     monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "1")
 
     with (
@@ -401,6 +466,7 @@ async def test_vertex_ai_mode_without_a_project_names_the_variable(
         await _call(mode)
 
     assert "GOOGLE_CLOUD_PROJECT" in str(raised.value)
+    assert raised.value.is_retryable is False
     assert gemini.constructions == []
     assert [record.levelno for record in caplog.records] == [logging.ERROR]
     assert _MODEL in caplog.text
@@ -495,9 +561,10 @@ async def test_an_invalid_message_is_reported_without_its_content(
     # Test: Invalid message in conversation history.
     # Situation: A message part passes a list containing user text instead of
     #   a string for its "text" field.
-    # Expectation: The entry point raises an "Invalid Gemini request" error
-    #   indicating which field failed validation, sends no HTTP request, and
-    #   does not include the user text in the error message or the logs.
+    # Expectation: The entry point raises a non-retryable "Invalid Gemini
+    #   request" error indicating which field failed validation, sends no HTTP
+    #   request, and does not include the user text in the error message or
+    #   the logs.
     private = "my private question"
     messages = [{"role": "user", "parts": [{"text": [private]}]}]
 
@@ -508,6 +575,7 @@ async def test_an_invalid_message_is_reported_without_its_content(
         await _call(mode, messages=messages)
 
     assert str(raised.value).startswith("Invalid Gemini request: ")
+    assert raised.value.is_retryable is False
     assert "parts.0.text" in str(raised.value)
     assert private not in str(raised.value)
     assert private not in caplog.text
@@ -960,9 +1028,9 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
     # Test: A stream failing after its first chunk.
     # Situation: The connection resets after one text chunk that carries
     #   usage metadata, with the API key in the transport error message.
-    # Expectation: The first chunk is yielded, then iteration raises
-    #   GeminiStreamError whose message and log redact the key, and the
-    #   usage from the chunk received before the failure is recorded.
+    # Expectation: The first chunk is yielded, then iteration raises a
+    #   retryable GeminiStreamError whose message and log redact the key,
+    #   and the usage from the chunk received before the failure is recorded.
     gemini.respond(_answer(200, stream=_BrokenStream()))
     usage = TokenUsage()
 
@@ -976,6 +1044,7 @@ async def test_a_stream_that_breaks_midway_raises_a_redacted_error(
             received.append(item)
 
     assert received == [StreamChunk("text", "California has ")]
+    assert raised.value.is_retryable is True
     assert _FAKE_KEY not in str(raised.value)
     assert "key=[REDACTED]" in str(raised.value)
     assert _FAKE_KEY not in caplog.text

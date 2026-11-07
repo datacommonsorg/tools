@@ -319,31 +319,35 @@ class TerminalRefusedFrame:
 
 @dataclass(frozen=True, kw_only=True)
 class TerminalErrorFrame:
-    """Ends a failed turn with a user-safe error and a reason code.
+    """Ends a failed turn with a user-safe error, reason code, and retry flag.
 
     Attributes:
         idempotency_key: The client-supplied idempotency key for the turn.
         error: The user-safe error message.
         reason: The machine-readable error code.
+        is_retryable: False only when the failure is identified as
+            permanent; every other failure is retryable.
     """
 
     event: ClassVar[EventName] = "terminal"
     idempotency_key: str
     error: str
     reason: ErrorType
+    is_retryable: bool
 
     def payload(self) -> JsonObject:
         """Returns the `data` payload of the frame.
 
         Returns:
             A JSON object with `state: "error"`, `idempotency_key`, `error`,
-            and `reason`.
+            `reason`, and `is_retryable`.
         """
         return {
             "state": TerminalState.ERROR,
             "idempotency_key": self.idempotency_key,
             "error": self.error,
             "reason": self.reason,
+            "is_retryable": self.is_retryable,
         }
 
 

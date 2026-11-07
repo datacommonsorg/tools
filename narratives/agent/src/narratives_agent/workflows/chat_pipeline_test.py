@@ -108,10 +108,12 @@ from narratives_agent.workflows.messages import (
     CHAT_DISABLED,
     CLASSIFY_STATUS,
     INTERNAL_ERROR,
+    MCP_TOOLS_TIMEOUT,
     MCP_UNAVAILABLE,
     NO_DATA_MESSAGE,
     REFUSED_MESSAGE,
     SYNTHESIS_FAILED,
+    SYNTHESIS_TRANSIENT_ERROR,
     TRUNCATED_MESSAGE,
 )
 from narratives_agent.workflows.pattern_guidance import build_pattern_directive
@@ -1071,17 +1073,23 @@ async def test_an_answer_too_long_to_sign_completes_unsigned(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("is_retryable", [True, False])
 async def test_failed_discovery_loop_ends_the_turn_before_synthesis(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+    monkeypatch: pytest.MonkeyPatch, turn: _Turn, is_retryable: bool
 ) -> None:
     # Test: Fail-closed handling of a discovery loop failure.
-    # Situation: The loop raises `McpLoopError` of type `mcp_timeout`.
+    # Situation: The loop raises `McpLoopError` of type `mcp_timeout` with the
+    #   given `is_retryable` flag.
     # Expectation: The turn ends in one `error` terminal event with the
-    #   loop's message, never calls synthesis, and is recorded as `error`
-    #   with `mcp_timeout`.
+    #   loop's message and `is_retryable` flag, never calls synthesis, and is
+    #   recorded as `error` with `mcp_timeout`.
     _install_loop(
         monkeypatch,
-        McpLoopError(ErrorType.MCP_TIMEOUT, "The data request took too long."),
+        McpLoopError(
+            ErrorType.MCP_TIMEOUT,
+            "The data request took too long.",
+            is_retryable=is_retryable,
+        ),
     )
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
@@ -1091,6 +1099,7 @@ async def test_failed_discovery_loop_ends_the_turn_before_synthesis(
     assert terminal["state"] == TerminalState.ERROR
     assert terminal["error"] == "The data request took too long."
     assert terminal["reason"] == ErrorType.MCP_TIMEOUT
+    assert terminal["is_retryable"] is is_retryable
     assert terminal["idempotency_key"] == _IDEMPOTENCY_KEY
     assert "hmac" not in terminal
     assert "window" not in terminal
@@ -1100,18 +1109,27 @@ async def test_failed_discovery_loop_ends_the_turn_before_synthesis(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("is_retryable", "expected_message"),
+    [(True, SYNTHESIS_TRANSIENT_ERROR), (False, SYNTHESIS_FAILED)],
+)
 async def test_failed_synthesis_reports_a_fixed_message(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    is_retryable: bool,
+    expected_message: str,
 ) -> None:
     # Test: The user-facing message of a failed synthesis request.
-    # Situation: The synthesis request fails with upstream error text.
+    # Situation: The synthesis request fails with upstream error text and
+    #   the given `is_retryable` classification.
     # Expectation: The turn ends in an `error` terminal event whose message
-    #   is the fixed synthesis failure rather than the upstream text, and is
-    #   recorded as `error` with `synthesis_error`.
+    #   is the fixed transient or non-transient synthesis message rather than
+    #   the upstream text, carries the same `is_retryable` flag, and is recorded
+    #   as `error` with `synthesis_error`.
     upstream = "HTTP 500: upstream detail"
 
     async def fail_synthesis(**_: object) -> AsyncGenerator[StreamChunk]:
-        raise GeminiError(upstream)
+        raise GeminiError(upstream, is_retryable=is_retryable)
 
     monkeypatch.setattr(chat_pipeline, "async_gemini_stream", fail_synthesis)
 
@@ -1121,8 +1139,9 @@ async def test_failed_synthesis_reports_a_fixed_message(
     assert event == "terminal"
     error_message = terminal["error"]
     assert isinstance(error_message, str)
-    assert error_message == SYNTHESIS_FAILED
+    assert error_message == expected_message
     assert terminal["reason"] == ErrorType.SYNTHESIS_ERROR
+    assert terminal["is_retryable"] is is_retryable
     assert upstream not in error_message
     assert turn.finished == [(TerminalState.ERROR, ErrorType.SYNTHESIS_ERROR)]
 
@@ -1348,7 +1367,8 @@ async def test_a_stalled_synthesis_stream_fails_the_turn(
     assert turn.list_texts() == ["First paragraph."]
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
-    assert terminal["error"] == SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_TRANSIENT_ERROR
+    assert terminal["is_retryable"] is True
     assert turn.finished == [
         (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
     ]
@@ -1361,9 +1381,9 @@ async def test_a_synthesis_stream_stalled_on_open_fails_the_turn(
     # Test: The first-chunk timeout when opening the synthesis stream.
     # Situation: `SYNTHESIS_CHUNK_TIMEOUT_SECONDS` is shortened to 10 ms,
     #   and `async_gemini_stream` stalls awaiting the first chunk.
-    # Expectation: No block is emitted, and the turn ends in an `error`
-    #   terminal event with reason `synthesis_stream_error` and
-    #   `SYNTHESIS_FAILED` rather than waiting for the HTTP timeout.
+    # Expectation: No block is emitted, and the turn ends in a retryable
+    #   `error` terminal event with reason `synthesis_stream_error` and
+    #   `SYNTHESIS_TRANSIENT_ERROR` rather than waiting for the HTTP timeout.
     async def hang_on_first_chunk(
         **_: object,
     ) -> AsyncGenerator[StreamChunk]:
@@ -1380,7 +1400,8 @@ async def test_a_synthesis_stream_stalled_on_open_fails_the_turn(
     assert turn.list_blocks() == []
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
-    assert terminal["error"] == SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_TRANSIENT_ERROR
+    assert terminal["is_retryable"] is True
     assert turn.finished == [
         (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
     ]
@@ -1451,6 +1472,7 @@ async def test_missing_config_ends_the_turn_before_classify(
     assert turn.list_event_names() == ["terminal"]
     assert terminal["state"] == TerminalState.ERROR
     assert terminal["reason"] == ErrorType.CONFIG_MISSING
+    assert terminal["is_retryable"] is False
     assert turn.synthesis_calls == 0
     assert turn.finished == [(TerminalState.ERROR, ErrorType.CONFIG_MISSING)]
 
@@ -1461,8 +1483,9 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
 ) -> None:
     # Test: Fail-closed handling when no MCP tools are available.
     # Situation: MCP is enabled, but `async_get_tools` returns an empty list.
-    # Expectation: The turn ends in an `error` terminal event with reason
-    #   `mcp_unavailable` and a fixed message, without calling synthesis.
+    # Expectation: The turn ends in a retryable `error` terminal event with
+    #   reason `mcp_unavailable` and the high-traffic message, without calling
+    #   synthesis.
     async def return_no_tools() -> list[mcp_client.McpTool]:
         return []
 
@@ -1473,6 +1496,7 @@ async def test_no_mcp_tools_fails_the_turn_before_synthesis(
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.MCP_UNAVAILABLE
     assert terminal["error"] == MCP_UNAVAILABLE
+    assert terminal["is_retryable"] is True
     assert turn.synthesis_calls == 0
     assert turn.finished == [(TerminalState.ERROR, ErrorType.MCP_UNAVAILABLE)]
 
@@ -1484,8 +1508,9 @@ async def test_a_slow_tool_list_fails_the_turn(
     # Test: The timeout for fetching the MCP tool list.
     # Situation: `_MCP_TOOLS_TIMEOUT_SECONDS` is shortened to 10 ms and
     #   `async_get_tools` never returns.
-    # Expectation: The turn ends in an `error` terminal event with reason
-    #   `mcp_timeout`, without calling synthesis.
+    # Expectation: The turn ends in a retryable `error` terminal event with
+    #   reason `mcp_timeout` and the transient tool-list message, without
+    #   calling synthesis.
     async def hang_tools() -> list[mcp_client.McpTool]:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
@@ -1495,7 +1520,10 @@ async def test_a_slow_tool_list_fails_the_turn(
 
     await chat_pipeline.run_turn(_TRANSCRIPT, turn.emit)
 
-    assert _get_only_terminal(turn)["reason"] == ErrorType.MCP_TIMEOUT
+    terminal = _get_only_terminal(turn)
+    assert terminal["reason"] == ErrorType.MCP_TIMEOUT
+    assert terminal["error"] == MCP_TOOLS_TIMEOUT
+    assert terminal["is_retryable"] is True
     assert turn.synthesis_calls == 0
     assert turn.finished == [(TerminalState.ERROR, ErrorType.MCP_TIMEOUT)]
 
@@ -1561,9 +1589,10 @@ async def test_an_empty_synthesis_fails_the_turn(
     # Test: Fail-closed handling of synthesis output without prose text.
     # Situation: The synthesis stream finishes after yielding either only
     #   whitespace or only a chart block with no accompanying prose.
-    # Expectation: The turn ends in an `error` terminal event with reason
-    #   `synthesis_empty` and the fixed synthesis message, no text block or
-    #   default chart is appended, and telemetry records `charts_emitted`.
+    # Expectation: The turn ends in a retryable `error` terminal event with
+    #   reason `synthesis_empty` and the transient synthesis message, no text
+    #   block or default chart is appended, and telemetry records
+    #   `charts_emitted`.
     async def stream_blank() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("text", raw_stream)
 
@@ -1580,7 +1609,8 @@ async def test_an_empty_synthesis_fails_the_turn(
 
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_EMPTY
-    assert terminal["error"] == SYNTHESIS_FAILED
+    assert terminal["error"] == SYNTHESIS_TRANSIENT_ERROR
+    assert terminal["is_retryable"] is True
     assert turn.list_texts() == []
     assert len(turn.list_charts()) == expected_charts_emitted
     assert turn.telemetry is not None
@@ -1589,21 +1619,29 @@ async def test_an_empty_synthesis_fails_the_turn(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("is_retryable", "expected_message"),
+    [(True, SYNTHESIS_TRANSIENT_ERROR), (False, SYNTHESIS_FAILED)],
+)
 async def test_a_broken_synthesis_stream_fails_the_turn(
-    monkeypatch: pytest.MonkeyPatch, turn: _Turn
+    monkeypatch: pytest.MonkeyPatch,
+    turn: _Turn,
+    is_retryable: bool,
+    expected_message: str,
 ) -> None:
     # Test: Fail-closed handling of a synthesis stream that fails mid-stream.
     # Situation: The synthesis stream yields one paragraph and part of the
-    #   next, then raises `GeminiStreamError` with upstream error text.
+    #   next, then raises `GeminiStreamError` with upstream error text and the
+    #   given `is_retryable` classification.
     # Expectation: The completed paragraph is emitted as a text block, the
     #   partial paragraph is not, and the turn ends in an `error` terminal
-    #   event with reason `synthesis_stream_error` and the fixed message
-    #   rather than the upstream text.
+    #   event with reason `synthesis_stream_error`, the matching fixed
+    #   message rather than the upstream text, and the same `is_retryable` flag.
     upstream = "HTTP 503: upstream detail"
 
     async def stream_broken() -> AsyncGenerator[StreamChunk]:
         yield StreamChunk("text", "First paragraph.\n\nAbout ")
-        raise GeminiStreamError(upstream)
+        raise GeminiStreamError(upstream, is_retryable=is_retryable)
 
     async def start_broken_synthesis(
         **_: object,
@@ -1619,7 +1657,9 @@ async def test_a_broken_synthesis_stream_fails_the_turn(
     assert turn.list_texts() == ["First paragraph."]
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
-    assert terminal["error"] == SYNTHESIS_FAILED
+    assert terminal["error"] == expected_message
+    assert terminal["is_retryable"] is is_retryable
+    assert upstream not in str(terminal["error"])
     assert turn.finished == [
         (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
     ]
@@ -1632,8 +1672,9 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
     # Test: Catch-all handling for unexpected exceptions inside a phase.
     # Situation: Rendering the synthesis message raises an unexpected
     #   `RuntimeError` containing internal details.
-    # Expectation: The turn ends in an `error` terminal event with reason
-    #   `internal_error` and the fixed internal-error message.
+    # Expectation: The turn ends in a retryable `error` terminal event with
+    #   reason `internal_error` and the fixed internal-error message, because
+    #   an unknown cause defaults to retryable.
     detail = "internal detail"
 
     def fail_render(*args: object) -> str:
@@ -1646,6 +1687,7 @@ async def test_an_unexpected_exception_ends_the_turn_as_internal_error(
     terminal = _get_only_terminal(turn)
     assert terminal["reason"] == ErrorType.INTERNAL_ERROR
     assert terminal["error"] == INTERNAL_ERROR
+    assert terminal["is_retryable"] is True
     assert turn.finished == [(TerminalState.ERROR, ErrorType.INTERNAL_ERROR)]
 
 
@@ -2139,7 +2181,7 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     # Situation: The synthesis stream yields one paragraph and part of the next,
     #   then raises `GeminiBlockedError("SAFETY")`.
     # Expectation: The completed paragraph is emitted as a text block, and the
-    #   turn ends in an `error` terminal frame with
+    #   turn ends in a non-retryable `error` terminal frame with
     #   `reason="synthesis_stream_error"` and `SYNTHESIS_FAILED` rather than
     #   `refused`.
     async def stream_blocked_after_text() -> AsyncGenerator[StreamChunk]:
@@ -2158,6 +2200,7 @@ async def test_a_synthesis_stream_blocked_after_text_fails_as_stream_error(
     assert terminal["state"] == TerminalState.ERROR
     assert terminal["reason"] == ErrorType.SYNTHESIS_STREAM_ERROR
     assert terminal["error"] == SYNTHESIS_FAILED
+    assert terminal["is_retryable"] is False
     assert turn.finished == [
         (TerminalState.ERROR, ErrorType.SYNTHESIS_STREAM_ERROR)
     ]
@@ -2194,6 +2237,7 @@ async def test_run_turn_aborts_immediately_when_chat_is_disabled(
                 "idempotency_key": _IDEMPOTENCY_KEY,
                 "error": CHAT_DISABLED,
                 "reason": ErrorType.CHAT_DISABLED,
+                "is_retryable": False,
             },
         )
     ]

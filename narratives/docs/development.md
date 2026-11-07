@@ -223,7 +223,7 @@ narratives/
 │   └── src/
 │       ├── api/               Data Commons REST API callers
 │       ├── components/        React UI components
-│       ├── config/            Instance and navigation configuration
+│       ├── config/            Instance, navigation, and chat copy configuration
 │       ├── hooks/             Session state, SSE streaming, and routing hooks
 │       ├── types/             Shared TypeScript interfaces
 │       └── utils/             PDF export, formatting, and web component helpers

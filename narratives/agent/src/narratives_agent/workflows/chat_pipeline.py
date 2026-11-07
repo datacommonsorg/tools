@@ -79,6 +79,7 @@ from narratives_agent.workflows.mcp_loop import (
 from narratives_agent.workflows.messages import (
     CHAT_DISABLED,
     CLASSIFY_STATUS,
+    CONFIG_MISSING,
     INTERNAL_ERROR,
     MCP_TOOLS_TIMEOUT,
     MCP_UNAVAILABLE,
@@ -86,6 +87,7 @@ from narratives_agent.workflows.messages import (
     REFUSED_MESSAGE,
     SYNTHESIS_FAILED,
     SYNTHESIS_STATUS,
+    SYNTHESIS_TRANSIENT_ERROR,
     TRUNCATED_MESSAGE,
 )
 from narratives_agent.workflows.processing import (
@@ -168,11 +170,16 @@ class TurnAbortedError(Exception):
 
     Attributes:
         error_type: Short machine-readable failure category for telemetry.
+        is_retryable: False only when the failure is identified as
+            permanent; every other failure is retryable.
     """
 
-    def __init__(self, error_type: ErrorType, message: str) -> None:
+    def __init__(
+        self, error_type: ErrorType, message: str, *, is_retryable: bool
+    ) -> None:
         super().__init__(message)
         self.error_type = error_type
+        self.is_retryable = is_retryable
 
 
 @dataclass(frozen=True)
@@ -463,11 +470,13 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
             _MCP_TOOLS_TIMEOUT_SECONDS,
         )
         raise TurnAbortedError(
-            ErrorType.MCP_TIMEOUT, MCP_TOOLS_TIMEOUT
+            ErrorType.MCP_TIMEOUT, MCP_TOOLS_TIMEOUT, is_retryable=True
         ) from error
     if not tools:
         logger.warning("MCP unavailable: not connected or no tools available")
-        raise TurnAbortedError(ErrorType.MCP_UNAVAILABLE, MCP_UNAVAILABLE)
+        raise TurnAbortedError(
+            ErrorType.MCP_UNAVAILABLE, MCP_UNAVAILABLE, is_retryable=True
+        )
     warn_on_missing_tools(tools)
 
     _emit_status(ctx, DISCOVERY_STATUS)
@@ -487,7 +496,9 @@ async def run_discovery_phase(ctx: TurnContext) -> DiscoveryPhaseResult:
             classification=ctx.classification,
         )
     except McpLoopError as error:
-        raise TurnAbortedError(error.error_type, str(error)) from error
+        raise TurnAbortedError(
+            error.error_type, str(error), is_retryable=error.is_retryable
+        ) from error
 
     result.tool_calls = loop.tool_calls
     for call in result.tool_calls:
@@ -598,7 +609,9 @@ async def run_synthesis_phase(
             SYNTHESIS_CHUNK_TIMEOUT_SECONDS,
         )
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR,
+            SYNTHESIS_TRANSIENT_ERROR,
+            is_retryable=True,
         ) from error
     except GeminiBlockedError:
         # Propagates to `run_turn`, which ends the turn as `refused`.
@@ -606,8 +619,13 @@ async def run_synthesis_phase(
     except GeminiError as error:
         # The client has already logged the redacted upstream error, so the
         # user receives a fixed message.
+        message = (
+            SYNTHESIS_TRANSIENT_ERROR
+            if error.is_retryable
+            else SYNTHESIS_FAILED
+        )
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_ERROR, SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_ERROR, message, is_retryable=error.is_retryable
         ) from error
 
     allowed_table_ids = {entry.table_id for entry in discovery.tables}
@@ -636,7 +654,11 @@ async def run_synthesis_phase(
         splitter.finish()
         if not splitter.text:
             logger.warning("Synthesis returned no answer text")
-            raise TurnAbortedError(ErrorType.SYNTHESIS_EMPTY, SYNTHESIS_FAILED)
+            raise TurnAbortedError(
+                ErrorType.SYNTHESIS_EMPTY,
+                SYNTHESIS_TRANSIENT_ERROR,
+                is_retryable=True,
+            )
         if discovery.has_data and not splitter.charts:
             for default in build_default_charts(
                 discovery.digest, discovery.spec, ctx.cache
@@ -682,7 +704,9 @@ async def _consume_synthesis_stream(
                     SYNTHESIS_CHUNK_TIMEOUT_SECONDS,
                 )
                 raise TurnAbortedError(
-                    ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
+                    ErrorType.SYNTHESIS_STREAM_ERROR,
+                    SYNTHESIS_TRANSIENT_ERROR,
+                    is_retryable=True,
                 ) from error
             if chunk.kind == "thought":
                 ctx.emit(ThoughtFrame(thought=chunk.text, phase="synthesis"))
@@ -694,11 +718,20 @@ async def _consume_synthesis_stream(
         # Once an answer block has streamed to the client, a mid-stream block
         # leaves the response truncated and is reported as a stream error.
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR,
+            SYNTHESIS_FAILED,
+            is_retryable=False,
         ) from error
     except GeminiStreamError as error:
+        message = (
+            SYNTHESIS_TRANSIENT_ERROR
+            if error.is_retryable
+            else SYNTHESIS_FAILED
+        )
         raise TurnAbortedError(
-            ErrorType.SYNTHESIS_STREAM_ERROR, SYNTHESIS_FAILED
+            ErrorType.SYNTHESIS_STREAM_ERROR,
+            message,
+            is_retryable=error.is_retryable,
         ) from error
     finally:
         await stream.aclose()
@@ -822,7 +855,7 @@ def _load_turn_config() -> AgentConfig:
     config = load_config()
     if config is None:
         raise TurnAbortedError(
-            ErrorType.CONFIG_MISSING, "Backend config not loaded"
+            ErrorType.CONFIG_MISSING, CONFIG_MISSING, is_retryable=False
         )
     return config
 
@@ -861,6 +894,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                     idempotency_key=idempotency_key,
                     error=CHAT_DISABLED,
                     reason=ErrorType.CHAT_DISABLED,
+                    is_retryable=False,
                 )
             )
             return
@@ -935,6 +969,7 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                 idempotency_key=idempotency_key,
                 error=str(error),
                 reason=error.error_type,
+                is_retryable=error.is_retryable,
             )
         )
     except asyncio.CancelledError:
@@ -948,6 +983,8 @@ async def run_turn(transcript: Transcript, emit: Emit) -> None:
                 idempotency_key=idempotency_key,
                 error=INTERNAL_ERROR,
                 reason=ErrorType.INTERNAL_ERROR,
+                # The cause is unknown, so the turn defaults to retryable.
+                is_retryable=True,
             )
         )
     finally:
