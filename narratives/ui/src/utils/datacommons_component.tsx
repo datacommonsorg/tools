@@ -77,7 +77,25 @@ export const API_ROOT: string =
  */
 const SHADOW_STYLES =
   'replaceSync' in CSSStyleSheet.prototype ? new CSSStyleSheet() : null;
-SHADOW_STYLES?.replaceSync('.chart-container { margin-top: 0 !important; }');
+
+/**
+ * Stacking order of a DC dialog portal. Mirrors `zIndex.dialog` in the
+ * datacommons.js theme, restored where the bundle fails to apply it.
+ */
+export const DC_DIALOG_Z_INDEX = 10_000;
+// The ranking tile gets no upstream border. The bundle's emotion rules for a
+// tile's dialog portal can land in another component's shadow root, leaving
+// the portal static: a grid row in the ranking tile, and stacked below later
+// chart cards. `inset` stays unset so the kept-mounted closed portals remain
+// 0×0 and never intercept clicks.
+SHADOW_STYLES?.replaceSync(`
+  .chart-container { margin-top: 0 !important; }
+  .chart-container.ranking-tile {
+    border: var(--border-primary);
+    border-radius: var(--border-radius-primary);
+  }
+  .dialog-container { position: fixed; z-index: ${DC_DIALOG_Z_INDEX}; }
+`);
 
 /** Renders a <datacommons-*> element via a one-time imperative mount (see fileoverview). */
 export function DataCommonsComponent({
