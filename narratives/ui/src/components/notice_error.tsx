@@ -34,7 +34,7 @@ export function ErrorNotice({ message, onRetry }: ErrorNoticeProps) {
   return (
     <div
       data-testid="turn-error-notice"
-      className="self-start px-4 py-3 rounded-2xl bg-error-surface text-error-strong text-body-large max-w-4xl"
+      className="self-start px-4 py-3 rounded-2xl bg-surface-soft text-on-surface-variant text-body-large max-w-4xl"
     >
       {message}
       {onRetry && (
