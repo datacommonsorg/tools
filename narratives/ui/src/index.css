@@ -156,8 +156,10 @@
   }
 
   /* Answer text reveal and the skeleton-to-answer handoff. Must match
-     HANDOFF_MS in components/data_agent.tsx; data_agent.test.tsx checks it. */
-  --animate-stream-in: stream-in 400ms cubic-bezier(0, 0, 0, 1) both;
+     HANDOFF_MS in components/data_agent.tsx; data_agent.test.tsx checks it.
+     Fills `backwards` only: a held opacity animation keeps a stacking context
+     on the answer, trapping chart dialogs under the sticky header and prompt. */
+  --animate-stream-in: stream-in 400ms cubic-bezier(0, 0, 0, 1) backwards;
 
   /* Skeleton line entering: fades in while growing from its left edge.
      Consumed as `animate-skeleton-line-in`, gated with `motion-safe:`. */

@@ -372,6 +372,18 @@ describe('DataAgent skeleton handoff', () => {
     expect(Number(duration?.[1])).toBe(HANDOFF_MS);
   });
 
+  it('fills --animate-stream-in backwards only', () => {
+    // Test: The answer reveal's fill mode.
+    // Situation: A `both` or `forwards` fill keeps the opacity animation in
+    //   effect after it ends, so the answer holds a stacking context that
+    //   traps chart dialogs beneath the sticky header and prompt.
+    // Expectation: The token fills backwards and never forwards.
+    const css = readFileSync('src/index.css', 'utf8');
+    const token = css.match(/--animate-stream-in:([^;]*);/)?.[1];
+    expect(token).toMatch(/\bbackwards\b/);
+    expect(token).not.toMatch(/\b(both|forwards)\b/);
+  });
+
   it('holds the answer invisible behind the skeleton until it settles', () => {
     // Test: The skeleton handoff after synthesis.
     // Situation: A streaming turn in the synthesis phase already holds a
