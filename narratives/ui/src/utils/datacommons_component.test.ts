@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DataCommonsComponent,
   type DataCommonsComponentTagName,
+  DC_DIALOG_Z_INDEX,
   dcChartRenderState,
 } from '@/src/utils/datacommons_component';
 
@@ -209,6 +210,26 @@ describe('DataCommonsComponent shadow styles', () => {
     expect(css).toHaveLength(2);
     expect(css[0]).toContain('20px');
     expect(css[1]).toContain('margin-top: 0');
+  });
+
+  it('restores fixed positioning and stacking on dialog portals', async () => {
+    // Test: The dialog portal override.
+    // Situation: The bundle's emotion rule for `.dialog-container` can land in
+    //   another component's shadow root, leaving the portal static and
+    //   painted below later chart cards.
+    // Expectation: The override fixes the portal and restores the upstream
+    //   dialog z-index, without `inset`, so closed portals stay 0×0.
+    defineDcStub('datacommons-slider');
+    const { container } = render(
+      createElement(DataCommonsComponent, { tag: 'datacommons-slider' }),
+    );
+    await act(() => customElements.whenDefined('datacommons-slider'));
+    const dialogRule = adoptedCss(container, 'datacommons-slider')[1]?.match(
+      /\.dialog-container\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(dialogRule).toContain('position: fixed');
+    expect(dialogRule).toContain(`z-index: ${DC_DIALOG_Z_INDEX}`);
+    expect(dialogRule).not.toContain('inset');
   });
 
   it('adds the override when the component is defined after mount', async () => {
