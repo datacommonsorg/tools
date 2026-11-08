@@ -70,6 +70,14 @@ export const API_ROOT: string =
   'https://datacommons.org';
 
 /**
+ * Stacking order of a DC dialog portal. Copied from `zIndex.dialog` in the
+ * datacommons.js theme (10000), and applied to every portal, so it overrides
+ * the theme value rather than following it. Update it if the website changes
+ * `zIndex.dialog`.
+ */
+export const DC_DIALOG_Z_INDEX = 10_000;
+
+/**
  * Overrides adopted into each component's shadow root, which page CSS cannot
  * reach. Beware of upstream class names changes. Null where constructable
  * stylesheets are unsupported (Safari < 16.4): those keep the upstream look
@@ -78,16 +86,13 @@ export const API_ROOT: string =
 const SHADOW_STYLES =
   'replaceSync' in CSSStyleSheet.prototype ? new CSSStyleSheet() : null;
 
-/**
- * Stacking order of a DC dialog portal. Mirrors `zIndex.dialog` in the
- * datacommons.js theme, restored where the bundle fails to apply it.
- */
-export const DC_DIALOG_Z_INDEX = 10_000;
-// The ranking tile gets no upstream border. The bundle's emotion rules for a
-// tile's dialog portal can land in another component's shadow root, leaving
-// the portal static: a grid row in the ranking tile, and stacked below later
-// chart cards. `inset` stays unset so the kept-mounted closed portals remain
-// 0×0 and never intercept clicks.
+// - `.ranking-tile`: upstream gives the ranking tile no border; add the one
+//   the other tiles have.
+// - `.dialog-container`: the bundle sometimes injects a tile's dialog styles
+//   into another component's shadow root. The portal is then left static, so
+//   it becomes a grid row in the ranking tile and sits below later chart
+//   cards. `inset` stays unset so closed portals, which stay mounted, remain
+//   0×0 and never block clicks.
 SHADOW_STYLES?.replaceSync(`
   .chart-container { margin-top: 0 !important; }
   .chart-container.ranking-tile {
