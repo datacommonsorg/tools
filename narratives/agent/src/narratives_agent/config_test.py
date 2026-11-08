@@ -13,7 +13,7 @@
 # limitations under the License.
 """Tests for config loading, prompt rendering, and keys.
 
-Covers six configuration behaviors in `config`:
+Covers seven configuration behaviors in `config`:
 1. `{{instance.*}}` placeholder substitution from `template_vars`, leaving
    unconfigured placeholders intact so missing values remain visible in rendered
    prompts, including when no configuration is loaded.
@@ -35,6 +35,8 @@ Covers six configuration behaviors in `config`:
    loaded while the caller waited.
 6. Fallback to `UTC` in `get_current_datetime` when `TIMEZONE` cannot be
    resolved, and the timestamp `pin_current_datetime` pins for its context.
+7. `get_chat_config` applying `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` to the
+   loaded `chat` section, or to the defaults when none is loaded.
 """
 
 import asyncio
@@ -50,12 +52,17 @@ from narratives_agent import config
 from narratives_agent.config_model import (
     PROMPT_SLOTS,
     AgentConfig,
+    ChatConfig,
     GeminiConfig,
     McpConfig,
     Prompts,
     ThinkingLevels,
 )
-from narratives_agent.settings import GEMINI_API_KEY_SECRET_ENV
+from narratives_agent.settings import (
+    ENABLE_CHAT_ENV,
+    GEMINI_API_KEY_SECRET_ENV,
+    UNAVAILABLE_MESSAGE_ENV,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -951,6 +958,61 @@ def test_load_config_reports_a_value_of_the_wrong_type_once(
     assert sum("'thinking'" in message for message in warning_messages) == 1
     assert sum("'mcp.enabled'" in message for message in warning_messages) == 1
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+# --- chat availability ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("loaded", "env", "expected"),
+    [
+        pytest.param(
+            AgentConfig(
+                chat=ChatConfig(enabled=False, unavailable_message="Closed.")
+            ),
+            {},
+            ChatConfig(enabled=False, unavailable_message="Closed."),
+            id="configuration only",
+        ),
+        pytest.param(
+            AgentConfig(
+                chat=ChatConfig(enabled=False, unavailable_message="Closed.")
+            ),
+            {ENABLE_CHAT_ENV: "true", UNAVAILABLE_MESSAGE_ENV: " Back soon. "},
+            ChatConfig(enabled=True, unavailable_message="Back soon."),
+            id="environment overrides configuration",
+        ),
+        pytest.param(
+            None,
+            {},
+            ChatConfig(),
+            id="no configuration",
+        ),
+        pytest.param(
+            None,
+            {ENABLE_CHAT_ENV: "false"},
+            ChatConfig(enabled=False),
+            id="no configuration with ENABLE_CHAT=false",
+        ),
+    ],
+)
+def test_get_chat_config_applies_the_environment_to_the_loaded_config(
+    monkeypatch: pytest.MonkeyPatch,
+    loaded: AgentConfig | None,
+    env: dict[str, str],
+    expected: ChatConfig,
+) -> None:
+    # Test: `get_chat_config` combining `load_config` with the environment.
+    # Situation: The loaded configuration disables chat with a custom
+    #   message, or no configuration is loaded, and `ENABLE_CHAT` and
+    #   `UNAVAILABLE_MESSAGE` are unset or set.
+    # Expectation: The environment values replace the configured ones when
+    #   set, and apply to `ChatConfig()` when no configuration is loaded.
+    _with_config(monkeypatch, loaded)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    assert config.get_chat_config() == expected
 
 
 # --- prompt datetime rendering ----------------------------------------------

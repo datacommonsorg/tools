@@ -20,7 +20,8 @@
 `None` when no configuration could be loaded. The document is read from
 `CONFIG_URL` once at startup, from `agent_root/config.json` in local
 development (reloaded when the file's modification time changes), or from the
-`defaults/` directory shipped with the image.
+`defaults/` directory shipped with the image. `apply_chat_environment` applies
+the chat availability environment overrides to the loaded `chat` section.
 
 On every path the default prompt bodies in `defaults/prompts/` are read first,
 and the configured prompts (`prompts/<slot>.md` beside `CONFIG_URL`, then
@@ -50,7 +51,9 @@ import requests
 from narratives_agent.config_model import (
     PROMPT_SLOTS,
     AgentConfig,
+    ChatConfig,
     parse_agent_config,
+    resolve_chat_config,
 )
 from narratives_agent.secret_manager import fetch_secret_with_ttl
 from narratives_agent.settings import (
@@ -462,6 +465,31 @@ def load_config() -> AgentConfig | None:
     if config_path.exists():
         return _load_config_file(config_path, settings.defaults_dir / "prompts")
     return _load_defaults_config(settings.defaults_dir)
+
+
+def get_chat_config() -> ChatConfig:
+    """Returns the effective chat availability for the active configuration.
+
+    The result is the value the HTML shell stamps; when no configuration is
+    loaded, it reflects the environment overrides over `ChatConfig()`.
+    """
+    return apply_chat_environment(load_config())
+
+
+def apply_chat_environment(config: AgentConfig | None) -> ChatConfig:
+    """Returns the `chat` section of `config` with the environment applied.
+
+    `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` override the configured values
+    when set; when `config` is `None`, they apply to `ChatConfig()`. Every
+    reader of chat availability resolves it here, so the HTML shell and the
+    turn lockout apply the same policy.
+    """
+    settings = get_settings()
+    return resolve_chat_config(
+        config,
+        enable_chat=settings.enable_chat,
+        unavailable_message=settings.unavailable_message,
+    )
 
 
 def get_current_datetime() -> str:

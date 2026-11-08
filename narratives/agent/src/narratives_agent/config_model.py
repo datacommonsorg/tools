@@ -19,7 +19,9 @@ local `config.json`), layers the prompt bodies into it, and calls
 `AgentConfig`, so the document's shape, the type of each value, and the
 default that applies when a value is absent are known in this one module.
 Field names follow the JSON keys, so `config.thinking.discovery_level` is
-`thinking.discovery_level` in the document.
+`thinking.discovery_level` in the document. `resolve_chat_config` combines
+the `chat` section with the `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` values
+that its caller reads from the environment.
 
 The module also holds the Gemini settings of every role in the agent loop.
 `GeminiRole` names the roles, `_ROLE_TEMPERATURES` and
@@ -52,6 +54,13 @@ DEFAULT_GEMINI_CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 # `thinking.discovery_level` or `thinking.synthesis_level`. It matches the
 # `"default"` that `schemas/agent-config.schema.json` declares for both keys.
 DEFAULT_THINKING_LEVEL = types.ThinkingLevel.MEDIUM
+
+# Message of a disabled chat turn when `chat.unavailable_message` is absent,
+# blank, or not a string. It matches the `"default"` that
+# `schemas/agent-config.schema.json` declares for the key.
+DEFAULT_UNAVAILABLE_MESSAGE = (
+    "Due to high traffic, the application is currently unavailable."
+)
 
 
 class GeminiRole(Enum):
@@ -192,6 +201,19 @@ class McpConfig:
 
 
 @dataclass(frozen=True)
+class ChatConfig:
+    """Holds the `chat` section: chat availability settings.
+
+    `enabled` set to `False` ends every chat turn with a `chat_disabled`
+    error carrying `unavailable_message`. `resolve_chat_config` applies the
+    environment overrides to these values.
+    """
+
+    enabled: bool = True
+    unavailable_message: str = DEFAULT_UNAVAILABLE_MESSAGE
+
+
+@dataclass(frozen=True)
 class ThinkingLevels:
     """Holds the `thinking` section: the configurable thinking levels.
 
@@ -238,6 +260,7 @@ class AgentConfig:
 
     gemini: GeminiConfig = field(default_factory=GeminiConfig)
     mcp: McpConfig = field(default_factory=McpConfig)
+    chat: ChatConfig = field(default_factory=ChatConfig)
     thinking: ThinkingLevels = field(default_factory=ThinkingLevels)
     prompts: Prompts = field(default_factory=Prompts)
     template_vars: Mapping[str, str] = field(default_factory=dict)
@@ -354,6 +377,66 @@ def _read_bool(
     return default
 
 
+def _read_chat_enabled(chat: Mapping[str, Any]) -> bool:
+    """Returns `chat.enabled`, `True` when absent, `False` when malformed.
+
+    A value that is present but not a boolean, such as the string `"false"`
+    or the integer `0`, is reported once at error and resolves to `False`,
+    so a malformed off switch never leaves chat on.
+    """
+    if "enabled" not in chat:
+        return True
+    value = chat["enabled"]
+    if isinstance(value, bool):
+        return value
+    logger.error(
+        "Agent configuration key %r is not a boolean; disabling chat",
+        "chat.enabled",
+    )
+    return False
+
+
+def _read_unavailable_message(chat: Mapping[str, Any]) -> str:
+    """Returns `chat.unavailable_message`, stripped, or the default message.
+
+    A blank message is reported and replaced by
+    `DEFAULT_UNAVAILABLE_MESSAGE`, like a message of the wrong type, because
+    a disabled turn always carries text for the reader.
+    """
+    message = _read_string(
+        chat, "chat", "unavailable_message", DEFAULT_UNAVAILABLE_MESSAGE
+    ).strip()
+    if message:
+        return message
+    logger.warning(
+        "Agent configuration key %r is blank; using %r",
+        "chat.unavailable_message",
+        DEFAULT_UNAVAILABLE_MESSAGE,
+    )
+    return DEFAULT_UNAVAILABLE_MESSAGE
+
+
+def _read_chat_config(document: Mapping[str, Any]) -> ChatConfig:
+    """Returns the `chat` section, failing closed on a malformed value.
+
+    An absent section gives `ChatConfig()`. Unlike the other sections, a
+    `chat` value that is present but not an object is reported at error and
+    disables chat, because the section holds an operational off switch.
+    """
+    if "chat" not in document:
+        return ChatConfig()
+    chat = document["chat"]
+    if not isinstance(chat, Mapping):
+        logger.error(
+            "Agent configuration key 'chat' is not an object; disabling chat"
+        )
+        return ChatConfig(enabled=False)
+    return ChatConfig(
+        enabled=_read_chat_enabled(chat),
+        unavailable_message=_read_unavailable_message(chat),
+    )
+
+
 def _read_thinking_level(
     section: Mapping[str, Any], key: str, default: types.ThinkingLevel
 ) -> types.ThinkingLevel:
@@ -411,9 +494,11 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
     Each field is parsed on its own: a section that is not a JSON object, or
     a value that is absent or not of the expected type, takes the field's
     default, and a value that is present but unusable is logged once at
-    warning with its key. The document as a whole is never rejected, so one
-    bad value cannot stop every turn with `config_missing`. Keys that the
-    agent does not read are ignored.
+    warning with its key. The exception is `chat`, which fails closed: a
+    `chat` section that is not an object, or a `chat.enabled` that is not a
+    boolean, is logged at error and disables chat. The document as a whole
+    is never rejected, so one bad value cannot stop every turn with
+    `config_missing`. Keys that the agent does not read are ignored.
 
     Args:
         document: The decoded JSON object, with the prompt slot bodies that
@@ -453,6 +538,7 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
             ).strip(),
             enabled=_read_bool(mcp, "mcp", "enabled", McpConfig.enabled),
         ),
+        chat=_read_chat_config(document),
         thinking=ThinkingLevels(
             discovery_level=_read_thinking_level(
                 thinking, "discovery_level", ThinkingLevels.discovery_level
@@ -477,3 +563,29 @@ def parse_agent_config(document: Mapping[str, Any]) -> AgentConfig:
         ),
         template_vars=_read_template_vars(document),
     )
+
+
+def resolve_chat_config(
+    config: AgentConfig | None,
+    *,
+    enable_chat: bool | None = None,
+    unavailable_message: str = "",
+) -> ChatConfig:
+    """Returns chat availability with the environment overrides applied.
+
+    Args:
+        config: The loaded configuration, or `None` when none is loaded, in
+            which case `ChatConfig()` is the base.
+        enable_chat: The `ENABLE_CHAT` override, or `None` when unset. A
+            boolean replaces `chat.enabled` in either direction.
+        unavailable_message: The `UNAVAILABLE_MESSAGE` override. A blank
+            value leaves `chat.unavailable_message` in place.
+
+    Returns:
+        The effective chat availability settings.
+    """
+    base = config.chat if config is not None else ChatConfig()
+    enabled = base.enabled if enable_chat is None else enable_chat
+    stripped_message = unavailable_message.strip()
+    message = stripped_message if stripped_message else base.unavailable_message
+    return ChatConfig(enabled=enabled, unavailable_message=message)

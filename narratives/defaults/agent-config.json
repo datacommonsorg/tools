@@ -9,6 +9,10 @@
     "server_url": "http://127.0.0.1:8082",
     "enabled": true
   },
+  "chat": {
+    "enabled": true,
+    "unavailable_message": "Due to high traffic, the application is currently unavailable."
+  },
   "thinking": {
     "discovery_level": "medium",
     "synthesis_level": "medium"

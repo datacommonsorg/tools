@@ -98,10 +98,12 @@ agent automatically starts a fresh MCP session and retries the tool call.
 ### What happens during a chat turn
 
 Each `POST /agent/chat/stream` request first checks whether chat is enabled
-(`ENABLE_CHAT`, default `true`); when `ENABLE_CHAT=false`, the turn aborts
-immediately with a single `terminal` error frame (`reason: "chat_disabled"`)
-before making any Gemini or MCP calls. Otherwise, the request runs through the
-agent loop in five steps:
+(`chat.enabled` in `agent-config.json`, default `true`, overridden by
+`ENABLE_CHAT` when set); when chat is disabled, the turn aborts immediately
+with a single `terminal` error frame (`reason: "chat_disabled"`,
+`is_retryable: false`) carrying `chat.unavailable_message` (overridden by
+`UNAVAILABLE_MESSAGE` when set) before making any Gemini or MCP calls.
+Otherwise, the request runs through the agent loop in five steps:
 
 1. **Query classification (`classify`):** Before any tool is called, a
    deterministic pre-filter screens out prompt injection, persona overrides,
@@ -390,3 +392,11 @@ directly into `ui/index.html` and read synchronously when the app starts:
   reads `<script id="instance-config" type="application/json">`, validates each
   field, and falls back to `DEFAULT_INSTANCE_CONFIG` for any field that is
   missing or invalid.
+
+When the agent server serves `index.html` (`server/routes/spa.py`), it also
+stamps the effective chat availability,
+`{"enable_chat": <bool>, "unavailable_message": "<str>"}`, into
+`<script id="runtime-config" type="application/json">`, escaping `<`, `>`,
+`&`, U+2028, and U+2029. The `ETag` hashes the stamped bytes and
+`Last-Modified` is omitted, so a browser revalidating the page receives the
+current value after a restart that changes it.
