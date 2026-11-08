@@ -256,6 +256,34 @@ def test_serialize_source_omits_absent_optional_fields() -> None:
     }
 
 
+def test_serialize_source_names_the_cited_variable() -> None:
+    # Test: Wire conversion of a `Source` cited for a variable.
+    # Situation: One `Source` has a variable DCID and name, and another has
+    #   only a variable DCID.
+    # Expectation: The first carries `variableDcid` and `variableName`; the
+    #   second carries `variableDcid` and no `variableName` key.
+    source = Source(
+        name="INSEE",
+        url="https://insee.fr/",
+        variable_dcid="Count_Person",
+        variable_name="Total population",
+    )
+    assert serialize_source(source) == {
+        "name": "INSEE",
+        "url": "https://insee.fr/",
+        "variableDcid": "Count_Person",
+        "variableName": "Total population",
+    }
+    unnamed = Source(
+        name="INSEE", url="https://insee.fr/", variable_dcid="Count_Person"
+    )
+    assert serialize_source(unnamed) == {
+        "name": "INSEE",
+        "url": "https://insee.fr/",
+        "variableDcid": "Count_Person",
+    }
+
+
 @pytest.mark.parametrize("is_retryable", [True, False])
 def test_an_error_frame_carries_the_error_reason_and_retry_flag(
     is_retryable: bool,

@@ -14,73 +14,69 @@
  * permissions and limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
-import {
-  citationLead,
-  citationUrlLabel,
-} from '@/src/components/list_citations';
+import { cleanup, render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { CitationsList, citationLead } from '@/src/components/list_citations';
 import type { ProvenanceItem } from '@/src/hooks/use_sse_chat';
 
-describe('citationUrlLabel', () => {
-  it('drops the scheme and any trailing slash', () => {
-    // Test: The link text of a citation row.
-    // Situation: A full URL with a scheme and a trailing slash.
-    // Expectation: Neither is shown -- the row reads as a reference, not as a
-    //   pasted address.
-    expect(
-      citationUrlLabel(
-        'https://datatopics.worldbank.org/world-development-indicators/',
-      ),
-    ).toBe('datatopics.worldbank.org/world-development-indicators');
-  });
-
-  it('leaves a bare host alone', () => {
-    // Test: A URL with nothing to strip.
-    // Situation: The data plane reported only a host.
-    // Expectation: Unchanged.
-    expect(citationUrlLabel('worldbank.org')).toBe('worldbank.org');
-  });
-});
+const FULL: ProvenanceItem = {
+  name: 'World Development Indicators',
+  url: 'https://datatopics.worldbank.org/world-development-indicators',
+  provider: 'World Bank',
+  dataset: 'World Development Indicators',
+  dateRange: '1960 – 2023',
+  variableDcid: 'Amount_EconomicActivity_GrossDomesticProduction_Nominal',
+  variableName: 'GDP (current US$)',
+};
 
 describe('citationLead', () => {
-  const FULL: ProvenanceItem = {
-    name: 'World Development Indicators',
-    url: 'https://datatopics.worldbank.org/world-development-indicators',
-    provider: 'World Bank',
-    dataset: 'World Development Indicators',
-    dateRange: '1960 – 2023',
-  };
-
-  it('names the provider, the dataset and the years', () => {
-    // Test: The requested citation format.
+  it('names the variable, the provider, the dataset and the years', () => {
+    // Test: The citation lead format.
     // Situation: The data plane reported every field.
-    // Expectation: Publisher, dataset and range, in that order.
+    // Expectation: Variable, publisher, dataset and the parenthesized range,
+    //   in that order, each separated by a comma.
     expect(citationLead(FULL)).toBe(
-      'World Bank, World Development Indicators (1960 – 2023)',
+      'GDP (current US$), World Bank, World Development Indicators, ' +
+        '(1960 – 2023)',
+    );
+  });
+
+  it('names the variable by its DCID when it has no name', () => {
+    // Test: The variable label fallback.
+    // Situation: The server sent the variable DCID but no name.
+    // Expectation: The DCID stands in for the name at the start of the lead.
+    const { variableName: _dropped, ...unnamed } = FULL;
+    expect(citationLead(unnamed)).toBe(
+      'Amount_EconomicActivity_GrossDomesticProduction_Nominal, ' +
+        'World Bank, World Development Indicators, (1960 – 2023)',
     );
   });
 
   it('falls back to the display name when the dataset is unnamed', () => {
     // Test: A source described only by name.
-    // Situation: No provider, dataset or range.
+    // Situation: No provider, dataset, variable or range.
     // Expectation: The name alone, rather than an empty lead.
     expect(citationLead({ name: 'GHO', url: 'https://who.int' })).toBe('GHO');
   });
 
-  it('drops the range when the source did not report one', () => {
-    // Test: A missing field.
-    // Situation: Provider and dataset but no dates.
-    // Expectation: No empty parentheses.
-    const { dateRange: _dropped, ...noRange } = FULL;
-    expect(citationLead(noRange)).toBe(
-      'World Bank, World Development Indicators',
-    );
+  it('drops the items the source did not report', () => {
+    // Test: Missing fields.
+    // Situation: Provider and dataset but no variable and no dates.
+    // Expectation: No empty item and no empty parentheses.
+    const {
+      dateRange: _range,
+      variableDcid: _dcid,
+      variableName: _name,
+      ...bare
+    } = FULL;
+    expect(citationLead(bare)).toBe('World Bank, World Development Indicators');
   });
 
   it('does not repeat a name that is really the URL', () => {
     // Test: The data plane reported neither a provider nor a dataset.
     // Situation: `name` fell back to the URL, which the link already shows.
-    // Expectation: Only the range, with no leading space and no repeat.
+    // Expectation: Only the range, with no leading separator and no repeat.
     expect(
       citationLead({
         name: 'https://who.int',
@@ -118,5 +114,47 @@ describe('citationLead', () => {
         dataset: 'OECD',
       }),
     ).toBe('OECD');
+  });
+});
+
+describe('CitationsList', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders a row with the variable first and the full URL as its link', () => {
+    // Test: One rendered citation row.
+    // Situation: A source with every field and a URL with a scheme.
+    // Expectation: The row reads lead (starting with the variable), URL, and
+    //   the processing note joined by commas with no parentheses around the
+    //   URL, and the link shows the URL in full, scheme included, and opens
+    //   in a new tab.
+    render(createElement(CitationsList, { sources: [FULL] }));
+
+    const link = screen.getByRole('link', { name: FULL.url });
+    expect(link.getAttribute('href')).toBe(FULL.url);
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(screen.getByRole('listitem').textContent).toBe(
+      '[1]GDP (current US$), World Bank, World Development Indicators, ' +
+        `(1960 – 2023), ${FULL.url}, with minor processing by Data Commons`,
+    );
+  });
+
+  it('renders one row per variable of one source', () => {
+    // Test: Per-variable citations of one data source.
+    // Situation: Two sources share every field but the variable.
+    // Expectation: Two rows, each naming its own variable.
+    const perCapita: ProvenanceItem = {
+      ...FULL,
+      variableDcid: 'Amount_EconomicActivity_GrossDomesticProduction_PerCapita',
+      variableName: 'GDP per capita',
+    };
+    render(createElement(CitationsList, { sources: [FULL, perCapita] }));
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain('GDP (current US$)');
+    expect(rows[1].textContent).toContain('GDP per capita');
   });
 });

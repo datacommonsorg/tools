@@ -49,7 +49,8 @@ def serialize_source(source: Source) -> JsonObject:
 
     Returns:
         A JSON object carrying `name` and `url`, plus any non-`None` optional
-        fields (`license`, `dataset`, `provider`, and `dateRange`).
+        fields (`license`, `dataset`, `provider`, `dateRange`, and the
+        cited variable's `variableDcid` and `variableName`).
     """
     entry: JsonObject = {"name": source.name, "url": source.url}
     if source.license is not None:
@@ -60,6 +61,10 @@ def serialize_source(source: Source) -> JsonObject:
         entry["provider"] = source.provider
     if source.date_range is not None:
         entry["dateRange"] = source.date_range
+    if source.variable_dcid is not None:
+        entry["variableDcid"] = source.variable_dcid
+    if source.variable_name is not None:
+        entry["variableName"] = source.variable_name
     return entry
 
 

@@ -637,10 +637,12 @@ def parse_observation_table(
     inline_source = get_source_from_observation_metadata(
         wire.source_metadata.model_dump(by_alias=True, exclude_none=True)
     )
+    variable_name = clean_display_name(wire.variable.name, variable_dcid)
+    inline_source = _cite_variable(inline_source, variable_dcid, variable_name)
 
     table = ObservationTable(
         variable_dcid=variable_dcid,
-        variable_name=clean_display_name(wire.variable.name, variable_dcid),
+        variable_name=variable_name,
         unit=wire.source_metadata.unit,
         scaling_factor=wire.source_metadata.scaling_factor,
         provenance=Provenance(
@@ -742,7 +744,9 @@ def apply_variable_metadata(
     `measurement_method`, and `observation_period`; variable-level metadata
     overrides `variable_name` and supplies `unit` when neither the facet nor
     the inline payload declared one. In `provenance.sources`, only the entry
-    equal to the old `table.source` is replaced; other sources are kept.
+    equal to the old `table.source` is replaced; other sources are kept. The
+    new `source` is cited for the table's variable, its DCID and resulting
+    name, so applying the same metadata again returns an equal table.
 
     Args:
         table: The table to update.
@@ -788,6 +792,10 @@ def apply_variable_metadata(
         if variable_meta is not None and variable_meta.variable_name is not None
         else table.variable_name
     )
+    # The facet's `Source` names no variable, and the variable name can
+    # change, so the source is cited for the table's variable before it is
+    # compared with the old one.
+    source = _cite_variable(source, table.variable_dcid, variable_name)
 
     provenance = replace(
         table.provenance,
@@ -802,6 +810,17 @@ def apply_variable_metadata(
         observation_period=observation_period,
         source=source,
         provenance=provenance,
+    )
+
+
+def _cite_variable(
+    source: Source | None, variable_dcid: str, variable_name: str
+) -> Source | None:
+    """Returns `source` cited for the variable, or `None` without a source."""
+    if source is None:
+        return None
+    return replace(
+        source, variable_dcid=variable_dcid, variable_name=variable_name
     )
 
 
