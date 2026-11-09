@@ -43,6 +43,13 @@ import {
   type ChatTurn,
   hasAnswer,
 } from '@/src/hooks/use_sse_chat';
+import {
+  easeOutCubic,
+  getScrollContainer,
+  getScrollHeader,
+  getScrollHeaderHeight,
+  glideScrollTo,
+} from '@/src/utils/scroll_main';
 
 /** How long the scroll to a new question glides. */
 const PIN_GLIDE_MS = 400;
@@ -109,8 +116,7 @@ export function DataAgent() {
     if (turns.length > prevLength) {
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
-      // <main> is the scroll container (see App).
-      const scroller = document.querySelector('main');
+      const scroller = getScrollContainer();
       if (!scroller) return;
       const from = scroller.scrollTop;
       const glideMs = window.matchMedia(REDUCED_MOTION_QUERY).matches
@@ -130,12 +136,10 @@ export function DataAgent() {
         }
         // Walked past a static <main>: offsets are body-relative.
         if (!node) top -= scroller.offsetTop;
-        top -=
-          document.querySelector<HTMLElement>('main > header')?.offsetHeight ??
-          0;
-        // Ease-out cubic. The target is re-read every frame, so the glide
-        // lands on the bubble even if the layout above it is still settling.
-        const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
+        top -= getScrollHeaderHeight();
+        // The target is re-read every frame, so the glide lands on the bubble
+        // even if the layout above it is still settling.
+        const progress = easeOutCubic(elapsed / (glideMs || 1));
         scroller.scrollTo(
           0,
           from + (Math.max(0, top - SCROLL_PIN_OFFSET_PX) - from) * progress,
@@ -171,7 +175,7 @@ export function DataAgent() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: showConversation decides whether the prompt bar is mounted, so the observer is attached again when it changes.
   useEffect(() => {
     const prompt = promptRef.current;
-    const header = document.querySelector<HTMLElement>('main > header');
+    const header = getScrollHeader();
     if (!prompt) return;
     const observer = new ResizeObserver(() =>
       prompt.parentElement?.style.setProperty(
@@ -313,41 +317,30 @@ export function TurnView({
     onAsk && turn.isRetryable ? () => onAsk(turn.userMessage) : undefined;
   // Closing the reasoning from its end can leave the question above the
   // fold; scroll <main> back up so it shows under the header, in step with
-  // the collapse. Set every frame rather than as a native smooth scroll,
-  // which the browser cancels when the shrinking page clamps scrollTop.
+  // the collapse, which shrinks the page and would cancel a native smooth
+  // scroll.
   const questionRef = useRef<HTMLDivElement>(null);
   // The answer card, which the reasoning keeps in view while it streams and
   // scrolls up to when it finishes.
   const answerCardRef = useRef<HTMLDivElement>(null);
   const showQuestion = useCallback(() => {
     const question = questionRef.current;
-    const scroller = document.querySelector('main');
+    const scroller = getScrollContainer();
     if (!question || !scroller) return;
-    const from = scroller.scrollTop;
     // The question sits above the collapsing body, so its target is fixed.
     const target =
-      from +
+      scroller.scrollTop +
       question.getBoundingClientRect().top -
       scroller.getBoundingClientRect().top -
-      (document.querySelector<HTMLElement>('main > header')?.offsetHeight ??
-        0) -
+      getScrollHeaderHeight() -
       SCROLL_PIN_OFFSET_PX;
-    if (target >= from) return;
+    if (target >= scroller.scrollTop) return;
     if (window.matchMedia(REDUCED_MOTION_QUERY).matches) {
       scroller.scrollTo(0, target);
       return;
     }
-    const start = performance.now();
-    const tick = () => {
-      const progress = Math.min(
-        1,
-        (performance.now() - start) / REASONING_COLLAPSE_MS,
-      );
-      // Ease-out cubic, close to the collapse's `ease-out`.
-      scroller.scrollTo(0, from + (target - from) * (1 - (1 - progress) ** 3));
-      if (progress < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+    // Ease-out cubic, close to the collapse's `ease-out`.
+    glideScrollTo(scroller, target, REASONING_COLLAPSE_MS);
   }, []);
 
   return (

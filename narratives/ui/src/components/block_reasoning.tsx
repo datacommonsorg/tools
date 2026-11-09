@@ -43,6 +43,7 @@ import {
   rehypeStreamWords,
   STREAM_WORD_CLASS,
 } from '@/src/utils/rehype_stream_words';
+import { getScrollContainer, getVisibleBand } from '@/src/utils/scroll_main';
 
 /**
  * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
@@ -223,30 +224,6 @@ function placeholderText(
   return done ? REASONING_PLACEHOLDER_DONE : '';
 }
 
-/**
- * Returns <main> (the scroll container, see App) and the viewport span of its
- * visible band: below the sticky header and above the sticky prompt.
- */
-function getVisibleBand(
-  element: HTMLElement,
-): { scroller: HTMLElement; top: number; bottom: number } | undefined {
-  const scroller = document.querySelector('main');
-  if (!scroller) return undefined;
-  const headerHeight =
-    document.querySelector<HTMLElement>('main > header')?.offsetHeight ?? 0;
-  // Header plus sticky prompt, published by DataAgent on an ancestor.
-  const chromeHeight =
-    Number.parseFloat(
-      getComputedStyle(element).getPropertyValue('--chrome-h'),
-    ) || headerHeight;
-  const scrollerTop = scroller.getBoundingClientRect().top;
-  return {
-    scroller,
-    top: scrollerTop + headerHeight,
-    bottom: scrollerTop + scroller.clientHeight - (chromeHeight - headerHeight),
-  };
-}
-
 /** Collapsible "Reasoning" block: sparkle header plus the streamed thinking text. */
 export function ReasoningBlock({
   thoughts,
@@ -274,7 +251,7 @@ export function ReasoningBlock({
   const isFollowingRef = useRef(true);
   useEffect(() => {
     const body = bodyRef.current;
-    const scroller = document.querySelector('main');
+    const scroller = getScrollContainer();
     if (!streaming || !open || !body || !scroller) return;
     // The edge kept in view: SKELETON_PEEK of the way into the answer card
     // (the skeleton while streaming), so the reader sees the answer is
