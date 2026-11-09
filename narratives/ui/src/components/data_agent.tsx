@@ -19,6 +19,7 @@
  */
 
 import {
+  type CSSProperties,
   type RefObject,
   useCallback,
   useEffect,
@@ -323,24 +324,31 @@ export function TurnView({
   // The answer card, which the reasoning keeps in view while it streams and
   // scrolls up to when it finishes.
   const answerCardRef = useRef<HTMLDivElement>(null);
+  // Cancels the glide in flight, if any.
+  const cancelGlideRef = useRef<() => void>(undefined);
+  useEffect(() => () => cancelGlideRef.current?.(), []);
   const showQuestion = useCallback(() => {
     const question = questionRef.current;
     const scroller = getScrollContainer();
     if (!question || !scroller) return;
     // The question sits above the collapsing body, so its target is fixed.
-    const target =
+    const target = Math.max(
+      0,
       scroller.scrollTop +
-      question.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top -
-      getScrollHeaderHeight() -
-      SCROLL_PIN_OFFSET_PX;
+        question.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        getScrollHeaderHeight() -
+        SCROLL_PIN_OFFSET_PX,
+    );
     if (target >= scroller.scrollTop) return;
-    if (window.matchMedia(REDUCED_MOTION_QUERY).matches) {
-      scroller.scrollTo(0, target);
-      return;
-    }
+    const reduceMotion = window.matchMedia(REDUCED_MOTION_QUERY).matches;
+    cancelGlideRef.current?.();
     // Ease-out cubic, close to the collapse's `ease-out`.
-    glideScrollTo(scroller, target, REASONING_COLLAPSE_MS);
+    cancelGlideRef.current = glideScrollTo(
+      scroller,
+      target,
+      reduceMotion ? 0 : REASONING_COLLAPSE_MS,
+    );
   }, []);
 
   return (
@@ -412,7 +420,9 @@ export function TurnView({
               className={`motion-safe:transition-opacity ease-out${
                 isHandingOff ? ' opacity-0' : ''
               }`}
-              style={{ transitionDuration: `${HANDOFF_MS}ms` }}
+              // Through `--tw-duration`, which only the motion-safe
+              // transition reads, so reduced motion stays instant.
+              style={{ '--tw-duration': `${HANDOFF_MS}ms` } as CSSProperties}
             >
               <SkeletonCard query={turn.userMessage} />
             </div>

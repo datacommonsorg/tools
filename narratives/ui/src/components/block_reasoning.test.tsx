@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReasoningBlock } from '@/src/components/block_reasoning';
 import { CLOSE_REASONING_LABEL } from '@/src/config/copy_chat';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
+import { REASONING_COLLAPSE_MS } from '@/src/config/motion';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
   const slot = document.createElement('script');
@@ -47,20 +48,25 @@ const isExpanding = (thought: HTMLElement): boolean =>
 const getIndicatorSrc = (container: HTMLElement): string | null =>
   container.querySelector('img')?.getAttribute('src') ?? null;
 
-// jsdom has no ResizeObserver. Records the latest callback so a test can
-// report a resize.
+// jsdom has no ResizeObserver. Records the latest callback, and the elements
+// the latest observer watches, so a test can report a resize.
 let reportResize: () => void = vi.fn();
+let observed: Element[] = [];
 class FakeResizeObserver {
   constructor(callback: () => void) {
     reportResize = callback;
+    observed = [];
   }
-  observe = vi.fn();
+  observe = (element: Element) => {
+    observed.push(element);
+  };
   disconnect = vi.fn();
 }
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   reportResize = vi.fn();
+  observed = [];
 });
 
 afterEach(() => {
@@ -275,7 +281,7 @@ describe('ReasoningBlock', () => {
       <ReasoningBlock thoughts={thoughts} streaming status="discovery" />,
     );
     expect(getByRole('button', { expanded: false }).textContent).toBe(
-      'Querying data tools:Checking sources',
+      'Querying data tools: Checking sources',
     );
     expect(
       [
@@ -293,7 +299,12 @@ describe('ReasoningBlock', () => {
 
   it.each([
     ['**Note:** see **this**', 'Querying data tools'],
-    ['# Plan #', 'Querying data tools:Plan'],
+    ['# Plan #', 'Querying data tools: Plan'],
+    [
+      '## Checking `Count_Person`',
+      'Querying data tools: Checking Count_Person',
+    ],
+    ['## **Plan**', 'Querying data tools: Plan'],
   ])('reads only real headings into the header (%s)', (line, label) => {
     // Test: Heading detection matches what the body renders as a heading.
     // Situation: The latest thought line has several bold runs, or is an ATX
@@ -490,12 +501,21 @@ describe('ReasoningBlock', () => {
     expect(scrollBy).toHaveBeenCalledWith(0, 100);
   });
 
-  it('keeps the following card in view while streaming', () => {
-    // Test: Following keeps the skeleton in view below the reasoning.
+  it.each([
+    ['the whole card when it fits', 300, 200, 250],
+    ['half of the previous thought over the rest of the card', 300, 100, 150],
+    ['half of the card over half of the previous thought', 300, 0, 150],
+    ['the latest thought whole over half of the card', 100, 0, 100],
+  ])('keeps %s in view while following', (_case, latestTop, previousTop, scrolled) => {
+    // Test: Following keeps the skeleton in view below the reasoning, within
+    //       what the reasoning itself needs.
     // Situation: The block streams open inside a 200px <main>, with an answer
-    //            card whose 200px starts 250px down.
-    // Expectation: <main> scrolls so the whole card (SKELETON_PEEK is 1)
-    //              ends at the band's bottom: by 250px.
+    //            card whose 200px starts 250px down (half of it 150px past
+    //            the band, all of it 250px). The latest thought starts at
+    //            `latestTop`; the 100px thought before it at `previousTop`.
+    // Expectation: <main> scrolls by `scrolled`: the whole card, unless that
+    //              hides more than half of the previous thought; half of the
+    //              card even so; never past the latest thought's top.
     vi.stubGlobal('matchMedia', () => ({ matches: false }));
     const main = document.createElement('main');
     const scrollBy = vi.fn();
@@ -504,9 +524,12 @@ describe('ReasoningBlock', () => {
     document.body.appendChild(main);
     const card = document.createElement('div');
     card.getBoundingClientRect = () => ({ top: 250, height: 200 }) as DOMRect;
-    render(
+    const { container } = render(
       <ReasoningBlock
-        thoughts={[{ text: 'Thinking.', phase: 'discovery' }]}
+        thoughts={[
+          { text: 'Looking.', phase: 'discovery' },
+          { text: 'Thinking.', phase: 'discovery' },
+        ]}
         defaultOpen
         streaming
         status="discovery"
@@ -514,8 +537,156 @@ describe('ReasoningBlock', () => {
       />,
       { container: main },
     );
+    const [previous, latest] = getThoughts(container);
+    latest.getBoundingClientRect = () => ({ top: latestTop }) as DOMRect;
+    previous.getBoundingClientRect = () =>
+      ({ top: previousTop, height: 100 }) as DOMRect;
 
     reportResize();
-    expect(scrollBy).toHaveBeenCalledWith(0, 250);
+    expect(scrollBy).toHaveBeenCalledWith(0, scrolled);
+  });
+
+  it('stays paused after a small scroll up while the card is in view', () => {
+    // Test: Resuming waits for the reader to return to where following holds.
+    // Situation: The block streams open inside a 200px <main>, following
+    //            with the previous thought, the latest thought, and the whole
+    //            card in view. The reader scrolls up 50px, which keeps the
+    //            latest thought's end in view, then scrolls back down.
+    // Expectation: A resize while scrolled up does not scroll; once back, a
+    //              resize that pushes the card 10px down scrolls by 10px.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    Object.defineProperty(main, 'clientHeight', { value: 200 });
+    let scrollTop = 500;
+    Object.defineProperty(main, 'scrollTop', { get: () => scrollTop });
+    document.body.appendChild(main);
+    let offset = 0;
+    let cardTop = 100;
+    const card = document.createElement('div');
+    card.getBoundingClientRect = () =>
+      ({ top: cardTop + offset, height: 100 }) as DOMRect;
+    const { container } = render(
+      <ReasoningBlock
+        thoughts={[
+          { text: 'Looking.', phase: 'discovery' },
+          { text: 'Thinking.', phase: 'discovery' },
+        ]}
+        defaultOpen
+        streaming
+        status="discovery"
+        answerCardRef={{ current: card }}
+      />,
+      { container: main },
+    );
+    const [previous, latest] = getThoughts(container);
+    previous.getBoundingClientRect = () =>
+      ({ top: offset, height: 100 }) as DOMRect;
+    latest.getBoundingClientRect = () => ({ top: 50 + offset }) as DOMRect;
+    const body = container.querySelector<HTMLElement>('.reasoning-markdown');
+    if (body) {
+      body.getBoundingClientRect = () => ({ bottom: 100 + offset }) as DOMRect;
+    }
+
+    scrollTop = 450;
+    offset = 50;
+    main.dispatchEvent(new Event('scroll'));
+    reportResize();
+    expect(scrollBy).not.toHaveBeenCalled();
+
+    scrollTop = 500;
+    offset = 0;
+    main.dispatchEvent(new Event('scroll'));
+    cardTop = 110;
+    reportResize();
+    expect(scrollBy).toHaveBeenCalledWith(0, 10);
+  });
+
+  it('times the collapse through --tw-duration only', () => {
+    // Test: The collapse duration leaves reduced motion instant.
+    // Situation: The block renders; its body wrapper carries the duration.
+    // Expectation: The duration is set as `--tw-duration`, which only the
+    //              motion-safe transition reads, not as `transition-duration`.
+    const { container } = render(
+      <ReasoningBlock thoughts={[{ text: 'Thinking.', phase: 'discovery' }]} />,
+    );
+    const wrapper = container.querySelector<HTMLElement>('[inert]');
+    expect(wrapper?.style.getPropertyValue('--tw-duration')).toBe(
+      `${REASONING_COLLAPSE_MS}ms`,
+    );
+    expect(wrapper?.style.transitionDuration).toBe('');
+  });
+
+  it('follows from opening mid-stream and watches the card once it mounts', () => {
+    // Test: Following covers a block opened while the turn streams, and a
+    //       card that mounts after classify.
+    // Situation: The block streams collapsed inside a 200px <main> during
+    //            classify, with no card yet. The reader opens it, then the
+    //            card mounts as status moves to discovery.
+    // Expectation: Opening observes the block's root, and a resize while it
+    //              expands scrolls to the thought list's end; once the card
+    //              mounts, the observer watches it too.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    Object.defineProperty(main, 'clientHeight', { value: 200 });
+    document.body.appendChild(main);
+    const thoughts = [{ text: 'Thinking.', phase: 'discovery' as const }];
+    const answerCardRef: { current: HTMLElement | null } = { current: null };
+    const { container, getByRole, rerender } = render(
+      <ReasoningBlock
+        thoughts={thoughts}
+        streaming
+        status="classify"
+        answerCardRef={answerCardRef}
+      />,
+      { container: main },
+    );
+    expect(observed).toEqual([]);
+
+    fireEvent.click(getByRole('button', { expanded: false }));
+    const root = container.firstElementChild;
+    expect(observed).toEqual([root]);
+    const body = container.querySelector<HTMLElement>('.reasoning-markdown');
+    if (body) body.getBoundingClientRect = () => ({ bottom: 260 }) as DOMRect;
+    reportResize();
+    expect(scrollBy).toHaveBeenCalledWith(0, 60);
+
+    const card = document.createElement('div');
+    answerCardRef.current = card;
+    rerender(
+      <ReasoningBlock
+        thoughts={thoughts}
+        streaming
+        status="discovery"
+        answerCardRef={answerCardRef}
+      />,
+    );
+    expect(observed).toEqual([root, card]);
+  });
+
+  it("keeps the header to the current phase's headings", () => {
+    // Test: A heading from an earlier phase does not label a later one.
+    // Situation: Only discovery thoughts carry a heading; the block streams
+    //            in processing, then synthesis.
+    // Expectation: The header shows the phase label alone.
+    const thoughts = [
+      { text: '## Checking sources', phase: 'discovery' as const },
+    ];
+    const { getByRole, rerender } = render(
+      <ReasoningBlock thoughts={thoughts} streaming status="processing" />,
+    );
+    expect(getByRole('button', { expanded: false }).textContent).not.toContain(
+      'Checking sources',
+    );
+
+    rerender(
+      <ReasoningBlock thoughts={thoughts} streaming status="synthesis" />,
+    );
+    expect(getByRole('button', { expanded: false }).textContent).toBe(
+      'Synthesizing answer',
+    );
   });
 });

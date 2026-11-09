@@ -72,19 +72,34 @@ export function getVisibleBand(element: HTMLElement): VisibleBand | undefined {
  * Scrolls `scroller` from its current position to `target` over `durationMs`
  * with ease-out cubic, setting the position on every animation frame. Unlike
  * a native smooth scroll, the glide is not canceled when a layout change
- * clamps `scrollTop` partway through.
+ * clamps `scrollTop` partway through. It stops when the user scrolls with the
+ * wheel or touch, or when the returned function is called.
  */
 export function glideScrollTo(
   scroller: HTMLElement,
   target: number,
   durationMs: number,
-): void {
+): () => void {
+  if (durationMs <= 0) {
+    scroller.scrollTo(0, target);
+    return () => undefined;
+  }
   const from = scroller.scrollTop;
   const start = performance.now();
+  let frame = 0;
+  const cancel = () => {
+    cancelAnimationFrame(frame);
+    scroller.removeEventListener('wheel', cancel);
+    scroller.removeEventListener('touchmove', cancel);
+  };
   const tick = () => {
     const progress = (performance.now() - start) / durationMs;
     scroller.scrollTo(0, from + (target - from) * easeOutCubic(progress));
-    if (progress < 1) requestAnimationFrame(tick);
+    if (progress < 1) frame = requestAnimationFrame(tick);
+    else cancel();
   };
-  requestAnimationFrame(tick);
+  scroller.addEventListener('wheel', cancel, { passive: true });
+  scroller.addEventListener('touchmove', cancel, { passive: true });
+  frame = requestAnimationFrame(tick);
+  return cancel;
 }

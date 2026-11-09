@@ -18,7 +18,13 @@
  * @fileoverview Renders the agent's collapsible reasoning/thoughts block for a turn.
  */
 
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDownIcon } from '@/src/components/icons';
@@ -43,7 +49,11 @@ import {
   rehypeStreamWords,
   STREAM_WORD_CLASS,
 } from '@/src/utils/rehype_stream_words';
-import { getScrollContainer, getVisibleBand } from '@/src/utils/scroll_main';
+import {
+  getScrollContainer,
+  getVisibleBand,
+  type VisibleBand,
+} from '@/src/utils/scroll_main';
 
 /**
  * Figma "Sparkle + Extension chip" (node 3427:16720) + "Content" (3427:16723).
@@ -166,8 +176,17 @@ interface ReasoningBlockProps {
   answerCardRef?: RefObject<HTMLElement | null>;
 }
 
-/** Share of the skeleton card kept in view below streaming reasoning. */
-const SKELETON_PEEK = 1;
+/**
+ * Share of the skeleton card always kept in view below streaming reasoning;
+ * the whole card is shown where it fits.
+ */
+const SKELETON_MIN_SHARE = 0.5;
+
+/** Share of the thought before the latest kept in view while following. */
+const PREVIOUS_THOUGHT_MIN_SHARE = 0.5;
+
+/** Slack for fractional layout when checking an edge against the band. */
+const LAYOUT_SLACK_PX = 1;
 
 /**
  * Returns the header label for the turn status: the phase's label while
@@ -187,17 +206,27 @@ function getPhaseLabel(streaming: boolean, status?: TurnStatus): string {
  */
 const HEADING_LINE = /^\s*(?:#{1,6}\s+(.+?)(?:\s+#+)?|\*\*([^*]+)\*\*)\s*$/;
 
-/** Returns the most recent section heading across the thoughts, if any. */
-function latestHeading(thoughts: ThoughtEvent[]): string | undefined {
+/**
+ * Returns the most recent section heading among the thoughts of the current
+ * phase, if any, with inline code and emphasis markers removed, since the
+ * header shows it as plain text. A heading from an earlier phase would mislabel
+ * the current one, so the scan stops at the first thought from another phase.
+ */
+function getLatestHeading(
+  thoughts: ThoughtEvent[],
+  status?: TurnStatus,
+): string | undefined {
   for (
     let thoughtIndex = thoughts.length - 1;
     thoughtIndex >= 0;
     thoughtIndex--
   ) {
-    const lines = thoughts[thoughtIndex].text.split('\n');
+    const thought = thoughts[thoughtIndex];
+    if (thought.phase !== status) return undefined;
+    const lines = thought.text.split('\n');
     for (let lineIndex = lines.length - 1; lineIndex >= 0; lineIndex--) {
       const match = HEADING_LINE.exec(lines[lineIndex]);
-      if (match) return (match[1] ?? match[2]).trim();
+      if (match) return (match[1] ?? match[2]).replace(/[`*]/g, '').trim();
     }
   }
   return undefined;
@@ -236,34 +265,56 @@ export function ReasoningBlock({
 }: ReasoningBlockProps) {
   const [open, setOpen] = useState(defaultOpen);
   // While streaming, the header also names the section the model is on.
-  const heading = streaming ? latestHeading(thoughts) : undefined;
+  const heading = streaming ? getLatestHeading(thoughts, status) : undefined;
   const phaseLabel = getPhaseLabel(streaming, status);
 
   // While the turn streams with the reasoning open, keep the latest thought
-  // in view: whenever the list grows past the visible band, which it does on
-  // every frame of a thought's expand animation, scroll by the overflow.
-  // Scrolling up pauses this so the reader can re-read; bringing the latest
-  // thought's end back into view resumes it.
+  // and the skeleton in view: whenever the block or card resizes, scroll by
+  // the overflow (see getFollowOverflow). Scrolling up pauses this so the
+  // reader can re-read; scrolling back to where following holds resumes it.
   const rootRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLButtonElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // Whether following is active; read when the turn finishes, so a reader
   // who scrolled away is not pulled down to the answer either.
   const isFollowingRef = useRef(true);
+  // Opening the block mid-stream, or a new stream, starts following afresh.
   useEffect(() => {
+    if (streaming && open) isFollowingRef.current = true;
+  }, [streaming, open]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the answer card mounts once status leaves classify, so the observer is attached again to watch it.
+  useEffect(() => {
+    const root = rootRef.current;
     const body = bodyRef.current;
     const scroller = getScrollContainer();
-    if (!streaming || !open || !body || !scroller) return;
-    // The edge kept in view: SKELETON_PEEK of the way into the answer card
-    // (the skeleton while streaming), so the reader sees the answer is
-    // coming; the thought list's end when there is no card.
-    const followEdge = () => {
-      const card = answerCardRef?.current?.getBoundingClientRect();
-      return card
-        ? card.top + card.height * SKELETON_PEEK
-        : body.getBoundingClientRect().bottom;
+    if (!streaming || !open || !root || !body || !scroller) return;
+    const card = answerCardRef?.current;
+    // How far to scroll down while following. Where the band is too short
+    // for all of them, earlier aims win over later ones:
+    // 1. the latest thought's end;
+    // 2. the latest thought's top, so it stays whole;
+    // 3. SKELETON_MIN_SHARE of the answer card (the skeleton while
+    //    streaming), so the reader sees the answer is coming;
+    // 4. PREVIOUS_THOUGHT_MIN_SHARE of the thought before, for context;
+    // 5. the rest of the card.
+    const getFollowOverflow = (band: VisibleBand) => {
+      const bodyOverflow = body.getBoundingClientRect().bottom - band.bottom;
+      const latest = body.lastElementChild;
+      const cardRect = card?.getBoundingClientRect();
+      if (!cardRect || !latest) return bodyOverflow;
+      const latestTopLimit = latest.getBoundingClientRect().top - band.top;
+      const previous = latest.previousElementSibling?.getBoundingClientRect();
+      const previousLimit = previous
+        ? previous.top + previous.height * PREVIOUS_THOUGHT_MIN_SHARE - band.top
+        : Number.POSITIVE_INFINITY;
+      const cardOverflow = (share: number) =>
+        cardRect.top + cardRect.height * share - band.bottom;
+      return Math.max(
+        bodyOverflow,
+        Math.min(cardOverflow(SKELETON_MIN_SHARE), latestTopLimit),
+        Math.min(cardOverflow(1), latestTopLimit, previousLimit),
+      );
     };
-    isFollowingRef.current = true;
     let lastScrollTop = scroller.scrollTop;
     const onScroll = () => {
       const band = getVisibleBand(body);
@@ -271,24 +322,27 @@ export function ReasoningBlock({
       // Following only ever scrolls down, so an upward scroll is the reader's.
       if (scroller.scrollTop < lastScrollTop) isFollowingRef.current = false;
       lastScrollTop = scroller.scrollTop;
-      // 1px of slack for fractional layout.
-      if (followEdge() <= band.bottom + 1) {
+      // Back where following would hold: nothing left to scroll.
+      if (getFollowOverflow(band) <= LAYOUT_SLACK_PX) {
         isFollowingRef.current = true;
       }
     };
+    // The root grows with each thought's expand animation and with the
+    // body's own open transition; the card grows as it fills in.
     const observer = new ResizeObserver(() => {
       const band = getVisibleBand(body);
       if (!isFollowingRef.current || !band) return;
-      const overflow = followEdge() - band.bottom;
+      const overflow = getFollowOverflow(band);
       if (overflow > 0) band.scroller.scrollBy(0, overflow);
     });
     scroller.addEventListener('scroll', onScroll, { passive: true });
-    observer.observe(body);
+    observer.observe(root);
+    if (card) observer.observe(card);
     return () => {
       scroller.removeEventListener('scroll', onScroll);
       observer.disconnect();
     };
-  }, [streaming, open, answerCardRef]);
+  }, [streaming, open, status, answerCardRef]);
 
   // When the turn finishes with the reasoning open and following, scroll the
   // answer card up under the header, just as a new question is pinned; the
@@ -325,21 +379,26 @@ export function ReasoningBlock({
         ref={headerRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center gap-3 bg-transparent border-0 p-0"
+        // The pseudo-element pads the 20px-tall row out to a 44px touch target
+        // without changing the layout.
+        className="relative inline-flex items-center gap-3 max-w-full text-left after:absolute after:-inset-x-1 after:-inset-y-3"
         aria-expanded={open}
       >
         {streaming ? <LoaderSpinner /> : <SparkleIcon />}
-        <span className="inline-flex items-center gap-1 text-label-large text-on-surface">
-          {/* One text run, so the colon hugs the label inside the flex gap. */}
-          {heading ? `${phaseLabel}:` : phaseLabel}
-          {heading && (
-            // Keyed by the text so each new heading remounts and replays.
-            <StreamedText
-              key={heading}
-              text={heading}
-              className="font-normal"
-            />
-          )}
+        <span className="inline-flex items-center gap-1 min-w-0 text-label-large text-on-surface">
+          {/* One inline run, so a long heading wraps under the label and the
+              accessible name keeps the space after the colon. */}
+          <span>
+            {heading ? `${phaseLabel}: ` : phaseLabel}
+            {heading && (
+              // Keyed by the text so each new heading remounts and replays.
+              <StreamedText
+                key={heading}
+                text={heading}
+                className="font-normal"
+              />
+            )}
+          </span>
           <ChevronDownIcon
             className={`text-on-surface-variant transition-transform duration-150 ${
               open ? 'rotate-180' : 'rotate-0'
@@ -356,8 +415,11 @@ export function ReasoningBlock({
           open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
         // Shared with TurnView's scroll back to the question, which runs in
-        // step with the collapse.
-        style={{ transitionDuration: `${REASONING_COLLAPSE_MS}ms` }}
+        // step with the collapse. Set through `--tw-duration`, which only the
+        // motion-safe transition reads, so reduced motion stays instant.
+        style={
+          { '--tw-duration': `${REASONING_COLLAPSE_MS}ms` } as CSSProperties
+        }
       >
         <div className="overflow-hidden min-h-0">
           {/* Indented so the reasoning reads as an aside to the answer; the
@@ -401,7 +463,7 @@ export function ReasoningBlock({
                 }}
                 // The pseudo-element pads the 20px-tall label out to a 44px
                 // touch target without changing the layout.
-                className="relative inline-flex items-center gap-1 bg-transparent border-0 p-0 text-label-large text-on-surface-variant hover:text-on-surface after:absolute after:-inset-x-1 after:-inset-y-3"
+                className="relative inline-flex items-center gap-1 text-label-large text-on-surface-variant hover:text-on-surface after:absolute after:-inset-x-1 after:-inset-y-3"
               >
                 {CLOSE_REASONING_LABEL}
                 <ChevronDownIcon className="rotate-180" />

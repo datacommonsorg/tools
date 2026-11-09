@@ -119,4 +119,53 @@ describe('glideScrollTo', () => {
     ]);
     expect(frames).toHaveLength(0);
   });
+
+  it.each([
+    [
+      'the user scrolls the wheel',
+      (main: HTMLElement) => {
+        main.dispatchEvent(new Event('wheel'));
+      },
+    ],
+    [
+      'the caller cancels',
+      (_main: HTMLElement, cancel: () => void) => {
+        cancel();
+      },
+    ],
+  ])('stops when %s', (_reason, stop) => {
+    // Test: Canceling a glide.
+    // Situation: <main> glides from 500px to 100px over 200ms; the user
+    //            scrolls the wheel, or the caller cancels, before a frame.
+    // Expectation: The queued frame is canceled and nothing is scrolled.
+    const cancelAnimationFrame = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', () => 7);
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+    const main = mountMain(600);
+    Object.defineProperty(main, 'scrollTop', { value: 500 });
+    const scrollTo = vi.fn();
+    main.scrollTo = scrollTo;
+
+    const cancel = glideScrollTo(main, 100, 200);
+    stop(main, cancel);
+
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('jumps straight to the target without a duration', () => {
+    // Test: Zero-length glide.
+    // Situation: <main> glides to 100px over 0ms.
+    // Expectation: It scrolls to 100px at once and queues no frame.
+    const requestAnimationFrame = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    const main = mountMain(600);
+    const scrollTo = vi.fn();
+    main.scrollTo = scrollTo;
+
+    glideScrollTo(main, 100, 0);
+
+    expect(scrollTo).toHaveBeenCalledWith(0, 100);
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
 });
