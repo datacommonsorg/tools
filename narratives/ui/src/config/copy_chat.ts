@@ -15,11 +15,45 @@
  */
 
 /**
- * @fileoverview User-facing copy for chat turn errors, notices, and actions.
+ * @fileoverview User-facing copy for chat turn errors, notices, actions, and
+ * reasoning progress.
  */
+
+import type { TurnStatus } from '@/src/hooks/use_sse_chat';
 
 /** Label of the inline button that resubmits a retryable failed turn's query. */
 export const RETRY_LABEL = 'Try again';
+
+/** Label of the button at the end of finished reasoning that collapses it. */
+export const CLOSE_REASONING_LABEL = 'Close reasoning details';
+
+/** Reasoning header label once the turn has stopped streaming. */
+export const REASONING_DONE_LABEL = 'Reasoning details';
+
+/**
+ * Reasoning header label for each streaming phase. The server's `status`
+ * events move a turn through these phases.
+ */
+export const REASONING_PHASE_LABELS: Partial<Record<TurnStatus, string>> = {
+  classify: 'Understanding your question',
+  discovery: 'Querying data tools',
+  processing: 'Analyzing data',
+  synthesis: 'Synthesizing answer',
+};
+
+/** Reasoning header label while streaming in a status with no phase label. */
+export const REASONING_DEFAULT_PHASE_LABEL = 'Thinking';
+
+/** Reasoning body shown during classification, before any thought arrives. */
+export const REASONING_PLACEHOLDER_CLASSIFY = 'Reviewing your question…';
+
+/** Reasoning body shown while later phases stream with no thoughts. */
+export const REASONING_PLACEHOLDER_STREAMING =
+  'Searching Data Commons for relevant indicators and observations…';
+
+/** Reasoning body shown for a finished data turn that emitted no thoughts. */
+export const REASONING_PLACEHOLDER_DONE =
+  'Analyzed the query and retrieved relevant data from Data Commons.';
 
 /**
  * Error message shown when an upstream response other than a permanent HTTP

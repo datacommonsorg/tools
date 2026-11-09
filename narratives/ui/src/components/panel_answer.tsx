@@ -41,6 +41,7 @@ import { FollowUpQuestions } from '@/src/components/questions_follow_up';
 import { ChartTile } from '@/src/components/tile_chart';
 import { Toast } from '@/src/components/toast';
 import { Tooltip } from '@/src/components/tooltip';
+import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import {
   type AnswerBlock,
   type ChartItem,
@@ -107,9 +108,6 @@ function getInitialPhase(
   if (shouldReveal) return 'revealing';
   return 'revealed';
 }
-
-/** Media query for the user's reduced-motion preference. */
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 /**
  * Longest the panel waits for its charts to settle before revealing anyway,

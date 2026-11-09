@@ -19,6 +19,7 @@
  */
 
 import {
+  type CSSProperties,
   type RefObject,
   useCallback,
   useEffect,
@@ -32,19 +33,29 @@ import { PromptInput } from '@/src/components/input_prompt';
 import { ErrorNotice } from '@/src/components/notice_error';
 import { AnswerPanel } from '@/src/components/panel_answer';
 import { InitialView } from '@/src/components/view_initial';
+import {
+  REASONING_COLLAPSE_MS,
+  REDUCED_MOTION_QUERY,
+  SCROLL_PIN_OFFSET_PX,
+} from '@/src/config/motion';
 import { useChatSession } from '@/src/hooks/chat_session_context';
 import {
   assignCitationNumbers,
   type ChatTurn,
   hasAnswer,
 } from '@/src/hooks/use_sse_chat';
+import {
+  easeOutCubic,
+  getScrollContainer,
+  getScrollHeader,
+  getScrollHeaderHeight,
+  glideScrollTo,
+} from '@/src/utils/scroll_main';
 
 /** How long the scroll to a new question glides. */
 const PIN_GLIDE_MS = 400;
 /** How long the new question is held at the top while late layout settles. */
 const PIN_HOLD_MS = 600;
-/** Gap between the sticky header and the pinned question. */
-const PIN_TOP_OFFSET_PX = 8;
 /** Must match the duration in `--animate-stream-in` (ui/src/index.css). */
 export const HANDOFF_MS = 400;
 /** Centered content column; <main> scrolls at full width. */
@@ -106,12 +117,10 @@ export function DataAgent() {
     if (turns.length > prevLength) {
       const targetIndex = turns.length - 1;
       // Glides rather than jumps, unless the reader asked for reduced motion.
-      // <main> is the scroll container (see App).
-      const scroller = document.querySelector('main');
+      const scroller = getScrollContainer();
       if (!scroller) return;
       const from = scroller.scrollTop;
-      const glideMs = window.matchMedia('(prefers-reduced-motion: reduce)')
-        .matches
+      const glideMs = window.matchMedia(REDUCED_MOTION_QUERY).matches
         ? 0
         : PIN_GLIDE_MS;
       const scrollToLatest = (elapsed: number) => {
@@ -128,15 +137,13 @@ export function DataAgent() {
         }
         // Walked past a static <main>: offsets are body-relative.
         if (!node) top -= scroller.offsetTop;
-        top -=
-          document.querySelector<HTMLElement>('main > header')?.offsetHeight ??
-          0;
-        // Ease-out cubic. The target is re-read every frame, so the glide
-        // lands on the bubble even if the layout above it is still settling.
-        const progress = 1 - (1 - Math.min(1, elapsed / (glideMs || 1))) ** 3;
+        top -= getScrollHeaderHeight();
+        // The target is re-read every frame, so the glide lands on the bubble
+        // even if the layout above it is still settling.
+        const progress = easeOutCubic(elapsed / (glideMs || 1));
         scroller.scrollTo(
           0,
-          from + (Math.max(0, top - PIN_TOP_OFFSET_PX) - from) * progress,
+          from + (Math.max(0, top - SCROLL_PIN_OFFSET_PX) - from) * progress,
         );
       };
       // Glide there, then hold on every animation frame for PIN_HOLD_MS so late
@@ -169,7 +176,7 @@ export function DataAgent() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: showConversation decides whether the prompt bar is mounted, so the observer is attached again when it changes.
   useEffect(() => {
     const prompt = promptRef.current;
-    const header = document.querySelector<HTMLElement>('main > header');
+    const header = getScrollHeader();
     if (!prompt) return;
     const observer = new ResizeObserver(() =>
       prompt.parentElement?.style.setProperty(
@@ -309,6 +316,40 @@ export function TurnView({
     .join(' ');
   const retry =
     onAsk && turn.isRetryable ? () => onAsk(turn.userMessage) : undefined;
+  // Closing the reasoning from its end can leave the question above the
+  // fold; scroll <main> back up so it shows under the header, in step with
+  // the collapse, which shrinks the page and would cancel a native smooth
+  // scroll.
+  const questionRef = useRef<HTMLDivElement>(null);
+  // The answer card, which the reasoning keeps in view while it streams and
+  // scrolls up to when it finishes.
+  const answerCardRef = useRef<HTMLDivElement>(null);
+  // Cancels the glide in flight, if any.
+  const cancelGlideRef = useRef<() => void>(undefined);
+  useEffect(() => () => cancelGlideRef.current?.(), []);
+  const showQuestion = useCallback(() => {
+    const question = questionRef.current;
+    const scroller = getScrollContainer();
+    if (!question || !scroller) return;
+    // The question sits above the collapsing body, so its target is fixed.
+    const target = Math.max(
+      0,
+      scroller.scrollTop +
+        question.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top -
+        getScrollHeaderHeight() -
+        SCROLL_PIN_OFFSET_PX,
+    );
+    if (target >= scroller.scrollTop) return;
+    const reduceMotion = window.matchMedia(REDUCED_MOTION_QUERY).matches;
+    cancelGlideRef.current?.();
+    // Ease-out cubic, close to the collapse's `ease-out`.
+    cancelGlideRef.current = glideScrollTo(
+      scroller,
+      target,
+      reduceMotion ? 0 : REASONING_COLLAPSE_MS,
+    );
+  }, []);
 
   return (
     // The last turn fills the viewport between header and prompt, so its
@@ -320,6 +361,7 @@ export function TurnView({
           so it beats a plain `leading-*` utility; `leading-7!` wins with
           !important. */}
       <div
+        ref={questionRef}
         data-turn-index={index}
         className={`self-end shrink-0 max-w-[85%] sm:max-w-[80%] px-4 sm:px-5 py-3 sm:py-2.5 rounded-card text-body-large shadow-sm bg-user-msg text-on-surface leading-7! break-words${
           index > 0 ? ' mt-3' : ''
@@ -351,6 +393,8 @@ export function TurnView({
               turn.provenance.length > 0)
           }
           status={turn.status}
+          onClose={showQuestion}
+          answerCardRef={answerCardRef}
         />
       )}
 
@@ -366,14 +410,19 @@ export function TurnView({
           cell until its charts settle, then crossfading over it. Hidden when
           stopped. */}
       {(showSkeleton || showAnswer) && (
-        <div className="self-start shrink-0 w-full max-w-4xl grid *:col-start-1 *:row-start-1">
+        <div
+          ref={answerCardRef}
+          className="self-start shrink-0 w-full max-w-4xl grid *:col-start-1 *:row-start-1"
+        >
           {(showSkeleton || crossfading) && (
             <div
               aria-hidden={isHandingOff}
               className={`motion-safe:transition-opacity ease-out${
                 isHandingOff ? ' opacity-0' : ''
               }`}
-              style={{ transitionDuration: `${HANDOFF_MS}ms` }}
+              // Through `--tw-duration`, which only the motion-safe
+              // transition reads, so reduced motion stays instant.
+              style={{ '--tw-duration': `${HANDOFF_MS}ms` } as CSSProperties}
             >
               <SkeletonCard query={turn.userMessage} />
             </div>
