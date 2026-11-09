@@ -22,7 +22,15 @@ import { type RefObject, useEffect, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDownIcon } from '@/src/components/icons';
-import { CLOSE_REASONING_LABEL } from '@/src/config/copy_chat';
+import {
+  CLOSE_REASONING_LABEL,
+  REASONING_DEFAULT_PHASE_LABEL,
+  REASONING_DONE_LABEL,
+  REASONING_PHASE_LABELS,
+  REASONING_PLACEHOLDER_CLASSIFY,
+  REASONING_PLACEHOLDER_DONE,
+  REASONING_PLACEHOLDER_STREAMING,
+} from '@/src/config/copy_chat';
 import { getInstanceConfig } from '@/src/config/instance_config';
 import {
   REASONING_COLLAPSE_MS,
@@ -160,32 +168,15 @@ interface ReasoningBlockProps {
 /** Share of the skeleton card kept in view below streaming reasoning. */
 const SKELETON_PEEK = 1;
 
-const PLACEHOLDER_CLASSIFY = 'Reviewing your question…';
-const PLACEHOLDER_STREAMING =
-  'Searching Data Commons for relevant indicators and observations…';
-const PLACEHOLDER_DONE =
-  'Analyzed the query and retrieved relevant data from Data Commons.';
-
 /**
- * Header label is derived from the turn status. The server's `status` events
- * move the turn through the `classify`, `discovery`, `processing`, and
- * `synthesis` phases, and its `terminal` event ends it; these strings are the
- * UI-side copy for each phase.
+ * Returns the header label for the turn status: the phase's label while
+ * streaming, falling back to a generic one, and the done label afterwards.
  */
 function getPhaseLabel(streaming: boolean, status?: TurnStatus): string {
-  if (!streaming) return 'Reasoning details';
-  switch (status) {
-    case 'classify':
-      return 'Understanding your question';
-    case 'discovery':
-      return 'Querying data tools';
-    case 'processing':
-      return 'Analyzing data';
-    case 'synthesis':
-      return 'Synthesizing answer';
-    default:
-      return 'Thinking';
-  }
+  if (!streaming) return REASONING_DONE_LABEL;
+  return (
+    (status && REASONING_PHASE_LABELS[status]) ?? REASONING_DEFAULT_PHASE_LABEL
+  );
 }
 
 /**
@@ -225,9 +216,11 @@ function placeholderText(
   status?: TurnStatus,
 ): string {
   if (streaming) {
-    return status === 'classify' ? PLACEHOLDER_CLASSIFY : PLACEHOLDER_STREAMING;
+    return status === 'classify'
+      ? REASONING_PLACEHOLDER_CLASSIFY
+      : REASONING_PLACEHOLDER_STREAMING;
   }
-  return done ? PLACEHOLDER_DONE : '';
+  return done ? REASONING_PLACEHOLDER_DONE : '';
 }
 
 /**
