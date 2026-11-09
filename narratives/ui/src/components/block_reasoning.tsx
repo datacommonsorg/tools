@@ -325,7 +325,7 @@ export function ReasoningBlock({
         ref={headerRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center gap-3 bg-transparent border-0 p-0 cursor-pointer"
+        className="inline-flex items-center gap-3 bg-transparent border-0 p-0"
         aria-expanded={open}
       >
         {streaming ? <LoaderSpinner /> : <SparkleIcon />}
@@ -401,7 +401,7 @@ export function ReasoningBlock({
                 }}
                 // The pseudo-element pads the 20px-tall label out to a 44px
                 // touch target without changing the layout.
-                className="relative inline-flex items-center gap-1 bg-transparent border-0 p-0 cursor-pointer text-label-large text-on-surface-variant hover:text-on-surface after:absolute after:-inset-x-1 after:-inset-y-3"
+                className="relative inline-flex items-center gap-1 bg-transparent border-0 p-0 text-label-large text-on-surface-variant hover:text-on-surface after:absolute after:-inset-x-1 after:-inset-y-3"
               >
                 {CLOSE_REASONING_LABEL}
                 <ChevronDownIcon className="rotate-180" />
