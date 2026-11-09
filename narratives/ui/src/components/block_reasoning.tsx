@@ -449,25 +449,28 @@ export function ReasoningBlock({
               its end. */}
           {!streaming && (
             // The bottom padding keeps the button's touch target inside the
-            // clipping wrapper, where it can still be hit.
-            <div className="flex justify-end mt-2 pb-3 motion-safe:animate-stream-in">
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  // Collapsing makes this button inert, which drops its focus
-                  // to <body>; hand focus to the header toggle instead.
-                  // `preventScroll` leaves the scroll to `onClose`.
-                  headerRef.current?.focus({ preventScroll: true });
-                  onClose?.();
-                }}
-                // The pseudo-element pads the 20px-tall label out to a 44px
-                // touch target without changing the layout.
-                className="relative inline-flex items-center gap-1 text-label-large text-on-surface-variant hover:text-on-surface after:absolute after:-inset-x-1 after:-inset-y-3"
-              >
-                {CLOSE_REASONING_LABEL}
-                <ChevronDownIcon className="rotate-180" />
-              </button>
+            // clipping wrapper, where it can still be hit. The bar and hollow
+            // dot continue the thoughts' timeline, ending level with the label.
+            <div className="ml-2.25 -mt-1 pb-3 motion-safe:animate-stream-in">
+              <div className="relative flex pt-4 pl-5.5 before:absolute before:top-0 before:bottom-2.5 before:left-0 before:w-0.5 before:bg-border after:absolute after:bottom-2.5 after:left-px after:-translate-x-1/2 after:translate-y-1 after:size-2 after:rounded-full after:border-2 after:border-border after:bg-surface">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    // Collapsing makes this button inert, which drops its focus
+                    // to <body>; hand focus to the header toggle instead.
+                    // `preventScroll` leaves the scroll to `onClose`.
+                    headerRef.current?.focus({ preventScroll: true });
+                    onClose?.();
+                  }}
+                  // The pseudo-element pads the 20px-tall label out to a 44px
+                  // touch target without changing the layout.
+                  className="relative inline-flex items-center gap-1 text-label-large text-on-surface-variant hover:text-theme-primary after:absolute after:-inset-x-1 after:-inset-y-3"
+                >
+                  {CLOSE_REASONING_LABEL}
+                  <ChevronDownIcon className="rotate-180" />
+                </button>
+              </div>
             </div>
           )}
         </div>
