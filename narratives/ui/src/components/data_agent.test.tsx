@@ -37,6 +37,7 @@ import {
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
 import { CLOSE_REASONING_LABEL, RETRY_LABEL } from '@/src/config/copy_chat';
+import { DEFAULT_UNAVAILABLE_MESSAGE } from '@/src/config/runtime_config';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
@@ -226,12 +227,14 @@ describe('DataAgent error turns', () => {
 
   it.each([
     'The response could not be generated.',
+    DEFAULT_UNAVAILABLE_MESSAGE,
     'Chat is temporarily unavailable. Please try again later.',
     'HTTP 422 Unprocessable Entity',
   ])('shows non-retryable error %j without a retry button', (message) => {
     // Test: Rendering a failed turn that is not retryable.
-    // Situation: The turn carries `isRetryable: false`, including when its prose
-    //            mentions trying again later (chat disabled).
+    // Situation: The turn carries `isRetryable: false`, including the default
+    //            chat-disabled message and a custom one whose prose mentions
+    //            trying again later.
     // Expectation: The message is rendered verbatim and no retry button is
     //              shown.
     renderTurns([buildErrorTurn(message, false)]);

@@ -131,6 +131,17 @@ you can run the Vite dev server without starting the local Python agent:
 Vite's development proxy (`ui/vite.config.ts`) forwards `/agent/*` to
 `AGENT_URL`. Restart `pnpm dev:ui` after editing `.env.local`.
 
+Under `pnpm dev:ui`, the page shows the chat availability of the agent at
+`AGENT_URL`: on every page load, the Vite dev server fetches the agent's
+`index.html` and copies its `#runtime-config` into the page it serves. To
+preview the unavailable view, set `ENABLE_CHAT` and `UNAVAILABLE_MESSAGE` on
+the agent (for example `ENABLE_CHAT=false pnpm dev:agent`), not on Vite, and
+reload the page. A local agent serves `index.html` only after `pnpm build` has
+run once. When the agent cannot be read (it is stopped, has no build, or sits
+behind IAP), the element stays empty, so the page shows chat as enabled, and
+Vite logs a `[runtime-config]` warning. A production build leaves the element
+empty for the agent server to stamp.
+
 ## Workspace scripts
 
 All scripts run from `narratives/`:
@@ -223,7 +234,7 @@ narratives/
 │   └── src/
 │       ├── api/               Data Commons REST API callers
 │       ├── components/        React UI components
-│       ├── config/            Instance, navigation, and chat copy configuration
+│       ├── config/            Instance, runtime, nav, and chat copy config
 │       ├── hooks/             Session state, SSE streaming, and routing hooks
 │       ├── types/             Shared TypeScript interfaces
 │       └── utils/             PDF export, formatting, and web component helpers

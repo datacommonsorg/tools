@@ -16,7 +16,8 @@
 
 /**
  * @fileoverview Tests that moving between the app's tabs drops the chat and
- * returns the scroll container to its top.
+ * returns the scroll container to its top, and that the Data Agent route
+ * renders the unavailable view while chat is disabled.
  */
 
 import {
@@ -28,9 +29,17 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/src/app';
+import {
+  DEFAULT_INSTANCE_CONFIG,
+  resetInstanceConfigForTests,
+} from '@/src/config/instance_config';
+import { resetRuntimeConfigForTests } from '@/src/config/runtime_config';
 
 /** The landing prompt's accessible name. */
 const LANDING_PROMPT = 'Ask a question to explore relevant statistical data';
+
+/** A custom message for the chat-disabled cases. */
+const UNAVAILABLE_MESSAGE = 'Chat is paused for maintenance.';
 
 class NoopResizeObserver {
   observe = vi.fn();
@@ -46,6 +55,18 @@ const goTo = (hash: string): void => {
   });
 };
 
+/** Writes `#runtime-config` with chat disabled and a custom message. */
+const writeChatDisabledSlot = (): void => {
+  const slot = document.createElement('script');
+  slot.id = 'runtime-config';
+  slot.type = 'application/json';
+  slot.textContent = JSON.stringify({
+    enable_chat: false,
+    unavailable_message: UNAVAILABLE_MESSAGE,
+  });
+  document.head.appendChild(slot);
+};
+
 beforeEach(() => {
   window.location.hash = '';
   vi.stubGlobal('ResizeObserver', NoopResizeObserver);
@@ -55,6 +76,10 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.location.hash = '';
+  document.getElementById('runtime-config')?.remove();
+  document.getElementById('instance-config')?.remove();
+  resetRuntimeConfigForTests();
+  resetInstanceConfigForTests();
 });
 
 describe('App', () => {
@@ -147,5 +172,47 @@ describe('App', () => {
 
     expect(mainScrollTo).toHaveBeenCalledWith(0, 0);
     expect(windowScrollTo).not.toHaveBeenCalled();
+  });
+});
+
+describe('App with chat disabled', () => {
+  it.each([
+    '',
+    '#/agent',
+  ])('renders the unavailable message instead of the chat at %j', (hash) => {
+    // Test: The Data Agent route while chat is disabled.
+    // Situation: #runtime-config disables chat with a custom message, and the
+    //   route is the root or `#/agent`.
+    // Expectation: The message renders, and neither the landing prompt nor a
+    //   suggestion chip mounts.
+    writeChatDisabledSlot();
+    window.location.hash = hash;
+    render(<App />);
+    expect(screen.getByRole('status').textContent).toBe(UNAVAILABLE_MESSAGE);
+    expect(screen.queryByRole('textbox', { name: LANDING_PROMPT })).toBeNull();
+    expect(
+      screen.queryByText(DEFAULT_INSTANCE_CONFIG.suggestions[0]),
+    ).toBeNull();
+  });
+
+  it('keeps Key Metrics reachable and returns to the unavailable view', () => {
+    // Test: Moving between tabs while chat is disabled.
+    // Situation: #runtime-config disables chat; the user opens Key Metrics and
+    //   then returns to the Data Agent tab.
+    // Expectation: Key Metrics renders its heading, and the Data Agent tab
+    //   renders the unavailable message again with <main> scrolled to its top.
+    writeChatDisabledSlot();
+    render(<App />);
+    const mainScrollTo = vi.fn();
+    screen.getByRole('main').scrollTo = mainScrollTo;
+
+    goTo('#/metrics');
+    expect(screen.getByRole('heading', { name: 'Key Metrics' })).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+
+    mainScrollTo.mockClear();
+    goTo('#/agent');
+    expect(screen.getByRole('status').textContent).toBe(UNAVAILABLE_MESSAGE);
+    expect(mainScrollTo).toHaveBeenCalledWith(0, 0);
   });
 });

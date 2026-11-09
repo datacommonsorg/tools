@@ -406,4 +406,13 @@ stamps the effective chat availability,
 `<script id="runtime-config" type="application/json">`, escaping `<`, `>`,
 `&`, U+2028, and U+2029. The `ETag` hashes the stamped bytes and
 `Last-Modified` is omitted, so a browser revalidating the page receives the
-current value after a restart that changes it.
+current value after a restart that changes it. `getRuntimeConfig()` in
+`ui/src/config/runtime_config.ts` reads `#runtime-config` synchronously at
+startup. When `enable_chat` is `false`, `App` renders `UnavailableView`
+(`ui/src/components/view_unavailable.tsx`) with the unavailable message on the
+Data Agent route instead of the chat, keeps `Header` and `MetricsPage`
+available, and hides the "New chat" controls. Under `pnpm dev:ui`, the Vite
+dev server fetches the shell from the agent at `AGENT_URL` on every page load
+and copies its `#runtime-config` (`copyAgentRuntimeConfig`), parsing and
+re-escaping the value; when the agent cannot be read, the element stays empty
+and Vite logs a warning.
