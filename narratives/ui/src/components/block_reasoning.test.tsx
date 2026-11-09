@@ -389,7 +389,8 @@ describe('ReasoningBlock', () => {
     // Situation: The block renders expanded while streaming, then finishes,
     //            and the reader clicks `Close reasoning details`.
     // Expectation: No close button while streaming; afterwards the click
-    //              collapses the block and calls `onClose`.
+    //              collapses the block, moves focus from the now-inert button
+    //              to the header toggle, and calls `onClose`.
     const thoughts = [{ text: 'Done.', phase: 'discovery' as const }];
     const onClose = vi.fn();
     const { getByRole, queryByRole, rerender } = render(
@@ -407,8 +408,11 @@ describe('ReasoningBlock', () => {
       <ReasoningBlock thoughts={thoughts} defaultOpen done onClose={onClose} />,
     );
     const header = getByRole('button', { name: /^Reasoning details/ });
-    fireEvent.click(getByRole('button', { name: CLOSE_REASONING_LABEL }));
+    const closeButton = getByRole('button', { name: CLOSE_REASONING_LABEL });
+    closeButton.focus();
+    fireEvent.click(closeButton);
     expect(header.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(header);
     expect(onClose).toHaveBeenCalledOnce();
   });
 

@@ -146,7 +146,7 @@ interface ReasoningBlockProps {
   // while streaming — the thinking text is opt-in.
   defaultOpen?: boolean;
   // True while the chat turn is still streaming. Lets the placeholder
-  // body adapt ("Reasoning…" vs. final fallback) when the agent emits
+  // body adapt (in-progress vs. final fallback) when the agent emits
   // no `thought` events (e.g. simple queries with low thinking level).
   streaming?: boolean;
   // True once the turn is finished (status === "done"). Together with
@@ -245,6 +245,7 @@ export function ReasoningBlock({
   // Scrolling up pauses this so the reader can re-read; bringing the latest
   // thought's end back into view resumes it.
   const rootRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLButtonElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // Whether following is active; read when the turn finishes, so a reader
   // who scrolled away is not pulled down to the answer either.
@@ -321,6 +322,7 @@ export function ReasoningBlock({
   return (
     <div ref={rootRef} className="self-start shrink-0 w-full max-w-4xl">
       <button
+        ref={headerRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         className="inline-flex items-center gap-3 bg-transparent border-0 p-0 cursor-pointer"
@@ -391,6 +393,10 @@ export function ReasoningBlock({
                 type="button"
                 onClick={() => {
                   setOpen(false);
+                  // Collapsing makes this button inert, which drops its focus
+                  // to <body>; hand focus to the header toggle instead.
+                  // `preventScroll` leaves the scroll to `onClose`.
+                  headerRef.current?.focus({ preventScroll: true });
                   onClose?.();
                 }}
                 // The pseudo-element pads the 20px-tall label out to a 44px

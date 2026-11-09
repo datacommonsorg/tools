@@ -24,6 +24,7 @@
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { SendIcon } from '@/src/components/icons';
 import { Tooltip } from '@/src/components/tooltip';
+import { REDUCED_MOTION_QUERY } from '@/src/config/motion';
 import { useTextareaAutosize } from '@/src/hooks/use_textarea_autosize';
 
 /** Streaming placeholder: a raised `⋅` walks across the last two dots. */
@@ -65,10 +66,7 @@ export function PromptInput({
   // first. Stopping resets to the first so the next stream starts there.
   const [frame, setFrame] = useState(0);
   useEffect(() => {
-    if (
-      !isStreaming ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
+    if (!isStreaming || window.matchMedia(REDUCED_MOTION_QUERY).matches) {
       return;
     }
     const id = setInterval(
