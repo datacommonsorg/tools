@@ -15,12 +15,14 @@
  */
 
 /**
- * @fileoverview Tests for ReasoningBlock splash indicator assets.
+ * @fileoverview Tests for ReasoningBlock indicators, header, body, and scroll
+ * behavior.
  */
 
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReasoningBlock } from '@/src/components/block_reasoning';
+import { CLOSE_REASONING_LABEL } from '@/src/config/copy_chat';
 import { resetInstanceConfigForTests } from '@/src/config/instance_config';
 
 const writeSlot = (themeDocument: Record<string, unknown>): void => {
@@ -45,8 +47,26 @@ const isExpanding = (thought: HTMLElement): boolean =>
 const getIndicatorSrc = (container: HTMLElement): string | null =>
   container.querySelector('img')?.getAttribute('src') ?? null;
 
+// jsdom has no ResizeObserver. Records the latest callback so a test can
+// report a resize.
+let reportResize: () => void = vi.fn();
+class FakeResizeObserver {
+  constructor(callback: () => void) {
+    reportResize = callback;
+  }
+  observe = vi.fn();
+  disconnect = vi.fn();
+}
+
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+  reportResize = vi.fn();
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  document.querySelector('main')?.remove();
   document.getElementById('instance-config')?.remove();
   resetInstanceConfigForTests();
 });
@@ -99,14 +119,14 @@ describe('ReasoningBlock', () => {
     const { container, rerender } = render(
       <ReasoningBlock thoughts={[]} defaultOpen streaming status="classify" />,
     );
-    expect(container.textContent).toContain('Understanding your question…');
+    expect(container.textContent).toContain('Understanding your question');
     expect(container.textContent).toContain('Reviewing your question…');
     expect(container.textContent).not.toContain('Searching Data Commons');
 
     rerender(
       <ReasoningBlock thoughts={[]} defaultOpen streaming status="discovery" />,
     );
-    expect(container.textContent).toContain('Querying data tools…');
+    expect(container.textContent).toContain('Querying data tools');
     expect(container.textContent).toContain(
       'Searching Data Commons for relevant indicators and observations…',
     );
@@ -114,7 +134,7 @@ describe('ReasoningBlock', () => {
     rerender(
       <ReasoningBlock thoughts={[]} defaultOpen streaming status="synthesis" />,
     );
-    expect(container.textContent).toContain('Synthesizing answer…');
+    expect(container.textContent).toContain('Synthesizing answer');
 
     rerender(<ReasoningBlock thoughts={[]} defaultOpen done status="done" />);
     expect(container.textContent).toContain('Reasoning details');
@@ -221,8 +241,8 @@ describe('ReasoningBlock', () => {
   });
 
   it.each([
-    ['discovery', 'Querying data tools…'],
-    ['processing', 'Analyzing data…'],
+    ['discovery', 'Querying data tools'],
+    ['processing', 'Analyzing data'],
   ] as const)('labels the header for the %s phase while streaming', (status, label) => {
     // Test: Phase copy for the discovery and processing statuses.
     // Situation: ReasoningBlock renders while the turn is streaming in the
@@ -233,6 +253,265 @@ describe('ReasoningBlock', () => {
       <ReasoningBlock thoughts={[]} streaming status={status} />,
     );
 
-    expect(getByRole('button').textContent).toContain(label);
+    expect(getByRole('button', { expanded: false }).textContent).toContain(
+      label,
+    );
+  });
+
+  it('appends the latest reasoning heading to the header only while streaming', () => {
+    // Test: Header names the section the model is reasoning about.
+    // Situation: Thoughts carry a `##` heading and a later lone-bold heading;
+    //            the block renders streaming, then done.
+    // Expectation: Streaming shows the phase label, a colon, and the latest
+    //              heading, revealed word by word; done falls back to `Reasoning details`.
+    const thoughts = [
+      { text: '## Plan\nFind the data.', phase: 'discovery' as const },
+      {
+        text: '**Checking sources**\n\nLooking up.',
+        phase: 'discovery' as const,
+      },
+    ];
+    const { getByRole, rerender } = render(
+      <ReasoningBlock thoughts={thoughts} streaming status="discovery" />,
+    );
+    expect(getByRole('button', { expanded: false }).textContent).toBe(
+      'Querying data tools:Checking sources',
+    );
+    expect(
+      [
+        ...getByRole('button', { expanded: false }).querySelectorAll(
+          '.stream-word',
+        ),
+      ].map((word) => word.textContent),
+    ).toEqual(['Checking', 'sources']);
+
+    rerender(<ReasoningBlock thoughts={thoughts} done />);
+    expect(getByRole('button', { expanded: false }).textContent).toBe(
+      'Reasoning details',
+    );
+  });
+
+  it.each([
+    ['**Note:** see **this**', 'Querying data tools'],
+    ['# Plan #', 'Querying data tools:Plan'],
+  ])('reads only real headings into the header (%s)', (line, label) => {
+    // Test: Heading detection matches what the body renders as a heading.
+    // Situation: The latest thought line has several bold runs, or is an ATX
+    //            heading with closing `#`s.
+    // Expectation: The bold-run line adds no heading; the closing `#`s are
+    //              dropped.
+    const { getByRole } = render(
+      <ReasoningBlock
+        thoughts={[{ text: line, phase: 'discovery' }]}
+        streaming
+        status="discovery"
+      />,
+    );
+
+    expect(getByRole('button', { expanded: false }).textContent).toBe(label);
+  });
+
+  it.each([
+    [true, [{ top: 292, behavior: 'smooth' }]],
+    [false, undefined],
+  ])('scrolls the answer to the top when the turn finishes (open=%s)', (open, scrolled) => {
+    // Test: Finishing the turn brings the answer up under an open block.
+    // Situation: The block streams inside <main>, open or collapsed, with the
+    //            answer card 300px down, and the turn then finishes.
+    // Expectation: Open, <main> scrolls the card to 8px below the band's top;
+    //              collapsed, it does not scroll.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    document.body.appendChild(main);
+    const thoughts = [{ text: 'Thinking.', phase: 'discovery' as const }];
+    const card = document.createElement('div');
+    card.getBoundingClientRect = () => ({ top: 300 }) as DOMRect;
+    const answerCardRef = { current: card };
+    const { rerender } = render(
+      <ReasoningBlock
+        thoughts={thoughts}
+        defaultOpen={open}
+        streaming
+        status="synthesis"
+        answerCardRef={answerCardRef}
+      />,
+      { container: main },
+    );
+    expect(scrollBy).not.toHaveBeenCalled();
+
+    rerender(
+      <ReasoningBlock
+        thoughts={thoughts}
+        defaultOpen={open}
+        done
+        answerCardRef={answerCardRef}
+      />,
+    );
+    expect(scrollBy.mock.calls[0]).toEqual(scrolled);
+  });
+
+  it('leaves a reader who scrolled away in place when the turn finishes', () => {
+    // Test: The finish scroll respects a paused follow.
+    // Situation: The block streams open inside <main>; the reader scrolls up
+    //            while the latest thought ends below the band, then the turn
+    //            finishes.
+    // Expectation: <main> does not scroll to the answer.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    let scrollTop = 500;
+    Object.defineProperty(main, 'scrollTop', { get: () => scrollTop });
+    document.body.appendChild(main);
+    const thoughts = [{ text: 'Thinking.', phase: 'discovery' as const }];
+    const { container, rerender } = render(
+      <ReasoningBlock
+        thoughts={thoughts}
+        defaultOpen
+        streaming
+        status="synthesis"
+      />,
+      { container: main },
+    );
+    const body = container.querySelector<HTMLElement>('.reasoning-markdown');
+    if (body) body.getBoundingClientRect = () => ({ bottom: 300 }) as DOMRect;
+    scrollTop = 400;
+    main.dispatchEvent(new Event('scroll'));
+
+    rerender(<ReasoningBlock thoughts={thoughts} defaultOpen done />);
+    expect(scrollBy).not.toHaveBeenCalled();
+  });
+
+  it('offers the close button once the turn finishes and reports the close', () => {
+    // Test: Closing the reasoning from below its text.
+    // Situation: The block renders expanded while streaming, then finishes,
+    //            and the reader clicks `Close reasoning details`.
+    // Expectation: No close button while streaming; afterwards the click
+    //              collapses the block and calls `onClose`.
+    const thoughts = [{ text: 'Done.', phase: 'discovery' as const }];
+    const onClose = vi.fn();
+    const { getByRole, queryByRole, rerender } = render(
+      <ReasoningBlock
+        thoughts={thoughts}
+        defaultOpen
+        streaming
+        status="synthesis"
+        onClose={onClose}
+      />,
+    );
+    expect(queryByRole('button', { name: CLOSE_REASONING_LABEL })).toBeNull();
+
+    rerender(
+      <ReasoningBlock thoughts={thoughts} defaultOpen done onClose={onClose} />,
+    );
+    const header = getByRole('button', { name: /^Reasoning details/ });
+    fireEvent.click(getByRole('button', { name: CLOSE_REASONING_LABEL }));
+    expect(header.getAttribute('aria-expanded')).toBe('false');
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [true, [0, 100]],
+    [false, undefined],
+  ])('follows the latest thought while streaming (open=%s)', (open, scrolled) => {
+    // Test: Streaming reasoning keeps its latest thought in view.
+    // Situation: The block streams inside a 200px <main>, open or collapsed,
+    //            and its thought list grows to end 300px down.
+    // Expectation: Open, <main> scrolls by the 100px overflow; collapsed, it
+    //              does not scroll.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    Object.defineProperty(main, 'clientHeight', { value: 200 });
+    document.body.appendChild(main);
+    const { container } = render(
+      <ReasoningBlock
+        thoughts={[{ text: 'Thinking.', phase: 'discovery' }]}
+        defaultOpen={open}
+        streaming
+        status="discovery"
+      />,
+      { container: main },
+    );
+    const body = container.querySelector<HTMLElement>('.reasoning-markdown');
+    if (body) {
+      body.getBoundingClientRect = () => ({ bottom: 300 }) as DOMRect;
+    }
+
+    reportResize();
+    expect(scrollBy.mock.calls[0]).toEqual(scrolled);
+  });
+
+  it('pauses following while the reader scrolls up and resumes at the end', () => {
+    // Test: Following yields to a reader who scrolls back.
+    // Situation: The block streams open inside a 200px <main>. The reader
+    //            scrolls up while the latest thought ends below the band,
+    //            then scrolls until it ends inside the band.
+    // Expectation: A resize while scrolled up does not scroll; after the
+    //              thought's end is back in view, the next resize does.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    Object.defineProperty(main, 'clientHeight', { value: 200 });
+    let scrollTop = 500;
+    Object.defineProperty(main, 'scrollTop', { get: () => scrollTop });
+    document.body.appendChild(main);
+    const { container } = render(
+      <ReasoningBlock
+        thoughts={[{ text: 'Thinking.', phase: 'discovery' }]}
+        defaultOpen
+        streaming
+        status="discovery"
+      />,
+      { container: main },
+    );
+    const body = container.querySelector<HTMLElement>('.reasoning-markdown');
+    let bottom = 300;
+    if (body) body.getBoundingClientRect = () => ({ bottom }) as DOMRect;
+
+    scrollTop = 400;
+    main.dispatchEvent(new Event('scroll'));
+    reportResize();
+    expect(scrollBy).not.toHaveBeenCalled();
+
+    scrollTop = 600;
+    bottom = 150;
+    main.dispatchEvent(new Event('scroll'));
+    bottom = 300;
+    reportResize();
+    expect(scrollBy).toHaveBeenCalledWith(0, 100);
+  });
+
+  it('keeps the following card in view while streaming', () => {
+    // Test: Following keeps the skeleton in view below the reasoning.
+    // Situation: The block streams open inside a 200px <main>, with an answer
+    //            card whose 200px starts 250px down.
+    // Expectation: <main> scrolls so the whole card (SKELETON_PEEK is 1)
+    //              ends at the band's bottom: by 250px.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const main = document.createElement('main');
+    const scrollBy = vi.fn();
+    main.scrollBy = scrollBy;
+    Object.defineProperty(main, 'clientHeight', { value: 200 });
+    document.body.appendChild(main);
+    const card = document.createElement('div');
+    card.getBoundingClientRect = () => ({ top: 250, height: 200 }) as DOMRect;
+    render(
+      <ReasoningBlock
+        thoughts={[{ text: 'Thinking.', phase: 'discovery' }]}
+        defaultOpen
+        streaming
+        status="discovery"
+        answerCardRef={{ current: card }}
+      />,
+      { container: main },
+    );
+
+    reportResize();
+    expect(scrollBy).toHaveBeenCalledWith(0, 250);
   });
 });

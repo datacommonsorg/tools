@@ -15,8 +15,8 @@
  */
 
 /**
- * @fileoverview Tests for DataAgent turn rendering, new-turn scrolling, and its
- * skeleton handoff timing.
+ * @fileoverview Tests for DataAgent turn rendering, new-turn and
+ * reasoning-close scrolling, and its skeleton handoff timing.
  */
 
 import { readFileSync } from 'node:fs';
@@ -36,7 +36,7 @@ import {
 } from '@/src/components/data_agent';
 import { DISCLAIMER_TEXT } from '@/src/components/note_disclaimer';
 import { ANSWER_SETTLE_MAX_MS } from '@/src/components/panel_answer';
-import { RETRY_LABEL } from '@/src/config/copy_chat';
+import { CLOSE_REASONING_LABEL, RETRY_LABEL } from '@/src/config/copy_chat';
 import {
   ChatSessionContext,
   type ChatSessionContextValue,
@@ -355,6 +355,61 @@ describe('DataAgent new-turn scroll', () => {
 
     expect(mainScrollTo).toHaveBeenCalled();
     expect(windowScrollTo).not.toHaveBeenCalled();
+  });
+});
+
+describe('TurnView closing the reasoning', () => {
+  it.each([
+    [-100, 392],
+    [100, undefined],
+  ])('scrolls back to a question at %dpx only when it is above the band', (questionTop, target) => {
+    // Test: Closing the reasoning from its end brings the question back.
+    // Situation: A finished turn renders inside <main>, scrolled to 500px,
+    //            with its reasoning open. The question's top sits 100px above
+    //            the band, or 100px inside it, when the reader clicks close.
+    // Expectation: Above the band, the glide ends with the question 8px under
+    //              the band's top (scrollTop 392); inside it, nothing scrolls.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const turn: ChatTurn = {
+      userMessage: 'What is the population of France?',
+      status: 'done',
+      toolCalls: [],
+      thoughts: [{ text: 'Looked it up.', phase: 'discovery' }],
+      text: 'About 68 million.',
+      blocks: [{ index: 0, type: 'text', markdown: 'About 68 million.' }],
+      provenance: [],
+    };
+    render(
+      <main>
+        <TurnView turn={turn} index={0} isLast isStreaming={false} />
+      </main>,
+    );
+    const main = screen.getByRole('main');
+    Object.defineProperty(main, 'scrollTop', { value: 500 });
+    const mainScrollTo = vi.fn();
+    main.scrollTo = mainScrollTo;
+    const question = main.querySelector<HTMLElement>('[data-turn-index="0"]');
+    if (question) {
+      question.getBoundingClientRect = () => ({ top: questionTop }) as DOMRect;
+    }
+    fireEvent.click(screen.getByRole('button', { name: /^Reasoning details/ }));
+
+    vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    fireEvent.click(
+      screen.getByRole('button', { name: CLOSE_REASONING_LABEL }),
+    );
+    // Run the glide's frames past its full duration.
+    vi.spyOn(performance, 'now').mockReturnValue(20_000);
+    while (frames.length > 0) frames.shift()?.(performance.now());
+
+    expect(mainScrollTo.mock.lastCall).toEqual(
+      target === undefined ? undefined : [0, target],
+    );
   });
 });
 

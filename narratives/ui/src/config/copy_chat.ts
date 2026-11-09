@@ -21,6 +21,9 @@
 /** Label of the inline button that resubmits a retryable failed turn's query. */
 export const RETRY_LABEL = 'Try again';
 
+/** Label of the button at the end of finished reasoning that collapses it. */
+export const CLOSE_REASONING_LABEL = 'Close reasoning details';
+
 /**
  * Error message shown when an upstream response other than a permanent HTTP
  * 4xx (for example, 408, 429, or 5xx) prevents the chat stream from opening.
